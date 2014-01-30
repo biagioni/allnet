@@ -1,0 +1,72 @@
+two programs for key exchange, two programs for chat.
+
+Key exchange
+
+One of the programs for key exchange, xkeys, sends the initial packet,
+including the HMAC of the public key using the shared secret as a key,
+and the public key itself.  It then waits for a response from the new peer.
+The contact name and shared secret are parameters on the command line,
+as well as the number of hops to send.
+
+The other key exchange program, xkeyr, waits for that packet, then
+uses the public key to send back encrypted its own public key and
+the secret itself.  The contact name and shared secret are parameters
+on the command line.
+
+Both xkeyr and xkeys set up the contact initial information, especially
+the contact name and public key, and the personal private and public keys.
+
+For more security against programs running on the local machine, could
+enter the shared secret manually rather than on the command line.
+
+Chat
+
+The two programs for chat are likewise a sender and a receiver, xchats and
+xchatr.
+
+Echatr takes no parameters.  It just listens for incoming messages,
+prints them, saves them, and sends acknowledgements.
+
+The first parameter for the chat sender is the contact name.  Everything
+else on the command line is assumed to be the message.  Echats sends the
+message (assuming it finds the contact).  It then waits a short time for
+an ack.  If it gets the ack, it saves it and prints it.
+
+All messages with the same counter are saved in one file.  The file
+name is the 20 digits of the counters stored in the file, followed by
+"s" for sent messages, and "r" for received messages.  In the future,
+multiple messages may be stored in one file.  As long as the number of
+messages is a power of 10, the file name simply gets shorter, e.g. if
+10,000 messages are stored in one file, the name only includes the shared
+first 16 digits of the counter value.
+
+Each message takes 3 or more lines:
+id: 0123456789abcdef 02468acefdb97531
+sequence 1, time Tue 12 Mar 2013, 11:01:10 HST  (1363122071)
+ message line 1
+ ...
+ message line 2
+ack: 0123456789abcdef 02468acefdb97531 at 1363122072
+
+The ID line carries the packet ID (encrypted part) and the hash of the
+packet ID.  The ack line is added only in the send file and only once
+the ack is received, should match the ID line, and may be added by xchats
+or xchatr.
+
+Since the same sequence number can be sent multiple times, with different
+dates, each file may actually contain several different messages.
+The acks for a message need not be contiguous with that message, and
+messages with different send times need not be in sequential send time
+order in the receive files (they should be in the send files).
+
+When xchats gets an ack, it searches through the send files for unacked
+messages, and proactively resends the latest.  If that one is acked,
+it sends the previous latest unacked message, and so on.
+
+When xchatr receives a message, it sends an ack, and also sends a chat
+control request if it is missing any messages from that contact.  It also
+sends these messages at a low rate (no more than once per minute, and no
+more than once per hour per contact, perhaps doubling each time if there
+is no response) to contacts for which packets are known to be missing.
+
+

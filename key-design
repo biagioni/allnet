@@ -1,0 +1,19 @@
+a key exchange program is started with two or three arguments
+
+the first argument is the name of the new contact, for internal use only
+the second argument is the shared secret, which must be in the message hash
+the optional third argument is the user id of the contact
+  If this argument is present, the key exchange program begins by sending
+  a key exchange message, repeated at 1, 2, 4, 8, 16, 32, and 64 second intervals.
+  When a message is received, it is tried with each of our user IDs and, if
+  provided, with the peer's user ID.  If the message has only gone one
+  hop and this is among the first 10 key exchange packets received, the
+  decoding is tried with the empty user ID as well.
+
+the program stops if (a) it initiated sending and got a reply, or (b) it
+  responded to a request and hasn't heard back for 64 seconds
+
+if this program exits, the caller can find out that way, and even check the
+result.  But the waiting for timeout is a problem.  So how does this program
+tell the caller that it got a key?  The caller could also check whether any
+key has been added to the config, for example.

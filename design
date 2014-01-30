@@ -1,0 +1,82 @@
+design is loosely modeled after v1, but with significant differences.
+
+ad is the new name for the allnet daemon.  ad is divided as much as
+possible into smaller source files (see below).
+
+there is no wtxrxd.  Instead, there are 0 or more abc (allnet broadcast)
+processes, all sharing the same executable, all of them with superuser
+privileges, and each of them broadcasting and receiving on one interface
+and using a pair of pipes to get information to and from ad.  Each abc
+reads (or is given) a configuration to find out its maximum transmit
+speed and its interface.  The abc remains active even if the interface
+is down, but only transmits or receives when the interface is up.
+
+In addition, there is an aip process that forwards data to and from port
+A119 over TCP and UDP.  Likewise, an alocal process forward data between
+ad and local clients connecting to TCP port A11E.  Finally, an acache
+process is responsible for caching packets received, managing the cache,
+and responding to any request packets such as fetch or delete.
+
+There is a start program called astart that runs in super-user mode
+and sets up all the pipes before launching all of these processes,
+each with the necessary privileges, and if appropriate in a chroot jail.
+
+In the absence of more detailed information, bandwidth is allocated
+as follows.  Assume each interface i is allowed to transmit bi bps
+(bits/second), and b is the smallest of the bi.  Then, aip may send b/2
+bps, and abc on interface i may send bi - b/2 bps.  Since abc cannot
+receive while the interface is down, and we want the interface to be
+down as much as possible, abc sends a short beacon packet whenever it
+starts to listen (and maybe when it is idle listening for long enough --
+but if we overhear a beacon, do we keep quiet?).  Then, any senders who
+are listening can send at that time.  Senders listen more if they have
+higher priority data to send, e.g. listen all the time if they have data
+to send from the user (priority > 0.75) or maybe half the time if they
+have data for their friends (priority > 0.5).
+
+ad has a few basic functions:
+- read messages from each of the pipes from alocal, aip, acache, and each abc
+- compute a priority for each received packet
+- send each of the packets, with its priority, to each of the pipes
+  to aip, alocal, acache, and each abc
+- about once every s seconds, read social connections from one or more files
+
+The social connections file(s) is/are maintained by the client programs,
+and is basically a list of IDs with a given social distance.  Each ID
+has a specific bit length, but not all IDs have the same length.
+
+Each client program opens a socket to aip to to communicate address
+information received in acknowledgements.
+
+alocal is relatively simple:
+- listen for local TCP connections
+- send to the TCP connections all data received from ad
+  (perhaps filter out requests received from ad)
+- send to ad all data received from the TCP connections
+alocal might be integrated into ad
+
+aip is more complex:
+- listen for incoming TCP connections
+- cache TCP connection information, close connections when too many
+- listen for incoming UDP traffic
+- cache UDP sender information
+- when sending a packet, randomly choose which (of the valid) destinations
+  will receive the packet, up to the allowed bandwidth (not sure how
+  this works, but maybe packet priority drops each time it is sent,
+  so other packets have a chance?)
+- cache ID to IP/port translations, use them when appropriate
+- handle management packets and the DHT (perhaps offloaded to another process?)
+
+acache is single-threaded.  ad is single-threaded but uses select to
+read the next message from any of its pipes.  abc, aip and alocal either
+are multithreaded or use select.
+
+It would be a good idea to have a protocol for sending over pipes discrete
+messages rather than streams.  E.g. a magic number, number of bytes,
+and then the bytes.  This could be a library module used by all of the
+above programs.  If aip and alocal are multithreaded it is trivial,
+if they use select, it is a little more complicated.  Either way, this
+module could allocate and recycle message buffers (done by 2012/12/31
+in pipemsg).
+
+For a simulator, write a different version of abc and aip.
