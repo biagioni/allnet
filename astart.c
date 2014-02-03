@@ -74,6 +74,36 @@ static void exec_error (char * executable)
   exit (1);
 }
 
+static void my_exec_trace (char * path, char * program, int fd)
+{
+  /* for now, hard-code to 16-bit random addresses */
+  char addr [2];
+  random_bytes (addr, sizeof (addr));
+  char paddr [5];
+  snprintf (paddr, sizeof (paddr), "%02x%02x", (addr [0] & 0xff),
+            (addr [1] & 0xff));
+  char alen [] = "16";
+  
+  int pid = fork ();
+  if (pid == 0) {
+    char * args [4];
+    args [0] = make_program_path (path, program);
+    args [1] = paddr;
+    args [2] = alen;
+    args [3] = NULL;
+    snprintf (log_buf, LOG_SIZE, "calling %s %s %s\n",
+              args [0], args [1], args [2]);
+    log_print ();
+    execv (args [0], args);    /* should never return! */
+    exec_error (args [0]);
+  } else {  /* parent, not much to do */
+    print_pid (fd, pid);
+    snprintf (log_buf, LOG_SIZE, "parent called %s %s %s\n",
+              program, paddr, alen);
+    log_print ();
+  }
+}
+
 static void my_exec2 (char * path, char * program, int * pipes, int fd)
 {
   int pid = fork ();
@@ -268,4 +298,6 @@ int main (int argc, char ** argv)
   int i;
   for (i = 0; i < num_interfaces; i++)
     my_exec3 (path, "abc", pipes + 12 + (4 * i), argv [i + 1], pid_fd);
+  sleep (2);
+  my_exec_trace (path, "traced", pid_fd);
 }

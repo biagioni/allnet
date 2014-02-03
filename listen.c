@@ -251,7 +251,7 @@ static void send_peer_message (int fd, struct listen_info * info, int index)
   int npeers = info->num_fds;
   if (npeers > 255)
     npeers = 255;
-  int size = ALLNET_PEER_HEADER_SIZE (0, npeers);
+  int size = ALLNET_PEER_SIZE (0, npeers);
   char * buffer = calloc (size, 1);   /* allocate and set to all zeros */
   if (buffer == NULL) {
     printf ("unable to allocate %d bytes to send peer message\n", size);
@@ -263,13 +263,13 @@ static void send_peer_message (int fd, struct listen_info * info, int index)
   hp->message_type = ALLNET_TYPE_MGMT;
   hp->max_hops = 1;  /* remaining fields already cleared by calloc */
 
-  struct allnet_header_mgmt * mp =
-    (struct allnet_header_mgmt *) (buffer + ALLNET_HEADER_SIZE);
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (buffer + ALLNET_HEADER_SIZE);
   mp->mgmt_type = ALLNET_MGMT_PEERS;
 
   struct allnet_mgmt_peers * mpp =
     (struct allnet_mgmt_peers *)
-       (((char *) mp) + sizeof (struct allnet_header_mgmt));
+       (((char *) mp) + sizeof (struct allnet_mgmt_header));
 
   mpp->num_peers = 0;
   int i;

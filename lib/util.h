@@ -84,10 +84,10 @@ extern int * random_permute (int n);
 
 /* read a big-endian n-bit number into an unsigned int */
 /* if the pointer is NULL, returns 0 */
-extern unsigned int readb16 (char * p);
-extern unsigned long int readb32 (char * p);
-extern unsigned long long int readb48 (char * p);
-extern unsigned long long int readb64 (char * p);
+extern unsigned int readb16 (const char * p);
+extern unsigned long int readb32 (const char * p);
+extern unsigned long long int readb48 (const char * p);
+extern unsigned long long int readb64 (const char * p);
 
 /* write an n-bit number in big-endian order into an array.  If the pointer
  * is NULL, does nothing */
@@ -98,9 +98,5 @@ extern void writeb64 (char * p, unsigned long long int value);
 
 /* returns 1 if the message is valid, 0 otherwise */
 extern int is_valid_message (const char * packet, int size);
-
-/* if the packet is being traced, add our local info */
-/* the packet is assumed to be valid */
-extern void add_trace_info (char * packet, int size, int is_local);
 
 #endif /* ALLNET_UTIL_H */

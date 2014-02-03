@@ -329,13 +329,13 @@ static void old_send_beacon (int fd, unsigned char * dest, int nbits, int hops,
 */
   if (nbits > 8 * ADDRESS_SIZE)
     nbits = 8 * ADDRESS_SIZE; /* defensive programming, should not be needed */
-  char buffer [ALLNET_BEACON_HEADER_SIZE (0)];
-  int bhs = ALLNET_BEACON_HEADER_SIZE (0);
+  char buffer [ALLNET_BEACON_SIZE (0)];
+  int bhs = ALLNET_BEACON_SIZE (0);
   /* by default, set all fields to zero */
   bzero (buffer, bhs);
   struct allnet_header * hp = (struct allnet_header *) buffer;
-  struct allnet_header_mgmt * mp =
-    (struct allnet_header_mgmt *) (buffer + ALLNET_HEADER_SIZE);
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (buffer + ALLNET_HEADER_SIZE);
   struct allnet_mgmt_beacon * bp =
     (struct allnet_mgmt_beacon *) (buffer + ALLNET_MGMT_HEADER_SIZE (0));
   hp->version = ALLNET_VERSION;
@@ -649,12 +649,12 @@ static void send_beacon (int awake_ms, char * interface,
                          struct sockaddr * addr, socklen_t addrlen)
 {
   int sockfd = wireless_on (interface);
-  char buf [ALLNET_BEACON_HEADER_SIZE (0)];
-  int size = ALLNET_BEACON_HEADER_SIZE (0);
+  char buf [ALLNET_BEACON_SIZE (0)];
+  int size = ALLNET_BEACON_SIZE (0);
   bzero (buf, size);
   struct allnet_header * hp = (struct allnet_header *) buf;
-  struct allnet_header_mgmt * mp =
-    (struct allnet_header_mgmt *) (buf + ALLNET_SIZE (0));
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (buf + ALLNET_SIZE (0));
   struct allnet_mgmt_beacon * mbp =
     (struct allnet_mgmt_beacon *) (buf + ALLNET_MGMT_HEADER_SIZE (0));
 
@@ -683,8 +683,8 @@ static void make_beacon_reply (char * buffer, int bsize)
   }
   bzero (buffer, bsize);
   struct allnet_header * hp = (struct allnet_header *) buffer;
-  struct allnet_header_mgmt * mp =
-    (struct allnet_header_mgmt *) (buffer + ALLNET_SIZE (0));
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
   struct allnet_mgmt_beacon_reply * mbrp =
     (struct allnet_mgmt_beacon_reply *) (buffer + ALLNET_MGMT_HEADER_SIZE (0));
   hp->version = ALLNET_VERSION;
@@ -709,8 +709,8 @@ static void make_beacon_grant (char * buffer, int bsize,
   }
   bzero (buffer, bsize);
   struct allnet_header * hp = (struct allnet_header *) buffer;
-  struct allnet_header_mgmt * mp =
-    (struct allnet_header_mgmt *) (buffer + ALLNET_SIZE (0));
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
   struct allnet_mgmt_beacon_grant * mbgp =
     (struct allnet_mgmt_beacon_grant *)
       (buffer + ALLNET_MGMT_HEADER_SIZE (0));
@@ -771,9 +771,9 @@ static int handle_beacon (char * message, int msize, int sockfd,
     return 0;
   if (msize < ALLNET_MGMT_HEADER_SIZE (hp->transport))
     return 0;
-  struct allnet_header_mgmt * mp =
-    (struct allnet_header_mgmt *) (message + ALLNET_SIZE (hp->transport));
-  char * beaconp = message + ALLNET_BEACON_HEADER_SIZE (hp->transport);
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
+  char * beaconp = message + ALLNET_BEACON_SIZE (hp->transport);
   if (mp->mgmt_type == ALLNET_MGMT_BEACON) {
     if (*beacon_deadline != NULL)  /* already waiting for another grant */
       return 1;

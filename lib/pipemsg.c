@@ -184,6 +184,7 @@ static int send_header_data (int pipe, char * message, int mlen, int priority)
   write_big_endian32 (header + MAGIC_SIZE + 4, mlen);
   memcpy (header + HEADER_SIZE, message, mlen);
 
+  int result = 1;
   int w = send (pipe, packet, HEADER_SIZE + mlen, MSG_DONTWAIT); 
   if ((w < 0) && (errno == ENOTSOCK))
     w = write (pipe, packet, HEADER_SIZE + mlen); 
@@ -192,11 +193,10 @@ static int send_header_data (int pipe, char * message, int mlen, int priority)
     snprintf (log_buf, LOG_SIZE,
               "pipe %d, result %d, wanted %zd\n", pipe, w, HEADER_SIZE + mlen);
     log_print ();
-    free (packet);
-    return 0;
+    result = 0;
   }
   free (packet);
-  return 1;
+  return result;
 }
 
 int send_pipe_message (int pipe, char * message, int mlen, int priority)
@@ -397,7 +397,9 @@ static int parse_header (char * header, int pipe, int * priority)
     if (printed == 0) {
       snprintf (log_buf, LOG_SIZE, "error: unsynchronized pipe %d\n", pipe);
       log_print ();
-      print_buffer (header, HEADER_SIZE, "header", 20, 1);
+      buffer_to_string (header, HEADER_SIZE, " header:", 20, 1,
+                        log_buf, LOG_SIZE);
+      log_print ();
     }
     printed++;
     return -1;
@@ -423,6 +425,7 @@ static void shift_header (char * header)
  * is immediately ready to return.  returns -1 in case of error */
 static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
 {
+  *message = NULL;
   char * debug_null = NULL;
   int index = pipe_index (pipe);
   if (index < 0) {

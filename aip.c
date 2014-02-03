@@ -375,7 +375,8 @@ int make_listener (struct listen_info * info, void * addr_cache)
   }
   cache_add (addr_cache, ai);
   listen_add_fd (info, listener, ai);
-  int offset = snprintf (log_buf, LOG_SIZE, "listening to alnt.org at ");
+  int offset = snprintf (log_buf, LOG_SIZE,
+                         "listening to alnt.org on socket %d at ", listener);
   offset += addr_info_to_string (ai, log_buf + offset, LOG_SIZE - offset);
   log_print ();
   return listener;
@@ -395,10 +396,10 @@ static int handle_peer_packet (int * listener, int peer,
   if (msize < ALLNET_HEADER_SIZE)
     return 0;
   struct allnet_header * hp = (struct allnet_header *) message;
-  if (msize < ALLNET_PEER_HEADER_SIZE (hp->transport, 1))
+  if (msize < ALLNET_PEER_SIZE (hp->transport, 1))
     return 0;
-  struct allnet_header_mgmt * mp =
-    (struct allnet_header_mgmt *) (message + ALLNET_SIZE (hp->transport));
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   if ((hp->message_type != ALLNET_TYPE_MGMT) ||
       (mp->mgmt_type != ALLNET_MGMT_PEERS))
     return 0;
@@ -410,7 +411,7 @@ static int handle_peer_packet (int * listener, int peer,
     (struct allnet_mgmt_peers *)
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
   int npeers = mpp->num_peers & 0xff;
-  if (msize < ALLNET_PEER_HEADER_SIZE(hp->transport, npeers))
+  if (msize < ALLNET_PEER_SIZE(hp->transport, npeers))
     return 0;
   int index;
   for (index = 0; index < npeers; index++) {

@@ -4,7 +4,10 @@ INCLUDES= ../mgmt.h ../packet.h
 LIB=../lib/pipemsg.c ../lib/priority.c ../lib/log.c ../lib/util.c ../lib/app_util.c
 AD_LINK=
 
-all: ../bin/trace
+all: ../bin/trace ../bin/traced
 
-../bin/trace: trace.c ${INCLUDES} ${LIBINCLUDES} ${LIB}
-	gcc -g -o ../bin/trace trace.c ${LIB}
+../bin/trace: trace.c ../ai.c ${INCLUDES} ${LIBINCLUDES} ${LIB}
+	gcc -g -o ../bin/trace trace.c ../ai.c ${LIB}
+
+../bin/traced: ../bin/trace
+	cp ../bin/trace ../bin/traced

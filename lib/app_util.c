@@ -55,8 +55,9 @@ static int connect_once (int print_error)
 }
 
 /* returns the socket, or -1 in case of failure */
-int connect_to_local ()
+int connect_to_local (char * program_name)
 {
+  init_log (program_name);
   int sock = connect_once (0);
   if (sock < 0) {
     exec_allnet ();

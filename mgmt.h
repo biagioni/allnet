@@ -93,48 +93,66 @@ struct allnet_mgmt_dht {
   struct allnet_dht_info nodes [0];   /* how to reach each DHT */
 };
 
+/* a trace should contain a timestamp of the time of receipt using the
+ * receiving/forwarding node's clock.
+ * The timestamp is in fixed-point format: an allnet time in the first
+ * ALLNET_TIME_SIZE bytes, followed by a fraction of a second.
+ * the fraction of a second is in binary, (multiplied by 2^64).
+ * A precision gives the number of valid bits in the fraction, and may be 0.
+ *
+ * since times are sometimes accurate to powers of 10, we use nbits > 64
+ * to mean a decimal number <= (10^(nbits-64)) is stored in the low-order
+ * part of fraction, and this should be used as the fractional part.
+ * if the value > (10^(nbits-64)), the fraction is not valid or usable.
+ *
+ * The trace may optionally carry an AllNet address.  Any unused bits of
+ * the address should be set to zero. */
+struct allnet_mgmt_trace_entry {
+  unsigned char precision;      /* see comment */
+  unsigned char nbits;          /* meaningful bits of address, may be zero */
+                                /* or n-64 digits if n > 64 */
+                                /* or -1/0xff/255 for an unused entry */
+  unsigned char pad [6];
+  unsigned char seconds [ALLNET_TIME_SIZE];
+  unsigned char seconds_fraction [ALLNET_TIME_SIZE];
+  unsigned char address [ADDRESS_SIZE];
+};
+
+
 /* a trace message is designed to have functionality similar to both
- * ping and traceroute in the internet.   The ID of intermediate nodes
- * is free-form.
- * To minimize the impact of denial-of-service attacks, trace replies
- * are sent with the lowest possible priority, and trace messages
- * (trace requests) with a priority just above the lowest possible.
+ * ping and traceroute in the internet.
+ * when originally sent, the message should have one entry, the ID
+ * of the sender.
+ * if public key is provided, the results may be encrypted by the sender.
  */
-struct allnet_mgmt_trace {
-  unsigned char nonce [MESSAGE_ID_SIZE];   /* returned in the reply */
+struct allnet_mgmt_trace_req {
+  unsigned char intermediate_replies; /* 0 to only request final reply */
+  unsigned char num_entries;          /* number of entries, must be >= 1 */
   unsigned char pubkey_size [2];      /* public key size in bytes, MSB first */
+                                      /* may be zero to give no public key */
+  unsigned char pad [4];              /* always send as 0s */
+  unsigned char nonce [MESSAGE_ID_SIZE];   /* returned in the reply */
+  struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
   unsigned char pubkey [0];           /* no pubkey gives unencrypted replies */
 };
 
 /* if a pubkey was provided, this is the structure of the decrypted message */
 /* otherwise, this is the structure of the plaintext message */
 /* the message may or may not be signed by the sender */
+/* an intermediate reply will normally have just one unsigned,
+ * unencrypted entry */
+/* To minimize the impact of denial-of-service attacks, trace replies
+ * are sent with the lowest possible priority. */
 struct allnet_mgmt_trace_reply {
+  unsigned char intermediate_reply;   /* 0 if it is a final reply */
+  unsigned char num_entries;          /* number of entries, must be >= 1 */
+  unsigned char pad [6];              /* always send as 0s */
   unsigned char nonce [MESSAGE_ID_SIZE];
-  unsigned char node_bytes;
-  unsigned char node_info [0];  /* node_bytes worth of printable info,
-                                   e.g. IP addresses or other identification */
-};
-
-/* a trace path may be returned by any of a number of means, including
- * an encrypted application message.  It may also be returned as an
- * unencrypted management message containing an allnet_trace_info.
- * if such a message carries a valid ack, it is treated as an ack,
- * that is, sent with the same priority as a corresponding ack.   Otherwise
- * it is sent with low priority to lessen the opportunity for DoS attacks.
- */
-struct allnet_mgmt_trace_path {
-#define ALLNET_MGMT_TRACE_NONE		0
-#define ALLNET_MGMT_TRACE_ID		1
-#define ALLNET_MGMT_TRACE_ACK		2
-  unsigned char trace_type;		/* none, ID, or ACK */
-  unsigned char pad [7];
-  unsigned char id_or_ack [MESSAGE_ID_SIZE];
-  struct allnet_trace_entry trace [ALLNET_NUM_TRACES];
+  struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
 };
 
 /* the header that precedes each of the management messages */
-struct allnet_header_mgmt {
+struct allnet_mgmt_header {
   /* specify the kind of management message */
 #define ALLNET_MGMT_BEACON		1	/* ready to receive */
 #define ALLNET_MGMT_BEACON_REPLY	2	/* ready to send */
@@ -142,23 +160,34 @@ struct allnet_header_mgmt {
 #define ALLNET_MGMT_PEER_REQUEST	4	/* no content */
 #define ALLNET_MGMT_PEERS		5	/* use these peers */
 #define ALLNET_MGMT_DHT			6	/* DHT information */
-#if 0
 #define ALLNET_MGMT_TRACE_REQ		7	/* request a trace response */
 #define ALLNET_MGMT_TRACE_REPLY		8	/* response to trace req */
-#endif /* 0 */
+#if 0
 #define ALLNET_MGMT_TRACE_PATH		9	/* response to trace header */
+#endif /* 0 */
   unsigned char mgmt_type;   /* every management packet has this */
   char mpad [7];
 };
 
 #define ALLNET_MGMT_HEADER_SIZE(t)	\
-	(ALLNET_SIZE(t) + (sizeof (struct allnet_header_mgmt)))
+	(ALLNET_SIZE(t) + (sizeof (struct allnet_mgmt_header)))
 
-#define ALLNET_BEACON_HEADER_SIZE(t)	\
+#define ALLNET_BEACON_SIZE(t)	\
 	(ALLNET_MGMT_HEADER_SIZE(t) + (sizeof (struct allnet_mgmt_beacon)))
 
-#define ALLNET_PEER_HEADER_SIZE(t, npeers)	\
+#define ALLNET_PEER_SIZE(t, npeers)	\
 	(ALLNET_MGMT_HEADER_SIZE(t) + (sizeof (struct allnet_mgmt_peers)) + \
 	 (npeers) * sizeof (struct internet_addr))
+
+#define ALLNET_TRACE_REQ_SIZE(t, n, ks)	\
+	(ALLNET_MGMT_HEADER_SIZE(t) +   \
+         (sizeof (struct allnet_mgmt_trace_req)) + \
+	 (n) * sizeof (struct allnet_mgmt_trace_entry) + \
+         (ks))
+
+#define ALLNET_TRACE_REPLY_SIZE(t, n)	\
+	(ALLNET_MGMT_HEADER_SIZE(t) +   \
+         (sizeof (struct allnet_mgmt_trace_reply)) + \
+	 (n) * sizeof (struct allnet_mgmt_trace_entry))
 
 #endif /* MGMT_H */
