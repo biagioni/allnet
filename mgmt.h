@@ -94,7 +94,8 @@ struct allnet_mgmt_dht {
 };
 
 /* a trace should contain a timestamp of the time of receipt using the
- * receiving/forwarding node's clock.
+ * receiving/forwarding node's clock, as well as the number of hops
+ * from the packet we are responding to (if any, 0 if none).
  * The timestamp is in fixed-point format: an allnet time in the first
  * ALLNET_TIME_SIZE bytes, followed by a fraction of a second.
  * the fraction of a second is in binary, (multiplied by 2^64).
@@ -112,7 +113,8 @@ struct allnet_mgmt_trace_entry {
   unsigned char nbits;          /* meaningful bits of address, may be zero */
                                 /* or n-64 digits if n > 64 */
                                 /* or -1/0xff/255 for an unused entry */
-  unsigned char pad [6];
+  unsigned char hops_seen;      /* may be zero */
+  unsigned char pad [5];
   unsigned char seconds [ALLNET_TIME_SIZE];
   unsigned char seconds_fraction [ALLNET_TIME_SIZE];
   unsigned char address [ADDRESS_SIZE];
@@ -138,15 +140,18 @@ struct allnet_mgmt_trace_req {
 
 /* if a pubkey was provided, this is the structure of the decrypted message */
 /* otherwise, this is the structure of the plaintext message */
+/* (the first byte is not encrypted, and indicates whether the rest of the
+/* message is encrypted) */
 /* the message may or may not be signed by the sender */
 /* an intermediate reply will normally have just one unsigned,
  * unencrypted entry */
 /* To minimize the impact of denial-of-service attacks, trace replies
  * are sent with the lowest possible priority. */
 struct allnet_mgmt_trace_reply {
+  unsigned char encrypted;            /* 1 for encrypted, 0 for clear */
   unsigned char intermediate_reply;   /* 0 if it is a final reply */
   unsigned char num_entries;          /* number of entries, must be >= 1 */
-  unsigned char pad [6];              /* always send as 0s */
+  unsigned char pad [5];              /* always send as 0s */
   unsigned char nonce [MESSAGE_ID_SIZE];
   struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
 };

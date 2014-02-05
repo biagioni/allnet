@@ -129,7 +129,6 @@ struct allnet_key_request {
 #define ALLNET_TRANSPORT_ACK_REQ	2	/* message_id allows acking */
 #define ALLNET_TRANSPORT_LARGE		4	/* packets part of 1 message */
 #define ALLNET_TRANSPORT_EXPIRATION	8	/* expiration specified */
-#define ALLNET_TRANSPORT_TRACE		16	/* report path traversed */
 
 /* a stream is a collection of related messages, such that if too many
  * of them are dropped, might as well drop the rest.  This allows
@@ -209,20 +208,6 @@ struct allnet_key_request {
 /* expiration simply reports when the message is no longer useful.  Packets
  * with shorter expiration may be given higher priority by intermediate
  * forwarders.
- * trace requests that new information be added to the message header
- * about the current forwarder (this is optional).  The forwarder
- * may also send an intermediate response listing the message ID rather
- * than the message ACK.  This provides the functionality of traceroute.
- *
- * A sender of a trace message should always set the first entry, so that
- * a trace with num_entries == 0 is not valid.
- *
- * although the final recipient may return the response in any manner
- * desired, intermediate responses are always returned as
- * ALLNET_MGMT_TRACE_PATH messages, sent with very low priority.
- *
- * The presence or absence of a TRACE flag should not affect the priority
- * of messages in any way, although the overall message size might.
  */
 
 #define MESSAGE_ID_SIZE			16	/*  16 bytes or 128 bits */
@@ -241,43 +226,6 @@ struct allnet_key_request {
 /* the unix epoch begins Jan 1, 1970, the AllNet epoch on Jan 1, 2000.
  * The difference is: */
 #define Y2K_SECONDS_IN_UNIX	946720800
-
-/* a trace should contain a timestamp of the time of receipt using the
- * receiving/forwarding node's clock.
- * The timestamp is in fixed-point format: an allnet time in the first
- * ALLNET_TIME_SIZE bytes, followed by a fraction of a second.
- * the fraction of a second is in binary, (multiplied by 2^64).
- * A precision gives the number of valid bits in the fraction, and may be 0.
- *
- * since times are sometimes accurate to powers of 10, we use nbits > 64
- * means a decimal number <= (10^(nbits-64)) is stored in the low-order
- * part of fraction, and this should be used as the fractional part.
- * if the value > (10^(nbits-64)), the fraction is not valid or usable.
- *
- * The trace may optionally carry an AllNet address.  Any unused bits of
- * the address should be set to zero. */
-struct allnet_trace_entry {
-  unsigned char precision;      /* see comment */
-  unsigned char nbits;          /* meaningful bits of address, may be zero */
-                                /* or n-64 digits if n > 64 */
-                                /* or -1/0xff/255 for an unused entry */
-  unsigned char pad [6];
-  unsigned char seconds [ALLNET_TIME_SIZE];
-  unsigned char seconds_fraction [ALLNET_TIME_SIZE];
-  unsigned char address [ADDRESS_SIZE];
-};
-
-/* every trace packet carries this many traces.  Trace entries are kept
- * in FIFO order, with each new entry replacing the oldest. */
-/* unused entries have an illegal value of nbits = 0xff/255 */
-/* each trace entry takes 32 bytes, so an overall trace size is 512 bytes */
-#define ALLNET_NUM_TRACES	16
-#define ALLNET_TRACE_SIZE	(sizeof (struct allnet_trace_entry) * \
-				ALLNET_NUM_TRACES)
-
-#define ALLNET_UNUSED_TRACE	0xff
-#define ALLNET_VALID_TRACE(th, index)	\
-	((((th) [index].nbits) & 0xff) <= ADDRESS_BITS)
 
 /* a message with all possible header fields */
 struct allnet_header_max {
@@ -298,16 +246,13 @@ struct allnet_header_max {
   unsigned char sequence    [SEQUENCE_SIZE];   /* if ALLNET_TRANSPORT_LARGE */
   unsigned char expiration  [ALLNET_TIME_SIZE];
                                           /* if ALLNET_TRANSPORT_EXPIRATION */
-  struct allnet_trace_entry trace [ALLNET_NUM_TRACES];
-                                               /* if ALLNET_TRANSPORT_TRACE */
 };
 
 #define ALLNET_SIZE(t)	((ALLNET_HEADER_SIZE) + \
  ((((t) & ALLNET_TRANSPORT_ACK_REQ   ) == 0) ? 0 : (MESSAGE_ID_SIZE)) + \
  ((((t) & ALLNET_TRANSPORT_LARGE     ) == 0) ? 0 : (LARGE_HEADER_SIZE)) + \
  ((((t) & ALLNET_TRANSPORT_STREAM    ) == 0) ? 0 : (MESSAGE_ID_SIZE)) + \
- ((((t) & ALLNET_TRANSPORT_EXPIRATION) == 0) ? 0 : (ALLNET_TIME_SIZE)) + \
- ((((t) & ALLNET_TRANSPORT_TRACE     ) == 0) ? 0 : (ALLNET_TRACE_SIZE)))
+ ((((t) & ALLNET_TRANSPORT_EXPIRATION) == 0) ? 0 : (ALLNET_TIME_SIZE)))
 
 #define ALLNET_SIZE_HEADER(hp)	(ALLNET_SIZE((hp)->transport))
 
@@ -365,16 +310,7 @@ struct allnet_header_max {
   (ALLNET_AFTER_SEQUENCE(t, s) + 		\
    ((((t) & ALLNET_TRANSPORT_EXPIRATION) == 0) ? 0 : ALLNET_TIME_SIZE)))
 
-#define ALLNET_TRACE(hp, t, s)		\
- (((s < ALLNET_SIZE(t)) || (((t) & ALLNET_TRANSPORT_TRACE) == 0)) ? NULL: \
-  (((char *) hp) + ALLNET_AFTER_EXPIRATION(t, s)))
-
-#define ALLNET_AFTER_TRACE(t, s)	\
- ((s < ALLNET_SIZE(t)) ? s :		\
-  (ALLNET_AFTER_EXPIRATION(t, s) + 		\
-   ((((t) & ALLNET_TRANSPORT_TRACE) == 0) ? 0 : ALLNET_TRACE_SIZE)))
-
-#define ALLNET_AFTER_HEADER(t, s)	(ALLNET_AFTER_TRACE(t, s))
+#define ALLNET_AFTER_HEADER(t, s)	(ALLNET_AFTER_EXPIRATION(t, s))
 
 #define ALLNET_DATA_START(hp, t, s)		\
   (((char *) hp) + ALLNET_AFTER_HEADER(t, s))

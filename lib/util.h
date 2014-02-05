@@ -13,8 +13,9 @@
 extern void print_buffer (const char * buffer, int count, char * desc,
                           int max, int print_eol);
 /* same as print_buffer, but prints to the given string */
-extern void buffer_to_string (const char * buffer, int count, char * desc,
-                              int max, int print_eol, char * to, int tsize);
+/* if all goes well, returns the number of characters printed */
+extern int buffer_to_string (const char * buffer, int count, char * desc,
+                             int max, int print_eol, char * to, int tsize);
 
 extern void print_packet (const char * buffer, int count, char * desc,
                           int print_eol);

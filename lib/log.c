@@ -181,67 +181,7 @@ static int addrs_to_str (int src_nbits, char * source,
 static char * pck_str (char * packet, int plen)
 {
   static char buffer [LOG_SIZE];
-  if (plen < ALLNET_HEADER_SIZE) {
-    snprintf (buffer, LOG_SIZE, "log_packet: header size %d < min %zd\n",
-              plen, ALLNET_HEADER_SIZE);
-    return buffer;
-  }
-  char pname [100];
-  struct allnet_header * hp = (struct allnet_header *) packet;
-  switch (hp->message_type) {
-    case (ALLNET_TYPE_DATA):
-      snprintf (pname, LOG_SIZE, "data"); break;
-    case (ALLNET_TYPE_ACK):
-      snprintf (pname, LOG_SIZE, "ack"); break;
-    case (ALLNET_TYPE_DATA_REQ):
-      snprintf (pname, LOG_SIZE, "data request"); break;
-    case (ALLNET_TYPE_KEY_XCHG):
-      snprintf (pname, LOG_SIZE, "key xchg"); break;
-    case (ALLNET_TYPE_KEY_REQ):
-      snprintf (pname, LOG_SIZE, "key req"); break;
-    case (ALLNET_TYPE_CLEAR):
-      snprintf (pname, LOG_SIZE, "clear"); break;
-    case (ALLNET_TYPE_MGMT):
-      snprintf (pname, LOG_SIZE, "mgmt"); break;
-    default:
-      snprintf (pname, LOG_SIZE, "unknown packet type %d", hp->message_type);
-      break;
-  }
-  char addresses [100];
-  addrs_to_str (hp->src_nbits, hp->source, hp->dst_nbits, hp->destination,
-                sizeof (addresses), addresses);
-  int offset = snprintf (buffer, LOG_SIZE, "%d %s %s, %d/%d ",
-                         hp->version, pname, addresses, hp->hops, hp->max_hops);
-  char * stream_id = ALLNET_STREAM_ID(hp, hp->transport, plen);
-  if (stream_id != NULL)
-    offset += snprintf (buffer + offset, LOG_SIZE - offset,
-                        " s %02x%02x%02x%02x%02x%02x",
-                        stream_id [0], stream_id [1], stream_id [2],
-                        stream_id [3], stream_id [4], stream_id [5]);
-  char * message_id = ALLNET_MESSAGE_ID(hp, hp->transport, plen);
-  if (message_id != NULL)
-    offset += snprintf (buffer + offset, LOG_SIZE - offset,
-                        " m %02x%02x%02x%02x%02x%02x",
-                        message_id [0], message_id [1], message_id [2],
-                        message_id [3], message_id [4], message_id [5]);
-  char * packet_id = ALLNET_PACKET_ID(hp, hp->transport, plen);
-  char * npackets = ALLNET_NPACKETS(hp, hp->transport, plen);
-  char * sequence = ALLNET_SEQUENCE(hp, hp->transport, plen);
-  /* only printing the low-order 8 bytes of sequence and npackets, since
-   * - C (as far as I know) does not have built-in 128-bit ints
-   * - it will likely be a long time before any message is sent that
-   *   is larger than 2^64 packets */
-  if ((packet_id != NULL) && (npackets != NULL) && (sequence != NULL))
-    offset += snprintf (buffer + offset, LOG_SIZE - offset,
-                        " p %02x%02x%02x%02x%02x%02x %lld of %lld",
-                        packet_id [0], packet_id [1], packet_id [2],
-                        packet_id [3], packet_id [4], packet_id [5],
-                        readb64 (sequence + 8), readb64 (npackets + 8));
-  char * expiration = ALLNET_EXPIRATION(hp, hp->transport, plen);
-  if (expiration != NULL)
-    offset += snprintf (buffer + offset, LOG_SIZE - offset,
-                        " e in %llds", readb64 (expiration) - time (NULL)
-                                       - Y2K_SECONDS_IN_UNIX);
+  packet_to_string (packet, plen, NULL, 1, buffer, LOG_SIZE);
   return buffer;
 }
 

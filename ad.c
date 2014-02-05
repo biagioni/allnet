@@ -17,11 +17,36 @@
 #define PROCESS_PACKET_LOCAL	2
 #define PROCESS_PACKET_ALL	3
 
-static int process_mgmt (char * message, int msize, int is_local,
-                         int * priority)
+/* compute a forwarding priority for non-local packets */
+static int packet_priority (char * packet, struct allnet_header * hp, int size,
+                            struct social_info * soc)
 {
-  /* last time we received a trace that was not forwarded, or 0 for none */
-  static time_t trace_received = 0;
+  int sig_size = 0;
+  if (hp->sig_algo != ALLNET_SIGTYPE_NONE)
+    sig_size = (packet [size - 2] & 0xff) << 8 + (packet [size - 1] & 0xff);
+  int valid = 0;
+  int social_distance = UNKNOWN_SOCIAL_TIER;
+  int rate_fraction = largest_rate ();
+  if ((sig_size > 0) && (ALLNET_SIZE (hp->transport) + sig_size + 2 > size)) {
+    char * sig = packet + (size - 2 - sig_size);
+    char * verify = packet + ALLNET_HEADER_SIZE; 
+    int vsize = size - (ALLNET_HEADER_SIZE + sig_size + 2);
+    social_distance =
+       social_connection (soc, verify, vsize, hp->source, hp->src_nbits,
+                          hp->sig_algo, sig, sig_size, &valid);
+  }
+  if (valid)
+    rate_fraction = track_rate (hp->source, hp->src_nbits, size);
+  else
+    social_distance = UNKNOWN_SOCIAL_TIER;
+  return compute_priority (0, size, hp->src_nbits, hp->dst_nbits,
+                           hp->hops, hp->max_hops, social_distance,
+                           rate_fraction);
+}
+
+static int process_mgmt (char * message, int msize, int is_local,
+                         int * priority, struct social_info * soc)
+{
   /* if sent from local, use the priority they gave us */
   /* else set priority to the lowest possible.  Generally the right thing */
   /* to do unless we know better (and doesn't affect local delivery). */
@@ -45,26 +70,22 @@ static int process_mgmt (char * message, int msize, int is_local,
     return PROCESS_PACKET_LOCAL;  /* forward to local daemons only */
   case ALLNET_MGMT_TRACE_REQ:
     if (is_local) {
-      trace_received = 0;
-      return PROCESS_PACKET_ALL;    /* forward as a normal data packet */
-    }
-    if ((trace_received != 0) && ((time (NULL) - trace_received) > 10)) {
-      /* either trace process died or something else failed -- just forward */
-      printf ("warning: last unforwarded trace at %ld, now %ld\n",
-              trace_received, time (NULL));
-      return PROCESS_PACKET_ALL;    /* forward as a normal data packet */
-    }
-    /* trace is not local, forward to the trace server */
-    trace_received = time (NULL);
+      if (*priority != EPSILON) {   /* from trace server */
+        *priority = packet_priority (message, hp, msize, soc);
+        return PROCESS_PACKET_ALL;  /* forward as a normal data packet */
+      } else {                      /* from trace app */
+        return PROCESS_PACKET_LOCAL;/* only forward to the trace server */
+      }
+    }  /* else trace is not local, only forward to the trace server */
     return PROCESS_PACKET_LOCAL;  /* forward to local daemons only */
   case ALLNET_MGMT_TRACE_REPLY:
+    if (! is_local)
+      *priority = EPSILON;
     return PROCESS_PACKET_ALL;    /* forward to all with very low priority */
-#if 0
-  case ALLNET_MGMT_TRACE_PATH:
-    return PROCESS_PACKET_ALL;    /* forward to all with very low priority */
-#endif /* 0 */
   default:
-    printf ("unknown management message type %d\n", ahm->mgmt_type);
+    snprintf (log_buf, LOG_SIZE, "unknown management message type %d\n",
+              ahm->mgmt_type);
+    log_print ();
     *priority = EPSILON;
     return PROCESS_PACKET_ALL;   /* forward unknown management packets */
   }
@@ -94,50 +115,29 @@ static int process_packet (char * packet, int size, int is_local,
     return PROCESS_PACKET_DROP;     /* duplicate, ignore */
   }
 
+  /* should be valid */
   struct allnet_header * ah = (struct allnet_header *) packet;
+
+  /* before forwarding, increment the number of hops seen */
+  if ((! is_local) && (ah->hops < 255))   /* do not increment 255 to 0 */
+    ah->hops++;
+  snprintf (log_buf, LOG_SIZE, "forwarding packet with %d hops\n", ah->hops);
+  log_print ();
+
   if (ah->message_type == ALLNET_TYPE_MGMT) {     /* AllNet management */
-    printf ("calling process_mgmt (%p, %d, %d, %p/%d)\n",
-            packet, size, is_local, priority, *priority);
-    int r = process_mgmt (packet, size, is_local, priority);
-    printf ("done calling process_mgmt, result %d, p %d\n", r, *priority);
+    int r = process_mgmt (packet, size, is_local, priority, soc);
     return r;
   }
 
   if (is_local)
     return PROCESS_PACKET_ALL;
 
-  /* before forwarding, increment the number of hops seen */
-  if (ah->hops < 255)   /* do not increment 255 to 0 */
-    ah->hops++;
-  snprintf (log_buf, LOG_SIZE, "forwarding packet with %d hops\n", ah->hops);
-  log_print ();
-
   if (ah->hops >= ah->max_hops)   /* reached hop count */
   /* no matter what it is, only forward locally, i.e. to alocal and acache */
     return PROCESS_PACKET_LOCAL;
 
   /* compute a forwarding priority for non-local packets */
-  *priority = compute_priority (is_local, size, ah->src_nbits, ah->dst_nbits,
-                                ah->hops, ah->max_hops, UNKNOWN_SOCIAL_TIER,
-                                largest_rate ());
-  if (ah->sig_algo == ALLNET_SIGTYPE_NONE)
-    return PROCESS_PACKET_ALL;
-  int sig_size = (packet [size - 2] & 0xff) << 8 + (packet [size - 1] & 0xff);
-  if (ALLNET_HEADER_SIZE + sig_size + 2 <= size)
-    return PROCESS_PACKET_ALL;
-  char * sig = packet + (size - 2 - sig_size);
-  char * verify = packet + ALLNET_HEADER_SIZE; 
-  int vsize = size - (ALLNET_HEADER_SIZE + sig_size + 2);
-  int valid;
-  int social_distance =
-       social_connection (soc, verify, vsize, ah->source, ah->src_nbits,
-                          ah->sig_algo, sig, sig_size, &valid);
-  if (! valid)
-    return PROCESS_PACKET_ALL;
-  int rate_fraction = track_rate (ah->source, ah->src_nbits, size);
-  *priority = compute_priority (is_local, size, ah->src_nbits, ah->dst_nbits,
-                                ah->hops, ah->max_hops, social_distance,
-                                rate_fraction);
+  *priority = packet_priority (packet, ah, size, soc);
 
   /* send each of the packets, with its priority, to each of the pipes */
   return PROCESS_PACKET_ALL;
@@ -146,8 +146,9 @@ static int process_packet (char * packet, int size, int is_local,
 static void send_all (char * packet, int psize, int priority,
                       int * write_pipes, int nwrite, char * desc)
 {
-  int n = snprintf (log_buf, LOG_SIZE, "send_all (%s) sending to %d pipes: ",
-                    desc, nwrite);
+  int n = snprintf (log_buf, LOG_SIZE,
+                    "send_all (%s) sending %d bytes to %d pipes: ",
+                    desc, psize, nwrite);
   int i;
   for (i = 0; i < nwrite; i++)
     n += snprintf (log_buf + n, LOG_SIZE - n, "%d, ", write_pipes [i]);
@@ -176,11 +177,11 @@ static void main_loop (int * read_pipes, int nread,
   int i;
   for (i = 0; i < nread; i++)
     add_pipe (read_pipes [i]);
-snprintf (log_buf, LOG_SIZE, "ad calling init_social\n"); log_print ();
+/* snprintf (log_buf, LOG_SIZE, "ad calling init_social\n"); log_print (); */
   struct social_info * soc = init_social (max_social_bytes, max_checks);
-snprintf (log_buf, LOG_SIZE, "ad calling update_social\n"); log_print ();
+/* snprintf (log_buf, LOG_SIZE, "ad calling update_social\n"); log_print (); */
   time_t next_update = update_social (soc, update_seconds);
-snprintf (log_buf, LOG_SIZE, "ad finished update_social\n"); log_print ();
+/* snprintf (log_buf, LOG_SIZE, "ad finished update_social\n"); log_print ();*/
 
   while (1) {
     /* read messages from each of the pipes */
@@ -191,7 +192,6 @@ snprintf (log_buf, LOG_SIZE, "ad finished update_social\n"); log_print ();
                                           &packet, &from_pipe, &priority);
 snprintf (log_buf, LOG_SIZE, "ad received %d, fd %d\n", psize, from_pipe);
 log_print ();
-printf ("ad received %d, fd %d, packet %p\n", psize, from_pipe, packet);
     if (psize <= 0) { /* for now exit */
       snprintf (log_buf, LOG_SIZE,
                 "error: received %d from receive_pipe_message_any, pipe %d\n%s",
@@ -202,10 +202,7 @@ printf ("ad received %d, fd %d, packet %p\n", psize, from_pipe, packet);
     /* packets generated by alocal and acache are local */
     int is_local = ((from_pipe == read_pipes [0]) ||
                     (from_pipe == read_pipes [1]));
-printf ("calling process_packet (%p, %d, %d, %p, %p/%d)\n",
-        packet, psize, is_local, soc, &priority, priority);
     int p = process_packet (packet, psize, is_local, soc, &priority);
-printf ("done calling process_packet, result %d\n", p);
     switch (p) {
     case PROCESS_PACKET_ALL:
       log_packet ("sending to all", packet, psize);
@@ -213,7 +210,7 @@ printf ("done calling process_packet, result %d\n", p);
       break;
     /* all the rest are not forwarded, so priority does not matter */
     case PROCESS_PACKET_LOCAL:   /* send only to alocal and acache */ 
-      log_packet ("sending to alocal and acache", packet, psize);
+      log_packet ("sending to alocal, acache, and other local", packet, psize);
       send_all (packet, psize, 0, write_pipes, 2, "local");
       break;
     case PROCESS_PACKET_DROP:    /* do not forward */
@@ -226,7 +223,6 @@ printf ("done calling process_packet, result %d\n", p);
     /* about once every next_update seconds, re-read social connections */
     if (time (NULL) >= next_update)
       next_update = update_social (soc, update_seconds);
-printf ("ad loop complete\n");
   }
 }
 
