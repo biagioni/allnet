@@ -259,7 +259,7 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         r += snprintf (to + r, tsize - r, "trace request %d %d %s ",
                        amt->num_entries, ks,
                        ((amt->intermediate_replies != 0) ? "all" : "final"));
-        r += buffer_to_string (amt->nonce, NONCE_SIZE, "nonce", 6, 0,
+        r += buffer_to_string (amt->trace_id, NONCE_SIZE, "id", 6, 0,
                                to + r, tsize - r);
         int i;
         for (i = 0; i < amt->num_entries; i++)
@@ -288,7 +288,7 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         r += snprintf (to + r, tsize - r, "trace reply %d %s ",
                        amt->num_entries,
                        ((amt->intermediate_reply != 0) ? "int" : "final"));
-        r += buffer_to_string (amt->nonce, NONCE_SIZE, " nonce", 6, 0,
+        r += buffer_to_string (amt->trace_id, NONCE_SIZE, "id", 6, 0,
                                to + r, tsize - r);
         int i;
         for (i = 0; i < amt->num_entries; i++)

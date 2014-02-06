@@ -128,13 +128,15 @@ void log_print_str (char * string)
 {
   char time_str [100];
   static char buffer [LOG_SIZE + LOG_SIZE];
-  time_t now = time (NULL);
+  struct timeval now;
+  gettimeofday (&now, NULL);
   struct tm n;
-  if (localtime_r (&now, &n) == NULL)
-    snprintf (time_str, sizeof (time_str), "bad time %ld", now);
+  if (localtime_r (&now.tv_sec, &n) == NULL)
+    snprintf (time_str, sizeof (time_str), "bad time %ld", now.tv_sec);
   else
-    snprintf (time_str, sizeof (time_str), "%02d/%02d %02d:%02d:%02d",
-              n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec);
+    snprintf (time_str, sizeof (time_str), "%02d/%02d %02d:%02d:%02d.%06ld",
+              n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec,
+              now.tv_usec);
   int len = snprintf (buffer, sizeof (buffer), "%s %s: %s",
                       time_str, module_name, string);
   /* add a newline if it is not already at the end of the string */

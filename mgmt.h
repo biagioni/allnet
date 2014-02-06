@@ -133,7 +133,7 @@ struct allnet_mgmt_trace_req {
   unsigned char pubkey_size [2];      /* public key size in bytes, MSB first */
                                       /* may be zero to give no public key */
   unsigned char pad [4];              /* always send as 0s */
-  unsigned char nonce [MESSAGE_ID_SIZE];   /* returned in the reply */
+  unsigned char trace_id [MESSAGE_ID_SIZE];   /* returned in the reply */
   struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
   unsigned char pubkey [0];           /* no pubkey gives unencrypted replies */
 };
@@ -152,7 +152,7 @@ struct allnet_mgmt_trace_reply {
   unsigned char intermediate_reply;   /* 0 if it is a final reply */
   unsigned char num_entries;          /* number of entries, must be >= 1 */
   unsigned char pad [5];              /* always send as 0s */
-  unsigned char nonce [MESSAGE_ID_SIZE];
+  unsigned char trace_id [MESSAGE_ID_SIZE];
   struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
 };
 

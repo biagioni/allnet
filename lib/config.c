@@ -66,7 +66,10 @@ int config_file_name (char * program, char * file, char ** name)
   } else {
     char * home_env = getenv ("HOME");
     if ((home_env == NULL) || (strcmp (home_env, "/nonexistent") == 0)) {
-      printf ("no home environment, running without configs\n");
+      static int printed = 0;
+      if (! printed)
+        printf ("no home environment, running without configs\n");
+      printed = 1;
       return -1;
     }
     /* printf ("no ALLNET_CONFIG, home is %s\n", home_env); */

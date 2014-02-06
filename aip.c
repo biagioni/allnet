@@ -466,7 +466,7 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
                 ((fd == rpipe) ? "ad pipe" : "udp socket"), fd);
         break;  /* exit the loop and the program */
       }
-      printf ("aip: error on file descriptor %d, closing\n", fd);
+      /* printf ("aip: error on file descriptor %d, closing\n", fd); */
       listen_remove_fd (info, fd); /* remove from data structures */
       close (fd);       /* remove from kernel */
       if (fd == listener)
