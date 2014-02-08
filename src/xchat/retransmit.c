@@ -239,7 +239,7 @@ static char * buffer_to_data_message (char * text, int tsize,
   char * key;
   int ksize = get_contact_pubkey (contact, &key);
   if (ksize <= 0) {
-    printf ("error (%d): unable to get public key for\n", ksize, contact);
+    printf ("error (%d): unable to get public key for %s\n", ksize, contact);
     return NULL;
   }
   char * encr;

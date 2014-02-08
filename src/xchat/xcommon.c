@@ -299,7 +299,7 @@ long long int send_data_packet (int sock, char * peer,
   char * key;
   int ksize = get_contact_pubkey (peer, &key);
   if (ksize <= 0) {
-    printf ("error (%d): unable to get public key for\n", ksize, peer);
+    printf ("error (%d): unable to get public key for %s\n", ksize, peer);
     return;
   }
   char * encr;
