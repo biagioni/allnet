@@ -1371,7 +1371,7 @@ static long long add_ack (char * dirname, char * packet_id)
           }
           free (contents);
           char * fname = strcat3_malloc (dirname, "/", dep->d_name, "add_ack");
-          int fd = open (fname, O_RDWR | O_APPEND | O_CREAT);
+          int fd = open (fname, O_RDWR | O_APPEND | O_CREAT, 0664);
           if (fd < 0) {
             perror ("insert_into_file/open");
             printf ("unable to add at end of file %s\n", fname);
