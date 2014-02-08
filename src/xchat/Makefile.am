@@ -1,10 +1,19 @@
 #SUBDIRS = test
+AUTOMAKE_OPTIONS = subdir-objects
 
-AM_CPPFLAGS = -I$(top_srcdir)/src/xtime -I$(top_srcdir)/src/lib
-ad_includes = packet.h pipemsg.h priority.h util.h sha.h config.h log.h
-ad_link = pipemsg.c priority.c util.c sha.c config.c log.c
+AM_CPPFLAGS = -I../xtime -I../lib
+ad_includes = app_util.h packet.h pipemsg.h priority.h util.h sha.h config.h log.h
+ad_link = \
+    ../lib/app_util.c \
+    ../lib/log.c \
+    ../lib/cipher.c \
+    ../lib/config.c \
+    ../lib/pipemsg.c \
+    ../lib/priority.c \
+    ../lib/sha.c \
+    ../lib/util.c
 includes = chat.h cutil.h store.h cipher.h retransmit.h xcommon.h
-link = cutil.c store.c cipher.c retransmit.c xcommon.c
+link = cutil.c store.c retransmit.c xcommon.c
 
 bin_PROGRAMS = xchatr xchats xchat_socket xkeys xkeyr
 xchatr_SOURCES = xchatr.c ${link} ${includes} ${ad_includes} ${ad_link}
