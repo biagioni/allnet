@@ -6,6 +6,7 @@ m4_define([allnet_api_version], [0.3])
 AC_PREREQ([2.69])
 AC_INIT([allnet],[allnet_api_version],[esb@hawaii.edu])
 AM_INIT_AUTOMAKE(foreign)
+AM_SILENT_RULES
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/ad.c])
 AC_CONFIG_HEADERS([config.h])
