@@ -16,4 +16,4 @@ bin_PROGRAMS = trace
 trace_SOURCES = trace.c ../ai.c ${includes} ${libincludes}
 
 install-exec-hook:
-	cp $(DESTDIR)$(bindir)trace $(DESTDIR)$(bindir)traced
+	$(LN_S) $(DESTDIR)$(bindir)trace $(DESTDIR)$(bindir)traced
