@@ -39,5 +39,5 @@ install-exec-hook:
 	cd $(DESTDIR)$(bindir) && \
 		$(LN_S) astart astop
 	cp abc abc.nosudo && \
-		sudo chown root:root abc && \
-		sudo chmod u+s abc 
+		chown root:root abc && \
+		chmod u+s abc
