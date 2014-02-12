@@ -4,8 +4,10 @@
 AC_PREREQ([2.69])
 AC_INIT([allnet],[0.3],[esb@hawaii.edu])
 AM_INIT_AUTOMAKE(foreign)
+AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/ad.c])
 AC_CONFIG_HEADERS([config.h])
+LT_INIT
 
 # Checks for programs.
 AC_PROG_CC
