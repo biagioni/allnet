@@ -11,16 +11,9 @@ includes = \
 	../mgmt.h \
 	../packet.h
 
-lib = \
-	../lib/app_util.c \
-	../lib/dcache.c \
-	../lib/log.c \
-	../lib/pipemsg.c \
-	../lib/priority.c \
-	../lib/util.c
-
+LDADD = ../lib/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = trace
-trace_SOURCES = trace.c ../ai.c ${includes} ${libincludes} ${lib}
+trace_SOURCES = trace.c ../ai.c ${includes} ${libincludes}
 
 install-exec-hook:
 	cp $(DESTDIR)$(bindir)trace $(DESTDIR)$(bindir)traced

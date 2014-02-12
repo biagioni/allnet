@@ -1,8 +1,8 @@
 ad_includes = packet.h sha.h config.h pipemsg.h log.h util.h priority.h
-ad_link = sha.c config.c pipemsg.c log.c util.c
 includes = cipher.h
 link = cipher.c
 
+LDADD = ../lib/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = xtime
-xtime_SOURCES = xtime.c ${link} ${includes} ${ad_includes} ${ad_link}
+xtime_SOURCES = xtime.c ${link} ${includes} ${ad_includes}
 xtime_LDFLAGS = -lcrypto
