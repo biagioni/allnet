@@ -1,6 +1,8 @@
 /* xtime.c: send periodic (every hour, on the hour) time broadcast messages */
-/* the argument to the call determines how many hops the messages are sent */
+/* the first argument to the call is the key for signing messages */
+/* the second argument determines how many hops the messages are sent */
 /* if no argument is specified, the default is 10 hops */
+/* the third argument is the time interval, default 1 hour */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,58 +11,18 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "packet.h"
-#include "pipemsg.h"
-#include "priority.h"
-#include "cipher.h"
-
-static void exec_allnet ()
-{
-  if (fork () == 0) {
-    chdir ("../v2");   /* no error checking... */
-    execl ("./astart", "astart", "wlan0", (char *) NULL);
-    perror ("execl");
-    printf ("error: exec astart failed\n");
-  }
-  sleep (2);  /* pause the caller for a couple of seconds to get allnet going */
-}
-
-static int connect_once (int print_error)
-{
-  int sock = socket (AF_INET, SOCK_STREAM, 0);
-  struct sockaddr_in sin;
-  sin.sin_family = AF_INET;
-  sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
-  sin.sin_port = ALLNET_LOCAL_PORT;
-  if (connect (sock, (struct sockaddr *) &sin, sizeof (sin)) == 0)
-    return sock;
-  if (print_error)
-    perror ("connect to alocal");
-  close (sock);
-  return -1;
-}
-
-/* returns the socket, or -1 in case of failure */
-int connect_to_local ()
-{
-  int sock = connect_once (0);
-  if (sock < 0) {
-    exec_allnet ();
-    sleep (1);
-    sock = connect_once (1);
-    if (sock < 0) {
-      printf ("unable to start allnet daemon, giving up\n");
-      return -1;
-    }
-  }
-  return sock;
-}
+#include "../packet.h"
+#include "../lib/app_util.h"
+#include "../lib/pipemsg.h"
+#include "../lib/priority.h"
+#include "../lib/cipher.h"
+#include "../lib/keys.h"
 
 static int init_xtime ()
 {
-  int sock = connect_to_local ();
+  int sock = connect_to_local ("xtime");
   if (sock < 0)
-    return -1;
+    exit (1);
   add_pipe (sock);
   return sock;
 }
@@ -180,13 +142,31 @@ static int make_announcement (char * buffer, int n,
                               char * source, int sbits,
                               char * dest, int dbits)
 {
-  if (n < ALLNET_HEADER_CLEAR_SIZE + TIMESTAMP_SIZE) {
+  if (n < ALLNET_HEADER_SIZE + ALLNET_TIME_SIZE) {
     printf ("error: n %d should be at least %zd + %d\n",
-            n, ALLNET_HEADER_CLEAR_SIZE, TIMESTAMP_SIZE);
+            n, ALLNET_HEADER_SIZE, ALLNET_TIME_SIZE);
     exit (1);
   }
-  struct allnet_header_clear * hp = (struct allnet_header_clear *) buffer;
-  char * dp = buffer + ALLNET_HEADER_CLEAR_SIZE;
+  struct allnet_header * hp = (struct allnet_header *) buffer;
+
+  hp->version = ALLNET_VERSION;
+  hp->message_type = ALLNET_TYPE_CLEAR;
+  hp->hops = 0;
+  hp->max_hops = hops;
+  hp->src_nbits = sbits;
+  hp->dst_nbits = dbits;
+  hp->sig_algo = ALLNET_SIGTYPE_NONE;
+  hp->transport = ALLNET_TRANSPORT_EXPIRATION;
+  memcpy (hp->source, source, ADDRESS_SIZE);
+  memcpy (hp->destination, dest, ADDRESS_SIZE);
+  int hsize = ALLNET_SIZE (hp->transport);
+  if (hsize > n) {
+    printf ("error: header size %d, buffer size %d\n", hsize, n);
+    return;
+  }
+
+  char * dp = buffer + hsize;
+
   int sig_algo = ALLNET_SIGTYPE_NONE;
   int ssize = 0;
   int dsize = time_to_buf (send, dp, TIMESTAMP_SIZE);
@@ -194,7 +174,7 @@ static int make_announcement (char * buffer, int n,
     char * sig;
     ssize = sign (dp, TIMESTAMP_SIZE, key, ksize, &sig);
     if (ssize > 0) {
-      int size = ALLNET_HEADER_CLEAR_SIZE + TIMESTAMP_SIZE + ssize + 2;
+      int size = hsize + TIMESTAMP_SIZE + ssize + 2;
       if (size > n) {
         printf ("error, buffer size %d, wanted %d, not adding sig\n", n, size);
         ssize = 0;
@@ -210,18 +190,10 @@ static int make_announcement (char * buffer, int n,
     }
   }
 
-  hp->version = ALLNET_VERSION;
-  hp->packet_type = ALLNET_TYPE_CLEAR;
-  hp->hops = 0;
-  hp->max_hops = hops;
-  hp->src_nbits = ADDRESS_BITS;
-  hp->dst_nbits = ADDRESS_BITS;
-  hp->sig_algo = sig_algo;
-  hp->pad = 0;
-  memcpy (hp->source, source, ADDRESS_SIZE);
-  memcpy (hp->destination, dest, ADDRESS_SIZE);
-  binary_time_to_buf (expiration, hp->expiration, EXPIRATION_TIME_SIZE);
-  return ALLNET_HEADER_CLEAR_SIZE + dsize + ssize;
+  char * e = ALLNET_EXPIRATION(hp, hp->transport, n);
+  if (e != NULL)
+    binary_time_to_buf (expiration, e, ALLNET_TIME_SIZE);
+  return hsize + dsize + ssize;
 }
 
 static void announce (time_t interval, int sock,
@@ -236,6 +208,7 @@ static void announce (time_t interval, int sock,
                           are on the same second */
 
   static char buffer [ALLNET_MTU];
+  bzero (buffer, sizeof (buffer));
 
   int blen = make_announcement (buffer, sizeof (buffer),
                                 announce_time - TIMEBASE_DELTA,
@@ -256,26 +229,28 @@ static void announce (time_t interval, int sock,
 int main (int argc, char ** argv)
 {
   int hops = 10;
-  if (argc > 1)
-    hops = atoi (argv [1]);
-  int interval = 3600;
+  if (argc < 2) {
+    printf ("%s: needs at least a signing address\n", argv [0]);
+    exit (1);
+  }
+  char * address = argv [1];
   if (argc > 2)
-    interval = atoi (argv [2]);
-  char * name = "edo";
+    hops = atoi (argv [2]);
+  int interval = 3600;
   if (argc > 3)
-    name = argv [3];
-  create_keys (name, "broadcast time server", 0);
+    interval = atoi (argv [3]);
+  struct bc_key_info * key = get_own_key (address);
+  if (key == NULL) {
+    printf ("key '%s' not found\n", address);
+    exit (1);
+  }
+  printf ("got %d-byte public, %d-byte private key, address %02x.%02x\n",
+          key->pub_klen, key->priv_klen, key->address [0] & 0xff,
+          key->address [1] & 0xff);
+  
   int sock = init_xtime ();
-  char * key = NULL;
-  char source [ADDRESS_SIZE];
-  char dest [ADDRESS_SIZE];
-  int sbits, dbits;
-  char * printable;
-  int ksize = get_my_privkey (&key, source, &sbits, dest, &dbits, &printable);
-  if (ksize > 0)
-    printf ("found %d-byte key file\n", ksize);
-  else
-    printf ("key not found, sending unsigned messages\n");
+
   while (1)
-    announce (interval, sock, hops, key, ksize, source, sbits, dest, dbits);
+    announce (interval, sock, hops, key->priv_key, key->priv_klen,
+              key->address, ADDRESS_BITS, key->address, ADDRESS_BITS);
 }

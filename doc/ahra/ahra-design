@@ -1,0 +1,210 @@
+---------------------- Overview -----------------------------
+
+An AllNet human-readable address (AHRA) is used for two purposes:
+ - to subscribe to a broadcast service
+ - to initiate confidential communication with an individual
+
+In both cases, the AHRA must identify an AllNet address (8 bytes in
+binary) and a public key.  It must do so in a way that is memorable and
+easily communicated, which rules out normal fingerprints.  It must be
+as secure as possible in detcting an attacker that is using a different
+public key.
+
+The basic design is to let the owner of the address pick a memorable
+phrase, and add to that phrase memorable information that identifies
+the public key.  The two parts can be separated by an "@" sign.
+
+To produce an AllNet address, it is sufficient to hash the personal
+phrase and use the first 8 bytes of the hash as the address.
+
+To identify the key, we have chosen to have the owner of the key create
+a number of keys, until one is found that in some way matches the bits of
+the hash of the personal phrase that are not used for the address.  The
+way in which this matches is then encoded in a memorable way.  What follows
+is one way of accomplishing this.
+
+The generated public key is used to encrypt the mapped personal phrase
+(in the unlikely event of the mapped personal phrase being longer than
+the key, it is truncated).  The resulting ciphertext is searched for
+bitstrings from the hash.  As long as the encryption and the hash are
+computed by different, independent algorithms, the chances of finding
+bitstrings from the hash in the ciphertext should be random.  New keys are
+generated until the ciphertext contains the desired bitstrings.  When it
+does, this public key is used, and the positions of the bitstrings in
+the ciphertext are recorded as the identification of the public key.
+
+Anyone in possession of an AHRA and receiving a public key can verify that
+  - using the public key to encrypt the mapped personal phrase
+  - yields a ciphertext
+  - that has the bitstrings from the hash of the mapped personal phrase
+  - in the positions specified by the AHRA's second part
+
+An attacker searching at random for a public key to match the AHRA will
+find many keys with matching bitstrings, but the vast majority will be
+in different positions than specified in the AHRA.  As a result, the
+attacker must do much more work than the original creator of the AHRA.
+
+An analysis of the scheme follows.
+
+---------------------- Finding a key: -----------------------------
+
+We have s bitstrings of length x, taken from the hash of the personal
+phrase (starting from the end of the hash, since the AllNet address is
+taken from the front of the hash).
+
+We are matching x bits at n possible positions, once each for the s
+bitstrings.
+
+For generating, and assuming 2^x >> n, the likelihood of finding one
+match is approximately
+     n / 2^x
+so on average, 2^x / n keys will have to be examined to find a match.
+
+To find s matches in a single key, on average we must examine
+(2^x / n)^s keys
+
+
+---------------------- Stealing a key: -----------------------------
+
+The attacker must find a key such that each of the s bitstrings is at
+the right position.  For each bitstring position specified by the AHRA,
+there are 1/2^x chances of finding a match.  With s bitstrings, there
+are 1/2^xs chances of finding all w matches at the given positions.
+
+The number of keys to be examined is then 2^xs.
+
+The ratio between the number of keys to be examined by the original
+creator and that to be examined by an attacker, assuming it is hard
+to generate a key that produces a particular bitstring at a particular
+position, is
+
+  2^xs / (2^x / n)^s = 2^xs / (2^xs / n^s) = n^s.
+
+This is how much more work the attacker must do compared to the owner.
+Given n ~= 4096, s = 2 requires the attacker to do 16M times more work
+than the owner, s = 3 requires the attacker to do 68B times more work,
+and s = 4 requires 281T times more work.
+
+
+---------------------- Worked-out examples: -----------------------------
+
+	x	n	w	gen	steal	comments
+	8	4088	3	1	1	(256 < 4088)
+	16	4080	1	16	65536
+	16	4080	2	258	4294967296
+	16	4080	3	4144	281474976710656
+	16	4080	3	66570	18446744073709551616
+	18	4078	1	64	262144
+	18	4078	2	4132	68719476736
+	18	4078	3	265630	18014398509481984
+	18	4078	4	17075396	4722366482869645213696
+
+	x	n	w	gen	steal	comments
+	8	8184	3	1	1	(256 < 8184)
+	16	8176	1	8	65536
+	16	8176	2	64	4294967296
+	16	8176	3	515	281474976710656
+	16	8176	3	4128	18446744073709551616
+	18	8174	1	32	262144
+	18	8174	2	1028	68719476736
+	18	8174	3	32984	18014398509481984
+	18	8174	4	1057842	4722366482869645213696
+
+---------------------- Other considerations: -----------------------------
+
+The "cost" of the address in human terms is proportional to s.
+s = 2 may be memorable, s = 3 may be harder, s = 4 even harder.
+So it is good to maximize n.  n = 4096 can fit an encrypted block
+with a signature (each 512 bytes) in a 1500-byte Ethernet packet.
+
+---------------------- Generator design: -----------------------------
+
+The key generator is given one or more phrases.  For each, the phrase is
+converted to binary by using the character map, which gives in general
+4 bits per character.  If necessary, the phrase is padded on the right
+with 4 0 bits to make it a whole number of bytes.  The phrase is then
+hashed to give a 512-bit (64-byte) hash h.
+
+The user must also specify a minimum number s of bitstrings.  The default
+s is the minimum, 2.  The strings, s1, s2, s3, ..., are taken from the
+hash of the phrase, x=16 bits (2 bytes) at a time starting from the back
+of h.  The first 64 bits of h are used as an AllNet address to request
+the actual key.  If the hash used is SHA-512, that leaves up to s=12
+bitstrings for the public key identification.
+
+The generator then starts to generate keys.  For each public key (a
+sequence of n bits), the generator uses it to encrypt the phrase, then
+searches through the ciphertext to match s1, s2, and so on.  If at least
+the first s bitstrings match, the key is saved and the corresponding
+identifier is also saved and printed.
+
+Identifiers specify the position of each s1, s2, ... in the key.  Each
+position is encoded by a pair pw of common words.  There are 128 words
+in each of two files, pre-list and post-list.  Each position p is split
+into two values v1 = p / 128 and v2 = p % 128.  v1 is used as in index
+into pre-list, v2 into post-list.  Together, the two words give the
+word pair pw.  Word pairs are strung in sequence separated by dots,
+commas, or similar punctuation.
+
+---------------------- Design example: -----------------------------
+
+Assume the phrase "foo bar baz", after character mapping, hashes to
+hash h.  In this example, the last few 16-bit words of h might be
+s1 = 0x1234, s2 = 0x5678, s3 = 0x9abc.
+
+If a key is generated that has s1 at position 1193 = 9 * 128 + 41,
+s2 at 3633 = 28 * 128 + 49, and s3 at 269 = 2 * 128 + 13, the
+corresponding identifier has phrases corresponding to positions 9/41,
+28/49, 2/13, with the first number in each pair identifying the word
+from the pre-list, and the second number the word from the post-list.
+
+The corresponding words in the current pre- and post-lists are
+
+    for_room.which_person.be_number
+
+This identifier is saved together with the key, to give the AHRA
+
+	"foo bar baz"@for_room.which_person.be_number
+
+When requesting a key given an address, the hash of the phrase is used
+as the address to which to send the key request.  The hash is also
+used to give s1, s2, s3, and so on.
+
+Once a key is received, the key is used to encrypt the personal phrase.
+If all of the bitstrings are found at their specified positions, the key
+is trusted.  The trust can also be variable, by recording the number s and
+length x of matching bitstrings -- higher s and x meaning higher trust.
+
+Someone wishing to communicate with this address must remember the phrase
+exactly (otherwise the hash will give different values), but may remember
+any prefix of the identifier and still validate a received key.
+
+---------------------- Word Lists: -----------------------------
+
+Eventually it would be nice to have word lists for many different
+languages.  Ideally, no word is found in more than one language list,
+but if they are, it is not a huge deal -- it might make an attacker's
+job slightly easier, but if the language of the other words is taken
+into consideration, it is unlikely to be ambiguous.
+
+These are some of the criteria I used in selecting the English word
+lists:
+
+only positive words
+words are better if they are:
+  shorter
+  easier to spell
+  not ambiguous (such as lead), i.e. have one meaning or pronunciation
+  not easily confused with other words
+
+words were excluded if they are:
+  political (all colors) or religious
+  countries or geographic
+  relationships, clothing or body parts, personal pronouns
+  commercial, brands or specific products
+  negative in any way, could be used as insults or for bullying
+
+Note that translating the key identifier is simply a matter of using
+the same bitstring indices in different lists, so this scheme naturally
+yields translatable addresses.
+

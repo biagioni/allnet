@@ -78,6 +78,9 @@ static int file_name (time_t seconds, int must_exist)
 void init_log (char * name)
 {
   module_name = name;
+  char * last_slash = rindex (module_name, '/');
+  if (last_slash != NULL)
+    module_name = last_slash + 1;
   mkdir (LOG_DIR, 0700);  /* if it fails because it already exists, it's OK */
   time_t now = time (NULL);
   int count = 0;

@@ -1,10 +1,10 @@
-AD_INCLUDES= packet.h sha.h config.h pipemsg.h log.h util.h priority.h
-AD_LINK= sha.c config.c pipemsg.c log.c util.c
-INCLUDES= cipher.h
-LINK=cipher.c
+LIB_INCLUDES=../packet.h ../lib/sha.h ../lib/config.h ../lib/pipemsg.h ../lib/log.h ../lib/util.h ../lib/priority.h ../lib/cipher.h ../lib/keys.h ../lib/mapchar.h ../lib/app_util.h
+LIB_LINK=../lib/sha.c ../lib/config.c ../lib/pipemsg.c ../lib/log.c ../lib/util.c ../lib/ai.c ../lib/cipher.c ../lib/keys.c ../lib/mapchar.c ../lib/app_util.c
+INCLUDES=
+LINK=
 
 all: xtime
 
-xtime: xtime.c ${LINK} ${INCLUDES} ${AD_INCLUDES} ${AD_LINK}
-	gcc -g -o xtime xtime.c ${LINK} ${AD_LINK} -lcrypto
+xtime: xtime.c ${LINK} ${INCLUDES} ${LIB_INCLUDES} ${LIB_LINK}
+	gcc -g -o xtime xtime.c ${LINK} ${LIB_LINK} -lcrypto
 

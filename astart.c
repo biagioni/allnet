@@ -74,6 +74,24 @@ static void exec_error (char * executable)
   exit (1);
 }
 
+static void my_exec0 (char * path, char * program, int fd)
+{
+  int pid = fork ();
+  if (pid == 0) {
+    char * args [2];
+    args [0] = make_program_path (path, program);
+    args [3] = NULL;
+    snprintf (log_buf, LOG_SIZE, "calling %s\n", args [0]);
+    log_print ();
+    execv (args [0], args);    /* should never return! */
+    exec_error (args [0]);
+  } else {  /* parent, not much to do */
+    print_pid (fd, pid);
+    snprintf (log_buf, LOG_SIZE, "parent called %s\n", program);
+    log_print ();
+  }
+}
+
 static void my_exec_trace (char * path, char * program, int fd)
 {
   /* for now, hard-code to 16-bit random addresses */
@@ -300,4 +318,5 @@ int main (int argc, char ** argv)
     my_exec3 (path, "abc", pipes + 12 + (4 * i), argv [i + 1], pid_fd);
   sleep (2);
   my_exec_trace (path, "traced", pid_fd);
+  my_exec0 (path, "keyd", pid_fd);
 }

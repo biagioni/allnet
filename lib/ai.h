@@ -1,7 +1,7 @@
 /* ai.h: utility functions for struct addr_info and struct internet_addr */
 
-#include "packet.h"
-#include "mgmt.h"
+#include "../packet.h"
+#include "../mgmt.h"
 
 #ifndef ALLNET_AI_H
 #define ALLNET_AI_H

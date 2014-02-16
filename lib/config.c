@@ -39,8 +39,9 @@ int create_dir (char * path)
   if (create_dir (path)) {
     /* and try again to create this directory */
     *last_slash = '/';
-    if (mkdir (path, 0777) == 0)
+    if (mkdir (path, 0777) == 0) {
       return 1;
+    }
     perror ("mkdir");
   }
   return 0;

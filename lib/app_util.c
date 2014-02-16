@@ -71,91 +71,31 @@ int connect_to_local (char * program_name)
   return sock;
 }
 
-#if 0
-
-/* only really works within 24 hours -- otherwise, too complicated */
-/* should use mktime, but does not translate GMT/UTC time */
-static int delta_minutes (struct tm * local, struct tm * gm)
+/* retrieve or request a public key.
+ *
+ * if successful returns the key length and sets *key to point to
+ * statically allocated storage for the key (do not modify in any way)
+ * if not successful, returns 0.
+ *
+ * max_time_ms and max_hops are only used if the address has not
+ * been seen before.  If so, a key request is sent with max_hops, and
+ * we wait at most max_time_ms (or quit after receiving max_keys).
+ */
+unsigned int get_bckey (char * address, char ** key,
+                        int max_time_ms, int max_keys, int max_hops)
 {
-  int delta_hour = local->tm_hour - gm->tm_hour;
-  if (local->tm_wday == ((gm->tm_wday + 8) % 7)) {
-    delta_hour += 24;
-  } else if (local->tm_wday == ((gm->tm_wday + 6) % 7)) {
-    delta_hour -= 24;
-  } else if (local->tm_wday != gm->tm_wday) {
-    printf ("assertion error: weekday %d != %d +- 1\n",
-            local->tm_wday, gm->tm_wday);
-    exit (1);
+  static char result [512];
+  struct timeval finish;
+  gettimeofday (&finish, NULL);
+  add_us (&finish, max_time_ms);
+  int keys_found = 0;
+
+  printf ("please implement get_bckey\n");
+  exit (1);
+
+  while ((is_before (&finish)) && (keys_found < max_keys)) {
+    
   }
-  int delta_min = local->tm_min - gm->tm_min;
-  if (delta_min < 0) {
-    delta_hour -= 1;
-    delta_min += 60;
-  }
-  int result = delta_hour * 60 + delta_min;
-  /* 
-  printf ("delta minutes is %02d:%02d = %d\n", delta_hour, delta_min, result);
-  */
-  return result;
 }
 
 
-void write_big_endian16 (char * array, int value)
-{
-  writeb64 (array
-  array [0] = (value >>  8) & 0xff; array [1] =  value        & 0xff;
-}
-
-void write_big_endian32 (char * array, long int value)
-{
-  array [0] = (value >> 24) & 0xff; array [1] = (value >> 16) & 0xff;
-  array [2] = (value >>  8) & 0xff; array [3] =  value        & 0xff;
-}
-
-void write_big_endian48 (char * array, long long int value)
-{
-  array [0] = (value >> 40) & 0xff; array [1] = (value >> 32) & 0xff;
-  array [2] = (value >> 24) & 0xff; array [3] = (value >> 16) & 0xff;
-  array [4] = (value >>  8) & 0xff; array [5] =  value        & 0xff;
-}
-
-void write_big_endian64 (char * array, long long int value)
-{
-  array [0] = (value >> 56) & 0xff; array [1] = (value >> 48) & 0xff;
-  array [2] = (value >> 40) & 0xff; array [3] = (value >> 32) & 0xff;
-  array [4] = (value >> 24) & 0xff; array [5] = (value >> 16) & 0xff;
-  array [6] = (value >>  8) & 0xff; array [7] =  value        & 0xff;
-}
-
-int read_big_endian16 (char * array)
-{
-/*
-  printf ("array is %02x %02x, result is %d\n",
-          (array [0] & 0xff), (array [1] & 0xff),
-          (array [0] & 0xff) <<  8 | (array [1] & 0xff));
-*/
-  return ((array [0] & 0xff) <<  8 | (array [1] & 0xff));
-}
-
-long int read_big_endian32 (char * array)
-{
-  return ((array [0] & 0xffL) << 24 | (array [1] & 0xffL) << 16 |
-          (array [2] & 0xffL) <<  8 | (array [3] & 0xffL));
-}
-
-long long int read_big_endian48 (char * array)
-{
-  return ((array [0] & 0xffLL) << 40 | (array [1] & 0xffLL) << 32 |
-          (array [2] & 0xffLL) << 24 | (array [3] & 0xffLL) << 16 |
-          (array [4] & 0xffLL) <<  8 | (array [5] & 0xffLL));
-}
-
-long long int read_big_endian64 (char * array)
-{
-  return ((array [0] & 0xffLL) << 56 | (array [1] & 0xffLL) << 48 |
-          (array [2] & 0xffLL) << 40 | (array [3] & 0xffLL) << 32 |
-          (array [4] & 0xffLL) << 24 | (array [5] & 0xffLL) << 16 |
-          (array [6] & 0xffLL) <<  8 | (array [7] & 0xffLL));
-}
-
-#endif /* 0 */

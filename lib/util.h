@@ -23,6 +23,11 @@ extern void print_packet (const char * buffer, int count, char * desc,
 extern void packet_to_string (const char * buffer, int count, char * desc,
                               int print_eol, char * to, int tsize);
 
+/* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
+ * offset (in bits) within x, nbits the number of bits to print */
+extern char * print_bitstring (unsigned char * x, int xoff, int nbits,
+                               int print_eol);
+
 /* print an arbitrary socket address */
 /* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
 extern void print_sockaddr (struct sockaddr * sap, int addr_size, int tcp);
@@ -35,6 +40,11 @@ extern void print_timestamp (char * message);
 /* return nbits if the first nbits of x match the first nbits of y, else 0 */
 /* where nbits is the lesser of xbits and ybits */
 extern int matches (unsigned char * x, int xbits, unsigned char * y, int ybits);
+
+/* return 1 if the first nbits of x after xoff bits match
+ * the first nbits of y after yoff bits, else 0 */
+extern int bitstring_matches (unsigned char * x, int xoff,
+                              unsigned char * y, int yoff, int nbits);
 
 /* useful time functions and constants */
 #define US_PER_S        1000000    /* microseconds in a second */

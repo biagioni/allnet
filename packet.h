@@ -118,10 +118,11 @@ struct allnet_key_exchange {
   unsigned char public_key [0];     /* public key to be used */
 };
 struct allnet_key_request {
-  unsigned char nbytes_fingerprint;  /* number of bytes in the fingerprint */
-  unsigned char fingerprint [0];     /* nbytes of fingerprint,
-                                        identifies requested public key */
-  unsigned char reply_key [0];       /* public key for reply, may be omitted */
+  unsigned char nbits_fingerprint;  /* number of bits in the fingerprint,
+                                       may be zero */
+  unsigned char fingerprint [0];    /* (nbits + 7) / 8 bytes of fingerprint,
+                                       identifies requested public key */
+  unsigned char reply_key [0];      /* public key for reply, may be omitted */
 };
 
 /* a LARGE packet must be an ACK packet.  All the other flags are orthogonal */

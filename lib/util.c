@@ -374,6 +374,9 @@ void packet_to_string (const char * buffer, int bsize, char * desc,
       off += mgmt_to_string (mp->mgmt_type, next, nsize,
                              to + off, tsize - off);
     }
+  } else if (bsize > ALLNET_SIZE (hp->transport)) {
+    off += snprintf (to + off, tsize - off, ", %zd bytes of payload", 
+                     bsize - ALLNET_SIZE (hp->transport));
   }
   if (print_eol)
     off += snprintf (to + off, tsize - off, "\n");
@@ -571,6 +574,71 @@ int matches (unsigned char * x, int xbits, unsigned char * y, int ybits)
     return nbits + 1;
   }
   return 0;
+}
+
+static int bit_at (const unsigned char * b, int xoff)
+{
+  b += (xoff / 8);
+  int byte = (*b) & 0xff;
+  int bit_off = xoff % 8;
+  int bit = byte;
+  if (bit_off < 7)
+    bit = byte >> (7 - bit_off);
+  bit = bit & 0x01;
+/*
+  static int printed = 0;
+  if (printed < 30) {
+    printf ("bit_at (%02x, %d/%d=%d) is %d\n",
+            byte, bit_off, xoff, xoff / 8, bit);
+    printed++;
+  }
+*/
+  return bit;
+}
+
+static int bit_match (unsigned char * x, int xoff, unsigned char * y, int yoff)
+{
+  int xbit = bit_at (x, xoff);
+  int ybit = bit_at (y, yoff);
+  if (xbit == ybit)
+    return 1;
+  return 0;
+}
+
+char * print_bitstring (unsigned char * x, int xoff, int nbits, int print_eol)
+{
+  int i;
+  for (i = 0; i < nbits; i++) {
+    if ((i > 0) && (i % 4 == 0))
+      printf (" ");
+    int byte = x [(xoff + i) / 8];
+    int mask = 1 << (7 - (xoff + i) % 8);
+    if (byte & mask)
+      printf ("1");
+    else
+      printf ("0");
+  }
+  if (print_eol)
+    printf ("\n");
+}
+
+/* return 1 if the first nbits of x after xoff bits match
+ * the first nbits of y after yoff bits, else 0 */
+int bitstring_matches (unsigned char * x, int xoff,
+                       unsigned char * y, int yoff, int nbits)
+{
+  int i;
+  for (i = 0; i < nbits; i++)
+    if (! bit_match (x, xoff + i, y, yoff + i))
+      return 0;
+/*
+  printf ("\nbitstring ");
+  print_bitstring (x, xoff, nbits);
+  printf ("\n  matches ");
+  print_bitstring (y, yoff, nbits);
+  printf ("\n");
+*/
+  return 1;
 }
 
 /* useful time functions */
