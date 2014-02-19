@@ -15,12 +15,14 @@
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 
-#include "util.h"
-#include "config.h"
-#include "priority.h"
+#include "../lib/util.h"
+#include "../lib/config.h"
+#include "../lib/priority.h"
+#include "../lib/cipher.h"
 #include "cutil.h"
 #include "store.h"
 
+#if 0
 /* return the length of a public key, based on the key type stored in the
  * first byte of the key.  The length includes the first byte */
 int public_key_length (char * pubkey)
@@ -30,6 +32,7 @@ int public_key_length (char * pubkey)
   printf ("public_key_length: unknown key type %d\n", (*pubkey) & 0xff);
   return 0;
 }
+#endif /* 0 */
 
 struct missing_info {
   long long int first;   /* first sequence number known to be missing */
@@ -40,7 +43,7 @@ struct unacked_info {
   long long int seq;   /* sequence number not yet acked */
   long long int time;  /* sent at time -- we do not retransmit earlier
                           versions of the same sequence number) */
-  unsigned char packet_id [PACKET_ID_SIZE];
+  unsigned char message_ack [MESSAGE_ID_SIZE];
 };
 
 #define SEQ_STORAGE	100
@@ -175,44 +178,44 @@ static int ascii_hex (char * data, int * error)
   return 0;
 }
 
-/* data is in hex, packet_id in binary */
+/* data is in hex, message_ack in binary */
 /* returns 1 for match, 0 for not match */
-static int matching_packet_id (char * data, int dsize, char * packet_id)
+static int matching_message_ack (char * data, int dsize, char * message_ack)
 {
-  if (dsize < PACKET_ID_SIZE * 2 /* 32 */ )
+  if (dsize < MESSAGE_ID_SIZE * 2 /* 32 */ )
     return 0;
   int i;
-  for (i = 0; i < PACKET_ID_SIZE; i++) {
+  for (i = 0; i < MESSAGE_ID_SIZE; i++) {
     int failed = 0;
     int new_byte = ascii_hex (data + 2 * i, &failed) * 16 +
                    ascii_hex (data + 2 * i + 1, &failed);
-    if ((failed) || (new_byte & 0xff) != (packet_id [i] & 0xff))
+    if ((failed) || (new_byte & 0xff) != (message_ack [i] & 0xff))
       return 0;  /* not matching */
   }
   return 1;      /* everything matches */
 }
 
-/* data is in hex, packet_id in binary */
-static void read_packet_id (char * data, int dsize, char * packet_id)
+/* data is in hex, message_ack in binary */
+static void read_message_ack (char * data, int dsize, char * message_ack)
 {
-  if (dsize < PACKET_ID_SIZE * 2 /* 32 */ ) {
-    printf ("read_packet_id called with dsize %d, min is %d\n",
-            dsize, PACKET_ID_SIZE * 2);
+  if (dsize < MESSAGE_ID_SIZE * 2 /* 32 */ ) {
+    printf ("read_message_ack called with dsize %d, min is %d\n",
+            dsize, MESSAGE_ID_SIZE * 2);
     exit (1);
   }
   int i;
-  for (i = 0; i < PACKET_ID_SIZE; i++) {
+  for (i = 0; i < MESSAGE_ID_SIZE; i++) {
     int failed = 0;
     int new_byte = ascii_hex (data + 2 * i, &failed) * 16 +
                    ascii_hex (data + 2 * i + 1, &failed);
     if (failed) {
-      char copy [PACKET_ID_SIZE * 2 + 1];
-      memcpy (copy, data, PACKET_ID_SIZE * 2);
-      copy [PACKET_ID_SIZE * 2] = '\0';
+      char copy [MESSAGE_ID_SIZE * 2 + 1];
+      memcpy (copy, data, MESSAGE_ID_SIZE * 2);
+      copy [MESSAGE_ID_SIZE * 2] = '\0';
       printf ("unable to read packet id from %s, chars %d or %d\n", copy,
               2 * i, 2 * i + 1);
     }
-    packet_id [i] = new_byte;
+    message_ack [i] = new_byte;
   }
 }
 
@@ -282,12 +285,12 @@ static void last_unacked (char * data, int dsize,
       if (strncmp (data + i, ACK_STR, ACK_LEN) == 0) {  /* found an ack */
         int j;
         for (j = 0; j < *nunack; j++) {   /* compare it to the unacked seqs */
-          if (matching_packet_id (data + i + ACK_LEN, dsize - i - ACK_LEN,
-                                  unacked [j].packet_id)) {
+          if (matching_message_ack (data + i + ACK_LEN, dsize - i - ACK_LEN,
+                                    unacked [j].message_ack)) {
 #ifdef DEBUG_PRINT
             printf ("last_unacked matched ");
-            print_buffer (unacked [j].packet_id, PACKET_ID_SIZE, "packet ID",
-                          PACKET_ID_SIZE, 0);
+            print_buffer (unacked [j].message_ack, MESSAGE_ID_SIZE,
+                          "message ID", MESSAGE_ID_SIZE, 0);
 #endif /* DEBUG_PRINT */
             remove_ack (unacked, nunack, j);
 #ifdef DEBUG_PRINT
@@ -301,12 +304,12 @@ static void last_unacked (char * data, int dsize,
         /* now we have room for this record */
         unacked [*nunack].seq = 0;   /* sequence and time not yet known */
         unacked [*nunack].time = 0;
-        read_packet_id (data + i + SENT_ID_LEN, dsize - i - SENT_ID_LEN,
-                        unacked [*nunack].packet_id);
+        read_message_ack (data + i + SENT_ID_LEN, dsize - i - SENT_ID_LEN,
+                          unacked [*nunack].message_ack);
 #ifdef DEBUG_PRINT
         printf ("last_unacked found ");
-        print_buffer (unacked [*nunack].packet_id, PACKET_ID_SIZE,
-                      "sent packet ID", PACKET_ID_SIZE, 1);
+        print_buffer (unacked [*nunack].message_ack, MESSAGE_ID_SIZE,
+                      "sent packet ID", MESSAGE_ID_SIZE, 1);
 #endif /* DEBUG_PRINT */
       } else if (strncmp (data + i, SENT_SEQ_STR, SENT_SEQ_LEN) == 0) {
         if ((*nunack < SEQ_STORAGE) && (unacked [*nunack].seq == 0)) {
@@ -624,6 +627,7 @@ static void init_contacts ()
   closedir (dir);
 }
 
+#if 0
 /* allocates and returns an array of pointers to null-terminated
  * contact names.  Call free_contacts to release. */
 int all_contacts (char *** res)
@@ -658,6 +662,7 @@ void free_contacts (char ** contacts)
   init_contacts ();
   free (contacts);
 }
+#endif /* 0 */
 
 static char * new_contact_fname ()
 {
@@ -785,6 +790,7 @@ static int externalize_public_key (char * pem, int len, char ** res)
   return bn_size + 1;
 }
 
+#if 0
 /* automatically generates a public/private key pair */
 /* if successful returns the public key size and sets *pubkey to point to
  * a static buffer containing the key (do not free or modify the key). */
@@ -894,6 +900,7 @@ unsigned int save_contact_pubkey (char * contact, char * contact_pubkey,
 
   return externalize_public_key (info->my_key, info->my_ksize, my_key);
 }
+#endif /* 0 */
 
 /* returns 0 if the contact cannot be found or matches more than one contact */
 unsigned long long int get_counter (const char * contact)
@@ -924,6 +931,7 @@ unsigned long long int get_last_received (char * contact)
   return contacts [index].last_received;
 }
 
+#if 0
 /* return the key length if successful, and set key to point to the
  * internal storage of the key (should not be free'd) */
 /* return 0 if the contact cannot be found or matches more than one contact */
@@ -957,6 +965,7 @@ unsigned int get_my_privkey (char * contact, char ** key)
                         contacts [index].my_ksize, "get_my_privkey");
   return contacts [index].my_ksize;
 }
+#endif /* 0 */
 
 static char * copy_with_indent (char * text, int tsize, char * indent)
 {
@@ -983,26 +992,26 @@ static char * copy_with_indent (char * text, int tsize, char * indent)
   return result;
 }
 
-static char * packet_ids_to_string (char * packet_id, char * p1, char * p2)
+static char * message_acks_to_string (char * message_ack, char * p1, char * p2)
 {
-  char hashed [PACKET_ID_SIZE];
-  sha512_bytes (packet_id, PACKET_ID_SIZE, hashed, PACKET_ID_SIZE);
+  char hashed [MESSAGE_ID_SIZE];
+  sha512_bytes (message_ack, MESSAGE_ID_SIZE, hashed, MESSAGE_ID_SIZE);
   int i;
   /* size has n1+n2+3 for p1+p2, 64 for 32B in hex, 1 each for ' ' '\n' '\0' */
-  int size = strlen (p1) + strlen (p2) + 3 + PACKET_ID_SIZE * 4 + 1 + 1 + 1;
-  char * result = malloc_or_fail (size, "packet_ids_to_string");
+  int size = strlen (p1) + strlen (p2) + 3 + MESSAGE_ID_SIZE * 4 + 1 + 1 + 1;
+  char * result = malloc_or_fail (size, "message_acks_to_string");
   char * p = result;
   int written = 0;   /* how many bytes written overall */
   int w;             /* how many bytes written in the latest operation */
   w = snprintf (p, size - written, "%s %s: ", p1, p2);
   p += w; written += w;
-  for (i = 0; i < PACKET_ID_SIZE; i++) {
-    w = snprintf (p, size - written, "%02x", packet_id [i] & 0xff);
+  for (i = 0; i < MESSAGE_ID_SIZE; i++) {
+    w = snprintf (p, size - written, "%02x", message_ack [i] & 0xff);
     p += w; written += w;
   }
   w = snprintf (p, size - written, " ");
   p += w; written += w;
-  for (i = 0; i < PACKET_ID_SIZE; i++) {
+  for (i = 0; i < MESSAGE_ID_SIZE; i++) {
     w = snprintf (p, size - written, "%02x", hashed [i] & 0xff);
     p += w; written += w;
   }
@@ -1010,9 +1019,9 @@ static char * packet_ids_to_string (char * packet_id, char * p1, char * p2)
   p += w; written += w;
   /* maybe delete this if statement after feeling confident of computation */
   if (written + 1 != size) {
-    printf ("packet_ids_to_string, error in computing how much to allocate\n");
+    printf ("message_acks_to_string, error computing how much to allocate\n");
     printf ("size %d, written %d, packet ID size %d, result %p, p %p\n",
-            size, written, PACKET_ID_SIZE, result, p);
+            size, written, MESSAGE_ID_SIZE, result, p);
     exit (1);
   }
   return result;
@@ -1020,8 +1029,8 @@ static char * packet_ids_to_string (char * packet_id, char * p1, char * p2)
 
 static void save_unacked (int index, struct chat_descriptor * cp)
 {
-  unsigned long long int seq = read_big_endian64 (cp->counter);
-  unsigned long long int send_time = read_big_endian48 (cp->timestamp);
+  unsigned long long int seq = readb64 (cp->counter);
+  unsigned long long int send_time = readb48 (cp->timestamp);
   struct contact_info * cip = contacts + index;
   int i;
   for (i = 0; i < cip->nunack; i++) {
@@ -1057,9 +1066,9 @@ static void save_unacked (int index, struct chat_descriptor * cp)
 static void save_message (char * dirname, char * prefix,
                           struct chat_descriptor * cp, char * text, int tsize)
 {
-  unsigned long long int counter = read_big_endian64 (cp->counter);
-  unsigned long long int send_time = read_big_endian48 (cp->timestamp);
-  short int tz_off = read_big_endian16 (cp->timestamp + 6);
+  unsigned long long int counter = readb64 (cp->counter);
+  unsigned long long int send_time = readb48 (cp->timestamp);
+  short int tz_off = readb16 (cp->timestamp + 6);
   int namelen = strlen (dirname) + 1 + DATE_LEN + 1;
   char * name = malloc_or_fail (namelen, "save_message file name");
   /* snprintf (name, namelen, "%s/%020lld%s", dirname, counter, postfix); */
@@ -1077,7 +1086,7 @@ static void save_message (char * dirname, char * prefix,
   }
   int w;
   /* write the packet ID to the file */
-  char * pids_str = packet_ids_to_string (cp->packet_id, prefix, "id");
+  char * pids_str = message_acks_to_string (cp->message_ack, prefix, "id");
   write_or_ret (fd, pids_str, name, w, pids_str);
   free (pids_str);
   /* print the readable descriptor to the file */
@@ -1114,7 +1123,7 @@ void save_outgoing (char * contact, struct chat_descriptor * cp,
     printf ("unable to send message to %s, not known", contact);
     return;
   }
-  long long int counter = read_big_endian64 (cp->counter);
+  long long int counter = readb64 (cp->counter);
   if (counter < 0) {
     printf ("num messages [%d] was %lld, ", index,
             contacts [index].num_messages);
@@ -1182,7 +1191,7 @@ static char * find_latest (char * dirname, char * fname,
                            unsigned long long int seq,
                            /* results: */
                            int * size, unsigned long long int * time,
-                           char * packet_id)
+                           char * message_ack)
 {
   *size = 0;
   *time = 0;
@@ -1203,7 +1212,7 @@ static char * find_latest (char * dirname, char * fname,
     return NULL;
   }
   char * id_string = id + strlen ("sent id: ");
-  read_packet_id (id_string, dsize - (id_string - data), packet_id);
+  read_message_ack (id_string, dsize - (id_string - data), message_ack);
   char * time_string = index (found, '(');
   *time = parse_time_in_parens (found, dsize - (found - data));
   char * message_start = index (found, '\n');
@@ -1225,11 +1234,11 @@ static char * find_latest (char * dirname, char * fname,
 /* return the (malloc'd) outgoing message with the given sequence number,
  * or NULL if there is no such message.
  * if there is more than one such message, returns the latest.
- * Also fills in the size, time and packet_id -- packet_id must have
- * at least PACKET_ID_SIZE bytes */
+ * Also fills in the size, time and message_ack -- message_ack must have
+ * at least MESSAGE_ID_SIZE bytes */
 char * get_outgoing (char * contact, unsigned long long int seq,
                      int * size, unsigned long long int * time,
-                     char * packet_id)
+                     char * message_ack)
 {
   init_contacts ();
   char * result = NULL;
@@ -1250,17 +1259,17 @@ char * get_outgoing (char * contact, unsigned long long int seq,
     char * this_result = NULL;
     int this_size;
     unsigned long long int this_time;
-    char this_packet_id [PACKET_ID_SIZE];
+    char this_message_ack [MESSAGE_ID_SIZE];
     if (start_ndigits (dep->d_name, DATE_LEN)) /* message file */
       this_result = find_latest (contacts [index].dirname, dep->d_name, seq,
-                                 &this_size, &this_time, this_packet_id);
+                                 &this_size, &this_time, this_message_ack);
     if ((this_result != NULL) && ((result == NULL) || (this_time > *time))) {
       if (result != NULL)
         free (result);
       result = this_result;
       *time = this_time;
       *size = this_size;
-      memcpy (packet_id, this_packet_id, PACKET_ID_SIZE);
+      memcpy (message_ack, this_message_ack, MESSAGE_ID_SIZE);
     } else if (this_result != NULL) {
       free (this_result);
     }
@@ -1281,7 +1290,7 @@ void save_incoming (char * contact, struct chat_descriptor * cp,
   }
   char * dirname = contacts [index].dirname;
   save_message (dirname, "rcvd", cp, text, tsize);
-  unsigned long long int seq = read_big_endian64 (cp->counter);
+  unsigned long long int seq = readb64 (cp->counter);
   if (seq != COUNTER_FLAG) {
     struct contact_info * cip = contacts + index;
     if (seq < cip->last_received) /* received packet, remove from missing */
@@ -1324,7 +1333,7 @@ static void free_close (void * p1, void * p2, void * p3, int fd, DIR * dir)
 /* return sequence number if successfully added this ack for this dir, and
  * return -1 if the packet was found, but was already acked
  * return 0 otherwise */
-static long long add_ack (char * dirname, char * packet_id)
+static long long add_ack (char * dirname, char * message_ack)
 {
   DIR * dir = opendir (dirname);
   if (dir == NULL) {  /* eventually probably don't need to print */
@@ -1336,8 +1345,8 @@ static long long add_ack (char * dirname, char * packet_id)
   unsigned long long int max = 0;
   while ((dep = readdir (dir)) != NULL) {
     if (start_ndigits (dep->d_name, DATE_LEN)) { /* message file */
-      char * pid_str = packet_ids_to_string (packet_id, "sent", "id");
-      char * pack_str = packet_ids_to_string (packet_id, "got", "ack");
+      char * pid_str = message_acks_to_string (message_ack, "sent", "id");
+      char * pack_str = message_acks_to_string (message_ack, "got", "ack");
       char * contents;
       int size = read_file_contents (dirname, dep->d_name, 0, &contents);
       char * p = strncasestr (contents, size, pack_str);
@@ -1428,26 +1437,29 @@ static void remove_unacked (struct contact_info * cip, long long int seq)
 /* return -2 if this ack was previously received */
 /* fill in *contact (to a malloc'd string -- must free) if return > 0 or -2 */
 /* otherwise set *contact to NULL */
-long long int ack_received (char * packet_id, char * * contact)
+long long int ack_received (char * message_ack, char * * contact)
 {
   init_contacts ();
-  *contact = NULL;
+  if (contact != NULL)
+    *contact = NULL;
   int i;
   for (i = 0; i < actual_contacts; i++) {
-    long long int seq = add_ack (contacts [i].dirname, packet_id);
+    long long int seq = add_ack (contacts [i].dirname, message_ack);
     if (seq > 0) {   /* found!! */
       remove_unacked (contacts + i, seq);
-      *contact = strcpy_malloc (contacts [i].name, "ack_received contact");
+      if (contact != NULL)
+        *contact = strcpy_malloc (contacts [i].name, "ack_received contact");
       return seq; /* ack saved, and matches contact */
     }
     if (seq < 0) {
-      *contact = strcpy_malloc (contacts [i].name, "ack_received contact/2");
+      if (contact != NULL)
+        *contact = strcpy_malloc (contacts [i].name, "ack_received contact/2");
       return -2;  /* ack previously received */
     }
     /* else: continue loop */
   }
 #ifdef DEBUG_PRINT
-  char * pid_str = packet_ids_to_string (packet_id, "received", "id");
+  char * pid_str = message_acks_to_string (message_ack, "received", "id");
   printf ("ack_received did not find any matching contact for %s\n", pid_str);
   free (pid_str);
 #endif /* DEBUG_PRINT */
@@ -1490,18 +1502,15 @@ char * get_missing (char * contact, int * singles, int * ranges)
   int outpos = 0;
   for (i = 0; i < cip->nmissing; i++) {
     if (cip->missing [i].first == cip->missing [i].last) {
-      write_big_endian64 (result + outpos * COUNTER_SIZE,
-                          cip->missing [i].first);
+      writeb64 (result + outpos * COUNTER_SIZE, cip->missing [i].first);
       outpos++;
     }
   }
   for (i = 0; i < cip->nmissing; i++) {
     if (cip->missing [i].first != cip->missing [i].last) {
-      write_big_endian64 (result + outpos * COUNTER_SIZE,
-                          cip->missing [i].first);
+      writeb64 (result + outpos * COUNTER_SIZE, cip->missing [i].first);
       outpos++;
-      write_big_endian64 (result + outpos * COUNTER_SIZE,
-                          cip->missing [i].last);
+      writeb64 (result + outpos * COUNTER_SIZE, cip->missing [i].last);
       outpos++;
     }
   }
@@ -1564,29 +1573,29 @@ char * get_unacked (char * contact, int * singles, int * ranges)
   char * rangep = result + size;   /* put at the end, then copy down */
   for (i = 0; i < cip->nunack; i++) {
     if ((i == 0) || (last_seq + 1 < cip->unacked [i].seq)) {   /* single */
-      write_big_endian64 (singlep, cip->unacked [i].seq);
+      writeb64 (singlep, cip->unacked [i].seq);
       singlep += COUNTER_SIZE;
       num_singles++;
       in_range = 0;
     } else if (in_range) {   /* extend the existing range */
-      write_big_endian64 (rangep + COUNTER_SIZE, cip->unacked [i].seq);
+      writeb64 (rangep + COUNTER_SIZE, cip->unacked [i].seq);
     } else {                 /* create a new range */
       rangep -= 2 * COUNTER_SIZE;   /* make room for the new range */
       /* the start of the new range is the last single value we stored */
       singlep -= COUNTER_SIZE;
       num_singles--;
-      write_big_endian64 (rangep, read_big_endian64 (singlep));
-      write_big_endian64 (rangep + COUNTER_SIZE, cip->unacked [i].seq);
+      writeb64 (rangep, readb64 (singlep));
+      writeb64 (rangep + COUNTER_SIZE, cip->unacked [i].seq);
       num_ranges++;
       in_range = 1;
     }
     last_seq = cip->unacked [i].seq;
   }
   for (i = 0; i < num_ranges; i++) {  /* now shift the ranges down */
-    write_big_endian64 (singlep, read_big_endian64 (rangep));
+    writeb64 (singlep, readb64 (rangep));
     rangep += COUNTER_SIZE;
     singlep += COUNTER_SIZE;
-    write_big_endian64 (singlep, read_big_endian64 (rangep));
+    writeb64 (singlep, readb64 (rangep));
     rangep += COUNTER_SIZE;
     singlep += COUNTER_SIZE;
   }

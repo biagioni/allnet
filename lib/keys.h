@@ -24,8 +24,8 @@ extern int num_contacts ();
  * contact names (do not modify in any way). */
 extern int all_contacts (char *** contacts);
 
-/* returns 1 if successful, 0 if the contact already existed */
-/* creates a new private/public key pair, and if not NULL, also
+/* returns the keyset if successful, -1 if the contact already existed */
+/* creates a new private/public key pair, and if not NULL, also 
  * the contact public key, source and destination addresses */
 /* if feedback is nonzero, gives feedback while creating the key */
 extern keyset create_contact (char * contact, int keybits, int feedback,
@@ -63,7 +63,7 @@ extern unsigned int get_source (keyset k, char * address);
 extern unsigned int get_destination (keyset k, char * address);
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
- * longer be accessed unless the marked as valid again */
+ * longer be accessed unless marked as valid again */
 extern unsigned int mark_invalid (keyset k);
 extern int invalid_keys (char * contact, keyset ** keysets);
 extern unsigned int mark_valid (keyset k);
@@ -117,6 +117,7 @@ extern unsigned int verify_bc_key (char * address, char * key, int key_bits,
 
 struct bc_key_info {
   char address [ADDRESS_SIZE];      /* the address associated with this key */
+  char * identifier;                /* the sender associated with this key */
   int pub_klen;
   char * pub_key;                   /* in a format suitable for sending */
   /* the remainder of the information is only valid for my keys.

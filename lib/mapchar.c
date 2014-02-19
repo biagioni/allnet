@@ -342,8 +342,8 @@ int aaddr_decode_value (char * string, int slen)
     return -1;
   }
   int result = first * 128 + second;
-  printf ("%s gives pre-word %d and post-word %d => %d\n",
-          string, first, second, result);
+  /* printf ("%s gives pre-word %d and post-word %d => %d\n",
+          string, first, second, result); */
   return result;
 }
 

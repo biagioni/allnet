@@ -85,28 +85,19 @@ static void wait_until (time_t end_time)
 
 static void binary_time_to_buf (time_t t, char * dp, int n)
 {
-  /* printf ("binary time %ld, dp is %p, n is %d\n", t, dp, n); */
-  int i;
-  int tsize = sizeof (t);
-  for (i = 0; i < n; i++) {
-    /* big-endian, most significant byte first */
-    int shift = (n - i - 1) * 8;
-    if (n - i > tsize)
-      dp [i] = 0;
-    else
-      dp [i] = ((t >> shift) & 0xff);
-  }
+#ifdef DEBUG_PRINT
+  printf ("binary time %ld, dp is %p, n is %d\n", t, dp, n);
+#endif /* DEBUG_PRINT */
+  if (n < 8)
+    return;
+  unsigned long long int tll = t;
+  writeb64 (dp, tll);
 #ifdef DEBUG_PRINT
   printf ("time %lx, timestamp %02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x\n", t,
           dp [0] & 0xff, dp [1] & 0xff, dp [2] & 0xff, dp [3] & 0xff,
           dp [4] & 0xff, dp [5] & 0xff, dp [6] & 0xff, dp [7] & 0xff);
 #endif /* DEBUG_PRINT */
 }
-
-/* the unix times, used in wait_until, are seconds since 01/01/1970.
-   allnet times are seconds since 01/01/2000.
-   the difference is 946720800 */
-#define TIMEBASE_DELTA	946720800
 
 /* sent as string, followed by null char, followed by 8 bytes of binary time
  * in big-endian format */
@@ -123,7 +114,7 @@ static int time_to_buf (time_t t, char * dp, int n)
     /* best we can do -- empty binary string */
     return 9;
   }
-  time_t unix_time = t + TIMEBASE_DELTA;              /* restore unix time */
+  time_t unix_time = t + Y2K_SECONDS_IN_UNIX;         /* restore unix time */
   struct tm details;
   gmtime_r (&unix_time, &details);
   asctime_r (&details, dp);
@@ -189,6 +180,7 @@ static int make_announcement (char * buffer, int n,
       free (sig);
     }
   }
+  hp->sig_algo = sig_algo;
 
   char * e = ALLNET_EXPIRATION(hp, hp->transport, n);
   if (e != NULL)
@@ -211,8 +203,8 @@ static void announce (time_t interval, int sock,
   bzero (buffer, sizeof (buffer));
 
   int blen = make_announcement (buffer, sizeof (buffer),
-                                announce_time - TIMEBASE_DELTA,
-                                announce_time + interval - TIMEBASE_DELTA,
+                                announce_time - Y2K_SECONDS_IN_UNIX,
+                                announce_time + interval - Y2K_SECONDS_IN_UNIX,
                                 hops, key, ksize, source, sbits, dest, dbits);
 
   wait_until (announce_time);

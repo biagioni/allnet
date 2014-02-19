@@ -57,6 +57,21 @@ static int connect_once (int print_error)
 /* returns the socket, or -1 in case of failure */
 int connect_to_local (char * program_name)
 {
+#if 0 /* apparently this is already done by openssl.  Should double-check */
+  /* RSA encryption uses the random number generator */
+  unsigned int seed = time (NULL);
+  int rfd = open ("/dev/random", O_RDONLY);
+  if (rfd < 0) {
+    printf ("using weak random number generator, may be insecure\n");
+  } else {
+    /* wish I could initialize the whole rstate!!! */
+    read (rfd, ((char *) (&seed)), sizeof (unsigned int));
+    close (rfd);
+  }
+  static char rstate [256];
+  initstate (seed, rstate, sizeof (rstate));
+#endif /* 0 */
+
   init_log (program_name);
   int sock = connect_once (0);
   if (sock < 0) {

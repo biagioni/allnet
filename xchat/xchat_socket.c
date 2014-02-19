@@ -7,10 +7,10 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#include "packet.h"
-#include "pipemsg.h"
-#include "util.h"
-#include "priority.h"
+#include "../packet.h"
+#include "../lib/pipemsg.h"
+#include "../lib/util.h"
+#include "../lib/priority.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -152,7 +152,7 @@ int main (int argc, char ** argv)
     time_t time;
     int len = recv_message (forwarding_socket, &code, &time, peer, to_send);
     if (len > 0) {
-      seq = send_data_packet (sock, peer, to_send, strlen (to_send));
+      seq = send_data_message (sock, peer, to_send, strlen (to_send));
     }
     char * packet;
     int pipe, pri;

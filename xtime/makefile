@@ -3,8 +3,10 @@ LIB_LINK=../lib/sha.c ../lib/config.c ../lib/pipemsg.c ../lib/log.c ../lib/util.
 INCLUDES=
 LINK=
 
-all: xtime
+all: ../bin/xtime ../bin/allnet-radio
 
-xtime: xtime.c ${LINK} ${INCLUDES} ${LIB_INCLUDES} ${LIB_LINK}
-	gcc -g -o xtime xtime.c ${LINK} ${LIB_LINK} -lcrypto
+../bin/xtime: xtime.c ${LINK} ${INCLUDES} ${LIB_INCLUDES} ${LIB_LINK}
+	gcc -g -o ../bin/xtime xtime.c ${LINK} ${LIB_LINK} -lcrypto
 
+../bin/allnet-radio: allnet_radio.c ${LINK} ${INCLUDES} ${LIB_INCLUDES} ${LIB_LINK}
+	gcc -g -o ../bin/allnet-radio allnet_radio.c ${LINK} ${LIB_LINK} -lcrypto

@@ -98,7 +98,7 @@ struct allnet_header {
  * in the last 2 bytes */
 struct allnet_signature {
   unsigned char certificate [0];
-  unsigned char sig_nbits [2];   /* number of bytes, MSB first */
+  unsigned char sig_nbytes [2];   /* number of bytes, MSB first */
 };
 
 /* ALLNET_TYPE_KEY_XCHG carries a public key followed by

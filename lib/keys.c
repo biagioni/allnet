@@ -164,22 +164,24 @@ static void debug_read_public_RSA_file (char * fname, RSA * * key)
   }
 }
 
-static void read_RSA_file (char * fname, RSA * * key)
+static void read_RSA_file (char * fname, RSA * * key, int expect_private)
 {
   *key = NULL;
   char * bytes;
   int size = read_file_malloc (fname, &bytes, 0);
   if (size > 0) {
     BIO * mbio = BIO_new_mem_buf (bytes, size);
-    *key = PEM_read_bio_RSAPrivateKey (mbio, NULL, NULL, NULL);
+    if (expect_private)
+      *key = PEM_read_bio_RSAPrivateKey (mbio, NULL, NULL, NULL);
+    else
+      *key = PEM_read_bio_RSAPublicKey (mbio, NULL, NULL, NULL);
+    if (*key == NULL) {
+      ERR_load_crypto_strings ();
+      ERR_print_errors_fp (stdout);
+      printf ("unable to read RSA from file %s\n", fname);
+    }
     BIO_free (mbio);
     free (bytes);
-/*
-    mbio = BIO_new (BIO_s_mem ());
-    PEM_write_bio_RSAPublicKey (mbio, *key);
-    printf ("public key takes %zd bytes\n", BIO_ctrl_pending (mbio));
-    BIO_free (mbio);
-*/
   }
 }
 
@@ -231,12 +233,12 @@ static int read_key_info (char * path, char * file, char ** contact,
 
   if (my_key != NULL) {
     char * name = strcat_malloc (basename, "/my_key", "my key name");
-    read_RSA_file (name, my_key);
+    read_RSA_file (name, my_key, 1);
     free (name);
   }
   if (contact_pubkey != NULL) {
     char * name = strcat_malloc (basename, "/contact_pubkey", "pub name");
-    read_RSA_file (name, contact_pubkey);
+    read_RSA_file (name, contact_pubkey, 0);
     free (name);
   }
   if ((source != NULL) && (src_nbits != NULL)) {
@@ -746,7 +748,8 @@ static void rsa_to_internal_key (RSA * rsa, char ** key, int * klen)
 }
 
 static void init_key_info (char * config_dir, char * file,
-                           struct bc_key_info * key, char * phrase)
+                           struct bc_key_info * key, char * phrase,
+                           int expect_private)
 {
   bzero (key, sizeof (struct bc_key_info));  /* in case of error return */
 
@@ -755,9 +758,11 @@ static void init_key_info (char * config_dir, char * file,
   sha512_bytes (mapped, mlen, key->address, ADDRESS_SIZE);
   free (mapped);
 
+  key->identifier = strcpy_malloc (phrase, "keys.c init_key_info");
+
   char * fname = strcat3_malloc (config_dir, "/", file, "init_key_info fname");
   RSA * rsa = NULL;
-  read_RSA_file (fname, &rsa);
+  read_RSA_file (fname, &rsa, expect_private);
   free (fname);
   if (rsa == NULL) {
     printf ("unable to read RSA file %s/%s\n", config_dir, file);
@@ -765,13 +770,16 @@ static void init_key_info (char * config_dir, char * file,
   }
 
   rsa_to_external_pubkey (rsa, &(key->pub_key), &(key->pub_klen));
-  rsa_to_internal_key (rsa, &(key->priv_key), &(key->priv_klen));
+  key->priv_klen = 0;
+  key->priv_key = NULL;
+  if (expect_private)
+    rsa_to_internal_key (rsa, &(key->priv_key), &(key->priv_klen));
 
   RSA_free (rsa);
 }
 
 static void init_bc_from_files (char * config_dir, struct bc_key_info * keys,
-                                int num_keys)
+                                int num_keys, int expect_private)
 {
   DIR * dir = opendir (config_dir);
   if (dir == NULL) {
@@ -784,7 +792,8 @@ static void init_bc_from_files (char * config_dir, struct bc_key_info * keys,
   while ((i < num_keys) && (ent != NULL)) {
     char * phrase;
     if (parse_ahra (ent->d_name, &phrase, NULL, NULL, NULL, NULL, NULL)) {
-      init_key_info (config_dir, ent->d_name, keys + i, phrase);
+      init_key_info (config_dir, ent->d_name, keys + i, phrase, expect_private);
+      free (phrase);
       i++;
     }
     ent = readdir (dir);
@@ -793,7 +802,7 @@ static void init_bc_from_files (char * config_dir, struct bc_key_info * keys,
 }
 
 static void init_bc_key_set (char * dirname, struct bc_key_info ** keys,
-                             int * num_keys)
+                             int * num_keys, int expect_private)
 {
   if (*num_keys < 0) {
 /* printf ("init_bc_key_set 1, debug %p\n", *keyd_debug); */
@@ -813,7 +822,7 @@ static void init_bc_key_set (char * dirname, struct bc_key_info ** keys,
       *keys = malloc_or_fail (sizeof (struct key_info) * (*num_keys),
                               "broadcast keys");
 /* printf ("init_bc_key_set 5, debug %p\n", *keyd_debug); */
-      init_bc_from_files (config_dir, *keys, *num_keys);
+      init_bc_from_files (config_dir, *keys, *num_keys, expect_private);
 /* printf ("init_bc_key_set 6, debug %p\n", *keyd_debug); */
     }
   }
@@ -821,8 +830,8 @@ static void init_bc_key_set (char * dirname, struct bc_key_info ** keys,
 
 static void init_bc_keys ()
 {
-  init_bc_key_set ("own_bc_keys", &own_bc_keys, &num_own_bc_keys);
-  init_bc_key_set ("other_bc_keys", &other_bc_keys, &num_other_bc_keys);
+  init_bc_key_set ("own_bc_keys", &own_bc_keys, &num_own_bc_keys, 1);
+  init_bc_key_set ("other_bc_keys", &other_bc_keys, &num_other_bc_keys, 0);
 }
 
 static void assign_lang_bits (char * p, int length,
@@ -932,12 +941,9 @@ static char * make_address (RSA * key, int key_bits,
     exit (1);
   }
 
-static char debug_prt1 [10000];
-static char debug_prt2 [10000];
-
   /* get the bits of the ciphertext */
   char * encrypted = malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
-buffer_to_string (mapped, msize, "encrypting", 100, 1, debug_prt1, 10000);
+
 /* in general, RSA_NO_PADDING is not secure for RSA encryptions.  However,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
@@ -947,7 +953,6 @@ buffer_to_string (mapped, msize, "encrypting", 100, 1, debug_prt1, 10000);
   int esize = RSA_public_encrypt (rsa_size, padded, encrypted, key,
                                   RSA_NO_PADDING);
   free (padded);
-buffer_to_string (encrypted, esize, "encrypted", 12, 1, debug_prt2, 10000);
   if (esize != rsa_size) {
     ERR_load_crypto_strings ();
     ERR_print_errors_fp (stdout);
@@ -970,18 +975,14 @@ buffer_to_string (encrypted, esize, "encrypted", 12, 1, debug_prt2, 10000);
     for (j = 0; j <= esize * 8 - bitstring_bits; j++) {
       if (bitstring_matches (encrypted, j, hash, hashpos, bitstring_bits)) {
         match_pos [nmatches++] = j;
+/*
         printf ("match %d found at encr bit %d hash bit %d, bitstring: ",
                 i, j, hashpos);
         print_buffer (hash + (hashpos / 8), (bitstring_bits + 7) / 8, NULL,
                       10, 1);
         print_buffer (encrypted + (j / 8), 10, "encrypted buffer:", 10, 1);
-print_bitstring (hash, hashpos, bitstring_bits, 1);
-print_bitstring (encrypted, j, bitstring_bits, 1);
-printf ("%s", debug_prt1);
-printf ("%s", debug_prt2);
-/*
-*/
         printf ("%d matches\n", nmatches);
+*/
         found = 1;
         break;   /* end the inner loop */
       }
@@ -1030,11 +1031,13 @@ printf ("%s", debug_prt2);
     free (encoded_position);
   }
   off += snprintf (result + off, rsize - off, ",%s,%d", lang, bitstring_bits);
+/*
   printf ("make_address ==> %s\n", result);
 char * pkey;
 int pklen;
 rsa_to_external_pubkey (key, &pkey, &pklen);
 print_buffer (pkey, pklen, "public key", 12, 1);
+*/
   return result;
 }
 
@@ -1135,7 +1138,7 @@ int get_temporary_key (char ** pubkey, char ** privkey, int * privksize)
   rsa_to_internal_key (key, privkey, privksize);
   RSA_free (key);   /* copied into the buffers, no longer needed */
 
-  printf ("get_temporary_key returns %d, %d\n", result, *privksize);
+  /* printf ("get_temporary_key returns %d, %d\n", result, *privksize); */
   return result;
 }
 
@@ -1183,8 +1186,6 @@ debug_read_public_RSA_file ("/tmp/x", &rsa);
   if (mlen > max_rsa)
     mlen = max_rsa;
   char * encrypted = malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
-static char debug_prt1 [10000];
-buffer_to_string (mapped, mlen, "encrypting", 100, 1, debug_prt1, 10000);
 /* in general, RSA_NO_PADDING is not secure for RSA encryptions.  However,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
@@ -1211,13 +1212,6 @@ buffer_to_string (mapped, mlen, "encrypting", 100, 1, debug_prt1, 10000);
               bitstring_bits, positions [i], hashpos);
       print_bitstring (encrypted, positions [i], bitstring_bits, 1);
       print_bitstring (hash, hashpos, bitstring_bits, 1);
-print_buffer (encrypted, esize, "encrypted", 15, 1);
-print_buffer (key, key_bytes, "public key", 12, 1);
-printf ("%s", debug_prt1);
-char * pkey;
-int pklen;
-rsa_to_external_pubkey (rsa, &pkey, &pklen);
-print_buffer (pkey, pklen, "public key (again)", 12, 1);
       free (positions);
       return 0;
     }
