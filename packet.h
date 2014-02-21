@@ -260,7 +260,7 @@ struct allnet_header_max {
 #define ALLNET_STREAM_ID(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 		\
    (((t) & ALLNET_TRANSPORT_STREAM) == 0)) ? NULL : \
-   (((char *) hp) + ALLNET_HEADER_SIZE))
+   (((char *) (hp)) + ALLNET_HEADER_SIZE))
 
 #define ALLNET_AFTER_STREAM_ID(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
@@ -270,7 +270,7 @@ struct allnet_header_max {
 #define ALLNET_MESSAGE_ID(hp, t, s)	\
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0)) ? NULL : \
-  (((char *) hp) + ALLNET_AFTER_STREAM_ID(t, s)))
+  (((char *) (hp)) + ALLNET_AFTER_STREAM_ID(t, s)))
 
 #define ALLNET_AFTER_MESSAGE_ID(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
@@ -281,19 +281,19 @@ struct allnet_header_max {
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) hp) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE))
+  (((char *) (hp)) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE))
 
 #define ALLNET_NPACKETS(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) hp) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE * 2))
+  (((char *) (hp)) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE * 2))
 
 #define ALLNET_SEQUENCE(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) hp) + ALLNET_AFTER_MESSAGE_ID(t, s) + MESSAGE_ID_SIZE + \
+  (((char *) (hp)) + ALLNET_AFTER_MESSAGE_ID(t, s) + MESSAGE_ID_SIZE + \
                    SEQUENCE_SIZE))
 
 #define ALLNET_AFTER_SEQUENCE(t, s)	\
@@ -304,7 +304,7 @@ struct allnet_header_max {
 
 #define ALLNET_EXPIRATION(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || (((t) & ALLNET_TRANSPORT_EXPIRATION) == 0)) ? NULL: \
-  (((char *) hp) + ALLNET_AFTER_SEQUENCE(t, s)))
+  (((char *) (hp)) + ALLNET_AFTER_SEQUENCE(t, s)))
 
 #define ALLNET_AFTER_EXPIRATION(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
@@ -314,6 +314,6 @@ struct allnet_header_max {
 #define ALLNET_AFTER_HEADER(t, s)	(ALLNET_AFTER_EXPIRATION(t, s))
 
 #define ALLNET_DATA_START(hp, t, s)		\
-  (((char *) hp) + ALLNET_AFTER_HEADER(t, s))
+  (((char *) (hp)) + ALLNET_AFTER_HEADER(t, s))
 
 #endif /* PACKET_H */

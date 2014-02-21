@@ -18,6 +18,8 @@ char log_buf [LOG_SIZE];    /* global */
 
 #define LOG_DIR		"log"
 
+static char log_dir [PATH_MAX + 1] = LOG_DIR;
+
 static char * module_name = "unknown module -- have main call init_log()";
 static char log_file_name [100] = "";
 
@@ -67,7 +69,7 @@ static int file_name (time_t seconds)
   struct tm n;
   localtime_r (&seconds, &n);
   snprintf (log_file_name, sizeof (log_file_name),
-            "%s/%04d%02d%02d-%02d%02d%02d", LOG_DIR,
+            "%s/%04d%02d%02d-%02d%02d%02d", log_dir,
             n.tm_year + 1900, n.tm_mon + 1, n.tm_mday,
             n.tm_hour, n.tm_min, n.tm_sec);
   return create_if_needed ();
@@ -76,19 +78,19 @@ static int file_name (time_t seconds)
 /* put the latest log file name in log_file_name */
 static void latest_file (time_t seconds)
 {
-  DIR * dir = opendir (LOG_DIR);
+  DIR * dir = opendir (log_dir);
   if (dir == NULL) {
     perror ("opendir");
-    printf ("unable to open log directory %s\n", LOG_DIR);
+    printf ("unable to open log directory %s\n", log_dir);
     return;
   }
   char * latest = NULL;
   struct dirent * dent;
   while ((dent = readdir (dir)) != NULL) {
-/* printf ("log.c: looking at %s/%s\n", LOG_DIR, dent->d_name); */
+/* printf ("log.c: looking at %s/%s\n", log_dir, dent->d_name); */
     if ((dent->d_name [0] != '.') &&
         ((latest == NULL) || (strcmp (dent->d_name, latest) > 0))) {
-/* printf ("log.c:    using %s/%s\n", LOG_DIR, dent->d_name); */
+/* printf ("log.c:    using %s/%s\n", log_dir, dent->d_name); */
       if (latest != NULL)
         free (latest);
       latest = strcpy_malloc (dent->d_name, "log.c latest_file()");
@@ -98,7 +100,7 @@ static void latest_file (time_t seconds)
   int file_exists = 0;
   if (latest != NULL) {
     snprintf (log_file_name, sizeof (log_file_name),
-              "%s/%s", LOG_DIR, latest);
+              "%s/%s", log_dir, latest);
     free (latest);
     file_exists = create_if_needed ();
 /* printf ("log.c: checked %s, result is %d\n", log_file_name, file_exists); */
@@ -109,11 +111,17 @@ static void latest_file (time_t seconds)
 
 void init_log (char * name)
 {
+  char * home = getenv ("HOME");
+  if (home != NULL)
+    snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
+  if (geteuid () == 0)
+    snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
+
   module_name = name;
   char * last_slash = rindex (module_name, '/');
   if (last_slash != NULL)
     module_name = last_slash + 1;
-  mkdir (LOG_DIR, 0700);  /* if it fails because it already exists, it's OK */
+  mkdir (log_dir, 0700);  /* if it fails because it already exists, it's OK */
   time_t now = time (NULL);
   /* only open a new log file if this is the astart module */
   if (strcasecmp (name, "astart") == 0)

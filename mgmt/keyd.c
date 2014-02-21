@@ -24,42 +24,37 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
 {
 /* printf ("send_key ((%p, %d), %p)\n", key->pub_key,
            key->pub_klen, return_key); */
-  char message [ALLNET_MTU];
-  bzero (message, ALLNET_MTU);
-  struct allnet_header * hp = (struct allnet_header *) message;
-  hp->version = ALLNET_VERSION;
-  if ((return_key == NULL) || (rksize <= 0))
-    hp->message_type = ALLNET_TYPE_CLEAR;
-  else
-    hp->message_type = ALLNET_TYPE_DATA;
-/* printf ("%p %d: mtype %d\n", return_key, rksize, hp->message_type); */
-  hp->max_hops = hops;
-  hp->src_nbits = 16;
-  hp->source [0] = key->address [0];
-  hp->source [1] = key->address [1];
-  hp->dst_nbits = abits;
-  memcpy (hp->destination, address, (abits + 7) / 8);
-
-  char * body = message + ALLNET_SIZE (hp->transport);
-  memcpy (body, key->pub_key, key->pub_klen);
-  int len = ALLNET_SIZE (hp->transport) + key->pub_klen;
-  if (hp->message_type == ALLNET_TYPE_DATA) {     /* encrypt */
+  char * data = key->pub_key;
+  int dlen = key->pub_klen;
+  int type = ALLNET_TYPE_CLEAR;
+  int allocated = 0;
+  if ((return_key != NULL) && (rksize > 0)) {  /* encrypt the key */
+    type = ALLNET_TYPE_DATA;
     char * cipher;
 /* printf ("calling encrypt (%p, %d, %p, %d) ==> %p\n",
         body, key->pub_klen, return_key, rksize, &cipher); */
-    int csize = encrypt (body, key->pub_klen, return_key, rksize, &cipher);
-    if ((csize <= 0) || (csize + ALLNET_SIZE (hp->transport) > ALLNET_MTU)) {
+    int csize = encrypt (data, dlen, return_key, rksize, &cipher);
+    if (csize <= 0) {
       snprintf (log_buf, LOG_SIZE, "send_key: encryption error\n");
       log_print ();
       return;
     }
-    memcpy (body, cipher, csize);
-    free (cipher);
-    len = ALLNET_SIZE (hp->transport) + csize;
+    data = cipher;
+    dlen = csize;
+    allocated = 1;
   }
+  int bytes;
+  struct allnet_header * hp =
+    create_packet (dlen, type, hops, ALLNET_SIGTYPE_NONE, key->address, 16,
+                   address, abits, NULL, &bytes);
+  char * dp = ALLNET_DATA_START(hp, hp->transport, bytes);
+  memcpy (dp, data, dlen);
+  if (allocated)
+    free (data);
 
   /* send with relatively low priority */
-  send_pipe_message (sock, message, len, ONE_EIGHT);
+  char * message = (char *) hp;
+  send_pipe_message (sock, message, bytes, ONE_EIGHT);
 }
 
 void ** keyd_debug = NULL;

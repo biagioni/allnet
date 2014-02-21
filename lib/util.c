@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include <time.h>
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -389,6 +390,97 @@ void print_packet (const char * packet, int psize, char * desc, int print_eol)
   printf ("%s", buffer);
 }
 
+/* buffer must be at least ALLNET_SIZE(transport) bytes long */
+/* returns a pointer to the buffer, but cast to an allnet_header */
+/* returns NULL if any of the parameters are invalid (e.g. message_type) */
+/* if sbits is zero, source may be NULL, and likewise for dbits and dest */
+/* if ack is not NULL it must refer to MESSAGE_ID_SIZE bytes, and */
+/* transport will be set to ALLNET_TRANSPORT_ACK_REQ */
+/* if ack is NULL, transport will be set to 0 */
+struct allnet_header *
+  init_packet (char * packet, int psize,
+               int message_type, int max_hops, int sig_algo,
+               char * source, int sbits, char * dest, int dbits, char * ack)
+{
+  struct allnet_header * hp = (struct allnet_header *) packet;
+  if (psize < ALLNET_HEADER_SIZE)
+    return NULL;
+  if ((ack != NULL) && (psize < ALLNET_SIZE(ALLNET_TRANSPORT_ACK_REQ)))
+    return NULL;
+  if ((message_type < ALLNET_TYPE_DATA) || (message_type > ALLNET_TYPE_MGMT))
+    return NULL;
+  if ((max_hops < 1) || (max_hops > 255))
+    return NULL;
+  if ((sig_algo < ALLNET_SIGTYPE_NONE) || (sig_algo > ALLNET_SIGTYPE_secp128r1))
+    return NULL;
+  if ((sbits < 0) || (sbits > ADDRESS_BITS) ||
+      (dbits < 0) || (dbits > ADDRESS_BITS))
+    return NULL;
+  bzero (packet, psize);   /* clear all unused fields */
+  hp->version = ALLNET_VERSION;
+  hp->message_type = message_type;
+  hp->hops = 0;
+  hp->max_hops = max_hops;
+  hp->src_nbits = sbits;
+  hp->dst_nbits = dbits;
+  if ((sbits > 0) && (source != NULL))
+    memcpy (hp->source, source, (sbits + 7) / 8);
+  if ((dbits > 0) && (dest != NULL))
+    memcpy (hp->destination, dest, (dbits + 7) / 8);
+  hp->transport = ALLNET_TRANSPORT_NONE;
+  if (ack != NULL) {
+    hp->transport = ALLNET_TRANSPORT_ACK_REQ;
+    sha512_bytes (ack, MESSAGE_ID_SIZE,
+                  ALLNET_MESSAGE_ID(hp, hp->transport, psize), MESSAGE_ID_SIZE);
+  }
+  return hp;
+}
+
+/* malloc's (must be free'd), initializes, and returns a packet with the
+/* given data size. */
+/* If ack is not NULL, the data size parameter should NOT include the */
+/* MESSAGE_ID_SIZE bytes of the ack. */
+/* *size is set to the size to send */
+struct allnet_header *
+  create_packet (int data_size, int message_type, int max_hops, int sig_algo,
+                 char * source, int sbits, char * dest, int dbits, char * ack,
+                 int * size)
+{
+  int alloc_size = data_size + ALLNET_HEADER_SIZE;
+  if (ack != NULL)
+    alloc_size = data_size + ALLNET_SIZE(ALLNET_TRANSPORT_ACK_REQ)
+               + MESSAGE_ID_SIZE;
+  char * result = malloc_or_fail (alloc_size, "util.c create_packet");
+  *size = alloc_size;
+  return init_packet (result, alloc_size, message_type, max_hops, sig_algo,
+                      source, sbits, dest, dbits, ack);
+  
+}
+
+/* malloc, initialize, and return an ack message for a received packet.
+ * The message_ack bytes are taken from the argument, not from the packet.*/
+/* *size is set to the size to send */
+struct allnet_header *
+  create_ack (struct allnet_header * packet, char * ack, int * size)
+{
+  int alloc_size = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
+  char * result = malloc_or_fail (alloc_size, "util.c create_packet");
+  struct allnet_header * hp =
+    init_packet (result, alloc_size, ALLNET_TYPE_ACK, packet->hops + 3,
+                 ALLNET_SIGTYPE_NONE, packet->destination, packet->dst_nbits,
+                 packet->source, packet->src_nbits, NULL);
+  char * ackp = ALLNET_DATA_START(hp, hp->transport, alloc_size);
+  if (alloc_size - (ackp - result) != MESSAGE_ID_SIZE) {
+    printf ("coding error in create_ack!!!! %d %p %p %d %d\n",
+            alloc_size, ackp, result, (int) (alloc_size - (ackp - result)),
+            MESSAGE_ID_SIZE);
+    return NULL;
+  }
+  memcpy (ackp, ack, MESSAGE_ID_SIZE);
+  *size = alloc_size;
+  return hp;
+}
+
 int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
                          char * s, int len)
 {
@@ -639,6 +731,67 @@ int bitstring_matches (unsigned char * x, int xoff,
   printf ("\n");
 */
   return 1;
+}
+
+/* AllNet time begins January 1st, 2000.  This may be different from
+ * the time bases (epochs) on other systems, including specifically
+ * Unix (Jan 1st, 1970) and Windows (Jan 1st, 1980).  I believe somebody
+ * also has an epoch of Jan 1st, 1900.  Anyway, these functions return
+ * the current AllNet time.  The usual caveats apply about OS time accuracy.
+ * The 64-bit value returned will be good for 584,000 years worth of
+ * microseconds.
+ */
+unsigned long long allnet_time ()     /* seconds since Y2K */
+{
+  unsigned long long result = time (NULL);
+  return result - Y2K_SECONDS_IN_UNIX;
+}
+
+unsigned long long allnet_time_us ()  /* microseconds since Y2K */
+{
+  struct timeval tv;
+  gettimeofday (&tv, NULL);
+  unsigned long long result = tv.tv_sec;
+  result -= Y2K_SECONDS_IN_UNIX;
+  result *= US_PER_S;
+  result += tv.tv_usec;
+}
+
+unsigned long long allnet_time_ms ()  /* milliseconds since Y2K */
+{
+  return allnet_time_us () / US_PER_MS;
+}
+
+/* returns the result of calling ctime_r on the given allnet time. */
+/* the result buffer must be at least 30 bytes long */
+/* #define ALLNET_TIME_STRING_SIZE		30 */
+void allnet_time_string (unsigned long long int allnet_seconds, char * result)
+{
+  /* in case of errors */
+  snprintf (result, 30, "bad time %lld\n", allnet_seconds);
+
+  time_t unix_seconds = allnet_seconds + Y2K_SECONDS_IN_UNIX;
+  struct tm detail_time;
+  if (gmtime_r (&unix_seconds, &detail_time))
+    return;
+  asctime_r (&detail_time, result);
+  if (result [25] == '\0')
+    snprintf (result + 25, 5, " UTC");
+}
+
+void allnet_localtime_string (unsigned long long int allnet_seconds,
+                              char * result)
+{
+  /* in case of errors */
+  snprintf (result, 30, "bad time %lld\n", allnet_seconds);
+
+  time_t unix_seconds = allnet_seconds + Y2K_SECONDS_IN_UNIX;
+  struct tm * detail_time = localtime (&unix_seconds);  /* sets tzname */
+  if (detail_time == NULL)
+    return;
+  asctime_r (detail_time, result);
+  if (result [25] == '\0')
+    snprintf (result + 25, 5, " %s", tzname [0]);
 }
 
 /* useful time functions */

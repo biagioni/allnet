@@ -170,8 +170,9 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
                              struct timeval * now, char * my_address, int abits,
                              struct allnet_mgmt_trace_req * intrp,
                              int intermediate, int num_entries,
-                             char * result, int rsize)
+                             char ** result)
 {
+  *result = NULL;
   snprintf (log_buf, LOG_SIZE, "making trace reply with %d entries, int %d\n",
             num_entries, intermediate);
   log_print ();
@@ -181,35 +182,29 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
     printf ("error: trace req needs %d, has %d\n", insize_needed, insize);
     return 0;
   }
-  int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
-  if (rsize < size_needed) {
-    printf ("error: trace reply needs %d, has %d\n", size_needed, rsize);
-    return 0;
-  }
   if (num_entries < 1) {
     printf ("error: trace reply num_entries %d < 1 \n", num_entries);
     return 0;
   }
-  bzero (result, size_needed);
+  int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
+  int total;
+  struct allnet_header * hp =
+    create_packet (size_needed - ALLNET_HEADER_SIZE, ALLNET_TYPE_MGMT,
+                   inhp->hops + 4, ALLNET_SIGTYPE_NONE, my_address, abits,
+                   inhp->source, inhp->src_nbits, NULL, &total);
+  if ((hp == NULL) || (total != size_needed)) {
+    printf ("hp is %p, total is %d, size_needed %d\n", hp, total, size_needed);
+    return 0;
+  }
+  *result = (char *) hp;
 
-  struct allnet_header * hp = (struct allnet_header *) result;
   struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (result + ALLNET_SIZE (0));
-  struct allnet_mgmt_trace_reply * trp =
-    (struct allnet_mgmt_trace_reply *) (result + ALLNET_MGMT_HEADER_SIZE (0));
-
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_MGMT;
-  hp->hops = 0;
-  hp->max_hops = inhp->hops + 4;
-  hp->src_nbits = abits;
-  hp->dst_nbits = inhp->src_nbits;
-  hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  hp->transport = 0;
-  memcpy (hp->source, my_address, (abits + 7) / 8);
-  memcpy (hp->destination, inhp->source, ADDRESS_SIZE);
-
+    (struct allnet_mgmt_header *) (ALLNET_DATA_START(hp, hp->transport, total));
   mp->mgmt_type = ALLNET_MGMT_TRACE_REPLY;
+
+  struct allnet_mgmt_trace_reply * trp =
+    (struct allnet_mgmt_trace_reply *)
+      (((char *) mp) + (sizeof (struct allnet_mgmt_header)));
 
   trp->encrypted = 0;
   trp->intermediate_reply = intermediate;
@@ -231,7 +226,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
                  (sizeof (struct allnet_mgmt_trace_entry) * intrp->num_entries);
     print_buffer (key, ksize, "key", 15, 1);
   }
-  packet_to_string (result, size_needed, "my reply: ", 1, log_buf, LOG_SIZE);
+  packet_to_string (*result, total, "my reply: ", 1, log_buf, LOG_SIZE);
   log_print ();
   return size_needed;
 }
@@ -356,25 +351,22 @@ static void respond_to_trace (int sock, char * message, int msize,
     return;
 
   /* RSVP, the favor of your reply is requested -- respond to the trace */
-  static char response [ALLNET_MTU];
-  bzero (response, sizeof (response));
+  char * response;
   int rsize = 0;
   if (nmatch >= mbits)  /* exact match, send final response */
     rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
-                              trp, 0, trp->num_entries + 1,
-                              response, sizeof (response));
+                              trp, 0, trp->num_entries + 1, &response);
   else if (hp->hops > 0) /* not my local sender, send back 2 trace entries */
     rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
-                              trp, 1, 2,
-                              response, sizeof (response));
-  else
+                              trp, 1, 2, &response);
+  else   /* my local sender, send a 1-entry response */
     rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
-                              trp, 1, 1,  /* only our intermediate entry */
-                              response, sizeof (response));
+                              trp, 1, 1, &response);
   if (rsize <= 0)
     return;
   if (! send_pipe_message (sock, response, rsize, EPSILON))
     printf ("unable to send trace response\n");
+  free (response);
 }
 
 static void main_loop (int sock, char * my_address, int nbits,
@@ -399,30 +391,26 @@ static void main_loop (int sock, char * my_address, int nbits,
 static void send_trace (int sock, char * address, int abits, char * trace_id,
                         char * my_address, int my_abits)
 {
-  static char buffer [ALLNET_MTU];
-  bzero (buffer, sizeof (buffer));
-  struct allnet_header * hp = (struct allnet_header *) buffer;
-  struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
-  struct allnet_mgmt_trace_req * trp =
-    (struct allnet_mgmt_trace_req *) (buffer + ALLNET_MGMT_HEADER_SIZE (0));
   int total_size = ALLNET_TRACE_REQ_SIZE (0, 1, 0);
-  if (total_size > sizeof (buffer)) {
-    printf ("error: need size %d, only have %zd\n", total_size,
-            sizeof (buffer));
-    exit (1);
+  int data_size = total_size - ALLNET_HEADER_SIZE;
+  int allocated = 0;
+  struct allnet_header * hp =
+    create_packet (data_size, ALLNET_TYPE_MGMT, 10, ALLNET_SIGTYPE_NONE,
+                   my_address, my_abits, address, abits, NULL, &allocated);
+  if (allocated != total_size) {
+    printf ("error in send_trace: %d %d %d\n", allocated,
+            total_size, data_size);
+    if (hp != NULL)
+      free (hp);
+    return;
   }
 
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_MGMT;
-  hp->hops = 0;
-  hp->max_hops = 10;
-  hp->src_nbits = my_abits;
-  hp->dst_nbits = abits;
-  hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  hp->transport = 0;
-  memcpy (hp->source, my_address, ADDRESS_SIZE);
-  memcpy (hp->destination, address, ADDRESS_SIZE);
+  char * buffer = (char *) hp;
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (hp->transport));
+  struct allnet_mgmt_trace_req * trp =
+    (struct allnet_mgmt_trace_req *)
+      (buffer + ALLNET_MGMT_HEADER_SIZE (hp->transport));
 
   mp->mgmt_type = ALLNET_MGMT_TRACE_REQ;
 
@@ -440,6 +428,7 @@ static void send_trace (int sock, char * address, int abits, char * trace_id,
    * trace server, which then forwards to everyone else */
   if (! send_pipe_message (sock, buffer, total_size, EPSILON))
     printf ("unable to send trace message of %d bytes\n", total_size);
+  free (hp);
 }
 
 static unsigned long long int power10 (int n)

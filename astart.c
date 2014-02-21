@@ -80,7 +80,7 @@ static void my_exec0 (char * path, char * program, int fd)
   if (pid == 0) {
     char * args [2];
     args [0] = make_program_path (path, program);
-    args [3] = NULL;
+    args [1] = NULL;
     snprintf (log_buf, LOG_SIZE, "calling %s\n", args [0]);
     log_print ();
     execv (args [0], args);    /* should never return! */
