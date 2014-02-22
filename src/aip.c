@@ -317,7 +317,11 @@ static void print_gethostbyname_error (char * hostname)
     snprintf (log_buf, LOG_SIZE,
               "error resolving host name %s: host not found\n", hostname);
     break;
+#if defined NO_ADDRESS
   case NO_ADDRESS:  /* same as NO_DATA */
+#else
+  case NO_DATA:
+#endif
     snprintf (log_buf, LOG_SIZE,
               "error resolving host name %s: no address/no data\n", hostname);
     break;

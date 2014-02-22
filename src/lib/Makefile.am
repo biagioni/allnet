@@ -1,27 +1,38 @@
 libincludes = \
-    app_util.h \
+	ai.h \
+	app_util.h \
 	config.h \
+	cipher.h \
 	dcache.h \
+	keys.h \
 	log.h \
+	mapchar.h \
 	pipemsg.h \
+	pqueue.h \
 	priority.h \
 	sha.h \
 	table.h \
 	util.h
 
 libsrc = \
-    app_util.c \
+	ai.c \
+	app_util.c \
+	cipher.c \
 	config.c \
 	dcache.c \
+	keys.c \
 	log.c \
+	mapchar.c \
 	pipemsg.c \
+	pqueue.c \
 	priority.c \
 	sha.c \
 	table.c \
 	util.c
 
-# noinst_LTLIBRARIES = liballnet-0.3.la
+DEPS_LIBS = -lcrypto
+
 lib_LTLIBRARIES = liballnet-0.3.la
-# liballnet_0_3_la_LIBADD = $(DEPS_LIBS) # no dependencies
+liballnet_0_3_la_LIBADD = $(DEPS_LIBS)
 liballnet_0_3_la_SOURCES = $(libsrc) $(libincludes)
 liballnet_0_3_la_LDFLAGS = -version-info 0:3:0 $(ALLNET_LT_LDFLAGS)
