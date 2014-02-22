@@ -21,9 +21,11 @@ includes = \
 	packet.h
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
-bin_PROGRAMS = trace keyd
-trace_SOURCES = trace.c ${includes} ${tracelibincludes}
-keyd_SOURCES = keyd.c ${includes} ${keydlibincludes}
+bin_PROGRAMS = \
+	$(ALLNET_BINDIR)/trace \
+	$(ALLNET_BINDIR)/keyd
+__ALLNET_BINDIR__trace_SOURCES = trace.c ${includes} ${tracelibincludes}
+__ALLNET_BINDIR__keyd_SOURCES = keyd.c ${includes} ${keydlibincludes}
 
 install-exec-hook:
 	rm -f $(DESTDIR)$(bindir)/traced && $(LN_S) $(DESTDIR)$(bindir)/trace $(DESTDIR)$(bindir)/traced

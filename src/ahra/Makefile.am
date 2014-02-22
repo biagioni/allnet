@@ -11,7 +11,8 @@ libincludes = \
 	lib/util.h
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
-bin_PROGRAMS = allnet-generate allnet-subscribe
-
-allnet_generate_SOURCES = generate.c ${libincludes}
-allnet_subscribe_SOURCES = subscribe.c ${libincludes} packet.h
+bin_PROGRAMS = \
+	$(ALLNET_BINDIR)/allnet-generate \
+	$(ALLNET_BINDIR)/allnet-subscribe
+__ALLNET_BINDIR__allnet_generate_SOURCES = generate.c ${libincludes}
+__ALLNET_BINDIR__allnet_subscribe_SOURCES = subscribe.c ${libincludes} packet.h

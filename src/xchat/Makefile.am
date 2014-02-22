@@ -10,13 +10,19 @@ libincludes = \
     priority.h \
     sha.h \
     util.h
+
 includes = chat.h cutil.h store.h retransmit.h xcommon.h
 link = cutil.c store.c retransmit.c xcommon.c
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
-bin_PROGRAMS = xchatr xchats xchat_socket xkeys xkeyr
-xchatr_SOURCES = xchatr.c ${link} ${includes} ${libincludes}
-xchats_SOURCES = xchats.c ${link} ${includes} ${libincludes}
-xchat_socket_SOURCES = xchat_socket.c ${link} ${includes} ${libincludes}
-xkeys_SOURCES = xkeys.c ${link} ${includes} ${libincludes}
-xkeyr_SOURCES = xkeyr.c ${link} ${includes} ${libincludes}
+bin_PROGRAMS = \
+	$(ALLNET_BINDIR)/xchatr \
+	$(ALLNET_BINDIR)/xchats \
+	$(ALLNET_BINDIR)/xchat_socket \
+	$(ALLNET_BINDIR)/xkeys \
+	$(ALLNET_BINDIR)/xkeyr
+__ALLNET_BINDIR__xchatr_SOURCES = xchatr.c ${link} ${includes} ${libincludes}
+__ALLNET_BINDIR__xchats_SOURCES = xchats.c ${link} ${includes} ${libincludes}
+__ALLNET_BINDIR__xchat_socket_SOURCES = xchat_socket.c ${link} ${includes} ${libincludes}
+__ALLNET_BINDIR__xkeys_SOURCES = xkeys.c ${link} ${includes} ${libincludes}
+__ALLNET_BINDIR__xkeyr_SOURCES = xkeyr.c ${link} ${includes} ${libincludes}

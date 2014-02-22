@@ -13,9 +13,11 @@ AC_CONFIG_HEADERS([config.h])
 LT_INIT
 
 ALLNET_API_VERSION=allnet_api_version
+ALLNET_BINDIR=\$\(top_srcdir\)/bin
 ALLNET_SRCDIR=\$\(top_srcdir\)/src
 ALLNET_LIBDIR=\$\(top_builddir\)/src/lib
 AC_SUBST(ALLNET_API_VERSION)
+AC_SUBST(ALLNET_BINDIR)
 AC_SUBST(ALLNET_LIBDIR)
 AC_SUBST(ALLNET_SRCDIR)
 

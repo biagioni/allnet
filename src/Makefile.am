@@ -24,15 +24,22 @@ includes = \
 adlink = social.c record.c track.c
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
-bin_PROGRAMS = ad alocal aip acache astart abc
-ad_SOURCES = ad.c ${adlink} ${includes}
-abc_SOURCES = abc.c mgmt.h ${includes} lib/sha.h lib/pqueue.h
-alocal_SOURCES = alocal.c mgmt.h listen.c ${includes}
-alocal_LDFLAGS = -lpthread
-aip_SOURCES = aip.c mgmt.h listen.c ${includes}
-aip_LDFLAGS = -lpthread
-acache_SOURCES = acache.c ${includes}
-astart_SOURCES = astart.c ${includes}
+bin_PROGRAMS = \
+	$(ALLNET_BINDIR)/ad \
+	$(ALLNET_BINDIR)/alocal \
+	$(ALLNET_BINDIR)/aip \
+	$(ALLNET_BINDIR)/acache \
+	$(ALLNET_BINDIR)/astart \
+	$(ALLNET_BINDIR)/abc
+
+__ALLNET_BINDIR__ad_SOURCES = ad.c ${adlink} ${includes}
+__ALLNET_BINDIR__abc_SOURCES = abc.c mgmt.h ${includes} lib/sha.h lib/pqueue.h
+__ALLNET_BINDIR__alocal_SOURCES = alocal.c mgmt.h listen.c ${includes}
+__ALLNET_BINDIR__alocal_LDFLAGS = -lpthread
+__ALLNET_BINDIR__aip_SOURCES = aip.c mgmt.h listen.c ${includes}
+__ALLNET_BINDIR__aip_LDFLAGS = -lpthread
+__ALLNET_BINDIR__acache_SOURCES = acache.c ${includes}
+__ALLNET_BINDIR__astart_SOURCES = astart.c ${includes}
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
