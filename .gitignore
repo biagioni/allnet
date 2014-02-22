@@ -29,6 +29,7 @@ Makefile.in
 
 # Binaries
 src/abc
+src/abc.nosudo
 src/acache
 src/ahra/allnet-generate
 src/ahra/allnet-subscribe
