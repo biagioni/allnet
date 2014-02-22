@@ -26,4 +26,4 @@ trace_SOURCES = trace.c ${includes} ${tracelibincludes}
 keyd_SOURCES = keyd.c ${includes} ${keydlibincludes}
 
 install-exec-hook:
-	$(LN_S) $(DESTDIR)$(bindir)trace $(DESTDIR)$(bindir)traced
+	rm -f $(DESTDIR)$(bindir)/traced && $(LN_S) $(DESTDIR)$(bindir)/trace $(DESTDIR)$(bindir)/traced
