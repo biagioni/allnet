@@ -28,4 +28,4 @@ __ALLNET_BINDIR__trace_SOURCES = trace.c ${includes} ${tracelibincludes}
 __ALLNET_BINDIR__keyd_SOURCES = keyd.c ${includes} ${keydlibincludes}
 
 install-exec-hook:
-	rm -f $(DESTDIR)$(bindir)/traced && $(LN_S) $(DESTDIR)$(bindir)/trace $(DESTDIR)$(bindir)/traced
+	cd $(DESTDIR)$(bindir) && rm -f traced && $(LN_S) trace traced

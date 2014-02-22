@@ -43,8 +43,8 @@ __ALLNET_BINDIR__astart_SOURCES = astart.c ${includes}
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
-        rm -f astop && \
-		$(LN_S) astart astop
+		rm -f astop && \
+		$(LN_S) astart astop; \
 	cp abc abc.nosudo && \
 		chown root:root abc && \
 		chmod u+s abc || true
