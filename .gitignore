@@ -28,6 +28,20 @@ Makefile
 Makefile.in
 
 # Binaries
+src/abc
+src/acache
+src/ahra/allnet-generate
+src/ahra/allnet-subscribe
 src/ad
+src/aip
+src/astart
 src/alocal
+src/mgmt/keyd
 src/mgmt/trace
+src/xchat/xchat_socket
+src/xchat/xchatr
+src/xchat/xchats
+src/xchat/xkeyr
+src/xchat/xkeys
+src/xtime/allnet-radio
+src/xtime/xtime
