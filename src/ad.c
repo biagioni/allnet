@@ -7,8 +7,9 @@
 
 #include "packet.h"
 #include "mgmt.h"
-#include "lib/pipemsg.h"
 #include "social.h"
+#include "track.h"
+#include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/log.h"
 #include "lib/util.h"

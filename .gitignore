@@ -1,0 +1,33 @@
+*~
+*.la
+*.lo
+*.o
+*.swp
+
+# Autotools
+.libs/
+m4/
+*.deps/
+.dirstamp
+aclocal.m4
+autom4te.cache/
+compile
+config.h
+config.guess
+config.log
+config.status
+config.sub
+configure
+depcomp
+install-sh
+ltmain.sh
+libtool
+missing
+stamp-*
+Makefile
+Makefile.in
+
+# Binaries
+src/ad
+src/alocal
+src/mgmt/trace
