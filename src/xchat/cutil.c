@@ -6,11 +6,11 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "../packet.h"
-#include "../lib/util.h"
-#include "../lib/sha.h"
-#include "../lib/priority.h"
-#include "../lib/keys.h"
+#include "packet.h"
+#include "lib/util.h"
+#include "lib/sha.h"
+#include "lib/priority.h"
+#include "lib/keys.h"
 #include "chat.h"
 #include "cutil.h"
 #include "store.h"

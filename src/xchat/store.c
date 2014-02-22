@@ -15,10 +15,10 @@
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 
-#include "../lib/util.h"
-#include "../lib/config.h"
-#include "../lib/priority.h"
-#include "../lib/cipher.h"
+#include "lib/util.h"
+#include "lib/config.h"
+#include "lib/priority.h"
+#include "lib/cipher.h"
 #include "cutil.h"
 #include "store.h"
 

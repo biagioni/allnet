@@ -1,7 +1,5 @@
 SUBDIRS = lib ahra mgmt xchat xtime
-
 AM_CFLAGS = -g -O2
-AM_LDFLAGS =
 
 libincludes = \
 	lib/ai.h \
@@ -17,7 +15,6 @@ libincludes = \
 includes = \
 	${libincludes} \
 	config.h \
-	ai.h \
 	listen.h \
 	packet.h \
 	record.h \
@@ -26,7 +23,7 @@ includes = \
 
 adlink = social.c record.c track.c
 
-LDADD = lib/liballnet-$(ALLNET_API_VERSION).la
+LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = ad alocal aip acache astart abc
 ad_SOURCES = ad.c ${adlink} ${includes}
 abc_SOURCES = abc.c mgmt.h ${includes} lib/sha.h lib/pqueue.h

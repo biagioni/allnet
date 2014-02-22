@@ -4,14 +4,14 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../packet.h"
-#include "../lib/pipemsg.h"
-#include "../lib/util.h"
-#include "../lib/sha.h"
-#include "../lib/log.h"
-#include "../lib/priority.h"
-#include "../lib/cipher.h"
-#include "../lib/keys.h"
+#include "packet.h"
+#include "lib/pipemsg.h"
+#include "lib/util.h"
+#include "lib/sha.h"
+#include "lib/log.h"
+#include "lib/priority.h"
+#include "lib/cipher.h"
+#include "lib/keys.h"
 
 static int handle_packet (char * message, int msize, int debug)
 {

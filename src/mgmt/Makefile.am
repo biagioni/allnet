@@ -1,3 +1,4 @@
+AM_CFLAGS = -I$(ALLNET_SRCDIR)
 libincludes = \
 	lib/app_util.h \
 	lib/dcache.h \
@@ -6,7 +7,7 @@ libincludes = \
 	lib/priority.h \
 	lib/util.h
 
-tracelibincludes = ai.h
+tracelibincludes = lib/ai.h
 
 keydlibincludes = \
 	${libincludes} \
@@ -16,10 +17,10 @@ keydlibincludes = \
 	mapchar.h
 
 includes = \
-	../mgmt.h \
-	../packet.h
+	mgmt.h \
+	packet.h
 
-LDADD = ../lib/liballnet-$(ALLNET_API_VERSION).la
+LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = trace keyd
 trace_SOURCES = trace.c ${includes} ${tracelibincludes}
 keyd_SOURCES = keyd.c ${includes} ${keydlibincludes}

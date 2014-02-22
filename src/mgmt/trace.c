@@ -1,6 +1,6 @@
 /* trace.c: standalone application to generate and handle AllNet traces */
 /* can be called as daemon (traced) or client (any other name)
-/* both the daemon and the client take 1 or two arguments:
+ * both the daemon and the client take 1 or two arguments:
    - an address (in hex, with or without separating :,. )
    - optionally, a number of bits of the address we want to send out, in 0..64
  * for the daemon, the specified address is my address, used to fill in
@@ -17,13 +17,13 @@
 
 #include <openssl/rsa.h>
 
-#include "../packet.h"
-#include "../mgmt.h"
-#include "../lib/util.h"
-#include "../lib/pipemsg.h"
-#include "../lib/priority.h"
-#include "../lib/log.h"
-#include "../lib/dcache.h"
+#include "packet.h"
+#include "mgmt.h"
+#include "lib/util.h"
+#include "lib/pipemsg.h"
+#include "lib/priority.h"
+#include "lib/log.h"
+#include "lib/dcache.h"
 
 static int get_nybble (char * string, int * offset)
 {

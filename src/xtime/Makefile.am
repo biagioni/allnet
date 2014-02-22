@@ -1,3 +1,4 @@
+AM_CFLAGS = -I$(ALLNET_SRCDIR)
 ad_includes = packet.h
 
 libincludes = \
@@ -9,7 +10,7 @@ libincludes = \
 	lib/sha.h \
 	lib/util.h
 
-LDADD = ../lib/liballnet-$(ALLNET_API_VERSION).la
+LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = xtime allnet-radio
 xtime_SOURCES = xtime.c ${libincludes} ${ad_includes}
 allnet_radio_SOURCES = allnet_radio.c ${libincludes}

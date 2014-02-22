@@ -6,10 +6,10 @@
 #include <string.h>
 #include <time.h>
 
-#include "../packet.h"
-#include "../lib/pipemsg.h"
-#include "../lib/util.h"
-#include "../lib/priority.h"
+#include "packet.h"
+#include "lib/pipemsg.h"
+#include "lib/util.h"
+#include "lib/priority.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"

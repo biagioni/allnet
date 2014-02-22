@@ -11,12 +11,12 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "../packet.h"
-#include "../lib/app_util.h"
-#include "../lib/pipemsg.h"
-#include "../lib/priority.h"
-#include "../lib/cipher.h"
-#include "../lib/keys.h"
+#include "packet.h"
+#include "lib/app_util.h"
+#include "lib/pipemsg.h"
+#include "lib/priority.h"
+#include "lib/cipher.h"
+#include "lib/keys.h"
 
 static int init_xtime ()
 {

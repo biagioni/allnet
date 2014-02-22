@@ -4,9 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../lib/util.h"
-#include "../lib/priority.h"
-#include "../lib/keys.h"
+#include "lib/util.h"
+#include "lib/priority.h"
+#include "lib/keys.h"
 #include "chat.h"
 #include "store.h"
 #include "cutil.h"

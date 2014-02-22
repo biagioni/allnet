@@ -6,13 +6,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../packet.h"
-#include "../lib/pipemsg.h"
-#include "../lib/util.h"
-#include "../lib/sha.h"
-#include "../lib/priority.h"
-#include "../lib/cipher.h"
-#include "../lib/keys.h"
+#include "packet.h"
+#include "lib/pipemsg.h"
+#include "lib/util.h"
+#include "lib/sha.h"
+#include "lib/priority.h"
+#include "lib/cipher.h"
+#include "lib/keys.h"
 
 static int send_key_request (int sock, char * phrase,
                              char * pubkey, int ksize) 

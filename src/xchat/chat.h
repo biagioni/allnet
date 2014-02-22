@@ -3,7 +3,7 @@
 #ifndef ALLNET_CHAT_H
 #define ALLNET_CHAT_H
 
-#include "../packet.h"	/* MESSAGE_ID_SIZE */
+#include "packet.h"	/* MESSAGE_ID_SIZE */
 
 /* messages are indexed by a 64-bit counter, which must be forever unique over
  * all messages between a given pair of sender and receiver, or for a given

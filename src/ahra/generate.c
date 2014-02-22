@@ -10,9 +10,9 @@
 #include <fcntl.h>
 #include <time.h>
 
-#include "../lib/util.h"
-#include "../lib/keys.h"
-#include "../lib/app_util.h"
+#include "lib/util.h"
+#include "lib/keys.h"
+#include "lib/app_util.h"
 
 #define KEY_LENGTH	4096		/* in bits */
 static unsigned long long int power (unsigned long long int base,

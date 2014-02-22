@@ -10,8 +10,8 @@
 #include "xcommon.h"
 #include "cutil.h"
 #include "retransmit.h"
-#include "../lib/priority.h"
-#include "../lib/util.h"
+#include "lib/priority.h"
+#include "lib/util.h"
 
 static void request_cached_data (int sock)
 {

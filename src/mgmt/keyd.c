@@ -7,15 +7,15 @@
 
 #include <openssl/rsa.h>
 
-#include "../packet.h"
-#include "../lib/util.h"
-#include "../lib/app_util.h"
-#include "../lib/pipemsg.h"
-#include "../lib/priority.h"
-#include "../lib/sha.h"
-#include "../lib/log.h"
-#include "../lib/cipher.h"
-#include "../lib/keys.h"
+#include "packet.h"
+#include "lib/util.h"
+#include "lib/app_util.h"
+#include "lib/pipemsg.h"
+#include "lib/priority.h"
+#include "lib/sha.h"
+#include "lib/log.h"
+#include "lib/cipher.h"
+#include "lib/keys.h"
 
 #define CONFIG_DIR	"~/.allnet/keys"
 
