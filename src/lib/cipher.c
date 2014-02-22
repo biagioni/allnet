@@ -11,9 +11,9 @@
 #include <openssl/bio.h>
 #include <openssl/pem.h>
 
+#include "../packet.h"
 #include "util.h"
 #include "sha.h"
-#include "../xchat/store.h"
 #include "cipher.h"
 
 #define AES256_SIZE	(256 / 8)	/* 32 */
@@ -58,7 +58,9 @@ static void aes_ctr_crypt (char * key, char * ctr, char * data, int dsize,
     }
     result [i] = data [i] ^ out [i % AES_BLOCK_SIZE];
   }
-  printf ("AES encryption complete\n");
+#ifdef DEBUG_PRINT
+  printf ("AES encryption complete\n"); */
+#endif /* DEBUG_PRINT */
 }
 
 /* returns the number of encrypted bytes if successful, and 0 otherwise */
@@ -86,7 +88,7 @@ int encrypt (char * text, int tsize, char * key, int ksize, char ** res)
   int rsa_encrypt_size = tsize;
   int rsa_size = RSA_size (rsa);
   int result_size = rsa_size;
-  int max_rsa = RSA_size (rsa) - 12;  /* PKCS #1 v1.5 requires 12 bytes */
+  int max_rsa = RSA_size (rsa) - 42;  /* PKCS #1 v2 requires 42 bytes */
   int free_text = 0;
   if (max_rsa < tsize) {
     /* compute an AES-256 key and a nonce.  Prepend the key and the nonce
@@ -107,8 +109,10 @@ int encrypt (char * text, int tsize, char * key, int ksize, char ** res)
     tsize = input_size;
     rsa_encrypt_size = max_rsa;
     result_size = tsize + (RSA_size (rsa) - max_rsa);
+#ifdef DEBUG_PRINT
     printf ("result size = %d + (%d - %d) = %d\n",
             tsize, RSA_size (rsa), max_rsa, result_size);
+#endif /* DEBUG_PRINT */
     free_text = 1;
   }
 
@@ -116,16 +120,18 @@ int encrypt (char * text, int tsize, char * key, int ksize, char ** res)
 
   /* encrypt either the entire message, or just the first max_rsa bytes */
   int bytes = RSA_public_encrypt (rsa_encrypt_size, text, result, rsa,
-                                  RSA_PKCS1_PADDING);
+                                  RSA_PKCS1_OAEP_PADDING);
   RSA_free (rsa);
   if (bytes != rsa_size) {
-    unsigned long e = ERR_get_error ();
-    printf ("RSA encryption failed %ld/%s %d\n", e, ERR_error_string (e, NULL),
-            bytes);
+    ERR_load_crypto_strings ();
+    ERR_print_errors_fp (stdout);
+    printf ("RSA failed to encrypt %d bytes, %d\n", rsa_encrypt_size, bytes);
+    print_buffer (key + 1, ksize - 1, "public key", ksize, 1);
     if (free_text) free (text);
     free (result);
     return 0;
   }
+/* else print_buffer (key + 1, ksize - 1, "successful public key", 12, 1); */
 
 /* printf ("input size %d, output size %d, bytes %d, rsa encrypted %d\n",
           tsize, result_size, bytes, rsa_encrypt_size); */
@@ -193,13 +199,14 @@ int decrypt (char * cipher, int csize, char * key, int ksize, char ** res)
   int rsa_size = RSA_size (rsa);
   char * rsa_text = malloc_or_fail (rsa_size, "decrypt RSA plaintext");
   int bytes = RSA_private_decrypt (rsa_size, cipher, rsa_text, rsa,
-                                   RSA_PKCS1_PADDING);
+                                   RSA_PKCS1_OAEP_PADDING);
   RSA_free (rsa);
   if (bytes < 0) {
+    ERR_load_crypto_strings ();
+    ERR_print_errors_fp (stdout);
+    printf ("RSA failed to decrypt %d bytes, got %d, cipher size %d\n",
+            rsa_size, bytes, csize);
 /*
-    unsigned long e = ERR_get_error ();
-    printf ("RSA decryption failed %ld/%s %d\n", e, ERR_error_string (e, NULL),
-            bytes);
 */
     free (rsa_text);
 /*
@@ -224,8 +231,8 @@ test_rsa_encryption (key, ksize);
   char * aes_cipher = cipher + rsa_size;
   int rsize = rsa_real_size + aes_size;
 #ifdef DEBUG_PRINT
-  printf ("decrypt: rsa real %d, aes %d, rsize %d\n", rsa_real_size, aes_size,
-          rsize);
+  printf ("decrypt: %d bytes, rsa real %d, aes %d/%d, rsize %d\n",
+          bytes, rsa_real_size, aes_size, AES256_SIZE + AES_BLOCK_SIZE, rsize);
 #endif /* DEBUG_PRINT */
   char * result = malloc_or_fail (rsize, "decrypt result");
   memcpy (result, rsa_real_text, rsa_real_size);
@@ -264,7 +271,7 @@ int verify (char * text, int tsize, char * sig, int ssize,
 
   /* hash the contents, verify that the signature matches the hash */
   char hash [SHA512_SIZE];
-  int hsize = rsa_size - 12;
+  int hsize = rsa_size - 42;  /* PKCS #1 v2 requires 42 bytes */
   if (hsize > SHA512_SIZE)
     hsize = SHA512_SIZE;
   sha512_bytes (text, tsize, hash, hsize);
@@ -297,7 +304,7 @@ int sign (char * text, int tsize, char * key, int ksize, char ** result)
 
   /* hash the contents, sign the hash */
   char hash [SHA512_SIZE];
-  int hsize = rsa_size - 12;
+  int hsize = rsa_size - 42;  /* PKCS #1 v2 requires 42 bytes */
   if (hsize > SHA512_SIZE)
     hsize = SHA512_SIZE;
   sha512_bytes (text, tsize, hash, hsize);
@@ -358,7 +365,6 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
       }
       free (key);
     }
-    free_contacts (contacts);
     if (*contact == NULL) {
 #ifdef DEBUG_PRINT
       printf ("signature algorithm %d, verification unsuccessful\n", sig_algo);
@@ -390,7 +396,6 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
     int ksize = get_my_privkey (contacts [i], &key);
     if (ksize <= 0) {
       printf ("error (%d): no my privkey for %s\n", ksize, contacts [i]);
-      free_contacts (contacts);
       return 0;
     }
     int res = decrypt (encrypted, esize, key, ksize, text);
@@ -398,12 +403,10 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
     if (res > 0) {  /* success (without verification)! */
       *contact = strcpy_malloc (contacts [i], "decrypt contact");
       printf ("decrypted for contact %s\n", *contact);
-      free_contacts (contacts);
       return - res;
     }
   }
   /* packet may or may not have been decrypted, as indicated by tsize > 0 */
-  free_contacts (contacts);
 #ifdef DEBUG_PRINT
   printf ("unable to decrypt packet, dropping\n");
 #endif /* DEBUG_PRINT */

@@ -20,10 +20,10 @@ extern int handle_packet (int sock, char * packet, int psize,
                           char ** peer, char ** message, char ** desc,
                           int * verified, time_t * sent, int * duplicate);
 
-/* send this packet and save it in the xchat log. */
-/* returns the sequence number of this packet, or 0 for errors */
-extern long long int send_data_packet (int sock, char * peer,
-                                       char * message, int mlen);
+/* send this message and save it in the xchat log. */
+/* returns the sequence number of this message, or 0 for errors */
+extern long long int send_data_message (int sock, char * peer,
+                                        char * message, int mlen);
 
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it */

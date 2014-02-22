@@ -23,6 +23,39 @@ extern void print_packet (const char * buffer, int count, char * desc,
 extern void packet_to_string (const char * buffer, int count, char * desc,
                               int print_eol, char * to, int tsize);
 
+/* buffer must be at least ALLNET_SIZE(transport) bytes long */
+/* returns a pointer to the buffer, but cast to an allnet_header */
+/* returns NULL if any of the parameters are invalid (e.g. message_type) */
+/* if sbits is zero, source may be NULL, and likewise for dbits and dest */
+/* if ack is not NULL it must refer to MESSAGE_ID_SIZE bytes, and */
+/* transport will be set to ALLNET_TRANSPORT_ACK_REQ */
+/* if ack is NULL, transport will be set to 0 */
+extern struct allnet_header *
+  init_packet (char * packet, int psize,
+               int message_type, int max_hops, int sig_algo,
+               char * source, int sbits, char * dest, int dbits, char * ack);
+
+/* malloc's (must be free'd), initializes, and returns a packet with the
+/* given data size. */
+/* If ack is not NULL, the data size parameter should NOT include the */
+/* MESSAGE_ID_SIZE bytes of the ack. */
+/* *size is set to the size to send */
+extern struct allnet_header *
+  create_packet (int data_size, int message_type, int max_hops, int sig_algo,
+                 char * source, int sbits, char * dest, int dbits, char * ack,
+                 int * size);
+
+/* malloc, initialize, and return an ack message for a received packet.
+ * The message_ack bytes are taken from the argument, not from the packet.*/
+/* *size is set to the size to send */
+extern struct allnet_header *
+  create_ack (struct allnet_header * packet, char * ack, int * size);
+
+/* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
+ * offset (in bits) within x, nbits the number of bits to print */
+extern char * print_bitstring (unsigned char * x, int xoff, int nbits,
+                               int print_eol);
+
 /* print an arbitrary socket address */
 /* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
 extern void print_sockaddr (struct sockaddr * sap, int addr_size, int tcp);
@@ -35,6 +68,31 @@ extern void print_timestamp (char * message);
 /* return nbits if the first nbits of x match the first nbits of y, else 0 */
 /* where nbits is the lesser of xbits and ybits */
 extern int matches (unsigned char * x, int xbits, unsigned char * y, int ybits);
+
+/* return 1 if the first nbits of x after xoff bits match
+ * the first nbits of y after yoff bits, else 0 */
+extern int bitstring_matches (unsigned char * x, int xoff,
+                              unsigned char * y, int yoff, int nbits);
+
+/* AllNet time begins January 1st, 2000.  This may be different from
+ * the time bases (epochs) on other systems, including specifically
+ * Unix (Jan 1st, 1970) and Windows (Jan 1st, 1980).  I believe somebody
+ * also has an epoch of Jan 1st, 1900.  Anyway, these functions return
+ * the current AllNet time.  The usual caveats apply about OS time accuracy.
+ * The 64-bit value returned will be good for 584,000 years worth of
+ * microseconds.
+ */
+extern unsigned long long int allnet_time ();     /* seconds since Y2K */
+extern unsigned long long int allnet_time_ms ();  /* milliseconds since Y2K */
+extern unsigned long long int allnet_time_us ();  /* microseconds since Y2K */
+
+/* returns the result of calling ctime_r on the given allnet time. */
+/* the result buffer must be at least 30 bytes long */
+#define ALLNET_TIME_STRING_SIZE		30
+extern void allnet_time_string (unsigned long long int allnet_seconds,
+                                char * result);
+extern void allnet_localtime_string (unsigned long long int allnet_seconds,
+                                     char * result);
 
 /* useful time functions and constants */
 #define US_PER_S        1000000    /* microseconds in a second */

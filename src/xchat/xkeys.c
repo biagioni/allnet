@@ -6,31 +6,35 @@
 #include <string.h>
 #include <time.h>
 
-#include "packet.h"
-#include "pipemsg.h"
-#include "util.h"
-#include "priority.h"
-#include "sha.h"
+#include "../packet.h"
+#include "../lib/pipemsg.h"
+#include "../lib/util.h"
+#include "../lib/priority.h"
+#include "../lib/sha.h"
+#include "../lib/cipher.h"
+#include "../lib/keys.h"
 #include "chat.h"
 #include "cutil.h"
 
-static void send_ack (int s, char * packet, char * address, char * packet_id)
+static void send_ack (int s, char * packet, char * address, char * message_ack)
 {
   struct allnet_header * hp = (struct allnet_header *) packet;
-  struct allnet_header_data ack;
+  char ack [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE];
   int asize = sizeof (ack);
-  bzero (&ack, asize);
-  ack.version = ALLNET_VERSION;
-  ack.packet_type = ALLNET_TYPE_DATA_ACK;
-  ack.hops = 0;
-  ack.max_hops = hp->max_hops;
-  ack.src_nbits = ADDRESS_SIZE * 8;
-  ack.dst_nbits = hp->src_nbits;
-  ack.sig_algo = ALLNET_SIGTYPE_NONE;
-  memcpy (ack.source, address, ADDRESS_SIZE);
-  memcpy (ack.destination, hp->source, (hp->src_nbits + 7) / 8);
-  memcpy (ack.packet_id, packet_id, PACKET_ID_SIZE);
-  if (! send_pipe_message (s, (char *) (&ack), asize, SEVEN_EIGHTS)) {
+  bzero (ack, asize);
+  struct allnet_header * ackp = (struct allnet_header *) ack;
+  ackp->version = ALLNET_VERSION;
+  ackp->message_type = ALLNET_TYPE_ACK;
+  ackp->hops = 0;
+  ackp->max_hops = hp->max_hops;
+  ackp->src_nbits = ADDRESS_SIZE;
+  ackp->dst_nbits = hp->src_nbits;
+  ackp->sig_algo = ALLNET_SIGTYPE_NONE;
+  ackp->transport = ALLNET_TRANSPORT_NONE;
+  memcpy (ackp->source, address, ADDRESS_SIZE);
+  memcpy (ackp->destination, hp->source, (hp->src_nbits + 7) / 8);
+  memcpy (ack + ALLNET_HEADER_SIZE, message_ack, MESSAGE_ID_SIZE);
+  if (! send_pipe_message (s, ack, asize, SEVEN_EIGHTS)) {
     printf ("unable to send key ack\n");
     return;
   }
@@ -45,11 +49,11 @@ static int delta_ms (struct timeval * finish, struct timeval * start)
 
 /* wait for a key for a limited time */
 static void wait_for_key (int sock, char * secret,
-                          char * contact, char * address,
+                          char * contact, keyset keys, char * address,
                           unsigned long long int ms, struct timeval * start)
 {
   char * my_key;
-  int ksize = get_my_privkey (contact, &my_key);
+  int ksize = get_my_privkey (keys, &my_key);
   if (ksize <= 0) {
     printf ("error: unable to get my own private key\n");
     exit (1);
@@ -60,28 +64,25 @@ static void wait_for_key (int sock, char * secret,
   while (delta_us (&finish, start) <= ms) {
     int pipe;
     int pri;
-    char * packet;
-    int found = receive_pipe_message_any (ms, &packet, &pipe, &pri);
+    char * message;
+    int found = receive_pipe_message_any (ms, &message, &pipe, &pri);
     if (found <= 0) {
       printf ("pipe closed, exiting\n");
       exit (1);
     }
-    if (found >= ALLNET_HEADER_DATA_SIZE) {
-      struct allnet_header_data * hp = (struct allnet_header_data *) packet;
-      if ((hp->packet_type == ALLNET_TYPE_DATA) &&
-          (hp->dst_nbits == 8 * ADDRESS_SIZE) &&
-          (memcmp (hp->destination, address, ADDRESS_SIZE) == 0)) {
+    if (found >= ALLNET_HEADER_SIZE) {
+      struct allnet_header * hp = (struct allnet_header *) message;
+      if ((found >= ALLNET_SIZE(hp->transport)) &&
+          (hp->message_type == ALLNET_TYPE_DATA) &&
+          (bitstring_matches (hp->destination, 0, address, 0, hp->dst_nbits))) {
         gettimeofday (&finish, NULL);
-        int usec = finish.tv_usec - start->tv_usec;
-        int sec = finish.tv_sec - start->tv_sec;
-        while (usec < 0) {
-          usec += US_PER_S;
-          sec--;
-        }
+        unsigned long long int delta = delta_us (&finish, start);
+        int usec = delta % 1000000;
+        int sec = delta / 1000000;
         printf ("got tentative reply in %d.%06ds\n", sec, usec);
 
-        char * cipher = packet + ALLNET_HEADER_DATA_SIZE;
-        int csize = found - ALLNET_HEADER_DATA_SIZE;
+        char * cipher = message + ALLNET_SIZE(hp->transport);
+        int csize = found - ALLNET_SIZE(hp->transport);
 
         char * text;   /* plaintext, if all goes well */
         int tsize = decrypt (cipher, csize, my_key, ksize, &text);
@@ -89,39 +90,39 @@ static void wait_for_key (int sock, char * secret,
           print_buffer (cipher, csize, "unable to decrypt", 14, 1);
         } else {
           printf ("decryption successful!\n");
-          char * contact_pubkey = text + PACKET_ID_SIZE;
-          int contact_ksize = public_key_length (contact_pubkey);
-          int computed_ksize = tsize - PACKET_ID_SIZE - strlen (secret);
-          if ((computed_ksize == contact_ksize) && (contact_ksize > 0)) {
-            char * received_secret = contact_pubkey + contact_ksize;
-            int secret_len = tsize - PACKET_ID_SIZE - computed_ksize;
-            if (memcmp (received_secret, secret, secret_len) == 0) {
-              printf ("received valid public key for %s\n", contact);
-              save_contact_pubkey (contact, contact_pubkey, contact_ksize,
-                                   NULL /* do not need my own public key */ );
-              send_ack (sock, packet, address, text);
-              free (text);
-              free (packet);
-              return;
-            } else {
+          char * contact_pubkey = text + MESSAGE_ID_SIZE;
+          int computed_ksize = tsize - MESSAGE_ID_SIZE - strlen (secret);
+          int contact_ksize = 4096;
+          if ((*contact_pubkey == KEY_RSA4096_E65537) &&
+              (computed_ksize == contact_ksize)) {
+              char * received_secret = contact_pubkey + contact_ksize;
+              int secret_len = tsize - MESSAGE_ID_SIZE - computed_ksize;
+              if (memcmp (received_secret, secret, secret_len) == 0) {
+                printf ("received valid public key for %s\n", contact);
+                set_contact_pubkey (keys, contact_pubkey, contact_ksize);
+                send_ack (sock, message, address, text);
+                free (text);
+                free (message);
+                return;
+              } else {
               static char copy [1000];
               memcpy (copy, received_secret, secret_len);
               copy [secret_len] = '\0';
               printf ("received secret %s, expected %s\n", copy, secret);
             }
           } else {
-            printf ("computed key size %d, but received key size %d\n",
-                    computed_ksize, contact_ksize);
+            printf ("computed key size %d, but received key type/size %d%d\n",
+                    computed_ksize, (*contact_pubkey) & 0xff, contact_ksize);
             print_buffer (contact_pubkey, tsize, "public key", 16, 1);
           }
           free (text);
         }
       }
     } else {
-      printf ("got %d bytes, dropping packet\n", found);
+      printf ("got %d bytes, dropping message\n", found);
     }
     if (found > 0)
-      free (packet);
+      free (message);
     gettimeofday (&finish, NULL);
   }
 }
@@ -130,41 +131,50 @@ static void wait_for_key (int sock, char * secret,
  * the secret as the key for the hmac */
 static void send_key_message (char * contact, char * secret, int hops, int sock)
 {
+  printf ("to do: determine my source address\n");
+  char source [ADDRESS_SIZE];
+  random_bytes (source, sizeof (source));
+  keyset keys = create_contact (contact, 4096, 1, NULL, 0, source, 16, NULL, 0);
+  if (keys < 0) {
+    printf ("contact %s already exists\n", contact);
+    return;
+  }
   char * my_public_key;
-  int public_key_size = new_contact (contact, &my_public_key);
+  int public_key_size = get_my_pubkey (keys, &my_public_key);
   if (public_key_size <= 0) {
-    printf ("unable to create new contact '%s', not sending key\n", contact);
+    printf ("unable to create a public key for contact %s (pks %d)\n",
+            contact, public_key_size);
     return;
   }
-  int size = ALLNET_HEADER_SIZE + public_key_size + SHA512_SIZE;
-  char * packet = calloc (size, 1);
-  if (packet == NULL) {
-    perror ("malloc");
-    printf ("unable to allocate %d bytes, not sending key\n", size);
-    return;
-  }
-  struct allnet_header * hp = (struct allnet_header *) packet;
+  char message [ALLNET_MTU];
+  bzero (message, sizeof (message));
+  struct allnet_header * hp = (struct allnet_header *) message;
   hp->version = ALLNET_VERSION;
-  hp->packet_type = ALLNET_TYPE_KEY_XCHG;
+  hp->message_type = ALLNET_TYPE_KEY_XCHG;
   hp->hops = 0;
   hp->max_hops = hops;
-  hp->src_nbits = 8 * ADDRESS_SIZE;
+  hp->src_nbits = 16;
   hp->dst_nbits = 0;
   hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  memcpy (packet + ALLNET_HEADER_SIZE, my_public_key, public_key_size);
+  hp->transport = ALLNET_TRANSPORT_NONE;
+  memcpy (hp->source, source, 16 / 8);
+
+  char * data = message + ALLNET_SIZE (hp->transport);
+  memcpy (data, my_public_key, public_key_size);
   sha512hmac (my_public_key, public_key_size, secret, strlen (secret),
               /* hmac is written directly into the packet */
-              packet + ALLNET_HEADER_SIZE + public_key_size);
+              data + public_key_size);
   free (my_public_key);
+  int size = ALLNET_SIZE (hp->transport) + public_key_size + SHA512_SIZE;
 
   struct timeval start;
   gettimeofday (&start, NULL);
-  if (! send_pipe_message (sock, packet, size, SEVEN_EIGHTS)) {
+  if (! send_pipe_message (sock, message, size, SEVEN_EIGHTS)) {
     printf ("unable to send key exchange packet to %s\n", contact);
     return;
   }
   /* see if an response comes back within a day or so */
-  wait_for_key (sock, secret, contact, hp->source, 86400000, &start);
+  wait_for_key (sock, secret, contact, keys, hp->source, 86400000, &start);
 }
 
 int main (int argc, char ** argv)

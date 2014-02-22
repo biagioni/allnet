@@ -9,6 +9,13 @@
 extern int init_chat_descriptor (struct chat_descriptor * cp, char * contact,
                                  char * packet_id_hash);
 
+/* send to the contact, returning 1 if successful, 0 otherwise */
+/* if src is NULL, source address is taken from get_source, likewise for dst */
+/* if so, uses the lesser of s/dbits and the address bits */
+extern int send_to_contact (char * data, int dsize, char * contact, int sock,
+                            char * src, int sbits, char * dst, int dbits,
+                            int hops, int priority);
+
 /* the times that follow must be arrays of TIMESTAMP_SIZE chars */
 
 /* if static_result is 0, returned string is statically allocated, should

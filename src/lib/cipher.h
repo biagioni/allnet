@@ -6,7 +6,7 @@
 #define ALLNET_APP_CIPHER_H
 
 /* first byte of key defines the key format */
-#define KEY_RSA_E65537		1	/* n for rsa public key, e is 65537 */
+#define KEY_RSA4096_E65537	1	/* n for rsa public key, e is 65537 */
 
 #define RSA_E65537_VALUE	65537
 #define RSA_E65537_STRING	"65537"

@@ -39,8 +39,9 @@ int create_dir (char * path)
   if (create_dir (path)) {
     /* and try again to create this directory */
     *last_slash = '/';
-    if (mkdir (path, 0777) == 0)
+    if (mkdir (path, 0777) == 0) {
       return 1;
+    }
     perror ("mkdir");
   }
   return 0;
@@ -66,7 +67,10 @@ int config_file_name (char * program, char * file, char ** name)
   } else {
     char * home_env = getenv ("HOME");
     if ((home_env == NULL) || (strcmp (home_env, "/nonexistent") == 0)) {
-      printf ("no home environment, running without configs\n");
+      static int printed = 0;
+      if (! printed)
+        printf ("no home environment, running without configs\n");
+      printed = 1;
       return -1;
     }
     /* printf ("no ALLNET_CONFIG, home is %s\n", home_env); */

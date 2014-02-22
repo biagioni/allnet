@@ -3,7 +3,7 @@
 #ifndef ALLNET_CHAT_H
 #define ALLNET_CHAT_H
 
-#include "packet.h"	/* PACKET_ID_SIZE */
+#include "../packet.h"	/* MESSAGE_ID_SIZE */
 
 /* messages are indexed by a 64-bit counter, which must be forever unique over
  * all messages between a given pair of sender and receiver, or for a given
@@ -26,9 +26,9 @@
  * most significant byte first, so counter [0], timestamp [0] and timestamp [6]
  * each have the most significant byte of their value.
  *
- * like any data message, the first PACKET_ID_SIZE of any message are the
+ * like any data message, the first MESSAGE_ID_SIZE of any message are the
  * random bytes which hash to the packet ID sent in the clear (only the
- * first PACKET_ID_SIZE of the sha512 are sent).
+ * first MESSAGE_ID_SIZE of the sha512 are sent).
  *
  */
 
@@ -39,9 +39,9 @@
 #define TIMESTAMP_SIZE	8
 
 struct chat_descriptor {
-  unsigned char packet_id [PACKET_ID_SIZE];
-  unsigned char counter   [  COUNTER_SIZE];
-  unsigned char timestamp [TIMESTAMP_SIZE];
+  unsigned char message_ack [MESSAGE_ID_SIZE];
+  unsigned char counter     [   COUNTER_SIZE];
+  unsigned char timestamp   [ TIMESTAMP_SIZE];
 };
 
 #define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor))
@@ -49,40 +49,35 @@ struct chat_descriptor {
 #define COUNTER_FLAG	0xffffffffffffffffLL
 
 struct chat_control {
-  unsigned char packet_id [PACKET_ID_SIZE];
-  unsigned char counter   [  COUNTER_SIZE];  /* always COUNTER_FLAG */
+  unsigned char message_ack [MESSAGE_ID_SIZE];
+  unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
   unsigned char type;
 };
 
 #define CHAT_CONTROL_TYPE_REQUEST	1
-#define CHAT_CONTROL_TYPE_FRAGMENT	2
 
-/* either of the headers below may immediately follow the chat_control header */
+/* this packet requests delivery of all packets that fit one or more of:
+   - counter value > last_received
+   - counter value listed in one of the first num_singles counters
+   - for each pair (start, finish) of counters after the first num_singles,
+     start <= counter <= finish */
+/* for example, if num_singles is 3, num_ranges is 1, last_received is 99,
+   counters is { 91, 89, 95, 77, 82 }, and the sender has sent up to
+   counter 105, it is hereby invited to resend:
+   77, 78, 79, 80, 81, 82           (listed in the range)
+   89, 91, 95                       (listed as single counter values)
+   100, 101, 102, 103, 104, and 105 (implied by last_received)
+ */
 struct chat_control_request {
-  unsigned char packet_id [PACKET_ID_SIZE];
-  unsigned char counter   [  COUNTER_SIZE];  /* always COUNTER_FLAG */
-  unsigned char type;
+  unsigned char message_ack [MESSAGE_ID_SIZE];
+  unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
+  unsigned char type;                   /* always CHAT_CONTROL_TYPE_REQUEST */
   unsigned char num_singles;
   unsigned char num_ranges;
   unsigned char padding [5];   /* sent as zeros, ignored on receipt */
   unsigned char last_received [COUNTER_SIZE];
+  /* counters has COUNTER_SIZE * (num_singles + 2 * num_ranges) bytes */
   unsigned char counters  [0];
-  /* really, counters has COUNTER_SIZE * (num_singles + 2 * num_ranges) bytes */
-  /* this packet requests delivery of all packets that fit one or more of:
-     - counter value > last_received
-     - counter value listed in one of the first num_singles counters
-     - for each pair (start, finish) of counters after the first num_singles,
-       start <= counter <= finish */
-  /* for example, if num_singles is 3, num_ranges is 1, last_received is 99,
-     counters is { 91, 89, 95, 77, 82 }, and the sender has sent up to
-     counter 105, it is hereby invited to resend:
-     77, 78, 79, 80, 81, 82           (listed in the range)
-     89, 91, 95                       (listed as single counter values)
-     100, 101, 102, 103, 104, and 105 (implied by last_received)
-   */
 };
 
-struct chat_control_fragment {
-  unsigned char to_be_defined;
-};
 #endif /* ALLNET_CHAT_H */

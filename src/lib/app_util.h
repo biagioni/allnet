@@ -6,20 +6,18 @@
 /* returns the socket, or -1 in case of failure */
 extern int connect_to_local (char * program_name);
 
-#if 0
-/* use writeb64 and readb64 from util.h/util.c instead */
+/* retrieve or request a public key.
+ *
+ * if successful returns the key length and sets *key to point to
+ * statically allocated storage for the key (do not modify in any way)
+ * if not successful, returns 0.
+ *
+ * max_time_ms and max_hops are only used if the address has not
+ * been seen before.  If so, a key request is sent with max_hops, and
+ * we wait at most max_time_ms (or quit after receiving max_keys).
+ */
+extern unsigned int get_bckey (char * address, char ** key,
+                               int max_time_ms, int max_keys, int max_hops);
 
-/* used to convert from array (external) to internal representation and back */
-extern void write_big_endian16 (char * array, int value);
-extern void write_big_endian32 (char * array, long int value);
-extern void write_big_endian48 (char * array, long long int value);
-extern void write_big_endian64 (char * array, long long int value);
-
-extern int read_big_endian16 (char * array);
-extern long int read_big_endian32 (char * array);
-extern long long int read_big_endian48 (char * array);
-extern long long int read_big_endian64 (char * array);
-
-#endif /* 0 */
 
 #endif /* ALLNET_APP_UTIL_H */

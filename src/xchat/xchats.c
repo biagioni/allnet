@@ -6,10 +6,10 @@
 #include <string.h>
 #include <time.h>
 
-#include "packet.h"
-#include "pipemsg.h"
-#include "util.h"
-#include "priority.h"
+#include "../packet.h"
+#include "../lib/pipemsg.h"
+#include "../lib/util.h"
+#include "../lib/priority.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -58,15 +58,16 @@ int main (int argc, char ** argv)
   request_and_resend (sock, contact);
 
   /* to do: subtract the size of the signature */
-  static char text [ALLNET_MTU - ALLNET_HEADER_DATA_SIZE
-                    - CHAT_DESCRIPTOR_SIZE];
+  static char text [ALLNET_MTU];
   char * p = text;
   int printed = 0;
   int i;
   long long int seq = 0;
   int ack_expected = 0;
   if (argc > 2) {
-    int size = sizeof (text);
+    int size = sizeof (text) - CHAT_DESCRIPTOR_SIZE -
+               ALLNET_SIZE (ALLNET_TRANSPORT_ACK_REQ) -
+               512; /* the likely size of a signature */
     for (i = 2; i < argc; i++) {
       int n = snprintf (p, size, "%s%s", argv [i], (i + 1 < argc) ? " " : "");
       printed += n;
@@ -74,7 +75,7 @@ int main (int argc, char ** argv)
       size -= n;
     }
 /*  printf ("sending %d chars: '%s'\n", printed, text); */
-    seq = send_data_packet (sock, contact, text, printed);
+    seq = send_data_message (sock, contact, text, printed);
     ack_expected = 1;
   }
 

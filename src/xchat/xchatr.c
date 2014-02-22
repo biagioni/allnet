@@ -4,10 +4,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "packet.h"
-#include "pipemsg.h"
-#include "util.h"
-#include "priority.h"
+#include "../packet.h"
+#include "../lib/pipemsg.h"
+#include "../lib/util.h"
+#include "../lib/priority.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -25,12 +25,6 @@ int main (int argc, char ** argv)
 {
   /* allegedly, openSSL does this for us */
   /* srandom (time (NULL));/* RSA encryption uses the random number generator */
-
-/*
-  printf ("would be good to request old messages, in 2 ways:\n");
-  printf (" - by sending out a data_request message, and\n");
-  printf (" - by sending out a chat request message when we get out-of-seq\n");
-*/
 
   int sock = xchat_init ();
   if (sock < 0)

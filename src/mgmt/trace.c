@@ -170,8 +170,9 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
                              struct timeval * now, char * my_address, int abits,
                              struct allnet_mgmt_trace_req * intrp,
                              int intermediate, int num_entries,
-                             char * result, int rsize)
+                             char ** result)
 {
+  *result = NULL;
   snprintf (log_buf, LOG_SIZE, "making trace reply with %d entries, int %d\n",
             num_entries, intermediate);
   log_print ();
@@ -181,44 +182,40 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
     printf ("error: trace req needs %d, has %d\n", insize_needed, insize);
     return 0;
   }
-  int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
-  if (rsize < size_needed) {
-    printf ("error: trace reply needs %d, has %d\n", size_needed, rsize);
-    return 0;
-  }
   if (num_entries < 1) {
     printf ("error: trace reply num_entries %d < 1 \n", num_entries);
     return 0;
   }
-  bzero (result, size_needed);
+  int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
+  int total;
+  struct allnet_header * hp =
+    create_packet (size_needed - ALLNET_HEADER_SIZE, ALLNET_TYPE_MGMT,
+                   inhp->hops + 4, ALLNET_SIGTYPE_NONE, my_address, abits,
+                   inhp->source, inhp->src_nbits, NULL, &total);
+  if ((hp == NULL) || (total != size_needed)) {
+    printf ("hp is %p, total is %d, size_needed %d\n", hp, total, size_needed);
+    return 0;
+  }
+  *result = (char *) hp;
 
-  struct allnet_header * hp = (struct allnet_header *) result;
   struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (result + ALLNET_SIZE (0));
-  struct allnet_mgmt_trace_reply * trp =
-    (struct allnet_mgmt_trace_reply *) (result + ALLNET_MGMT_HEADER_SIZE (0));
-
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_MGMT;
-  hp->hops = 0;
-  hp->max_hops = inhp->hops + 4;
-  hp->src_nbits = abits;
-  hp->dst_nbits = inhp->src_nbits;
-  hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  hp->transport = 0;
-  memcpy (hp->source, my_address, (abits + 7) / 8);
-  memcpy (hp->destination, inhp->source, ADDRESS_SIZE);
-
+    (struct allnet_mgmt_header *) (ALLNET_DATA_START(hp, hp->transport, total));
   mp->mgmt_type = ALLNET_MGMT_TRACE_REPLY;
+
+  struct allnet_mgmt_trace_reply * trp =
+    (struct allnet_mgmt_trace_reply *)
+      (((char *) mp) + (sizeof (struct allnet_mgmt_header)));
 
   trp->encrypted = 0;
   trp->intermediate_reply = intermediate;
   trp->num_entries = num_entries;
-  memcpy (trp->nonce, intrp->nonce, MESSAGE_ID_SIZE);
+  memcpy (trp->trace_id, intrp->trace_id, MESSAGE_ID_SIZE);
   int i;
   /* if num_entries is 1, this loop never executes */
+  /* if num_entries is 2, this loop executes once to copy
+   * intrp->trace [intrp->num_entries - 1] to trp->trace [0] */
   for (i = 0; i + 1 < num_entries; i++)
-    trp->trace [i] = intrp->trace [i];
+    trp->trace [i] = intrp->trace [i + intrp->num_entries - (num_entries - 1)];
   struct allnet_mgmt_trace_entry * new_entry = trp->trace + (num_entries - 1);
   init_entry (new_entry, inhp->hops, now, my_address, abits);
 
@@ -229,12 +226,12 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
                  (sizeof (struct allnet_mgmt_trace_entry) * intrp->num_entries);
     print_buffer (key, ksize, "key", 15, 1);
   }
-  packet_to_string (result, size_needed, "my reply: ", 1, log_buf, LOG_SIZE);
+  packet_to_string (*result, total, "my reply: ", 1, log_buf, LOG_SIZE);
   log_print ();
   return size_needed;
 }
 
-static void debug_prt_nonce (void * state, void * n)
+static void debug_prt_trace_id (void * state, void * n)
 {
   print_buffer (n, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 1);
   int offset = * ((int *) state);
@@ -245,11 +242,11 @@ static void debug_prt_nonce (void * state, void * n)
   * ((int *) state) = offset;
 }
 
-static int same_nonce (void * n1, void * n2)
+static int same_trace_id (void * n1, void * n2)
 {
   int result = (memcmp (n1, n2, MESSAGE_ID_SIZE) == 0);
 /*
-  int off = snprintf (log_buf, LOG_SIZE, "same_nonce (");
+  int off = snprintf (log_buf, LOG_SIZE, "same_trace_id (");
   off += buffer_to_string (n1, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 0,
                            log_buf + off, LOG_SIZE - off);
   off += snprintf (log_buf + off, LOG_SIZE - off, ", ");
@@ -297,18 +294,18 @@ static void respond_to_trace (int sock, char * message, int msize,
     return;
 
   /* found a valid trace request */
-  if (cache_get_match (cache, same_nonce, trp->nonce) != NULL) {
-    buffer_to_string (trp->nonce, MESSAGE_ID_SIZE, "duplicate nonce", 5, 1,
-                      log_buf, LOG_SIZE);
+  if (cache_get_match (cache, same_trace_id, trp->trace_id) != NULL) {
+    buffer_to_string (trp->trace_id, MESSAGE_ID_SIZE, "duplicate trace_id",
+                      5, 1, log_buf, LOG_SIZE);
     log_print ();
     return;     /* duplicate */
   }
   /* else new trace, save it in the cache so we only forward it once */
-  cache_add (cache, memcpy_malloc (trp->nonce, MESSAGE_ID_SIZE, "trace nonce"));
+  cache_add (cache, memcpy_malloc (trp->trace_id, MESSAGE_ID_SIZE, "trace id"));
 /*
   int debug_off = snprintf (log_buf, LOG_SIZE, "cache contains: ");
   printf ("cache contains: ");
-  cache_map (cache, debug_prt_nonce, &debug_off);
+  cache_map (cache, debug_prt_trace_id, &debug_off);
   debug_off += snprintf (log_buf + debug_off, LOG_SIZE - debug_off, "\n");
   log_print ();
 */
@@ -354,21 +351,22 @@ static void respond_to_trace (int sock, char * message, int msize,
     return;
 
   /* RSVP, the favor of your reply is requested -- respond to the trace */
-  static char response [ALLNET_MTU];
-  bzero (response, sizeof (response));
+  char * response;
   int rsize = 0;
   if (nmatch >= mbits)  /* exact match, send final response */
     rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
-                              trp, 0, trp->num_entries + 1,
-                              response, sizeof (response));
-  else
+                              trp, 0, trp->num_entries + 1, &response);
+  else if (hp->hops > 0) /* not my local sender, send back 2 trace entries */
     rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
-                              trp, 1, 1,  /* only our intermediate entry */
-                              response, sizeof (response));
+                              trp, 1, 2, &response);
+  else   /* my local sender, send a 1-entry response */
+    rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
+                              trp, 1, 1, &response);
   if (rsize <= 0)
     return;
   if (! send_pipe_message (sock, response, rsize, EPSILON))
     printf ("unable to send trace response\n");
+  free (response);
 }
 
 static void main_loop (int sock, char * my_address, int nbits,
@@ -390,40 +388,36 @@ static void main_loop (int sock, char * my_address, int nbits,
   }
 }
 
-static void send_trace (int sock, char * address, int abits, char * nonce,
+static void send_trace (int sock, char * address, int abits, char * trace_id,
                         char * my_address, int my_abits)
 {
-  static char buffer [ALLNET_MTU];
-  bzero (buffer, sizeof (buffer));
-  struct allnet_header * hp = (struct allnet_header *) buffer;
-  struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
-  struct allnet_mgmt_trace_req * trp =
-    (struct allnet_mgmt_trace_req *) (buffer + ALLNET_MGMT_HEADER_SIZE (0));
   int total_size = ALLNET_TRACE_REQ_SIZE (0, 1, 0);
-  if (total_size > sizeof (buffer)) {
-    printf ("error: need size %d, only have %zd\n", total_size,
-            sizeof (buffer));
-    exit (1);
+  int data_size = total_size - ALLNET_HEADER_SIZE;
+  int allocated = 0;
+  struct allnet_header * hp =
+    create_packet (data_size, ALLNET_TYPE_MGMT, 10, ALLNET_SIGTYPE_NONE,
+                   my_address, my_abits, address, abits, NULL, &allocated);
+  if (allocated != total_size) {
+    printf ("error in send_trace: %d %d %d\n", allocated,
+            total_size, data_size);
+    if (hp != NULL)
+      free (hp);
+    return;
   }
 
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_MGMT;
-  hp->hops = 0;
-  hp->max_hops = 10;
-  hp->src_nbits = my_abits;
-  hp->dst_nbits = abits;
-  hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  hp->transport = 0;
-  memcpy (hp->source, my_address, ADDRESS_SIZE);
-  memcpy (hp->destination, address, ADDRESS_SIZE);
+  char * buffer = (char *) hp;
+  struct allnet_mgmt_header * mp =
+    (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (hp->transport));
+  struct allnet_mgmt_trace_req * trp =
+    (struct allnet_mgmt_trace_req *)
+      (buffer + ALLNET_MGMT_HEADER_SIZE (hp->transport));
 
   mp->mgmt_type = ALLNET_MGMT_TRACE_REQ;
 
   trp->intermediate_replies = 1;
   trp->num_entries = 1;
   /* pubkey_size is 0, so no public key */
-  memcpy (trp->nonce, nonce, MESSAGE_ID_SIZE);
+  memcpy (trp->trace_id, trace_id, MESSAGE_ID_SIZE);
   struct timeval time;
   gettimeofday (&time, NULL);
   init_entry (trp->trace, 0, &time, my_address, my_abits);
@@ -434,6 +428,7 @@ static void send_trace (int sock, char * address, int abits, char * nonce,
    * trace server, which then forwards to everyone else */
   if (! send_pipe_message (sock, buffer, total_size, EPSILON))
     printf ("unable to send trace message of %d bytes\n", total_size);
+  free (hp);
 }
 
 static unsigned long long int power10 (int n)
@@ -445,47 +440,90 @@ static unsigned long long int power10 (int n)
 
 static struct timeval intermediate_arrivals [256];
 
-static void print_entry (struct allnet_mgmt_trace_entry * entry,
+static void print_times (struct allnet_mgmt_trace_entry * entry,
                          struct timeval * start, struct timeval * now,
                          int save_to_intermediate)
 {
   int index = (entry->hops_seen) & 0xff;
-  if (save_to_intermediate)
-    printf ("forwarded by: ");
-  printf ("%3d ", index);
-  unsigned long long int fraction = readb64 (entry->seconds_fraction);
-  if (entry->precision <= 64)
-    fraction = fraction / (((unsigned long long int) (-1LL)) / 1000000LL);
-  else if (entry->precision <= 70)  /* decimal in low-order bits */
-    fraction = fraction * (power10 (70 - entry->precision));
-  else
-    fraction = fraction / (power10 (entry->precision - 70));
-  if (fraction >= 1000000LL) {  /* should be converted to microseconds */
-    printf ("error: fraction (%u) %lld gives %lld >= 1000000 microseconds\n",
-            entry->precision, readb64 (entry->seconds_fraction), fraction);
-    fraction = 0LL;
+  if ((start != NULL) && (now != NULL)) {
+    unsigned long long int fraction = readb64 (entry->seconds_fraction);
+    if (entry->precision <= 64)
+      fraction = fraction / (((unsigned long long int) (-1LL)) / 1000000LL);
+    else if (entry->precision <= 70)  /* decimal in low-order bits */
+      fraction = fraction * (power10 (70 - entry->precision));
+    else
+      fraction = fraction / (power10 (entry->precision - 70));
+    if (fraction >= 1000000LL) {  /* should be converted to microseconds */
+      printf ("error: fraction (%u) %lld gives %lld >= 1000000 microseconds\n",
+              entry->precision, readb64 (entry->seconds_fraction), fraction);
+      fraction = 0LL;
+    }
+    struct timeval timestamp;
+    timestamp.tv_sec = readb64 (entry->seconds);
+    timestamp.tv_usec = fraction;
+    unsigned long long int delta = delta_us (&timestamp, start);
+  /* printf ("%ld.%06ld - %ld.%06ld = %lld\n",
+          timestamp.tv_sec, timestamp.tv_usec,
+          start->tv_sec, start->tv_usec, delta); */
+    printf (" %6lld.%03lldms", delta / 1000LL, delta % 1000LL);
+  
+    delta = delta_us (now, start);
+    if (save_to_intermediate)
+      intermediate_arrivals [index] = *now;
+    else if (intermediate_arrivals [index].tv_sec != 0)
+      delta = delta_us (intermediate_arrivals + index, start);
+    printf (" (%6lld.%03lldms rtt)", delta / 1000LL, delta % 1000LL);
   }
-  struct timeval timestamp;
-  timestamp.tv_sec = readb64 (entry->seconds);
-  timestamp.tv_usec = fraction;
-  unsigned long long int delta = delta_us (&timestamp, start);
-/* printf ("%ld.%06ld - %ld.%06ld = %lld\n",
-        timestamp.tv_sec, timestamp.tv_usec,
-        start->tv_sec, start->tv_usec, delta); */
-  printf (" %6lld.%03lldms", delta / 1000LL, delta % 1000LL);
+}
 
-  delta = delta_us (now, start);
-  if (save_to_intermediate)
-    intermediate_arrivals [index] = *now;
-  else if (intermediate_arrivals [index].tv_sec != 0)
-    delta = delta_us (intermediate_arrivals + index, start);
-  printf (" (%lld.%03lldms rtt)", delta / 1000LL, delta % 1000LL);
+static void print_entry (struct allnet_mgmt_trace_entry * entry,
+                         struct timeval * start, struct timeval * now,
+                         int save_to_intermediate, int print_eol)
+{
+  int index = (entry->hops_seen) & 0xff;
+  printf ("%3d ", index);
 
-  printf (" %d", entry->nbits);
+  if (entry->nbits > 0)
+    printf ("%02x", entry->address [0] % 0xff);
   int i;
-  for (i = 0; ((i < ADDRESS_SIZE) && (i < (entry->nbits + 7) / 8)); i++)
+  for (i = 1; ((i < ADDRESS_SIZE) && (i < (entry->nbits + 7) / 8)); i++)
     printf (".%02x", entry->address [i] % 0xff);
-  printf ("\n");
+  printf ("/%d", entry->nbits);
+
+#if 0
+  if ((start != NULL) && (now != NULL)) {
+    unsigned long long int fraction = readb64 (entry->seconds_fraction);
+    if (entry->precision <= 64)
+      fraction = fraction / (((unsigned long long int) (-1LL)) / 1000000LL);
+    else if (entry->precision <= 70)  /* decimal in low-order bits */
+      fraction = fraction * (power10 (70 - entry->precision));
+    else
+      fraction = fraction / (power10 (entry->precision - 70));
+    if (fraction >= 1000000LL) {  /* should be converted to microseconds */
+      printf ("error: fraction (%u) %lld gives %lld >= 1000000 microseconds\n",
+              entry->precision, readb64 (entry->seconds_fraction), fraction);
+      fraction = 0LL;
+    }
+    struct timeval timestamp;
+    timestamp.tv_sec = readb64 (entry->seconds);
+    timestamp.tv_usec = fraction;
+    unsigned long long int delta = delta_us (&timestamp, start);
+  /* printf ("%ld.%06ld - %ld.%06ld = %lld\n",
+          timestamp.tv_sec, timestamp.tv_usec,
+          start->tv_sec, start->tv_usec, delta); */
+    printf (" %5lld.%03lldms", delta / 1000LL, delta % 1000LL);
+  
+    delta = delta_us (now, start);
+    if (save_to_intermediate)
+      intermediate_arrivals [index] = *now;
+    else if (intermediate_arrivals [index].tv_sec != 0)
+      delta = delta_us (intermediate_arrivals + index, start);
+    printf (" (%lld.%03lldms rtt)", delta / 1000LL, delta % 1000LL);
+  }
+#endif /* 0 */
+
+  if (print_eol)
+    printf ("\n");
 }
 
 static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
@@ -500,12 +538,27 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
     return;
   }
   if (trp->intermediate_reply == 0) {      /* final reply */
-    int i;
-    for (i = 1; i < trp->num_entries; i++)
-      print_entry (trp->trace + i, start, finish, 0);
+    if (trp->num_entries > 1) {
+      printf ("trace to matching destination:\n");
+      int i;
+      for (i = 1; i < trp->num_entries; i++) {
+        printf ("         ");
+        print_times (trp->trace + i, start, finish, 0);
+        print_entry (trp->trace + i, start, finish, 0, 1);
+      }
+    }
+  } else if (trp->num_entries == 2) {
+    /* generally two trace entries for intermediate replies */
+    printf ("forward: ");
+    print_times (trp->trace + 1, start, finish, 1);
+    print_entry (trp->trace + 0, NULL, NULL, 0, 0);
+    printf ("  to");
+    print_entry (trp->trace + 1, start, finish, 1, 1);
   } else if (trp->num_entries == 1) {
     /* generally only one trace entry, so always print the first */
-    print_entry (trp->trace, start, finish, 1);
+    printf ("local:   ");
+    print_times (trp->trace, start, finish, 1);
+    print_entry (trp->trace, start, finish, 1, 1);
   } else {
     printf ("intermediate response with %d entries\n", trp->num_entries);
   }
@@ -535,11 +588,11 @@ static void handle_packet (char * message, int msize, char * seeking,
   struct allnet_mgmt_trace_reply * trp =
     (struct allnet_mgmt_trace_reply *)
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-  char * nonce = trp->nonce;
-  if (memcmp (nonce, seeking, MESSAGE_ID_SIZE) != 0) {
-    printf ("received nonce does not match expected nonce\n");
-    print_buffer (seeking, MESSAGE_ID_SIZE, "expected nonce", 100, 1);
-    print_buffer (  nonce, MESSAGE_ID_SIZE, "received nonce", 100, 1);
+  char * trace_id = trp->trace_id;
+  if (memcmp (trace_id, seeking, MESSAGE_ID_SIZE) != 0) {
+    printf ("received trace_id does not match expected trace_id\n");
+    print_buffer (seeking , MESSAGE_ID_SIZE, "expected trace_id", 100, 1);
+    print_buffer (trace_id, MESSAGE_ID_SIZE, "received trace_id", 100, 1);
     return;
   }
   struct timeval now;
@@ -551,7 +604,7 @@ static void handle_packet (char * message, int msize, char * seeking,
   print_trace_result (trp, start, &now);
 }
 
-static void wait_for_responses (int sock, char * nonce, int sec)
+static void wait_for_responses (int sock, char * trace_id, int sec)
 {
   int i;
   for (i = 0; i < 256; i++) {
@@ -573,7 +626,7 @@ static void wait_for_responses (int sock, char * nonce, int sec)
       exit (1);
     }
     struct timeval start_copy = start;
-    handle_packet (message, found, nonce, &start_copy);
+    handle_packet (message, found, trace_id, &start_copy);
     free (message);
     remaining = time (NULL) - start.tv_sec;
   }
@@ -622,11 +675,11 @@ int main (int argc, char ** argv)
     main_loop (sock, address, nbits, match_only, argc < 3);
     printf ("trace error: main loop returned\n");
   } else {                                    /* called as client */
-    char nonce [MESSAGE_ID_SIZE];
+    char trace_id [MESSAGE_ID_SIZE];
     char my_addr [ADDRESS_SIZE];
-    random_bytes (nonce, sizeof (nonce));
+    random_bytes (trace_id, sizeof (trace_id));
     random_bytes (my_addr, sizeof (my_addr));
-    send_trace (sock, address, nbits, nonce, my_addr, 5);
-    wait_for_responses (sock, nonce, 60);
+    send_trace (sock, address, nbits, trace_id, my_addr, 5);
+    wait_for_responses (sock, trace_id, 60);
   }
 }

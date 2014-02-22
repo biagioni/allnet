@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>  /* exit if IPv6 address size is not 16 */
 
-#include "packet.h"
+#include "../packet.h"
 #include "ai.h"
 
 void print_addr_info (struct addr_info * ai)

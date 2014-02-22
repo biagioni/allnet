@@ -98,7 +98,7 @@ struct allnet_header {
  * in the last 2 bytes */
 struct allnet_signature {
   unsigned char certificate [0];
-  unsigned char sig_nbits [2];   /* number of bytes, MSB first */
+  unsigned char sig_nbytes [2];   /* number of bytes, MSB first */
 };
 
 /* ALLNET_TYPE_KEY_XCHG carries a public key followed by
@@ -118,10 +118,11 @@ struct allnet_key_exchange {
   unsigned char public_key [0];     /* public key to be used */
 };
 struct allnet_key_request {
-  unsigned char nbytes_fingerprint;  /* number of bytes in the fingerprint */
-  unsigned char fingerprint [0];     /* nbytes of fingerprint,
-                                        identifies requested public key */
-  unsigned char reply_key [0];       /* public key for reply, may be omitted */
+  unsigned char nbits_fingerprint;  /* number of bits in the fingerprint,
+                                       may be zero */
+  unsigned char fingerprint [0];    /* (nbits + 7) / 8 bytes of fingerprint,
+                                       identifies requested public key */
+  unsigned char reply_key [0];      /* public key for reply, may be omitted */
 };
 
 /* a LARGE packet must be an ACK packet.  All the other flags are orthogonal */
@@ -259,7 +260,7 @@ struct allnet_header_max {
 #define ALLNET_STREAM_ID(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 		\
    (((t) & ALLNET_TRANSPORT_STREAM) == 0)) ? NULL : \
-   (((char *) hp) + ALLNET_HEADER_SIZE))
+   (((char *) (hp)) + ALLNET_HEADER_SIZE))
 
 #define ALLNET_AFTER_STREAM_ID(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
@@ -269,7 +270,7 @@ struct allnet_header_max {
 #define ALLNET_MESSAGE_ID(hp, t, s)	\
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0)) ? NULL : \
-  (((char *) hp) + ALLNET_AFTER_STREAM_ID(t, s)))
+  (((char *) (hp)) + ALLNET_AFTER_STREAM_ID(t, s)))
 
 #define ALLNET_AFTER_MESSAGE_ID(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
@@ -280,19 +281,19 @@ struct allnet_header_max {
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) hp) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE))
+  (((char *) (hp)) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE))
 
 #define ALLNET_NPACKETS(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) hp) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE * 2))
+  (((char *) (hp)) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE * 2))
 
 #define ALLNET_SEQUENCE(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) hp) + ALLNET_AFTER_MESSAGE_ID(t, s) + MESSAGE_ID_SIZE + \
+  (((char *) (hp)) + ALLNET_AFTER_MESSAGE_ID(t, s) + MESSAGE_ID_SIZE + \
                    SEQUENCE_SIZE))
 
 #define ALLNET_AFTER_SEQUENCE(t, s)	\
@@ -303,7 +304,7 @@ struct allnet_header_max {
 
 #define ALLNET_EXPIRATION(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || (((t) & ALLNET_TRANSPORT_EXPIRATION) == 0)) ? NULL: \
-  (((char *) hp) + ALLNET_AFTER_SEQUENCE(t, s)))
+  (((char *) (hp)) + ALLNET_AFTER_SEQUENCE(t, s)))
 
 #define ALLNET_AFTER_EXPIRATION(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
@@ -313,6 +314,6 @@ struct allnet_header_max {
 #define ALLNET_AFTER_HEADER(t, s)	(ALLNET_AFTER_EXPIRATION(t, s))
 
 #define ALLNET_DATA_START(hp, t, s)		\
-  (((char *) hp) + ALLNET_AFTER_HEADER(t, s))
+  (((char *) (hp)) + ALLNET_AFTER_HEADER(t, s))
 
 #endif /* PACKET_H */

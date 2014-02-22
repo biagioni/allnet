@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <errno.h>
+#include <dirent.h>
 
 #include "../packet.h"
 #include "log.h"
@@ -16,6 +17,8 @@
 char log_buf [LOG_SIZE];    /* global */
 
 #define LOG_DIR		"log"
+
+static char log_dir [PATH_MAX + 1] = LOG_DIR;
 
 static char * module_name = "unknown module -- have main call init_log()";
 static char log_file_name [100] = "";
@@ -42,49 +45,89 @@ static int make_string ()
   return LOG_SIZE - 1;
 }
 
-static int file_name (time_t seconds, int must_exist)
+/* returns 1 if the file exists by the end of the call, and 0 otherwise. */
+static int create_if_needed ()
+{
+  int fd = open (log_file_name, O_WRONLY | O_APPEND | O_CREAT, 0644);
+  if (fd < 0) {
+    perror ("creat");
+    printf ("%s: unable to create '%s'\n", module_name, log_file_name);
+    /* clear the name */
+    log_file_name [0] = '\0';
+    return 0;
+  }
+  close (fd);   /* file has been created, should now exist */
+  /* printf ("%s: created file %s\n", module_name, log_file_name); */
+  return 1;
+}
+
+/* fills in log_file_name with a name corresponding to the time.
+ * creates the file if necessary.
+ * returns 1 if the file exists by the end of the call, and 0 otherwise. */
+static int file_name (time_t seconds)
 {
   struct tm n;
   localtime_r (&seconds, &n);
   snprintf (log_file_name, sizeof (log_file_name),
-            "%s/%04d%02d%02d-%02d%02d%02d", LOG_DIR,
+            "%s/%04d%02d%02d-%02d%02d%02d", log_dir,
             n.tm_year + 1900, n.tm_mon + 1, n.tm_mday,
             n.tm_hour, n.tm_min, n.tm_sec);
-  if (must_exist) {
-    if (access (log_file_name, W_OK) != 0) {
-/* no need to print this, or it will always print when first starting
-      perror ("access");
-      printf ("%s: unable to access '%s' for reading and writing\n", module_name,
-              log_file_name); */
-      /* clear the name */
-      log_file_name [0] = '\0';
-      return 0;
-    }  /* else, all is well */
-  } else {
-    int fd = open (log_file_name, O_WRONLY | O_APPEND | O_CREAT | O_EXCL, 0644);
-    if (fd < 0) {
-      perror ("creat");
-      printf ("%s: unable to create '%s'\n", module_name, log_file_name);
-      /* clear the name */
-      log_file_name [0] = '\0';
-      return 0;
-    }
-    close (fd);   /* file has been created, should now exist */
-    /* printf ("%s: created file %s\n", module_name, log_file_name); */
+  return create_if_needed ();
+}
+
+/* put the latest log file name in log_file_name */
+static void latest_file (time_t seconds)
+{
+  DIR * dir = opendir (log_dir);
+  if (dir == NULL) {
+    perror ("opendir");
+    printf ("unable to open log directory %s\n", log_dir);
+    return;
   }
-  return 1;
+  char * latest = NULL;
+  struct dirent * dent;
+  while ((dent = readdir (dir)) != NULL) {
+/* printf ("log.c: looking at %s/%s\n", log_dir, dent->d_name); */
+    if ((dent->d_name [0] != '.') &&
+        ((latest == NULL) || (strcmp (dent->d_name, latest) > 0))) {
+/* printf ("log.c:    using %s/%s\n", log_dir, dent->d_name); */
+      if (latest != NULL)
+        free (latest);
+      latest = strcpy_malloc (dent->d_name, "log.c latest_file()");
+    }
+  }
+  closedir (dir);
+  int file_exists = 0;
+  if (latest != NULL) {
+    snprintf (log_file_name, sizeof (log_file_name),
+              "%s/%s", log_dir, latest);
+    free (latest);
+    file_exists = create_if_needed ();
+/* printf ("log.c: checked %s, result is %d\n", log_file_name, file_exists); */
+  }
+  if (! file_exists)
+    file_name (seconds);  /* create new log file */
 }
 
 void init_log (char * name)
 {
+  char * home = getenv ("HOME");
+  if (home != NULL)
+    snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
+  if (geteuid () == 0)
+    snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
+
   module_name = name;
-  mkdir (LOG_DIR, 0700);  /* if it fails because it already exists, it's OK */
+  char * last_slash = rindex (module_name, '/');
+  if (last_slash != NULL)
+    module_name = last_slash + 1;
+  mkdir (log_dir, 0700);  /* if it fails because it already exists, it's OK */
   time_t now = time (NULL);
-  int count = 0;
-  while ((count < 5) && (! file_name (now - count, 1)))
-    count++;
-  if (count >= 5)        /* create a new file */
-    file_name (now, 0);
+  /* only open a new log file if this is the astart module */
+  if (strcasecmp (name, "astart") == 0)
+    file_name (now); /* create a new file */
+  else /* use the latest available file, only create new if none are present */
+    latest_file (now);
 }
 
 static void log_print_buffer (char * buffer, int blen)
@@ -128,13 +171,15 @@ void log_print_str (char * string)
 {
   char time_str [100];
   static char buffer [LOG_SIZE + LOG_SIZE];
-  time_t now = time (NULL);
+  struct timeval now;
+  gettimeofday (&now, NULL);
   struct tm n;
-  if (localtime_r (&now, &n) == NULL)
-    snprintf (time_str, sizeof (time_str), "bad time %ld", now);
+  if (localtime_r (&now.tv_sec, &n) == NULL)
+    snprintf (time_str, sizeof (time_str), "bad time %ld", now.tv_sec);
   else
-    snprintf (time_str, sizeof (time_str), "%02d/%02d %02d:%02d:%02d",
-              n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec);
+    snprintf (time_str, sizeof (time_str), "%02d/%02d %02d:%02d:%02d.%06ld",
+              n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec,
+              now.tv_usec);
   int len = snprintf (buffer, sizeof (buffer), "%s %s: %s",
                       time_str, module_name, string);
   /* add a newline if it is not already at the end of the string */
