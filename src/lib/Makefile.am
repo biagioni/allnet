@@ -1,6 +1,7 @@
 libincludes = \
 	ai.h \
 	app_util.h \
+	cipher.h \
 	config.h \
 	cipher.h \
 	dcache.h \

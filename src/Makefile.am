@@ -4,6 +4,7 @@ AM_CFLAGS = -g -O2
 AM_LDFLAGS =
 
 libincludes = \
+	lib/ai.h \
 	lib/config.h \
 	lib/dcache.h \
 	lib/log.h \
