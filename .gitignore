@@ -3,6 +3,7 @@
 *.lo
 *.o
 *.swp
+tags
 
 # Autotools
 .libs/
