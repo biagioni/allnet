@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h> /* struct timeval, gettimeofday */
 
 #include <openssl/rsa.h>
 
@@ -719,6 +720,7 @@ int main (int argc, char ** argv)
 #endif /* DEBUG_PRINT */
     main_loop (sock, address, abits, match_only, 0);
     printf ("trace error: main loop returned\n");
+    return 1;
   } else {                                    /* called as client */
 #ifdef DEBUG_PRINT
     printf ("tracing %d bits: ", abits);
@@ -731,4 +733,5 @@ int main (int argc, char ** argv)
     send_trace (sock, address, abits, trace_id, my_addr, 5);
     wait_for_responses (sock, trace_id, 60);
   }
+  return 0;
 }
