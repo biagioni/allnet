@@ -45,6 +45,10 @@ install-exec-hook:
 	cd $(DESTDIR)$(bindir) && \
 		rm -f astop && \
 		$(LN_S) astart astop; \
-	cp abc abc.nosudo && \
+	if [ "$$UID" -eq "0" ]; then \
+		cp abc abc.nosudo && \
 		chown root:root abc && \
-		chmod u+s abc || true
+		chmod u+s abc || true; \
+	else \
+		echo "Cannot set suid bit on abc. abc requires root privileges."; \
+	fi
