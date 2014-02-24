@@ -29,3 +29,6 @@ __ALLNET_BINDIR__keyd_SOURCES = keyd.c ${includes} ${keydlibincludes}
 
 install-exec-hook:
 	cd $(DESTDIR)$(bindir) && rm -f traced && $(LN_S) trace traced
+
+uninstall-hook:
+	rm -f $(DESTDIR)$(bindir)/traced

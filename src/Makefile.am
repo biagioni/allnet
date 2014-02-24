@@ -52,3 +52,7 @@ install-exec-hook:
 	else \
 		echo "Cannot set suid bit on abc. abc requires root privileges."; \
 	fi
+
+uninstall-hook:
+	rm -f $(DESTDIR)$(bindir)/abc.nosudo \
+		  $(DESTDIR)$(bindir)/astop
