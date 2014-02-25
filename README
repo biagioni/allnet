@@ -1,5 +1,5 @@
 run
 	./autogen.sh
-	./configure
+	./configure --disable-shared
 	make
 
