@@ -258,6 +258,26 @@ static int same_trace_id (void * n1, void * n2)
   return result;
 }
 
+static void acknowledge_bcast (int sock, char * message, int msize)
+{
+  /* ignore any packet other than unencrypted packets requesting an ack */
+  if (msize <= ALLNET_HEADER_SIZE)
+    return;
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if ((hp->message_type != ALLNET_TYPE_CLEAR) ||
+      (hp->transport & ALLNET_TRANSPORT_ACK_REQ == 0))  /* ignore */
+    return;
+  int hsize = ALLNET_SIZE (hp->transport);
+  if (msize < hsize + MESSAGE_ID_SIZE)
+    return;
+  int asize;
+  struct allnet_header * ack = create_ack (hp, message + hsize, &asize);
+  if ((asize == 0) || (ack == NULL))
+    return;
+  if (! send_pipe_message (sock, (char *) ack, asize, ONE_QUARTER))
+    printf ("unable to send trace response\n");
+}
+
 static void respond_to_trace (int sock, char * message, int msize,
                               int priority, char * my_address, int abits,
                               int match_only, int forward_only,
@@ -382,6 +402,7 @@ static void main_loop (int sock, char * my_address, int nbits,
       printf ("pipe closed, exiting\n");
       exit (1);
     }
+    acknowledge_bcast (sock, message, found);
     respond_to_trace (sock, message, found, pri + 1, my_address, nbits,
                       match_only, forward_only, cache);
     free (message);
@@ -567,13 +588,15 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
 static void handle_packet (char * message, int msize, char * seeking,
                            struct timeval * start)
 {
+/* print_packet (message, msize, "handle_packet got", 1); */
+  if (! is_valid_message (message, msize))
+    return;
+  struct allnet_header * hp = (struct allnet_header *) message;
+    
+
   int min_size = ALLNET_TRACE_REPLY_SIZE (0, 1);
   if (msize < min_size)
     return;
-/*
-  print_packet (message, msize, "handle_packet got", 1);
-*/
-  struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type != ALLNET_TYPE_MGMT)
     return;
   min_size = ALLNET_TRACE_REPLY_SIZE (hp->transport, 1);
