@@ -1208,10 +1208,10 @@ debug_read_public_RSA_file ("/tmp/x", &rsa);
     int hashpos = SHA512_BITS - ((i + 1) * bitstring_bits);
     if (! bitstring_matches (encrypted, positions [i], hash, hashpos,
                              bitstring_bits)) {
-      printf ("%d: no %d-bit match at positions %d/%d\n", i,
+/*    printf ("%d: no %d-bit match at positions %d/%d\n", i,
               bitstring_bits, positions [i], hashpos);
       print_bitstring (encrypted, positions [i], bitstring_bits, 1);
-      print_bitstring (hash, hashpos, bitstring_bits, 1);
+      print_bitstring (hash, hashpos, bitstring_bits, 1); */
       free (positions);
       return 0;
     }

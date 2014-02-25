@@ -236,7 +236,7 @@ int main (int argc, char ** argv)
     printf ("key '%s' not found\n", address);
     exit (1);
   }
-  printf ("got %d-byte public, %d-byte private key, address %02x.%02x\n",
+  printf ("xtime: got %d-byte public, %d-byte private key, address %02x.%02x\n",
           key->pub_klen, key->priv_klen, key->address [0] & 0xff,
           key->address [1] & 0xff);
   

@@ -1,5 +1,8 @@
 run
-	./autogen.sh
-	./configure --disable-shared
-	make
+        ./autogen.sh
+        ./configure --disable-shared
+        make
+
+Before doing this, you may need:
+        sudo apt-get install libtool autoconf
 

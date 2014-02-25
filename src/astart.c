@@ -262,6 +262,7 @@ static int stop_all ()
   close (fd);
   unlink (fname);
   unlink (AIP_UNIX_SOCKET);
+  return 0;
 }
 
 static void find_path (char * arg, char ** path, char ** program)
@@ -320,4 +321,5 @@ int main (int argc, char ** argv)
   sleep (2);
   my_exec_trace (path, "traced", pid_fd);
   my_exec0 (path, "keyd", pid_fd);
+  return 0;
 }
