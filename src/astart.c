@@ -238,6 +238,7 @@ static int read_pid (int fd)
       result = -1;  /* start over */
     }
   }
+  return -1;
 }
 
 #define AIP_UNIX_SOCKET		"/tmp/allnet-addrs"
