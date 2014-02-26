@@ -11,6 +11,7 @@
 #include "lib/sha.h"
 #include "lib/priority.h"
 #include "lib/keys.h"
+#include "lib/log.h"
 #include "chat.h"
 #include "cutil.h"
 #include "store.h"

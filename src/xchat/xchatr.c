@@ -8,6 +8,7 @@
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
+#include "lib/log.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"

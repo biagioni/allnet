@@ -372,7 +372,8 @@ static int inner_wireless_loop (int rpipe, int wpipe, int sockfd,
   }
   /* r > 0, got some data */
   if (fd == sockfd) {  /* send to ad */
-    if (! send_pipe_message (wpipe, buffer, r, ONE_EIGHT)) {
+    /* priority doesn't matter when sending to ad */
+    if (! send_pipe_message (wpipe, buffer, r, ALLNET_PRIORITY_EPSILON)) {
       printf ("abc: unable to send message to ad, shutting down\n");
       return 0;
     }
@@ -418,7 +419,7 @@ static int inner_ad_loop (int rpipe, int ms, char ** pending_message,
     free (*pending_message);
   *pending_message = buffer;
   *message_size = r;
-  if (priority >= THREE_QUARTERS)     /* worth waking up for */
+  if (priority >= ALLNET_PRIORITY_FRIENDS_LOW)     /* worth waking up for */
     return 0;   /* start the "awake" time again */
   return 1;   /* repeat the loop */
 }
@@ -561,12 +562,14 @@ static void wireless_off (char * interface)
 static int check_priority_mode (char * interface)
 {
   if ((! lan_is_on) && (! high_priority) &&
-      ((received_high_priority) || (queue_max_priority () > ONE_HALF))) {
+      ((received_high_priority) ||
+       (queue_max_priority () >= ALLNET_PRIORITY_FRIENDS_LOW))) {
     /* enter high priority mode */
     high_priority = 1;
   } else if ((high_priority) &&
-             ((lan_is_on) || ((! received_high_priority) &&
-                              (queue_max_priority () <= ONE_HALF)))) {
+             ((lan_is_on) ||
+              ((! received_high_priority) &&
+               (queue_max_priority () < ALLNET_PRIORITY_FRIENDS_LOW)))) {
     /* leave high priority mode */
     high_priority = 0;
   }
@@ -940,7 +943,7 @@ static void handle_network_message (char * message, int msize,
     if (! handle_beacon (message, msize, sockfd, beacon_deadline, time_buffer,
                          quiet_end, send_type, send_size, send_message)) {
       /* send the message to ad */
-      send_pipe_message (ad_pipe, message, msize, ONE_HALF);
+      send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
       /* remove any messages that this message acks */
       remove_acks (message, message + msize);
     }

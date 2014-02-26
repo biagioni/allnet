@@ -12,6 +12,7 @@
 #include "retransmit.h"
 #include "lib/priority.h"
 #include "lib/util.h"
+#include "lib/log.h"
 
 static void request_cached_data (int sock)
 {
@@ -26,7 +27,8 @@ static void request_cached_data (int sock)
   ah.dst_nbits = 0;
   ah.sig_algo = ALLNET_SIGTYPE_NONE;
   ah.transport = ALLNET_TRANSPORT_NONE;
-  if (! send_pipe_message (sock, (char *) (&ah), ah, THREE_QUARTERS))
+  if (! send_pipe_message (sock, (char *) (&ah), ah,
+                           ALLNET_PRIORITY_LOCAL_LOW))
     printf ("unable to request cached data\n");
 }
 
@@ -49,7 +51,7 @@ int xchat_init ()
   initstate (seed, rstate, sizeof (rstate));
 #endif /* 0 */
 
-  int sock = connect_to_local ();
+  int sock = connect_to_local ("xcommon");
   if (sock < 0)
     return -1;
   add_pipe (sock);
@@ -99,7 +101,7 @@ static void send_ack (int sock, struct allnet_header * hp, char * message_ack)
   currently_sent_ack = (currently_sent_ack + 1) % NUM_ACKS;
   memcpy (recently_sent_acks [currently_sent_ack], message_ack,
           MESSAGE_ID_SIZE);
-  send_pipe_message (sock, buffer, sizeof (buffer), SEVEN_EIGHTS);
+  send_pipe_message (sock, buffer, sizeof (buffer), ALLNET_PRIORITY_LOCAL);
   /* printf ("ack sent\n"); */
 }
 
@@ -270,7 +272,7 @@ long long int send_data_message (int sock, char * peer,
   memcpy (clear + CHAT_DESCRIPTOR_SIZE, message, mlen);
 
   send_to_contact (clear, CHAT_DESCRIPTOR_SIZE + mlen, peer, sock,
-                   NULL, 16, NULL, 16, 4, THREE_QUARTERS);
+                   NULL, 16, NULL, 16, 4, ALLNET_PRIORITY_LOCAL);
   save_outgoing (peer, cp, message, mlen);
 }
 
@@ -298,14 +300,15 @@ void request_and_resend (int sock, char * peer)
   int dbits = 0;
   int hops = 10;
   send_retransmit_request (peer, sock, src, sbits, dst, dbits, hops,
-                           THREE_QUARTERS);
+                           ALLNET_PRIORITY_LOCAL_LOW);
 
   /* resend any unacked messages, but no more than once every hour */
   static time_t last_resend = 0;
   time_t now = time (NULL);
   if (now - last_resend > 3600) {
     last_resend = now;
-    resend_unacked (peer, sock, src, sbits, dst, dbits, hops, FIVE_EIGHTS);
+    resend_unacked (peer, sock, src, sbits, dst, dbits, hops,
+                    ALLNET_PRIORITY_LOCAL_LOW);
   }
 }
 

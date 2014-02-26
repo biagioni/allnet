@@ -36,7 +36,7 @@ static int matching (char * address, int bits, struct rate_record * record)
   return 1;  /* matches the full bytes and the odd bits if any */
 }
 
-#define DEFAULT_MAX	(MAX_PRIORITY - 1)
+#define DEFAULT_MAX	(ALLNET_PRIORITY_MAX - 1)
 
 /* return the rate of the sender that is sending the most at this time */
 /* used by default when we cannot prove who the sender is */
@@ -51,9 +51,9 @@ int largest_rate ()
 }
 
 /* record that this source is sending this packet of given size */
-/* return an integer, as a fraction of MAX_PRIORITY, to indicate what
+/* return an integer, as a fraction of ALLNET_PRIORITY_MAX, to indicate what
  * fraction of the available bandwidth this source is using.
- * MAX_PRIORITY is defined in priority.h
+ * ALLNET_PRIORITY_MAX is defined in priority.h
  */
 int track_rate (char * source, int sbits, int packet_size)
 {
@@ -99,7 +99,7 @@ int track_rate (char * source, int sbits, int packet_size)
     return DEFAULT_MAX;
   }
   printf ("total %d, matching %d\n", total, matches);
-  return (MAX_PRIORITY / total) * matches;
+  return (ALLNET_PRIORITY_MAX / total) * matches;
 }
 
 #if 0
@@ -154,10 +154,10 @@ int track_rate (char * source, int sbits, char * destination, int dbits,
   if (total == 0) {
     printf ("error in track_rate: illegal total size %d, returning one\n",
             total);
-    return MAX_PRIORITY;
+    return ALLNET_PRIORITY_MAX;
   }
   printf ("total %d, matching %d\n", total, matches);
-  return (MAX_PRIORITY / total) * matches;
+  return (ALLNET_PRIORITY_MAX / total) * matches;
 }
 #endif /* 0 */
 

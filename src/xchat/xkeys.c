@@ -13,6 +13,7 @@
 #include "lib/sha.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
+#include "lib/log.h"
 #include "chat.h"
 #include "cutil.h"
 
@@ -34,7 +35,7 @@ static void send_ack (int s, char * packet, char * address, char * message_ack)
   memcpy (ackp->source, address, ADDRESS_SIZE);
   memcpy (ackp->destination, hp->source, (hp->src_nbits + 7) / 8);
   memcpy (ack + ALLNET_HEADER_SIZE, message_ack, MESSAGE_ID_SIZE);
-  if (! send_pipe_message (s, ack, asize, SEVEN_EIGHTS)) {
+  if (! send_pipe_message (s, ack, asize, ALLNET_PRIORITY_LOCAL)) {
     printf ("unable to send key ack\n");
     return;
   }
@@ -169,7 +170,7 @@ static void send_key_message (char * contact, char * secret, int hops, int sock)
 
   struct timeval start;
   gettimeofday (&start, NULL);
-  if (! send_pipe_message (sock, message, size, SEVEN_EIGHTS)) {
+  if (! send_pipe_message (sock, message, size, ALLNET_PRIORITY_LOCAL)) {
     printf ("unable to send key exchange packet to %s\n", contact);
     return;
   }
@@ -187,7 +188,7 @@ int main (int argc, char ** argv)
   /* allegedly, openSSL does this for us */
   /* srandom (time (NULL));/* RSA encryption uses the random number generator */
 
-  int sock = connect_to_local ();
+  int sock = connect_to_local ("xkeys");
   if (sock < 0)
     return 1;
 

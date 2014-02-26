@@ -41,7 +41,8 @@ static int send_key_request (int sock, char * phrase,
 
   int total_length = ALLNET_HEADER_SIZE + 1 + ksize;
 /* printf ("sending %d-byte key request\n", total_length); */
-  if (! send_pipe_message (sock, request, total_length, THREE_QUARTERS)) {
+  if (! send_pipe_message (sock, request, total_length,
+                           ALLNET_PRIORITY_LOCAL)) {
     printf ("unable to send key request message\n");
     return 0;
   }

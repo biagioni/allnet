@@ -52,7 +52,7 @@ static int process_mgmt (char * message, int msize, int is_local,
   /* else set priority to the lowest possible.  Generally the right thing */
   /* to do unless we know better (and doesn't affect local delivery). */
   if (! is_local)
-    *priority = EPSILON;
+    *priority = ALLNET_PRIORITY_DEFAULT_LOW;
 
   struct allnet_header * hp = (struct allnet_header *) message;
   int hs = ALLNET_AFTER_HEADER (hp->transport, msize);
@@ -71,7 +71,7 @@ static int process_mgmt (char * message, int msize, int is_local,
     return PROCESS_PACKET_LOCAL;  /* forward to local daemons only */
   case ALLNET_MGMT_TRACE_REQ:
     if (is_local) {
-      if (*priority != EPSILON) {   /* from trace server */
+      if (*priority != ALLNET_PRIORITY_EPSILON) {   /* from trace server */
         *priority = packet_priority (message, hp, msize, soc);
         return PROCESS_PACKET_ALL;  /* forward as a normal data packet */
       } else {                      /* from trace app */
@@ -81,13 +81,13 @@ static int process_mgmt (char * message, int msize, int is_local,
     return PROCESS_PACKET_LOCAL;  /* forward to local daemons only */
   case ALLNET_MGMT_TRACE_REPLY:
     if (! is_local)
-      *priority = EPSILON;
+      *priority = ALLNET_PRIORITY_EPSILON;
     return PROCESS_PACKET_ALL;    /* forward to all with very low priority */
   default:
     snprintf (log_buf, LOG_SIZE, "unknown management message type %d\n",
               ahm->mgmt_type);
     log_print ();
-    *priority = EPSILON;
+    *priority = ALLNET_PRIORITY_EPSILON;
     return PROCESS_PACKET_ALL;   /* forward unknown management packets */
   }
 }
@@ -188,7 +188,8 @@ static void main_loop (int * read_pipes, int nread,
     /* read messages from each of the pipes */
     char * packet = NULL;
     int from_pipe;
-    int priority = EPSILON; /* incoming priorities ignored unless from local */
+ /* incoming priorities ignored unless from local */
+    int priority = ALLNET_PRIORITY_EPSILON;
     int psize = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER,
                                           &packet, &from_pipe, &priority);
 snprintf (log_buf, LOG_SIZE, "ad received %d, fd %d\n", psize, from_pipe);

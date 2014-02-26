@@ -7,6 +7,7 @@
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/keys.h"
+#include "lib/log.h"
 #include "chat.h"
 #include "store.h"
 #include "cutil.h"
@@ -327,12 +328,13 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
    * fresh messages. */
   int priority = top_priority;
   /* assume the more recent messages are more important, so send them first */
+  /* and with slightly higher priority */
   unsigned long long int last = readb64 (hp->last_received);
   while (counter > last) {
     resend_message (counter, contact, sock, src, sbits, dst, dbits, hops,
                     priority);
     counter--;
-    priority -= EPSILON;
+    priority -= ALLNET_PRIORITY_EPSILON;
   }
   /* now send any prior messages */
   while (1) {
@@ -345,7 +347,7 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
     resend_message (prev, contact, sock, src, sbits, dst, dbits, hops,
                     priority);
     last = prev;
-    priority -= EPSILON;
+    priority -= ALLNET_PRIORITY_EPSILON;
   }
 }
 
@@ -385,7 +387,7 @@ void do_chat_control (char * contact, char * msg, int msize, int sock,
   struct chat_control * cc = (struct chat_control *) msg;
   if (cc->type == CHAT_CONTROL_TYPE_REQUEST) {
     resend_messages (msg, msize, contact, sock,
-                     src, sbits, dst, dbits, hops, FIVE_EIGHTS);
+                     src, sbits, dst, dbits, hops, ALLNET_PRIORITY_LOCAL_LOW);
   } else {
     printf ("chat control type %d, not implemented\n", cc->type);
   }

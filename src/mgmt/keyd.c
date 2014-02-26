@@ -54,7 +54,7 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
 
   /* send with relatively low priority */
   char * message = (char *) hp;
-  send_pipe_message (sock, message, bytes, ONE_EIGHT);
+  send_pipe_message (sock, message, bytes, ALLNET_PRIORITY_DEFAULT);
 }
 
 void ** keyd_debug = NULL;

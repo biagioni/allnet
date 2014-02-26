@@ -19,6 +19,7 @@
 #include "lib/config.h"
 #include "lib/priority.h"
 #include "lib/cipher.h"
+#include "lib/log.h"
 #include "cutil.h"
 #include "store.h"
 

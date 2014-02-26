@@ -274,7 +274,8 @@ static void acknowledge_bcast (int sock, char * message, int msize)
   struct allnet_header * ack = create_ack (hp, message + hsize, &asize);
   if ((asize == 0) || (ack == NULL))
     return;
-  if (! send_pipe_message (sock, (char *) ack, asize, ONE_QUARTER))
+  if (! send_pipe_message (sock, (char *) ack, asize,
+                           ALLNET_PRIORITY_DEFAULT_LOW))
     printf ("unable to send trace response\n");
 }
 
@@ -346,9 +347,11 @@ static void respond_to_trace (int sock, char * message, int msize,
   print_buffer (hp->destination, hp->dst_nbits, NULL,
                 (hp->dst_nbits + 7) / 8, 0);
   printf (") => %d (%d needed)\n", nmatch, mbits); */
+  /* when forwarding, use a low priority > epsilon, to tell ad it is from us */
+  int fwd_priority = ALLNET_PRIORITY_DEFAULT_LOW;
   if ((forward_only) || ((match_only) && (nmatch < mbits))) {
     /* forward without adding my entry */
-    if (! send_pipe_message (sock, message, msize, priority + 1))
+    if (! send_pipe_message (sock, message, msize, fwd_priority))
       printf ("unable to forward trace response\n");
     snprintf (log_buf, LOG_SIZE, "forwarded %d bytes\n", msize);
   } else {   /* add my entry before forwarding */
@@ -357,9 +360,9 @@ static void respond_to_trace (int sock, char * message, int msize,
                           my_address, abits, &new_msg);
     packet_to_string (new_msg, n, "forwarding packet", 1, log_buf, LOG_SIZE);
     log_print ();
-    if ((n <= 0) || (! send_pipe_message (sock, new_msg, n, priority + 1)))
+    if ((n <= 0) || (! send_pipe_message (sock, new_msg, n, fwd_priority)))
       printf ("unable to forward new trace response of size %d\n", n);
-    else if (! send_pipe_message (sock, message, msize, priority + 1))
+    else if (! send_pipe_message (sock, message, msize, fwd_priority))
       printf ("unable to forward old trace response\n");
     snprintf (log_buf, LOG_SIZE, "added and forwarded %d %d\n", n, msize);
     if (new_msg != NULL)
@@ -384,7 +387,8 @@ static void respond_to_trace (int sock, char * message, int msize,
                               trp, 1, 1, &response);
   if (rsize <= 0)
     return;
-  if (! send_pipe_message (sock, response, rsize, EPSILON))
+/* trace messages go with the lowest possible priority */
+  if (! send_pipe_message (sock, response, rsize, ALLNET_PRIORITY_EPSILON))
     printf ("unable to send trace response\n");
   free (response);
 }
@@ -445,9 +449,9 @@ static void send_trace (int sock, char * address, int abits, char * trace_id,
 
 /*  printf ("sending trace of size %d\n", total_size);
   print_packet (buffer, total_size, "sending trace", 1); */
-  /* sending with priority epsilon indicates we only want to send to the
-   * trace server, which then forwards to everyone else */
-  if (! send_pipe_message (sock, buffer, total_size, EPSILON))
+  /* sending with priority epsilon indicates to ad that we only want to
+   * send to the trace server, which then forwards to everyone else */
+  if (! send_pipe_message (sock, buffer, total_size, ALLNET_PRIORITY_EPSILON))
     printf ("unable to send trace message of %d bytes\n", total_size);
   free (hp);
 }

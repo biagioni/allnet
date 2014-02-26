@@ -171,7 +171,7 @@ static int respond_to_packet (void * cache, char * message,
     log_print ();
     /* send, no need to even check the return value of send_pipe_message */
     send_pipe_message (fd, cep [i]->message, cep [i]->msize,
-                       CACHE_RESPONSE_PRIORITY);
+                       ALLNET_PRIORITY_CACHE_RESPONSE);
   }
   return 1;
 }

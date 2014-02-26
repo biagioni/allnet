@@ -4,9 +4,9 @@
 #define TRACK_H
 
 /* record that this source is sending this packet of given size */
-/* return an integer, as a fraction of MAX_PRIORITY, to indicate what
+/* return an integer, as a fraction of ALLNET_PRIORITY_MAX, to indicate what
  * fraction of the available bandwidth this source is using.
- * MAX_PRIORITY is defined in priority.h
+ * ALLNET_PRIORITY_MAX is defined in priority.h
  */
 extern int track_rate (char * src, int sbits, int packet_size);
 

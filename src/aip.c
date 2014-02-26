@@ -258,7 +258,8 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
     for (i = 0; i < size && i < remaining; i++) {
       int index = random_selection [i];
       if (index < num_fds) {
-        if (! send_pipe_message (fds [index], message, msize, ONE_HALF)) {
+        if (! send_pipe_message (fds [index], message, msize,
+                                 ALLNET_PRIORITY_DEFAULT)) {
           snprintf (log_buf, LOG_SIZE,
                     "aip error sending to socket %d at %d\n",
                     fds [index], i);
@@ -496,7 +497,8 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
         }
         log_print ();
         /* often will just get message back from ad, with a new priority */
-        if (! send_pipe_message (wpipe, message, result, EPSILON)) {
+        if (! send_pipe_message (wpipe, message, result,
+                                 ALLNET_PRIORITY_EPSILON)) {
           snprintf (log_buf, LOG_SIZE, "error sending to ad pipe %d\n", wpipe);
           log_print ();
           break;

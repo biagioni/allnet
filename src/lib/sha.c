@@ -249,7 +249,7 @@ void sha512 (char * input, int bytes, char * result)
   char last2 [SHA512_BLOCK_SIZE];  /* last block, may not be needed */
   memset (last1, 0, SHA512_BLOCK_SIZE);
   memset (last2, 0, SHA512_BLOCK_SIZE);
-  int last_bytes = bytes % 128;
+  int last_bytes = bytes % SHA512_BLOCK_SIZE;
   int padding = SHA512_BLOCK_SIZE - last_bytes;
   if (last_bytes > 0)
     memcpy (last1, input + (bytes - last_bytes), last_bytes);
@@ -257,7 +257,8 @@ void sha512 (char * input, int bytes, char * result)
     last1 [last_bytes] = 0x80;
   else
     last2 [0] = 0x80;
-  if (padding < 17)
+  /* sha512 has 16B for 2^128 bytes, my ints are 64 bits/8B long */
+  if (padding < 17)  /* so we extend if padding < 17, but only write 8 bytes */
     write_int (last2 + (SHA512_BLOCK_SIZE - 8), bits);
   else
     write_int (last1 + (SHA512_BLOCK_SIZE - 8), bits);
@@ -326,12 +327,11 @@ static char * malloc_concat (char * s1, int s1len, char * s2, int s2len)
 void sha512hmac (char * data, int dsize, char * key, int ksize, char * result)
 {
   char key_copy [SHA512_BLOCK_SIZE];
-  if (ksize <= SHA512_BLOCK_SIZE) {
-    memset (key_copy, 0, SHA512_BLOCK_SIZE);
+  memset (key_copy, 0, SHA512_BLOCK_SIZE);
+  if (ksize <= SHA512_BLOCK_SIZE)
     memcpy (key_copy, key, ksize);
-  } else {
-    sha512 (key, ksize, key_copy);
-  }
+  else
+    sha512 (key, ksize, key_copy);  /* only fills half of key_copy */
 
   char ipad [SHA512_BLOCK_SIZE];
   char opad [SHA512_BLOCK_SIZE];
