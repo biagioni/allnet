@@ -744,7 +744,7 @@ int bitstring_matches (unsigned char * x, int xoff,
 unsigned long long allnet_time ()     /* seconds since Y2K */
 {
   unsigned long long result = time (NULL);
-  return result - Y2K_SECONDS_IN_UNIX;
+  return result - ALLNET_Y2K_SECONDS_IN_UNIX;
 }
 
 unsigned long long allnet_time_us ()  /* microseconds since Y2K */
@@ -752,14 +752,14 @@ unsigned long long allnet_time_us ()  /* microseconds since Y2K */
   struct timeval tv;
   gettimeofday (&tv, NULL);
   unsigned long long result = tv.tv_sec;
-  result -= Y2K_SECONDS_IN_UNIX;
-  result *= US_PER_S;
+  result -= ALLNET_Y2K_SECONDS_IN_UNIX;
+  result *= ALLNET_US_PER_S;
   result += tv.tv_usec;
 }
 
 unsigned long long allnet_time_ms ()  /* milliseconds since Y2K */
 {
-  return allnet_time_us () / US_PER_MS;
+  return allnet_time_us () / ALLNET_US_PER_MS;
 }
 
 /* returns the result of calling ctime_r on the given allnet time. */
@@ -770,7 +770,7 @@ void allnet_time_string (unsigned long long int allnet_seconds, char * result)
   /* in case of errors */
   snprintf (result, 30, "bad time %lld\n", allnet_seconds);
 
-  time_t unix_seconds = allnet_seconds + Y2K_SECONDS_IN_UNIX;
+  time_t unix_seconds = allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX;
   struct tm detail_time;
   if (gmtime_r (&unix_seconds, &detail_time))
     return;
@@ -785,7 +785,7 @@ void allnet_localtime_string (unsigned long long int allnet_seconds,
   /* in case of errors */
   snprintf (result, 30, "bad time %lld\n", allnet_seconds);
 
-  time_t unix_seconds = allnet_seconds + Y2K_SECONDS_IN_UNIX;
+  time_t unix_seconds = allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX;
   struct tm * detail_time = localtime (&unix_seconds);  /* sets tzname */
   if (detail_time == NULL)
     return;
@@ -803,7 +803,7 @@ unsigned long long delta_us (struct timeval * t1, struct timeval * t2)
        (t1->tv_usec < t2->tv_usec)))  /* t1 before t2, return 0 */
     return 0LL;
   unsigned long long result = t1->tv_usec - t2->tv_usec;
-  result += (t1->tv_sec - t2->tv_sec) * US_PER_S;
+  result += (t1->tv_sec - t2->tv_sec) * ALLNET_US_PER_S;
   return result;
 }
 
@@ -824,10 +824,10 @@ int is_before (struct timeval * t)
 
 void add_us (struct timeval * t, unsigned long long us)
 {
-  t->tv_usec += us % US_PER_S;         /* add microseconds to tv_usec */
-  t->tv_sec += t->tv_usec / US_PER_S;  /* any carry goes into tv_sec */
-  t->tv_usec = t->tv_usec % US_PER_S;  /* tv_usec should be < 1,000,000 */
-  t->tv_sec += us / US_PER_S;          /* whole seconds added to tv_sec */
+  t->tv_usec += us % ALLNET_US_PER_S;         /* add microseconds to tv_usec */
+  t->tv_sec += t->tv_usec / ALLNET_US_PER_S;  /* any carry goes into tv_sec */
+  t->tv_usec = t->tv_usec % ALLNET_US_PER_S;  /* make tv_usec < 1,000,000 */
+  t->tv_sec += us / ALLNET_US_PER_S;       /* whole seconds added to tv_sec */
 }
 
 /* computes the next time that is a multiple of granularity.  If immediate_ok,
@@ -1166,10 +1166,10 @@ int is_valid_message (const char * packet, int size)
   if (((ah->transport & ALLNET_TRANSPORT_EXPIRATION) != 0)) {
     time_t now = time (NULL);
     char * ep = ALLNET_EXPIRATION (ah, ah->transport, size);
-    if ((now <= Y2K_SECONDS_IN_UNIX) || (ep == NULL) ||
-        (readb64 (ep) < (now - Y2K_SECONDS_IN_UNIX))) {
+    if ((now <= ALLNET_Y2K_SECONDS_IN_UNIX) || (ep == NULL) ||
+        (readb64 (ep) < (now - ALLNET_Y2K_SECONDS_IN_UNIX))) {
       snprintf (log_buf, LOG_SIZE, "expired packet, %lld < %ld (ep %p)\n",
-                readb64 (ep), now - Y2K_SECONDS_IN_UNIX, ep);
+                readb64 (ep), now - ALLNET_Y2K_SECONDS_IN_UNIX, ep);
       log_print ();
       return 0;
     }

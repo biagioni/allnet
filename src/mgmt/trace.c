@@ -102,14 +102,15 @@ static void init_entry (struct allnet_mgmt_trace_entry * new_entry, int hops,
                         struct timeval * now, char * my_address, int abits)
 {
   unsigned long long int time = now->tv_sec;
-  if (time < Y2K_SECONDS_IN_UNIX) {   /* incorrect clock, or time travel */
+  if (time < ALLNET_Y2K_SECONDS_IN_UNIX) {
+    /* incorrect clock, or time travel */
     new_entry->precision = 0;
     writeb64 (new_entry->seconds, 0);
     writeb64 (new_entry->seconds_fraction, 0);
   } else {
     unsigned long long int usec = now->tv_usec;
     new_entry->precision = 64 + 3;   /* 3 digits, 1ms precision */
-    writeb64 (new_entry->seconds, time - Y2K_SECONDS_IN_UNIX);
+    writeb64 (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
     writeb64 (new_entry->seconds_fraction, usec / 1000);
   }
   new_entry->nbits = abits;
@@ -556,8 +557,8 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                                 struct timeval * finish)
 {
   /* put the unix times into allnet format */
-  start->tv_sec -= Y2K_SECONDS_IN_UNIX;
-  finish->tv_sec -= Y2K_SECONDS_IN_UNIX;
+  start->tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
+  finish->tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
   if (trp->encrypted) {
     printf ("to do: implement decrypting encrypted trace result\n");
     return;
@@ -625,7 +626,7 @@ static void handle_packet (char * message, int msize, char * seeking,
   struct timeval now;
   gettimeofday (&now, NULL);
 /*
-  printf ("%ld.%06ld: ", now.tv_sec - Y2K_SECONDS_IN_UNIX, now.tv_usec);
+  printf ("%ld.%06ld: ", now.tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX, now.tv_usec);
   print_packet (message, msize, "trace reply packet received", 1);
 */
   print_trace_result (trp, start, &now);

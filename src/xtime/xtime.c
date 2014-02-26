@@ -114,7 +114,7 @@ static int time_to_buf (time_t t, char * dp, int n)
     /* best we can do -- empty binary string */
     return 9;
   }
-  time_t unix_time = t + Y2K_SECONDS_IN_UNIX;         /* restore unix time */
+  time_t unix_time = t + ALLNET_Y2K_SECONDS_IN_UNIX;  /* restore unix time */
   struct tm details;
   gmtime_r (&unix_time, &details);
   asctime_r (&details, dp);
@@ -203,8 +203,9 @@ static void announce (time_t interval, int sock,
   bzero (buffer, sizeof (buffer));
 
   int blen = make_announcement (buffer, sizeof (buffer),
-                                announce_time - Y2K_SECONDS_IN_UNIX,
-                                announce_time + interval - Y2K_SECONDS_IN_UNIX,
+                                announce_time - ALLNET_Y2K_SECONDS_IN_UNIX,
+                                announce_time + interval -
+                                  ALLNET_Y2K_SECONDS_IN_UNIX,
                                 hops, key, ksize, source, sbits, dest, dbits);
 
   wait_until (announce_time);

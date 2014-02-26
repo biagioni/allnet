@@ -132,7 +132,7 @@ static void wait_for_key (int sock, char * secret, char * contact,
         int usec = finish.tv_usec - start.tv_usec;
         int sec = finish.tv_sec - start.tv_sec;
         while (usec < 0) {
-          usec += US_PER_S;
+          usec += ALLNET_US_PER_S;
           sec--;
         }
         printf ("got key message in %d.%06ds\n", sec, usec);

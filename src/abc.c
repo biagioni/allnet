@@ -320,12 +320,14 @@ static void old_send_beacon (int fd, unsigned char * dest, int nbits, int hops,
   else if (delta_us (&now, &send_next) == 0LL)   /* do not send yet */
     return;
   /* send the next beacon at a random time between 0.5s and 1.5s from now */
-  set_time_random (&now, HALF_SECOND, ONE_SECOND + HALF_SECOND, &send_next);
+  set_time_random (&now, ALLNET_HALF_SECOND_IN_US,
+                   ALLNET_ONE_SECOND_IN_US + ALLNET_HALF_SECOND_IN_US,
+                   &send_next);
 /*
   printf ("%ld.%06ld sending beacon, next %ld.%06ld delta %lld.%06lld\n",
           now.tv_sec, now.tv_usec, send_next.tv_sec, send_next.tv_usec,
-          delta_us (&send_next, &now) / US_PER_S,
-          delta_us (&send_next, &now) % US_PER_S);
+          delta_us (&send_next, &now) / ALLNET_US_PER_S,
+          delta_us (&send_next, &now) % ALLNET_US_PER_S);
 */
   if (nbits > 8 * ADDRESS_SIZE)
     nbits = 8 * ADDRESS_SIZE; /* defensive programming, should not be needed */

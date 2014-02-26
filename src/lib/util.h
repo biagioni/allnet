@@ -95,10 +95,10 @@ extern void allnet_localtime_string (unsigned long long int allnet_seconds,
                                      char * result);
 
 /* useful time functions and constants */
-#define US_PER_S        1000000    /* microseconds in a second */
-#define US_PER_MS       1000       /* microseconds in a millisecond */
-#define ONE_SECOND      US_PER_S
-#define HALF_SECOND     (US_PER_S / 2)
+#define ALLNET_US_PER_S           1000000    /* microseconds in a second */
+#define ALLNET_US_PER_MS          1000       /* microseconds in a millisecond */
+#define ALLNET_ONE_SECOND_IN_US   ALLNET_US_PER_S
+#define ALLNET_HALF_SECOND_IN_US  (ALLNET_US_PER_S / 2)
 
 /* if t1 < t2, returns 0, otherwise returns t1 - t2 */
 extern unsigned long long delta_us (struct timeval * t1, struct timeval * t2);
