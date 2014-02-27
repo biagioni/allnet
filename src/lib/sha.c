@@ -321,17 +321,19 @@ static char * malloc_concat (char * s1, int s1len, char * s2, int s2len)
   }
   memcpy (result, s1, s1len);
   memcpy (result + s1len, s2, s2len);
+  return result;
 }
 
 /* the result array must have size SHA512_SIZE */
 void sha512hmac (char * data, int dsize, char * key, int ksize, char * result)
 {
   char key_copy [SHA512_BLOCK_SIZE];
-  memset (key_copy, 0, SHA512_BLOCK_SIZE);
-  if (ksize <= SHA512_BLOCK_SIZE)
+  bzero (key_copy, sizeof (key_copy));
+  if (ksize <= SHA512_BLOCK_SIZE) {
     memcpy (key_copy, key, ksize);
-  else
+  } else {
     sha512 (key, ksize, key_copy);  /* only fills half of key_copy */
+  }
 
   char ipad [SHA512_BLOCK_SIZE];
   char opad [SHA512_BLOCK_SIZE];
@@ -390,6 +392,16 @@ static void run_test (char * text, int tlen, char * expected)
   print_data (result, sizeof (result));
 }
 
+static void hmac_test (int tlen)
+{
+  char key [] = "foo bar";
+  char * data = malloc (tlen);
+  char result [SHA512_SIZE];
+  sha512hmac (data, tlen, key, strlen (key), result);
+  printf ("hmac of input of size %d is:\n", tlen);
+  print_data (result, sizeof (result));
+}
+
 int main ()
 {
   char r4 [] = { 0xdd, 0xaf, 0x35, 0xa1, 0x93, 0x61, 0x7a, 0xba,
@@ -442,6 +454,22 @@ int main ()
                  0x5e, 0x96, 0xe5, 0x5b, 0x87, 0x4b, 0xe9, 0x09 };
   run_test ("abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstu", 112, r5);
 
+  char r6 [] = { 0x70, 0x7c, 0xc5, 0x13, 0xaa, 0x52, 0xbd, 0xaa,
+                 0xe8, 0xd3, 0xef, 0xd4, 0xf1, 0x75, 0xcf, 0x94,
+                 0x27, 0x5e, 0x4e, 0xaf, 0xde, 0xf0, 0x47, 0x17,
+                 0x1d, 0x4c, 0x1b, 0x3f, 0x1e, 0xc4, 0x35, 0x62,
+                 0x0a, 0x1a, 0xe9, 0xc3, 0x85, 0x91, 0xb1, 0xcb,
+                 0xaa, 0xe2, 0x4a, 0x2e, 0x2b, 0x04, 0xf4, 0x0f,
+                 0x70, 0x2f, 0xf8, 0x58, 0xe0, 0x89, 0x26, 0x38,
+                 0x20, 0xa2, 0x84, 0x1b, 0xdf, 0x84, 0x15, 0xf1 };
+
+  run_test ("abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstuabcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstuabcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstuabcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoijklmnopjklmnopqklmnopqrlmnopqrsmnopqrstnopqrstuabcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmnoi", 513, r6);
+
+  hmac_test (511);
+  hmac_test (512);
+  hmac_test (513);
+  hmac_test (514);
+  hmac_test (515);
 }
 
 #endif /* TEST_SHA512 */

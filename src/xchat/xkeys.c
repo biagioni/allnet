@@ -48,9 +48,89 @@ static int delta_ms (struct timeval * finish, struct timeval * start)
   return result;
 }
 
+static int handle_packet (int sock, char * message, int msize,
+                          char * my_key, int ksize,
+                          char * contact, keyset keys,
+                          char * secret, char * address, int nbits,
+                          struct timeval * start, struct timeval * finish)
+{
+print_packet (message, msize, "received", 1);
+  if (msize < ALLNET_HEADER_SIZE) {
+    printf ("got %d bytes, dropping message\n", msize);
+    return 0;
+  }
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if (msize < ALLNET_SIZE(hp->transport)) {
+    printf ("got %d < %zd bytes, dropping message\n", msize,
+            ALLNET_SIZE(hp->transport));
+    return 0;
+  }
+  if (hp->message_type != ALLNET_TYPE_DATA) {
+    printf ("got a message of type %d, dropping\n", hp->message_type);
+    return 0;
+  }
+  if (! bitstring_matches (hp->destination, 0, address, 0, nbits)) {
+    printf ("destination bitstring %02x.%02x does not match %02x.%02x (%d)\n",
+            hp->destination [0] & 0xff, hp->destination [1] & 0xff,
+            address [0] & 0xff, address [1] & 0xff, hp->dst_nbits);
+    return 0;
+  }
+  gettimeofday (finish, NULL);
+  unsigned long long int delta = delta_us (finish, start);
+  int usec = delta % 1000000;
+  int sec = delta / 1000000;
+  printf ("got tentative reply in %d.%06ds\n", sec, usec);
+
+  char * cipher = message + ALLNET_SIZE(hp->transport);
+  int csize = msize - ALLNET_SIZE(hp->transport);
+
+  char * text;   /* plaintext, if all goes well */
+  int tsize = decrypt (cipher, csize, my_key, ksize, &text);
+  if (tsize <= 0) {
+    print_buffer (cipher, csize, "unable to decrypt", 14, 1);
+    return 0;
+  }
+  printf ("decryption successful!\n");
+  char * contact_pubkey = text + MESSAGE_ID_SIZE;
+  int computed_ksize = tsize - MESSAGE_ID_SIZE - strlen (secret);
+  /* expected key size is 4096 bits or 512 bytes, plus one header byte */
+  int contact_ksize = 4096 / 8 + 1;
+  if ((*contact_pubkey != KEY_RSA4096_E65537) ||
+      (computed_ksize != contact_ksize)) {
+    printf ("computed key size %d, but received key type/size %d/%d\n",
+            computed_ksize, (*contact_pubkey) & 0xff, contact_ksize);
+    print_buffer (contact_pubkey, tsize, "public key", 16, 1);
+    free (text);
+    return 0;
+  }
+  char * received_secret = contact_pubkey + contact_ksize;
+  int secret_len = tsize - MESSAGE_ID_SIZE - computed_ksize;
+  if (secret_len != strlen (secret)) {
+    printf ("received secret of length %d, our secret (%s) has length %zd\n",
+            secret_len, secret, strlen (secret));
+    free (text);
+    return 0;
+  }
+  if (memcmp (received_secret, secret, secret_len) != 0) {
+    char * copy = malloc_or_fail (secret_len + 1, "secret copy");
+    memcpy (copy, received_secret, secret_len);
+    copy [secret_len] = '\0';
+    printf ("received secret %s, expected %s\n", copy, secret);
+    free (copy);
+    free (text);
+    return 0;
+  }
+  printf ("received valid public key for %s\n", contact);
+  set_contact_pubkey (keys, contact_pubkey, contact_ksize);
+  set_contact_remote_addr (keys, hp->src_nbits, hp->source);
+  send_ack (sock, message, address, text);
+  free (text);
+  return 1;
+}
+
 /* wait for a key for a limited time */
-static void wait_for_key (int sock, char * secret,
-                          char * contact, keyset keys, char * address,
+static void wait_for_key (int sock, char * secret, char * contact,
+                          keyset keys, char * address, int nbits,
                           unsigned long long int ms, struct timeval * start)
 {
   char * my_key;
@@ -62,7 +142,8 @@ static void wait_for_key (int sock, char * secret,
   add_pipe (sock);
   struct timeval finish;
   finish = *start;
-  while (delta_us (&finish, start) <= ms) {
+  int done = 0;
+  while ((! done) && (delta_us (&finish, start) <= ms)) {
     int pipe;
     int pri;
     char * message;
@@ -71,59 +152,9 @@ static void wait_for_key (int sock, char * secret,
       printf ("pipe closed, exiting\n");
       exit (1);
     }
-    if (found >= ALLNET_HEADER_SIZE) {
-      struct allnet_header * hp = (struct allnet_header *) message;
-      if ((found >= ALLNET_SIZE(hp->transport)) &&
-          (hp->message_type == ALLNET_TYPE_DATA) &&
-          (bitstring_matches (hp->destination, 0, address, 0, hp->dst_nbits))) {
-        gettimeofday (&finish, NULL);
-        unsigned long long int delta = delta_us (&finish, start);
-        int usec = delta % 1000000;
-        int sec = delta / 1000000;
-        printf ("got tentative reply in %d.%06ds\n", sec, usec);
-
-        char * cipher = message + ALLNET_SIZE(hp->transport);
-        int csize = found - ALLNET_SIZE(hp->transport);
-
-        char * text;   /* plaintext, if all goes well */
-        int tsize = decrypt (cipher, csize, my_key, ksize, &text);
-        if (tsize <= 0) {
-          print_buffer (cipher, csize, "unable to decrypt", 14, 1);
-        } else {
-          printf ("decryption successful!\n");
-          char * contact_pubkey = text + MESSAGE_ID_SIZE;
-          int computed_ksize = tsize - MESSAGE_ID_SIZE - strlen (secret);
-          int contact_ksize = 4096;
-          if ((*contact_pubkey == KEY_RSA4096_E65537) &&
-              (computed_ksize == contact_ksize)) {
-              char * received_secret = contact_pubkey + contact_ksize;
-              int secret_len = tsize - MESSAGE_ID_SIZE - computed_ksize;
-              if (memcmp (received_secret, secret, secret_len) == 0) {
-                printf ("received valid public key for %s\n", contact);
-                set_contact_pubkey (keys, contact_pubkey, contact_ksize);
-                send_ack (sock, message, address, text);
-                free (text);
-                free (message);
-                return;
-              } else {
-              static char copy [1000];
-              memcpy (copy, received_secret, secret_len);
-              copy [secret_len] = '\0';
-              printf ("received secret %s, expected %s\n", copy, secret);
-            }
-          } else {
-            printf ("computed key size %d, but received key type/size %d%d\n",
-                    computed_ksize, (*contact_pubkey) & 0xff, contact_ksize);
-            print_buffer (contact_pubkey, tsize, "public key", 16, 1);
-          }
-          free (text);
-        }
-      }
-    } else {
-      printf ("got %d bytes, dropping message\n", found);
-    }
-    if (found > 0)
-      free (message);
+    done = handle_packet (sock, message, found, my_key, ksize, contact, keys,
+                          secret, address, nbits, start, &finish);
+    free (message);
     gettimeofday (&finish, NULL);
   }
 }
@@ -132,10 +163,10 @@ static void wait_for_key (int sock, char * secret,
  * the secret as the key for the hmac */
 static void send_key_message (char * contact, char * secret, int hops, int sock)
 {
-  printf ("to do: determine my source address\n");
-  char source [ADDRESS_SIZE];
-  random_bytes (source, sizeof (source));
-  keyset keys = create_contact (contact, 4096, 1, NULL, 0, source, 16, NULL, 0);
+  char address [ADDRESS_SIZE];
+  random_bytes (address, sizeof (address));
+  keyset keys = create_contact (contact, 4096, 1, NULL, 0,
+                                address, 16, NULL, 0);
   if (keys < 0) {
     printf ("contact %s already exists\n", contact);
     return;
@@ -158,14 +189,13 @@ static void send_key_message (char * contact, char * secret, int hops, int sock)
   hp->dst_nbits = 0;
   hp->sig_algo = ALLNET_SIGTYPE_NONE;
   hp->transport = ALLNET_TRANSPORT_NONE;
-  memcpy (hp->source, source, 16 / 8);
+  memcpy (hp->source, address, hp->src_nbits / 8);
 
   char * data = message + ALLNET_SIZE (hp->transport);
   memcpy (data, my_public_key, public_key_size);
   sha512hmac (my_public_key, public_key_size, secret, strlen (secret),
               /* hmac is written directly into the packet */
               data + public_key_size);
-  free (my_public_key);
   int size = ALLNET_SIZE (hp->transport) + public_key_size + SHA512_SIZE;
 
   struct timeval start;
@@ -175,7 +205,8 @@ static void send_key_message (char * contact, char * secret, int hops, int sock)
     return;
   }
   /* see if an response comes back within a day or so */
-  wait_for_key (sock, secret, contact, keys, hp->source, 86400000, &start);
+  wait_for_key (sock, secret, contact, keys, address, hp->src_nbits,
+                86400000, &start);
 }
 
 int main (int argc, char ** argv)

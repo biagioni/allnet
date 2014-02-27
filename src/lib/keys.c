@@ -32,8 +32,8 @@
 #include "mapchar.h"
 
 /* a key set consists of the contact name, my private and public keys,
- * the contact's public key, and possibly a source address and/or
- * a destination address */
+ * the contact's public key, and possibly a local address and/or
+ * a remote address */
 /* each contact name is associated with 0 or more key sets */
 
 struct key_address {
@@ -46,8 +46,8 @@ struct key_info {
   char * contact_name;
   RSA * contact_pubkey;
   RSA * my_key;
-  struct key_address source;
-  struct key_address dest;
+  struct key_address local;
+  struct key_address remote;
 };
 
 struct key_info * kip = NULL;
@@ -111,10 +111,10 @@ static void set_kip_size (int size)
     new_kip [i].contact_name = NULL;
     new_kip [i].contact_pubkey = NULL;
     new_kip [i].my_key = NULL;
-    new_kip [i].source.nbits = 0;
-    bzero (new_kip [i].source.address, ADDRESS_SIZE);
-    new_kip [i].dest.nbits = 0;
-    bzero (new_kip [i].dest.address, ADDRESS_SIZE);
+    new_kip [i].local.nbits = 0;
+    bzero (new_kip [i].local.address, ADDRESS_SIZE);
+    new_kip [i].remote.nbits = 0;
+    bzero (new_kip [i].remote.address, ADDRESS_SIZE);
   }
   /* set kip to point to the new array */
   if (kip != NULL)
@@ -211,8 +211,8 @@ static void read_address_file (char * fname, char * address, int * nbits)
 /* returns 0 if the contact does not exist, 1 otherwise */
 static int read_key_info (char * path, char * file, char ** contact,
                           RSA ** my_key, RSA ** contact_pubkey,
-                          char * source, int * src_nbits,
-                          char * destination, int * dst_nbits)
+                          char * local, int * loc_nbits,
+                          char * remote, int * rem_nbits)
 {
   char * basename = strcat3_malloc (path, "/", file, "basename");
 
@@ -241,14 +241,14 @@ static int read_key_info (char * path, char * file, char ** contact,
     read_RSA_file (name, contact_pubkey, 0);
     free (name);
   }
-  if ((source != NULL) && (src_nbits != NULL)) {
-    char * name = strcat_malloc (basename, "/source", "source name");
-    read_address_file (name, source, src_nbits);
+  if ((local != NULL) && (loc_nbits != NULL)) {
+    char * name = strcat_malloc (basename, "/local", "local name");
+    read_address_file (name, local, loc_nbits);
     free (name);
   }
-  if ((destination != NULL) && (dst_nbits != NULL)) {
-    char * name = strcat_malloc (basename, "/destination", "dest name");
-    read_address_file (name, destination, dst_nbits);
+  if ((remote != NULL) && (rem_nbits != NULL)) {
+    char * name = strcat_malloc (basename, "/remote", "remote name");
+    read_address_file (name, remote, rem_nbits);
     free (name);
   }
 
@@ -296,8 +296,8 @@ static void init_from_file ()
     if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* key directory */
         (read_key_info (dirname, dep->d_name, &(kip [i].contact_name),
                         &(kip [i].my_key), &(kip [i].contact_pubkey),
-                        kip [i].source.address, &(kip [i].source.nbits),
-                        kip [i].dest.address, &(kip [i].dest.nbits))))
+                        kip [i].local.address, &(kip [i].local.nbits),
+                        kip [i].remote.address, &(kip [i].remote.nbits))))
       i++;
   }
   closedir (dir);
@@ -411,59 +411,75 @@ static void save_contact (struct key_info * k)
     free (my_key_fname);
   }
   if (k->contact_pubkey != NULL) {
-    char * key_fname = strcat3_malloc (dirname, "/", "contact_pubkey", "kfile");
+    char * key_fname = strcat3_malloc (dirname, "/", "contact_pubkey", "kf");
     write_RSA_file (key_fname, k->contact_pubkey, 0);
     free (key_fname);
   }
-  if (k->source.nbits != 0) {
-    char * source_fname = strcat3_malloc (dirname, "/", "source", "sfile");
-    write_address_file (source_fname, k->source.address, k->source.nbits);
-    free (source_fname);
+  if (k->local.nbits != 0) {
+    char * local_fname = strcat3_malloc (dirname, "/", "local", "lfile");
+    write_address_file (local_fname, k->local.address, k->local.nbits);
+    free (local_fname);
   }
-  if (k->dest.nbits != 0) {
-    char * dest_fname = strcat3_malloc (dirname, "/", "destination", "dfile");
-    write_address_file (dest_fname, k->dest.address, k->dest.nbits);
-    free (dest_fname);
+  if (k->remote.nbits != 0) {
+    char * remote_fname = strcat3_malloc (dirname, "/", "remote", "rfile");
+    write_address_file (remote_fname, k->remote.address, k->remote.nbits);
+    free (remote_fname);
   }
   printf ("save_contact file name is %s\n", dirname);
 }
 
-static int do_set_contact_pubkey (keyset k, char * contact_key, int ksize)
+static int do_set_contact_pubkey (struct key_info * k,
+                                  char * contact_key, int ksize)
 {
+  if ((ksize != 513) || (contact_key == NULL) ||
+      (*contact_key != KEY_RSA4096_E65537)) {
+    printf ("do_set_contact_pubkey, key size %d, key %p (%d)\n",
+            ksize, contact_key, ((contact_key == NULL) ? 0 : *contact_key));
+    return 0;
+  }
+  RSA * rsa = RSA_new ();
+  rsa->n = BN_bin2bn (contact_key + 1, ksize - 1, NULL);
+  rsa->e = NULL;
+  BN_dec2bn (&(rsa->e), RSA_E65537_STRING);
+  k->contact_pubkey = rsa;
+  return 1;
+/*
   BIO * mbio = BIO_new_mem_buf (contact_key, ksize);
   kip [k].contact_pubkey = PEM_read_bio_RSAPublicKey (mbio, NULL, NULL, NULL);
   BIO_free (mbio);
+*/
 }
 
 int set_contact_pubkey (keyset k, char * contact_key, int contact_ksize)
 {
   init_from_file ();
   if ((! valid_keyset (k)) || (kip [k].contact_pubkey != NULL) ||
-      (contact_key == NULL) || (contact_ksize = 0))
+      (contact_key == NULL) || (contact_ksize == 0))
     return 0;
-  do_set_contact_pubkey (k, contact_key, contact_ksize);
+  if (do_set_contact_pubkey (kip + k, contact_key, contact_ksize) == 0)
+    return 0;
   save_contact (kip + k);
   return 1;
 }
 
-int set_contact_source_addr (keyset k, int nbits, char * address)
+int set_contact_local_addr (keyset k, int nbits, char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
     return 0;
-  kip [k].source.nbits = nbits;
-  memcpy (kip [k].source.address, address, ADDRESS_SIZE);
+  kip [k].local.nbits = nbits;
+  memcpy (kip [k].local.address, address, ADDRESS_SIZE);
   save_contact (kip + k);
   return 1;
 }
 
-int set_contact_dest_addr (keyset k, int nbits, char * address)
+int set_contact_remote_addr (keyset k, int nbits, char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
     return 0;
-  kip [k].dest.nbits = nbits;
-  memcpy (kip [k].dest.address, address, ADDRESS_SIZE);
+  kip [k].remote.nbits = nbits;
+  memcpy (kip [k].remote.address, address, ADDRESS_SIZE);
   save_contact (kip + k);
   return 1;
 }
@@ -474,12 +490,13 @@ int set_contact_dest_addr (keyset k, int nbits, char * address)
 /* if feedback is nonzero, gives feedback while creating the key */
 keyset create_contact (char * contact, int keybits, int feedback,
                        char * contact_key, int contact_ksize,
-                       char * source, int src_nbits,
-                       char * destination, int dst_nbits)
+                       char * local, int loc_nbits,
+                       char * remote, int rem_nbits)
 {
   init_from_file ();
   if (contact_exists (contact))
     return -1;
+
   RSA * my_key = NULL;
   if (feedback) {
     my_key = RSA_generate_key (keybits, RSA_E65537_VALUE, callback, NULL);
@@ -488,29 +505,40 @@ keyset create_contact (char * contact, int keybits, int feedback,
     my_key = RSA_generate_key (keybits, RSA_E65537_VALUE, no_feedback, NULL);
   }
 
+  struct key_info new;
+  new.contact_name = strcpy_malloc (contact, "create_contact");
+  new.my_key = my_key;
+  /* set defaults for the remaining values, then override them later if given */
+  new.contact_pubkey = NULL;
+  new.local.nbits = 0;
+  bzero (new.local.address, ADDRESS_SIZE);
+  new.remote.nbits = 0;
+  bzero (new.remote.address, ADDRESS_SIZE);
+
+  if ((contact_key != NULL) && (contact_ksize > 0) &&
+      (do_set_contact_pubkey (&new, contact_key, contact_ksize) == 0)) {
+    free (new.contact_name);
+    printf ("do_set_contact_pubkey failed for contact %s\n", contact);
+    return -1;
+  }
+  if ((local != NULL) && (loc_nbits > 0)) {
+    new.local.nbits = loc_nbits;
+    memcpy (new.local.address, local, ADDRESS_SIZE);
+  }
+  if ((remote != NULL) && (rem_nbits > 0)) {
+    new.remote.nbits = rem_nbits;
+    memcpy (new.remote.address, remote, ADDRESS_SIZE);
+  }
+
+  /* save into the kip data structure */
   int new_contact = num_key_infos;
   set_kip_size (new_contact + 1);   /* make room for the new entry */
-  kip [new_contact].contact_name = strcpy_malloc (contact, "create_contact");
+  kip [new_contact] = new;
   generate_contacts ();
-  kip [new_contact].my_key = my_key;
 
-  /* set defaults for the remaining values, then override them later if given */
-  kip [new_contact].contact_pubkey = NULL;
-  kip [new_contact].source.nbits = 0;
-  bzero (kip [new_contact].source.address, ADDRESS_SIZE);
-  kip [new_contact].dest.nbits = 0;
-  bzero (kip [new_contact].dest.address, ADDRESS_SIZE);
-
-  if ((contact_key != NULL) && (contact_ksize > 0))
-    do_set_contact_pubkey (new_contact, contact_key, contact_ksize);
-  if ((source != NULL) && (src_nbits > 0)) {
-    kip [new_contact].source.nbits = src_nbits;
-    memcpy (kip [new_contact].source.address, source, ADDRESS_SIZE);
-  }
-  if ((destination != NULL) && (dst_nbits > 0)) {
-    kip [new_contact].dest.nbits = dst_nbits;
-    memcpy (kip [new_contact].dest.address, destination, ADDRESS_SIZE);
-  }
+printf ("for %s new.keys are %p %p, kip keys are %p %p\n",
+kip [new_contact].contact_name, new.contact_pubkey, new.my_key,
+kip [new_contact].contact_pubkey, kip [new_contact].my_key);
 
   /* now save to disk */
   save_contact (kip + new_contact);
@@ -574,6 +602,7 @@ int all_keys (char * contact, keyset ** keysets)
 static unsigned int get_pubkey (RSA * rsa, char ** bytes,
                                 char * storage, int ssize)
 {
+  *bytes = NULL;
   if (rsa == NULL)
     return 0;
   int size = BN_num_bytes (rsa->n);
@@ -635,26 +664,26 @@ unsigned int get_my_privkey (keyset k, char ** key)
 
 /* returns the number of bits in the address, 0 if none */
 /* address must have length at least ADDRESS_SIZE */
-unsigned int get_source (keyset k, char * address)
+unsigned int get_local (keyset k, char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
     return 0;
-  if (kip [k].source.nbits == 0)
+  if (kip [k].local.nbits == 0)
     return 0;
-  memcpy (address, kip [k].source.address, ADDRESS_SIZE);
-  return kip [k].source.nbits;
+  memcpy (address, kip [k].local.address, ADDRESS_SIZE);
+  return kip [k].local.nbits;
 }
 
-unsigned int get_destination (keyset k, char * address)
+unsigned int get_remote (keyset k, char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
     return 0;
-  if (kip [k].dest.nbits == 0)
+  if (kip [k].remote.nbits == 0)
     return 0;
-  memcpy (address, kip [k].dest.address, ADDRESS_SIZE);
-  return kip [k].dest.nbits;
+  memcpy (address, kip [k].remote.address, ADDRESS_SIZE);
+  return kip [k].remote.nbits;
 }
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
@@ -1157,11 +1186,6 @@ unsigned int verify_bc_key (char * address, char * key, int key_bytes,
   rsa->n = BN_bin2bn (key + 1, key_bytes - 1, NULL);
   rsa->e = NULL;
   BN_dec2bn (&(rsa->e), RSA_E65537_STRING);
-/*
-write_RSA_file ("/tmp/x", rsa, 0);
-RSA_free (rsa);
-debug_read_public_RSA_file ("/tmp/x", &rsa);
-*/
   int rsa_size = RSA_size (rsa);
   int max_rsa = rsa_size - 42;  /* PKCS #1 v2 requires 42 bytes */
 

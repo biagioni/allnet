@@ -59,10 +59,12 @@ static void send_key_message (int sock, char * contact, keyset keys,
   int contact_ksize = get_contact_pubkey (keys, &contact_key);
   char * my_pubkey;
   int my_ksize = get_my_pubkey (keys, &my_pubkey);
+printf ("send_key_message: my key %p/%d, contact key %p/%d\n",
+        my_pubkey, my_ksize, contact_key, contact_ksize);
   char addr [ADDRESS_SIZE];
-  int nbits = get_destination (keys, addr);
+  int nbits = get_remote (keys, addr);
   char my_addr [ADDRESS_SIZE];
-  int my_bits = get_source (keys, my_addr);
+  int my_bits = get_local (keys, my_addr);
 
   int length = MESSAGE_ID_SIZE + my_ksize + strlen (secret);
   char * text = malloc_or_fail (length, "send_key_message text");
@@ -73,6 +75,16 @@ static void send_key_message (int sock, char * contact, keyset keys,
   char * cipher;
   int csize = encrypt (text, length, contact_key, contact_ksize, &cipher);
 
+printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);
+
+  int psize;
+  struct allnet_header * hp =
+    create_packet (csize - MESSAGE_ID_SIZE, ALLNET_TYPE_DATA, hops,
+                   ALLNET_SIGTYPE_NONE, my_addr, 16, addr, nbits, text, &psize);
+  char * packet = (char *) hp;
+printf ("packet size is %d bytes\n", psize);
+
+#if 0
   int psize = ALLNET_SIZE(ALLNET_TRANSPORT_ACK_REQ) + csize;
   char * packet = malloc_or_fail (psize, "send_key_message packet");
   bzero (packet, psize);
@@ -90,8 +102,8 @@ static void send_key_message (int sock, char * contact, keyset keys,
   memcpy (hp->destination, addr, (nbits + 7) / 8);
   sha512_bytes (text, MESSAGE_ID_SIZE,
                 ALLNET_MESSAGE_ID(hp, hp->transport, psize), MESSAGE_ID_SIZE);
-  char * data = packet + ALLNET_SIZE(hp->transport);
-  memcpy (data, cipher, csize);
+#endif /* 0 */
+  memcpy (packet + ALLNET_SIZE(hp->transport), cipher, csize);
   free (cipher);
 
   struct timeval start;
@@ -143,11 +155,13 @@ static void wait_for_key (int sock, char * secret, char * contact,
         char hmac [SHA512_SIZE];
         sha512hmac (contact_key, contact_ksize, secret, strlen (secret), hmac);
         if (memcmp (hmac, received_hmac, SHA512_SIZE) == 0) {
-          printf ("received valid public key for '%s'\n", contact);
+          printf ("received valid public key %p/%d for '%s'\n", contact_key,
+                  contact_ksize, contact);
+          print_buffer (contact_key, contact_ksize, "key", 10, 1);
           keyset keys = create_contact (contact, 4096, 1,
                                         contact_key, contact_ksize,
-                                        hp->source, hp->src_nbits,
-                                        my_addr, 16);
+                                        my_addr, 16,
+                                        hp->source, hp->src_nbits);
 
           int sending_hops = hp->hops + 2;
           if (sending_hops < hp->max_hops)

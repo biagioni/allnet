@@ -1,8 +1,8 @@
 /* keys.h: manage keys on disk */
 
 /* a key set consists of the contact name, my private and public keys,
- * the contact's public key, and possibly a source address and/or
- * a destination address */
+ * the contact's public key, and possibly a local address and/or
+ * a remote address */
 /* each contact name is associated with 0 or more key sets */
 
 /* broadcast keys are not associated with any specific contact. */
@@ -26,12 +26,12 @@ extern int all_contacts (char *** contacts);
 
 /* returns the keyset if successful, -1 if the contact already existed */
 /* creates a new private/public key pair, and if not NULL, also 
- * the contact public key, source and destination addresses */
+ * the contact public key, local and remote addresses */
 /* if feedback is nonzero, gives feedback while creating the key */
 extern keyset create_contact (char * contact, int keybits, int feedback,
                               char * contact_key, int contact_ksize,
-                              char * source, int src_nbits,
-                              char * destination, int dst_nbits);
+                              char * local, int loc_nbits,
+                              char * remote, int rem_nbits);
 
 /*************** operations on keysets and keys ********************/
 
@@ -48,8 +48,8 @@ extern int all_keys (char * contact, keyset ** keysets);
  * for this contact, returns 0 otherwise */
 extern int set_contact_pubkey (keyset k, char * contact_key, int contact_ksize);
 /* return 1 and set the address if the keyset is valid, 0 otherwise */
-extern int set_contact_source_addr (keyset k, int nbits, char * address);
-extern int set_contact_dest_addr (keyset k, int nbits, char * address);
+extern int set_contact_local_addr (keyset k, int nbits, char * address);
+extern int set_contact_remote_addr (keyset k, int nbits, char * address);
 
 /* if successful returns the key length and sets *key to point to
  * statically allocated storage for the key (do not modify in any way)
@@ -59,8 +59,8 @@ extern unsigned int get_my_pubkey (keyset k, char ** key);
 extern unsigned int get_my_privkey (keyset k, char ** key);
 /* returns the number of bits in the address, 0 if none */
 /* address must have length at least ADDRESS_SIZE */
-extern unsigned int get_source (keyset k, char * address);
-extern unsigned int get_destination (keyset k, char * address);
+extern unsigned int get_local (keyset k, char * address);
+extern unsigned int get_remote (keyset k, char * address);
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
  * longer be accessed unless marked as valid again */

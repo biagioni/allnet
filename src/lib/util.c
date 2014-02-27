@@ -327,13 +327,14 @@ void packet_to_string (const char * buffer, int bsize, char * desc,
 
   /* print the addresses, if any */
   if (hp->src_nbits != 0)
-    off += snprintf (to + off, tsize - off, " from %d %s", hp->src_nbits,
-                     b2s (hp->source, (hp->src_nbits + 7) / 8));
+    off += snprintf (to + off, tsize - off, " from %s/%d",
+                     b2s (hp->source, (hp->src_nbits + 7) / 8), hp->src_nbits);
   else
     off += snprintf (to + off, tsize - off, " from X");
   if (hp->dst_nbits != 0)
-    off += snprintf (to + off, tsize - off, " to %d %s", hp->dst_nbits,
-                     b2s (hp->destination, (hp->dst_nbits + 7) / 8));
+    off += snprintf (to + off, tsize - off, " to %s/%d",
+                     b2s (hp->destination, (hp->dst_nbits + 7) / 8),
+                     hp->dst_nbits);
   else
     off += snprintf (to + off, tsize - off, " to Y");
 

@@ -27,8 +27,8 @@ void normalize_secret (char * s)
       while (*from != '\0')
         *(to++) = *(from++);
       *to = '\0';
-    } else if (*s == '0') {   /* zero */
-      *s = 'O';  /* O as in Oscar */
+    } else if ((*s == '0') /* zero */ || (toupper (*s) == 'Q')) {
+      *s = 'O';  /* use O as in Oscar for either zero or q */
       s++;
     } else if ((*s == '1') || (toupper (*s) == 'I')) {
       *s = 'L';  /* use L for 1 or i */
@@ -38,7 +38,7 @@ void normalize_secret (char * s)
       s++;
     }
   }
-  printf ("normalized secret is '%s'\n", original);
+  /* printf ("normalized secret is '%s'\n", original); */
 }
 
 /* only really works within 24 hours -- otherwise, too complicated */
@@ -136,13 +136,13 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     char a1 [ADDRESS_SIZE];
     char a2 [ADDRESS_SIZE];
     if (src == NULL) {
-      int nbits = get_source (keys [k], a1);
+      int nbits = get_local (keys [k], a1);
       if (nbits < sbits)
         sbits = nbits;
       src = a1;
     }
     if (dst == NULL) {
-      int nbits = get_destination (keys [k], a2);
+      int nbits = get_remote (keys [k], a2);
       if (nbits < dbits)
         dbits = nbits;
       dst = a2;

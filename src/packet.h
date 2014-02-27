@@ -3,6 +3,8 @@
 #ifndef PACKET_H
 #define PACKET_H
 
+#include <arpa/inet.h>  /* htons */
+
 /* allnet uses two ports: allnet port, for exchanges among peers on different
  * machines, and allnet local port, for connection by local clients to
  * the allnet daemon
