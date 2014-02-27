@@ -14,21 +14,14 @@
 #include "lib/util.h"
 #include "lib/log.h"
 
-static void request_cached_data (int sock)
+static void request_cached_data (int sock, int hops)
 {
-  struct allnet_header ah;
-  int size = sizeof (ah);
-  bzero (&ah, size);
-  ah.version = ALLNET_VERSION;
-  ah.message_type = ALLNET_TYPE_DATA_REQ;
-  ah.hops = 0;
-  ah.max_hops = 5;
-  ah.src_nbits = 0;  /* for now, later maybe put our address */
-  ah.dst_nbits = 0;
-  ah.sig_algo = ALLNET_SIGTYPE_NONE;
-  ah.transport = ALLNET_TRANSPORT_NONE;
-  if (! send_pipe_message (sock, (char *) (&ah), ah,
-                           ALLNET_PRIORITY_LOCAL_LOW))
+  int size;
+  struct allnet_header * hp =
+    create_packet (0, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
+                   NULL, 0, NULL, 0, NULL, &size);
+  if (! send_pipe_message_free (sock, (char *) (hp), size,
+                                ALLNET_PRIORITY_LOCAL_LOW))
     printf ("unable to request cached data\n");
 }
 
@@ -55,7 +48,7 @@ int xchat_init ()
   if (sock < 0)
     return -1;
   add_pipe (sock);
-  request_cached_data (sock);
+  request_cached_data (sock, 10);
   return sock;
 }
 

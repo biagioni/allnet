@@ -1,13 +1,13 @@
 /* trace.c: standalone application to generate and handle AllNet traces */
 /* can be called as daemon (traced) or client (any other name)
- * both the daemon and the client take 1 or two arguments:
+ * both the daemon and the client may take as argument:
    - an address (in hex, with or without separating :,. )
-   - optionally, a number of bits of the address we want to send out, in 0..64
+   - optionally, followed by / and the number of bits of the address, in 0..64
+   the argument and bits default to 0/0 if not specified
  * for the daemon, the specified address is my address, used to fill in
    the response.
-     if nbits is negative, only answers if we match the address.
-     if nbits is not specified, only forwards trace requests, never
-       adds our info to outgoing trace requests
+ * the daemon will optionally take a '-m' option, to specify tracing
+   only when we match the address.
  * for the client, the specified address is the address to trace
  */
 
@@ -37,17 +37,7 @@ static int get_nybble (char * string, int * offset)
     return 10 + *p - 'a';
   if ((*p >= 'A') && (*p <= 'F'))
     return 10 + *p - 'A';
-  return -1;
-}
-
-static int old_get_byte (char * string, int * offset)
-{
-  int first = get_nybble (string, offset);
-  if (first != -1) {
-    int second = get_nybble (string, offset);
-    if (second != -1)
-      return (first << 8) | second;
-  }
+  *offset = p - string;   /* point to the offending character */
   return -1;
 }
 
@@ -74,11 +64,17 @@ static int get_address (char * address, char * result, int rsize)
   while (index < rsize) {
     int new_bits = get_byte (address, &offset, result + index);
     if (new_bits <= 0)
-      return bits;
+      break;
     bits += new_bits;
     if (new_bits < 8)
-      return bits;
+      break;
     index++;
+  }
+  if (address [offset] == '/') { /* number of bits follows */
+    char * end;
+    int given_bits = strtol (address + offset + 1, &end, 10);
+    if ((end != address + offset + 1) && (given_bits <= bits))
+      bits = given_bits;
   }
   return bits;
 }
@@ -115,7 +111,7 @@ static void init_entry (struct allnet_mgmt_trace_entry * new_entry, int hops,
   }
   new_entry->nbits = abits;
   new_entry->hops_seen = hops;
-  memcpy (new_entry->address, my_address, ADDRESS_SIZE);
+  memcpy (new_entry->address, my_address, (abits + 7) / 8);
 }
 
 static int add_my_entry (char * in, int insize, struct allnet_header * inhp,
@@ -272,11 +268,12 @@ static void acknowledge_bcast (int sock, char * message, int msize)
   if (msize < hsize + MESSAGE_ID_SIZE)
     return;
   int asize;
-  struct allnet_header * ack = create_ack (hp, message + hsize, &asize);
+  struct allnet_header * ack = create_ack (hp, message + hsize,
+                                           NULL, 0, &asize);
   if ((asize == 0) || (ack == NULL))
     return;
-  if (! send_pipe_message (sock, (char *) ack, asize,
-                           ALLNET_PRIORITY_DEFAULT_LOW))
+  if (! send_pipe_message_free (sock, (char *) ack, asize,
+                                ALLNET_PRIORITY_DEFAULT_LOW))
     printf ("unable to send trace response\n");
 }
 
@@ -341,13 +338,14 @@ static void respond_to_trace (int sock, char * message, int msize,
   if (mbits > hp->dst_nbits)
     mbits = hp->dst_nbits;   /* min of abits, and hp->dst_nbits */
   int nmatch = matches (my_address, abits, hp->destination, hp->dst_nbits);
-/*
+#ifdef DEBUG_PRINT
   printf ("matches (");
   print_buffer (my_address, abits, NULL, (abits + 7) / 8, 0);
   printf (", ");
   print_buffer (hp->destination, hp->dst_nbits, NULL,
                 (hp->dst_nbits + 7) / 8, 0);
-  printf (") => %d (%d needed)\n", nmatch, mbits); */
+  printf (") => %d (%d needed)\n", nmatch, mbits);
+#endif /* DEBUG_PRINT */
   /* when forwarding, use a low priority > epsilon, to tell ad it is from us */
   int fwd_priority = ALLNET_PRIORITY_DEFAULT_LOW;
   if ((forward_only) || ((match_only) && (nmatch < mbits))) {
@@ -407,6 +405,9 @@ static void main_loop (int sock, char * my_address, int nbits,
       printf ("pipe closed, exiting\n");
       exit (1);
     }
+#ifdef DEBUG_PRINT
+    print_packet (message, found, "received", 1);
+#endif /* DEBUG_PRINT */
     acknowledge_bcast (sock, message, found);
     respond_to_trace (sock, message, found, pri + 1, my_address, nbits,
                       match_only, forward_only, cache);
@@ -442,6 +443,7 @@ static void send_trace (int sock, char * address, int abits, char * trace_id,
 
   trp->intermediate_replies = 1;
   trp->num_entries = 1;
+  writeb16 (trp->pubkey_size, 0);
   /* pubkey_size is 0, so no public key */
   memcpy (trp->trace_id, trace_id, MESSAGE_ID_SIZE);
   struct timeval time;
@@ -661,53 +663,72 @@ static void wait_for_responses (int sock, char * trace_id, int sec)
   printf ("timeout\n");
 }
 
-static void usage (char * pname)
+static void usage (char * pname, int daemon)
 {
-  printf ("usage: %s <my_address_in_hex> <number_of_bits>\n", pname);
+  if (daemon) {
+    printf ("usage: %s [-m] [<my_address_in_hex>[/<number_of_bits>]]\n", pname);
+    printf ("       -m specifies tracing only when we match the address\n"); 
+  } else {
+    printf ("usage: %s [<my_address_in_hex>[/<number_of_bits>]]\n", pname);
+  }
 }
 
 int main (int argc, char ** argv)
 {
-  if (argc < 2) {
-    usage (argv [0]);
+  int is_daemon = 0;
+  if (strstr (argv [0], "traced") != NULL)  /* called as daemon */
+    is_daemon = 1;
+
+  int match_only = 0;
+  int i, j;
+  for (i = 1; i < argc; i++) {
+    if (match_only) {
+      argv [i] = argv [i + 1];
+    } else if (strcmp (argv [i], "-m") == 0) {
+      match_only = 1;
+      argc--;
+    }
+   }
+      
+  if (argc > 2) {
+    usage (argv [0], is_daemon);
     return 1;
   }
 
   char address [100];
   bzero (address, sizeof (address));  /* set unused part to all zeros */
-  int asize = get_address (argv [1], address, sizeof (address));
-  if (asize <= 0) {
-    usage (argv [0]);
-    return 1;
-  }
-  int nbits = asize;
-  int match_only = 0;
-  if (argc >= 3) {
-    char * end;
-    int abits = strtol (argv [2], &end, 10);
-    if (abits < 0) {
-      match_only = 1;
-      abits = - abits;
+  int abits = 0;
+  if (argc > 1) {
+    abits = get_address (argv [1], address, sizeof (address));
+    if (abits <= 0) {
+      usage (argv [0], is_daemon);
+      return 1;
     }
-    if ((end != argv [2]) && (abits > 0) && (abits < nbits))
-      nbits = abits;
   }
 
   int sock = connect_to_local (argv [0]);
   if (sock < 0)
     return 1;
   add_pipe (sock);
-/* print_buffer (address, nbits, "argument address", 8, 1); */
+/* print_buffer (address, abits, "argument address", 8, 1); */
 
-  if (strstr (argv [0], "traced") != NULL) {  /* called as daemon */
-    main_loop (sock, address, nbits, match_only, argc < 3);
+  if (is_daemon) {     /* called as daemon */
+#ifdef DEBUG_PRINT
+    printf ("trace daemon (m %d) for %d bits: ", match_only, abits);
+    print_bitstring (address, 0, abits, 1);
+#endif /* DEBUG_PRINT */
+    main_loop (sock, address, abits, match_only, 0);
     printf ("trace error: main loop returned\n");
   } else {                                    /* called as client */
+#ifdef DEBUG_PRINT
+    printf ("tracing %d bits: ", abits);
+    print_bitstring (address, 0, abits, 1);
+#endif /* DEBUG_PRINT */
     char trace_id [MESSAGE_ID_SIZE];
     char my_addr [ADDRESS_SIZE];
     random_bytes (trace_id, sizeof (trace_id));
     random_bytes (my_addr, sizeof (my_addr));
-    send_trace (sock, address, nbits, trace_id, my_addr, 5);
+    send_trace (sock, address, abits, trace_id, my_addr, 5);
     wait_for_responses (sock, trace_id, 60);
   }
 }

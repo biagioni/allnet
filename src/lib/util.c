@@ -461,15 +461,21 @@ struct allnet_header *
 /* malloc, initialize, and return an ack message for a received packet.
  * The message_ack bytes are taken from the argument, not from the packet.*/
 /* *size is set to the size to send */
+/* if from is NULL, the source address is taken from packet->destination */
 struct allnet_header *
-  create_ack (struct allnet_header * packet, char * ack, int * size)
+  create_ack (struct allnet_header * packet, char * ack,
+              char * from, int nbits, int * size)
 {
   int alloc_size = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
   char * result = malloc_or_fail (alloc_size, "util.c create_packet");
+  if (from == NULL) {
+    from = packet->destination;
+    nbits = packet->dst_nbits;
+  }
   struct allnet_header * hp =
     init_packet (result, alloc_size, ALLNET_TYPE_ACK, packet->hops + 3,
-                 ALLNET_SIGTYPE_NONE, packet->destination, packet->dst_nbits,
-                 packet->source, packet->src_nbits, NULL);
+                 ALLNET_SIGTYPE_NONE,
+                 from, nbits, packet->source, packet->src_nbits, NULL);
   char * ackp = ALLNET_DATA_START(hp, hp->transport, alloc_size);
   if (alloc_size - (ackp - result) != MESSAGE_ID_SIZE) {
     printf ("coding error in create_ack!!!! %d %p %p %d %d\n",
@@ -698,7 +704,7 @@ static int bit_match (unsigned char * x, int xoff, unsigned char * y, int yoff)
   return 0;
 }
 
-char * print_bitstring (unsigned char * x, int xoff, int nbits, int print_eol)
+void print_bitstring (unsigned char * x, int xoff, int nbits, int print_eol)
 {
   int i;
   for (i = 0; i < nbits; i++) {

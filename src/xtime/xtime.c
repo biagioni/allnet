@@ -12,6 +12,7 @@
 #include <errno.h>
 
 #include "packet.h"
+#include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
@@ -27,6 +28,7 @@ static int init_xtime ()
   return sock;
 }
 
+#if 0   /* now in util.c */
 static time_t compute_next (time_t from, time_t granularity, int immediate_ok)
 {
   time_t delta = from % granularity;
@@ -39,6 +41,7 @@ static time_t compute_next (time_t from, time_t granularity, int immediate_ok)
 */
   return from + (granularity - delta);
 }
+#endif /* 0 -- now in util.c */
 
 static void wait_until (time_t end_time)
 {
@@ -138,30 +141,25 @@ static int make_announcement (char * buffer, int n,
             n, ALLNET_HEADER_SIZE, ALLNET_TIME_SIZE);
     exit (1);
   }
-  struct allnet_header * hp = (struct allnet_header *) buffer;
+  /* the signature type will be changed later when we sign the message */
+  struct allnet_header * hp =
+    init_packet (buffer, n, ALLNET_TYPE_CLEAR, hops, ALLNET_SIGTYPE_NONE,
+                 source, sbits, dest, dbits, NULL);
+  if (hp == NULL)
+    return;
+  hp->transport |= ALLNET_TRANSPORT_EXPIRATION;
 
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_CLEAR;
-  hp->hops = 0;
-  hp->max_hops = hops;
-  hp->src_nbits = sbits;
-  hp->dst_nbits = dbits;
-  hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  hp->transport = ALLNET_TRANSPORT_EXPIRATION;
-  memcpy (hp->source, source, ADDRESS_SIZE);
-  memcpy (hp->destination, dest, ADDRESS_SIZE);
   int hsize = ALLNET_SIZE (hp->transport);
   if (hsize > n) {
     printf ("error: header size %d, buffer size %d\n", hsize, n);
     return;
   }
-
   char * dp = buffer + hsize;
 
   int sig_algo = ALLNET_SIGTYPE_NONE;
   int ssize = 0;
   int dsize = time_to_buf (send, dp, TIMESTAMP_SIZE);
-  if (ksize > 0) {
+  if (sig_algo != ALLNET_SIGTYPE_NONE) {
     char * sig;
     ssize = sign (dp, TIMESTAMP_SIZE, key, ksize, &sig);
     if (ssize > 0) {

@@ -17,32 +17,37 @@
 static int send_key_request (int sock, char * phrase,
                              char * pubkey, int ksize) 
 {
-  char request [ALLNET_MTU];
-  bzero (request, ALLNET_MTU);
-  struct allnet_header * hp = (struct allnet_header *) request;
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_KEY_REQ;
-  hp->hops = 0;
-  hp->max_hops = 10;
-  hp->src_nbits = 0;
-  hp->dst_nbits = 8;
-  hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  hp->transport = ALLNET_TRANSPORT_NONE;
+  /* compute the destination address from the phrase */
+  char destination [ADDRESS_SIZE];
   char * mapped;
   int mlen = map_string (phrase, &mapped);
-  sha512_bytes (mapped, mlen, hp->destination, 1);
+  sha512_bytes (mapped, mlen, destination, 1);
   free (mapped);
 
+  int dsize = 1 + ksize;  /* nbits_fingerprint plust the key */
+  int psize;
+  struct allnet_header * hp =
+    create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
+                   NULL, 0, destination, 8, NULL, &psize);
+  
+  if (hp == NULL)
+    return 0;
+  int hsize = ALLNET_SIZE(hp->transport);
+  if (psize != hsize + dsize) {
+    printf ("send_key_request error: psize %d != %d = %d + %d\n", psize,
+            hsize + dsize, hsize, dsize);
+    return 0;
+  }
+  char * packet = (char *) hp;
+
   struct allnet_key_request * kp =
-    (struct allnet_key_request *) (request + ALLNET_HEADER_SIZE);
+    (struct allnet_key_request *) (packet + hsize);
   kp->nbits_fingerprint = 0;
-  char * reply_key = ((char *) kp) + 1;
+  char * reply_key = packet + hsize + 1;
   memcpy (reply_key, pubkey, ksize);
 
-  int total_length = ALLNET_HEADER_SIZE + 1 + ksize;
-/* printf ("sending %d-byte key request\n", total_length); */
-  if (! send_pipe_message (sock, request, total_length,
-                           ALLNET_PRIORITY_LOCAL)) {
+/* printf ("sending %d-byte key request\n", psize); */
+  if (! send_pipe_message_free (sock, packet, psize, ALLNET_PRIORITY_LOCAL)) {
     printf ("unable to send key request message\n");
     return 0;
   }

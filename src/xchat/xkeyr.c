@@ -84,25 +84,6 @@ printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);
   char * packet = (char *) hp;
 printf ("packet size is %d bytes\n", psize);
 
-#if 0
-  int psize = ALLNET_SIZE(ALLNET_TRANSPORT_ACK_REQ) + csize;
-  char * packet = malloc_or_fail (psize, "send_key_message packet");
-  bzero (packet, psize);
-
-  struct allnet_header * hp = (struct allnet_header *) packet;
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_DATA;
-  hp->hops = 0;
-  hp->max_hops = hops;
-  hp->src_nbits = 16;
-  hp->dst_nbits = nbits;
-  hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  hp->transport = ALLNET_TRANSPORT_ACK_REQ;
-  memcpy (hp->source, my_addr, 16 / 8);
-  memcpy (hp->destination, addr, (nbits + 7) / 8);
-  sha512_bytes (text, MESSAGE_ID_SIZE,
-                ALLNET_MESSAGE_ID(hp, hp->transport, psize), MESSAGE_ID_SIZE);
-#endif /* 0 */
   memcpy (packet + ALLNET_SIZE(hp->transport), cipher, csize);
   free (cipher);
 

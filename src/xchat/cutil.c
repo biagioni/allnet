@@ -155,9 +155,6 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     /* set the message ack */
     struct chat_descriptor * cdp = (struct chat_descriptor *) data;
     random_bytes (cdp->message_ack, MESSAGE_ID_SIZE);
-    char message_ack_hash [MESSAGE_ID_SIZE];
-    sha512_bytes (cdp->message_ack, MESSAGE_ID_SIZE,
-                  message_ack_hash, MESSAGE_ID_SIZE);
     /* encrypt */
     char * encrypted;
     int esize = encrypt (data, dsize, key, ksize, &encrypted);
@@ -180,22 +177,18 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     int transport = ALLNET_TRANSPORT_ACK_REQ;
 
     int hsize = ALLNET_SIZE (transport);
-    int msize = hsize + esize + ssize + 2;
-    char * message = malloc_or_fail (msize, "retransmit_request message");
-    bzero (message, msize);
-    struct allnet_header * hp = (struct allnet_header *) message;
-    hp->version = ALLNET_VERSION;
-    hp->message_type = ALLNET_TYPE_DATA;
-    hp->hops = 0;
-    hp->max_hops = hops;
-    hp->src_nbits = sbits;
-    hp->dst_nbits = dbits;
-    hp->sig_algo = ALLNET_SIGTYPE_RSA_PKCS1;
-    hp->transport = transport;
-    memcpy (hp->source, src, ADDRESS_SIZE);
-    memcpy (hp->destination, dst, ADDRESS_SIZE);
-    memcpy (ALLNET_MESSAGE_ID(hp, transport, msize),
-            message_ack_hash, MESSAGE_ID_SIZE);
+    int dsize = esize + ssize + 2;
+    int msize = hsize + dsize;
+    int psize;
+    struct allnet_header * hp =
+      create_packet (dsize - MESSAGE_ID_SIZE, ALLNET_TYPE_DATA, hops,
+                     ALLNET_SIGTYPE_RSA_PKCS1, src, sbits, dst, dbits,
+                     cdp->message_ack, &psize);
+    char * message = (char *) hp;
+    if (psize != msize) {
+      printf ("error: message size computed %d, actual %d\n", msize, psize);
+      exit (1);
+    }
 
     memcpy (message + hsize, encrypted, esize);
     free (encrypted);
@@ -203,11 +196,10 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     free (signature);
     writeb16 (message + hsize + esize + ssize, ssize);
 
-    if (! send_pipe_message (sock, message, msize, priority))
+    if (! send_pipe_message_free (sock, message, msize, priority))
       printf ("unable to request retransmission from %s\n", contact);
-    /* else
-        printf ("requested retransmission from %s\n", peer); */
-    free (message);
+ /* else
+      printf ("requested retransmission from %s\n", peer); */
   }
   return result;
 }

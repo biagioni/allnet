@@ -48,12 +48,14 @@ extern struct allnet_header *
 /* malloc, initialize, and return an ack message for a received packet.
  * The message_ack bytes are taken from the argument, not from the packet.*/
 /* *size is set to the size to send */
+/* if from is NULL, the source address is taken from packet->destination */
 extern struct allnet_header *
-  create_ack (struct allnet_header * packet, char * ack, int * size);
+  create_ack (struct allnet_header * packet, char * ack,
+              char * from, int nbits, int * size);
 
 /* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
  * offset (in bits) within x, nbits the number of bits to print */
-extern char * print_bitstring (unsigned char * x, int xoff, int nbits,
+extern void print_bitstring (unsigned char * x, int xoff, int nbits,
                                int print_eol);
 
 /* print an arbitrary socket address */

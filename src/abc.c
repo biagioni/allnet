@@ -309,201 +309,6 @@ static int init_wireless (char * interface, int * sock,
   return -1;  /* interface not found */
 }
 
-static void old_send_beacon (int fd, unsigned char * dest, int nbits, int hops,
-                         struct sockaddr * addr, socklen_t addrlen, int ms)
-{
-  static struct timeval send_next = {0, 0};
-  struct timeval now;
-  gettimeofday (&now, NULL);
-  if (send_next.tv_sec == 0)  /* seed the random number generator */
-    srandom (now.tv_sec);
-  else if (delta_us (&now, &send_next) == 0LL)   /* do not send yet */
-    return;
-  /* send the next beacon at a random time between 0.5s and 1.5s from now */
-  set_time_random (&now, ALLNET_HALF_SECOND_IN_US,
-                   ALLNET_ONE_SECOND_IN_US + ALLNET_HALF_SECOND_IN_US,
-                   &send_next);
-/*
-  printf ("%ld.%06ld sending beacon, next %ld.%06ld delta %lld.%06lld\n",
-          now.tv_sec, now.tv_usec, send_next.tv_sec, send_next.tv_usec,
-          delta_us (&send_next, &now) / ALLNET_US_PER_S,
-          delta_us (&send_next, &now) % ALLNET_US_PER_S);
-*/
-  if (nbits > 8 * ADDRESS_SIZE)
-    nbits = 8 * ADDRESS_SIZE; /* defensive programming, should not be needed */
-  char buffer [ALLNET_BEACON_SIZE (0)];
-  int bhs = ALLNET_BEACON_SIZE (0);
-  /* by default, set all fields to zero */
-  bzero (buffer, bhs);
-  struct allnet_header * hp = (struct allnet_header *) buffer;
-  struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (buffer + ALLNET_HEADER_SIZE);
-  struct allnet_mgmt_beacon * bp =
-    (struct allnet_mgmt_beacon *) (buffer + ALLNET_MGMT_HEADER_SIZE (0));
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_MGMT;
-  hp->max_hops = hops;
-  hp->dst_nbits = nbits;
-  if (nbits > 0)
-    memcpy (hp->destination, dest, (nbits + 7) / 8);
-  hp->sig_algo = ALLNET_SIGTYPE_NONE;
-  mp->mgmt_type = ALLNET_MGMT_BEACON;
-  random_bytes (bp->receiver_nonce, NONCE_SIZE);
-  writeb32 (bp->awake_time, ms * 1000 * 1000);
-  if (sendto (fd, buffer, bhs, MSG_DONTWAIT, addr, addrlen) < bhs)
-    perror ("beacon sendto");
-}
-
-/* returns 1 if all is well, 0 if we need to exit */
-static int inner_wireless_loop (int rpipe, int wpipe, int sockfd,
-                                struct sockaddr * bc_sap, socklen_t addrlen,
-                                int ms, char * interface)
-{
-  char * buffer;
-  int priority;
-  int fd;
-  int r = receive_pipe_message_fd (ms, &buffer, sockfd, bc_sap,
-                                   &addrlen, &fd, &priority);
-  if (r < 0) {  /* one of the fds was closed, time to shut down */
-    printf ("abc: pipe %d (%s) closed, shutting down\n",
-            fd, (fd == sockfd) ? "raw socket" : "pipe from ad");
-    return 0;
-  }
-  if (r == 0) {
-    return 0;   /* timeout, quit the loop */
-  }
-  /* r > 0, got some data */
-  if (fd == sockfd) {  /* send to ad */
-    /* priority doesn't matter when sending to ad */
-    if (! send_pipe_message (wpipe, buffer, r, ALLNET_PRIORITY_EPSILON)) {
-      printf ("abc: unable to send message to ad, shutting down\n");
-      return 0;
-    }
-  } else {  /* fd == rpipe */
-/*    printf ("abc: ad message with %d bytes, priority ", r);
-      print_fraction (priority, NULL);
-      printf ("\n");
-      print_buffer (buffer, r);
-*/
-    /* send the packet on the interface */
-    int s = sendto (sockfd, buffer, r, MSG_DONTWAIT, bc_sap, addrlen);
-    if (s < r)
-      perror ("abc: sendto");
-    int debug = 0;
-    if ((s < r) || (debug)) {
-      printf ("abc: sent %d bytes on interface %s, result %d\n",
-              r, interface, s);
-      /* print_sll_addr (&bc_address, NULL); */
-    }
-    if (s < r)
-      return 0;
-  }
-  /* printf ("abc main loop freeing buffer %p\n", buffer); */
-  free (buffer);
-}
-
-/* returns 1 if all is well, 0 if we need to exit */
-static int inner_ad_loop (int rpipe, int ms, char ** pending_message,
-                          int * message_size)
-{
-  char * buffer;
-  int priority;
-  int fd;
-  /* only receiving packets from ad */
-  int r = receive_pipe_message_any (ms, &buffer, &fd, &priority);
-  if (r < 0) {  /* one of the fds was closed, time to shut down */
-    printf ("abc: pipe %d (from ad?) closed, shutting down\n", fd);
-    return 0;
-  }
-  if (r == 0)
-    return 0;
-  if (*pending_message != NULL)
-    free (*pending_message);
-  *pending_message = buffer;
-  *message_size = r;
-  if (priority >= ALLNET_PRIORITY_FRIENDS_LOW)     /* worth waking up for */
-    return 0;   /* start the "awake" time again */
-  return 1;   /* repeat the loop */
-}
-
-static int timed_out (struct timeval * expiration, int * remaining_ms)
-{
-  struct timeval now;
-  gettimeofday (&now, NULL);
-  if ((now.tv_sec > expiration->tv_sec) ||
-      ((now.tv_sec == expiration->tv_sec) &&
-       (now.tv_usec >= expiration->tv_usec))) {
-    *remaining_ms = 0;
-    return 1;
-  }
-  *remaining_ms = (now.tv_sec  - expiration->tv_sec ) * 1000 +
-                  (now.tv_usec - expiration->tv_usec) / 1000;
-  return 0;
-}
-
-static void old_main_loop (int rpipe, int wpipe, char * interface)
-{
-  int sockfd;
-  struct sockaddr_ll if_address; /* the address of the interface */
-  struct sockaddr  * if_sap = (struct sockaddr *) (&if_address);
-  struct sockaddr_ll bc_address; /* broacast address of the interface */
-  struct sockaddr  * bc_sap = (struct sockaddr *) (&bc_address);
-  socklen_t addrlen = sizeof (struct sockaddr_ll);
-  int in_use;                    /* if in use, no need to bring up and down */
-
-  /* init sockfd */
-  in_use = init_wireless (interface, &sockfd, &if_address, &bc_address);
-  if (in_use < 0) {
-    snprintf (log_buf, LOG_SIZE,
-              "unable to bring up interface %s, for now aborting\n", interface);
-    log_print ();
-    return;
-  }
-  add_pipe (rpipe);
-  char * message_buffer = NULL;
-  int message_size = 0;
-#define BEACON_INTERVAL		100   /* 0.1 second */
-#define INTER_BEACON_INTERVAL	(BEACON_INTERVAL * 99)   /* 9.9 seconds */
-#define SEND_INTERVAL		(BEACON_INTERVAL * 101)  /* 990s, 16.5min */
-#define SLEEP_INTERVAL		(BEACON_INTERVAL * 101)  /* 990s, 16.5min */
-  while (1) {
-    wireless_up (interface);
-    add_pipe (sockfd);
-    printf ("wireless interface %s is up\n", interface);
-    if (message_buffer != NULL) {
-      addrlen = sizeof (struct sockaddr_ll);
-      if (sendto (sockfd, message_buffer, message_size, MSG_DONTWAIT,
-                  bc_sap, addrlen) < message_size)
-        perror ("pending message sendto");
-      message_buffer = NULL;
-      message_size = 0;
-    }
-    old_send_beacon (sockfd, NULL, 0, 1, bc_sap, addrlen, BEACON_INTERVAL);
-    struct timeval now;
-    gettimeofday (&now, NULL);
-    int new_usec = now.tv_usec + BEACON_INTERVAL * 1000;
-    struct timeval expire;
-    expire.tv_sec = now.tv_sec + new_usec / 1000000;
-    expire.tv_usec = new_usec % 1000000;
-    int ms = BEACON_INTERVAL;
-    while ((inner_wireless_loop (rpipe, wpipe, sockfd, bc_sap,
-                                 sizeof (struct sockaddr_ll), ms,
-                                 interface)) &&
-           (! timed_out (&expire, &ms))) { 
-    }
-    wireless_down (interface);
-    remove_pipe (sockfd);
-    gettimeofday (&now, NULL);
-    new_usec = now.tv_usec + SLEEP_INTERVAL * 1000;
-    expire.tv_sec = now.tv_sec + new_usec / 1000000;
-    expire.tv_usec = new_usec % 1000000;
-    ms = SLEEP_INTERVAL;
-    while ((inner_ad_loop (rpipe, ms, &message_buffer, &message_size)) &&
-           (! timed_out (&expire, &ms))) { 
-    }
-  }
-}
-
 /* The state machine has two modes, high priority (keep interface on,
  * and send whenever possible) and low priority (turn on interface only
  * about 1% of the time to send or receive packets */
@@ -655,7 +460,7 @@ static void send_beacon (int awake_ms, char * interface,
 {
   int sockfd = wireless_on (interface);
   char buf [ALLNET_BEACON_SIZE (0)];
-  int size = ALLNET_BEACON_SIZE (0);
+  int size = sizeof (buf);
   bzero (buf, size);
   struct allnet_header * hp = (struct allnet_header *) buf;
   struct allnet_mgmt_header * mp =
@@ -663,9 +468,9 @@ static void send_beacon (int awake_ms, char * interface,
   struct allnet_mgmt_beacon * mbp =
     (struct allnet_mgmt_beacon *) (buf + ALLNET_MGMT_HEADER_SIZE (0));
 
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_MGMT;
-  hp->max_hops = 1;
+  init_packet (buf, size, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
+               NULL, 0, NULL, 0, NULL);
+
   mp->mgmt_type = ALLNET_MGMT_BEACON;
   clear_nonces (1, 0);   /* mark new cycle -- should not be needed, but safe */
   random_bytes (my_beacon_rnonce, NONCE_SIZE);
@@ -686,15 +491,15 @@ static void make_beacon_reply (char * buffer, int bsize)
               sizeof (struct allnet_mgmt_beacon_reply), bsize);
     exit (1);
   }
-  bzero (buffer, bsize);
-  struct allnet_header * hp = (struct allnet_header *) buffer;
+  struct allnet_header * hp =
+    init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
+                 NULL, 0, NULL, 0, NULL);
+
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
   struct allnet_mgmt_beacon_reply * mbrp =
     (struct allnet_mgmt_beacon_reply *) (buffer + ALLNET_MGMT_HEADER_SIZE (0));
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_MGMT;
-  hp->max_hops = 1;
+
   mp->mgmt_type = ALLNET_MGMT_BEACON_REPLY;
   memcpy (mbrp->receiver_nonce, other_beacon_rnonce, NONCE_SIZE);
   random_bytes (other_beacon_snonce, NONCE_SIZE);
@@ -712,16 +517,16 @@ static void make_beacon_grant (char * buffer, int bsize,
               sizeof (struct allnet_mgmt_beacon_grant), bsize);
     exit (1);
   }
-  bzero (buffer, bsize);
-  struct allnet_header * hp = (struct allnet_header *) buffer;
+  struct allnet_header * hp =
+    init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
+                 NULL, 0, NULL, 0, NULL);
+
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
   struct allnet_mgmt_beacon_grant * mbgp =
     (struct allnet_mgmt_beacon_grant *)
       (buffer + ALLNET_MGMT_HEADER_SIZE (0));
-  hp->version = ALLNET_VERSION;
-  hp->message_type = ALLNET_TYPE_MGMT;
-  hp->max_hops = 1;
+
   mp->mgmt_type = ALLNET_MGMT_BEACON_GRANT;
   memcpy (mbgp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   memcpy (mbgp->sender_nonce  , my_beacon_snonce, NONCE_SIZE);
