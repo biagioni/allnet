@@ -56,6 +56,8 @@ static int handle_packet (char * message, int msize, int debug)
         from = keys [i].identifier;
     }
   }
+  if (strcmp (from, "unknown sender") == 0)
+    printf ("got %d other keys, none matched %d %p\n", nkeys, ssize, sig);
 
   printf ("from %s: %s\n", from, payload);
   if (psize == strlen (payload) + 9) {  /* see how long it took */

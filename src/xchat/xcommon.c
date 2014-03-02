@@ -114,13 +114,14 @@ int handle_packet (int sock, char * packet, int psize,
   printf ("%ld.%06ld: got %d-byte packet from socket %d\n",
           tv.tv_sec, tv.tv_usec, psize, sock);
 /*  print_buffer (packet, psize, "handle_packet", 24, 1); */
-  if (psize < ALLNET_HEADER_SIZE) {
+  if (! is_valid_message (packet, psize)) {
 /*
     printf ("packet size %d less than data header size %zd, dropping\n",
             psize, ALLNET_HEADER_DATA_SIZE);
 */
     return 0;
   }
+  print_packet (packet, psize, "xcommon received", 1);
 
   struct allnet_header * hp = (struct allnet_header *) packet;
   int hsize = ALLNET_SIZE (hp->transport);
@@ -203,9 +204,7 @@ int handle_packet (int sock, char * packet, int psize,
 
   long long int seq = readb64 (cdp->counter);
   if (seq == COUNTER_FLAG) {
-    do_chat_control (contact, text, tsize, sock,
-                     hp->destination, hp->dst_nbits,
-                     hp->source, hp->src_nbits, hp->hops + 4);
+    do_chat_control (contact, text, tsize, sock, hp->hops + 4);
     send_ack (sock, hp, cdp->message_ack);
     if (contact != NULL) free (contact);
     if (text != NULL) free (text);
@@ -247,32 +246,30 @@ long long int send_data_message (int sock, char * peer,
   }
 
   int transport = ALLNET_TRANSPORT_ACK_REQ;
-  static char clear [ALLNET_MTU];
-  struct chat_descriptor * cp = (struct chat_descriptor *) clear;
-
-  char message_ack [MESSAGE_ID_SIZE];
-  /* message_ack is set in send_to_contact, so here we clear it */
-  bzero (message_ack, sizeof (message_ack));
-  if (! init_chat_descriptor (cp, peer, message_ack)) {
+  int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
+  char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
+  struct chat_descriptor * cp = (struct chat_descriptor *) data_with_cd;
+  if (! init_chat_descriptor (cp, peer)) {
     printf ("unknown contact %s\n", peer);
+    free (data_with_cd);
     return;
   }
-  if (sizeof (clear) < CHAT_DESCRIPTOR_SIZE + mlen) {
-    printf ("message too long: %d chars, max is %zd, truncating\n",
-            mlen, sizeof (clear) - CHAT_DESCRIPTOR_SIZE);
-    mlen = sizeof (clear) - CHAT_DESCRIPTOR_SIZE;
-  }
-  memcpy (clear + CHAT_DESCRIPTOR_SIZE, message, mlen);
-
-  send_to_contact (clear, CHAT_DESCRIPTOR_SIZE + mlen, peer, sock,
+  memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
+  /* send_to_contact initializes the message ack in data_with_cd/cp */
+  send_to_contact (data_with_cd, dsize, peer, sock,
                    NULL, 16, NULL, 16, 4, ALLNET_PRIORITY_LOCAL);
   save_outgoing (peer, cp, message, mlen);
+  free (data_with_cd);
 }
 
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it */
 void request_and_resend (int sock, char * peer)
 {
+  if (get_counter (peer) <= 0) {
+    printf ("unable to request and resend for %s, peer not found\n", peer);
+    return;
+  }
 /*  printf ("request_and_resend (socket %d, peer %s)\n", sock, peer); */
   static char * old_peer = NULL;
 
@@ -287,21 +284,15 @@ void request_and_resend (int sock, char * peer)
   old_peer = strcpy_malloc (peer, "request_and_resend peer");
 
   /* request retransmission of any missing messages */
-  char src [ADDRESS_SIZE];
-  char dst [ADDRESS_SIZE];
-  int sbits = 0;
-  int dbits = 0;
   int hops = 10;
-  send_retransmit_request (peer, sock, src, sbits, dst, dbits, hops,
-                           ALLNET_PRIORITY_LOCAL_LOW);
+  send_retransmit_request (peer, sock, hops, ALLNET_PRIORITY_LOCAL_LOW);
 
   /* resend any unacked messages, but no more than once every hour */
   static time_t last_resend = 0;
   time_t now = time (NULL);
   if (now - last_resend > 3600) {
     last_resend = now;
-    resend_unacked (peer, sock, src, sbits, dst, dbits, hops,
-                    ALLNET_PRIORITY_LOCAL_LOW);
+    resend_unacked (peer, sock, hops, ALLNET_PRIORITY_LOCAL_LOW);
   }
 }
 

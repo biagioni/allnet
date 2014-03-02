@@ -28,21 +28,6 @@ static int init_xtime ()
   return sock;
 }
 
-#if 0   /* now in util.c */
-static time_t compute_next (time_t from, time_t granularity, int immediate_ok)
-{
-  time_t delta = from % granularity;
-  if ((immediate_ok) && (delta == 0))
-    /* already at the beginning of the interval */
-    return from;
-/*
-  printf ("compute_next returning %ld = %ld + (%ld - %ld)\n",
-          from + (granularity - delta), from, granularity, delta);
-*/
-  return from + (granularity - delta);
-}
-#endif /* 0 -- now in util.c */
-
 static void wait_until (time_t end_time)
 {
   /* compute how long to wait for */
@@ -159,7 +144,7 @@ static int make_announcement (char * buffer, int n,
   int sig_algo = ALLNET_SIGTYPE_NONE;
   int ssize = 0;
   int dsize = time_to_buf (send, dp, TIMESTAMP_SIZE);
-  if (sig_algo != ALLNET_SIGTYPE_NONE) {
+  if ((key != NULL) && (ksize > 0)) {
     char * sig;
     ssize = sign (dp, TIMESTAMP_SIZE, key, ksize, &sig);
     if (ssize > 0) {

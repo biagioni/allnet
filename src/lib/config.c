@@ -84,7 +84,7 @@ int config_file_name (char * program, char * file, char ** name)
       snprintf (home, size, "%s%s", home_env, HOME_EXT);
       root = home;
       free_root = 1;
-      root_length = strlen (home);
+      root_length = strlen (root);
     } else {   /* do not allocate, just record the length */
       root_length = size;
     }

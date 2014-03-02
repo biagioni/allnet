@@ -377,8 +377,14 @@ void packet_to_string (const char * buffer, int bsize, char * desc,
                              to + off, tsize - off);
     }
   } else if (bsize > ALLNET_SIZE (hp->transport)) {
-    off += snprintf (to + off, tsize - off, ", %zd bytes of payload", 
-                     bsize - ALLNET_SIZE (hp->transport));
+    int dsize = bsize - ALLNET_SIZE (hp->transport);
+    off += snprintf (to + off, tsize - off, ", %d bytes of payload", dsize);
+    if (hp->sig_algo != ALLNET_SIGTYPE_NONE) {
+      int ssize = readb16 (buffer + bsize - 2);
+      dsize -= ssize + 2;
+      off += snprintf (to + off, tsize - off, " = %d data, %d + 2 sig", 
+                       dsize, ssize);
+    }
   }
   if (print_eol)
     off += snprintf (to + off, tsize - off, "\n");
@@ -424,6 +430,7 @@ struct allnet_header *
   hp->max_hops = max_hops;
   hp->src_nbits = sbits;
   hp->dst_nbits = dbits;
+  hp->sig_algo = sig_algo;
   if ((sbits > 0) && (source != NULL))
     memcpy (hp->source, source, (sbits + 7) / 8);
   if ((dbits > 0) && (dest != NULL))

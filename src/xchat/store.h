@@ -11,7 +11,7 @@
 
 #include "chat.h"
 
-/* returns 0 if the contact cannot be found or matches more than one contact */
+/* returns 0 if the contact cannot be found */
 extern unsigned long long int get_counter (const char * contact);
 
 /* returns 0 if the contact cannot be found or matches more than one contact

@@ -6,8 +6,7 @@
 #include "chat.h"
 
 /* returns 1 if successful, 0 otherwise */
-extern int init_chat_descriptor (struct chat_descriptor * cp, char * contact,
-                                 char * packet_id_hash);
+extern int init_chat_descriptor (struct chat_descriptor * cp, char * contact);
 
 /* send to the contact, returning 1 if successful, 0 otherwise */
 /* if src is NULL, source address is taken from get_source, likewise for dst */

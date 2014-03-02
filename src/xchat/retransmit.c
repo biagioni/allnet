@@ -110,7 +110,6 @@ static char * create_chat_control_request (char * contact, char * missing,
  * returns 1 for success, 0 in case of error.
  */ 
 int send_retransmit_request (char * contact, int sock,
-                             char * src, int sbits, char * dst, int dbits,
                              int hops, int priority)
 {
   int num_singles;
@@ -129,8 +128,14 @@ int send_retransmit_request (char * contact, int sock,
   if (request == NULL)
     return 0;
 
-  int result = send_to_contact (request, size, contact, sock, src, sbits,
-                                dst, dbits, hops, priority);
+  keyset * keys;
+  int nkeys = all_keys (contact, &keys);
+  int i;
+  int result = 1;
+  for (i = 0; i < nkeys; i++)
+    if (0 == send_to_contact (request, size, contact, sock,
+                              NULL, 32, NULL, 32, hops, priority))
+      result = 0;
   free (request);
   return result;
 }
@@ -178,8 +183,7 @@ static unsigned long long int get_prev (unsigned long long int last,
 }
 
 static void resend_message (unsigned long long int seq, char * contact,
-                            int sock, char * src, int sbits,
-                            char * dst, int dbits, int hops, int priority)
+                            int sock, int hops, int priority)
 {
   int size;
   unsigned long long int time;
@@ -199,14 +203,13 @@ static void resend_message (unsigned long long int seq, char * contact,
           contact, seq, time, time);
 #endif /* DEBUG_PRINT */
   send_to_contact (message, size + CHAT_DESCRIPTOR_SIZE, contact, sock,
-                   src, sbits, dst, dbits, hops, priority);
+                   NULL, 32, NULL, 32, hops, priority);
   free (text);
 }
 
 /* resends the messages requested by the retransmit message */
 void resend_messages (char * retransmit_message, int mlen, char * contact,
-                      int sock, char * src, int sbits, char * dst, int dbits,
-                      int hops, int top_priority)
+                      int sock, int hops, int top_priority)
 {
 #ifdef DEBUG_PRINT
   printf ("in resend_messages (%p, %d, %s, %d, %d)\n", message, mlen, contact,
@@ -245,8 +248,7 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
   /* and with slightly higher priority */
   unsigned long long int last = readb64 (hp->last_received);
   while (counter > last) {
-    resend_message (counter, contact, sock, src, sbits, dst, dbits, hops,
-                    priority);
+    resend_message (counter, contact, sock, hops, priority);
     counter--;
     priority -= ALLNET_PRIORITY_EPSILON;
   }
@@ -258,15 +260,13 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
                 hp->num_ranges);
     if (prev == MAXLL)   /* no more found before this */
       break;
-    resend_message (prev, contact, sock, src, sbits, dst, dbits, hops,
-                    priority);
+    resend_message (prev, contact, sock, hops, priority);
     last = prev;
     priority -= ALLNET_PRIORITY_EPSILON;
   }
 }
 
 void resend_unacked (char * contact, int sock, 
-                     char * src, int sbits, char * dst, int dbits,
                      int hops, int priority)
 {
   int singles;
@@ -279,7 +279,7 @@ void resend_unacked (char * contact, int sock,
   for (i = 0; i < singles; i++) {
     unsigned long long int seq = readb64 (unacked);
     unacked += COUNTER_SIZE;
-    resend_message (seq, contact, sock, src, sbits, dst, dbits, hops, priority);
+    resend_message (seq, contact, sock, hops, priority);
   }
   for (i = 0; i < ranges; i++) {
     unsigned long long int start = readb64 (unacked);
@@ -287,8 +287,7 @@ void resend_unacked (char * contact, int sock,
     unsigned long long int finish = readb64 (unacked);
     unacked += COUNTER_SIZE;
     while (start <= finish) {
-      resend_message (start, contact, sock, src, sbits, dst, dbits, hops,
-                      priority);
+      resend_message (start, contact, sock, hops, priority);
       start++;
     }
   }
@@ -296,12 +295,12 @@ void resend_unacked (char * contact, int sock,
 
 /* retransmit any requested messages */
 void do_chat_control (char * contact, char * msg, int msize, int sock,
-                      char * src, int sbits, char * dst, int dbits, int hops)
+                      int hops)
 {
   struct chat_control * cc = (struct chat_control *) msg;
   if (cc->type == CHAT_CONTROL_TYPE_REQUEST) {
-    resend_messages (msg, msize, contact, sock,
-                     src, sbits, dst, dbits, hops, ALLNET_PRIORITY_LOCAL_LOW);
+    resend_messages (msg, msize, contact, sock, hops,
+                     ALLNET_PRIORITY_LOCAL_LOW);
   } else {
     printf ("chat control type %d, not implemented\n", cc->type);
   }

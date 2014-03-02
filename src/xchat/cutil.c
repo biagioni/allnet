@@ -89,14 +89,8 @@ static int local_time_offset ()
 }
 
 /* returns 1 if successful, 0 otherwise */
-int init_chat_descriptor (struct chat_descriptor * cp, char * contact,
-                          char * message_ack_hash)
+int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
 {
-  bzero (message_ack_hash, MESSAGE_ID_SIZE);
-  random_bytes (cp->message_ack, MESSAGE_ID_SIZE);
-  sha512_bytes (cp->message_ack, MESSAGE_ID_SIZE,
-                message_ack_hash, MESSAGE_ID_SIZE);
-
   unsigned long long int counter = get_counter (contact);
   if (counter == 0) {
     printf ("unable to locate key for contact '%s'\n", contact);
@@ -112,12 +106,13 @@ int init_chat_descriptor (struct chat_descriptor * cp, char * contact,
 }
 
 /* send to the contact, returning 1 if successful, 0 otherwise */
-/* if src is NULL, source address is taken from get_source, likewise for dst */
+/* if src is NULL, source address is taken from get_local, likewise for dst */
 /* if so, uses the lesser of s/dbits and the address bits */
 int send_to_contact (char * data, int dsize, char * contact, int sock,
                      char * src, int sbits, char * dst, int dbits,
                      int hops, int priority)
 {
+
   /* get the keys */
   keyset * keys;
   int nkeys = all_keys (contact, &keys);
@@ -133,6 +128,12 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     char * key;
     int priv_ksize = get_my_privkey (keys [k], &priv_key);
     int ksize = get_contact_pubkey (keys [k], &key);
+    if ((priv_ksize == 0) || (ksize == 0)) {
+      printf ("unable to locate key %d for contact %s (%d, %d, %d)\n",
+              k, contact, priv_ksize, ksize, nkeys);
+      continue;  /* skip to the next key */
+    }
+    /* if not already specified, get the addresses for the specific key */
     char a1 [ADDRESS_SIZE];
     char a2 [ADDRESS_SIZE];
     if (src == NULL) {
@@ -146,11 +147,6 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
       if (nbits < dbits)
         dbits = nbits;
       dst = a2;
-    }
-    if ((priv_ksize == 0) || (ksize == 0)) {
-      printf ("unable to locate key %d for contact %s (%d, %d)\n",
-              k, contact, priv_ksize, ksize);
-      continue;  /* skip to the next key */
     }
     /* set the message ack */
     struct chat_descriptor * cdp = (struct chat_descriptor *) data;
@@ -196,6 +192,7 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     free (signature);
     writeb16 (message + hsize + esize + ssize, ssize);
 
+print_packet (message, msize, "sending", 1);
     if (! send_pipe_message_free (sock, message, msize, priority))
       printf ("unable to request retransmission from %s\n", contact);
  /* else

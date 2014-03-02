@@ -23,18 +23,6 @@
 #include "cutil.h"
 #include "store.h"
 
-#if 0
-/* return the length of a public key, based on the key type stored in the
- * first byte of the key.  The length includes the first byte */
-int public_key_length (char * pubkey)
-{
-  if (*pubkey == KEY_RSA4096_E65537)
-    return (4096 / 8) + 1;
-  printf ("public_key_length: unknown key type %d\n", (*pubkey) & 0xff);
-  return 0;
-}
-#endif /* 0 */
-
 struct missing_info {
   long long int first;   /* first sequence number known to be missing */
   long long int last;    /* last  sequence number -- may be same */
@@ -47,13 +35,13 @@ struct unacked_info {
   unsigned char message_ack [MESSAGE_ID_SIZE];
 };
 
+/* SEQ_STORAGE is the number of entries we store for both missing
+ * sequence numbers, which we know we haven't gotten from the peer,
+ * and for unacked sequence numbers, which we don't know whether the
+ * peer has received. */
 #define SEQ_STORAGE	100
 struct contact_info {
   char * name;
-  char * contact_key;      /* my contact's public key */
-  int contact_ksize;
-  char * my_key;           /* my private and public key */
-  int my_ksize;
   unsigned long long int num_messages;
   char * dirname;
   long long int last_received;
@@ -69,9 +57,9 @@ struct contact_info {
 #define DATE_TIME_LEN 		14	/* strlen("20130101120102") */
 #define DATE_LEN 		8	/* strlen("20130327") */
 
-#define MAX_CONTACTS	1000
 static int actual_contacts = 0;
-static struct contact_info contacts [MAX_CONTACTS];
+static int allocated_contacts = 0;
+static struct contact_info * contacts = NULL;
 
 /* like strcasestr, but keeps going past null characters in the haystack,
  * untile it reaches the end.  Needle must be a string (but easy to change
@@ -94,26 +82,26 @@ static char * strncasestr (char * haystack, int hsize, char * needle)
 }
 
 /* if it is the kind of name we want, it should end in a string of n digits */
-static int start_ndigits (char * path, int ndigits)
+static int end_ndigits (char * path, int ndigits)
 {
   char * slash = rindex (path, '/');
   char * name = path;
   if (slash != NULL)
     name = slash + 1;
   if (strlen (name) < ndigits) {
-/* printf ("start_ndigits (%s, %d) => 0 (length %zd is less than %d)\n",
+/* printf ("end_ndigits (%s, %d) => 0 (length %zd is less than %d)\n",
             path, ndigits, strlen (name), ndigits); */
     return 0;
   }
   int i;
   for (i = 0; i < ndigits; i++) {
     if ((name [i] < '0') || (name [i] > '9')) {
-/*    printf ("start_ndigits (%s, %d) => 0 ([%d] is %c)\n", path, ndigits,
+/*    printf ("end_ndigits (%s, %d) => 0 ([%d] is %c)\n", path, ndigits,
               i, name [i]); */
       return 0;
     }
   }
-/* printf ("start_ndigits (%s, %d) => 1\n", path, ndigits); */
+/* printf ("end_ndigits (%s, %d) => 1\n", path, ndigits); */
   return 1;
 }
 
@@ -499,13 +487,65 @@ static int get_msg_info (char * dirname, char * fname,
   return 1;
 }
 
-static void init_contact (char * dirname)
+static char * string_replace (char * original, char * pattern, char * repl)
 {
+  char * p = strstr (original, pattern);
+  if (p == NULL) {
+    printf ("error: string %s does not contain '%s'\n", original, pattern);
+    /* this is a serious error -- need to figure out what is going on */
+    exit (1);
+  }
+  int olen = strlen (original);
+  int plen = strlen (pattern);
+  int rlen = strlen (repl);
+  int size = olen + 1 + rlen - plen;
+  char * result = malloc_or_fail (size, "string_replace");
+  int prelen = p - original;
+  memcpy (result, original, prelen);
+  memcpy (result + prelen, repl, rlen);
+  char * postpos = p + plen;
+  int postlen = olen - (postpos - original);
+  memcpy (result + prelen + rlen, postpos, postlen);
+  result [size - 1] = '\0';
+  printf ("replacing %s with %s in %s gives %s\n",
+          pattern, repl, original, result);
+  return result;
+}
+
+/* make sure we have enough room for a new contact */
+static void extend_contacts ()
+{
+  if (actual_contacts < allocated_contacts)
+    return;  /* no need to extend */
+  int new_number = allocated_contacts * 2;
+  if (new_number == 0) /* at the beginning when allocated_contacts is 0 */
+    new_number = 20;
+  struct contact_info * new_contacts =
+    malloc_or_fail (sizeof (struct contact_info) * new_number,
+                    "xchat store.c extend_contacts");
+  if (contacts != NULL) {   /* copy the old to the new */
+    int i;
+    for (i = 0; i < actual_contacts; i++)
+      new_contacts [i] = contacts [i];
+    free (contacts);
+  }
+  contacts = new_contacts;
+  allocated_contacts = new_number;
+}
+
+static void init_contact (char * contact, char * dirname)
+{
+#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
-  printf ("init_contact called for %s\n", dirname);
+  printf ("init_contact called for %s, %s\n", contact, dirname);
 #endif /* DEBUG_PRINT */
-  if (actual_contacts >= MAX_CONTACTS) {
-    printf ("too many contacts!  Only %d supported\n", MAX_CONTACTS);
+  if (! end_ndigits (dirname, DATE_TIME_LEN)) {
+    printf ("error: directory %s does not end with %d digits\n", dirname,
+            DATE_TIME_LEN);
+    return;
+  }
+  if (! create_dir (dirname)) {
+    printf ("directory %s does not exist, and unable to create\n", dirname);
     return;
   }
   DIR * dir = opendir (dirname);
@@ -514,74 +554,50 @@ static void init_contact (char * dirname)
     printf ("unable to open directory %s\n", dirname);
     return;
   }
-  struct dirent * dep;
   unsigned long long int max_sequence = 0;
   unsigned long long int max_received = 0;
-  char * name = NULL;
-  int name_size = 0;
-  char * contact_key = NULL;      /* my contact's public key */
-  int contact_ksize = 0;
-  char * my_key = NULL;           /* my private and public key */
-  int my_ksize = 0;
-/* printf ("init_contact, going through %s\n", dirname); */
   struct missing_info missing [SEQ_STORAGE];
   int nmissing = 0;
   struct unacked_info unacked [SEQ_STORAGE];
   int nunack = 0;
+  struct dirent * dep;
   while ((dep = readdir (dir)) != NULL) {
-    if (start_ndigits (dep->d_name, DATE_LEN)) /* message file */
+    if (end_ndigits (dep->d_name, DATE_LEN)) /* message file */
       get_msg_info (dirname, dep->d_name, &max_sequence, &max_received,
                     missing, &nmissing, unacked, &nunack);
+/*  name is now passed in as a parameter, not stored in the xchat directory
     else if (strcmp (dep->d_name, "name") == 0)
-      name_size     = read_file_contents (dirname, dep->d_name, 1, &name);
-    else if (strcmp (dep->d_name, "contact_public_key") == 0)
-      contact_ksize = read_file_contents (dirname, dep->d_name, 0,
-                                          &contact_key);
-    else if (strcmp (dep->d_name, "my_key") == 0)
-      my_ksize      = read_file_contents (dirname, dep->d_name, 0, &my_key);
+      name_size     = read_file_contents (dirname, dep->d_name, 1, &name); */
     /* printf ("file %s, c %lld, max %lld\n", dep->d_name, c, max_sequence); */
   }
-  if ((name != NULL) && (name_size > 0) &&
-      (contact_key != NULL) && (contact_ksize > 0) &&
-      (my_key      != NULL) && (my_ksize      > 0)) {  /* success! */
-    struct contact_info * cip = contacts + actual_contacts;
-    cip->name = name;
-    cip->contact_key = contact_key;
-    cip->contact_ksize = contact_ksize;
-    cip->my_key = my_key;
-    cip->my_ksize = my_ksize;
-    cip->num_messages = max_sequence;
-    cip->dirname = strcpy_malloc (dirname, "init_contact dirname");
-    cip->last_received = max_received;
-    cip->nmissing = nmissing;
-    memcpy (cip->missing, missing, sizeof (missing));
-    cip->nunack = nunack;
-    memcpy (cip->unacked, unacked, sizeof (unacked));
+  closedir (dir);
+  extend_contacts ();
+  struct contact_info * cip = contacts + actual_contacts;
+  actual_contacts++;
+  cip->name = strcpy_malloc (contact, "init_contact contact name");
+  cip->num_messages = max_sequence;
+  cip->dirname = strcpy_malloc (dirname, "init_contact dirname");
+  cip->last_received = max_received;
+  cip->nmissing = nmissing;
+  memcpy (cip->missing, missing, sizeof (missing));
+  cip->nunack = nunack;
+  memcpy (cip->unacked, unacked, sizeof (unacked));
 #ifdef DEBUG_PRINT
-    printf ("[%d], '%s', '%s', %lld\n", actual_contacts, cip->dirname, name,
-            max_sequence);
-    printf ("added contact [%d], name '%s'\n", actual_contacts, name);
+  printf ("[%d], '%s', '%s', %lld\n", actual_contacts, cip->dirname, contact,
+          max_sequence);
+  printf ("added contact [%d], name '%s'\n", actual_contacts, contact);
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
-    printf ("contact %s has %d missing\n", cip->name, cip->nmissing);
-    int dbg;
-    for (dbg = 0; dbg < cip->nmissing; dbg++)
-    printf ("missing %d is %lld to %lld\n", dbg,
-            cip->missing [dbg].first, cip->missing [dbg].last);
-    printf ("contact %s has %d unacked\n", cip->name, cip->nunack);
-    for (dbg = 0; dbg < cip->nunack; dbg++)
-    printf ("unacked %d is %lld at time %lld\n", dbg,
-            cip->unacked [dbg].seq, cip->unacked [dbg].time);
+  printf ("contact %s has %d missing\n", cip->name, cip->nmissing);
+  int dbg;
+  for (dbg = 0; dbg < cip->nmissing; dbg++)
+  printf ("missing %d is %lld to %lld\n", dbg,
+          cip->missing [dbg].first, cip->missing [dbg].last);
+  printf ("contact %s has %d unacked\n", cip->name, cip->nunack);
+  for (dbg = 0; dbg < cip->nunack; dbg++)
+  printf ("unacked %d is %lld at time %lld\n", dbg,
+          cip->unacked [dbg].seq, cip->unacked [dbg].time);
 #endif /* DEBUG_PRINT */
-    actual_contacts++;
-  } else {
-    if (name != NULL)
-      free (name);
-    if (contact_key != NULL)
-      free (contact_key);
-    if (my_key != NULL)
-      free (my_key);
-  }
 }
 
 static void init_contacts ()
@@ -589,140 +605,30 @@ static void init_contacts ()
   static int initialized = 0;
   if (initialized)
     return;
-  int i;
-  for (i = 0; i < MAX_CONTACTS; i++) {
-    contacts [i].name = NULL;
-    contacts [i].contact_key = NULL;
-    contacts [i].contact_ksize = 0;
-    contacts [i].my_key = NULL;
-    contacts [i].my_ksize = 0;
-    contacts [i].num_messages = 0;
-  }
   initialized = 1;
-  char * dirname;
-  int dirnamesize = config_file_name ("xchat", "contacts", &dirname);
-#ifdef DEBUG_PRINT
-  printf ("directory name is %s (%d)\n", dirname, dirnamesize);
-#endif /* DEBUG_PRINT */
-  if (! create_dir (dirname)) {
-    printf ("directory %s does not exist, and unable to create it\n", dirname);
-    free (dirname);
-    return;
+  char ** keyed_contacts;
+  int num_contacts = all_contacts (&keyed_contacts);
+  int i, j;
+  for (i = 0; i < num_contacts; i++) {
+    char ** dirs;
+    int num_dirs = contact_dirs (keyed_contacts [i], &dirs);
+    /* directories are sorted oldest first.  Just use the first */
+/* 2014/03/01: debugging, show that the directories really are sorted */
+    printf ("contact %s has %d dirs", keyed_contacts [i], num_dirs);
+    for (j = 0; j < num_dirs; j++)
+      printf (", %s", dirs [j]);
+    printf ("\n");
+/* 2014/03/01: end debugging */
+#undef DEBUG_PRINT
+    if (num_dirs > 0) {
+      char * dirname = string_replace (dirs [0], "/contacts/", "/xchat/");
+printf ("xchat: using directory %s\n", dirname);
+      init_contact (keyed_contacts [i], dirname);
+      free (dirname);
+    } else {
+      printf ("error: contact %s has %d dirs\n", keyed_contacts [i], num_dirs);
+    }
   }
-  DIR * dir = opendir (dirname);
-  if (dir == NULL) {
-    perror ("opendir");
-    printf ("unable to open directory %s\n", dirname);
-  }
-  struct dirent * dep;
-  while ((dep = readdir (dir)) != NULL) {
-    int length = strlen (dirname) + 1 + strlen (dep->d_name) + 1;
-    char * contact_dirname = malloc_or_fail (length, "init_contacts");
-    snprintf (contact_dirname, length, "%s/%s", dirname, dep->d_name);
-/*  printf ("looking at file %s (%s)\n", dep->d_name, contact_dirname); */
-    if (start_ndigits (contact_dirname, DATE_TIME_LEN))
-      init_contact (contact_dirname);
-    free (contact_dirname);
-  }
-  free (dirname);
-  closedir (dir);
-}
-
-#if 0
-/* allocates and returns an array of pointers to null-terminated
- * contact names.  Call free_contacts to release. */
-int all_contacts (char *** res)
-{
-  init_contacts ();
-/*  printf ("in all_contacts, actual_contacts is %d\n", actual_contacts); */
-  *res = NULL;
-  if (actual_contacts <= 0)
-    return 0;
-  /* first part of result is the array of pointers */
-  int pointers_bytes = actual_contacts * sizeof (char *);
-  int size = pointers_bytes;
-  int i;
-  /* rest of result is storage area for the strings */
-  for (i = 0; i < actual_contacts; i++)
-    size += strlen (contacts [i].name) + 1;
-  char * * result = malloc_or_fail (size, "all_contacts");
-  /* point to the first byte not in the array of pointers */
-  char * p = ((char *)result) + (actual_contacts * sizeof (char *));
-  for (i = 0; i < actual_contacts; i++) {
-    strcpy (p, contacts [i].name);
-    result [i] = p;
-    p += strlen (contacts [i].name) + 1;
-  }
-  if (res != NULL)
-    *res = result;
-  return actual_contacts;
-}
-
-void free_contacts (char ** contacts)
-{
-  init_contacts ();
-  free (contacts);
-}
-#endif /* 0 */
-
-static char * new_contact_fname ()
-{
-  char * dirname;
-  int dirnamesize = config_file_name ("xchat", "contacts", &dirname);
-/* printf ("directory name for new_contact_fname is %s (%d)\n",
-          dirname, dirnamesize); */
-  int length = dirnamesize + 1 + strlen ("20130215093612") + 1;
-  char * path = malloc_or_fail (length, "new_contact_fname");
-  struct tm t;
-  time_t now = time (NULL);
-  if (localtime_r (&now, &t) == NULL) {
-    printf ("unable to get local time\n");
-    free (dirname);
-    exit (1);
-  }
-  snprintf (path, length, "%s/%04d%02d%02d%02d%02d%02d", dirname,
-            t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-            t.tm_hour, t.tm_min, t.tm_sec);
-  free (dirname);
-  DIR * dir = opendir (path);
-  if (dir != NULL) {
-    closedir (dir);
-    printf ("new contact directory %s already exists!\n", path);
-    exit (1);
-    free (path);
-    return NULL;
-  }
-  return path;
-}
-
-static int save_contact_info (char * dirname, char * fname,
-                              char * data, int dsize)
-{
-  if (! create_dir (dirname)) {
-    printf ("directory %s does not exist, and unable to create it\n", dirname);
-    return 0;
-  }
-  int length = strlen (dirname) + 1 + strlen (fname) + 1;
-  char * path = malloc_or_fail (length, "save_contact_info");
-  snprintf (path, length, "%s/%s", dirname, fname);
-  /* printf ("saving to contact file %s (%s)\n", fname, path); */
-  int fd = open (path, O_WRONLY | O_CREAT, 0600);
-  free (path);
-  if (fd < 0) {
-    perror ("save_contact_info/open");
-    printf ("unable to open/create file %s\n", fname);
-    return 0;
-  }
-  int w = write (fd, data, dsize);
-  if (w != dsize) {
-    perror ("save_contact_info/write");
-    printf ("unable to write %d bytes to file %s, only wrote %d\n",
-            dsize, path, w);
-    close (fd);
-    return 0;
-  }
-  close (fd);
-  return w;
 }
 
 static int find_contact_again (const char * contact, int start_index)
@@ -749,7 +655,7 @@ static int find_single_contact (const char * contact)
     return -1;
   int index = find_contact (contact);
   if (index < 0) {
-    printf ("contact %s not found\n", contact);
+    printf ("contact %s not found, %d contacts\n", contact, actual_contacts);
     return -1;
   }
   if (find_contact_again (contact, index + 1) >= 0) {
@@ -791,119 +697,7 @@ static int externalize_public_key (char * pem, int len, char ** res)
   return bn_size + 1;
 }
 
-#if 0
-/* automatically generates a public/private key pair */
-/* if successful returns the public key size and sets *pubkey to point to
- * a static buffer containing the key (do not free or modify the key). */
-/* returns 0 in case of error */
-/* the keys are stored in memory, and only saved to disk by calling
- * save_contact_pubkey */
-int new_contact (char * contact, char ** pubkey)
-{
-  init_contacts ();
-  if (actual_contacts >= MAX_CONTACTS) {
-    printf ("too many contacts %d (max %d)\n", actual_contacts, MAX_CONTACTS);
-    return 0;
-  }
-  int index = find_contact (contact);
-  if (index >= 0) {
-    printf ("contact '%s' is already known\n", contact);
-    return 0;
-  }
-  /* create the keys */
-  int bits = 4096;
-  printf ("generating %d-bit private key", bits);
-  RSA * key = RSA_generate_key (bits, RSA_E65537_VALUE, callback, NULL);
-  printf ("\n");
-
-  struct contact_info * new_info = contacts + actual_contacts;
-  new_info->name = strcpy_malloc (contact, "new_contact name");
-  new_info->contact_key = NULL;  /* not known yet */
-  new_info->contact_ksize = 0;   /* not known yet */
-  new_info->num_messages = 0;
-  new_info->dirname = new_contact_fname ();
-
-  BIO * mbio = BIO_new (BIO_s_mem ());
-  PEM_write_bio_RSAPrivateKey (mbio, key, NULL, NULL, 0, NULL, NULL);
-  printf ("private key takes %zd bytes\n", BIO_ctrl_pending (mbio));
-  PEM_write_bio_RSAPublicKey (mbio, key);
-  char * keystore;
-  long ksize = BIO_get_mem_data (mbio, &keystore);
-  new_info->my_ksize = ksize;
-  new_info->my_key = memcpy_malloc (keystore, ksize, "new_contact key");
-  BIO_free (mbio);
-  printf ("private + public key take %ld bytes\n", ksize);
-
-  RSA_free (key);  /* saved in new_info->my_key, so no longer needed here */
-
-  actual_contacts++;
-
-  return externalize_public_key (new_info->my_key, new_info->my_ksize, pubkey);
-}
-
-/* called after receiving the public key of the contact.  If the contact
- * is unknown (i.e. new_contact was not called before), generates our
- * own public/private key pair.
- * Either way, fills in *key with our public key and returns its size.
- * saves all the contact information to disk.
- * returns 0 in case of error */
-unsigned int save_contact_pubkey (char * contact, char * contact_pubkey,
-                                  int contact_pubkey_size, char ** my_key)
-{
-/* print_buffer (contact_pubkey, contact_pubkey_size, "save_pubkey", 16, 1); */
-  init_contacts ();
-  int index = find_contact (contact);
-  /* if index == -1, it is a new contact, generate the keys */
-  if (index == -1) {
-    if (new_contact (contact, NULL) <= 0)
-      return 0;
-    index = find_single_contact (contact);  /* should be there this time */
-  }
-  if (index < 0) {
-    printf ("unable to generate key for contact %s\n", contact);
-    return 0;
-  }
-  if (*contact_pubkey != KEY_RSA4096_E65537) {
-    printf ("save_contact_pubkey: unknown public key type %d, ignoring\n",
-            (*contact_pubkey) & 0xff);
-    return 0;
-  }
-  struct contact_info * info = contacts + index;
-  if ((info->contact_key != NULL) ||
-      (info->contact_ksize != 0)) {
-    printf ("save_contact_pubkey called, but contact pubkey already exists!\n");
-    return 0;
-  }
-
-  RSA * contact_pubkey_rsa = RSA_new ();
-  contact_pubkey_rsa->n =
-     BN_bin2bn (contact_pubkey + 1, contact_pubkey_size - 1, NULL);
-  contact_pubkey_rsa->e = NULL;
-  BN_dec2bn (&(contact_pubkey_rsa->e), RSA_E65537_STRING);
-
-  BIO * mbio = BIO_new (BIO_s_mem ());
-  PEM_write_bio_RSAPublicKey (mbio, contact_pubkey_rsa);
-  char * keystore;
-  long ksize = BIO_get_mem_data (mbio, &keystore);
-  info->contact_ksize = ksize;
-  info->contact_key = memcpy_malloc (keystore, ksize, "save_contact_pubkey");
-  BIO_free (mbio);
-  RSA_free (contact_pubkey_rsa);
-  /* printf ("public key takes %ld bytes\n", ksize); */
-
-  /* info->fname, info->name, my_key, my_keysize, etc have been set
-   * by a previous call to new_contact, perhaps above in this same
-   * function, but perhaps a a separate call. */
-  save_contact_info (info->dirname, "name", info->name, strlen (info->name));
-  save_contact_info (info->dirname, "contact_public_key",
-                     info->contact_key, info->contact_ksize);
-  save_contact_info (info->dirname, "my_key", info->my_key, info->my_ksize);
-
-  return externalize_public_key (info->my_key, info->my_ksize, my_key);
-}
-#endif /* 0 */
-
-/* returns 0 if the contact cannot be found or matches more than one contact */
+/* returns 0 if the contact cannot be found */
 unsigned long long int get_counter (const char * contact)
 {
   init_contacts ();
@@ -926,47 +720,11 @@ unsigned long long int get_last_received (char * contact)
   if (index < 0)
     return 0;
 #ifdef DEBUG_PRINT
-  printf ("get_counter: index is %d, num is %lld for contact %s\n",
+  printf ("get_last_received: index is %d, num is %lld for contact %s\n",
           index, contacts [index].num_messages, contact);
 #endif /* DEBUG_PRINT */
   return contacts [index].last_received;
 }
-
-#if 0
-/* return the key length if successful, and set key to point to the
- * internal storage of the key (should not be free'd) */
-/* return 0 if the contact cannot be found or matches more than one contact */
-unsigned int get_contact_pubkey (char * contact, char ** key)
-{
-  init_contacts ();
-  int index = find_single_contact (contact);
-  if (index < 0)
-    return 0;
-  return externalize_public_key (contacts [index].contact_key,
-                                 contacts [index].contact_ksize, key);
-}
-
-unsigned int get_my_pubkey (char * contact, char ** key)
-{
-  init_contacts ();
-  int index = find_single_contact (contact);
-  if (index < 0)
-    return 0;
-  return externalize_public_key (contacts [index].my_key,
-                                 contacts [index].my_ksize, key);
-}
-
-unsigned int get_my_privkey (char * contact, char ** key)
-{
-  init_contacts ();
-  int index = find_single_contact (contact);
-  if (index < 0)
-    return 0;
-  *key = memcpy_malloc (contacts [index].my_key,
-                        contacts [index].my_ksize, "get_my_privkey");
-  return contacts [index].my_ksize;
-}
-#endif /* 0 */
 
 static char * copy_with_indent (char * text, int tsize, char * indent)
 {
@@ -1261,7 +1019,7 @@ char * get_outgoing (char * contact, unsigned long long int seq,
     int this_size;
     unsigned long long int this_time;
     char this_message_ack [MESSAGE_ID_SIZE];
-    if (start_ndigits (dep->d_name, DATE_LEN)) /* message file */
+    if (end_ndigits (dep->d_name, DATE_LEN)) /* message file */
       this_result = find_latest (contacts [index].dirname, dep->d_name, seq,
                                  &this_size, &this_time, this_message_ack);
     if ((this_result != NULL) && ((result == NULL) || (this_time > *time))) {
@@ -1345,7 +1103,7 @@ static long long add_ack (char * dirname, char * message_ack)
   struct dirent * dep;
   unsigned long long int max = 0;
   while ((dep = readdir (dir)) != NULL) {
-    if (start_ndigits (dep->d_name, DATE_LEN)) { /* message file */
+    if (end_ndigits (dep->d_name, DATE_LEN)) { /* message file */
       char * pid_str = message_acks_to_string (message_ack, "sent", "id");
       char * pack_str = message_acks_to_string (message_ack, "got", "ack");
       char * contents;

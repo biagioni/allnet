@@ -14,6 +14,7 @@
 #include "../packet.h"
 #include "util.h"
 #include "sha.h"
+#include "keys.h"
 #include "cipher.h"
 
 #define AES256_SIZE	(256 / 8)	/* 32 */
@@ -338,78 +339,49 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
 {
   *contact = NULL;
   *text = NULL;
-  if (sig_algo != ALLNET_SIGTYPE_NONE) {  /* verify signature */
-    int ssize = ((encrypted [esize - 2] & 0xff) << 8) +
-                 (encrypted [esize - 1] & 0xff) + 2;
-    char * sig = encrypted + (esize - ssize);
-    char ** contacts;
-    int ncontacts = all_contacts (&contacts);
-    int i;
-#ifdef DEBUG_PRINT
-    printf ("to do: limit this loop to only matching source addresses\n");
-    if (maxcontacts > 0)
-      printf ("to do: randomize and limit the number of contacts tried\n");
-#endif /* DEBUG_PRINT */
-    for (i = 0; ((*contact == NULL) && (i < ncontacts)); i++) {
-      char * key;
-      int ksize = get_contact_pubkey (contacts [i], &key);
-      if (verify (encrypted, esize - ssize, sig, ssize - 2, key, ksize)) {
-        *contact = strcpy_malloc (contacts [i], "verify contact");
-#ifdef DEBUG_PRINT
-        printf ("packet verified for contact %s\n", *contact);
-#endif /* DEBUG_PRINT */
-      } else {
-#ifdef DEBUG_PRINT
-        printf ("packet not verified for contact %s\n", *contact);
-#endif /* DEBUG_PRINT */
-      }
-      free (key);
-    }
-    if (*contact == NULL) {
-#ifdef DEBUG_PRINT
-      printf ("signature algorithm %d, verification unsuccessful\n", sig_algo);
-#endif /* DEBUG_PRINT */
-      return 0;
-    }
-    /* contact is known, go ahead and decrypt */
-    char * priv_key;   /* different from the contact public key above */
-    int priv_ksize = get_my_privkey (*contact, &priv_key);
-    if (priv_ksize <= 0) {
-      printf ("error (%d): unable to get my privkey for %s\n", priv_ksize,
-              *contact);
-      return 0;
-    }
-    int res = decrypt (encrypted, esize - ssize, priv_key, priv_ksize, text);
-    free (priv_key);
-    return res;
-  }
-  /* no signature, try the different decryption keys, see if one works */
-#ifdef DEBUG_PRINT
-  printf ("to do: randomize and limit the number of contacts tried\n");
-#endif /* DEBUG_PRINT */
   char ** contacts;
   int ncontacts = all_contacts (&contacts);
-  int i;
-  for (i = 0; i < ncontacts; i++) {
-/*    printf ("attempting decryption for contact %s\n", contacts [i]); */
-    char * key;
-    int ksize = get_my_privkey (contacts [i], &key);
-    if (ksize <= 0) {
-      printf ("error (%d): no my privkey for %s\n", ksize, contacts [i]);
-      return 0;
-    }
-    int res = decrypt (encrypted, esize, key, ksize, text);
-    free (key);
-    if (res > 0) {  /* success (without verification)! */
-      *contact = strcpy_malloc (contacts [i], "decrypt contact");
-      printf ("decrypted for contact %s\n", *contact);
-      return - res;
+  int ssize = 0;
+  if (sig_algo != ALLNET_SIGTYPE_NONE)  /* has signature */
+    ssize = readb16 (encrypted + esize - 2) + 2;
+  if (ssize > esize)
+    return 0;
+  int csize = esize - ssize;  /* size of ciphertext to decrypt */
+  char * sig = encrypted + csize;  /* only used if ssize != 0 */
+  int i, j;
+  for (i = 0; ((*contact == NULL) && (i < ncontacts)); i++) {
+#ifdef DEBUG_PRINT
+    printf ("to do: randomize and limit the number of contacts tried\n");
+#endif /* DEBUG_PRINT */
+    keyset * keys;
+    int nkeys = all_keys (contacts [i], &keys);
+    for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
+      int do_decrypt = 1;
+      if (sig_algo != ALLNET_SIGTYPE_NONE) {  /* verify signature */
+        char * pub_key;
+        int pub_ksize = get_contact_pubkey (keys [j], &pub_key);
+        do_decrypt =
+          verify (encrypted, csize, sig, ssize - 2, pub_key, pub_ksize);
+      }
+      if (do_decrypt) {
+        char * priv_key;
+        int priv_ksize = get_my_privkey (keys [j], &priv_key);
+        int res = decrypt (encrypted, csize, priv_key, priv_ksize, text);
+        if (res) {
+          *contact = strcpy_malloc (contacts [i], "verify contact");
+          if (sig_algo != ALLNET_SIGTYPE_NONE)
+            return res;
+          else
+            return -res;
+        } else if (sig_algo != ALLNET_SIGTYPE_NONE) {
+          printf ("signed msg from %s key %d verifies but does not decrypt\n",
+                  contacts [i], j);
+        }
+      }
     }
   }
-  /* packet may or may not have been decrypted, as indicated by tsize > 0 */
 #ifdef DEBUG_PRINT
   printf ("unable to decrypt packet, dropping\n");
 #endif /* DEBUG_PRINT */
   return 0;
 }
-

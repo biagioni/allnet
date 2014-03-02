@@ -24,6 +24,12 @@ extern int num_contacts ();
  * contact names (do not modify in any way). */
 extern int all_contacts (char *** contacts);
 
+/* returns the number of directories for this contact, and
+ * sets dirs to point to a statically allocated array of
+ * pointers to directory names (do not modify in any way). */
+/* if the contact is not found, returns 0 and sets dirs to NULL */
+extern int contact_dirs (char * contact, char * * * dirs);
+
 /* returns the keyset if successful, -1 if the contact already existed */
 /* creates a new private/public key pair, and if not NULL, also 
  * the contact public key, local and remote addresses */
