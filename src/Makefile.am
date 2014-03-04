@@ -34,7 +34,7 @@ bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/abc
 
 __ALLNET_BINDIR__ad_SOURCES = ad.c ${adlink} ${includes}
-__ALLNET_BINDIR__abc_SOURCES = abc.c mgmt.h ${includes} lib/sha.h lib/pqueue.h
+__ALLNET_BINDIR__abc_SOURCES = abc.c abc-wifi.c abc-iface.h mgmt.h ${includes} lib/sha.h lib/pqueue.h
 __ALLNET_BINDIR__alocal_SOURCES = alocal.c mgmt.h listen.c ${includes}
 __ALLNET_BINDIR__alocal_LDFLAGS = -lpthread
 __ALLNET_BINDIR__aip_SOURCES = aip.c mgmt.h listen.c ${includes}
