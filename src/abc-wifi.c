@@ -15,7 +15,6 @@
 #include "packet.h"
 
 iface_is_on = 0;
-static int sockfd_global = -1; /* -1 means not initialized yet */
 
 /* similar to system(3), but more control over what gets printed */
 static int my_system (char * command)
@@ -234,7 +233,6 @@ int init_iface (char * interface, int * sock,
         }
         /* create the socket and initialize the address */
         *sock = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
-        sockfd_global = *sock;
         *address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
         if (ifa_loop->ifa_flags & IFF_BROADCAST)
           *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
@@ -257,13 +255,12 @@ int init_iface (char * interface, int * sock,
   return -1;  /* interface not found */
 }
 
-int iface_on (char * interface)
+void iface_on (char * interface)
 {
   if (! iface_is_on) {
     wireless_up (interface);
     iface_is_on = 1;
   }
-  return sockfd_global;
 }
 
 void iface_off (char * interface)

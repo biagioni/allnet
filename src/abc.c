@@ -121,8 +121,10 @@ static int check_priority_mode (char * interface)
     /* leave high priority mode */
     high_priority = 0;
   }
-  if (high_priority)
-    return iface_on (interface);
+  if (high_priority) {
+    iface_on (interface);
+    return sockfd_global;
+  }
   return -1;
 }
 
@@ -199,7 +201,7 @@ static void update_quiet (struct timeval * quiet_end,
 static void send_beacon (int awake_ms, char * interface,
                          struct sockaddr * addr, socklen_t addrlen)
 {
-  int sockfd = iface_on (interface);
+  iface_on (interface);
   char buf [ALLNET_BEACON_SIZE (0)];
   int size = sizeof (buf);
   bzero (buf, size);
@@ -218,7 +220,7 @@ static void send_beacon (int awake_ms, char * interface,
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   writeb64 (mbp->awake_time,
             ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
-  if (sendto (sockfd, buf, size, MSG_DONTWAIT, addr, addrlen) < size)
+  if (sendto (sockfd_global, buf, size, MSG_DONTWAIT, addr, addrlen) < size)
     perror ("beacon sendto");
 }
 
