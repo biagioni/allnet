@@ -7,6 +7,8 @@ libincludes = \
 	keys.h \
 	log.h \
 	mapchar.h \
+	mgmt.h \
+	packet.h \
 	pipemsg.h \
 	pqueue.h \
 	priority.h \

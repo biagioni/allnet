@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/priority.h"
 
 #define SAVED_ADDRESSES	128

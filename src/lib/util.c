@@ -13,8 +13,8 @@
 #include <netpacket/packet.h>
 #include <arpa/inet.h>
 
-#include "../packet.h"
-#include "../mgmt.h"
+#include "packet.h"
+#include "mgmt.h"
 #include "log.h"
 #include "util.h"
 

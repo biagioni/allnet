@@ -10,7 +10,7 @@
 #ifndef ALLNET_KEYS_H
 #define ALLNET_KEYS_H
 
-#include "../packet.h"		/* ADDRESS_SIZE */
+#include "packet.h"		/* ADDRESS_SIZE */
 
 typedef int keyset;  /* opaque type, do not access directly */
 

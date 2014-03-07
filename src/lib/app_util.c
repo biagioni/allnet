@@ -10,7 +10,7 @@
 #include <netinet/in.h>
 
 #include "app_util.h"
-#include "../packet.h"
+#include "packet.h"
 #include "sha.h"
 #include "priority.h"
 

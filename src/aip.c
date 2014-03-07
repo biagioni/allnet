@@ -30,7 +30,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "listen.h"
 #include "lib/ai.h"
 #include "lib/pipemsg.h"

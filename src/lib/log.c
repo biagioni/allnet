@@ -10,7 +10,7 @@
 #include <errno.h>
 #include <dirent.h>
 
-#include "../packet.h"
+#include "packet.h"
 #include "log.h"
 #include "util.h"
 

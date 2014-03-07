@@ -6,6 +6,7 @@ libincludes = \
 	lib/config.h \
 	lib/dcache.h \
 	lib/log.h \
+	lib/packet.h \
 	lib/pipemsg.h \
 	lib/priority.h \
 	lib/sha.h \
@@ -16,7 +17,6 @@ includes = \
 	${libincludes} \
 	config.h \
 	listen.h \
-	packet.h \
 	record.h \
 	social.h \
 	track.h
@@ -34,10 +34,10 @@ bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/abc
 
 __ALLNET_BINDIR__ad_SOURCES = ad.c ${adlink} ${includes}
-__ALLNET_BINDIR__abc_SOURCES = abc.c mgmt.h ${includes} lib/sha.h lib/pqueue.h
-__ALLNET_BINDIR__alocal_SOURCES = alocal.c mgmt.h listen.c ${includes}
+__ALLNET_BINDIR__abc_SOURCES = abc.c ${includes} lib/mgmt.h lib/sha.h lib/pqueue.h
+__ALLNET_BINDIR__alocal_SOURCES = alocal.c listen.c ${includes} lib/mgmt.h
 __ALLNET_BINDIR__alocal_LDFLAGS = -lpthread
-__ALLNET_BINDIR__aip_SOURCES = aip.c mgmt.h listen.c ${includes}
+__ALLNET_BINDIR__aip_SOURCES = aip.c listen.c ${includes} lib/mgmt.h
 __ALLNET_BINDIR__aip_LDFLAGS = -lpthread
 __ALLNET_BINDIR__acache_SOURCES = acache.c ${includes}
 __ALLNET_BINDIR__astart_SOURCES = astart.c ${includes}

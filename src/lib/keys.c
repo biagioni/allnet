@@ -22,7 +22,7 @@
 #include <openssl/pem.h>
 #include <openssl/err.h>
 
-#include "../packet.h"
+#include "packet.h"
 #include "keys.h"
 #include "util.h"
 #include "log.h"

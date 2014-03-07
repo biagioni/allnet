@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <time.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/util.h"
 #include "lib/sha.h"
 #include "lib/priority.h"
