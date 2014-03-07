@@ -43,17 +43,17 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netpacket/packet.h>   /* sockaddr_ll */
 
 #include "abc-iface.h"
 #include "packet.h"
 #include "mgmt.h"
+#include "lib/log.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/util.h"
-#include "lib/log.h"
 #include "lib/pqueue.h"
 
 
