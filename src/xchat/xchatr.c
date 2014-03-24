@@ -14,14 +14,6 @@
 #include "retransmit.h"
 #include "xcommon.h"
 
-static void request_free_peer (char * peer, int sock)
-{
-  if (peer != NULL) {
-    request_and_resend (sock, peer);
-    free (peer);
-  }
-}
-
 int main (int argc, char ** argv)
 {
   /* allegedly, openSSL does this for us */
@@ -32,7 +24,8 @@ int main (int argc, char ** argv)
     return 1;
 
   int timeout = PIPE_MESSAGE_WAIT_FOREVER;
-  char * old_peer = NULL;
+  char * old_contact = NULL;
+  keyset old_kset = -1;
   while (1) {
     char * packet;
     int pipe, pri;
@@ -42,25 +35,29 @@ int main (int argc, char ** argv)
       exit (1);
     }
     if (found == 0) {  /* timed out, request/resend any missing */
-      request_free_peer (old_peer, sock);
-      old_peer = NULL;
+      if (old_contact != NULL) {
+        request_and_resend (sock, old_contact, old_kset);
+        old_contact = NULL;
+        old_kset = -1;
+      }
       timeout = PIPE_MESSAGE_WAIT_FOREVER; /* cancel future timeouts */
     } else {    /* found > 0, got a packet */
       int verified, duplicate;
       char * peer;
+      keyset kset;
       char * desc;
       char * message;
-      int mlen = handle_packet (sock, packet, found, &peer, &message, &desc,
-                                &verified, NULL, &duplicate);
+      int mlen = handle_packet (sock, packet, found, &peer, &kset,
+                                &message, &desc, &verified, NULL, &duplicate);
       if (mlen > 0) {
         printf ("from '%s' got %s\n  %s\n", peer, desc, message);
-        if ((old_peer == NULL) || (strcmp (old_peer, peer) != 0)) {
-          request_free_peer (old_peer, sock);
-          old_peer = peer;
+        if ((old_contact == NULL) ||
+            (strcmp (old_contact, peer) != 0) || (old_kset != kset)) {
+          request_and_resend (sock, peer, kset);
+          old_contact = peer;
+          old_kset = kset;
           timeout = 100;   /* time before next request, 100ms == 0.1seconds */
-        } else { /* same peer, do nothing */
-          free (peer);
-        }
+        } /* else same peer, do nothing */
         free (message);
         free (desc);
       }

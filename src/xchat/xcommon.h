@@ -4,6 +4,7 @@
 #define ALLNET_XCHAT_COMMON_H
 
 #include "chat.h"
+#include "lib/keys.h"
 
 /* returns the socket if successful, -1 otherwise */
 extern int xchat_init ();
@@ -17,7 +18,8 @@ extern void xchat_end (int sock);
  * a valid data message from a peer.  Otherwise returns 0 */
 /* the data message (if any) is null-terminated */
 extern int handle_packet (int sock, char * packet, int psize,
-                          char ** peer, char ** message, char ** desc,
+                          char ** contact, keyset * kset,
+                          char ** message, char ** desc,
                           int * verified, time_t * sent, int * duplicate);
 
 /* send this message and save it in the xchat log. */
@@ -27,6 +29,6 @@ extern long long int send_data_message (int sock, char * peer,
 
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it */
-extern void request_and_resend (int sock, char * peer);
+extern void request_and_resend (int sock, char * peer, keyset kset);
 
 #endif /* ALLNET_XCHAT_COMMON_H */

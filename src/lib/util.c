@@ -340,7 +340,6 @@ void packet_to_string (const char * buffer, int bsize, char * desc,
 
   /* print the transport information */
   if (t != 0) {
-    off += snprintf (to + off, tsize - off, " ");
     if ((t & ALLNET_TRANSPORT_STREAM) != 0)
       off += snprintf (to + off, tsize - off,
                        " s %s",
@@ -384,6 +383,19 @@ void packet_to_string (const char * buffer, int bsize, char * desc,
       dsize -= ssize + 2;
       off += snprintf (to + off, tsize - off, " = %d data, %d + 2 sig", 
                        dsize, ssize);
+    }
+    if (hp->message_type == ALLNET_TYPE_ACK) {
+      int num_acks = dsize / MESSAGE_ID_SIZE;
+      if (num_acks * MESSAGE_ID_SIZE == dsize)
+        off += snprintf (to + off, tsize - off, " = %d acks", num_acks);
+      else
+        off += snprintf (to + off, tsize - off, " = %d acks + %d bytes",
+                         num_acks, dsize - num_acks * MESSAGE_ID_SIZE);
+      int i;
+      for (i = 0; i < num_acks; i++)
+        off += buffer_to_string (buffer + ALLNET_SIZE (hp->transport) +
+                                 i * MESSAGE_ID_SIZE, MESSAGE_ID_SIZE,
+                                 ", ", 5, 0, to + off, tsize - off);
     }
   }
   if (print_eol)
@@ -456,8 +468,8 @@ struct allnet_header *
 {
   int alloc_size = data_size + ALLNET_HEADER_SIZE;
   if (ack != NULL)
-    alloc_size = data_size + ALLNET_SIZE(ALLNET_TRANSPORT_ACK_REQ)
-               + MESSAGE_ID_SIZE;
+    alloc_size = ALLNET_SIZE(ALLNET_TRANSPORT_ACK_REQ)
+               + MESSAGE_ID_SIZE + data_size;
   char * result = malloc_or_fail (alloc_size, "util.c create_packet");
   *size = alloc_size;
   return init_packet (result, alloc_size, message_type, max_hops, sig_algo,
@@ -473,11 +485,13 @@ struct allnet_header *
   create_ack (struct allnet_header * packet, char * ack,
               char * from, int nbits, int * size)
 {
+  *size = 0;   /* in case of early return */
   int alloc_size = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
-  char * result = malloc_or_fail (alloc_size, "util.c create_packet");
+  char * result = malloc_or_fail (alloc_size, "util.c create_ack");
   if (from == NULL) {
     from = packet->destination;
-    nbits = packet->dst_nbits;
+    if (nbits > packet->dst_nbits)
+      nbits = packet->dst_nbits;
   }
   struct allnet_header * hp =
     init_packet (result, alloc_size, ALLNET_TYPE_ACK, packet->hops + 3,
@@ -786,11 +800,11 @@ void allnet_time_string (unsigned long long int allnet_seconds, char * result)
 
   time_t unix_seconds = allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX;
   struct tm detail_time;
-  if (gmtime_r (&unix_seconds, &detail_time))
+  if (gmtime_r (&unix_seconds, &detail_time) == NULL)
     return;
   asctime_r (&detail_time, result);
-  if (result [25] == '\0')
-    snprintf (result + 25, 5, " UTC");
+  if (result [24] == '\n')   /* overwrite the newline */
+    snprintf (result + 24, 5, " UTC");
 }
 
 void allnet_localtime_string (unsigned long long int allnet_seconds,

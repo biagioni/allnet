@@ -14,6 +14,7 @@
 #include "lib/log.h"
 #include "chat.h"
 #include "cutil.h"
+#include "message.h"
 #include "store.h"
 
 /* strip most non-alphabetic characters, and convert the rest to uppercase */
@@ -91,7 +92,7 @@ static int local_time_offset ()
 /* returns 1 if successful, 0 otherwise */
 int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
 {
-  unsigned long long int counter = get_counter (contact);
+  uint64_t counter = get_counter (contact);
   if (counter == 0) {
     printf ("unable to locate key for contact '%s'\n", contact);
     return 0;
@@ -99,20 +100,126 @@ int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
   writeb64 (cp->counter, counter);
 
   int my_time_offset = local_time_offset ();
-  unsigned long long int now = time (NULL);
-  writeb48 (cp->timestamp, now);
-  writeb16 (cp->timestamp + 6, my_time_offset);
+  uint64_t now = allnet_time ();
+
+  uint64_t compound = make_time_tz (now, my_time_offset);
+  writeb64 (cp->timestamp, compound);
   return 1;
+}
+
+/* return 1 if the message was sent, or if the key was invalid (i.e. should
+ * try the next key).
+ * returns 0 if the encryption or transmission failed, and it would probably
+ * be best to stop trying */
+/* can only do_save if also do_ack */
+static int send_to_one (keyset k, char * data, int dsize, char * contact,
+                        int sock, char * src, int sbits, char * dst, int dbits,
+                        int hops, int priority, int do_ack, int do_save)
+{
+  char * priv_key;
+  char * key;
+  int priv_ksize = get_my_privkey (k, &priv_key);
+  int ksize = get_contact_pubkey (k, &key);
+  if ((priv_ksize == 0) || (ksize == 0)) {
+    printf ("unable to locate key %d for contact %s (%d, %d)\n",
+            k, contact, priv_ksize, ksize);
+    return 1;  /* skip to the next key */
+  }
+  /* if not already specified, get the addresses for the specific key */
+  char a1 [ADDRESS_SIZE];
+  if (src == NULL) {
+    int nbits = get_local (k, a1);
+    if (nbits < sbits)
+      sbits = nbits;
+    src = a1;
+  }
+  char a2 [ADDRESS_SIZE];
+  if (dst == NULL) {
+    int nbits = get_remote (k, a2);
+    if (nbits < dbits)
+      dbits = nbits;
+    dst = a2;
+  }
+  /* set the message ack */
+  char * message_ack = NULL;
+  if (do_ack) {
+    message_ack = data;
+    random_bytes (message_ack, MESSAGE_ID_SIZE);
+print_buffer (message_ack, MESSAGE_ID_SIZE, "sending packet with ack", 5, 1);
+  }
+  /* encrypt */
+  char * encrypted;
+  int esize = encrypt (data, dsize, key, ksize, &encrypted);
+  if (esize == 0) {  /* some serious problem */
+    printf ("unable to encrypt retransmit request for key %d of %s\n",
+            k, contact);
+    return 0;  /* exit the loop */
+  }
+  /* sign */
+  char * signature;
+  int ssize = sign (encrypted, esize, priv_key, priv_ksize, &signature);
+  if (ssize == 0) {
+    printf ("unable to sign retransmit request\n");
+    free (encrypted);
+    return 0;  /* exit the loop */
+  }
+
+  int sendsize = esize + ssize + 2;
+  int csize = sendsize;
+  if (message_ack != NULL)
+    csize = sendsize - MESSAGE_ID_SIZE;
+  int psize;
+  struct allnet_header * hp =
+    create_packet (csize, ALLNET_TYPE_DATA, hops, ALLNET_SIGTYPE_RSA_PKCS1,
+                   src, sbits, dst, dbits, message_ack, &psize);
+  int hsize = ALLNET_SIZE (hp->transport);
+  int msize = hsize + sendsize;
+  if (psize != msize) {
+    printf ("error: computed message size %d, actual %d\n", msize, psize);
+    printf ("  hsize %d (%x, %p, %d), sendsize %d = e %d + s %d + 2\n",
+            hsize, hp->transport, message_ack, do_ack, sendsize, esize, ssize);
+    exit (1);
+  }
+  char * message = (char *) hp;
+
+  memcpy (message + hsize, encrypted, esize);
+  free (encrypted);
+  memcpy (message + hsize + esize, signature, ssize);
+  free (signature);
+  writeb16 (message + hsize + esize + ssize, ssize);
+
+print_packet (message, msize, "sending", 1);
+  if (! send_pipe_message_free (sock, message, msize, priority)) {
+    printf ("unable to request retransmission from %s\n", contact);
+    return 0;
+  } /* else
+    printf ("requested retransmission from %s\n", peer); */
+  if (do_ack && do_save)
+    save_outgoing (contact, k, (struct chat_descriptor *) data,
+                   data + CHAT_DESCRIPTOR_SIZE, dsize - CHAT_DESCRIPTOR_SIZE);
+  return 1;
+}
+
+/* same as send_to_contact, but only sends to the one key corresponding
+ * to key, and does not save outgoing.  Does request ack, and
+ * uses the addresses saved for the contact. */
+int resend_packet (char * data, int dsize, char * contact, keyset key, int sock,
+                   int hops, int priority)
+{
+  return send_to_one (key, data, dsize, contact, sock, NULL, ADDRESS_BITS,
+                      NULL, ADDRESS_BITS, hops, priority, 1, 0);
 }
 
 /* send to the contact, returning 1 if successful, 0 otherwise */
 /* if src is NULL, source address is taken from get_local, likewise for dst */
 /* if so, uses the lesser of s/dbits and the address bits */
+/* the message ACK must be set at the start of the data */
+/* unless ack_and_save is 0, requests an ack, and after the message is sent,
+ * calls save_outgoing. */
 int send_to_contact (char * data, int dsize, char * contact, int sock,
                      char * src, int sbits, char * dst, int dbits,
-                     int hops, int priority)
+                     int hops, int priority, int ack_and_save)
 {
-
   /* get the keys */
   keyset * keys;
   int nkeys = all_keys (contact, &keys);
@@ -123,81 +230,10 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
 
   int result = 1;
   int k;
-  for (k = 0; k < nkeys; k++) {
-    char * priv_key;
-    char * key;
-    int priv_ksize = get_my_privkey (keys [k], &priv_key);
-    int ksize = get_contact_pubkey (keys [k], &key);
-    if ((priv_ksize == 0) || (ksize == 0)) {
-      printf ("unable to locate key %d for contact %s (%d, %d, %d)\n",
-              k, contact, priv_ksize, ksize, nkeys);
-      continue;  /* skip to the next key */
-    }
-    /* if not already specified, get the addresses for the specific key */
-    char a1 [ADDRESS_SIZE];
-    char a2 [ADDRESS_SIZE];
-    if (src == NULL) {
-      int nbits = get_local (keys [k], a1);
-      if (nbits < sbits)
-        sbits = nbits;
-      src = a1;
-    }
-    if (dst == NULL) {
-      int nbits = get_remote (keys [k], a2);
-      if (nbits < dbits)
-        dbits = nbits;
-      dst = a2;
-    }
-    /* set the message ack */
-    struct chat_descriptor * cdp = (struct chat_descriptor *) data;
-    random_bytes (cdp->message_ack, MESSAGE_ID_SIZE);
-    /* encrypt */
-    char * encrypted;
-    int esize = encrypt (data, dsize, key, ksize, &encrypted);
-    if (esize == 0) {  /* some serious problem */
-      printf ("unable to encrypt retransmit request for key %d of %s\n",
-              k, contact);
-      result = 0;
-      break;  /* exit the loop */
-    }
-    /* sign */
-    char * signature;
-    int ssize = sign (encrypted, esize, priv_key, priv_ksize, &signature);
-    if (ssize == 0) {
-      printf ("unable to sign retransmit request\n");
-      free (encrypted);
-      result = 0;
-      break;  /* exit the loop */
-    }
-
-    int transport = ALLNET_TRANSPORT_ACK_REQ;
-
-    int hsize = ALLNET_SIZE (transport);
-    int dsize = esize + ssize + 2;
-    int msize = hsize + dsize;
-    int psize;
-    struct allnet_header * hp =
-      create_packet (dsize - MESSAGE_ID_SIZE, ALLNET_TYPE_DATA, hops,
-                     ALLNET_SIGTYPE_RSA_PKCS1, src, sbits, dst, dbits,
-                     cdp->message_ack, &psize);
-    char * message = (char *) hp;
-    if (psize != msize) {
-      printf ("error: message size computed %d, actual %d\n", msize, psize);
-      exit (1);
-    }
-
-    memcpy (message + hsize, encrypted, esize);
-    free (encrypted);
-    memcpy (message + hsize + esize, signature, ssize);
-    free (signature);
-    writeb16 (message + hsize + esize + ssize, ssize);
-
-print_packet (message, msize, "sending", 1);
-    if (! send_pipe_message_free (sock, message, msize, priority))
-      printf ("unable to request retransmission from %s\n", contact);
- /* else
-      printf ("requested retransmission from %s\n", peer); */
-  }
+  for (k = 0; ((result) && (k < nkeys)); k++)
+    result = send_to_one (keys [k], data, dsize, contact, sock, src, sbits,
+                          dst, dbits, hops, priority,
+                          ack_and_save, ack_and_save);
   return result;
 }
 
@@ -210,12 +246,13 @@ char * chat_time_to_string (unsigned char * t, int static_result)
     result = malloc (size);
   char * p = result;
 
-  unsigned long long int time = readb48 (t);
-  int time_offset = readb16 (t + 6);
+  uint64_t time;
+  int time_offset;
+  get_time_tz (readb64 (t), &time, &time_offset);
   int my_time_offset = local_time_offset ();
 
   struct tm time_tm;
-  time_t time_t_time = time;
+  time_t time_t_time = time + ALLNET_Y2K_SECONDS_IN_UNIX;
   localtime_r (&time_t_time, &time_tm);
   asctime_r (&time_tm, result);
   /* delete the final \n by overwriting it with the null character */
@@ -301,4 +338,19 @@ char * chat_descriptor_to_string (struct chat_descriptor * cdp,
   return result;
 }
 
+/* the chat descriptor stores time with the main part in the first 48 bits,
+ * and the time zone (in signed minutes from UTC -- positive is East) in
+ * the lower 16 bits */
+void get_time_tz (uint64_t raw, uint64_t * time, int * tz)
+{
+  *time = (raw >> 16) & 0xffffffffffff;
+  *tz   =  raw        & 0xffff;
+  if (*tz > 0x7fff)
+    *tz = - (0x10000 - *tz);
+}
+
+uint64_t make_time_tz (uint64_t time, int tz)
+{
+  return (time << 16) | (tz & 0xffff);
+}
 

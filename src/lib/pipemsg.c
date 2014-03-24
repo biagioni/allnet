@@ -220,11 +220,10 @@ int send_pipe_message (int pipe, char * message, int mlen, int priority)
 int send_pipe_message_free (int pipe, char * message, int mlen, int priority)
 {
   int result = send_pipe_message (pipe, message, mlen, priority);
-  snprintf (log_buf, LOG_SIZE, "send_pipe_message_free freeing %p\n", message);
-  log_print ();
+/* snprintf (log_buf, LOG_SIZE, "send_pipe_message_free freeing %p (%d)\n",
+            message, mlen);
+  log_print (); */
   free (message);
-  snprintf (log_buf, LOG_SIZE, "send_pipe_message_free freed %p\n", message);
-  log_print ();
   return result;
 }
 
@@ -371,8 +370,10 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
     int new_recvd = read (pipe, buffer + recvd, blen - recvd);
 /*  printf ("%d\n", new_recvd); */
     if (new_recvd <= 0) {
+#ifdef DEBUG_PRINT
       if (new_recvd < 0)
         perror ("pipemsg.c receive_bytes read");
+#endif /* DEBUG_PRINT */
       snprintf (log_buf, LOG_SIZE,
                 "receive_bytes: %d bytes on pipe %d, expected %d/%d\n",
                 new_recvd, pipe, blen - recvd, blen);

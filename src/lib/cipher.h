@@ -5,6 +5,8 @@
 #ifndef ALLNET_APP_CIPHER_H
 #define ALLNET_APP_CIPHER_H
 
+#include "keys.h"
+
 /* first byte of key defines the key format */
 #define KEY_RSA4096_E65537	1	/* n for rsa public key, e is 65537 */
 
@@ -39,7 +41,7 @@ extern int sign (char * text, int tsize, char * key, int ksize, char ** result);
  * if maxcontacts > 0, only tries to match up to maxcontacts (to be implemented)
  */
 extern int decrypt_verify (int sig_algo, char * encrypted, int esize,
-                           char ** contact, char ** text,
+                           char ** contact, keyset * key, char ** text,
                            char * sender, int sbits, char * dest, int dbits,
                            int maxcontacts);
 

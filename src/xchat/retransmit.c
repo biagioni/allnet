@@ -3,13 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/keys.h"
 #include "lib/log.h"
 #include "chat.h"
-#include "store.h"
+#include "message.h"
 #include "cutil.h"
 #include "retransmit.h"
 
@@ -20,15 +21,16 @@
  *    (COUNTER_SIZE) bytes * (singles + 2 * ranges);
  * or NULL for failure
  */
-static char * gather_missing_info (char * contact, int * singles, int * ranges,
-                                   unsigned long long int * rcvd_sequence)
+static char * gather_missing_info (char * contact, keyset k,
+                                   int * singles, int * ranges,
+                                   uint64_t * rcvd_sequence)
 {
-  *rcvd_sequence = get_last_received (contact);
+  *rcvd_sequence = get_last_received (contact, k);
   if (*rcvd_sequence <= 0) {
     printf ("never received for contact %s\n", contact);
     return NULL;
   }
-  char * missing = get_missing (contact, singles, ranges);
+  char * missing = get_missing (contact, k, singles, ranges);
   if ((missing == NULL) || ((*singles == 0) && (*ranges == 0))) {
 #ifdef DEBUG_PRINT
     printf ("no messages missing from contact %s\n", contact);
@@ -55,7 +57,7 @@ static char * gather_missing_info (char * contact, int * singles, int * ranges,
 /* returns the request (*rsize bytes) for success, NULL for failure */
 static char * create_chat_control_request (char * contact, char * missing,
                                            int num_singles, int num_ranges,
-                                           unsigned long long int rcvd_sequence,
+                                           uint64_t rcvd_sequence,
                                            int * rsize)
 {
   *rsize = 0;
@@ -99,8 +101,20 @@ static char * create_chat_control_request (char * contact, char * missing,
     ptr += COUNTER_SIZE;
   }
 #ifdef DEBUG_PRINT
-  printf ("retransmit request for %s includes %d singles, %d ranges\n",
-          contact, num_singles, num_ranges);
+  printf ("retransmit request for %s has %d singles, %d ranges, last %lld\n",
+          contact, ccrp->num_singles, ccrp->num_ranges,
+          readb64 (ccrp->last_received));
+  ptr = ccrp->counters;
+  for (i = 0; i < num_singles; i++)
+    print_buffer (ptr + i * COUNTER_SIZE, COUNTER_SIZE,
+                  "single retransmit", 15, 1);
+  ptr = ccrp->counters + (num_singles * COUNTER_SIZE);
+  for (i = 0; i < num_ranges; i++) {
+    print_buffer (ptr + i * COUNTER_SIZE * 2,                COUNTER_SIZE,
+                  "range from", 15, 1);
+    print_buffer (ptr + i * COUNTER_SIZE * 2 + COUNTER_SIZE, COUNTER_SIZE,
+                  "        to", 15, 1);
+  }
 #endif /* DEBUG_PRINT */
   *rsize = size;
   return request;
@@ -109,13 +123,13 @@ static char * create_chat_control_request (char * contact, char * missing,
 /* sends a chat_control message to request retransmission.
  * returns 1 for success, 0 in case of error.
  */ 
-int send_retransmit_request (char * contact, int sock,
+int send_retransmit_request (char * contact, keyset k, int sock,
                              int hops, int priority)
 {
   int num_singles;
   int num_ranges;
-  unsigned long long int rcvd_sequence;
-  char * missing = gather_missing_info (contact, &num_singles, &num_ranges,
+  uint64_t rcvd_sequence;
+  char * missing = gather_missing_info (contact, k, &num_singles, &num_ranges,
                                         &rcvd_sequence);
   if (missing == NULL)
     return 0;
@@ -134,35 +148,32 @@ int send_retransmit_request (char * contact, int sock,
   int result = 1;
   for (i = 0; i < nkeys; i++)
     if (0 == send_to_contact (request, size, contact, sock,
-                              NULL, 32, NULL, 32, hops, priority))
+                              NULL, 32, NULL, 32, hops, priority, 0))
       result = 0;
   free (request);
   return result;
 }
-#undef DEBUG_PRINT
 
 #define MAXLL	(-1LL)
-/* return -1 (MAXLL) if no previous, or the previous otherwise */
-static unsigned long long int get_prev (unsigned long long int last,
-                                        unsigned char * singles,
-                                        unsigned int num_singles,
-                                        unsigned char * ranges,
-                                        unsigned int num_ranges)
+/* return -1 (MAXLL) if no previous, otherwise the previous sequence number */
+static uint64_t get_prev (uint64_t last,
+                          unsigned char * singles, unsigned int num_singles,
+                          unsigned char * ranges, unsigned int num_ranges)
 {
-  /* printf ("maxLL is %llx\n", MAXLL); */
-  unsigned long long int result = MAXLL;
+  /* printf ("maxLL is %" PRIx64 "\n", MAXLL); */
+  uint64_t result = MAXLL;
   if (last <= 0)
     return result;
   /* in what follows, last > 0, so last-1 is a valid expression >= 0 */
   int i;
   for (i = 0; i < num_ranges; i++) {
     int index = 2 * i * COUNTER_SIZE;
-    unsigned long long int start = readb64 (ranges + index);
+    uint64_t start = readb64 (ranges + index);
     index += COUNTER_SIZE;
-    unsigned long long int finish = readb64 (ranges + index);
+    uint64_t finish = readb64 (ranges + index);
     if (start <= finish) {        /* a reasonable range */
       if (start <= last - 1) {    /* range may have the prev */
-        unsigned long long int candidate = last - 1;
+        uint64_t candidate = last - 1;
         if (finish < candidate)
           candidate = finish;
         if ((result == MAXLL) || (result < candidate))
@@ -171,49 +182,58 @@ static unsigned long long int get_prev (unsigned long long int last,
     }
   }
   for (i = 0; i < num_singles; i++) {
-    unsigned long long int n = readb64 (singles + i * COUNTER_SIZE);
+    uint64_t n = readb64 (singles + i * COUNTER_SIZE);
+printf ("%d: n %" PRIu64 ", result %" PRIu64 ", last %" PRIu64 "\n",
+        i, n, result, last);
     if ((n < last) && ((result == MAXLL) || (result < n)))
       result = n;
   }
 #ifdef DEBUG_PRINT
-  printf ("get_prev (%lld, %p/%d, %p/%d) ==> %lld\n",
+  printf ("get_prev (%" PRIu64 ", %p/%d, %p/%d) ==> %" PRIu64 "\n",
           last, singles, num_singles, ranges, num_ranges, result);
 #endif /* DEBUG_PRINT */
   return result;
 }
 
-static void resend_message (unsigned long long int seq, char * contact,
-                            int sock, int hops, int priority)
+static void resend_message (uint64_t seq, char * contact,
+                            keyset k, int sock, int hops, int priority)
 {
+  printf ("resending message with sequence %" PRIu64 " to %s\n", seq, contact);
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
   int size;
-  unsigned long long int time;
+  uint64_t time;
   char message_ack [MESSAGE_ID_SIZE];
-  char * text = get_outgoing (contact, seq, &size, &time, message_ack);
-  if ((text == NULL) || (size <= 0))
+  char * text = get_outgoing (contact, k, seq, &size, &time, message_ack);
+  if ((text == NULL) || (size <= 0)) {
+    printf ("resend_message %s %d: no outgoing %" PRIu64 ", %p %d\n",
+            contact, k, seq, text, size);
     return;
+  }
   char * message = malloc_or_fail (size + CHAT_DESCRIPTOR_SIZE, "resend_msg");
   bzero (message, CHAT_DESCRIPTOR_SIZE);
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
+  memcpy (cdp->message_ack, message_ack, MESSAGE_ID_SIZE);
   writeb64 (cdp->counter, seq);
   writeb64 (cdp->timestamp, time);
   memcpy (message + CHAT_DESCRIPTOR_SIZE, text, size);
   free (text);
 #ifdef DEBUG_PRINT
-  printf ("retransmitting outgoing to %s, seq %lld, time %lld/0x%llx\n",
+  printf ("rexmit outgoing %s, seq %" PRIu64 ", t %" PRIu64 "/0x%" PRIx64 "\n",
           contact, seq, time, time);
+  print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
 #endif /* DEBUG_PRINT */
-  send_to_contact (message, size + CHAT_DESCRIPTOR_SIZE, contact, sock,
-                   NULL, 32, NULL, 32, hops, priority);
-  free (text);
+  resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
+                 hops, priority);
 }
 
 /* resends the messages requested by the retransmit message */
 void resend_messages (char * retransmit_message, int mlen, char * contact,
-                      int sock, int hops, int top_priority)
+                      keyset k, int sock, int hops, int top_priority, int max)
 {
 #ifdef DEBUG_PRINT
-  printf ("in resend_messages (%p, %d, %s, %d, %d)\n", message, mlen, contact,
-          sock, hops);
+  printf ("in resend_messages (%p, %d, %s, %d, %d)\n",
+          retransmit_message, mlen, contact, sock, hops);
 #endif /* DEBUG_PRINT */
   if (mlen < sizeof (struct chat_control_request)) {
     printf ("message size %d less than %zd, cannot be retransmit\n",
@@ -235,72 +255,101 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
     return;
   }
 
-  unsigned long long int counter = get_counter (contact);
+  uint64_t counter = get_counter (contact);
   if (counter == 0LL) {
     printf ("contact %s not found, cannot retransmit\n", contact);
     return;
   }
+#ifdef DEBUG_PRINT
+  printf ("rcvd rexmit request for %s, %d singles, %d ranges, last %lld\n",
+          contact, hp->num_singles, hp->num_ranges,
+          readb64 (hp->last_received));
+  char * ptr = hp->counters;
+  int i;
+  for (i = 0; i < hp->num_singles; i++)
+    print_buffer (ptr + i * COUNTER_SIZE, COUNTER_SIZE,
+                  "single retransmit", 15, 1);
+  ptr = hp->counters + (hp->num_singles * COUNTER_SIZE);
+  for (i = 0; i < hp->num_ranges; i++) {
+    print_buffer (ptr + i * COUNTER_SIZE * 2,                COUNTER_SIZE,
+                  "range from", 15, 1);
+    print_buffer (ptr + i * COUNTER_SIZE * 2 + COUNTER_SIZE, COUNTER_SIZE,
+                  "        to", 15, 1);
+  }
+#endif /* DEBUG_PRINT */
 
+  int send_count = 0;
   /* priority decreases gradually from 5/8, which is less than for
    * fresh messages. */
   int priority = top_priority;
   /* assume the more recent messages are more important, so send them first */
   /* and with slightly higher priority */
-  unsigned long long int last = readb64 (hp->last_received);
-  while (counter > last) {
-    resend_message (counter, contact, sock, hops, priority);
+  uint64_t last = readb64 (hp->last_received);
+  while ((counter > last) && (send_count < max)) {
+    resend_message (counter, contact, k, sock, hops, priority);
     counter--;
+    send_count++;
     priority -= ALLNET_PRIORITY_EPSILON;
   }
   /* now send any prior messages */
   while (1) {
-    unsigned long long int prev =
+    uint64_t prev =
       get_prev (last, hp->counters, hp->num_singles,
                 hp->counters + (hp->num_singles * COUNTER_SIZE),
                 hp->num_ranges);
     if (prev == MAXLL)   /* no more found before this */
       break;
-    resend_message (prev, contact, sock, hops, priority);
+    if (send_count++ >= max)
+      break;
+    resend_message (prev, contact, k, sock, hops, priority);
     last = prev;
     priority -= ALLNET_PRIORITY_EPSILON;
   }
 }
+#undef DEBUG_PRINT
 
-void resend_unacked (char * contact, int sock, 
-                     int hops, int priority)
+void resend_unacked (char * contact, keyset k, int sock, 
+                     int hops, int priority, int max)
 {
   int singles;
   int ranges;
-  char * unacked = get_unacked (contact, &singles, &ranges);
+  char * unacked = get_unacked (contact, k, &singles, &ranges);
+printf ("get_unacked returned %d singles, %d ranges, %p\n", singles, ranges,
+unacked);
   if (unacked == NULL)
     return;
 
+  int max_send = 8;
+  int send_count = 0;
   int i;
-  for (i = 0; i < singles; i++) {
-    unsigned long long int seq = readb64 (unacked);
-    unacked += COUNTER_SIZE;
-    resend_message (seq, contact, sock, hops, priority);
+  for (i = 0; (i < singles) && (send_count < max_send); i++) {
+    uint64_t seq = readb64 (unacked);
+printf ("seq %" PRIu64 " at %p\n", seq, unacked);
+    unacked += sizeof (uint64_t);
+    resend_message (seq, contact, k, sock, hops, priority);
+    send_count++;
   }
-  for (i = 0; i < ranges; i++) {
-    unsigned long long int start = readb64 (unacked);
+  for (i = 0; (i < ranges) && (send_count < max_send); i++) {
+    uint64_t start = readb64 (unacked);
     unacked += COUNTER_SIZE;
-    unsigned long long int finish = readb64 (unacked);
+    uint64_t finish = readb64 (unacked);
     unacked += COUNTER_SIZE;
-    while (start <= finish) {
-      resend_message (start, contact, sock, hops, priority);
+    while ((send_count < max_send) && (start <= finish)) {
+      resend_message (start, contact, k, sock, hops, priority);
       start++;
+      send_count++;
     }
   }
 }
 
 /* retransmit any requested messages */
-void do_chat_control (char * contact, char * msg, int msize, int sock,
-                      int hops)
+void do_chat_control (char * contact, keyset k, char * msg, int msize,
+                      int sock, int hops)
 {
   struct chat_control * cc = (struct chat_control *) msg;
   if (cc->type == CHAT_CONTROL_TYPE_REQUEST) {
-    resend_messages (msg, msize, contact, sock, hops,
-                     ALLNET_PRIORITY_LOCAL_LOW);
+    resend_messages (msg, msize, contact, k, sock, hops,
+                     ALLNET_PRIORITY_LOCAL_LOW, 16);
   } else {
     printf ("chat control type %d, not implemented\n", cc->type);
   }

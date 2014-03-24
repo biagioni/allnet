@@ -24,12 +24,6 @@ extern int num_contacts ();
  * contact names (do not modify in any way). */
 extern int all_contacts (char *** contacts);
 
-/* returns the number of directories for this contact, and
- * sets dirs to point to a statically allocated array of
- * pointers to directory names (do not modify in any way). */
-/* if the contact is not found, returns 0 and sets dirs to NULL */
-extern int contact_dirs (char * contact, char * * * dirs);
-
 /* returns the keyset if successful, -1 if the contact already existed */
 /* creates a new private/public key pair, and if not NULL, also 
  * the contact public key, local and remote addresses */
@@ -42,13 +36,18 @@ extern keyset create_contact (char * contact, int keybits, int feedback,
 /*************** operations on keysets and keys ********************/
 
 /* returns -1 if the contact does not exist, and 0 or more otherwise */
-extern int num_key_sets (char * contact);
+extern int num_keysets (char * contact);
 
 /* returns the number of keysets, and has keysets point to a statically
  * allocated array of pointers to statically allocated keysets
  * (do not modify in any way). */
 /* returns -1 if the contact does not exist */
 extern int all_keys (char * contact, keyset ** keysets);
+
+/* returns a pointer to a statically allocated (do not modify in any way).
+ * name for the directory corresponding to this key. */
+/* in case of error, returns NULL */
+extern char * key_dir (keyset key);
 
 /* returns 1 if the keyset is valid and there was no prior public key
  * for this contact, returns 0 otherwise */
@@ -67,6 +66,7 @@ extern unsigned int get_my_privkey (keyset k, char ** key);
 /* address must have length at least ADDRESS_SIZE */
 extern unsigned int get_local (keyset k, char * address);
 extern unsigned int get_remote (keyset k, char * address);
+
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
  * longer be accessed unless marked as valid again */

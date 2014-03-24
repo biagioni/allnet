@@ -59,13 +59,6 @@ int num_key_infos = 0;
  * than the number of keysets */
 char * * cp = NULL;
 int cp_used = 0;
-/* the contact info is parallel to cp -- there is one entry for each
- * valid name in cp, and at the same index */
-struct contact_info {
-  int num_dirs;
-  char * * directories;
-};
-struct contact_info * cip = NULL;
 
 /* return 0 if the contact does not exist, otherwise one more than the
  * contact's intex in cp */
@@ -91,40 +84,9 @@ static void generate_contacts ()
   int ki = 0;
   cp_used = 0;
   for (ki = 0; ki < num_key_infos; ki++) {
-    if (kip [ki].contact_name != NULL) {
-      int index;
-      if ((index = contact_exists (kip [ki].contact_name)) != 0) {
-        index--;
-        char ** old = cip [index].directories;
-        char ** new =
-          malloc_or_fail ((cip [index].num_dirs + 1) * sizeof (char *),
-                          "generate_contacts");
-        int i;
-        for (i = 0; i < cip [index].num_dirs; i++)
-          new [i] = old [i];
-        free (old);
-        for (i = cip [index].num_dirs; i >= 0; i--) {
-          if (strcmp (kip [ki].dir_name, new [i]) > 0)
-            break;
-          new [i + 1] = new [i];
-        }
-        new [i + 1] = kip [ki].dir_name;
-        cip [index].directories = new;
-        cip [index].num_dirs = cip [index].num_dirs + 1;
-printf ("added %d-th directory", cip [index].num_dirs);
-for (i = 0; i < cip [index].num_dirs; i++)
-printf (", %s", cip [index].directories [i]);
-printf ("\n");
-      } else {
-        index = cp_used;
-        cp_used++;
-        cp [index] = kip [ki].contact_name;
-        cip [index].num_dirs = 1;
-        cip [index].directories =
-          malloc_or_fail (sizeof (char *), "generate_contacts single");
-        cip [index].directories [0] = kip [ki].dir_name;
-      }
-    }
+    if ((kip [ki].contact_name != NULL) &&
+        (! contact_exists (kip [ki].contact_name)))
+      cp [cp_used++] = kip [ki].contact_name;
   }
 }
 
@@ -132,12 +94,9 @@ static void set_kip_size (int size)
 {
   struct key_info * new_kip = NULL;
   char * * new_cp = NULL;
-  struct contact_info * new_cip = NULL;
   if (size > 0) {
     new_kip = malloc_or_fail (sizeof (struct key_info) * size, "key info");
     new_cp = malloc_or_fail (sizeof (char *) * size, "contact names");
-    new_cip =
-      malloc_or_fail (sizeof (struct contact_info) * size, "contact_info");
   }
   /* if kip/cp is NULL, num_key_infos should be 0 */
   /* if new_kip/new_cp is NULL, size should be 0 */
@@ -154,10 +113,6 @@ static void set_kip_size (int size)
     if (kip [i].dir_name != NULL)
       free (kip [i].dir_name);
   }
-  /* free existing directories, will be reallocated by generate_contacts */
-  for (i = 0; i < cp_used; i++)
-    if (cip [i].directories != NULL)
-      free (cip [i].directories);
   /* zero out the new entries (if any) in kip */
   for (i = num_key_infos; i < size; i++) {
     new_kip [i].contact_name = NULL;
@@ -170,22 +125,16 @@ static void set_kip_size (int size)
     new_kip [i].dir_name = NULL;
   }
   /* clear the new entries in cp/cip, generate_contacts will init them */
-  for (i = 0; i < size; i++) {
+  for (i = 0; i < size; i++)
     new_cp [i] = NULL;
-    new_cip [i].num_dirs = 0;
-    new_cip [i].directories = NULL;
-  }
   /* set kip, cp, cip to point to the new arrays */
   if (kip != NULL)
     free (kip);
   if (cp != NULL)
     free (cp);
-  if (cip != NULL)
-    free (cip);
   num_key_infos = size;
   kip = new_kip;
   cp = new_cp;
-  cip = new_cip;
   cp_used = 0;
   generate_contacts ();
 }
@@ -277,7 +226,8 @@ static void read_address_file (char * fname, char * address, int * nbits)
 static int read_key_info (char * path, char * file, char ** contact,
                           RSA ** my_key, RSA ** contact_pubkey,
                           char * local, int * loc_nbits,
-                          char * remote, int * rem_nbits, char ** dir_name)
+                          char * remote, int * rem_nbits,
+                          char ** dir_name)
 {
   char * basename = strcat3_malloc (path, "/", file, "basename");
 
@@ -318,7 +268,7 @@ static int read_key_info (char * path, char * file, char ** contact,
   }
   if (dir_name != NULL) {
     *dir_name = basename;
-    printf ("dir name for %s set to %s\n", *contact, *dir_name);
+    /* printf ("dir name for %s set to %s\n", *contact, *dir_name); */
   } else
     free (basename);
   return 1;
@@ -395,24 +345,6 @@ int all_contacts (char *** contacts)
   init_from_file ();
   *contacts = cp;
   return cp_used;
-}
-
-/* returns the number of directories for this contact, and
- * sets dirs to point to a statically allocated array of
- * pointers to directory names (do not modify in any way). */
-/* if the contact is not found, returns 0 and sets dirs to NULL */
-int contact_dirs (char * contact, char * * * dirs)
-{
-  int index = contact_exists (contact);
-  if (index == 0) {
-    if (dirs != NULL)
-      *dirs = NULL;
-    return 0;
-  }
-  index--;
-  if (dirs != NULL)
-    *dirs = cip [index].directories;
-  return cip [index].num_dirs;
 }
 
 static void callback (int type, int count, void * arg)
@@ -521,7 +453,7 @@ printf ("save_contact dirname is %s\n", dirname);
     write_address_file (remote_fname, k->remote.address, k->remote.nbits);
     free (remote_fname);
   }
-  printf ("save_contact %d file name is %s\n", k - kip, dirname);
+  printf ("save_contact %d file name is %s\n", ((int) (k - kip)), dirname);
 }
 
 static int do_set_contact_pubkey (struct key_info * k,
@@ -645,7 +577,7 @@ kip [new_contact].contact_pubkey, kip [new_contact].my_key);
 /*************** operations on keysets and keys ********************/
 
 /* returns -1 if the contact does not exist, and 0 or more otherwise */
-int num_key_sets (char * contact)
+int num_keysets (char * contact)
 {
   init_from_file ();
   if (! contact_exists (contact))
@@ -694,6 +626,17 @@ int all_keys (char * contact, keyset ** keysets)
   }
   *keysets = all_keysets;
   return count;
+}
+
+/* returns a pointer to a statically allocated (do not modify in any way).
+ * name for the directory corresponding to this key. */
+/* in case of error, returns NULL */
+char * key_dir (keyset key)
+{
+  init_from_file ();
+  if (! valid_keyset (key))
+    return NULL;
+  return kip [key].dir_name;
 }
 
 static unsigned int get_pubkey (RSA * rsa, char ** bytes,
