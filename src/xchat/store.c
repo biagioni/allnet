@@ -227,7 +227,7 @@ static int parse_seq_time (char * string, uint64_t * seq, uint64_t * time,
   }
   seqs += strlen (SEQUENCE_STR);
   char * end;
-  long long n = strtoll (seqs, &end, 10);
+  uint64_t n = strtoll (seqs, &end, 10);
   if (end == seqs) {
     printf ("sequence value missing from '%s'\n", string);
     return 0;
@@ -246,12 +246,16 @@ static int parse_seq_time (char * string, uint64_t * seq, uint64_t * time,
   }
   if (time != NULL)
     *time = n;
+/* if (time != NULL)
+printf ("parsed time %llu from string %s\n", *time, paren + 1); */
   char * blank = end;
   n = strtol (blank + 1, &end, 10);
   if (end == blank + 1)
     printf ("timezone missing from '%s', not a problem\n", blank);
   else if (tz != NULL)
     *tz = n;
+/* if (tz != NULL)
+printf ("parsed tz %d from string %s\n", *tz, blank + 1); */
   return 1;
 } 
 
@@ -406,7 +410,9 @@ void free_iter (struct msg_iter * iter)
   iter->current_pos = 0;
 }
 
-/* returns the message type, or MSG_TYPE_DONE if none are available */
+/* returns the message type, or MSG_TYPE_DONE if none are available.
+ * most recent refers to the most recently saved in the file.  This may
+ * not be very useful, highest_seq_record may be more useful */ 
 int most_recent_record (char * contact, keyset k, int type_wanted,
                         uint64_t * seq, uint64_t * time, int * tz_min,
                         char * message_ack, char ** message, int * msize)
@@ -420,8 +426,76 @@ int most_recent_record (char * contact, keyset k, int type_wanted,
     type = prev_message (iter, seq, time, tz_min, message_ack, message, msize);
   } while ((type != MSG_TYPE_DONE) &&
            (type_wanted != MSG_TYPE_ANY) && (type != type_wanted));
+  free_iter (iter);
   return type;
 }
+
+/* returns the message type, or MSG_TYPE_DONE if none are available */
+int highest_seq_record (char * contact, keyset k, int type_wanted,
+                        uint64_t * seq, uint64_t * time, int * tz_min,
+                        char * message_ack, char ** message, int * msize)
+{
+  struct msg_iter * iter = start_iter (contact, k);
+  if (iter == NULL)
+    return MSG_TYPE_DONE;
+  int type;
+  int max_type = MSG_TYPE_DONE;  /* in case we have no matches */
+  uint64_t max_seq = 0;
+  uint64_t max_time = 0;
+  int max_tz = 0;
+  char max_ack [MESSAGE_ID_SIZE];
+  char * max_message = NULL;
+  int max_msize = 0;
+  while (1) {
+    uint64_t this_seq = 0;
+    uint64_t this_time = 0;
+    int this_tz = 0;
+    char this_ack [MESSAGE_ID_SIZE];
+    char * this_message = NULL;
+    int this_msize = 0;
+    if (message != NULL) {
+      type = prev_message (iter, &this_seq, &this_time, &this_tz, this_ack,
+                           &this_message, &this_msize);
+    } else {
+      type = prev_message (iter, &this_seq, &this_time, &this_tz, this_ack,
+                           NULL, NULL);
+    }
+    if (type == MSG_TYPE_DONE)  /* no (more) messages */
+      break;
+    if (((type_wanted == MSG_TYPE_ANY) || (type == type_wanted)) &&
+        ((this_seq > max_seq) ||
+         ((this_seq == max_seq) && (this_time > max_time)))) {
+      max_type = type;
+      max_seq = this_seq;
+      max_time = this_time;
+      max_tz = this_tz;
+      memcpy (max_ack, this_ack, MESSAGE_ID_SIZE);
+      if (message != NULL) {
+        max_message = this_message;
+        max_msize = this_msize;
+      }
+    } else if (message != NULL) {  /* free the newly allocated message */
+      free (this_message);
+    }
+  }
+  free_iter (iter);
+  if (max_seq > 0) {
+    if (seq != NULL)
+      *seq = max_seq;
+    if (time != NULL)
+      *time = max_time;
+    if (tz_min != NULL)
+      *tz_min = max_tz;
+    if (message_ack != NULL)
+      memcpy (message_ack, max_ack, MESSAGE_ID_SIZE);
+    if (message != NULL)
+      *message = max_message;
+    if (msize != NULL)
+      *msize = max_msize;
+  }
+  return max_type;
+}
+
 
 static void store_save_string_len (int fd, char * string, int mlen)
 {

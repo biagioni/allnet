@@ -31,6 +31,14 @@ extern int prev_message (struct msg_iter * iter, uint64_t * seq,
 extern void free_iter (struct msg_iter * iter);
 
 /* returns the message type, or MSG_TYPE_DONE if none are available */
+extern int highest_seq_record (char * contact, keyset k, int type_wanted,
+                               uint64_t * seq, uint64_t * time, int * tz_min,
+                               char * message_ack,
+                               char ** message, int * msize);
+
+/* returns the message type, or MSG_TYPE_DONE if none are available.
+ * most recent refers to the most recently saved in the file.  This may
+ * not be very useful, highest_seq_record may be more useful */ 
 extern int most_recent_record (char * contact, keyset k, int type_wanted,
                                uint64_t * seq, uint64_t * time, int * tz_min,
                                char * message_ack,

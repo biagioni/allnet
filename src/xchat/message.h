@@ -53,8 +53,13 @@ extern void save_incoming (char * contact, keyset k,
 /* mark a previously sent message as acknowledged
  * return the sequence number > 0 if this is an ack for a known contact,
  * return 0 if this ack is not recognized
+ * if result > 0:
+ * if contact is not NULL, the contact is set to point to the
+ * contact name (statically allocated, do not modify in any way) and
+ * if kset is not null, the location it points to is set to the keyset
  */
-extern uint64_t ack_received (char * message_id);
+extern uint64_t ack_received (char * message_ack,
+                              char ** contact, keyset * kset);
 
 /* returns a new (malloc'd) array, or NULL in case of error */
 /* the new array has (singles + 2 * ranges) * COUNTER_SIZE bytes. */

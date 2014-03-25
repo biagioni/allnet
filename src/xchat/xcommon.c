@@ -60,7 +60,7 @@ void xchat_end (int sock)
   close (sock);
 }
 
-#define NUM_ACKS	10
+#define NUM_ACKS	100
 /* initial contents should not matter, accidental match is unlikely */
 static char recently_sent_acks [NUM_ACKS] [MESSAGE_ID_SIZE];
 static int currently_sent_ack = 0;
@@ -75,7 +75,8 @@ static int is_recently_sent_ack (char * message_ack)
 }
 
 /* send an ack for the given message and message ID */
-static void send_ack (int sock, struct allnet_header * hp, char * message_ack)
+static void send_ack (int sock, struct allnet_header * hp, char * message_ack,
+                      int send_resend_request, char * contact, keyset kset)
 {
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) == 0) {
 printf ("packet not requesting an ack, no ack sent\n");
@@ -90,8 +91,12 @@ printf ("packet not requesting an ack, no ack sent\n");
   currently_sent_ack = (currently_sent_ack + 1) % NUM_ACKS;
   memcpy (recently_sent_acks [currently_sent_ack], message_ack,
           MESSAGE_ID_SIZE);
+print_packet ((char *) ackp, size, "sending ack", 1);
   send_pipe_message_free (sock, (char *) ackp, size, ALLNET_PRIORITY_LOCAL);
-  print_buffer (message_ack, MESSAGE_ID_SIZE, "ack sent", 5, 1);
+/* after sending the ack, see if we can get any outstanding
+ * messages from the peer */
+  if (send_resend_request)
+    request_and_resend (sock, contact, kset);
 }
 
 /* handle an incoming message, acking it if it is a data message for us */
@@ -118,7 +123,6 @@ int handle_packet (int sock, char * packet, int psize,
 */
     return 0;
   }
-  print_packet (packet, psize, "xcommon received", 1);
 
   struct allnet_header * hp = (struct allnet_header *) packet;
   int hsize = ALLNET_SIZE (hp->transport);
@@ -127,23 +131,27 @@ int handle_packet (int sock, char * packet, int psize,
     return 0;
   }
 
+  if (hp->hops > 0)  /* not my own packet */
+    print_packet (packet, psize, "xcommon received", 1);
+
   if (hp->message_type == ALLNET_TYPE_ACK) {
     /* save the acks */
     char * ack = packet + ALLNET_SIZE (hp->transport);
     int count = (psize - hsize) / MESSAGE_ID_SIZE; 
     int i;
     for (i = 0; i < count; i++) {
-      long long int ack_number = ack_received (ack);
-/* */
-      if (ack_number > 0)
+      long long int ack_number = ack_received (ack, contact, kset);
+      if (ack_number > 0) {
         printf ("sequence number %lld acked\n", ack_number);
-/*    else if (ack_number == -2)
+        request_and_resend (sock, *contact, *kset);
+/*    } else if (ack_number == -2) {
         printf ("packet acked again\n"); */
-      else if (is_recently_sent_ack (ack))
+      } else if (is_recently_sent_ack (ack)) {
         printf ("received my own ack\n");
-      else
+      } else {
         print_buffer (ack, MESSAGE_ID_SIZE, "unknown ack rcvd",
                       MESSAGE_ID_SIZE, 1);
+      }
       fflush (NULL);
 /* */
       ack += MESSAGE_ID_SIZE;
@@ -175,7 +183,6 @@ int handle_packet (int sock, char * packet, int psize,
     printf ("no signature to verify, but decrypted from %s\n", *contact);
     tsize = -tsize;
   } else if (tsize > 0) {
-printf ("decrypt-verify from %s/%d\n", *contact, *kset);
     verif = 1;
   }
   if (tsize < CHAT_DESCRIPTOR_SIZE) {
@@ -195,8 +202,6 @@ printf ("decrypt-verify from %s/%d\n", *contact, *kset);
 #ifdef DEBUG_PRINT
   printf ("got packet from contact %s\n", *contact);
 #endif /* DEBUG_PRINT */
-  if (verif)
-    request_and_resend (sock, *contact, *kset);
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
   char * cleartext = text + CHAT_DESCRIPTOR_SIZE;
   int msize = tsize - CHAT_DESCRIPTOR_SIZE;
@@ -204,9 +209,7 @@ printf ("decrypt-verify from %s/%d\n", *contact, *kset);
   long long int seq = readb64 (cdp->counter);
   if (seq == COUNTER_FLAG) {
     do_chat_control (*contact, *kset, text, tsize, sock, hp->hops + 4);
-if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) != 0)
-print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "acking control packet", 5, 1);
-    send_ack (sock, hp, cdp->message_ack);
+    send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
     if (*contact != NULL) { free (*contact); *contact = NULL; }
     if (text != NULL) free (text);
     return 0;
@@ -228,8 +231,7 @@ print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "acking control packet", 5, 1);
 
   /* printf ("hp->hops = %d\n", hp->hops); */
 
-print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "acking packet", 5, 1);
-  send_ack (sock, hp, cdp->message_ack);
+  send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
 
   free (text);
 

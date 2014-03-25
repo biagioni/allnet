@@ -14,7 +14,7 @@
 #include "cutil.h"
 #include "retransmit.h"
 
-#define DEBUG_PRINT
+/* #define DEBUG_PRINT */
 
 /* figures out the number of singles and the number of ranges. */
 /* returns a dynamically allocated array (must be free'd) of
@@ -45,9 +45,9 @@ static char * gather_missing_info (char * contact, keyset k,
   for (d = 0; d < *singles; d++)
     printf ("%lld, ", readb64 (missing + d * COUNTER_SIZE));
   for (d = 0; d < *ranges; d++)
-  printf ("%lld-%lld, ",
-  readb64 (missing + ((2 * d     + *singles) * COUNTER_SIZE)),
-  readb64 (missing + ((2 * d + 1 + *singles) * COUNTER_SIZE)));
+    printf ("%lld-%lld, ",
+            readb64 (missing + ((2 * d     + *singles) * COUNTER_SIZE)),
+            readb64 (missing + ((2 * d + 1 + *singles) * COUNTER_SIZE)));
 #endif /* DEBUG_PRINT */
   return missing;
 }
@@ -183,8 +183,6 @@ static uint64_t get_prev (uint64_t last,
   }
   for (i = 0; i < num_singles; i++) {
     uint64_t n = readb64 (singles + i * COUNTER_SIZE);
-printf ("%d: n %" PRIu64 ", result %" PRIu64 ", last %" PRIu64 "\n",
-        i, n, result, last);
     if ((n < last) && ((result == MAXLL) || (result < n)))
       result = n;
   }
@@ -195,12 +193,85 @@ printf ("%d: n %" PRIu64 ", result %" PRIu64 ", last %" PRIu64 "\n",
   return result;
 }
 
+/* the allnet xchat protocol has two mechanisms for retransmitting:
+ * - pull: a receiver that knows it is lacking some message will
+ *   request them, sending a chat_control_request
+ * - push: a sender with unacked message will retransmit them
+ * both are done when a message from the peer indicates the peer may
+ * be reachable.
+ *
+ * This redundancy is good, leading perhaps to greater packet delivery.
+ * However, it can also lead to unnecessary (duplicate) packet
+ * retransmission, which is not particularly useful.
+ *
+ * To avoid duplicate retransmission, we remember the last few
+ * retransmitted packets, and do not retransmit them again if they
+ * were sent within the most recent TIME_BEFORE_RESEND.
+ */
+#define TIME_BEFORE_RESEND	600    /* 600 seconds, 10 min */
+#define NUM_RECENTLY_RESENT	100
+struct resend_info {
+  uint64_t seq;
+  char * contact;
+  keyset k;
+  time_t resend_time;
+};
+static struct resend_info recently_resent [NUM_RECENTLY_RESENT];
+static int latest_resent = 0;
+
+static void init_resent ()
+{
+  static int initialized = 0;
+  if (! initialized) {
+    initialized = 1;
+    int i;
+    for (i = 0; i < NUM_RECENTLY_RESENT; i++) {
+      recently_resent [i].seq = 0;
+      recently_resent [i].contact = NULL;
+      recently_resent [i].k = -1;
+    }
+    latest_resent = 0;
+  }
+}
+
+static int was_recently_resent (uint64_t seq, char * contact, keyset k)
+{
+  int i;
+  for (i = 0; i < NUM_RECENTLY_RESENT; i++) {
+    if ((recently_resent [i].contact != NULL) &&
+        (recently_resent [i].seq == seq) &&
+        (recently_resent [i].k == k) &&
+        (strcmp (recently_resent [i].contact, contact) == 0) &&
+        (recently_resent [i].resend_time + TIME_BEFORE_RESEND > allnet_time ()))
+      return 1;
+  }
+  return 0;
+}
+
+static int record_resend (uint64_t seq, char * contact, keyset k)
+{
+  latest_resent = (latest_resent + 1) % NUM_RECENTLY_RESENT;
+  if (recently_resent [latest_resent].contact != NULL)
+    free (recently_resent [latest_resent].contact);
+  recently_resent [latest_resent].seq = seq;
+  recently_resent [latest_resent].k = k;
+  recently_resent [latest_resent].contact =
+      strcpy_malloc (contact, "record_resend");
+  recently_resent [latest_resent].resend_time = allnet_time ();
+}
+
 static void resend_message (uint64_t seq, char * contact,
                             keyset k, int sock, int hops, int priority)
 {
   printf ("resending message with sequence %" PRIu64 " to %s\n", seq, contact);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
+  init_resent ();
+  if (was_recently_resent (seq, contact, k)) {
+    printf ("recently resent seq %" PRIu64 " %s/%d, not sending again\n",
+            seq, contact, k);
+    return;
+  }
   int size;
   uint64_t time;
   char message_ack [MESSAGE_ID_SIZE];
@@ -210,6 +281,7 @@ static void resend_message (uint64_t seq, char * contact,
             contact, k, seq, text, size);
     return;
   }
+  record_resend (seq, contact, k);
   char * message = malloc_or_fail (size + CHAT_DESCRIPTOR_SIZE, "resend_msg");
   bzero (message, CHAT_DESCRIPTOR_SIZE);
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
@@ -260,6 +332,7 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
     printf ("contact %s not found, cannot retransmit\n", contact);
     return;
   }
+  counter--;   /* the last counter sent, which is one less than get_counter */
 #ifdef DEBUG_PRINT
   printf ("rcvd rexmit request for %s, %d singles, %d ranges, last %lld\n",
           contact, hp->num_singles, hp->num_ranges,
@@ -322,24 +395,26 @@ unacked);
   int max_send = 8;
   int send_count = 0;
   int i;
+  char * p = unacked;
   for (i = 0; (i < singles) && (send_count < max_send); i++) {
-    uint64_t seq = readb64 (unacked);
-printf ("seq %" PRIu64 " at %p\n", seq, unacked);
-    unacked += sizeof (uint64_t);
+    uint64_t seq = readb64 (p);
+printf ("seq %" PRIu64 " at %p\n", seq, p);
+    p += sizeof (uint64_t);
     resend_message (seq, contact, k, sock, hops, priority);
     send_count++;
   }
   for (i = 0; (i < ranges) && (send_count < max_send); i++) {
-    uint64_t start = readb64 (unacked);
-    unacked += COUNTER_SIZE;
-    uint64_t finish = readb64 (unacked);
-    unacked += COUNTER_SIZE;
+    uint64_t start = readb64 (p);
+    p += COUNTER_SIZE;
+    uint64_t finish = readb64 (p);
+    p += COUNTER_SIZE;
     while ((send_count < max_send) && (start <= finish)) {
       resend_message (start, contact, k, sock, hops, priority);
       start++;
       send_count++;
     }
   }
+  free (unacked);
 }
 
 /* retransmit any requested messages */
