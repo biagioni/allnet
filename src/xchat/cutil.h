@@ -3,6 +3,8 @@
 #ifndef ALLNET_CHAT_UTIL_H
 #define ALLNET_CHAT_UTIL_H
 
+#include <inttypes.h>
+
 #include "chat.h"
 #include "lib/keys.h"
 

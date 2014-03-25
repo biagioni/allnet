@@ -86,7 +86,7 @@ static int local_time_offset ()
           gtime_tm.tm_hour, gtime_tm.tm_min, gtime_tm.tm_sec);
   printf ("local time offset %d\n", delta_minutes (&now_ltime_tm, &gtime_tm));
 */
-  return (delta_minutes (&now_ltime_tm, &gtime_tm) & 0xffff);
+  return (delta_minutes (&now_ltime_tm, &gtime_tm));
 }
 
 /* returns 1 if successful, 0 otherwise */
@@ -114,7 +114,8 @@ int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
 /* can only do_save if also do_ack */
 static int send_to_one (keyset k, char * data, int dsize, char * contact,
                         int sock, char * src, int sbits, char * dst, int dbits,
-                        int hops, int priority, int do_ack, int do_save)
+                        int hops, int priority, int do_ack, char * ack,
+                        int do_save)
 {
   char * priv_key;
   char * key;
@@ -143,10 +144,13 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
   /* set the message ack */
   char * message_ack = NULL;
   if (do_ack) {
+    if (ack != NULL)
+      memcpy (data, ack, MESSAGE_ID_SIZE);
+    else
+      random_bytes (data, MESSAGE_ID_SIZE);
     message_ack = data;
-    random_bytes (message_ack, MESSAGE_ID_SIZE);
-print_buffer (message_ack, MESSAGE_ID_SIZE, "sending packet with ack", 5, 1);
-  }
+  } /* else message_ack is null, to make sure we don't ack, below */
+
   /* encrypt */
   char * encrypted;
   int esize = encrypt (data, dsize, key, ksize, &encrypted);
@@ -206,8 +210,11 @@ print_packet (message, msize, "sending", 1);
 int resend_packet (char * data, int dsize, char * contact, keyset key, int sock,
                    int hops, int priority)
 {
+  /* ack should already be in the packet data */
+  char ack [MESSAGE_ID_SIZE];
+  memcpy (ack, data, MESSAGE_ID_SIZE);
   return send_to_one (key, data, dsize, contact, sock, NULL, ADDRESS_BITS,
-                      NULL, ADDRESS_BITS, hops, priority, 1, 0);
+                      NULL, ADDRESS_BITS, hops, priority, 1, ack, 0);
 }
 
 /* send to the contact, returning 1 if successful, 0 otherwise */
@@ -233,7 +240,7 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
   for (k = 0; ((result) && (k < nkeys)); k++)
     result = send_to_one (keys [k], data, dsize, contact, sock, src, sbits,
                           dst, dbits, hops, priority,
-                          ack_and_save, ack_and_save);
+                          ack_and_save, NULL, ack_and_save);
   return result;
 }
 
@@ -268,6 +275,7 @@ char * chat_time_to_string (unsigned char * t, int static_result)
       strcat (result, tzname [0]);
     return result;
   }
+printf ("time offset %d, my time offset %d\n", time_offset, my_time_offset);
   int print_offset = strlen (result);
   int delta = time_offset - my_time_offset;
   while (delta < 0)
@@ -347,10 +355,13 @@ void get_time_tz (uint64_t raw, uint64_t * time, int * tz)
   *tz   =  raw        & 0xffff;
   if (*tz > 0x7fff)
     *tz = - (0x10000 - *tz);
+/* printf ("get_time_tz (%llx) ==> %llx, %d\n", raw, *time, *tz); */
 }
 
 uint64_t make_time_tz (uint64_t time, int tz)
 {
+/* printf ("make_time_tz (%llx, %d) => %llx\n",
+time, tz, (time << 16) | (tz & 0xffff)); */
   return (time << 16) | (tz & 0xffff);
 }
 

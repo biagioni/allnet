@@ -681,7 +681,7 @@ unsigned int get_my_pubkey (keyset k, char ** key)
 unsigned int get_my_privkey (keyset k, char ** key)
 {
 int debug_n = 0;
-printf ("get_my_privkey (%d, %p)\n", k, key);
+/* printf ("get_my_privkey (%d, %p)\n", k, key); */
   init_from_file ();
   if (! valid_keyset (k))
     printf ("division by zero is %d\n", k / debug_n);
@@ -693,8 +693,10 @@ printf ("get_my_privkey (%d, %p)\n", k, key);
   BIO * mbio = BIO_new (BIO_s_mem ());
   PEM_write_bio_RSAPrivateKey (mbio, kip [k].my_key,
                                NULL, NULL, 0, NULL, NULL);
+#ifdef DEBUG_PRINT
   printf ("private key takes %zd bytes, %zd available\n",
           BIO_ctrl_pending (mbio), sizeof (storage));
+#endif /* DEBUG_PRINT */
   char * keystore;
   long ksize = BIO_get_mem_data (mbio, &keystore);
   if (ksize + 1 > sizeof (storage))
