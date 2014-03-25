@@ -24,6 +24,7 @@
 #include "chat.h"
 #include "message.h"
 #include "store.h"
+#include "cutil.h"
 #include "lib/util.h"
 #include "lib/keys.h"
 
@@ -39,7 +40,7 @@ uint64_t get_counter (char * contact)
   int i;
   for (i = 0; i < nkeys; i++) {
     uint64_t seq;
-    int type = most_recent_record (contact, kset [i], MSG_TYPE_SENT,
+    int type = highest_seq_record (contact, kset [i], MSG_TYPE_SENT,
                                    &seq, NULL, NULL, NULL, NULL, NULL);
     if ((type != MSG_TYPE_DONE) && (seq > max))
       max = seq;
@@ -52,7 +53,7 @@ uint64_t get_counter (char * contact)
 uint64_t get_last_received (char * contact, keyset k)
 {
   uint64_t seq;
-  int type = most_recent_record (contact, k, MSG_TYPE_RCVD,
+  int type = highest_seq_record (contact, k, MSG_TYPE_RCVD,
                                  &seq, NULL, NULL, NULL, NULL, NULL);
   if (type == MSG_TYPE_RCVD)
     return seq;
@@ -118,7 +119,8 @@ char * get_outgoing (char * contact, keyset k, uint64_t seq,
   while ((type = prev_message (iter, &mseq, &mtime, &tz, message_ack,
           &result, size)) != MSG_TYPE_DONE) {
     if ((type == MSG_TYPE_SENT) && (mseq == seq)) { /* found */
-      *time = make_time_tz (mtime, tz);
+      if (time != NULL)
+        *time = make_time_tz (mtime, tz);
       free_iter (iter);
       return result;
     }
@@ -143,8 +145,12 @@ void save_incoming (char * contact, keyset k,
 /* mark a previously sent message as acknowledged
  * return the sequence number > 0 if this is an ack for a known contact,
  * return 0 if this ack is not recognized
+ * if result > 0:
+ * if contact is not NULL, the contact is set to point to the
+ * contact name (statically allocated, do not modify in any way) and
+ * if kset is not null, the location it points to is set to the keyset
  */
-uint64_t ack_received (char * message_ack)
+uint64_t ack_received (char * message_ack, char ** contact, keyset * kset)
 {
   char ** contacts;
   int nc = all_contacts (&contacts);
@@ -160,6 +166,10 @@ uint64_t ack_received (char * message_ack)
         if (! find_ack (contacts [c], ksets [k], message_ack, MSG_TYPE_ACK))
           save_record (contacts [c], ksets [k], MSG_TYPE_ACK, seq,
                        0, 0, message_ack, NULL, 0);
+        if (contact != NULL)
+          *contact = contacts [c];
+        if (kset != NULL)
+          *kset = ksets [k];
         return seq;
       }
     }
@@ -169,24 +179,12 @@ uint64_t ack_received (char * message_ack)
 
 static uint64_t max_seq (char * contact, keyset k, int wanted)
 {
-  struct msg_iter * iter = start_iter (contact, k);
-  if (iter == NULL)
-    return 0;
-  int type;
-  uint64_t max = 0;
   uint64_t seq;
-  while ((type = prev_message (iter, &seq, NULL, NULL, NULL, NULL, NULL))
-         != MSG_TYPE_DONE) {
-/* 
-printf ("max_seq type %d, wanted %d, seq %" PRIu64 ", max %" PRIu64 "\n",
-        type, wanted, seq, max);
-*/
-    if ((type == wanted) && (seq > max))
-      max = seq;
-  }
-  free_iter (iter);
-printf ("max_seq returning %" PRIu64 "\n", max);
-  return max;
+  int type = highest_seq_record (contact, k, wanted, &seq, NULL, NULL, NULL,
+                                 NULL, NULL);
+  if (type == MSG_TYPE_DONE)
+    return 0;
+  return seq;
 }
 
 /* returns a new (malloc'd) array, or NULL in case of error
@@ -209,7 +207,6 @@ char * get_missing (char * contact, keyset k, int * singles, int * ranges)
   uint64_t i;
   for (i = last - 1; i > 0; i--) {
     if (! was_received (contact, k, i)) {
-printf ("i %" PRIu64 " was not received, last %" PRIu64 "\n", i, last);
       writeb64 (result + (missing * COUNTER_SIZE), i);
       missing++;
       if (missing >= MAX_MISSING) {
@@ -246,8 +243,6 @@ char * get_unacked (char * contact, keyset k, int * singles, int * ranges)
   uint64_t i;
   for (i = last; i > 0; i--) {
     if (! is_acked_one (contact, k, i)) {
-printf ("adding unacked single %" PRIu64 " at %p\n", i,
-result + unacked * COUNTER_SIZE);
       writeb64 (result + unacked * COUNTER_SIZE, i);
       unacked++;
       if (unacked >= MAX_UNACKED) {
