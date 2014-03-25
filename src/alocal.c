@@ -16,7 +16,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "listen.h"
 #include "lib/log.h"

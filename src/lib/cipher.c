@@ -11,7 +11,7 @@
 #include <openssl/bio.h>
 #include <openssl/pem.h>
 
-#include "../packet.h"
+#include "packet.h"
 #include "util.h"
 #include "sha.h"
 #include "keys.h"

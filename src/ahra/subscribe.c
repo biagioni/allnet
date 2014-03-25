@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/sha.h"

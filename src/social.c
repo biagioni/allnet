@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "social.h"
 #include "lib/table.h"
 #include "lib/config.h"

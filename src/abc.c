@@ -53,8 +53,8 @@
 #include <netpacket/packet.h>   /* sockaddr_ll */
 #include <net/if.h>   		/* ifa_flags */
 
-#include "packet.h"
-#include "mgmt.h"
+#include "lib/packet.h"
+#include "lib/mgmt.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/util.h"

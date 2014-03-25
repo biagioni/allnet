@@ -14,7 +14,7 @@
 #include <errno.h>
 #include <sys/select.h>
 
-#include "../packet.h"
+#include "packet.h"
 #include "priority.h"
 #include "pipemsg.h"
 #include "util.h"
