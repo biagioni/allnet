@@ -1,8 +1,8 @@
-run
+to build this release, run these programs:
         ./autogen.sh
         ./configure --disable-shared
         make
 
-Before doing this, you may need:
+Before doing this, you may need (on debian/ubuntu):
         sudo apt-get install libtool autoconf
 

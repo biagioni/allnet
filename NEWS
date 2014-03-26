@@ -1,0 +1,18 @@
+2014/03/25: release 3.0
+  Everything on the command line works (pidgin has not been tested yet).
+
+  Major changes from version 2:
+    New packet header format, more regular and easier to use
+      supports streams and large messages
+      acks are end-to-end for encrypted data, and hop-by-hop for broadcast data
+    trace program, equivalent of ping and traceroute together
+    Allnet Human Readable Addresses (ahra) to subscribe to broadcasts
+      -- see doc/ahra/ahra-design, or simply
+            bin/allnet-subscribe allnet_hourly_time_server@if_wish.think_past.get_future
+         then
+            bin/allnet-radio
+         for at least an hour
+    the implementation has a new directory structure, uses git,
+      sourceforge, and automake (thanks mostly to AB) -- see README to build
+    xchat and xkey use a different directory structure under ~/.allnet
+      -- v2 keys will not work, unless moved around the file system
