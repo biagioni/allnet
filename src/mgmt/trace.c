@@ -105,9 +105,15 @@ static void init_entry (struct allnet_mgmt_trace_entry * new_entry, int hops,
     writeb64 (new_entry->seconds_fraction, 0);
   } else {
     unsigned long long int usec = now->tv_usec;
-    new_entry->precision = 64 + 3;   /* 3 digits, 1ms precision */
-    writeb64 (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
-    writeb64 (new_entry->seconds_fraction, usec / 1000);
+    if (hops == 0) {  /* special case: microsecond precision */
+      new_entry->precision = 64 + 6;   /* 6 digits, 1us precision */
+      writeb64 (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
+      writeb64 (new_entry->seconds_fraction, usec);
+    } else {   /* the common case */
+      new_entry->precision = 64 + 3;   /* 3 digits, 1ms precision */
+      writeb64 (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
+      writeb64 (new_entry->seconds_fraction, usec / 1000);
+    }
   }
   new_entry->nbits = abits;
   new_entry->hops_seen = hops;
@@ -450,8 +456,9 @@ static void send_trace (int sock, char * address, int abits, char * trace_id,
   gettimeofday (&time, NULL);
   init_entry (trp->trace, 0, &time, my_address, my_abits);
 
-/*  printf ("sending trace of size %d\n", total_size);
-  print_packet (buffer, total_size, "sending trace", 1); */
+/*  print_packet (buffer, total_size, "sending trace", 1); */
+  snprintf (log_buf, LOG_SIZE, "sending trace of size %d\n", total_size);
+  log_print ();
   /* sending with priority epsilon indicates to ad that we only want to
    * send to the trace server, which then forwards to everyone else */
   if (! send_pipe_message (sock, buffer, total_size, ALLNET_PRIORITY_EPSILON))
@@ -500,7 +507,7 @@ static void print_times (struct allnet_mgmt_trace_entry * entry,
       intermediate_arrivals [index] = *now;
     else if (intermediate_arrivals [index].tv_sec != 0)
       delta = delta_us (intermediate_arrivals + index, start);
-    printf (" (%6lld.%03lldms rtt)", delta / 1000LL, delta % 1000LL);
+    printf (" timestamp, %6lld.%03lldms rtt,", delta / 1000LL, delta % 1000LL);
   }
 }
 
@@ -728,6 +735,7 @@ int main (int argc, char ** argv)
     char my_addr [ADDRESS_SIZE];
     random_bytes (trace_id, sizeof (trace_id));
     random_bytes (my_addr, sizeof (my_addr));
+    sleep (1);   /* it takes a while for alocal to add the new pipe */
     send_trace (sock, address, abits, trace_id, my_addr, 5);
     wait_for_responses (sock, trace_id, 60);
   }

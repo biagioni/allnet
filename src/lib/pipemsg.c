@@ -172,10 +172,22 @@ static int send_pipe_message_orig (int pipe, char * message, int mlen,
 
 static int send_header_data (int pipe, char * message, int mlen, int priority)
 {
-  char * packet = malloc (HEADER_SIZE + mlen);
+  char stack_packet [HEADER_SIZE + ALLNET_MTU];
+  char * packet = stack_packet;
+  if (mlen > ALLNET_MTU) {
+/* I think this should never happen.   If it does, print it to log and screen */
+    snprintf (log_buf, LOG_SIZE,
+              "send_header_data warning: mlen %d > ALLNET_MTU %d\n",
+              mlen, ALLNET_MTU);
+    log_print ();
+    printf ("send_header_data warning: mlen %d > ALLNET_MTU %d\n",
+            mlen, ALLNET_MTU);
+/* and malloc the packet (free'd below) */
+    packet = malloc (HEADER_SIZE + mlen);
+  }
 /* send_pipe_message_orig is simpler, but sometimes stalls for ~35ms-40ms
  * on the second send, so it is faster if we only call write once */
-  if (packet == NULL)
+  if (packet == NULL)   /* unable to malloc, use the slow strategy */
     return send_pipe_message_orig (pipe, message, mlen, priority);
 
   char * header = packet;
@@ -186,8 +198,9 @@ static int send_header_data (int pipe, char * message, int mlen, int priority)
 
   int result = 1;
   int w = send (pipe, packet, HEADER_SIZE + mlen, MSG_DONTWAIT); 
-  if ((w < 0) && (errno == ENOTSOCK))
+  if ((w < 0) && (errno == ENOTSOCK)) {
     w = write (pipe, packet, HEADER_SIZE + mlen); 
+  }
   if (w != HEADER_SIZE + mlen) {
     perror ("send_pipe_msg send");
     snprintf (log_buf, LOG_SIZE,
@@ -195,7 +208,10 @@ static int send_header_data (int pipe, char * message, int mlen, int priority)
     log_print ();
     result = 0;
   }
-  free (packet);
+/* snprintf (log_buf, LOG_SIZE, "send_header_data sent\n");
+log_print (); */
+  if (packet != stack_packet)
+    free (packet);
   return result;
 }
 
@@ -315,6 +331,9 @@ static int next_available (int extra, int timeout)
 
   /* call select */
   int s = select (max_pipe + 1, &receiving, NULL, NULL, tvp);
+/* if (timeout == 1000) {
+snprintf (log_buf, LOG_SIZE, "select completed, %d pipes\n", num_pipes);
+log_print (); } */
   if (s < 0) {
     perror ("next_available/select");
     print_pipes ("current", max_pipe);

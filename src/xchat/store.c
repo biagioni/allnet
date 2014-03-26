@@ -18,7 +18,7 @@
 
 #include "lib/util.h"
 #include "lib/keys.h"
-#include "packet.h"
+#include "lib/packet.h"
 #include "store.h"
 
 /* start_iter and prev_message define an iterator over messages.
