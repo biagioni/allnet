@@ -153,6 +153,7 @@ static int top_destinations (void * addr_cache, int max, unsigned char * dest,
     }
   }
   *result = new;
+  free (matches);
   return num_matches;
 }
 

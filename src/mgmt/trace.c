@@ -705,7 +705,6 @@ int main (int argc, char ** argv)
     char my_addr [ADDRESS_SIZE];
     random_bytes (trace_id, sizeof (trace_id));
     random_bytes (my_addr, sizeof (my_addr));
-    sleep (1);   /* it takes a while for alocal to add the new pipe */
     send_trace (sock, address, abits, trace_id, my_addr, 5);
     wait_for_responses (sock, trace_id, 60);
   }
