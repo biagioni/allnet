@@ -30,7 +30,7 @@ a daemon that bin/astop doesn't know how to stop.  If that should happen, run
    kill ` ps auxwww | fgrep bin/ad | fgrep -v fgrep | awk '{print $2}' `
 
 (yes, all the different quotes and braces are needed -- if possible, cut and
-past the command from this file)
+paste the command from this file)
 
     ================ allnet user programs ================
 
