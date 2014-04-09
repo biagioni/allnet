@@ -46,8 +46,8 @@ int compute_priority (int size, int sbits, int dbits,
 {
   int debug = 0;
   if (debug)
-    printf ("compute_priority (%slocal, %d, %d, %d, %d, %d, %d, %d)\n",
-            (is_local ? "" : "non-"), size, sbits, dbits, hops_already,
+    printf ("compute_priority (%d, %d, %d, %d, %d, %d, %d)\n",
+            size, sbits, dbits, hops_already,
             hops_max, social_distance, rate_fraction);
   if (social_distance <= 1)
     return ALLNET_PRIORITY_FRIENDS_HIGH;
