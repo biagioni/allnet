@@ -77,7 +77,7 @@ struct addr_info {
 struct allnet_mgmt_peers {
   unsigned char num_peers;
   char pad [7];              /* always sent as 0 */
-  struct internet_addr peers [0];   /* num_peers address info structs */
+  struct internet_addr peers [0];   /* num_peers internet addr structs */
 };
 
 /* a DHT message reports a number of DHT nodes, each claiming to accept

@@ -18,9 +18,9 @@ extern int ai_to_sockaddr (struct addr_info * ai, struct sockaddr * sap);
 extern int sockaddr_to_ai (struct sockaddr * sap, int addr_size,
                            struct addr_info * ai);
 
-/* prints a newline at the end of the address info */
+/* prints a newline at the end of the internet address */
 extern void print_ia (struct internet_addr * ia);
-/* includes a newline at the end of the address info */
+/* includes a newline at the end of the internet address */
 extern int ia_to_string (struct internet_addr * ia, char * buf, int bsize);
 
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */

@@ -40,7 +40,7 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
     rate_fraction = track_rate (hp->source, hp->src_nbits, size);
   else
     social_distance = UNKNOWN_SOCIAL_TIER;
-  return compute_priority (0, size, hp->src_nbits, hp->dst_nbits,
+  return compute_priority (size, hp->src_nbits, hp->dst_nbits,
                            hp->hops, hp->max_hops, social_distance,
                            rate_fraction);
 }
