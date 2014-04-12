@@ -4,7 +4,7 @@
 /* in the future this may be automated or from config file */
 /* (since the config file should tell us the bandwidth on each interface) */
 /* alternately, if the single program is named astop or the single argument
- * is "stop", stops running ad, assuming the pids are in
+ * is "stop", stops running ad, as long as the pids are in
  * /var/run/allnet-pids or /tmp/allnet-pids */
 
 #include <stdio.h>
@@ -282,7 +282,7 @@ int main (int argc, char ** argv)
   if (strstr (pname, "stop") != NULL)
     return stop_all ();   /* just stop */
 
-  init_log ("astart");  /* only do logging in astart */
+  init_log ("astart");  /* only do logging in astart, not in astop */
   /* two pipes from ad to alocal and back */
   /* two pipes from ad to acache and back */
   /* two pipes from ad to aip and back */

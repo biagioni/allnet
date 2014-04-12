@@ -10,7 +10,7 @@
 #include <netinet/in.h>
 
 #include "app_util.h"
-#include "../packet.h"
+#include "packet.h"
 #include "sha.h"
 #include "priority.h"
 
@@ -83,6 +83,15 @@ int connect_to_local (char * program_name)
       return -1;
     }
   }
+  /* it takes alocal up to 50ms to update the list of sockets it listens on.
+   * here we wait 60ms so that by the time we return, alocal is listening
+   * on this new socket. */
+  struct timespec sleep;
+  sleep.tv_sec = 0;
+  sleep.tv_nsec = 60 * 1000 * 1000;
+  struct timespec left;
+  while ((nanosleep (&sleep, &left)) != 0)
+    sleep = left;
   return sock;
 }
 

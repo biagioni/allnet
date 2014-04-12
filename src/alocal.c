@@ -16,7 +16,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "listen.h"
 #include "lib/log.h"
@@ -27,14 +27,25 @@ void * main_loop (int rpipe, int wpipe, struct listen_info * info)
     int fd;
     int priority;
     char * message;
-    int result = receive_pipe_message_any (1000, &message, &fd, &priority);
+/* the sleep time is arbitrarily set to 50ms.  The major thing that may
+ * happen while we sleep is a new socket being added.  We don't listen to
+ * it until the next time we call receive_pipe_message_any.  To give good
+ * responsiveness, that time should be 50ms or less.   I tried setting it
+ * to 1ms, but then alocal took a little more CPU time than I liked.
+ * If this value is changed, should change the corresponding value in
+ * app_util.c */
+    int result = receive_pipe_message_any (50, &message, &fd, &priority);
+if (result != 0) {
+snprintf (log_buf, LOG_SIZE, "receive_pipe_message_any returns %d\n", result);
+log_print (); }
     if (result < 0) {
       if (fd == rpipe) {
         snprintf (log_buf, LOG_SIZE, "ad pipe %d closed\n", rpipe);
         log_print ();
         break;
       }
-      snprintf (log_buf, LOG_SIZE, "error on file descriptor %d, closing\n", fd);
+      snprintf (log_buf, LOG_SIZE,
+                "error on file descriptor %d, closing\n", fd);
       log_print ();
       listen_remove_fd (info, fd);
       close (fd);       /* remove from kernel */

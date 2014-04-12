@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
@@ -113,14 +113,6 @@ static int recv_message (int sock, int * code, time_t * time,
   return mlen;
 }
 
-static void request_free_peer (char * peer, int sock)
-{
-  if (peer != NULL) {
-    request_and_resend (sock, peer);
-    free (peer);
-  }
-}
-
 int main (int argc, char ** argv)
 {
   /* allegedly, openSSL does this for us */
@@ -144,17 +136,16 @@ int main (int argc, char ** argv)
     return 1;
 
   int timeout = 100;      /* sleep up to 1/10 second */
-  char * old_peer = NULL;
-  long long int seq = 0;
+  char * old_contact = NULL;
+  keyset old_kset = -1;
   while (1) {
     char to_send [ALLNET_MTU];
     char peer [ALLNET_MTU];
     int code;
     time_t time;
     int len = recv_message (forwarding_socket, &code, &time, peer, to_send);
-    if (len > 0) {
-      seq = send_data_message (sock, peer, to_send, strlen (to_send));
-    }
+    if (len > 0)
+      send_data_message (sock, peer, to_send, strlen (to_send));
     char * packet;
     int pipe, pri;
     int found = receive_pipe_message_any (timeout, &packet, &pipe, &pri);
@@ -163,25 +154,29 @@ int main (int argc, char ** argv)
       exit (1);
     }
     if (found == 0) {  /* timed out, request/resend any missing */
-      request_free_peer (old_peer, sock);
-      old_peer = NULL;
+      if (old_contact != NULL) {
+        request_and_resend (sock, old_contact, old_kset);
+        old_contact = NULL;
+        old_kset = -1;
+      }
     } else {    /* found > 0, got a packet */
       int verified, duplicate;
       char * peer;
+      keyset kset;
       char * desc;
       char * message;
       time_t time = 0;
-      int mlen = handle_packet (sock, packet, found, &peer, &message, &desc,
-                                &verified, &time, &duplicate);
+      int mlen = handle_packet (sock, packet, found, &peer, &kset,
+                                &message, &desc, &verified, &time, &duplicate);
       if (mlen > 0) {
         if (! duplicate)
           send_message (forwarding_socket, 0, time, peer, message);
-        if ((old_peer == NULL) || (strcmp (old_peer, peer) != 0)) {
-          request_free_peer (old_peer, sock);
-          old_peer = peer;
-        } else { /* same peer, do nothing */
-          free (peer);
-        }
+        if ((old_contact == NULL) ||
+            (strcmp (old_contact, peer) != 0) || (old_kset != kset)) {
+          request_and_resend (sock, peer, kset);
+          old_contact = peer;
+          old_kset = kset;
+        } /* else same peer, do nothing */
         free (message);
         free (desc);
       }

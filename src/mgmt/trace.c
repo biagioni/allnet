@@ -17,8 +17,8 @@
 
 #include <openssl/rsa.h>
 
-#include "packet.h"
-#include "mgmt.h"
+#include "lib/packet.h"
+#include "lib/mgmt.h"
 #include "lib/util.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
@@ -105,9 +105,15 @@ static void init_entry (struct allnet_mgmt_trace_entry * new_entry, int hops,
     writeb64 (new_entry->seconds_fraction, 0);
   } else {
     unsigned long long int usec = now->tv_usec;
-    new_entry->precision = 64 + 3;   /* 3 digits, 1ms precision */
-    writeb64 (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
-    writeb64 (new_entry->seconds_fraction, usec / 1000);
+    if (hops == 0) {  /* special case: microsecond precision */
+      new_entry->precision = 64 + 6;   /* 6 digits, 1us precision */
+      writeb64 (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
+      writeb64 (new_entry->seconds_fraction, usec);
+    } else {   /* the common case */
+      new_entry->precision = 64 + 3;   /* 3 digits, 1ms precision */
+      writeb64 (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
+      writeb64 (new_entry->seconds_fraction, usec / 1000);
+    }
   }
   new_entry->nbits = abits;
   new_entry->hops_seen = hops;
@@ -450,8 +456,9 @@ static void send_trace (int sock, char * address, int abits, char * trace_id,
   gettimeofday (&time, NULL);
   init_entry (trp->trace, 0, &time, my_address, my_abits);
 
-/*  printf ("sending trace of size %d\n", total_size);
-  print_packet (buffer, total_size, "sending trace", 1); */
+/*  print_packet (buffer, total_size, "sending trace", 1); */
+  snprintf (log_buf, LOG_SIZE, "sending trace of size %d\n", total_size);
+  log_print ();
   /* sending with priority epsilon indicates to ad that we only want to
    * send to the trace server, which then forwards to everyone else */
   if (! send_pipe_message (sock, buffer, total_size, ALLNET_PRIORITY_EPSILON))
@@ -473,6 +480,8 @@ static void print_times (struct allnet_mgmt_trace_entry * entry,
                          int save_to_intermediate)
 {
   int index = (entry->hops_seen) & 0xff;
+/* printf ("print_times index %d time %d.%06d, save %d\n",
+index, now->tv_sec, now->tv_usec, save_to_intermediate); */
   if ((start != NULL) && (now != NULL)) {
     unsigned long long int fraction = readb64 (entry->seconds_fraction);
     if (entry->precision <= 64)
@@ -496,11 +505,11 @@ static void print_times (struct allnet_mgmt_trace_entry * entry,
     printf (" %6lld.%03lldms", delta / 1000LL, delta % 1000LL);
   
     delta = delta_us (now, start);
-    if (save_to_intermediate)
+    if ((save_to_intermediate) && (intermediate_arrivals [index].tv_sec == 0))
       intermediate_arrivals [index] = *now;
     else if (intermediate_arrivals [index].tv_sec != 0)
       delta = delta_us (intermediate_arrivals + index, start);
-    printf (" (%6lld.%03lldms rtt)", delta / 1000LL, delta % 1000LL);
+    printf (" timestamp, %6lld.%03lldms rtt,", delta / 1000LL, delta % 1000LL);
   }
 }
 
@@ -517,38 +526,6 @@ static void print_entry (struct allnet_mgmt_trace_entry * entry,
   for (i = 1; ((i < ADDRESS_SIZE) && (i < (entry->nbits + 7) / 8)); i++)
     printf (".%02x", entry->address [i] % 0xff);
   printf ("/%d", entry->nbits);
-
-#if 0
-  if ((start != NULL) && (now != NULL)) {
-    unsigned long long int fraction = readb64 (entry->seconds_fraction);
-    if (entry->precision <= 64)
-      fraction = fraction / (((unsigned long long int) (-1LL)) / 1000000LL);
-    else if (entry->precision <= 70)  /* decimal in low-order bits */
-      fraction = fraction * (power10 (70 - entry->precision));
-    else
-      fraction = fraction / (power10 (entry->precision - 70));
-    if (fraction >= 1000000LL) {  /* should be converted to microseconds */
-      printf ("error: fraction (%u) %lld gives %lld >= 1000000 microseconds\n",
-              entry->precision, readb64 (entry->seconds_fraction), fraction);
-      fraction = 0LL;
-    }
-    struct timeval timestamp;
-    timestamp.tv_sec = readb64 (entry->seconds);
-    timestamp.tv_usec = fraction;
-    unsigned long long int delta = delta_us (&timestamp, start);
-  /* printf ("%ld.%06ld - %ld.%06ld = %lld\n",
-          timestamp.tv_sec, timestamp.tv_usec,
-          start->tv_sec, start->tv_usec, delta); */
-    printf (" %5lld.%03lldms", delta / 1000LL, delta % 1000LL);
-  
-    delta = delta_us (now, start);
-    if (save_to_intermediate)
-      intermediate_arrivals [index] = *now;
-    else if (intermediate_arrivals [index].tv_sec != 0)
-      delta = delta_us (intermediate_arrivals + index, start);
-    printf (" (%lld.%03lldms rtt)", delta / 1000LL, delta % 1000LL);
-  }
-#endif /* 0 */
 
   if (print_eol)
     printf ("\n");
@@ -571,7 +548,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
       int i;
       for (i = 1; i < trp->num_entries; i++) {
         printf ("         ");
-        print_times (trp->trace + i, start, finish, 0);
+        print_times (trp->trace + i, start, finish, 1);
         print_entry (trp->trace + i, start, finish, 0, 1);
       }
     }

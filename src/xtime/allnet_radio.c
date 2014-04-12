@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/sha.h"
@@ -64,9 +64,14 @@ static int handle_packet (char * message, int msize, int debug)
     char * bin_time = payload + strlen (payload) + 1;
     unsigned long long int packet_time = readb64 (bin_time);
     printf ("  sent at %lld seconds, ", packet_time);
-    unsigned long long int delta =
+    long long int delta =
        (receive_time.tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX) - packet_time;
-    printf ("received after %lld.%06ld seconds\n", delta, receive_time.tv_usec);
+    if (delta >= 0)
+      printf ("received after %lld.%06ld seconds\n", delta,
+              receive_time.tv_usec);
+    else
+      printf ("clock skew detected (%lld.%06ld seconds before)\n",
+              delta, receive_time.tv_usec);
   } else {
     if (debug)
       printf ("psize %d, strlen %zd\n", psize, strlen (payload));

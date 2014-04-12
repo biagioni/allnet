@@ -11,7 +11,7 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/pipemsg.h"

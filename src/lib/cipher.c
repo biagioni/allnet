@@ -11,7 +11,7 @@
 #include <openssl/bio.h>
 #include <openssl/pem.h>
 
-#include "../packet.h"
+#include "packet.h"
 #include "util.h"
 #include "sha.h"
 #include "keys.h"
@@ -333,11 +333,12 @@ int sign (char * text, int tsize, char * key, int ksize, char ** result)
  * if maxcontacts > 0, only tries to match up to maxcontacts (to be implemented)
  */
 int decrypt_verify (int sig_algo, char * encrypted, int esize,
-                    char ** contact, char ** text,
+                    char ** contact, keyset * kset, char ** text,
                     char * sender, int sbits, char * dest, int dbits,
                     int maxcontacts)
 {
   *contact = NULL;
+  *kset = -1;
   *text = NULL;
   char ** contacts;
   int ncontacts = all_contacts (&contacts);
@@ -369,6 +370,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
         int res = decrypt (encrypted, csize, priv_key, priv_ksize, text);
         if (res) {
           *contact = strcpy_malloc (contacts [i], "verify contact");
+          *kset = keys [j];
           if (sig_algo != ALLNET_SIGTYPE_NONE)
             return res;
           else

@@ -123,7 +123,7 @@ static int get32bits (char * bitstring, int bits)
     if (bits >= 16)
       result = result | ((bitstring [1] & 0xff) << 16);
     if (bits >= 24)
-      result = result | ((bitstring [1] & 0xff) <<  8);
+      result = result | ((bitstring [2] & 0xff) <<  8);
   }
   if (result < 0)
     return - result;

@@ -48,8 +48,8 @@
 #include <netpacket/packet.h>   /* sockaddr_ll */
 
 #include "abc-iface.h"
-#include "packet.h"
-#include "mgmt.h"
+#include "lib/packet.h"
+#include "lib/mgmt.h"
 #include "lib/log.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"

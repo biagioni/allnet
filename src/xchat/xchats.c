@@ -6,7 +6,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
@@ -56,7 +56,6 @@ int main (int argc, char ** argv)
   sleep (1);/* when measuring time, wait until server has accepted connection */
 
   char * contact = argv [1];  /* contact we send to, peer we receive from */
-  request_and_resend (sock, contact);
 
   /* to do: subtract the size of the signature */
   static char text [ALLNET_MTU];
@@ -95,12 +94,14 @@ int main (int argc, char ** argv)
       exit (1);
     }
     int verified, duplicate;
-    char * peer;
     char * desc;
     char * message;
-    int mlen = handle_packet (sock, packet, found, &peer, &message, &desc,
-                              &verified, NULL, &duplicate);
-    int this_is_my_ack = 0;
+    char * peer = NULL;
+    keyset kset = -1;
+    int mlen = handle_packet (sock, packet, found, &peer, &kset,
+                              &message, &desc, &verified, NULL, &duplicate);
+    if (mlen > 0)
+      printf ("from '%s' got %s\n  %s\n", peer, desc, message);
   /* handle_packet may change what has been acked */
     if ((ack_expected) && (! ack_seen) && (is_acked (contact, seq))) {
       struct timeval finish;
@@ -113,13 +114,11 @@ int main (int argc, char ** argv)
       gettimeofday (&deadline, NULL); /* wait another second from now */
       add_time (&deadline, 1000);     /* for additional messages */
       ack_seen = 1;
-      this_is_my_ack = 1;
     }
     if (mlen > 0) {
-      printf ("from '%s' got %s\n  %s\n", peer, desc, message);
-      if (this_is_my_ack) /* acked this packet, check for any outstanding */
-        request_and_resend (sock, peer);
-      free (peer); free (message); free (desc);
+      free (peer);
+      free (message);
+      free (desc);
     }
     max_wait = until_deadline (&deadline);
   }

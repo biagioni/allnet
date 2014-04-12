@@ -1,8 +1,215 @@
-run
+======================== BUILD ==================================
+to build this release, run these programs:
         ./autogen.sh
         ./configure --disable-shared
         make
 
-Before doing this, you may need:
+Before doing this, you may need (on debian/ubuntu -- something analogous
+on other systems):
         sudo apt-get install libtool autoconf
+
+======================== RUN ==================================
+
+Running allnet requires running a collection of programs called the
+allnet daemon, then running individual user programs.
+
+    ================ allnet daemon ================
+
+the first thing to run is
+   bin/astart
+
+this will start the allnet daemon, which is a collection of programs
+that run independently of user programs, and help them communicate over
+AllNet.
+
+The allnet daemon can be stopped with
+   bin/astop
+
+If you do not properly alternate astart and astop, you may end up running
+a daemon that bin/astop doesn't know how to stop.  If that should happen, run
+   kill ` ps auxwww | fgrep bin/ad | fgrep -v fgrep | awk '{print $2}' `
+
+(yes, all the different quotes and braces are needed -- if possible, cut and
+past the command from this file)
+
+    ================ allnet user programs ================
+
+Current AllNet user programs include the AllNet chat program xchat,
+broadcast/subscribe, and trace.
+
+            ======== xchat (allnet chat) ========
+
+It is a good idea to read this whole section before trying anything.
+
+The basic functionality of chat is given by xchats and xchatr.  They
+are designed to be run in separate windows.
+
+In one window simply run
+   bin/xchatr
+
+In another window, run
+   bin/xchats friends-name message
+
+where "friends-name" is the name of your friend as specified to xkeys/xkeyr
+(see below), and message is the message you want to send to your friend.
+The message ends when you press return.  It is generally best to enclose
+the message in double quotes, otherwise the shell may interpret any special
+characters such as quotes, question marks, etc.
+
+For example,
+   /bin/xchats john "how are you today?"
+
+john's answer, if any, appears in the xchatr window.  You can then type:
+   /bin/xchats john "life is wonderful!"
+
+Before you can chat with a friend, you must exchange keys.  In order
+to do this securely, you and your friend must both know a shared secret
+string.  This string should be a string of 6-12 random letters, preferably
+exchanged in person, over the phone, or through some other secure medium.
+(if your exchange is not secure, an attacker may be able to listen in
+on your conversations, or even send fake messages to one or both of you).
+
+The secret string should NOT have digits, punctuation, or the like.
+Anything other than the letters A-Z is ignored, as is the case (upper
+or lower case) of the letters.
+
+Once you have the secret, the first one of you runs
+   bin/xkeyr friends-name secret-string
+
+and the second one runs
+   bin/xkeys friends-name secret-string 10
+
+Again, "friends-name" is any name each of you wants to choose to identify
+the other friend.
+
+This exchange normally succeeds the first time, but if necessary, can
+be repeated as often as needed until it succeeds.  After the key exchange
+is successful, you can use chat as described above.
+
+            ======== broadcast/subscribe ======== 
+
+AllNet supports broadcast messages that are authenticated (you can be
+confident who sent them), but not confidential (everyone can read them). 
+
+To identify a sender, you must be in possession of an AllNet Human-Readable
+Address, usually abbreviated AHRA or ahra.  An ahra a form that may look
+somewhat familiar:
+  "personal_phrase"@a_b.c_d.e_f
+
+The quotes are needed if the personal phrase includes spaces or other
+special characters, but may be omitted otherwise.
+
+If you decide to create your own ahra, you choose your own personal
+phrase -- it can be anything you want, and, unlike an email address,
+it does not have to be unique, it could be the same as somebody else's
+personal phrase.  Again, upper- and lower-case are treated the same.
+
+Assuming your personal phrase is "AllNet is wonderful", you would then
+generate a valid ahra by running
+   bin/allnet-generate "AllNet_is_wonderful" 3
+
+The number 3 at the end of the command specifies the number of word-pairs
+you want after the '@' sign.  More word-pairs make it harder for
+somebody else to generate an ahra that matches yours, but they also
+will require allnet-generate to run longer before finding an ahra.
+Three is a reasonable compromise between security and generation time.
+If you do not specify a number, allnet-generate assumes that two word
+pairs is enough, and you are more interested in generating ahra's as
+quickly as possible, than in security.
+
+While allnet-generate is running, look up the keys it has generated with
+   ls ~/.allnet/own_bc_keys
+
+(bc stands for broadcast, and "own" holds the keys that you have generated
+and are willing to use).
+
+All the generated keys will have the personal phrase that you specified,
+but each will a different set of identifying keywords.  Once you see
+an ahra that you like, you can stop allnet-generate, and remove from
+~/.allnet/own_bc_keys/ all the keys you do NOT plan to use.
+
+Even if somebody else chooses the same personal phrase as you do, your
+ahra is secure as long as the word pairs are different.
+
+This rather long explanation is needed to make it clear that more word
+pairs make an ahra more secure -- the personal phrase by itself ("AllNet
+is wonderful"@) is a valid ahra, but is not at all secure.
+
+Finally, if someone gives you an ahra for a broadcast server, you may
+subscribe to that.  AllNet runs an hourly time signal server with ahra
+   allnet_hourly_time_server@if_wish.think_past.get_future
+
+and you can subscribe and listen to this time server by running:
+   bin/allnet-subscribe allnet_hourly_time_server@if_wish.think_past.get_future
+   bin/allnet-radio
+
+The second command will run forever, and once an hour, on the hour,
+should print out the message from the allnet time server.  It will
+also print out messages from any other service(s) that you subscribe to.
+To know which services you subscribe to, simply
+   ls ~/.allnet/other_bc_keys
+
+To stop subscribing to a service, remove the corresponding key from the
+directory ~/.allnet/other_bc_keys
+
+            ======== allnet trace ========
+
+The trace program is used to find and print a path to a destination.
+Each allnet daemon picks a different ID every time it is started, and it
+is these IDs that trace prints.  If you know the ID of the destination
+you are trying to reach, you can specify it as an argument to trace.
+Otherwise, trace without arguments will show all the daemons that respond.
+
+bin/trace
+ trace to matching destination:
+                0.497ms timestamp,      1.966ms rtt,  0 21.cd/16
+ trace to matching destination:
+                0.497ms timestamp,    114.299ms rtt,  0 21.cd/16
+               66.300ms timestamp,    114.299ms rtt,  1 2d.5c/16
+ trace to matching destination:
+                0.497ms timestamp,    253.747ms rtt,  0 21.cd/16
+               66.300ms timestamp,    253.747ms rtt,  1 2d.5c/16
+              115.300ms timestamp,    253.747ms rtt,  2 25.e3/16
+
+Here trace with no arguments shows three different destinations, each
+with a 16-bit (/16) address: 21.cd, 2d.cd, and 25.e3.  Each of them
+matches the trace request, which had no arguments and therefore matched
+everything.
+
+The timestamp printed is only accurate if the clock on your system
+accurately matches the clock on the system that responded, whereas
+the round-trip time (rtt) should always be accurate.
+
+The first response is always from the local AllNet daemon, so we know
+that 21.cd/16 is our own local address (until we restart the AllNet daemon).
+
+In this case, all three systems have (at random) chosen the first 4
+bits of their address to be the same, namely 0010, usually written 2.
+However, the fifth bit is a one for 2d.5c, and a zero for 21.cd and 25.e3
+(all numbers are in hex).  If we only wanted to "ping" and trace to these
+two systems, we could specify a five-bit destination address:
+
+bin/trace 20/5
+ trace to matching destination:
+                1.099ms timestamp,      2.382ms rtt,  0 21.cd/16
+ forward:      71.927ms timestamp,    114.970ms rtt,  0 21.cd/16  to  1 2d.5c/16
+ trace to matching destination:
+                1.099ms timestamp,      2.382ms rtt,  0 21.cd/16
+               71.927ms timestamp,    114.970ms rtt,  1 2d.5c/16
+              116.927ms timestamp,    253.480ms rtt,  2 25.e3/16
+
+Here we see that 2d.5c did not identify with the address being traced,
+and so is only listed as a forwarding system, not as a destination.
+If we only wanted to trace 2d.5c, we can specify it outright:
+
+bin/trace 2d.5c
+ local:         0.498ms timestamp,      1.916ms rtt,  0 21.cd/16
+ trace to matching destination:
+                0.498ms timestamp,      1.916ms rtt,  0 21.cd/16
+               75.097ms timestamp,    113.114ms rtt,  1 2d.5c/16
+ forward:     116.097ms timestamp,    251.883ms rtt,  1 2d.5c/16  to  2 25.e3/16
+
+Now, the other two allnet daemons have been identified as local and
+forward, respectively.
+
 

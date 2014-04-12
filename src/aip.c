@@ -30,7 +30,7 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 
-#include "packet.h"
+#include "lib/packet.h"
 #include "listen.h"
 #include "lib/ai.h"
 #include "lib/pipemsg.h"
@@ -153,6 +153,7 @@ static int top_destinations (void * addr_cache, int max, unsigned char * dest,
     }
   }
   *result = new;
+  free (matches);
   return num_matches;
 }
 

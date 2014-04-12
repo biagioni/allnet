@@ -5,8 +5,8 @@
 #include <string.h>
 #include <time.h>
 
-#include "packet.h"
-#include "mgmt.h"
+#include "lib/packet.h"
+#include "lib/mgmt.h"
 #include "social.h"
 #include "track.h"
 #include "lib/pipemsg.h"

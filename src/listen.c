@@ -13,8 +13,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include "packet.h"
-#include "mgmt.h"
+#include "lib/packet.h"
+#include "lib/mgmt.h"
 #include "lib/util.h"
 #include "listen.h"
 #include "lib/log.h"
