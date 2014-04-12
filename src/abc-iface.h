@@ -2,9 +2,9 @@
 
 #include <netpacket/packet.h>  /* struct sockaddr_ll */
 
-int init_iface (char * interface, int * sock,
+int init_iface (const char * interface, int * sock,
                 struct sockaddr_ll * address, struct sockaddr_ll * bc);
 unsigned long long int iface_on_off_ms;
-int iface_is_on;
-void iface_on (char * interface);
-void iface_off (char * interface);
+extern int iface_is_on;
+void iface_on (const char * interface);
+void iface_off (const char * interface);

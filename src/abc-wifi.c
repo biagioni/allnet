@@ -12,7 +12,7 @@
 #include <net/if.h>            /* ifa_flags */
 #include <netpacket/packet.h>  /* struct sockaddr_ll */
 
-#include "packet.h"
+#include "lib/packet.h"
 
 iface_is_on = 0;
 
@@ -73,7 +73,7 @@ static int my_system (char * command)
 
 /* return 1 if successful, 0 otherwise */
 /* return 2 if failed, but returned status matches wireless_status */
-static int if_command (char * basic_command, char * interface,
+static int if_command (char * basic_command, const char * interface,
                        int wireless_status, char * fail_wireless,
                        char * fail_other)
 {
@@ -112,7 +112,7 @@ static int if_command (char * basic_command, char * interface,
 }
 
 /* returns 1 if successful, 2 if already up, 0 for failure */
-static int wireless_up (char * interface)
+static int wireless_up (const char * interface)
 {
 #ifdef DEBUG_PRINT
   printf ("abc: opening interface %s\n", interface);
@@ -145,7 +145,7 @@ static int wireless_up (char * interface)
 }
 
 /* returns 1 if successful, 0 for failure */
-static int wireless_down (char * interface)
+static int wireless_down (const char * interface)
 {
 #ifdef DEBUG_PRINT
   printf ("taking down interface %s\n", interface);
@@ -200,7 +200,7 @@ unsigned long long int iface_on_off_ms = 150;  /* default */
 /* returns 0 if the interface is off, and 1 if it is on already */
 /* if returning 0 or 1, fills in the socket and the address */
 /* to do: figure out how to set bits_per_s in init_wireless */
-int init_iface (char * interface, int * sock,
+int init_iface (const char * interface, int * sock,
                 struct sockaddr_ll * address, struct sockaddr_ll * bc)
 {
   struct ifaddrs * ifa;
@@ -255,7 +255,7 @@ int init_iface (char * interface, int * sock,
   return -1;  /* interface not found */
 }
 
-void iface_on (char * interface)
+void iface_on (const char * interface)
 {
   if (! iface_is_on) {
     wireless_up (interface);
@@ -263,7 +263,7 @@ void iface_on (char * interface)
   }
 }
 
-void iface_off (char * interface)
+void iface_off (const char * interface)
 {
   if (iface_is_on) {
     wireless_down (interface);

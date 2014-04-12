@@ -107,7 +107,7 @@ static void clear_nonces (int mine, int other)
 /* sets the high priority variable, and turns on the interface if
  * we are now in high priority mode */
 /* returns the sockfd if we are in high priority, and -1 otherwise */
-static int check_priority_mode (char * interface)
+static int check_priority_mode (const char * interface)
 {
   if ((! lan_is_on) && (! high_priority) &&
       ((received_high_priority) ||
@@ -198,7 +198,7 @@ static void update_quiet (struct timeval * quiet_end,
     *quiet_end = new_quiet;
 }
 
-static void send_beacon (int awake_ms, char * interface,
+static void send_beacon (int awake_ms, const char * interface,
                          struct sockaddr * addr, socklen_t addrlen)
 {
   iface_on (interface);
@@ -503,7 +503,7 @@ static void handle_network_message (char * message, int msize,
 /* same as handle_until, but does not send any messages or change any
  * global state other than possibly quiet_end */
 static void handle_quiet (struct timeval * quiet_end,
-                          char * interface, int rpipe, int wpipe)
+                          const char * interface, int rpipe, int wpipe)
 {
   int sockfd = check_priority_mode (interface);
   while (is_before (quiet_end)) {
@@ -532,7 +532,7 @@ static void handle_quiet (struct timeval * quiet_end,
 
 /* handle incoming packets until time t.  Do not send before quiet_end */
 static void handle_until (struct timeval * t, struct timeval * quiet_end,
-                          char * interface, int rpipe, int wpipe,
+                          const char * interface, int rpipe, int wpipe,
                           struct sockaddr * bc_addr, socklen_t alen)
 {
   int sockfd = check_priority_mode (interface);
@@ -596,7 +596,7 @@ static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
 }
 
 /* do one basic 5s cycle */
-static void one_cycle (char * interface, int rpipe, int wpipe,
+static void one_cycle (const char * interface, int rpipe, int wpipe,
                        struct sockaddr * addr, socklen_t alen,
                        struct timeval * quiet_end)
 {
@@ -620,7 +620,7 @@ static void one_cycle (char * interface, int rpipe, int wpipe,
   handle_until (&finish, quiet_end, interface, rpipe, wpipe, addr, alen);
 }
 
-static void main_loop (char * interface, int rpipe, int wpipe)
+static void main_loop (const char * interface, int rpipe, int wpipe)
 {
   struct sockaddr_ll if_address; /* the address of the interface */
   struct sockaddr  * if_sap = (struct sockaddr *) (&if_address);
@@ -655,7 +655,7 @@ int main (int argc, char ** argv)
   }
   int rpipe = atoi (argv [1]);  /* read pipe */
   int wpipe = atoi (argv [2]);  /* write pipe */
-  char * interface = argv [3];
+  const char * interface = argv [3];
 
   snprintf (log_buf, LOG_SIZE,
             "read pipe is fd %d, write pipe fd %d, interface is '%s'\n",
