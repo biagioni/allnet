@@ -28,6 +28,19 @@ AC_PROG_LN_S
 # Checks for libraries.
 PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
 
+AX_PROG_JAVAC
+AX_PROG_JAR
+build_gui="yes"
+AC_ARG_ENABLE(gui,
+  AC_HELP_STRING([--disable-gui],
+  [do not build GUI (building requires java)]),[build_gui="no"],[enable_gui="yes"])
+if test "x$build_gui" = "xyes" && (test "x$JAVAC" = "x" || test "x$JAR" = "x"); then
+  if test "x$enable_gui" = "xyes"; then
+    AC_MSG_ERROR([Could not find a suitable java compiler needed to build GUI support.])
+  fi
+  build_gui="no"
+fi
+AM_CONDITIONAL([ENABLE_GUI], [test "x$build_gui" = "xyes"])
 
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h limits.h netdb.h netinet/in.h stdlib.h string.h strings.h sys/socket.h sys/time.h unistd.h])
@@ -52,4 +65,5 @@ echo "  AllNet v${ALLNET_API_VERSION}"
 echo ""
 echo "  Prefix                 : ${prefix}"
 echo "  Compiler flags         : ${CFLAGS}"
+echo "  Build User Interface   : ${build_gui}"
 echo ""
