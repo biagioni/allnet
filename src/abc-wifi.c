@@ -14,7 +14,7 @@
 
 #include "lib/packet.h"
 
-iface_is_on = 0;
+int iface_is_on = 0;
 
 /* similar to system(3), but more control over what gets printed */
 static int my_system (char * command)
