@@ -26,6 +26,8 @@ AC_PROG_CC
 AC_PROG_LN_S
 
 # Checks for libraries.
+PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
+
 
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h limits.h netdb.h netinet/in.h stdlib.h string.h strings.h sys/socket.h sys/time.h unistd.h])
