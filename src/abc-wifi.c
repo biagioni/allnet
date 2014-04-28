@@ -14,6 +14,10 @@
 
 #include "lib/packet.h"
 
+#ifdef ENABLE_NETWORK_MANAGER
+#include "abc-networkmanager.h"
+#endif
+
 int iface_is_on = 0;
 
 /* similar to system(3), but more control over what gets printed */
