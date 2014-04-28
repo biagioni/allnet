@@ -19,9 +19,9 @@
 #include "lib/cipher.h"
 #include "lib/keys.h"
 
-static int init_xtime ()
+static int init_xtime (char * arg0)
 {
-  int sock = connect_to_local ("xtime");
+  int sock = connect_to_local ("xtime", arg0);
   if (sock < 0)
     exit (1);
   add_pipe (sock);
@@ -224,7 +224,7 @@ int main (int argc, char ** argv)
           key->pub_klen, key->priv_klen, key->address [0] & 0xff,
           key->address [1] & 0xff);
   
-  int sock = init_xtime ();
+  int sock = init_xtime (argv [0]);
 
   while (1)
     announce (interval, sock, hops, key->priv_key, key->priv_klen,

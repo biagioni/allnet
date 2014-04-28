@@ -18,11 +18,12 @@ LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/xchatr \
 	$(ALLNET_BINDIR)/xchats \
-	$(ALLNET_BINDIR)/xchat_socket \
+	$(ALLNET_BINDIR)/xchat \
 	$(ALLNET_BINDIR)/xkeys \
 	$(ALLNET_BINDIR)/xkeyr
 __ALLNET_BINDIR__xchatr_SOURCES = xchatr.c ${link} ${includes} ${libincludes}
 __ALLNET_BINDIR__xchats_SOURCES = xchats.c ${link} ${includes} ${libincludes}
-__ALLNET_BINDIR__xchat_socket_SOURCES = xchat_socket.c ${link} ${includes} ${libincludes}
+__ALLNET_BINDIR__xchat_SOURCES = xchat_socket.c ${link} ${includes} ${libincludes}
+__ALLNET_BINDIR__xchat_LDFLAGS = -lpthread
 __ALLNET_BINDIR__xkeys_SOURCES = xkeys.c ${link} ${includes} ${libincludes}
 __ALLNET_BINDIR__xkeyr_SOURCES = xkeyr.c ${link} ${includes} ${libincludes}

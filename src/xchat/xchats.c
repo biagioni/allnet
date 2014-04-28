@@ -49,7 +49,7 @@ int main (int argc, char ** argv)
   /* allegedly, openSSL does this for us */
   /* srandom (time (NULL));/* RSA encryption uses the random number generator */
 
-  int sock = xchat_init ();
+  int sock = xchat_init (argv [0]);
   if (sock < 0)
     return 1;
 

@@ -28,7 +28,7 @@ static void request_cached_data (int sock, int hops)
 }
 
 /* returns the socket if successful, -1 otherwise */
-int xchat_init ()
+int xchat_init (char * arg0)
 {
   /* apparently openssh does all this for us */
 #if 0
@@ -46,7 +46,7 @@ int xchat_init ()
   initstate (seed, rstate, sizeof (rstate));
 #endif /* 0 */
 
-  int sock = connect_to_local ("xcommon");
+  int sock = connect_to_local ("xcommon", arg0);
   if (sock < 0)
     return -1;
   add_pipe (sock);

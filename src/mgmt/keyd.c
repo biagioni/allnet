@@ -113,7 +113,7 @@ static void handle_packet (int sock, char * message, int msize)
 
 int main (int argc, char ** argv)
 {
-  int sock = connect_to_local (argv [0]);
+  int sock = connect_to_local (argv [0], argv [0]);
   if (sock < 0)
     return 1;
   add_pipe (sock);

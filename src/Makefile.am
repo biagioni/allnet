@@ -1,4 +1,4 @@
-SUBDIRS = lib ahra mgmt xchat xtime
+SUBDIRS = lib ahra mgmt xchat xtime xchat_ui
 AM_CFLAGS = -g -O2
 
 libincludes = \

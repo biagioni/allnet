@@ -4,7 +4,8 @@
 #define ALLNET_APP_UTIL_H
 
 /* returns the socket, or -1 in case of failure */
-extern int connect_to_local (char * program_name);
+/* arg0 is the first argument that main gets -- useful for finding binaries */
+extern int connect_to_local (char * program_name, char * arg0);
 
 /* retrieve or request a public key.
  *

@@ -14,27 +14,49 @@
 #include "sha.h"
 #include "priority.h"
 
-static void exec_allnet ()
+static void find_path (char * arg, char ** path, char ** program)
+{
+  char * slash = rindex (arg, '/');
+  if (slash == NULL) {
+    *path = ".";
+    *program = arg;
+  } else {
+    *slash = '\0';
+    *path = arg;
+    *program = slash + 1;
+  }
+}
+
+/* returned value is malloc'd. */
+static char * make_program_path (char * path, char * program)
+{
+  int size = strlen (path) + 1 + strlen (program) + 1;
+  char * result = malloc (size);
+  if (result == NULL) {
+    printf ("error: unable to allocate %d bytes for %s/%s, aborting\n",
+            size, path, program);
+    exit (1);
+  }
+  snprintf (result, size, "%s/%s", path, program);
+  return result;
+}
+
+static void exec_allnet (char * arg)
 {
   if (fork () == 0) {
-    if ((chdir ("../bin") < 0) || (access ("./astart", X_OK) < 0)) {
-      char * home = getenv ("HOME");
-      if (home == NULL) {
-        printf ("unable to find environment variable HOME\n");
-        exit (1);
-      }
-      if ((chdir (home) < 0) || (chdir (".purple/plugins/xchat") < 0)) {
-        printf ("unable to change directory to $HOME/.purple/plugins/xchat\n");
-        exit (1);
-      }
-      if (access ("./astart", X_OK) < 0) {
-        printf ("unable to exec $HOME/.purple/plugins/xchat/astart\n");
-        exit (1);
-      }
+    char * path;
+    char * pname;
+    find_path (arg, &path, &pname);
+    char * astart = make_program_path (path, "astart");
+    if (access (astart, R_OK) != 0) {
+      perror ("access");
+      printf ("unable to start AllNet daemon\n");
+      exit (1);   /* only exits the child */
     }
-    execl ("./astart", "astart", "wlan0", (char *) NULL);
+    execl (astart, "astart", "wlan0", (char *) NULL);
     perror ("execl");
     printf ("error: exec astart failed\n");
+    exit (1);
   }
   sleep (2);  /* pause the caller for a couple of seconds to get allnet going */
 }
@@ -55,7 +77,8 @@ static int connect_once (int print_error)
 }
 
 /* returns the socket, or -1 in case of failure */
-int connect_to_local (char * program_name)
+/* arg0 is the first argument that main gets -- useful for finding binaries */
+int connect_to_local (char * program_name, char * arg0)
 {
 #if 0 /* apparently this is already done by openssl.  Should double-check */
   /* RSA encryption uses the random number generator */
@@ -75,7 +98,7 @@ int connect_to_local (char * program_name)
   init_log (program_name);
   int sock = connect_once (0);
   if (sock < 0) {
-    exec_allnet ();
+    exec_allnet (arg0);
     sleep (1);
     sock = connect_once (1);
     if (sock < 0) {
