@@ -6,6 +6,7 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/ip.h>
@@ -44,7 +45,6 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
   }
   writeb32 (buf, length);
   writeb48 (buf + 4, time + ALLNET_Y2K_SECONDS_IN_UNIX);
-printf ("sending time %ld\n", time + ALLNET_Y2K_SECONDS_IN_UNIX);
   buf [10] = code;
   strcpy (buf + 11, peer);
   strcpy (buf + 11 + plen, message);
@@ -191,6 +191,10 @@ static pid_t exec_java_ui (char * arg)
     exit (1);
   }
   pid_t pid = fork ();
+  if (pid < 0) {
+    perror ("fork");
+    exit (1);
+  }
   if (pid == 0) {   /* child process */
     char * args [5];
     args [0] = "/usr/bin/java";
@@ -275,6 +279,7 @@ int main (int argc, char ** argv)
     int found = receive_pipe_message_any (timeout, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("pipe closed, exiting\n");
+      kill (child_pid, SIGKILL);
       exit (1);
     }
     if (found == 0) {  /* timed out, request/resend any missing */

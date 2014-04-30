@@ -26,7 +26,7 @@ AC_PROG_CC
 AC_PROG_LN_S
 
 # Checks for libraries.
-PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
+# PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
 
 AX_PROG_JAVAC
 AX_PROG_JAR
