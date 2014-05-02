@@ -73,9 +73,9 @@ static void exec_error (char * executable, pid_t ad, pid_t parent)
   char * pwd = getcwd (buf, sizeof (buf));
   printf ("current directory is %s\n", pwd);
   if (ad > 0)
-    kill (ad, SIGKILL);
+    kill (ad, SIGTERM);
   if (parent > 0)
-    kill (parent, SIGKILL);
+    kill (parent, SIGTERM);
   exit (1);
 }
 
