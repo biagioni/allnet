@@ -469,8 +469,9 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
                                           &fd, &priority);
     if (result < 0) {
       if ((fd == rpipe) || (fd == udp)) {
-        printf ("aip %s %d closed\n",
-                ((fd == rpipe) ? "ad pipe" : "udp socket"), fd);
+        snprintf (log_buf, LOG_SIZE, "aip %s %d closed\n",
+                  ((fd == rpipe) ? "ad pipe" : "udp socket"), fd);
+        log_print ();
         break;  /* exit the loop and the program */
       }
       /* printf ("aip: error on file descriptor %d, closing\n", fd); */

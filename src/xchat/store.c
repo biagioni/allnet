@@ -137,7 +137,7 @@ printf ("debug time: %d\n", 5 / debug);
   struct dirent * dep;
   while ((dep = readdir (dir)) != NULL) {
     char * path =
-      strcat3_malloc (iter->dirname, "/", dep->d_name, "is_data_file");
+      strcat3_malloc (iter->dirname, "/", dep->d_name, "find_prev_file");
     /* we update greatest_less_than_current (gltc) if we have found a name
      * greater than gltc but less than the current.  The comparison always
      * succeeds in case gltc or current are NULL */
@@ -159,6 +159,7 @@ printf ("debug time: %d\n", 5 / debug);
       free (path);
     }
   }
+  closedir (dir);
   if (greatest_less_than_current == NULL) {
     iter->k = -1;   /* at end, invalidate the iterator */
     return 0;

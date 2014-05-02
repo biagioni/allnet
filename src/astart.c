@@ -13,6 +13,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/types.h>
 
 #include "lib/util.h"
 #include "lib/log.h"
@@ -64,35 +65,40 @@ static char * make_program_path (char * path, char * program)
   return result;
 }
 
-static void exec_error (char * executable)
+static void exec_error (char * executable, pid_t ad, pid_t parent)
 {
   perror ("execv");
   printf ("error executing %s\n", executable);
   static char buf [100000];
   char * pwd = getcwd (buf, sizeof (buf));
   printf ("current directory is %s\n", pwd);
+  if (ad > 0)
+    kill (ad, SIGKILL);
+  if (parent > 0)
+    kill (parent, SIGKILL);
   exit (1);
 }
 
-static void my_exec0 (char * path, char * program, int fd)
+static void my_exec0 (char * path, char * program, int fd, pid_t ad)
 {
-  int pid = fork ();
-  if (pid == 0) {
+  pid_t self = getpid ();
+  pid_t child = fork ();
+  if (child == 0) {
     char * args [2];
     args [0] = make_program_path (path, program);
     args [1] = NULL;
     snprintf (log_buf, LOG_SIZE, "calling %s\n", args [0]);
     log_print ();
     execv (args [0], args);    /* should never return! */
-    exec_error (args [0]);
+    exec_error (args [0], ad, self);
   } else {  /* parent, not much to do */
-    print_pid (fd, pid);
+    print_pid (fd, child);
     snprintf (log_buf, LOG_SIZE, "parent called %s\n", program);
     log_print ();
   }
 }
 
-static void my_exec_trace (char * path, char * program, int fd)
+static void my_exec_trace (char * path, char * program, int fd, pid_t ad)
 {
   /* for now, hard-code to 16-bit random addresses */
   char addr [2];
@@ -101,8 +107,9 @@ static void my_exec_trace (char * path, char * program, int fd)
   snprintf (paddr, sizeof (paddr), "%02x%02x/16", (addr [0] & 0xff),
             (addr [1] & 0xff));
   
-  int pid = fork ();
-  if (pid == 0) {
+  pid_t self = getpid ();
+  pid_t child = fork ();
+  if (child == 0) {
     char * args [3];
     args [0] = make_program_path (path, program);
     args [1] = paddr;
@@ -110,18 +117,20 @@ static void my_exec_trace (char * path, char * program, int fd)
     snprintf (log_buf, LOG_SIZE, "calling %s %s\n", args [0], args [1]);
     log_print ();
     execv (args [0], args);    /* should never return! */
-    exec_error (args [0]);
+    exec_error (args [0], ad, self);
   } else {  /* parent, not much to do */
-    print_pid (fd, pid);
+    print_pid (fd, child);
     snprintf (log_buf, LOG_SIZE, "parent called %s %s\n", program, paddr);
     log_print ();
   }
 }
 
-static void my_exec2 (char * path, char * program, int * pipes, int fd)
+static void my_exec2 (char * path, char * program, int * pipes, int fd,
+                      pid_t ad)
 {
-  int pid = fork ();
-  if (pid == 0) {
+  pid_t self = getpid ();
+  pid_t child = fork ();
+  if (child == 0) {
     char * args [4];
     args [0] = make_program_path (path, program);
     args [1] = itoa (pipes [0]);
@@ -133,9 +142,9 @@ static void my_exec2 (char * path, char * program, int * pipes, int fd)
               args [0], args [1], args [2]);
     log_print ();
     execv (args [0], args);    /* should never return! */
-    exec_error (args [0]);
+    exec_error (args [0], ad, self);
   } else {  /* parent, close the child pipes */
-    print_pid (fd, pid);
+    print_pid (fd, child);
     close (pipes [0]);
     close (pipes [3]);
     snprintf (log_buf, LOG_SIZE, "parent called %s %d %d, closed %d %d\n",
@@ -144,10 +153,12 @@ static void my_exec2 (char * path, char * program, int * pipes, int fd)
   }
 }
 
-static void my_exec3 (char * path, char * program, int * pipes, char * extra, int fd)
+static void my_exec3 (char * path, char * program, int * pipes, char * extra,
+                      int fd, pid_t ad)
 {
-  int pid = fork ();
-  if (pid == 0) {
+  pid_t self = getpid ();
+  pid_t child = fork ();
+  if (child == 0) {
     char * args [5];
     args [0] = make_program_path (path, program);
     args [1] = itoa (pipes [0]);
@@ -160,9 +171,9 @@ static void my_exec3 (char * path, char * program, int * pipes, char * extra, in
               args [0], args [1], args [2], args [3]);
     log_print ();
     execv (args [0], args);
-    exec_error (args [0]);
+    exec_error (args [0], ad, self);
   } else {  /* parent, close the child pipes */
-    print_pid (fd, pid);
+    print_pid (fd, child);
     close (pipes [0]);
     close (pipes [3]);
     snprintf (log_buf, LOG_SIZE, "parent called %s %d %d %s, closed %d %d\n",
@@ -171,11 +182,12 @@ static void my_exec3 (char * path, char * program, int * pipes, char * extra, in
   }
 }
 
-static void my_exec_ad (char * path, int * pipes, int num_pipes, int fd)
+static pid_t my_exec_ad (char * path, int * pipes, int num_pipes, int fd)
 {
   int i;
-  int pid = fork ();
-  if (pid == 0) {
+  pid_t self = getpid ();
+  pid_t child = fork ();
+  if (child == 0) {
     /* ad takes as args the number of pipe pairs, then the actual pipe fds */
     int num_args = 2 /* program + number */ + num_pipes + 1 /* NULL */ ;
     char * * args = malloc_or_fail (num_args * sizeof (char *),
@@ -194,14 +206,15 @@ static void my_exec_ad (char * path, int * pipes, int num_pipes, int fd)
     log_print ();
     args [num_args - 1] = NULL;
     execv (args [0], args);
-    exec_error (args [0]);
+    exec_error (args [0], 0, self);
   } else {  /* parent, close the child pipes */
-    print_pid (fd, pid);
+    print_pid (fd, child);
     for (i = 0; i < num_pipes / 2; i++) {
       close (pipes [4 * i + 1]);
       close (pipes [4 * i + 2]);
     }
   }
+  return child;
 }
 
 static char * pid_file_name ()
@@ -281,6 +294,7 @@ int main (int argc, char ** argv)
   find_path (argv [0], &path, &pname);
   if (strstr (pname, "stop") != NULL)
     return stop_all ();   /* just stop */
+  /* printf ("astart path is %s\n", path); */
 
   init_log ("astart");  /* only do logging in astart, not in astop */
   /* two pipes from ad to alocal and back */
@@ -305,17 +319,17 @@ int main (int argc, char ** argv)
   }
 
   /* start ad */
-  my_exec_ad (path, pipes, num_pipes, pid_fd);
+  pid_t ad_pid = my_exec_ad (path, pipes, num_pipes, pid_fd);
 
   /* start all the other programs */
-  my_exec2 (path, "alocal", pipes, pid_fd);
-  my_exec2 (path, "acache", pipes + 4, pid_fd);
-  my_exec3 (path, "aip", pipes + 8, AIP_UNIX_SOCKET, pid_fd);
+  my_exec2 (path, "alocal", pipes, pid_fd, ad_pid);
+  my_exec2 (path, "acache", pipes + 4, pid_fd, ad_pid);
+  my_exec3 (path, "aip", pipes + 8, AIP_UNIX_SOCKET, pid_fd, ad_pid);
   int i;
   for (i = 0; i < num_interfaces; i++)
-    my_exec3 (path, "abc", pipes + 12 + (4 * i), argv [i + 1], pid_fd);
+    my_exec3 (path, "abc", pipes + 12 + (4 * i), argv [i + 1], pid_fd, ad_pid);
   sleep (2);
-  my_exec_trace (path, "traced", pid_fd);
-  my_exec0 (path, "keyd", pid_fd);
+  my_exec_trace (path, "traced", pid_fd, ad_pid);
+  my_exec0 (path, "keyd", pid_fd, ad_pid);
   return 0;
 }

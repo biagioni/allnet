@@ -147,9 +147,6 @@ static void wait_for_connection (int sock,
   } while ((bytes > 0) && ((sinp->sin_family != AF_INET) ||
                            (sinp->sin_addr.s_addr != htonl (INADDR_LOOPBACK))));
   *slen = alen;
-
-  /* send test message */
-  send_message (sock, sap, *slen, 0, 999999, "edo", "foo");
 }
 
 static void find_path (char * arg, char ** path, char ** program)

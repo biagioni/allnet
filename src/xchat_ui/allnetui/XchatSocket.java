@@ -144,7 +144,6 @@ public class XchatSocket extends Thread {
       /* return; */
     }
     long time = b48 (data, 4, dlen);
-System.out.println ("XchatSocket.java: got time " + time);
     int code = data [10];
     if (code != 0) {
       System.out.println ("unknown message code " + code);
@@ -200,8 +199,8 @@ System.out.println ("XchatSocket.java: got time " + time);
         System.out.println ("unable to receive messages, terminating");
         System.exit (1);
       }
-      System.out.println ("received packet: " + received +
-                          " from " + received.getSocketAddress ());
+//      System.out.println ("received packet: " + received +
+//                          " from " + received.getSocketAddress ());
       if (received.getPort () != xchatSocketPort) {
         System.out.println ("packet from port " + received.getPort() +
                             ", only accepting from " + xchatSocketPort);
