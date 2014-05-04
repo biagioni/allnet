@@ -30,22 +30,6 @@ static void request_cached_data (int sock, int hops)
 /* returns the socket if successful, -1 otherwise */
 int xchat_init (char * arg0)
 {
-  /* apparently openssh does all this for us */
-#if 0
-  /* RSA encryption uses the random number generator */
-  unsigned int seed = time (NULL);
-  int rfd = open ("/dev/random", O_RDONLY);
-  if (rfd < 0) {
-    printf ("using weak random number generator, may be insecure\n");
-  } else {
-    /* wish I could initialize the whole rstate!!! */
-    read (rfd, ((char *) (&seed)), sizeof (unsigned int));
-    close (rfd);
-  }
-  static char rstate [256]; 
-  initstate (seed, rstate, sizeof (rstate));
-#endif /* 0 */
-
   int sock = connect_to_local ("xcommon", arg0);
   if (sock < 0)
     return -1;

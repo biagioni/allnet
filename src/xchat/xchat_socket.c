@@ -234,9 +234,6 @@ static void thread_for_child_completion (pid_t pid)
 
 int main (int argc, char ** argv)
 {
-  /* allegedly, openSSL does this for us */
-  /* srandom (time (NULL));/* RSA encryption uses the random number generator */
-
 /*
   if (argc < 2) {
     printf ("%s should have one socket arg, and never be called directly!\n",
