@@ -258,10 +258,16 @@ static int stop_all ()
   int fd = open (fname, O_RDONLY, 0);
   if (fd < 0) {
     printf ("unable to stop allnet daemon, missing pid file %s\n", fname);
+    printf ("running pkill bin/ad\n");
+    execlp ("pkill", "pkill", "-f", "bin/ad", ((char *)NULL));
+    /* execl should never return */
+    printf ("unable to pkill\n");
+/*
     if (geteuid () == 0)
       printf ("if it is running, perhaps it was started as a user process\n");
     else
       printf ("if it is running, perhaps it was started as a root process\n");
+*/
     return 1;
   }
   printf ("stopping allnet daemon\n");
@@ -322,6 +328,7 @@ int main (int argc, char ** argv)
   pid_t ad_pid = my_exec_ad (path, pipes, num_pipes, pid_fd);
 
   /* start all the other programs */
+#if 0
   my_exec2 (path, "alocal", pipes, pid_fd, ad_pid);
   my_exec2 (path, "acache", pipes + 4, pid_fd, ad_pid);
   my_exec3 (path, "aip", pipes + 8, AIP_UNIX_SOCKET, pid_fd, ad_pid);
@@ -331,5 +338,16 @@ int main (int argc, char ** argv)
   sleep (2);
   my_exec_trace (path, "traced", pid_fd, ad_pid);
   my_exec0 (path, "keyd", pid_fd, ad_pid);
+#else /* ! 0 */
+  my_exec2 (path, "alocal", pipes, pid_fd, ad_pid);
+  my_exec3 (path, "aip", pipes + 4, AIP_UNIX_SOCKET, pid_fd, ad_pid);
+  int i;
+  for (i = 0; i < num_interfaces; i++)
+    my_exec3 (path, "abc", pipes + 8 + (4 * i), argv [i + 1], pid_fd, ad_pid);
+  sleep (2);
+  my_exec_trace (path, "traced", pid_fd, ad_pid);
+  my_exec0 (path, "acache", pid_fd, ad_pid);
+  my_exec0 (path, "keyd", pid_fd, ad_pid);
+#endif /* 0 */
   return 0;
 }

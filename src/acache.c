@@ -194,17 +194,17 @@ static void ack_packets (void * cache, char * message, int msize)
   }
 }
 
-void * main_loop (int rpipe, int wpipe)
+void * main_loop (int sock)
 {
   bzero (cache_storage, sizeof (cache_storage));
   void * cache = cache_init (CACHE_SIZE - 1, return_cache_entry);
   while (1) {
     char * message;
     int priority;
-    int result = receive_pipe_message (rpipe, &message, &priority);
+    int result = receive_pipe_message (sock, &message, &priority);
     if (result <= 0) {
       snprintf (log_buf, LOG_SIZE, "ad pipe %d closed, result %d\n",
-                rpipe, result);
+                sock, result);
       log_print ();
       break;
     }
@@ -214,7 +214,7 @@ void * main_loop (int rpipe, int wpipe)
     if (result >= ALLNET_HEADER_SIZE) {
       struct allnet_header * hp = (struct allnet_header *) message;
       if (hp->message_type == ALLNET_TYPE_DATA_REQ) { /* respond */
-        if (respond_to_packet (cache, message, result, wpipe))
+        if (respond_to_packet (cache, message, result, sock))
           snprintf (log_buf, LOG_SIZE, "responded to data request packet\n");
         else
           snprintf (log_buf, LOG_SIZE, "no response to data request packet\n");
@@ -242,22 +242,8 @@ void * main_loop (int rpipe, int wpipe)
 
 int main (int argc, char ** argv)
 {
-  init_log ("acache");
-  if (argc != 3) {
-    snprintf (log_buf, LOG_SIZE,
-              "arguments must be a read and a write pipe\n");
-    log_print ();
-    return -1;
-  }
-/*
-  printf ("in acache, args are ");
-  printf ("'%s %s %s'\n", argv [0], argv [1], argv [2]);
-*/
-  int rpipe = atoi (argv [1]);
-  int wpipe = atoi (argv [2]);
-  /* printf ("read pipe is fd %d, write pipe is fd %d\n", rpipe, wpipe); */
-
-  main_loop (rpipe, wpipe);
+  int sock = connect_to_local ("acache", argv [0]);
+  main_loop (sock);
   snprintf (log_buf, LOG_SIZE, "end of acache\n");
   log_print ();
 }
