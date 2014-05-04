@@ -55,7 +55,7 @@ static void exec_allnet (char * arg)
       printf ("unable to start AllNet daemon\n");
       exit (1);   /* only exits the child */
     }
-    execl (astart, "astart", "wlan0", (char *) NULL);
+    execl (astart, astart, "wlan0", (char *) NULL);
     perror ("execl");
     printf ("error: exec astart failed\n");
     exit (1);
