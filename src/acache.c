@@ -19,8 +19,8 @@
 #include "lib/log.h"
 #include "lib/sha.h"
 
-/* #define CACHE_SIZE	1024 */
-#define CACHE_SIZE	4  /* for testing */
+#define CACHE_SIZE	1024
+/* #define CACHE_SIZE	4  /* for testing */
 struct cache_entry {
   char * message;
   int msize;
@@ -40,9 +40,11 @@ static void return_cache_entry (void * arg)
   log_print ();
   int i;
   for (i = 0; i < CACHE_SIZE; i++) {
-    snprintf (log_buf, LOG_SIZE, "cache %d has msize %d\n",
-              i, cache_storage [i].msize);
-    log_print ();
+    if (cache_storage [i].msize > 0) {
+      snprintf (log_buf, LOG_SIZE, "cache %d has msize %d\n",
+                i, cache_storage [i].msize);
+      log_print ();
+    }
   }
 }
 
@@ -97,8 +99,8 @@ static int save_packet (void * cache, char * message, int msize)
                            i, cache_storage [i].msize);
       struct allnet_header * xhp = 
                (struct allnet_header *) cache_storage [i].message;
-      char * xid = get_id (xhp, cache_storage [i].msize);
-      buffer_to_string (xid, PACKET_ID_SIZE, NULL, 8, 1,
+      char * xid = get_id ((char *) xhp, cache_storage [i].msize);
+      buffer_to_string (xid, MESSAGE_ID_SIZE, NULL, 8, 1,
                         log_buf + xoff, LOG_SIZE - xoff);
       log_print ();
     }
