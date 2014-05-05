@@ -8,6 +8,7 @@
 #define ABC_NM_DBUS_DEST "org.freedesktop.NetworkManager"
 #define ABC_NM_DBUS_OBJ "/org/freedesktop/NetworkManager"
 #define ABC_NM_DBUS_IFACE "org.freedesktop.NetworkManager"
+#define ALLNET_SSID_BYTE_ARRAY { 'a', 'l', 'l', 'n', 'e', 't' }
 
 typedef struct abc_nm_settings {
   DBusConnection * conn;

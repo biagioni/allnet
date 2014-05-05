@@ -1,5 +1,6 @@
 /* abc-networkmanager.c: abc's NetworkManager interface */
 
+#include <assert.h>
 #include <dbus-1.0/dbus/dbus.h>
 
 #include "abc-networkmanager.h"
@@ -193,8 +194,118 @@ static int setup_connection (abc_nm_settings * self) {
   return 1;
 }
 
-int get_conn_obj (abc_nm_settings * self) {
-  // TODO return 1 if connection is found
+static int get_conn_obj (abc_nm_settings * self) {
+  DBusMessage * msg = init_dbus_method_call (ABC_NM_DBUS_DEST,
+                              ABC_NM_DBUS_OBJ "/Settings",
+                              ABC_NM_DBUS_IFACE ".Settings",
+                              "ListConnections");
+  if (msg == NULL)
+    return 0;
+  if (!call_nm_dbus_method (self->conn, &msg))
+    goto cleanup_fail;
+
+  const char * connobj;
+  DBusMessageIter args;
+  if (!dbus_message_iter_init (msg, &args)) {
+    /* TODO: log fprintf (stderr, "dbus: Message has no arguments\n"); */
+  } else {
+    assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_ARRAY);
+    DBusMessageIter arg_var;
+    dbus_message_iter_recurse (&args, &arg_var);
+    int found_con = 0;
+    do {
+      assert (dbus_message_iter_get_arg_type (&arg_var) == DBUS_TYPE_OBJECT_PATH);
+      dbus_message_iter_get_basic (&arg_var, &connobj);
+      /* for each connection, check if it's our "allnet" connection
+       * for this, the ssid must be "allnet" and mode "adhoc"
+       */
+      DBusMessage * cmsg = dbus_message_new_method_call (ABC_NM_DBUS_DEST,
+                                                         connobj,
+                                                         ABC_NM_DBUS_IFACE ".Settings.Connection",
+                                                         "GetSettings");
+      if (cmsg == NULL)
+        goto cleanup_fail;
+
+      if (!call_nm_dbus_method (self->conn, &cmsg)) {
+        dbus_message_unref (cmsg);
+        goto cleanup_fail;
+      }
+
+      DBusMessageIter cargs;
+      const char * keyval;
+      assert (dbus_message_iter_init (cmsg, &cargs));
+      assert (dbus_message_iter_get_arg_type (&cargs) == DBUS_TYPE_ARRAY);
+      DBusMessageIter carg_var[6];
+      dbus_message_iter_recurse (&cargs, &carg_var[0]);
+      do {
+        assert (dbus_message_iter_get_arg_type (&carg_var[0]) == DBUS_TYPE_DICT_ENTRY);
+        dbus_message_iter_recurse (&carg_var[0], &carg_var[1]);
+        assert (dbus_message_iter_get_arg_type (&carg_var[1]) == DBUS_TYPE_STRING);
+        dbus_message_iter_get_basic (&carg_var[1], &keyval);
+        assert (dbus_message_iter_next (&carg_var[1]));
+        if (strcmp (keyval, "802-11-wireless") == 0) {
+          /* check mode="adhoc", ssid="allnet" */
+          int is_allnet = 0;
+          int is_adhoc = 0;
+          assert (dbus_message_iter_get_arg_type (&carg_var[1]) == DBUS_TYPE_ARRAY);
+          dbus_message_iter_recurse (&carg_var[1], &carg_var[2]);
+          do {
+            assert (dbus_message_iter_get_arg_type (&carg_var[2]) == DBUS_TYPE_DICT_ENTRY);
+            dbus_message_iter_recurse (&carg_var[2], &carg_var[3]);
+            assert (dbus_message_iter_get_arg_type (&carg_var[3]) == DBUS_TYPE_STRING);
+            dbus_message_iter_get_basic (&carg_var[3], &keyval);
+            assert (dbus_message_iter_next (&carg_var[3]));
+            if (strcmp (keyval, "ssid") == 0) {
+              assert (dbus_message_iter_get_arg_type (&carg_var[3]) == DBUS_TYPE_VARIANT);
+              dbus_message_iter_recurse (&carg_var[3], &carg_var[4]);
+              assert (dbus_message_iter_get_arg_type (&carg_var[4]) == DBUS_TYPE_ARRAY);
+              dbus_message_iter_recurse (&carg_var[4], &carg_var[5]);
+              char ssid[] = ALLNET_SSID_BYTE_ARRAY;
+              char byte;
+              int i = 0;
+              int has_next;
+              do {
+                assert (dbus_message_iter_get_arg_type (&carg_var[5]) == DBUS_TYPE_BYTE);
+                dbus_message_iter_get_basic (&carg_var[5], &byte);
+              } while (byte == ssid[i] && (has_next = dbus_message_iter_next (&carg_var[5])) && ++i <= sizeof (ssid));
+              if (i == sizeof (ssid) - 1 && !has_next)
+                is_allnet = 1;
+              /* nicer alternative, but for some reason asserts..
+               * remember: ssid is a byte array, no '\0' at the end
+               * char * ssid;
+               * int * ssid_len;
+               * dbus_message_iter_get_fixed_array (&carg_var[4], ssid, ssid_len);
+               * if (*ssid_len == 6 && strncmp (ssid, "allnet", 6) == 0) {
+               *   is_allnet = 1;
+               * }
+               */
+
+            } else if (strcmp (keyval, "mode") == 0) {
+              assert (dbus_message_iter_get_arg_type (&carg_var[3]) == DBUS_TYPE_VARIANT);
+              dbus_message_iter_recurse (&carg_var[3], &carg_var[4]);
+              assert (dbus_message_iter_get_arg_type (&carg_var[4]) == DBUS_TYPE_STRING);
+              dbus_message_iter_get_basic (&carg_var[4], &keyval);
+              if (strcmp (keyval, "adhoc") == 0)
+                is_adhoc = 1;
+            }
+          } while (dbus_message_iter_next (&carg_var[2]));
+          if (is_adhoc && is_allnet) {
+            strncpy (self->priv->nm_conn_obj_buf, self->nm_conn_obj, sizeof (self->priv->nm_conn_obj_buf));
+            self->nm_conn_obj = self->priv->nm_conn_obj_buf;
+
+            dbus_message_unref (cmsg);
+            dbus_message_unref (msg);
+            return 1;
+          }
+        }
+      } while (dbus_message_iter_next (&carg_var[0]));
+      dbus_message_unref (cmsg);
+
+    } while (dbus_message_iter_next (&arg_var));
+  }
+
+cleanup_fail:
+  dbus_message_unref (msg);
   return 0;
 }
 
@@ -235,8 +346,23 @@ int abc_nm_init (abc_nm_settings * self, const char * iface) {
 }
 
 int abc_nm_enable_wireless (abc_nm_settings * self, int state) {
-  // TODO
-  return 1;
+  dbus_bool_t on = state;
+  DBusMessage * msg = dbus_message_new_method_call (ABC_NM_DBUS_DEST,
+                                  ABC_NM_DBUS_OBJ,
+                                  "org.freedesktop.DBus.Properties",
+                                  "Set");
+  if (msg == NULL)
+    return -1;
+
+  DBusMessageIter args;
+  dbus_message_iter_init_append (msg, &args);
+  const char * nm[2] = { ABC_NM_DBUS_IFACE, "WirelessEnabled" };
+  dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &nm[0]);
+  dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &nm[1]);
+  dbus_message_iter_append_basic (&args, DBUS_TYPE_BOOLEAN, &on);
+  int ret = call_nm_dbus_method (self->conn, &msg);
+  dbus_message_unref (msg);
+  return ret;
 }
 
 int abc_nm_connect(abc_nm_settings * self) {
