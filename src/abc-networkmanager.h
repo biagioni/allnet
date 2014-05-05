@@ -10,11 +10,13 @@
 #define ABC_NM_DBUS_IFACE "org.freedesktop.NetworkManager"
 #define ALLNET_SSID_BYTE_ARRAY { 'a', 'l', 'l', 'n', 'e', 't' }
 
+struct abc_nm_settings_priv;
 typedef struct abc_nm_settings {
   DBusConnection * conn;
   const char * iface;
   const char * nm_iface_obj;
   const char * nm_conn_obj;
+  struct abc_nm_settings_priv * priv;
 } abc_nm_settings;
 
 /** Init connection to NetworkManager */ 

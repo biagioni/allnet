@@ -2,8 +2,14 @@
 
 #include <assert.h>
 #include <dbus-1.0/dbus/dbus.h>
+#include <string.h>
 
 #include "abc-networkmanager.h"
+
+struct abc_nm_settings_priv {
+  char nm_conn_obj_buf[50];  /* 43: /org/freedesktop/NetworkManager/Settings/13 */
+  char nm_iface_obj_buf[50]; /* 41: /org/freedesktop/NetworkManager/Devices/1 */
+};
 
 static dbus_bool_t append_variant (DBusMessageIter * iter, int type, void * val) {
   DBusMessageIter value;
@@ -93,6 +99,9 @@ static int get_device_path (abc_nm_settings * self) {
     return 0;
   }
   dbus_message_iter_get_basic (&args, &self->nm_iface_obj);
+
+  strncpy (self->priv->nm_iface_obj_buf, self->nm_iface_obj, sizeof (self->priv->nm_iface_obj_buf));
+  self->nm_iface_obj = self->priv->nm_iface_obj_buf;
   dbus_message_unref (msg);
   return 1;
 }
@@ -190,6 +199,8 @@ static int setup_connection (abc_nm_settings * self) {
       || dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_OBJECT_PATH)
     return 0;
   dbus_message_iter_get_basic (&args, &self->nm_conn_obj);
+  strncpy (self->priv->nm_conn_obj_buf, self->nm_conn_obj, sizeof (self->priv->nm_conn_obj_buf));
+  self->nm_conn_obj = self->priv->nm_conn_obj_buf;
   dbus_message_unref (msg);
   return 1;
 }
