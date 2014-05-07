@@ -4,8 +4,6 @@
  */
 /* for now, simply dcache all the packets, return them if they are in the
  * cache.  Later on, maybe provide persistent storage */
-/* note that we never tell dcache that the storage is used, so dcache
- * eliminates messages in fifo order */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +55,10 @@ static char * get_id (char * message, int size)
   char * id = ALLNET_PACKET_ID (hp, hp->transport, size);
   if (id == NULL)
     id = ALLNET_MESSAGE_ID (hp, hp->transport, size);
+  /* ack messages may have multiple IDs, we only use the first */
+  if ((id == NULL) && (hp->message_type == ALLNET_TYPE_ACK) &&
+      (size >= ALLNET_SIZE (hp->transport) + MESSAGE_ID_SIZE))
+    id = ALLNET_DATA_START (hp, hp->message_type, size);
   /* key messages usually don't have IDs, but do have hmac or fingerprints */
   if ((id == NULL) && (size >= ALLNET_SIZE (hp->transport) + 1)) {
     int nbytes = message [ALLNET_SIZE (hp->transport) + 1] & 0xff;
@@ -117,6 +119,9 @@ static int save_packet (void * cache, char * message, int msize)
     if (cache_storage [(i + cache_search) % CACHE_SIZE].msize == 0) {
       /* found a free slot -- since the dcache has CACHE_SIZE - 1 entries,
          there should always be a free slot. */
+      snprintf (log_buf, LOG_SIZE, "saving message of type %d, %d bytes\n",
+                hp->message_type, msize);
+      log_print ();
       struct cache_entry * cep = 
         cache_storage + ((i + cache_search) % CACHE_SIZE);
       cache_search = i;
@@ -175,6 +180,7 @@ static int respond_to_packet (void * cache, char * message,
     send_pipe_message (fd, cep [i]->message, cep [i]->msize,
                        ALLNET_PRIORITY_CACHE_RESPONSE);
   }
+  free (matches);
   return 1;
 }
 
@@ -219,16 +225,17 @@ void * main_loop (int sock)
         else
           snprintf (log_buf, LOG_SIZE, "no response to data request packet\n");
         log_print ();
-      } else if (hp->message_type == ALLNET_TYPE_ACK) { /* erase if have */
-        ack_packets (cache, message, result);
-      } else if (save_packet (cache, message, result)) {
-        snprintf (log_buf, LOG_SIZE, "saved packet of type %d\n",
-                  hp->message_type);
-        log_print ();
-        mfree = 0;   /* saved, so do not free */
       } else {
-        snprintf (log_buf, LOG_SIZE, "did not save packet, type %d\n",
-                  hp->message_type);
+        if (hp->message_type == ALLNET_TYPE_ACK) /* erase if have */
+          ack_packets (cache, message, result);
+        if (save_packet (cache, message, result)) {
+          mfree = 0;   /* saved, so do not free */
+          snprintf (log_buf, LOG_SIZE, "saved packet of type %d\n",
+                    hp->message_type);
+        } else {
+          snprintf (log_buf, LOG_SIZE, "did not save packet, type %d\n",
+                    hp->message_type);
+        }
         log_print ();
       }
     } else {
