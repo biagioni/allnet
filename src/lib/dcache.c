@@ -127,7 +127,8 @@ int cache_all_matches (void * cp, match_function f, void * arg, void *** array)
 {
   *array = NULL;
   struct dcache * cache = (struct dcache *) cp;
-  if (cache->busy) { array = NULL; return 0; }
+  if (cache->busy)
+    return 0;
   pthread_mutex_lock (&(cache->mutex));
   int size = cache->num_entries * sizeof (int);
   int * matches = malloc_or_fail (size, "cache_all_matches");
@@ -141,6 +142,10 @@ int cache_all_matches (void * cp, match_function f, void * arg, void *** array)
   for (i = 0; i < cache->num_entries; i++)
     if (matches [i] != 0)
       count++;
+  if (count == 0) {
+    pthread_mutex_unlock (&(cache->mutex));
+    return count;
+  }
   void * * result = malloc_or_fail (count * sizeof (void *), "cache_all");
   int min = 0;
   int found = 0;
@@ -321,7 +326,8 @@ int cache_random (void * cp, int max, void ** array)
   if (max <= 0) return 0;
   struct dcache * cache = (struct dcache *) cp;
   int i;
-  if (cache->busy) return 0;
+  if (cache->busy)
+    return 0;
 
   pthread_mutex_lock (&(cache->mutex));
   if (cache->num_entries > 0) {
