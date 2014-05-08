@@ -142,7 +142,7 @@ int abc_wifi_config_iw_init (const char * iface)
   return 1;
 }
 
-/** Connect to AllNet adhoc network */ 
+/** Join allnet adhoc network */
 int abc_wifi_config_iw_connect ()
 {
 #ifdef DEBUG_PRINT
@@ -150,7 +150,6 @@ int abc_wifi_config_iw_connect ()
 #endif /* DEBUG_PRINT */
 /* need to execute the commands:
       sudo iw dev $if set type ibss
-      sudo ifconfig $if up
       sudo iw dev $if ibss join allnet 2412
  */
   const char * mess;
@@ -180,6 +179,7 @@ int abc_wifi_config_iw_is_wireless_on ()
 /** Enable or disable wlan depending on state (1 or 0) */ 
 int abc_wifi_config_iw_set_enabled (int state)
 {
+  /* call (sudo) ifconfig $if {up|down} */
   if (state) {
     /* continue with the other commands, which should succeed */
     if (! if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
