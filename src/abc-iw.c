@@ -48,7 +48,7 @@ static int my_system (char * command)
     char * p = command;
     int found_blank = 0;
     argv [0] = command;
-    while (*p != '\0' && num_args <= sizeof (argv)) {
+    while (*p != '\0' && num_args <= sizeof (argv) / sizeof (char *)) {
       if (found_blank) {
         if (*p != ' ') {
           argv [num_args] = p;
@@ -61,7 +61,7 @@ static int my_system (char * command)
       }
       p++;
     }
-    if (num_args >= sizeof (argv)) {
+    if (num_args >= sizeof (argv) / sizeof (char *)) {
       printf ("error: reading beyond array\n");
       argv [sizeof (argv) -1] = NULL;
     } else {
