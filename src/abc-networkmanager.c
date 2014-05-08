@@ -35,7 +35,8 @@ abc_wifi_config_iface abc_wifi_config_nm_wlan = {
   .config_type = ABC_WIFI_CONFIG_NETWORKMANAGER,
   .init_iface_cb = abc_wifi_config_nm_init,
   .iface_is_enabled_cb = abc_wifi_config_nm_is_wireless_on,
-  .iface_set_enabled_cb = abc_wifi_config_nm_enable_wireless
+  .iface_set_enabled_cb = abc_wifi_config_nm_enable_wireless,
+  .iface_connect_cb = abc_wifi_config_nm_connect
 };
 
 static abc_nm_settings self;
