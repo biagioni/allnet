@@ -295,7 +295,6 @@ static int get_conn_obj ()
   if (!call_nm_dbus_method (&msg))
     goto cleanup_fail;
 
-  const char * connobj;
   DBusMessageIter args;
   if (!dbus_message_iter_init (msg, &args)) {
     /* TODO: log fprintf (stderr, "dbus: Message has no arguments\n"); */
@@ -305,6 +304,7 @@ static int get_conn_obj ()
     dbus_message_iter_recurse (&args, &arg_var);
     int found_con = 0;
     do {
+      const char * connobj;
       assert (dbus_message_iter_get_arg_type (&arg_var) == DBUS_TYPE_OBJECT_PATH);
       dbus_message_iter_get_basic (&arg_var, &connobj);
       /* for each connection, check if it's our "allnet" connection
@@ -381,7 +381,7 @@ static int get_conn_obj ()
             }
           } while (dbus_message_iter_next (&carg_var[2]));
           if (is_adhoc && is_allnet) {
-            strncpy (self.nm_conn_obj_buf, self.nm_conn_obj, sizeof (self.nm_conn_obj_buf));
+            strncpy (self.nm_conn_obj_buf, connobj, sizeof (self.nm_conn_obj_buf));
             self.nm_conn_obj = self.nm_conn_obj_buf;
 
             dbus_message_unref (cmsg);
