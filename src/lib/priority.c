@@ -1,4 +1,5 @@
-/* fraction.c: compute with fractions using integers */
+/* priority.c: priorities of received packets, for use throughout AllNet */
+/* includes operations on fractions */
 
 #include <stdio.h>
 
@@ -39,18 +40,15 @@ int divide (int dividend, int divisor)
 }
 
 
-int compute_priority (int is_local, int size, int sbits, int dbits,
+int compute_priority (int size, int sbits, int dbits,
                       int hops_already, int hops_max,
                       int social_distance, int rate_fraction)
 {
   int debug = 0;
   if (debug)
-    printf ("compute_priority (%slocal, %d, %d, %d, %d, %d, %d, %d)\n",
-            (is_local ? "" : "non-"), size, sbits, dbits, hops_already,
+    printf ("compute_priority (%d, %d, %d, %d, %d, %d, %d)\n",
+            size, sbits, dbits, hops_already,
             hops_max, social_distance, rate_fraction);
-  if (is_local)
-    /* sender may have specified another priority */
-    return ALLNET_PRIORITY_LOCAL;
   if (social_distance <= 1)
     return ALLNET_PRIORITY_FRIENDS_HIGH;
   /* compute Ps = 2^(1-social_distance).

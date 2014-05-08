@@ -32,6 +32,8 @@
  *
  */
 
+#define XCHAT_SOCKET_PORT 	     (htons (0xa11c))  /* ALLnet Chat, 41244 */
+
 /* the chat descriptor is sent before the user text, in the first
  * 32 bytes of the data of the AllNet packet */
 

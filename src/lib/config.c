@@ -137,14 +137,13 @@ int open_read_config (char * program, char * file, int print_errors)
 }
 
 /* returns a file descriptor, or -1 in case of errors */
-int open_rw_config (char * program, char * file, int print_errors)
+int open_write_config (char * program, char * file, int print_errors)
 {
   char * name;
   int size = config_file_name (program, file, &name);
-printf ("open_rw_config (%s, %s) gives file name %s\n", program, file, name);
   if (size < 0)
     return -1;
-  int result = open (name, O_RDWR | O_CREAT, 0600);
+  int result = open (name, O_WRONLY | O_CREAT | O_TRUNC, 0600);
   if (result < 0) {
     if (print_errors) {
       if (errno == ENOENT)   /* file not found */

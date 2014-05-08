@@ -23,8 +23,8 @@ int addr_info_to_string (struct addr_info * ai, char * buf, int bsize)
 {
   int offset = 0;
   offset += snprintf (buf, bsize, " %p (%d) ", ai, ai->nbits);
-  offset += buffer_to_string (ai->destination, (ai->nbits + 7) / 8, NULL, 4, 0,
-                              buf + offset, bsize - offset);
+  offset += buffer_to_string (ai->destination, (ai->nbits + 7) / 8, NULL,
+                              ADDRESS_SIZE, 0, buf + offset, bsize - offset);
   offset += snprintf (buf + offset, bsize - offset,
                       ", v %d, port %d, addr ", ai->ip.ip_version,
                       ntohs (ai->ip.port));

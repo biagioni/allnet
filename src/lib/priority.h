@@ -1,4 +1,5 @@
-/* priority.h: compute with fractions using integers */
+/* priority.c: priorities of received packets, for use throughout AllNet */
+/*             includes operations on fractions */
 
 #ifndef PRIORITY_H
 #define PRIORITY_H
@@ -52,7 +53,7 @@
 /* computes priority as a fraction of ALLNET_PRIORITY_MAX.  For example, a
  * priority of 3/4 is ALLNET_PRIORITY_MAX / 4 * 3
  */
-extern int compute_priority (int is_local, int size, int sbits, int dbits,
+extern int compute_priority (int size, int sbits, int dbits,
                              int hops_already, int hops_max,
                              int social_distance, int rate_fraction);
 

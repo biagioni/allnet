@@ -2,10 +2,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <pthread.h>
+#include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/ip.h>
 
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
@@ -19,17 +23,19 @@
 
 /* messages have a length, time, code, peer name, and text of the message. */
 /* length (4 bytes, big-endian order) includes everything.
- * time (4 bytes, big-endian order) is the time of original transmission
+ * time (6 bytes, big-endian order) is the time of original transmission,
+ *   in the os's local epoch
  * code is 1 byte, value 0 for a data message
  * the peer name and the message are null-terminated
  */
 
-static void send_message (int sock, int code, time_t time, const char * peer,
+static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
+                          int code, time_t time, const char * peer,
                           const char * message)
 {
   int plen = strlen (peer) + 1;     /* include the null character */
   int mlen = strlen (message) + 1;  /* include the null character */
-  int length = 9 + plen + mlen;
+  int length = 11 + plen + mlen;
   int n;
   char buf [ALLNET_MTU];
   if (length > ALLNET_MTU) {
@@ -37,27 +43,23 @@ static void send_message (int sock, int code, time_t time, const char * peer,
             plen, mlen, length, ALLNET_MTU);
     return;
   }
-  buf [0] = (length >> 24) & 0xff;
-  buf [1] = (length >> 16) & 0xff;
-  buf [2] = (length >>  8) & 0xff;
-  buf [3] = (length      ) & 0xff;
-  buf [4] = (time >> 24) & 0xff;
-  buf [5] = (time >> 16) & 0xff;
-  buf [6] = (time >>  8) & 0xff;
-  buf [7] = (time      ) & 0xff;
-  buf [8] = code;
-  strcpy (buf + 9, peer);
-  strcpy (buf + 9 + plen, message);
-  n = send (sock, buf, length, MSG_DONTWAIT);
+  writeb32 (buf, length);
+  writeb48 (buf + 4, time + ALLNET_Y2K_SECONDS_IN_UNIX);
+  buf [10] = code;
+  strcpy (buf + 11, peer);
+  strcpy (buf + 11 + plen, message);
+  n = sendto (sock, buf, length, MSG_DONTWAIT, sap, slen);
   if ((n != length) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
     return;  /* socket is busy -- should never be, but who knows */
   if (n != length) {
     perror ("send");
-    printf ("error: tried to send %d, only sent %d bytes on unix socket\n",
+    printf ("error: tried to send %d, only sent %d bytes on socket\n",
             length, n);
+    printf ("sendto (%d, %p, %d, %d, %p, %d)\n",
+            sock, buf, length, MSG_DONTWAIT, sap, slen);
     exit (1);   /* terminate the program */
   }
-  /* print_buffer (buf, length, "sent", 20, 1); */
+  print_buffer (buf, length, "sent", 20, 1);
 }
 
 /* return the message length if a message was received, and 0 otherwise */
@@ -81,59 +83,179 @@ static int recv_message (int sock, int * code, time_t * time,
     printf ("error: received %d bytes on unix socket\n", n);
     exit (0);
   }
-  len = ((buf [0] & 0xff) << 24) | ((buf [1] & 0xff) << 16) |
-        ((buf [2] & 0xff) <<  8) | ((buf [3] & 0xff)      );
+  len = readb32 (buf);
   if (len != n) {
     printf ("error: received %d bytes but length is %d\n", n, len);
     return 0;
   }
-  sent_time = ((buf [4] & 0xff) << 24) | ((buf [5] & 0xff) << 16) |
-              ((buf [6] & 0xff) <<  8) | ((buf [7] & 0xff)      );
+  sent_time = readb48 (buf + 4);
   *time = sent_time;
-  *code = buf [8] & 0xff;
+  *code = buf [10] & 0xff;
   if (*code != 0) {
     printf ("error: received code %d but only code 0 is supported\n", *code);
     return 0;
   }
-  plen = strlen (buf + 9);
+  plen = strlen (buf + 11);
   if (plen >= ALLNET_MTU) {
     printf ("error: received peer length %d but only %d is supported\n",
             plen, ALLNET_MTU - 1);
     return 0;
   }
-  msg = buf + 9 + plen + 1;
+  msg = buf + 11 + plen + 1;
   mlen = strlen (msg);
   if (mlen >= ALLNET_MTU) {
     printf ("error: received message length %d but only %d is supported\n",
             mlen, ALLNET_MTU - 1);
     return 0;
   }
-  strcpy (peer, buf + 9);
+  strcpy (peer, buf + 11);
   strcpy (message, msg);
   return mlen;
 }
 
+static int get_socket ()
+{
+  int result = socket (AF_INET, SOCK_DGRAM, 17);
+  if (result < 0) {
+    perror ("socket");
+    exit (1);
+  }
+  struct sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = XCHAT_SOCKET_PORT;
+  sin.sin_addr.s_addr = htonl (INADDR_ANY);
+  if (bind (result, (struct sockaddr *) (&sin), sizeof (sin)) < 0) {
+    perror ("bind");
+    exit (1);
+  }
+  return result;
+}
+
+static void wait_for_connection (int sock,
+                                 struct sockaddr * sap, socklen_t * slen)
+{
+  if (*slen < sizeof (struct sockaddr_in))
+    return;
+  socklen_t alen;
+  struct sockaddr_in * sinp = (struct sockaddr_in *) sap;
+  int bytes;
+  do {
+    char buf [ALLNET_MTU * 2];
+    alen = *slen;
+    bytes = recvfrom (sock, buf, sizeof (buf), 0, sap, &alen);
+    printf ("got %d bytes\n", bytes);
+  } while ((bytes > 0) && ((sinp->sin_family != AF_INET) ||
+                           (sinp->sin_addr.s_addr != htonl (INADDR_LOOPBACK))));
+  *slen = alen;
+}
+
+static void find_path (char * arg, char ** path, char ** program)
+{
+  char * slash = rindex (arg, '/');
+  if (slash == NULL) {
+    *path = ".";
+    *program = arg;
+  } else {
+    *slash = '\0';
+    *path = arg;
+    *program = slash + 1;
+  }
+}
+
+/* returned value is malloc'd. */
+static char * make_program_path (char * path, char * program)
+{
+  int size = strlen (path) + 1 + strlen (program) + 1;
+  char * result = malloc (size);
+  if (result == NULL) {
+    printf ("error: unable to allocate %d bytes for %s/%s, aborting\n",
+            size, path, program);
+    exit (1);
+  }
+  snprintf (result, size, "%s/%s", path, program);
+  return result;
+}
+
+static pid_t exec_java_ui (char * arg)
+{
+  char * path;
+  char * pname;
+  find_path (arg, &path, &pname);
+  char * jarfile = make_program_path (path, "AllNetUI.jar");
+  if (access (jarfile, R_OK) != 0) {
+    perror ("access");
+    printf ("unable to start Java gui %s\n", jarfile);
+    exit (1);
+  }
+  pid_t pid = fork ();
+  if (pid < 0) {
+    perror ("fork");
+    exit (1);
+  }
+  if (pid == 0) {   /* child process */
+    char * args [5];
+    args [0] = "/usr/bin/java";
+    args [1] = "-jar";
+    args [2] = jarfile;
+    args [3] = "nodebug";
+    args [4] = NULL;
+/* printf ("calling %s %s %s %s\n", args [0], args [1], args [2], args [3]); */
+    execv (args [0], args);    /* should never return! */
+    perror ("execv returned");
+    exit (1);
+    return 0;  /* should never return */
+  } else {
+    free (jarfile);
+  }
+  return pid;
+}
+
+static void * child_wait_thread (void * arg)
+{
+  pid_t pid = * ((int *) arg);
+  int status;
+  waitpid (pid, &status, 0);
+  /* child has terminated, exit the entire program */
+  printf ("shutting down\n");
+  exit (0);
+  return NULL;
+}
+
+static void thread_for_child_completion (pid_t pid)
+{
+  static pid_t static_pid;
+  static_pid = pid;
+  pthread_t thread;
+  int result = pthread_create (&thread, NULL, child_wait_thread,
+                               ((void *) (&static_pid)));
+  if (result != 0)
+    perror ("pthread_create");
+}
+
 int main (int argc, char ** argv)
 {
-  /* allegedly, openSSL does this for us */
-  /* srandom (time (NULL));/* RSA encryption uses the random number generator */
-
+/*
   if (argc < 2) {
     printf ("%s should have one socket arg, and never be called directly!\n",
             argv [0]);
     return 0;
   }
   int forwarding_socket = atoi (argv [1]);
-
-/*
-  printf ("would be good to request old messages, in 2 ways:\n");
-  printf (" - by sending out a data_request message, and\n");
-  printf (" - by sending out a chat request message when we get out-of-seq\n");
 */
 
-  int sock = xchat_init ();
+  int sock = xchat_init (argv [0]);
   if (sock < 0)
     return 1;
+
+  struct sockaddr_in fwd_addr;
+  socklen_t fwd_addr_size = sizeof (fwd_addr);
+
+  /* open the socket first, so it is ready when the UI begins execution */
+  int forwarding_socket = get_socket ();
+  pid_t child_pid = exec_java_ui (argv [0]);
+  wait_for_connection (forwarding_socket, (struct sockaddr *) (&fwd_addr),
+                       &fwd_addr_size);
+  thread_for_child_completion (child_pid);
 
   int timeout = 100;      /* sleep up to 1/10 second */
   char * old_contact = NULL;
@@ -151,6 +273,7 @@ int main (int argc, char ** argv)
     int found = receive_pipe_message_any (timeout, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("pipe closed, exiting\n");
+      kill (child_pid, SIGKILL);
       exit (1);
     }
     if (found == 0) {  /* timed out, request/resend any missing */
@@ -170,7 +293,9 @@ int main (int argc, char ** argv)
                                 &message, &desc, &verified, &time, &duplicate);
       if (mlen > 0) {
         if (! duplicate)
-          send_message (forwarding_socket, 0, time, peer, message);
+          send_message (forwarding_socket,
+                        (struct sockaddr *) (&fwd_addr), fwd_addr_size,
+                        0, time, peer, message);
         if ((old_contact == NULL) ||
             (strcmp (old_contact, peer) != 0) || (old_kset != kset)) {
           request_and_resend (sock, peer, kset);

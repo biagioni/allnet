@@ -151,7 +151,7 @@ int main (int argc, char ** argv)
   if (! parse_ahra (argv [1], &phrase, NULL, NULL, NULL, NULL, &reason))
     usage (argv [0], reason);
 
-  int sock = connect_to_local (argv [0]);
+  int sock = connect_to_local (argv [0], argv [0]);
   if (sock < 0)
     return 1;
   add_pipe (sock);

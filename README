@@ -4,9 +4,15 @@ to build this release, run these programs:
         ./configure --disable-shared
         make
 
-Before doing this, you may need (on debian/ubuntu -- something analogous
-on other systems):
+if you either don't have Java installed, or don't plan to use the
+Graphical User Interface (GUI) that comes with xchat, replace
+the second line with:
+        ./configure --disable-shared --disable-gui
+
+Before doing any of this, you may need to install libtool and autoconf.
+On debian/ubuntu and derived systems this requires:
         sudo apt-get install libtool autoconf
+On other systems, use the native package manager to install these packages.
 
 ======================== RUN ==================================
 
@@ -30,14 +36,23 @@ a daemon that bin/astop doesn't know how to stop.  If that should happen, run
    kill ` ps auxwww | fgrep bin/ad | fgrep -v fgrep | awk '{print $2}' `
 
 (yes, all the different quotes and braces are needed -- if possible, cut and
-past the command from this file)
+paste the command from this file)
 
     ================ allnet user programs ================
 
 Current AllNet user programs include the AllNet chat program xchat,
 broadcast/subscribe, and trace.
 
-            ======== xchat (allnet chat) ========
+         ======== xchat (allnet chat) with gui ========
+
+The functionality of chat is provided by the program xchat, which is built
+unless "--disable-gui" is given to config.  The xchat program is designed
+to be intuitive and easy to use, and will not be further discussed here.
+
+To start the xchat program, type
+   bin/xchat
+
+       ======== xchat (allnet chat) without gui ========
 
 It is a good idea to read this whole section before trying anything.
 
@@ -79,11 +94,11 @@ Once you have the secret, the first one of you runs
 and the second one runs
    bin/xkeys friends-name secret-string 10
 
-Again, "friends-name" is any name each of you wants to choose to identify
+Again, "friends-name" is any name each of you chooses, to identify
 the other friend.
 
 This exchange normally succeeds the first time, but if necessary, can
-be repeated as often as needed until it succeeds.  After the key exchange
+be repeated, as often as needed until it succeeds.  After the key exchange
 is successful, you can use chat as described above.
 
             ======== broadcast/subscribe ======== 

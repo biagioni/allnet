@@ -26,7 +26,7 @@ AC_PROG_CC
 AC_PROG_LN_S
 
 # Checks for libraries.
-PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
+# PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
 
 AC_ARG_ENABLE(network-manager,
   AC_HELP_STRING([--disable-network-manager],
@@ -57,6 +57,20 @@ if test "x$enable_network_manager" = "xyes"; then
 fi
 AM_CONDITIONAL(USE_NETWORK_MANAGER, test "x$enable_network_manager" = "xyes")
 
+AX_PROG_JAVAC
+AX_PROG_JAR
+build_gui="yes"
+AC_ARG_ENABLE(gui,
+  AC_HELP_STRING([--disable-gui],
+  [do not build GUI (building requires java)]),[build_gui="no"],[enable_gui="yes"])
+if test "x$build_gui" = "xyes" && (test "x$JAVAC" = "x" || test "x$JAR" = "x"); then
+  if test "x$enable_gui" = "xyes"; then
+    AC_MSG_ERROR([Could not find a suitable java compiler needed to build GUI support.])
+  fi
+  build_gui="no"
+fi
+AM_CONDITIONAL([ENABLE_GUI], [test "x$build_gui" = "xyes"])
+
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h limits.h netdb.h netinet/in.h stdlib.h string.h strings.h sys/socket.h sys/time.h unistd.h])
 
@@ -72,7 +86,7 @@ AC_FUNC_MALLOC
 AC_FUNC_STRCOLL
 AC_CHECK_FUNCS([bzero dup2 getcwd gethostbyname gethostname gettimeofday inet_ntoa localtime_r memset mkdir select socket strstr strtol tzset])
 
-AC_CONFIG_FILES([Makefile src/Makefile src/ahra/Makefile src/lib/Makefile src/mgmt/Makefile src/xchat/Makefile src/xtime/Makefile doc/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/ahra/Makefile src/lib/Makefile src/mgmt/Makefile src/xchat/Makefile src/xchat_ui/Makefile src/xtime/Makefile doc/Makefile])
 AC_OUTPUT
 
 echo ""
@@ -81,4 +95,5 @@ echo ""
 echo "  Prefix                 : ${prefix}"
 echo "  Compiler flags         : ${CFLAGS}"
 echo "  NetworkManager support : ${enable_network_manager}"
+echo "  Build User Interface   : ${build_gui}"
 echo ""

@@ -1,6 +1,6 @@
 /* social.c: keep track of social network distance */
 /* to do: lots!!!  Including keeping track by source address and
- * by packet certificate.
+ * by packet signature.
  */
 
 #include <stdio.h>
@@ -74,7 +74,7 @@ struct social_info * init_social (int max_bytes, int max_check)
 }
 
 /* return the number of bytes in the updated social tier, and in
- * any case never more than free_entries */
+ * any case never more than free_bytes */
 static int update_social_tier (int tier, struct social_one_tier * st,
                                int free_bytes)
 {

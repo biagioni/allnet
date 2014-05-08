@@ -1161,7 +1161,8 @@ int is_valid_message (const char * packet, int size)
   }
 /* check the validity of the packet, as defined in packet.h */
   if (((ah->message_type == ALLNET_TYPE_ACK) ||
-       (ah->message_type == ALLNET_TYPE_DATA_REQ)) && (ah->transport != 0)) {
+       (ah->message_type == ALLNET_TYPE_DATA_REQ)) &&
+      (ah->transport != 0)) {
     snprintf (log_buf, LOG_SIZE, 
               "received message type %d, transport 0x%x != 0\n",
               ah->message_type, ah->transport);

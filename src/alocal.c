@@ -50,8 +50,9 @@ log_print (); }
       listen_remove_fd (info, fd);
       close (fd);       /* remove from kernel */
     } else if (result > 0) {
-      snprintf (log_buf, LOG_SIZE, "got %d bytes from %s (fd %d)\n", result,
-                (fd == rpipe) ? "ad" : "client", fd);
+      snprintf (log_buf, LOG_SIZE,
+                "got %d bytes from %s (fd %d, priority %d)\n", result,
+                (fd == rpipe) ? "ad" : "client", fd, priority);
       log_print ();
       if (fd == rpipe) {    /* message from ad, send to all clients */
         int i;    /* start with i = 1, no sending to ad read pipe */

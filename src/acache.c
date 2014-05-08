@@ -4,8 +4,6 @@
  */
 /* for now, simply dcache all the packets, return them if they are in the
  * cache.  Later on, maybe provide persistent storage */
-/* note that we never tell dcache that the storage is used, so dcache
- * eliminates messages in fifo order */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,8 +17,8 @@
 #include "lib/log.h"
 #include "lib/sha.h"
 
-/* #define CACHE_SIZE	1024 */
-#define CACHE_SIZE	4  /* for testing */
+#define CACHE_SIZE	1024
+/* #define CACHE_SIZE	4  /* for testing */
 struct cache_entry {
   char * message;
   int msize;
@@ -40,9 +38,11 @@ static void return_cache_entry (void * arg)
   log_print ();
   int i;
   for (i = 0; i < CACHE_SIZE; i++) {
-    snprintf (log_buf, LOG_SIZE, "cache %d has msize %d\n",
-              i, cache_storage [i].msize);
-    log_print ();
+    if (cache_storage [i].msize > 0) {
+      snprintf (log_buf, LOG_SIZE, "cache %d has msize %d\n",
+                i, cache_storage [i].msize);
+      log_print ();
+    }
   }
 }
 
@@ -55,6 +55,10 @@ static char * get_id (char * message, int size)
   char * id = ALLNET_PACKET_ID (hp, hp->transport, size);
   if (id == NULL)
     id = ALLNET_MESSAGE_ID (hp, hp->transport, size);
+  /* ack messages may have multiple IDs, we only use the first */
+  if ((id == NULL) && (hp->message_type == ALLNET_TYPE_ACK) &&
+      (size >= ALLNET_SIZE (hp->transport) + MESSAGE_ID_SIZE))
+    id = ALLNET_DATA_START (hp, hp->message_type, size);
   /* key messages usually don't have IDs, but do have hmac or fingerprints */
   if ((id == NULL) && (size >= ALLNET_SIZE (hp->transport) + 1)) {
     int nbytes = message [ALLNET_SIZE (hp->transport) + 1] & 0xff;
@@ -97,8 +101,8 @@ static int save_packet (void * cache, char * message, int msize)
                            i, cache_storage [i].msize);
       struct allnet_header * xhp = 
                (struct allnet_header *) cache_storage [i].message;
-      char * xid = get_id (xhp, cache_storage [i].msize);
-      buffer_to_string (xid, PACKET_ID_SIZE, NULL, 8, 1,
+      char * xid = get_id ((char *) xhp, cache_storage [i].msize);
+      buffer_to_string (xid, MESSAGE_ID_SIZE, NULL, 8, 1,
                         log_buf + xoff, LOG_SIZE - xoff);
       log_print ();
     }
@@ -115,6 +119,9 @@ static int save_packet (void * cache, char * message, int msize)
     if (cache_storage [(i + cache_search) % CACHE_SIZE].msize == 0) {
       /* found a free slot -- since the dcache has CACHE_SIZE - 1 entries,
          there should always be a free slot. */
+      snprintf (log_buf, LOG_SIZE, "saving message of type %d, %d bytes\n",
+                hp->message_type, msize);
+      log_print ();
       struct cache_entry * cep = 
         cache_storage + ((i + cache_search) % CACHE_SIZE);
       cache_search = i;
@@ -173,6 +180,7 @@ static int respond_to_packet (void * cache, char * message,
     send_pipe_message (fd, cep [i]->message, cep [i]->msize,
                        ALLNET_PRIORITY_CACHE_RESPONSE);
   }
+  free (matches);
   return 1;
 }
 
@@ -192,17 +200,17 @@ static void ack_packets (void * cache, char * message, int msize)
   }
 }
 
-void * main_loop (int rpipe, int wpipe)
+void * main_loop (int sock)
 {
   bzero (cache_storage, sizeof (cache_storage));
   void * cache = cache_init (CACHE_SIZE - 1, return_cache_entry);
   while (1) {
     char * message;
     int priority;
-    int result = receive_pipe_message (rpipe, &message, &priority);
+    int result = receive_pipe_message (sock, &message, &priority);
     if (result <= 0) {
       snprintf (log_buf, LOG_SIZE, "ad pipe %d closed, result %d\n",
-                rpipe, result);
+                sock, result);
       log_print ();
       break;
     }
@@ -212,21 +220,22 @@ void * main_loop (int rpipe, int wpipe)
     if (result >= ALLNET_HEADER_SIZE) {
       struct allnet_header * hp = (struct allnet_header *) message;
       if (hp->message_type == ALLNET_TYPE_DATA_REQ) { /* respond */
-        if (respond_to_packet (cache, message, result, wpipe))
+        if (respond_to_packet (cache, message, result, sock))
           snprintf (log_buf, LOG_SIZE, "responded to data request packet\n");
         else
           snprintf (log_buf, LOG_SIZE, "no response to data request packet\n");
         log_print ();
-      } else if (hp->message_type == ALLNET_TYPE_ACK) { /* erase if have */
-        ack_packets (cache, message, result);
-      } else if (save_packet (cache, message, result)) {
-        snprintf (log_buf, LOG_SIZE, "saved packet of type %d\n",
-                  hp->message_type);
-        log_print ();
-        mfree = 0;   /* saved, so do not free */
       } else {
-        snprintf (log_buf, LOG_SIZE, "did not save packet, type %d\n",
-                  hp->message_type);
+        if (hp->message_type == ALLNET_TYPE_ACK) /* erase if have */
+          ack_packets (cache, message, result);
+        if (save_packet (cache, message, result)) {
+          mfree = 0;   /* saved, so do not free */
+          snprintf (log_buf, LOG_SIZE, "saved packet of type %d\n",
+                    hp->message_type);
+        } else {
+          snprintf (log_buf, LOG_SIZE, "did not save packet, type %d\n",
+                    hp->message_type);
+        }
         log_print ();
       }
     } else {
@@ -240,22 +249,8 @@ void * main_loop (int rpipe, int wpipe)
 
 int main (int argc, char ** argv)
 {
-  init_log ("acache");
-  if (argc != 3) {
-    snprintf (log_buf, LOG_SIZE,
-              "arguments must be a read and a write pipe\n");
-    log_print ();
-    return -1;
-  }
-/*
-  printf ("in acache, args are ");
-  printf ("'%s %s %s'\n", argv [0], argv [1], argv [2]);
-*/
-  int rpipe = atoi (argv [1]);
-  int wpipe = atoi (argv [2]);
-  /* printf ("read pipe is fd %d, write pipe is fd %d\n", rpipe, wpipe); */
-
-  main_loop (rpipe, wpipe);
+  int sock = connect_to_local ("acache", argv [0]);
+  main_loop (sock);
   snprintf (log_buf, LOG_SIZE, "end of acache\n");
   log_print ();
 }

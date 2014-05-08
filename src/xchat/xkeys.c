@@ -198,10 +198,7 @@ int main (int argc, char ** argv)
     return 1;
   }
 
-  /* allegedly, openSSL does this for us */
-  /* srandom (time (NULL));/* RSA encryption uses the random number generator */
-
-  int sock = connect_to_local ("xkeys");
+  int sock = connect_to_local ("xkeys", argv [0]);
   if (sock < 0)
     return 1;
 
