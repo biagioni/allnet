@@ -45,15 +45,16 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
-#include <netpacket/packet.h>   /* sockaddr_ll */
+#include <netpacket/packet.h> /* sockaddr_ll */
 
 #include "abc-iface.h"
+#include "abc-wifi.h"         /* abc_iface_wifi */
 #include "lib/packet.h"
 #include "lib/mgmt.h"
 #include "lib/log.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
-#include "lib/util.h"
+#include "lib/util.h"         /* delta_us */
 #include "lib/pqueue.h"
 
 
@@ -91,6 +92,16 @@ static char other_beacon_snonce [NONCE_SIZE];
 static char other_beacon_rnonce [NONCE_SIZE];
 static char zero_nonce [NONCE_SIZE];
 
+/** array of broadcast interface types (wifi, ethernet, ...) */
+static abc_iface * iface_types[] = {
+  &abc_iface_wifi
+};
+/* must match length and order of iface_types[] */
+static const char * iface_type_strings[] = {
+  "wifi"
+};
+static abc_iface * iface = NULL; /* used interface ptr */
+
 static void clear_nonces (int mine, int other)
 {
   if (mine) {
@@ -122,7 +133,7 @@ static int check_priority_mode (const char * interface)
     high_priority = 0;
   }
   if (high_priority) {
-    iface_on (interface);
+    iface->iface_set_enabled_cb (1);
     return sockfd_global;
   }
   return -1;
@@ -201,7 +212,7 @@ static void update_quiet (struct timeval * quiet_end,
 static void send_beacon (int awake_ms, const char * interface,
                          struct sockaddr * addr, socklen_t addrlen)
 {
-  iface_on (interface);
+  iface->iface_set_enabled_cb (1);
   char buf [ALLNET_BEACON_SIZE (0)];
   int size = sizeof (buf);
   bzero (buf, size);
@@ -605,7 +616,7 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
   finish.tv_sec = compute_next (start.tv_sec, BASIC_CYCLE_SEC, 0);
   finish.tv_usec = 0;
   beacon_interval (&beacon_time, &beacon_stop, &start, &finish,
-                   BEACON_MS, iface_on_off_ms * 2);
+                   BEACON_MS, iface->iface_on_off_ms * 2);
 
   clear_nonces (1, 1);   /* start a new cycle */
 
@@ -616,7 +627,7 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
    * not really helpful.  If we are off, we will get no beacon replies
    * anyway, so it doesn't matter */
   if (! high_priority)
-    iface_off (interface);
+    iface->iface_set_enabled_cb (0);
   handle_until (&finish, quiet_end, interface, rpipe, wpipe, addr, alen);
 }
 
@@ -630,8 +641,8 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   struct timeval quiet_end;   /* should we keep quiet? */
   gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
   /* init sockfd and set two globals: &sockfd_global and iface_is_on */
-  init_iface (interface, &sockfd_global, &if_address, &bc_address);
-  if (iface_is_on < 0) {
+  iface->init_iface_cb (interface, &sockfd_global, &if_address, &bc_address);
+  if (iface->iface_is_enabled_cb () < 0) {
     snprintf (log_buf, LOG_SIZE,
               "unable to bring up interface %s, for now aborting\n", interface);
     log_print ();
@@ -656,6 +667,19 @@ int main (int argc, char ** argv)
   int rpipe = atoi (argv [1]);  /* read pipe */
   int wpipe = atoi (argv [2]);  /* write pipe */
   const char * interface = argv [3];
+  const char * iface_type = (argc > 3 ? argv [4] : NULL);
+
+  if (iface_type != NULL) {
+    int i;
+    for (i = 0; i < sizeof (iface_types); ++i) {
+      if ((iface_type_strings[i], iface_type) == 0) {
+        iface = iface_types[i];
+        break;
+      }
+    }
+  }
+  if (iface == NULL)
+    iface = iface_types[0];
 
   snprintf (log_buf, LOG_SIZE,
             "read pipe is fd %d, write pipe fd %d, interface is '%s'\n",

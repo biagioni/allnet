@@ -1,4 +1,4 @@
-/* abc-wifi.c: Bradcast abc messages onto a wireless interface
+/* abc-iw.c: Bradcast abc messages onto a wireless interface
  *
  * to do: If the interface is on and connected to a wireless LAN, I never
  * enter send mode.  Instead, I use energy saving mode to receive once
@@ -9,159 +9,45 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ifaddrs.h>
-#include <net/if.h>            /* ifa_flags */
-#include <netpacket/packet.h>  /* struct sockaddr_ll */
+#include <net/if.h>           /* ifa_flags */
+#include <netpacket/packet.h> /* struct sockaddr_ll */
+#include <sys/time.h>         /* gettimeofday */
 
 #include "lib/packet.h"
+#include "lib/util.h"         /* delta_us */
 
-#ifdef ENABLE_NETWORK_MANAGER
+#include "abc-iface.h"
+#define NUM_WIFI_CONFIG_IFACES 1
+#ifdef USE_NETWORK_MANAGER
+#define NUM_WIFI_CONFIG_IFACES 2
 #include "abc-networkmanager.h"
-#endif
+#endif /* USE_NETWORK_MANAGER */
+#include "abc-iw.h"
+#include "abc-wifi.h"
 
-int iface_is_on = 0;
+/* forward declarations */
+static int abc_wifi_init (const char * interface, int * sock,
+                struct sockaddr_ll * address, struct sockaddr_ll * bc);
+static int abc_wifi_is_wireless_on ();
+static int abc_wifi_is_enabled ();
+static int abc_wifi_set_enabled (int state);
 
-/* similar to system(3), but more control over what gets printed */
-static int my_system (char * command)
-{
-  pid_t pid = fork ();
-  if (pid < 0) {
-    perror ("fork");
-    printf ("error forking for command '%s'\n", command);
-    return -1;
-  }
-  if (pid == 0) {   /* child */
-    int num_args = 1;
-    char * argv [100];
-    char * p = command;
-    int found_blank = 0;
-    argv [0] = command;
-    while (*p != '\0') {
-      if (found_blank) {
-        if (*p != ' ') {
-          argv [num_args] = p;
-          num_args++;
-          found_blank = 0;
-        }
-      } else if (*p == ' ') {
-        found_blank = 1;
-        *p = '\0';
-      }
-      p++;
-    }
-    argv [num_args] = NULL;
-/*
-    printf ("executing ");
-    char ** debug_p = argv;
-    while (*debug_p != NULL) {
-      printf ("%s ", *debug_p);
-      debug_p++;
-    }
-    printf ("\n");
-*/
-    dup2 (1, 2);   /* make stderr be a copy of stdout */
-    execvp (argv [0], argv);
-    perror ("execvp");
-    exit (1);
-  }
-  /* parent */
-  int status;
-  do {
-    waitpid (pid, &status, 0);
-  } while (! WIFEXITED (status));
-/*
-  printf ("child process (%s) exited, status is %d\n",
-          command, WEXITSTATUS (status));
-*/
-  return (WEXITSTATUS (status));
-}
 
-/* return 1 if successful, 0 otherwise */
-/* return 2 if failed, but returned status matches wireless_status */
-static int if_command (char * basic_command, const char * interface,
-                       int wireless_status, char * fail_wireless,
-                       char * fail_other)
-{
-  static int printed_success = 0;
-  int size = strlen (basic_command) + strlen (interface) + 1;
-  char * command = malloc (size);
-  if (command == NULL) {
-    printf ("abc: unable to allocate %d bytes for command:\n", size);
-    printf (basic_command, interface);
-    return 0;
-  }
-  snprintf (command, size, basic_command, interface);
-  int sys_result = my_system (command);
-  int max_print_success = 0;
-#ifdef DEBUG_PRINT
-  max_print_success = 4;
-#endif /* DEBUG_PRINT */
-  if ((sys_result != 0) || (printed_success++ < max_print_success))
-    printf ("abc: result of calling '%s' was %d\n", command, sys_result);
-  if (sys_result != 0) {
-    if (sys_result != -1)
-      printf ("abc: program exit status for %s was %d\n",
-              command, sys_result);
-    if (sys_result != wireless_status) {
-      if (fail_other != NULL)
-        printf ("abc: call to '%s' failed, %s\n", command, fail_other);
-      else
-        printf ("abc: call to '%s' failed\n", command);
-    } else {
-      printf ("abc: call to '%s' failed, %s\n", command, fail_wireless);
-      return 2;
-    }
-    return 0;
-  }
-  return 1;
-}
+abc_iface abc_iface_wifi = {
+  .iface_type = ABC_IFACE_TYPE_WIFI,
+  .init_iface_cb = abc_wifi_init,
+  .iface_on_off_ms = 150, /* default value, updated on runtime */
+  .iface_is_enabled_cb = abc_wifi_is_enabled,
+  .iface_set_enabled_cb = abc_wifi_set_enabled
+};
 
-/* returns 1 if successful, 2 if already up, 0 for failure */
-static int wireless_up (const char * interface)
-{
-#ifdef DEBUG_PRINT
-  printf ("abc: opening interface %s\n", interface);
-#endif /* DEBUG_PRINT */
-/* need to execute the commands:
-      sudo iw dev $if set type ibss
-      sudo ifconfig $if up
-      sudo iw dev $if ibss join allnet 2412
- */
-  char * mess = "probably a wired or configured interface";
-  if (geteuid () != 0)
-    mess = "probably need to be root";
-  int r = if_command ("iw dev %s set type ibss", interface, 240,
-                      "wireless interface not available for ad-hoc mode",
-                      mess);
-  if (r == 0)
-    return 0;
-  if (r == 2) /* already up, no need to bring up the interface */
-    return 2;
-  /* continue with the other commands, which should succeed */
-  if (! if_command ("ifconfig %s up", interface, 0, NULL, NULL))
-    return 0;
-  r = if_command ("iw dev %s ibss join allnet 2412", interface,
-                  142, "allnet ad-hoc mode already set", "unknown problem");
-  /* if (r == 0)
-    return 0; */
-  if (r == 0)
-    return 2;
-  return 1;
-}
-
-/* returns 1 if successful, 0 for failure */
-static int wireless_down (const char * interface)
-{
-#ifdef DEBUG_PRINT
-  printf ("taking down interface %s\n", interface);
-#endif /* DEBUG_PRINT */
-/* doesn't seem to be necessary or helpful
-  if (! if_command ("iw dev %s set type managed", interface, NULL))
-    return 0;
-*/
-  if (! if_command ("ifconfig %s down", interface, 0, NULL, NULL))
-    return 0;
-  return 1;
-}
+static abc_wifi_config_iface * wifi_config_types[] = {
+#ifdef USE_NETWORK_MANAGER
+  &abc_wifi_config_nm_wlan,
+#endif /* USE_NETWORK_MANAGER */
+  &abc_wifi_config_iw
+};
+static abc_wifi_config_iface * wifi_config_iface = NULL;
 
 static void default_broadcast_address (struct sockaddr_ll * bc)
 {
@@ -198,34 +84,48 @@ static void print_sll_addr (struct sockaddr_ll * a, char * desc)
     printf ("\n");
 }
 
-unsigned long long int iface_on_off_ms = 150;  /* default */
+static int abc_wifi_is_enabled ()
+{
+  return wifi_config_iface->iface_is_enabled_cb ();
+}
+
+static int abc_wifi_set_enabled (int state)
+{
+  return wifi_config_iface->iface_set_enabled_cb (state);
+}
 
 /* returns -1 if the interface is not found */
 /* returns 0 if the interface is off, and 1 if it is on already */
 /* if returning 0 or 1, fills in the socket and the address */
 /* to do: figure out how to set bits_per_s in init_wireless */
-int init_iface (const char * interface, int * sock,
+static int abc_wifi_init (const char * interface, int * sock,
                 struct sockaddr_ll * address, struct sockaddr_ll * bc)
 {
+  /* TODO: select wifi_config_iface, currently the first available is chosen */
+  wifi_config_iface = wifi_config_types[0];
+  wifi_config_iface->init_iface_cb (interface);
+
   struct ifaddrs * ifa;
   if (getifaddrs (&ifa) != 0) {
     perror ("getifaddrs");
     exit (1);
   }
   struct ifaddrs * ifa_loop = ifa;
+  static int iface_is_on = -1; // TODO: works but maybe not ideal, think of it as dummy to make it compile, not sure if -1 is good default
   while (ifa_loop != NULL) {
     if ((ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       struct timeval start;
       gettimeofday (&start, NULL);
-      int is_up = wireless_up (interface);
+      // TODO: check for in-use wireless
+      int is_up = wifi_config_iface->iface_set_enabled_cb (1); // TODO: replace with "ifup"
       int in_use = (is_up == 2);
       if (is_up) {
         struct timeval midtime;
         gettimeofday (&midtime, NULL);
         long long mtime = delta_us (&midtime, &start);
         if (! in_use) {
-          wireless_down (interface);
+          wifi_config_iface->iface_set_enabled_cb (1);
           struct timeval finish;
           gettimeofday (&finish, NULL);
           long long time = delta_us (&finish, &start);
@@ -233,7 +133,7 @@ int init_iface (const char * interface, int * sock,
                   interface, time / 1000LL, time % 1000LL);
           printf ("  (%lld.%03lld ms to turn on)\n",
                   mtime / 1000LL, mtime % 1000LL);
-          iface_on_off_ms = time;
+          abc_iface_wifi.iface_on_off_ms = time;
         }
         /* create the socket and initialize the address */
         *sock = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
@@ -257,20 +157,4 @@ int init_iface (const char * interface, int * sock,
   freeifaddrs (ifa);
   iface_is_on = -1;
   return -1;  /* interface not found */
-}
-
-void iface_on (const char * interface)
-{
-  if (! iface_is_on) {
-    wireless_up (interface);
-    iface_is_on = 1;
-  }
-}
-
-void iface_off (const char * interface)
-{
-  if (iface_is_on) {
-    wireless_down (interface);
-    iface_is_on = 0;
-  }
 }
