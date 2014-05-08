@@ -104,7 +104,6 @@ int seed_rng ()
 int connect_to_local (char * program_name, char * arg0)
 {
   seed_rng ();
-  init_log (program_name);
   int sock = connect_once (0);
   if (sock < 0) {
     exec_allnet (arg0);
@@ -124,6 +123,10 @@ int connect_to_local (char * program_name, char * arg0)
   struct timespec left;
   while ((nanosleep (&sleep, &left)) != 0)
     sleep = left;
+  /* finally we can register with the log module.  We do this only
+   * after we are sure that allnet is running, since starting allnet
+   * might create a new log file. */
+  init_log (program_name);
   return sock;
 }
 
