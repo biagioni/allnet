@@ -456,6 +456,7 @@ static int abc_wifi_config_nm_enable_wireless (int state)
   dbus_message_iter_append_basic (&args, DBUS_TYPE_BOOLEAN, &on);
   int ret = call_nm_dbus_method (&msg);
   dbus_message_unref (msg);
+  // TODO: return 2 when wireless is on but already in use
   return ret;
 }
 

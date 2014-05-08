@@ -116,7 +116,6 @@ static int abc_wifi_init (const char * interface, int * sock,
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       struct timeval start;
       gettimeofday (&start, NULL);
-      // TODO: check for in-use wireless with NM
       int is_up = wifi_config_iface->iface_set_enabled_cb (1);
       int in_use = (is_up == 2);
       if (is_up) {
