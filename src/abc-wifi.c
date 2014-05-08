@@ -17,11 +17,14 @@
 #include "lib/util.h"         /* delta_us */
 
 #include "abc-iface.h"
+
 #define NUM_WIFI_CONFIG_IFACES 1
 #ifdef USE_NETWORK_MANAGER
+#undef NUM_WIFI_CONFIG_IFACES /* get rid of redef. warning */
 #define NUM_WIFI_CONFIG_IFACES 2
 #include "abc-networkmanager.h"
 #endif /* USE_NETWORK_MANAGER */
+
 #include "abc-iw.h"
 #include "abc-wifi.h"
 
