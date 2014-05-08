@@ -165,10 +165,9 @@ int abc_wifi_config_iw_connect ()
     return 2;
   r = if_command ("iw dev %s ibss join allnet 2412", self.iface,
                   142, "allnet ad-hoc mode already set", "unknown problem");
-  /* if (r == 0)
-    return 0; */
   if (r == 0)
     return 2;
+  return 1;
 }
 
 /** Returns wlan state (1: enabled or 0: disabled) */ 
