@@ -111,21 +111,20 @@ static int abc_wifi_init (const char * interface, int * sock,
     exit (1);
   }
   struct ifaddrs * ifa_loop = ifa;
-  static int iface_is_on = -1; // TODO: works but maybe not ideal, think of it as dummy to make it compile, not sure if -1 is good default
   while (ifa_loop != NULL) {
     if ((ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       struct timeval start;
       gettimeofday (&start, NULL);
-      // TODO: check for in-use wireless
-      int is_up = wifi_config_iface->iface_set_enabled_cb (1); // TODO: replace with "ifup"
+      // TODO: check for in-use wireless with NM
+      int is_up = wifi_config_iface->iface_set_enabled_cb (1);
       int in_use = (is_up == 2);
       if (is_up) {
         struct timeval midtime;
         gettimeofday (&midtime, NULL);
         long long mtime = delta_us (&midtime, &start);
         if (! in_use) {
-          wifi_config_iface->iface_set_enabled_cb (1);
+          wifi_config_iface->iface_connect_cb (1);
           struct timeval finish;
           gettimeofday (&finish, NULL);
           long long time = delta_us (&finish, &start);
@@ -148,13 +147,11 @@ static int abc_wifi_init (const char * interface, int * sock,
         print_sll_addr (address, "interface address");
         print_sll_addr (bc,      "broadcast address");
         freeifaddrs (ifa);
-        iface_is_on = in_use;
         return in_use;
       }
     }
     ifa_loop = ifa_loop->ifa_next;
   }
   freeifaddrs (ifa);
-  iface_is_on = -1;
   return -1;  /* interface not found */
 }
