@@ -30,18 +30,32 @@ PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
 
 AC_ARG_ENABLE(network-manager,
   AC_HELP_STRING([--disable-network-manager],
-  [turn off NetworkManager support]),[enable_network_manager="no"],[enable_network_manager="yes"])
-if test "x$enable_network_manager" = "xyes"; then
+  [turn off NetworkManager support]),[enable_network_manager=$enableval],[enable_network_manager="auto"])
+if test "x$enable_network_manager" = "xauto"; then
   PKG_CHECK_MODULES(DBUS, dbus-1 >= 1.6, [
-          have_dbus="yes"
-          AC_DEFINE(HAVE_DBUS,1,[libdbus-1 used to connect to NetworkManager])
-      ], have_dbus="no")
+      enable_network_manager="yes"
+      have_dbus="yes"
+      AC_DEFINE(HAVE_DBUS,1,[libdbus-1 used to connect to NetworkManager])
+    ], [
+      enable_network_manager="no"
+      have_dbus="no"
+    ])
+elif test "x$enable_network_manager" = "xyes"; then
+  PKG_CHECK_MODULES(DBUS, dbus-1 >= 1.6, [
+      have_dbus="yes"
+      AC_DEFINE(HAVE_DBUS,1,[libdbus-1 used to connect to NetworkManager])
+    ], [
+      enable_network_manager="no"
+      have_dbus="no"
+    ])
   if test "x$have_dbus" = "xno"; then
-   AC_MSG_ERROR([Could not find libdbus-1 needed for NetworkManager support.])
-  else
-    AC_DEFINE(ENABLE_NETWORK_MANAGER, [], [Enable NetworkManager support])
+    AC_MSG_ERROR([Could not find libdbus-1 needed for NetworkManager support.])
   fi
 fi
+if test "x$enable_network_manager" = "xyes"; then
+  AC_DEFINE(USE_NETWORK_MANAGER, [], [Enable NetworkManager support])
+fi
+AM_CONDITIONAL(USE_NETWORK_MANAGER, test "x$enable_network_manager" = "xyes")
 
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h limits.h netdb.h netinet/in.h stdlib.h string.h strings.h sys/socket.h sys/time.h unistd.h])

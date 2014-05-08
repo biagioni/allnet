@@ -1,8 +1,5 @@
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
-/* Enable NetworkManager support */
-#undef ENABLE_NETWORK_MANAGER
-
 /* Define to 1 if you have the <arpa/inet.h> header file. */
 #undef HAVE_ARPA_INET_H
 
@@ -152,6 +149,9 @@
 
 /* Define to 1 if you have the ANSI C header files. */
 #undef STDC_HEADERS
+
+/* Enable NetworkManager support */
+#undef USE_NETWORK_MANAGER
 
 /* Version number of package */
 #undef VERSION
