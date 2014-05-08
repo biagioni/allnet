@@ -24,7 +24,8 @@ abc_wifi_config_iface abc_wifi_config_iw = {
   .config_type = ABC_WIFI_CONFIG_IW,
   .init_iface_cb = abc_wifi_config_iw_init,
   .iface_is_enabled_cb = abc_wifi_config_iw_is_wireless_on,
-  .iface_set_enabled_cb = abc_wifi_config_iw_set_enabled
+  .iface_set_enabled_cb = abc_wifi_config_iw_set_enabled,
+  .iface_connect_cb = abc_wifi_config_iw_connect
 };
 
 static abc_wifi_config_iw_settings self;
