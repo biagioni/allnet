@@ -303,10 +303,9 @@ int main (int argc, char ** argv)
   /* printf ("astart path is %s\n", path); */
 
   init_log ("astart");  /* only do logging in astart, not in astop */
-  /* two pipes from ad to alocal and back */
-  /* two pipes from ad to acache and back */
+  /* two pipes from ad to alocal and back, plus */
   /* two pipes from ad to aip and back */
-#define NUM_FIXED_PIPES		6
+#define NUM_FIXED_PIPES		4
   /* two pipes from ad to each abc and back */
 #define NUM_INTERFACE_PIPES	2 
   int num_interfaces = argc - 1;
@@ -328,17 +327,6 @@ int main (int argc, char ** argv)
   pid_t ad_pid = my_exec_ad (path, pipes, num_pipes, pid_fd);
 
   /* start all the other programs */
-#if 0
-  my_exec2 (path, "alocal", pipes, pid_fd, ad_pid);
-  my_exec2 (path, "acache", pipes + 4, pid_fd, ad_pid);
-  my_exec3 (path, "aip", pipes + 8, AIP_UNIX_SOCKET, pid_fd, ad_pid);
-  int i;
-  for (i = 0; i < num_interfaces; i++)
-    my_exec3 (path, "abc", pipes + 12 + (4 * i), argv [i + 1], pid_fd, ad_pid);
-  sleep (2);
-  my_exec_trace (path, "traced", pid_fd, ad_pid);
-  my_exec0 (path, "keyd", pid_fd, ad_pid);
-#else /* ! 0 */
   my_exec2 (path, "alocal", pipes, pid_fd, ad_pid);
   my_exec3 (path, "aip", pipes + 4, AIP_UNIX_SOCKET, pid_fd, ad_pid);
   int i;
@@ -348,6 +336,5 @@ int main (int argc, char ** argv)
   my_exec_trace (path, "traced", pid_fd, ad_pid);
   my_exec0 (path, "acache", pid_fd, ad_pid);
   my_exec0 (path, "keyd", pid_fd, ad_pid);
-#endif /* 0 */
   return 0;
 }
