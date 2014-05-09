@@ -238,8 +238,8 @@ int main (int argc, char ** argv)
     return -1;
   }
   int npipes = atoi (argv [1]);
-  if (npipes < 3) {
-    printf ("%d pipes, at least 3 needed\n", npipes);
+  if (npipes < 2) {
+    printf ("%d pipes, at least 2 needed\n", npipes);
     return -1;
   }
   if (argc != 2 * npipes + 2) {
@@ -247,8 +247,8 @@ int main (int argc, char ** argv)
             argc, 2 * npipes, npipes);
     return -1;
   }
-  if (argc < 7) {
-    printf ("need to have at least 3 each read and write pipes\n");
+  if (argc < 5) {
+    printf ("need to have at least 2 each read and write pipes\n");
     return -1;
   }
   snprintf (log_buf, LOG_SIZE, "AllNet (ad) version %d\n", ALLNET_VERSION);
