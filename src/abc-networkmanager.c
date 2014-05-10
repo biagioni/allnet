@@ -133,6 +133,7 @@ static int get_device_path ()
 
   if (!dbus_message_iter_init (msg, &args)
       || dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_OBJECT_PATH) {
+    dbus_message_unref (msg);
     return 0;
   }
   dbus_message_iter_get_basic (&args, &self.nm_iface_obj);
@@ -246,8 +247,10 @@ static int setup_connection ()
     return 0;
 
   if (!dbus_message_iter_init (msg, &args)
-      || dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_OBJECT_PATH)
+      || dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_OBJECT_PATH) {
+    dbus_message_unref (msg);
     return 0;
+  }
   dbus_message_iter_get_basic (&args, &self.nm_conn_obj);
   strncpy (self.nm_conn_obj_buf, self.nm_conn_obj, sizeof (self.nm_conn_obj_buf));
   self.nm_conn_obj = self.nm_conn_obj_buf;
@@ -273,7 +276,7 @@ static int activate_connection ()
     return -1;
 
   if (!dbus_message_iter_init (msg, &args)) {
-    //fprintf (stderr, "dbus: Message has no arguments\n");
+    dbus_message_unref (msg);
     return 0;
   }
   assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_OBJECT_PATH);
@@ -281,6 +284,7 @@ static int activate_connection ()
   // TODO: store active connection path?
   // printf ("active connection is %s\n", actconnobj);
   dbus_message_unref (msg);
+  // wait for activation signal...
   return 1;
 }
 
@@ -419,8 +423,10 @@ static int  abc_wifi_config_nm_is_wireless_on ()
 
   dbus_bool_t wlan_enabled;
   if (!dbus_message_iter_init (msg, &args)
-      || dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_VARIANT)
+      || dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_VARIANT) {
+    dbus_message_unref (msg);
     return -1;
+  }
 
   DBusMessageIter arg_var;
   dbus_message_iter_recurse (&args, &arg_var);
