@@ -583,7 +583,7 @@ static int abc_wifi_config_nm_enable_wireless (int state)
   const char * nm[2] = { ABC_NM_DBUS_IFACE, "WirelessEnabled" };
   dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &nm[0]);
   dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &nm[1]);
-  dbus_message_iter_append_basic (&args, DBUS_TYPE_BOOLEAN, &on);
+  append_variant (&args, DBUS_TYPE_BOOLEAN, &on);
   int ret = call_nm_dbus_method (&msg);
   dbus_message_unref (msg);
   return ret;
