@@ -337,7 +337,8 @@ static int get_conn_obj ()
         dbus_message_iter_recurse (&carg_var[0], &carg_var[1]);
         assert (dbus_message_iter_get_arg_type (&carg_var[1]) == DBUS_TYPE_STRING);
         dbus_message_iter_get_basic (&carg_var[1], &keyval);
-        assert (dbus_message_iter_next (&carg_var[1]));
+        int has_next = dbus_message_iter_next (&carg_var[1]);
+        assert (has_next);
         if (strcmp (keyval, "802-11-wireless") == 0) {
           /* check mode="adhoc", ssid="allnet" */
           int is_allnet = 0;
@@ -349,7 +350,8 @@ static int get_conn_obj ()
             dbus_message_iter_recurse (&carg_var[2], &carg_var[3]);
             assert (dbus_message_iter_get_arg_type (&carg_var[3]) == DBUS_TYPE_STRING);
             dbus_message_iter_get_basic (&carg_var[3], &keyval);
-            assert (dbus_message_iter_next (&carg_var[3]));
+            has_next = dbus_message_iter_next (&carg_var[3]);
+            assert (has_next);
             if (strcmp (keyval, "ssid") == 0) {
               assert (dbus_message_iter_get_arg_type (&carg_var[3]) == DBUS_TYPE_VARIANT);
               dbus_message_iter_recurse (&carg_var[3], &carg_var[4]);
