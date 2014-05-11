@@ -1,17 +1,24 @@
-ALLNETUIJAR=AllNetUI.jar
+ALLNETUI_JAR=AllNetUI.jar
+ALLNETUI_TARGET=$(ALLNET_BINDIR)/$(ALLNETUI_JAR)
+
+all: $(ALLNETUI_TARGET)
+
+$(ALLNETUI_TARGET):
+if PRECOMP_GUI
+	cp precompiled/$(ALLNETUI_JAR) $(ALLNETUI_TARGET)
+endif
+if ENABLE_GUI
+	$(JAVAC) */*.java
+	$(JAR) cfe $(ALLNETUI_TARGET) allnetui.UI allnetui/*.class utils/*.class
+endif
 
 clean-local:
 	rm -f */*.class
-
-all-local:
-if ENABLE_GUI
-	$(JAVAC) */*.java
-	$(JAR) cfe $(ALLNET_BINDIR)/$(ALLNETUIJAR) allnetui.UI allnetui/*.class utils/*.class
-endif
+	rm -f $(ALLNETUI_TARGET)
 
 install-exec-local:
 if ENABLE_GUI
-	$(INSTALL_PROGRAM) $(ALLNET_BINDIR)/$(ALLNETUIJAR) $(DESTDIR)$(bindir)
+	$(INSTALL_PROGRAM) $(ALLNETUI_TARGET) $(DESTDIR)$(bindir)
 endif
 
 uninstall-local:
