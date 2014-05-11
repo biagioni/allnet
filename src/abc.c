@@ -38,27 +38,23 @@
  *
  * packets are removed from the queue after being forwarded for at least
  * two basic cycles.
- *
- * to do: If the interface is on and connected to a wireless LAN, I never
- * enter send mode.  Instead, I use energy saving mode to receive once
- * every basic cycle, and transmit once every 200 cycles.
  */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ifaddrs.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <netpacket/packet.h>   /* sockaddr_ll */
-#include <net/if.h>   		/* ifa_flags */
+#include <sys/time.h>
+#include <netpacket/packet.h> /* sockaddr_ll */
 
+#include "abc-iface.h"
+#include "abc-wifi.h"         /* abc_iface_wifi */
 #include "lib/packet.h"
 #include "lib/mgmt.h"
+#include "lib/log.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
-#include "lib/util.h"
-#include "lib/log.h"
+#include "lib/util.h"         /* delta_us */
 #include "lib/pqueue.h"
 
 
@@ -71,243 +67,7 @@
 /* maximum amount of time to wait for a beacon grant */
 #define BEACON_MAX_COMPLETION_US	2000    /* 0.002s */
 
-/* similar to system(3), but more control over what gets printed */
-static int my_system (char * command)
-{
-  pid_t pid = fork ();
-  if (pid < 0) {
-    perror ("fork");
-    printf ("error forking for command '%s'\n", command);
-    return -1;
-  }
-  if (pid == 0) {   /* child */
-    int num_args = 1;
-    char * argv [100];
-    char * p = command;
-    int found_blank = 0;
-    argv [0] = command;
-    while (*p != '\0') {
-      if (found_blank) {
-        if (*p != ' ') {
-          argv [num_args] = p;
-          num_args++;
-          found_blank = 0;
-        }
-      } else if (*p == ' ') {
-        found_blank = 1;
-        *p = '\0';
-      }
-      p++;
-    }
-    argv [num_args] = NULL;
-/*
-    printf ("executing ");
-    char ** debug_p = argv;
-    while (*debug_p != NULL) {
-      printf ("%s ", *debug_p);
-      debug_p++;
-    }
-    printf ("\n");
-*/
-    dup2 (1, 2);   /* make stderr be a copy of stdout */
-    execvp (argv [0], argv);
-    perror ("execvp");
-    exit (1);
-  }
-  /* parent */
-  int status;
-  do {
-    waitpid (pid, &status, 0);
-  } while (! WIFEXITED (status));
-/*
-  printf ("child process (%s) exited, status is %d\n",
-          command, WEXITSTATUS (status));
-*/
-  return (WEXITSTATUS (status));
-}
-
-/* return 1 if successful, 0 otherwise */
-/* return 2 if failed, but returned status matches wireless_status */
-static int if_command (char * basic_command, char * interface,
-                       int wireless_status, char * fail_wireless,
-                       char * fail_other)
-{
-  static int printed_success = 0;
-  int size = strlen (basic_command) + strlen (interface) + 1;
-  char * command = malloc (size);
-  if (command == NULL) {
-    printf ("abc: unable to allocate %d bytes for command:\n", size);
-    printf (basic_command, interface);
-    return 0;
-  }
-  snprintf (command, size, basic_command, interface);
-  int sys_result = my_system (command);
-  int max_print_success = 0;
-#ifdef DEBUG_PRINT
-  max_print_success = 4;
-#endif /* DEBUG_PRINT */
-  if ((sys_result != 0) || (printed_success++ < max_print_success))
-    printf ("abc: result of calling '%s' was %d\n", command, sys_result);
-  if (sys_result != 0) {
-    if (sys_result != -1)
-      printf ("abc: program exit status for %s was %d\n",
-              command, sys_result);
-    if (sys_result != wireless_status) {
-      if (fail_other != NULL)
-        printf ("abc: call to '%s' failed, %s\n", command, fail_other);
-      else
-        printf ("abc: call to '%s' failed\n", command);
-    } else {
-      printf ("abc: call to '%s' failed, %s\n", command, fail_wireless);
-      return 2;
-    }
-    return 0;
-  }
-  return 1;
-}
-
-/* returns 1 if successful, 2 if already up, 0 for failure */
-static int wireless_up (char * interface)
-{
-#ifdef DEBUG_PRINT
-  printf ("abc: opening interface %s\n", interface);
-#endif /* DEBUG_PRINT */
-/* need to execute the commands:
-      sudo iw dev $if set type ibss
-      sudo ifconfig $if up
-      sudo iw dev $if ibss join allnet 2412
- */
-  char * mess = "probably a wired or configured interface";
-  if (geteuid () != 0)
-    mess = "probably need to be root";
-  int r = if_command ("iw dev %s set type ibss", interface, 240,
-                      "wireless interface not available for ad-hoc mode",
-                      mess);
-  if (r == 0)
-    return 0;
-  if (r == 2) /* already up, no need to bring up the interface */
-    return 2;
-  /* continue with the other commands, which should succeed */
-  if (! if_command ("ifconfig %s up", interface, 0, NULL, NULL))
-    return 0;
-  r = if_command ("iw dev %s ibss join allnet 2412", interface,
-                  142, "allnet ad-hoc mode already set", "unknown problem");
-  /* if (r == 0)
-    return 0; */
-  if (r == 0)
-    return 2;
-  return 1;
-}
-
-/* returns 1 if successful, 0 for failure */
-static int wireless_down (char * interface)
-{
-#ifdef DEBUG_PRINT
-  printf ("taking down interface %s\n", interface);
-#endif /* DEBUG_PRINT */
-/* doesn't seem to be necessary or helpful
-  if (! if_command ("iw dev %s set type managed", interface, NULL))
-    return 0;
-*/
-  if (! if_command ("ifconfig %s down", interface, 0, NULL, NULL))
-    return 0;
-  return 1;
-}
-
-static void default_broadcast_address (struct sockaddr_ll * bc)
-{
-  bc->sll_family = AF_PACKET;
-  bc->sll_protocol = ALLNET_WIFI_PROTOCOL;
-  bc->sll_hatype = 1;   /* used? */
-  bc->sll_pkttype = 0;  /* not used */
-  bc->sll_halen = 6;
-  bc->sll_addr [0] = 0xff;
-  bc->sll_addr [1] = 0xff;
-  bc->sll_addr [2] = 0xff;
-  bc->sll_addr [3] = 0xff;
-  bc->sll_addr [4] = 0xff;
-  bc->sll_addr [5] = 0xff;
-  printf ("set default broadcast address\n");
-}
-
-static void print_sll_addr (struct sockaddr_ll * a, char * desc)
-{
-  if (desc != NULL)
-    printf ("%s: ", desc);
-  if (a->sll_family != AF_PACKET) {
-    printf ("unknown address family %d\n", a->sll_family);
-    return;
-  }
-  printf ("proto %d, ha %d pkt %d halen %d ", a->sll_protocol, a->sll_hatype,
-          a->sll_pkttype, a->sll_halen);
-  int i;
-  for (i = 0; i < a->sll_halen; i++) {
-    if (i > 0) printf (":");
-    printf ("%02x", a->sll_addr [0]);
-  }
-  if (desc != NULL)
-    printf ("\n");
-}
-
-static unsigned long long int wireless_on_off_ms = 150;  /* default */
 static unsigned long long int bits_per_s = 1000 * 1000;  /* 1Mb/s default */
-
-/* returns -1 if the interface is not found */
-/* returns 0 if the interface is off, and 1 if it is on already */
-/* if returning 0 or 1, fills in the socket and the address */
-/* to do: figure out how to set bits_per_s in init_wireless */
-static int init_wireless (char * interface, int * sock,
-                          struct sockaddr_ll * address, struct sockaddr_ll * bc)
-{
-  struct ifaddrs * ifa;
-  if (getifaddrs (&ifa) != 0) {
-    perror ("getifaddrs");
-    exit (1);
-  }
-  struct ifaddrs * ifa_loop = ifa;
-  while (ifa_loop != NULL) {
-    if ((ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
-        (strcmp (ifa_loop->ifa_name, interface) == 0)) {
-      struct timeval start;
-      gettimeofday (&start, NULL);
-      int is_up = wireless_up (interface);
-      int in_use = (is_up == 2);
-      if (is_up) {
-        struct timeval midtime;
-        gettimeofday (&midtime, NULL);
-        long long mtime = delta_us (&midtime, &start);
-        if (! in_use) {
-          wireless_down (interface);
-          struct timeval finish;
-          gettimeofday (&finish, NULL);
-          long long time = delta_us (&finish, &start);
-          printf ("abc: %s is wireless, %lld.%03lld ms to turn on+off\n",
-                  interface, time / 1000LL, time % 1000LL);
-          printf ("  (%lld.%03lld ms to turn on)\n",
-                  mtime / 1000LL, mtime % 1000LL);
-          wireless_on_off_ms = time;
-        }
-        /* create the socket and initialize the address */
-        *sock = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
-        *address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
-        if (ifa_loop->ifa_flags & IFF_BROADCAST)
-          *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
-        else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
-          *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_dstaddr));
-        else
-          default_broadcast_address (bc);
-        bc->sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
-        print_sll_addr (address, "interface address");
-        print_sll_addr (bc,      "broadcast address");
-        freeifaddrs (ifa);
-        return in_use;
-      }
-    }
-    ifa_loop = ifa_loop->ifa_next;
-  }
-  freeifaddrs (ifa);
-  return -1;  /* interface not found */
-}
 
 /* The state machine has two modes, high priority (keep interface on,
  * and send whenever possible) and low priority (turn on interface only
@@ -325,13 +85,22 @@ static int received_high_priority = 0;
 static int lan_is_on = 0; /* if on, we should never be in high priority mode */
 
 static int sockfd_global = -1;  /* -1 means not initialized yet */
-static int interface_is_on = 0;
 
 static char my_beacon_rnonce [NONCE_SIZE];
 static char my_beacon_snonce [NONCE_SIZE];
 static char other_beacon_snonce [NONCE_SIZE];
 static char other_beacon_rnonce [NONCE_SIZE];
 static char zero_nonce [NONCE_SIZE];
+
+/** array of broadcast interface types (wifi, ethernet, ...) */
+static abc_iface * iface_types[] = {
+  &abc_iface_wifi
+};
+/* must match length and order of iface_types[] */
+static const char * iface_type_strings[] = {
+  "wifi"
+};
+static abc_iface * iface = NULL; /* used interface ptr */
 
 static void clear_nonces (int mine, int other)
 {
@@ -346,27 +115,10 @@ static void clear_nonces (int mine, int other)
   bzero (zero_nonce, NONCE_SIZE);
 }
 
-static int wireless_on (char * interface)
-{
-  if (! interface_is_on) {
-    wireless_up (interface);
-    interface_is_on = 1;
-  }
-  return sockfd_global;
-}
-
-static void wireless_off (char * interface)
-{
-  if (interface_is_on) {
-    wireless_down (interface);
-    interface_is_on = 0;
-  }
-}
-
 /* sets the high priority variable, and turns on the interface if
  * we are now in high priority mode */
 /* returns the sockfd if we are in high priority, and -1 otherwise */
-static int check_priority_mode (char * interface)
+static int check_priority_mode (const char * interface)
 {
   if ((! lan_is_on) && (! high_priority) &&
       ((received_high_priority) ||
@@ -380,8 +132,10 @@ static int check_priority_mode (char * interface)
     /* leave high priority mode */
     high_priority = 0;
   }
-  if (high_priority)
-    return wireless_on (interface);
+  if (high_priority) {
+    iface->iface_set_enabled_cb (1);
+    return sockfd_global;
+  }
   return -1;
 }
 
@@ -455,10 +209,10 @@ static void update_quiet (struct timeval * quiet_end,
     *quiet_end = new_quiet;
 }
 
-static void send_beacon (int awake_ms, char * interface,
+static void send_beacon (int awake_ms, const char * interface,
                          struct sockaddr * addr, socklen_t addrlen)
 {
-  int sockfd = wireless_on (interface);
+  iface->iface_set_enabled_cb (1);
   char buf [ALLNET_BEACON_SIZE (0)];
   int size = sizeof (buf);
   bzero (buf, size);
@@ -477,7 +231,7 @@ static void send_beacon (int awake_ms, char * interface,
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   writeb64 (mbp->awake_time,
             ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
-  if (sendto (sockfd, buf, size, MSG_DONTWAIT, addr, addrlen) < size)
+  if (sendto (sockfd_global, buf, size, MSG_DONTWAIT, addr, addrlen) < size)
     perror ("beacon sendto");
 }
 
@@ -760,7 +514,7 @@ static void handle_network_message (char * message, int msize,
 /* same as handle_until, but does not send any messages or change any
  * global state other than possibly quiet_end */
 static void handle_quiet (struct timeval * quiet_end,
-                          char * interface, int rpipe, int wpipe)
+                          const char * interface, int rpipe, int wpipe)
 {
   int sockfd = check_priority_mode (interface);
   while (is_before (quiet_end)) {
@@ -789,7 +543,7 @@ static void handle_quiet (struct timeval * quiet_end,
 
 /* handle incoming packets until time t.  Do not send before quiet_end */
 static void handle_until (struct timeval * t, struct timeval * quiet_end,
-                          char * interface, int rpipe, int wpipe,
+                          const char * interface, int rpipe, int wpipe,
                           struct sockaddr * bc_addr, socklen_t alen)
 {
   int sockfd = check_priority_mode (interface);
@@ -853,7 +607,7 @@ static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
 }
 
 /* do one basic 5s cycle */
-static void one_cycle (char * interface, int rpipe, int wpipe,
+static void one_cycle (const char * interface, int rpipe, int wpipe,
                        struct sockaddr * addr, socklen_t alen,
                        struct timeval * quiet_end)
 {
@@ -862,7 +616,7 @@ static void one_cycle (char * interface, int rpipe, int wpipe,
   finish.tv_sec = compute_next (start.tv_sec, BASIC_CYCLE_SEC, 0);
   finish.tv_usec = 0;
   beacon_interval (&beacon_time, &beacon_stop, &start, &finish,
-                   BEACON_MS, wireless_on_off_ms * 2);
+                   BEACON_MS, iface->iface_on_off_ms * 2);
 
   clear_nonces (1, 1);   /* start a new cycle */
 
@@ -873,11 +627,11 @@ static void one_cycle (char * interface, int rpipe, int wpipe,
    * not really helpful.  If we are off, we will get no beacon replies
    * anyway, so it doesn't matter */
   if (! high_priority)
-    wireless_off (interface);
+    iface->iface_set_enabled_cb (0);
   handle_until (&finish, quiet_end, interface, rpipe, wpipe, addr, alen);
 }
 
-static void main_loop (char * interface, int rpipe, int wpipe)
+static void main_loop (const char * interface, int rpipe, int wpipe)
 {
   struct sockaddr_ll if_address; /* the address of the interface */
   struct sockaddr  * if_sap = (struct sockaddr *) (&if_address);
@@ -886,10 +640,9 @@ static void main_loop (char * interface, int rpipe, int wpipe)
 
   struct timeval quiet_end;   /* should we keep quiet? */
   gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
-  /* init sockfd and set two globals: &sockfd_global and interface_is_on */
-  interface_is_on =
-    init_wireless (interface, &sockfd_global, &if_address, &bc_address);
-  if (interface_is_on < 0) {
+  /* init sockfd and set two globals: &sockfd_global and iface_is_on */
+  iface->init_iface_cb (interface, &sockfd_global, &if_address, &bc_address);
+  if (iface->iface_is_enabled_cb () < 0) {
     snprintf (log_buf, LOG_SIZE,
               "unable to bring up interface %s, for now aborting\n", interface);
     log_print ();
@@ -913,7 +666,20 @@ int main (int argc, char ** argv)
   }
   int rpipe = atoi (argv [1]);  /* read pipe */
   int wpipe = atoi (argv [2]);  /* write pipe */
-  char * interface = argv [3];
+  const char * interface = argv [3];
+  const char * iface_type = (argc > 3 ? argv [4] : NULL);
+
+  if (iface_type != NULL) {
+    int i;
+    for (i = 0; i < sizeof (iface_types); ++i) {
+      if ((iface_type_strings[i], iface_type) == 0) {
+        iface = iface_types[i];
+        break;
+      }
+    }
+  }
+  if (iface == NULL)
+    iface = iface_types[0];
 
   snprintf (log_buf, LOG_SIZE,
             "read pipe is fd %d, write pipe fd %d, interface is '%s'\n",
