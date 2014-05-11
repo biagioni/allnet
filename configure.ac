@@ -28,17 +28,25 @@ AC_PROG_LN_S
 # Checks for libraries.
 # PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
 
-AX_PROG_JAVAC
-AX_PROG_JAR
-build_gui="yes"
+build_gui="auto"
 AC_ARG_ENABLE(gui,
   AC_HELP_STRING([--disable-gui],
-  [do not build GUI (building requires java)]),[build_gui="no"],[enable_gui="yes"])
-if test "x$build_gui" = "xyes" && (test "x$JAVAC" = "x" || test "x$JAR" = "x"); then
-  if test "x$enable_gui" = "xyes"; then
-    AC_MSG_ERROR([Could not find a suitable java compiler needed to build GUI support.])
+  [do not build GUI (building requires java)]),[
+    build_gui=$enableval
+  ],[])
+if test "x$build_gui" != "xno"; then
+  AX_PROG_JAVAC
+  AX_PROG_JAR
+  if (test "x$JAVAC" = "x" || test "x$JAR" = "x"); then
+    if test "x$build_gui" != "xauto"; then
+      AC_MSG_ERROR([Could not find a suitable java compiler needed to build GUI support.])
+    else
+      AC_MSG_NOTICE([Could not find a suitable java compiler needed to build GUI support -- disabling GUI build.])
+    fi
+    build_gui="no"
+  else
+    build_gui="yes"
   fi
-  build_gui="no"
 fi
 AM_CONDITIONAL([ENABLE_GUI], [test "x$build_gui" = "xyes"])
 
