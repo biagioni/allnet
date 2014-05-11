@@ -17,6 +17,9 @@ clean-local:
 	rm -f $(ALLNETUI_TARGET)
 
 install-exec-local:
+if PRECOMP_GUI
+	$(INSTALL_PROGRAM) $(ALLNETUI_TARGET) $(DESTDIR)$(bindir)
+endif
 if ENABLE_GUI
 	$(INSTALL_PROGRAM) $(ALLNETUI_TARGET) $(DESTDIR)$(bindir)
 endif

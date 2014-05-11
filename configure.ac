@@ -29,10 +29,12 @@ AC_PROG_LN_S
 # PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
 
 build_gui="auto"
+build_gui_flag_set="no"
 AC_ARG_ENABLE(gui,
   AC_HELP_STRING([--disable-gui],
   [do not build GUI (building requires java)]),[
     build_gui=$enableval
+    build_gui_flag_set="yes"
   ],[])
 if test "x$build_gui" != "xno"; then
   AX_PROG_JAVAC
@@ -49,6 +51,30 @@ if test "x$build_gui" != "xno"; then
   fi
 fi
 AM_CONDITIONAL([ENABLE_GUI], [test "x$build_gui" = "xyes"])
+
+install_precompiled_gui="auto"
+AC_ARG_ENABLE(precompiled-gui,
+  AC_HELP_STRING([--disable-precompiled-gui],
+  [do not install precompiled GUI when java compiler is not available]),[install_precompiled_gui=$enableval],[])
+
+if (test "x$install_precompiled_gui" != "xno" && test "x$build_gui" = "xno" && test "x$build_gui_flag_set" = "xno"); then
+  # only install precompiled GUI if we don't build it ourselves and the --enable-gui/--disable-gui isn't set
+  AX_PROG_JAVA
+  if test "x$JAVA" = "x"; then
+    if test "x$install_precompiled_gui" = "xyes"; then
+      AC_MSG_WARN([Could not find a suitable java runtime needed to run GUI.])
+      install_precompiled_gui="yes"
+    else
+      AC_MSG_WARN([Could not find a suitable java runtime needed to run GUI. Use --enable-precompiled-gui to force installation.])
+      install_precompiled_gui="no"
+    fi
+  else
+    install_precompiled_gui="yes"
+  fi
+else
+  install_precompiled_gui="no"
+fi
+AM_CONDITIONAL([PRECOMP_GUI], [test "x$install_precompiled_gui" = "xyes"])
 
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h limits.h netdb.h netinet/in.h stdlib.h string.h strings.h sys/socket.h sys/time.h unistd.h])
@@ -74,4 +100,7 @@ echo ""
 echo "  Prefix                 : ${prefix}"
 echo "  Compiler flags         : ${CFLAGS}"
 echo "  Build User Interface   : ${build_gui}"
+if test "x$build_gui" = "xno"; then
+echo "  Install precompiled UI : ${install_precompiled_gui} (only available when Build User Interface is \"no\")"
+fi
 echo ""
