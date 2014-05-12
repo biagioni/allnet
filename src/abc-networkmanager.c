@@ -486,8 +486,8 @@ static int abc_wifi_config_nm_is_device_busy ()
       dbus_message_unref (amsg);
       goto device_is_busy_cleanup;
     }
-    int conn_found = 1;
-    int dev_found = 0;
+    int our_conn;
+    int our_dev = 0;
     do { /* loop over all properties */
       DBusMessageIter aarg_v[3];
       dbus_message_iter_recurse (&aargs, &aarg_v[0]);
@@ -507,10 +507,8 @@ static int abc_wifi_config_nm_is_device_busy ()
         assert (dbus_message_iter_get_arg_type (&aarg_v[2]) == DBUS_TYPE_OBJECT_PATH);
         const char * conn_obj;
         dbus_message_iter_get_basic (&aarg_v[2], &conn_obj);
-        if (strcmp (act_conn_obj, self.nm_conn_obj) != 0) {
-          /* Step 3/3: It's not the allnet connection, is it on our device? */
-          conn_found = 0;
-        } while (dbus_message_iter_next (&aarg_v[2]));
+        /* Step 3/3: It's not the allnet connection, is it on our device? */
+        our_conn = (strcmp (conn_obj, self.nm_conn_obj) == 0);
 
       } else if (strcmp (key, "Devices") == 0) {
         assert (dbus_message_iter_get_arg_type (&aarg_v[2]) == DBUS_TYPE_ARRAY);
@@ -520,12 +518,12 @@ static int abc_wifi_config_nm_is_device_busy ()
           const char * dev_obj;
           dbus_message_iter_get_basic (&aarg_v[3], &dev_obj);
           if (strcmp (dev_obj, self.nm_iface_obj) == 0) {
-            dev_found = 1; /* It's on our device */
+            our_dev = 1; /* It is on our device */
             break;
           }
         } while (dbus_message_iter_next (&aarg_v[3]));
       }
-      if (!conn_found && dev_found) {
+      if (!our_conn && our_dev) {
         ret = 1; /* There's a foreign connection on our device -> we're busy */
         dbus_message_unref (amsg);
         goto device_is_busy_cleanup;
