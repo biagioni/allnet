@@ -572,6 +572,17 @@ static int abc_wifi_config_nm_init (const char * iface)
 
   if (!init_dbus_connection (&self.conn))
     return 0;
+
+  if (!get_device_path ()) {
+    // TODO: allnet log
+    return 0;
+  }
+
+  if (!get_conn_obj ()) {
+    // TODO: allnet log
+    if (!setup_connection ())
+      return 0;
+  }
   return 1;
 }
 
