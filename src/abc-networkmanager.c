@@ -292,7 +292,7 @@ static int setup_connection ()
   return 1;
 }
 
-static int activate_connection ()
+static int abc_wifi_config_nm_connect ()
 {
   DBusMessage * msg = init_nm_dbus_method_call ("ActivateConnection");
   if (msg == NULL) {
@@ -588,29 +588,4 @@ static int abc_wifi_config_nm_enable_wireless (int state)
   int ret = call_nm_dbus_method (&msg);
   dbus_message_unref (msg);
   return ret;
-}
-
-static int abc_wifi_config_nm_connect ()
-{
-  if (self.conn == NULL)
-    return 0;
-
-  if (self.nm_iface_obj == NULL && !get_device_path ()) {
-    // TODO: allnet log
-    return 0;
-  }
-
-  if (self.nm_conn_obj == NULL && !get_conn_obj ()) {
-    // TODO: allnet log
-    return 0;
-  }
-
-  if (!abc_wifi_config_nm_is_wireless_on () && !abc_wifi_config_nm_enable_wireless (1)) {
-    // TODO: allnet log
-    return 0;
-  }
-
-  if (activate_connection () == 1)
-    return 1;
-  return 0;
 }
