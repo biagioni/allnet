@@ -71,9 +71,10 @@ static dbus_bool_t dict_append_entry (DBusMessageIter *dict,
   );
 }
 
-static void retrieve_variant (DBusMessageIter * arg, void * val) {
+static void retrieve_variant (DBusMessageIter * arg, int type, void * val) {
   DBusMessageIter arg_var;
   dbus_message_iter_recurse (arg, &arg_var);
+  assert (dbus_message_iter_get_arg_type (&arg_var) == type);
   dbus_message_iter_get_basic (&arg_var, val);
 }
 
@@ -551,7 +552,7 @@ static int abc_wifi_config_nm_is_wireless_on ()
   }
 
   dbus_bool_t wlan_enabled;
-  retrieve_variant (&args, &wlan_enabled);
+  retrieve_variant (&args, DBUS_TYPE_BOOLEAN, &wlan_enabled);
   dbus_message_unref (msg);
 
   if (wlan_enabled && abc_wifi_config_nm_is_device_busy () == 1)
