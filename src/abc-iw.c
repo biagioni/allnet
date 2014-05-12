@@ -136,7 +136,7 @@ static int if_command (const char * basic_command, const char * interface,
   return 1;
 }
 
-int abc_wifi_config_iw_init (const char * iface)
+static int abc_wifi_config_iw_init (const char * iface)
 {
   self.iface = iface;
   self.is_enabled = -1;
@@ -144,7 +144,7 @@ int abc_wifi_config_iw_init (const char * iface)
 }
 
 /** Join allnet adhoc network */
-int abc_wifi_config_iw_connect ()
+static int abc_wifi_config_iw_connect ()
 {
 #ifdef DEBUG_PRINT
   printf ("abc: opening interface %s\n", self.iface);
@@ -171,13 +171,13 @@ int abc_wifi_config_iw_connect ()
 }
 
 /** Returns wlan state (1: enabled or 0: disabled) */ 
-int abc_wifi_config_iw_is_wireless_on ()
+static int abc_wifi_config_iw_is_wireless_on ()
 {
   return self.is_enabled;
 }
 
 /** Enable or disable wlan depending on state (1 or 0) */ 
-int abc_wifi_config_iw_set_enabled (int state)
+static int abc_wifi_config_iw_set_enabled (int state)
 {
   /* call (sudo) ifconfig $if {up|down} */
   if (state) {
