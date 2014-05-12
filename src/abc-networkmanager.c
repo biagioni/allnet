@@ -126,6 +126,33 @@ static int call_nm_dbus_method (DBusMessage ** msg)
   return (*msg != NULL);
 }
 
+/**
+ * Retrieve a dbus property
+ * msg must be initialized with dbus_message_iter_init (msg, &args); to read
+ * the reply.
+ * @return 1 on success, -1 on failure
+ */
+static int get_dbus_property (DBusMessage ** msg,
+                                 const char * dbusobj,
+                                 const char * dbusiface,
+                                 const char * prop)
+{
+  *msg = dbus_message_new_method_call (ABC_NM_DBUS_DEST,
+                                  dbusobj,
+                                  "org.freedesktop.DBus.Properties",
+                                  "Get");
+  if (*msg == NULL)
+    return -1;
+
+  DBusMessageIter args;
+  dbus_message_iter_init_append (*msg, &args);
+  dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &dbusiface);
+  dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &prop);
+  if (!call_nm_dbus_method (msg))
+    return -1;
+  return 1;
+}
+
 static int get_device_path ()
 {
   /* Get device object path */
@@ -411,33 +438,6 @@ static int get_conn_obj ()
 cleanup_fail:
   dbus_message_unref (msg);
   return 0;
-}
-
-/**
- * Retrieve a dbus property
- * msg must be initialized with dbus_message_iter_init (msg, &args); to read
- * the reply.
- * @return 1 on success, -1 on failure
- */
-static int get_dbus_property (DBusMessage ** msg,
-                                 const char * dbusobj,
-                                 const char * dbusiface,
-                                 const char * prop)
-{
-  *msg = dbus_message_new_method_call (ABC_NM_DBUS_DEST,
-                                  dbusobj,
-                                  "org.freedesktop.DBus.Properties",
-                                  "Get");
-  if (*msg == NULL)
-    return -1;
-
-  DBusMessageIter args;
-  dbus_message_iter_init_append (*msg, &args);
-  dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &dbusiface);
-  dbus_message_iter_append_basic (&args, DBUS_TYPE_STRING, &prop);
-  if (!call_nm_dbus_method (msg))
-    return -1;
-  return 1;
 }
 
 /** Checks if a non-allnet connection is occupying our interface */
