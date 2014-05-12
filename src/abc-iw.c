@@ -142,8 +142,8 @@ static int if_command (const char * basic_command, const char * interface,
 static int abc_wifi_config_iw_init (const char * iface)
 {
   self.iface = iface;
-  self.is_enabled = -1;
   self.is_connected = 0;
+  self.is_enabled = 0;
   return 1;
 }
 
