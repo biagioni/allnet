@@ -25,9 +25,11 @@ typedef struct abc_nm_settings {
   DBusConnection * conn;
   const char * iface;
   const char * nm_iface_obj; /* ptr to nm_iface_obj_buf */
-  const char * nm_conn_obj;  /* ptr to nm_iface_conn_obj_buf */
-  char nm_conn_obj_buf[50];  /* 43: /org/freedesktop/NetworkManager/Settings/13 */
-  char nm_iface_obj_buf[50]; /* 41: /org/freedesktop/NetworkManager/Devices/1 */
+  const char * nm_conn_obj;  /* ptr to nm_conn_obj_buf */
+  const char * nm_act_conn_obj;  /* ptr to nm_act_conn_obj_buf */
+  char nm_iface_obj_buf[50]; /* len 41: /org/freedesktop/NetworkManager/Devices/1 */
+  char nm_conn_obj_buf[50];  /* len 43: /org/freedesktop/NetworkManager/Settings/13 */
+  char nm_act_conn_obj_buf[60]; /* len 52: /org/freedesktop/NetworkManager/Connection/Active/13 */
 } abc_nm_settings;
 
 /** public wifi config interface ready to use */
@@ -315,8 +317,8 @@ static int abc_wifi_config_nm_connect ()
   }
   assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_OBJECT_PATH);
   dbus_message_iter_get_basic (&args, &actconnobj);
-  // TODO: store active connection path?
-  // printf ("active connection is %s\n", actconnobj);
+  strncpy (self.nm_act_conn_obj_buf, actconnobj, sizeof (self.nm_act_conn_obj_buf));
+  self.nm_act_conn_obj = self.nm_act_conn_obj_buf;
   dbus_message_unref (msg);
   // wait for activation signal...
   return 1;
@@ -566,7 +568,11 @@ static int abc_wifi_config_nm_init (const char * iface)
   self.iface = iface;
   self.nm_iface_obj = NULL;
   self.nm_conn_obj = NULL;
-  return init_dbus_connection (&self.conn);
+  self.nm_act_conn_obj = NULL;
+
+  if (!init_dbus_connection (&self.conn))
+    return 0;
+  return 1;
 }
 
 static int abc_wifi_config_nm_enable_wireless (int state)
@@ -587,5 +593,7 @@ static int abc_wifi_config_nm_enable_wireless (int state)
   append_variant (&args, DBUS_TYPE_BOOLEAN, &on);
   int ret = call_nm_dbus_method (&msg);
   dbus_message_unref (msg);
+  if (!state)
+    self.nm_act_conn_obj = NULL;
   return ret;
 }
