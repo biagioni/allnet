@@ -294,6 +294,41 @@ static int setup_connection ()
   return 1;
 }
 
+static int abc_wifi_config_nm_is_connected ()
+{
+  if (self.nm_act_conn_obj == NULL)
+    return 0;
+
+  DBusMessage * msg;
+  if (get_dbus_property (&msg, ABC_NM_DBUS_OBJ, ABC_NM_DBUS_IFACE,
+              "ActiveConnections") != 1)
+    return -1;
+
+  int ret = 0;
+  DBusMessageIter args;
+  if (!dbus_message_iter_init (msg, &args))
+    goto nm_is_connected_cleanup;
+
+  assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_VARIANT);
+  DBusMessageIter arg_v;
+  dbus_message_iter_recurse (&args, &arg_v);
+  assert (dbus_message_iter_get_arg_type (&arg_v) == DBUS_TYPE_ARRAY);
+  DBusMessageIter arg_a;
+  dbus_message_iter_recurse (&arg_v, &arg_a);
+  do {
+    const char * act_conn_obj;
+    dbus_message_iter_get_basic (&arg_a, &act_conn_obj);
+    if (strcmp (act_conn_obj, self.nm_act_conn_obj) == 0) {
+      ret = 1;
+      goto nm_is_connected_cleanup;
+    }
+  } while (dbus_message_iter_next (&arg_a));
+
+nm_is_connected_cleanup:
+  dbus_message_unref (msg);
+  return ret;
+}
+
 static int abc_wifi_config_nm_connect ()
 {
   DBusMessage * msg = init_nm_dbus_method_call ("ActivateConnection");

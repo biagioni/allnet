@@ -10,12 +10,14 @@
 
 /* forward declarations */
 static int abc_wifi_config_iw_init (const char * iface);
+static int abc_wifi_config_iw_is_connected ();
 static int abc_wifi_config_iw_connect ();
 static int abc_wifi_config_iw_is_wireless_on ();
 static int abc_wifi_config_iw_set_enabled (int state);
 
 typedef struct abc_wifi_config_iw_settings {
   const char * iface;
+  int is_connected;
   int is_enabled;
 } abc_wifi_config_iw_settings;
 
@@ -25,6 +27,7 @@ abc_wifi_config_iface abc_wifi_config_iw = {
   .init_iface_cb = abc_wifi_config_iw_init,
   .iface_is_enabled_cb = abc_wifi_config_iw_is_wireless_on,
   .iface_set_enabled_cb = abc_wifi_config_iw_set_enabled,
+  .iface_is_connected_cb = abc_wifi_config_iw_is_connected,
   .iface_connect_cb = abc_wifi_config_iw_connect
 };
 
@@ -140,7 +143,13 @@ static int abc_wifi_config_iw_init (const char * iface)
 {
   self.iface = iface;
   self.is_enabled = -1;
+  self.is_connected = 0;
   return 1;
+}
+
+static int abc_wifi_config_iw_is_connected ()
+{
+  return self.is_connected;
 }
 
 /** Join allnet adhoc network */
@@ -165,8 +174,10 @@ static int abc_wifi_config_iw_connect ()
     return 2;
   r = if_command ("iw dev %s ibss join allnet 2412", self.iface,
                   142, "allnet ad-hoc mode already set", "unknown problem");
-  if (r == 0)
+  if (r == 0) {
+    self.is_connected = 1;
     return 2;
+  }
   return 1;
 }
 

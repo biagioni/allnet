@@ -15,6 +15,7 @@ typedef struct abc_wifi_config_iface {
   int (* init_iface_cb) (const char * interface);
   int (* iface_is_enabled_cb) ();
   int (* iface_set_enabled_cb) (int state);
+  int (* iface_is_connected_cb) ();
   int (* iface_connect_cb) ();
 } abc_wifi_config_iface;
 
