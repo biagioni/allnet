@@ -386,7 +386,6 @@ int table_from_file (struct table * table,
                                     bytes_per_entry, free_bytes);
   if (bytes_used == 0)
     return 0;
-  int entries = table->num_entries;
 
   while (num_lines-- > 0) {
     char line [MAX_ENTRY];

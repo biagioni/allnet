@@ -462,7 +462,6 @@ static void send_beacon (int awake_ms, char * interface,
   char buf [ALLNET_BEACON_SIZE (0)];
   int size = sizeof (buf);
   bzero (buf, size);
-  struct allnet_header * hp = (struct allnet_header *) buf;
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buf + ALLNET_SIZE (0));
   struct allnet_mgmt_beacon * mbp =
@@ -880,7 +879,6 @@ static void one_cycle (char * interface, int rpipe, int wpipe,
 static void main_loop (char * interface, int rpipe, int wpipe)
 {
   struct sockaddr_ll if_address; /* the address of the interface */
-  struct sockaddr  * if_sap = (struct sockaddr *) (&if_address);
   struct sockaddr_ll bc_address; /* broacast address of the interface */
   struct sockaddr  * bc_sap = (struct sockaddr *) (&bc_address);
 
