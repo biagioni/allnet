@@ -70,18 +70,14 @@ static int process_mgmt (char * message, int msize, int is_local,
   case ALLNET_MGMT_DHT:
     return PROCESS_PACKET_LOCAL;  /* forward to local daemons only */
   case ALLNET_MGMT_TRACE_REQ:
-    if (is_local) {
-      if (*priority != ALLNET_PRIORITY_EPSILON) {   /* from trace server */
-        *priority = packet_priority (message, hp, msize, soc);
-        return PROCESS_PACKET_ALL;  /* forward as a normal data packet */
-      } else {                      /* from trace app */
-        return PROCESS_PACKET_LOCAL;/* only forward to the trace server */
-      }
-    }  /* else trace is not local, only forward to the trace server */
-    return PROCESS_PACKET_LOCAL;  /* forward to local daemons only */
+    if ((is_local) && (*priority == ALLNET_PRIORITY_TRACE_FWD)) {
+      return PROCESS_PACKET_ALL;  /* forward as a normal data packet */
+    } else {                      /* from trace app or from outside */
+      return PROCESS_PACKET_LOCAL;/* only forward to the trace server/app */
+    }
   case ALLNET_MGMT_TRACE_REPLY:
     if (! is_local)
-      *priority = ALLNET_PRIORITY_EPSILON;
+      *priority = ALLNET_PRIORITY_TRACE;
     return PROCESS_PACKET_ALL;    /* forward to all with very low priority */
   default:
     snprintf (log_buf, LOG_SIZE, "unknown management message type %d\n",
@@ -211,7 +207,7 @@ log_print ();
     /* all the rest are not forwarded, so priority does not matter */
     case PROCESS_PACKET_LOCAL:   /* send only to alocal */ 
       log_packet ("sending to alocal", packet, psize);
-      send_all (packet, psize, 0, write_pipes, 2, "local");
+      send_all (packet, psize, 0, write_pipes, 1, "local");
       break;
     case PROCESS_PACKET_DROP:    /* do not forward */
       log_packet ("dropping packet", packet, psize);
