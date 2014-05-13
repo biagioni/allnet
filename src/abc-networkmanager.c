@@ -5,6 +5,7 @@
 #include <stdio.h>              /* sprintf */
 #include <stdlib.h>             /* malloc */
 #include <string.h>             /* strcmp, strncopy */
+#include <unistd.h>             /* sleep */
 
 #include "abc-wifi.h"           /* abc_wifi_config_iface */
 #include "abc-networkmanager.h"
@@ -355,8 +356,73 @@ static int abc_wifi_config_nm_connect ()
   strncpy (self.nm_act_conn_obj_buf, actconnobj, sizeof (self.nm_act_conn_obj_buf));
   self.nm_act_conn_obj = self.nm_act_conn_obj_buf;
   dbus_message_unref (msg);
-  // wait for activation signal...
-  return 1;
+
+  /* now wait for activation signal... */
+  const char * fmt = "type='signal',interface='" ABC_NM_DBUS_IFACE
+                     ".Connection.Active',path='%s'";
+  char * rule = (char *)malloc ((strlen (fmt) -2 + strlen (actconnobj) + 1) * sizeof (char));
+  sprintf (rule, fmt, actconnobj);
+  DBusError err;
+  dbus_error_init (&err);
+
+  dbus_bus_add_match (self.conn, rule, &err);
+  dbus_connection_flush (self.conn);
+  if (dbus_error_is_set (&err)) {
+    fprintf (stderr, "abc-nm: match error (%s)\n", err.message);
+    free (rule);
+    return 0;
+  }
+
+  int ret = 0;
+  int i = 0;
+  while (1) {
+    dbus_connection_read_write (self.conn, 0); /* non-blocking */
+    msg = dbus_connection_pop_message (self.conn);
+    if (msg == NULL) {
+      sleep (1);
+      fflush(stdout);
+      if (++i > 24) /* wait for at least 25s to activate */
+        break;
+      continue;
+    }
+
+    if (dbus_message_is_signal (msg, ABC_NM_DBUS_IFACE ".Connection.Active", "PropertiesChanged")) {
+      if (!dbus_message_iter_init (msg, &args))
+        goto nm_activate_clean;
+      if (dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_ARRAY) {
+        // fprintf(stderr, "abc-nm: Argument is not an array!\n");
+        goto nm_activate_clean;
+      }
+      DBusMessageIter arg_a[2];
+      dbus_message_iter_recurse (&args, &arg_a[0]);
+      do {
+        assert (dbus_message_iter_get_arg_type (&arg_a[0]) == DBUS_TYPE_DICT_ENTRY);
+        dbus_message_iter_recurse (&arg_a[0], &arg_a[1]);
+        assert (dbus_message_iter_get_arg_type (&arg_a[1]) == DBUS_TYPE_STRING);
+        const char * keyval;
+        dbus_message_iter_get_basic (&arg_a[1], &keyval);
+        if (strcmp (keyval, "State") == 0) {
+          int has_next = dbus_message_iter_next (&arg_a[1]);
+          assert (has_next);
+          assert (dbus_message_iter_get_arg_type (&arg_a[1]) == DBUS_TYPE_VARIANT);
+          dbus_uint32_t state;
+          retrieve_variant (&arg_a[1], DBUS_TYPE_UINT32, &state);
+          if (state == 2 /* NM_ACTIVE_CONNECTION_STATE_ACTIVATED */) {
+            ret = 1;
+            goto nm_activate_clean;
+          } else if (state == 4 /* NM_ACTIVE_CONNECTION_STATE_DEACTIVATED */)
+            self.nm_act_conn_obj = NULL;
+          goto nm_activate_clean;
+        }
+      } while (dbus_message_iter_next (&arg_a[0]));
+    }
+nm_activate_clean:
+    dbus_message_unref(msg);
+  }
+
+  dbus_bus_remove_match (self.conn, rule, NULL);
+  free (rule);
+  return ret;
 }
 
 static int get_conn_obj ()
