@@ -126,7 +126,8 @@ static int abc_wifi_init (const char * interface, int * sock,
         gettimeofday (&midtime, NULL);
         long long mtime = delta_us (&midtime, &start);
         if (! in_use) {
-          wifi_config_iface->iface_connect_cb (1);
+          if (!wifi_config_iface->iface_is_connected_cb ())
+            wifi_config_iface->iface_connect_cb (1);
           struct timeval finish;
           gettimeofday (&finish, NULL);
           long long time = delta_us (&finish, &start);
