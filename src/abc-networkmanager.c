@@ -198,11 +198,16 @@ static int setup_connection ()
   /* Begin of connection settings section */
   /* All connection settings must be defined here */
   char uuid[37]; /* e.g. "c25da751-1b91-4262-9f94-3dcbddfaee5e" (36) + '\0' */
-  random_bytes (uuid, 18);
-  uuid[10] &= 0xBF; /* uuid[19] is one of 8,9,A,B */
-  int i = 17;
-  for (i = 17; i >= 0; --i)
-    sprintf (&uuid[2*i], "%x", uuid[i]);
+  char rand[18];
+  const char hex[] = "0123456789abcdef";
+  random_bytes (rand, sizeof (rand));
+  rand[9] &= 0xFB; /* uuid[19] is one of 8,9,A,B */
+  int i;
+  for (i = 0; i < sizeof (rand); ++i) {
+    uuid[2*i] = hex[(rand[i] >> 4) & 0xF];
+    uuid[2*i + 1] = hex[rand[i] & 0xF];
+  }
+
   uuid[8] = '-';
   uuid[13] = '-';
   uuid[14] = '4';
