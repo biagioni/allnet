@@ -94,8 +94,13 @@ static int abc_wifi_is_enabled ()
 
 static int abc_wifi_set_enabled (int state)
 {
-  return wifi_config_iface->iface_set_enabled_cb (state) &&
-         wifi_config_iface->iface_connect_cb ();
+  printf ("abc-wifi: %s wifi\n", state ? "enable" : "disable");
+  int ret = wifi_config_iface->iface_set_enabled_cb (state);
+  if (ret && state) {
+    printf ("abc-wifi: connecting\n");
+    return wifi_config_iface->iface_connect_cb ();
+  }
+  return ret;
 }
 
 /* returns -1 if the interface is not found */
