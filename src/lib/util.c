@@ -5,6 +5,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <time.h>
+#include <assert.h>
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -17,6 +18,7 @@
 #include "mgmt.h"
 #include "log.h"
 #include "util.h"
+#include "ai.h"
 
 /* print up to max of the count characters in the buffer.
  * desc is printed first unless it is null
@@ -116,6 +118,9 @@ static char * mgmt_type_to_string (int mtype)
 static char * b2s (const char * buffer, int count)
 {
   static char result [10000];
+  *result = '\0';    /* set result to the empty string */
+  if ((buffer == NULL) || (count < 1))
+    return result;
   if (count + 1 >= sizeof (result) / 2)
     count = sizeof (result) / 2 - 1;
   result [0] = '\0';   /* in case count <= 0 */
@@ -204,8 +209,8 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         r += snprintf (to + r, tsize - r, "peers %d ", amp->num_peers);
         int i;
         for (i = 0; i < amp->num_peers; i++) {
-          char local [40];
-          ia_to_string (amp->peers [i], local, sizeof (local));
+          char local [100];
+          ia_to_string (amp->peers + i, local, sizeof (local));
           char * nl = index (local, '\n');
           *nl = '\0';   /* segfault if no newline */
           r += snprintf (to + r, tsize - r, "%s", local);
@@ -222,7 +227,7 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
     } else {
       const struct allnet_mgmt_dht * dht = (const struct allnet_mgmt_dht *) hp;
       int needed = sizeof (struct allnet_mgmt_dht) +
-                   dht->num_dht_nodes * sizeof (struct allnet_dht_info);
+                   dht->num_dht_nodes * sizeof (struct addr_info);
       if (hsize < needed) {
         r += snprintf (to + r, tsize - r, "dht size %d, needed %d\n",
                        hsize, needed);
@@ -230,8 +235,8 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         r += snprintf (to + r, tsize - r, "dht %d ", dht->num_dht_nodes);
         int i;
         for (i = 0; i < dht->num_dht_nodes; i++) {
-          char local [40];
-          ia_to_string (dht->nodes [i].ip, local, sizeof (local));
+          char local [100];
+          ia_to_string (&(dht->nodes [i].ip), local, sizeof (local));
           char * nl = index (local, '\n');
           *nl = '\0';   /* segfault if no newline */
           r += snprintf (to + r, tsize - r, "%s %s",
@@ -783,6 +788,7 @@ unsigned long long allnet_time_us ()  /* microseconds since Y2K */
   result -= ALLNET_Y2K_SECONDS_IN_UNIX;
   result *= ALLNET_US_PER_S;
   result += tv.tv_usec;
+  return result;
 }
 
 unsigned long long allnet_time_ms ()  /* milliseconds since Y2K */
@@ -894,7 +900,10 @@ void * malloc_or_fail (int bytes, char * desc)
   void * result = malloc (bytes);
   if (result == NULL) {
     printf ("unable to allocate %d bytes for %s\n", bytes, desc);
+    assert (0);               /* cause a crash and core dump */
+    /* if NDEBUG is set, assert will do nothing.  segfault instead */
     * ((int *) result) = 3;   /* cause a segmentation fault */
+    exit (1);   /* we should never get here */
   }
   return result;
 }

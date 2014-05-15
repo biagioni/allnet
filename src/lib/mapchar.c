@@ -213,6 +213,10 @@ int map_string (char * string, char ** result)
     p = next;
   }
   int bytes = (count + 1) / 2;
+  if (bytes <= 0) {
+    printf ("mapchar.c map_string: no bytes (%d) to map\n", bytes);
+    return 0;
+  }
   *result = malloc (bytes);
   if (*result == NULL) {
     printf ("mapchar.c map_string: unable to malloc %d bytes\n", bytes);

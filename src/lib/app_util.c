@@ -80,7 +80,7 @@ static int connect_once (int print_error)
 
 /* to the extent possible, add randomness to the SSL Random Number Generator */
 /* see http://wiki.openssl.org/index.php/Random_Numbers for details */
-int seed_rng ()
+static void seed_rng ()
 {
   int fd = open ("/dev/random", O_RDONLY | O_NONBLOCK);
   if (fd < 0)

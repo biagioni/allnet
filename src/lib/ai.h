@@ -21,7 +21,8 @@ extern int sockaddr_to_ai (struct sockaddr * sap, int addr_size,
 /* prints a newline at the end of the internet address */
 extern void print_ia (struct internet_addr * ia);
 /* includes a newline at the end of the internet address */
-extern int ia_to_string (struct internet_addr * ia, char * buf, int bsize);
+extern int ia_to_string (const struct internet_addr * ia,
+                         char * buf, int bsize);
 
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */

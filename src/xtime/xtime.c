@@ -18,6 +18,7 @@
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
+#include "lib/log.h"
 
 static int init_xtime (char * arg0)
 {
@@ -115,6 +116,7 @@ static int time_to_buf (time_t t, char * dp, int n)
   return TIMESTAMP_SIZE;
 }
 
+/* returns -1 for errors, otherwise the size of the announcement */
 static int make_announcement (char * buffer, int n,
                               time_t send, time_t expiration, int hops,
                               char * key, int ksize,
@@ -130,14 +132,19 @@ static int make_announcement (char * buffer, int n,
   struct allnet_header * hp =
     init_packet (buffer, n, ALLNET_TYPE_CLEAR, hops, ALLNET_SIGTYPE_NONE,
                  source, sbits, dest, dbits, NULL);
-  if (hp == NULL)
-    return;
+  if (hp == NULL) {
+    snprintf (log_buf, LOG_SIZE, "error: unable to create announcement\n");
+    log_print ();
+    return -1;
+  }
   hp->transport |= ALLNET_TRANSPORT_EXPIRATION;
 
   int hsize = ALLNET_SIZE (hp->transport);
   if (hsize > n) {
-    printf ("error: header size %d, buffer size %d\n", hsize, n);
-    return;
+    snprintf (log_buf, LOG_SIZE,
+              "error: header size %d, buffer size %d\n", hsize, n);
+    log_print ();
+    return -1;
   }
   char * dp = buffer + hsize;
 
@@ -190,6 +197,13 @@ static void announce (time_t interval, int sock,
                                 announce_time + interval -
                                   ALLNET_Y2K_SECONDS_IN_UNIX,
                                 hops, key, ksize, source, sbits, dest, dbits);
+  if (blen <= 0) {
+    printf ("unknown error: make_announcement returned %d\n", blen);
+    snprintf (log_buf, LOG_SIZE,
+              "make_announcement returned %d, aborting\n", blen);
+    log_print ();
+    exit (1);
+  }
 
   wait_until (announce_time);
 

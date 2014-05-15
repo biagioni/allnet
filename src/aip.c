@@ -65,8 +65,11 @@ static int init_unix_socket (char * addr_socket_name)
 
 struct receive_arg {
   char * socket_name;
-  void * cache;
+  void * rp_cache;
+  void * dht_cache;
 };
+
+#define max(a, b)	(((a) > (b)) ? (a) : (b))
 
 static void * receive_addrs (void * arg)
 {
@@ -75,10 +78,12 @@ static void * receive_addrs (void * arg)
   snprintf (log_buf, LOG_SIZE, "receive_addrs, socket is %d\n", addr_socket);
   log_print ();
 
-  int size = sizeof (struct addr_info);
+  int size = max (sizeof (struct addr_info), sizeof (struct dht_range));
   while (1) {
-    struct addr_info * ai = malloc_or_fail (size, "receive_addrs");
-    int bytes = recv (addr_socket, (char *) ai, size, 0);
+    char * buffer = malloc_or_fail (size, "receive_addrs");
+    struct addr_info * ai = (struct addr_info *) buffer;
+/*    struct dht_range * dr = (struct dht_range *) buffer; */
+    int bytes = recv (addr_socket, buffer, size, 0);
     if (bytes < 0)
       perror ("recv");
     if (bytes <= 0) {
@@ -86,15 +91,29 @@ static void * receive_addrs (void * arg)
       free (ai);
       return NULL;
     }
-    /* error checking, print if find inconsistencies */
-    if ((ai->ip.ip_version == 4) && (bytes != size))
-      printf ("ip version 4, expected %d, got %d\n", size, bytes);
-    if ((ai->ip.ip_version == 6) && (bytes != size))
-      printf ("ip version 6, expected %d, got %d\n", size, bytes);
-
-    printf ("receive_addrs got %d bytes, ", bytes);
-    print_addr_info (ai);
-    cache_add (ra->cache, ai);   /* if already in cache, records usage */
+    if (bytes == sizeof (struct addr_info)) {
+      /* error checking, print or abort loop if find inconsistencies */
+      if ((ai->ip.ip_version != 6) && (ai->ip.ip_version != 4))
+        printf ("ip version %d, expected 4 or 6\n", ai->ip.ip_version);
+      if ((ai->type != ALLNET_ADDR_INFO_RP) &&
+          (ai->type != ALLNET_ADDR_INFO_DHT))
+        printf ("ai type %d, expected 1 or 2\n", ai->type);
+      printf ("receive_addrs got %d bytes, ", bytes);
+      print_addr_info (ai);
+      if (ai->type == ALLNET_ADDR_INFO_RP)
+        cache_add (ra->rp_cache, ai); /* if already in cache, records usage */
+      else if (ai->type == ALLNET_ADDR_INFO_DHT)
+        cache_add (ra->dht_cache, ai); /* if already in cache, records usage */
+      else
+        printf ("ai type %d, expected 1 or 2\n", ai->type);
+    /* } else if (bytes == sizeof (struct dht_range)) {
+      if ((dr->ip.ip_version != 6) && (dr->ip.ip_version != 4))
+        printf ("ip version %d, expected 4 or 6\n", dr->ip.ip_version); */
+    } else {
+      printf ("expected %zd or %zd bytes, got %d\n", sizeof (struct addr_info),
+              sizeof (struct dht_range), bytes);
+      free (buffer);
+    }
   }
 }
 
@@ -138,10 +157,12 @@ static int top_destinations (void * addr_cache, int max, unsigned char * dest,
   print_buffer (dest, (nbits + 7) / 8, NULL, 100, 0);
   printf (" (%d), %d)\n", nbits, num_matches);
 */
-  struct sockaddr_in6 * new =
-    malloc_or_fail (sizeof (struct sockaddr_in6) * max, "top_destinations");
   if (num_matches > max)
     num_matches = max;    /* only return the first n matches */
+  if (max > num_matches)
+    max = num_matches;    /* only allocate enough for num_matches */
+  struct sockaddr_in6 * new =
+    malloc_or_fail (sizeof (struct sockaddr_in6) * max, "top_destinations");
   int i;
   for (i = 0; i < num_matches; i++) {
 /* print_addr_info ((struct addr_info *) (matches [i])); */
@@ -235,6 +256,7 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
   int i;
   struct sockaddr_in6 * destinations;
   int max_translations = max_send / 2 + 1;
+/* first send to recently-received from destinations from the rp cache */
   int translations =
     top_destinations (addr_cache, max_translations, hp->destination,
                       hp->dst_nbits, &destinations);
@@ -294,7 +316,7 @@ static int udp_socket ()
   }
   struct sockaddr_storage address;
   struct sockaddr     * ap  = (struct sockaddr     *) &address;
-  struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap;
+  /* struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap; */
   struct sockaddr_in6 * ap6 = (struct sockaddr_in6 *) ap;
   int addr_size = sizeof (address);
 
@@ -359,7 +381,7 @@ int make_listener (struct listen_info * info, void * addr_cache)
     return -1;
   }
   int size = sizeof (struct addr_info);
-  struct addr_info * ai = malloc_or_fail (size, "receive_addrs");
+  struct addr_info * ai = malloc_or_fail (size, "make_listener");
   init_ai (he->h_addrtype, he->h_addr_list [0], ALLNET_PORT, 0, NULL, ai);
   struct sockaddr_storage sas;
   struct sockaddr * sap = (struct sockaddr *) (&sas);
@@ -434,6 +456,7 @@ static int handle_peer_packet (int * listener, int peer,
         return 1;
       } else {
         perror ("warning: connect/listener");  /* not really an error */
+        close (new_sock);
       }
     }
   }
@@ -446,7 +469,7 @@ static int handle_peer_packet (int * listener, int peer,
 }
 
 static void main_loop (int rpipe, int wpipe, struct listen_info * info,
-                       void * addr_cache)
+                       void * addr_cache, void * dht_cache)
 {
   int udp = udp_socket ();
   void * udp_cache = NULL;
@@ -498,7 +521,8 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
           off += snprintf (log_buf + off, LOG_SIZE - off, "\n");
         }
         log_print ();
-        /* often will just get message back from ad, with a new priority */
+        /* send the message to ad.  Often ad will just send it back,
+         * with a new priority */
         if (! send_pipe_message (wpipe, message, result,
                                  ALLNET_PRIORITY_EPSILON)) {
           snprintf (log_buf, LOG_SIZE, "error sending to ad pipe %d\n", wpipe);
@@ -534,7 +558,8 @@ int main (int argc, char ** argv)
   pthread_t addr_thread;
   struct receive_arg ra;
   ra.socket_name = addr_socket_name;
-  ra.cache = cache_init (128, free);
+  ra.rp_cache = cache_init (128, free);
+  ra.dht_cache = cache_init (256, free);
   if (pthread_create (&addr_thread, NULL, receive_addrs, &ra) != 0) {
     perror ("pthread_create/addrs");
     return 1;
@@ -545,7 +570,7 @@ int main (int argc, char ** argv)
   listen_add_fd (&info, rpipe, NULL);
 
   srandom (time (NULL));
-  main_loop (rpipe, wpipe, &info, ra.cache);
+  main_loop (rpipe, wpipe, &info, ra.rp_cache, ra.dht_cache);
 
   snprintf (log_buf, LOG_SIZE,
             "end of aip main thread, deleting %s\n", addr_socket_name);

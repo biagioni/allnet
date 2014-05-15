@@ -48,7 +48,7 @@ void print_ia (struct internet_addr * ia)
 }
 
 /* includes a newline at the end of the address info */
-int ia_to_string (struct internet_addr * ia, char * buf, int bsize)
+int ia_to_string (const struct internet_addr * ia, char * buf, int bsize)
 {
   int offset = 0;
   offset += snprintf (buf + offset, bsize - offset,
@@ -91,6 +91,7 @@ int ia_to_sockaddr (struct internet_addr * ia, struct sockaddr * sap)
 int init_addr (int af, char * addr, int port, struct internet_addr * ia)
 {
   char * iap = ia->ip.s6_addr;
+  memset (iap, 0, sizeof (struct internet_addr));
   int size = sizeof (ia->ip.s6_addr);
   if (size != 16) {   /* sanity check -- is something very wrong? */
     printf ("error: IPv6 address %d, not 16 bytes long!\n", size);
@@ -98,7 +99,6 @@ int init_addr (int af, char * addr, int port, struct internet_addr * ia)
   }
   if (af == AF_INET) {
     ia->ip_version = 4;
-    memset (iap, 0, 10);
     iap [10] = 0xff;
     iap [11] = 0xff;
     memcpy (iap + 12, addr, 4);
@@ -112,7 +112,6 @@ int init_addr (int af, char * addr, int port, struct internet_addr * ia)
   ia->port = port;
   return 1;
 }
-
 
 int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
                     struct internet_addr * ia)
@@ -167,6 +166,7 @@ int ai_to_sockaddr (struct addr_info * ai, struct sockaddr * sap)
 int init_ai (int af, char * addr, int port, int nbits, char * dest,
              struct addr_info * ai)
 {
+  memset ((char *) ai, 0, sizeof (struct addr_info));
   ai->nbits = nbits;
   if (! (init_addr (af, addr, port, &(ai->ip))))
     return 0;

@@ -65,6 +65,8 @@ printf ("send_key_message: my key %p/%d, contact key %p/%d\n",
   int nbits = get_remote (keys, addr);
   char my_addr [ADDRESS_SIZE];
   int my_bits = get_local (keys, my_addr);
+  if (my_bits > 16)
+    my_bits = 16;   /* in 2014, 16 bits is plenty */
 
   int length = MESSAGE_ID_SIZE + my_ksize + strlen (secret);
   char * text = malloc_or_fail (length, "send_key_message text");
@@ -80,7 +82,8 @@ printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);
   int psize;
   struct allnet_header * hp =
     create_packet (csize - MESSAGE_ID_SIZE, ALLNET_TYPE_DATA, hops,
-                   ALLNET_SIGTYPE_NONE, my_addr, 16, addr, nbits, text, &psize);
+                   ALLNET_SIGTYPE_NONE, my_addr, my_bits, addr, nbits,
+                   text, &psize);
   char * packet = (char *) hp;
 printf ("packet size is %d bytes\n", psize);
 

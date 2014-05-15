@@ -87,6 +87,7 @@ static int save_packet (void * cache, char * message, int msize)
   int i;
   struct allnet_header * hp = (struct allnet_header *) message;
   int off = snprintf (log_buf, LOG_SIZE, "save_packet: size %d, id ", msize);
+  log_print ();
   char * id = get_id (message, msize);
   if (id == NULL)   /* no sort of message or packet ID found */
     return 0;

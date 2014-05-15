@@ -12,6 +12,7 @@
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
+#include <assert.h>
 #include <sys/select.h>
 
 #include "packet.h"
@@ -446,7 +447,6 @@ static void shift_header (char * header)
 static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
 {
   *message = NULL;
-  char * debug_null = NULL;
   int index = pipe_index (pipe);
   if (index < 0) {
     do_not_print = 0;
@@ -454,7 +454,8 @@ static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
     snprintf (log_buf, LOG_SIZE,
               "pipe %d not found, aborting and dumping core\n", pipe);
     log_print ();
-    *debug_null = '0';  /* cause a segmentation fault so we can debug this */
+    assert (0);  /* cause a core dump so we can debug this */
+    /* if NDEBUG is set, assert will not end the program, so return -1 */
     return -1;
   }
   struct pipe_info * bp = buffers + index;

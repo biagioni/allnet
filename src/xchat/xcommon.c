@@ -239,7 +239,7 @@ long long int send_data_message (int sock, char * peer,
   if (! init_chat_descriptor (cp, peer)) {
     printf ("unknown contact %s\n", peer);
     free (data_with_cd);
-    return;
+    return 0;
   }
   uint64_t seq = readb64 (cp->counter);
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
