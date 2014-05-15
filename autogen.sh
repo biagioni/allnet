@@ -1,5 +1,8 @@
 #!/bin/sh
-if [ -z "$AUTOMAKE" ]; then
-    AUTOMAKE="automake";
+if [ -z "$ACLOCAL" ]; then
+	ACLOCAL="aclocal";
 fi;
-AUTOMAKE="$AUTOMAKE --foreign" autoreconf -vfi
+if [ -z "$AUTOMAKE" ]; then
+	AUTOMAKE="automake";
+fi;
+ACLOCAL="$ACLOCAL -I /usr/share/aclocal/" AUTOMAKE="$AUTOMAKE --foreign" autoreconf -vfi

@@ -119,14 +119,15 @@ static int abc_wifi_init (const char * interface, int * sock,
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       struct timeval start;
       gettimeofday (&start, NULL);
-      int is_up = wifi_config_iface->iface_set_enabled_cb (1);
+      int is_up = wifi_config_iface->iface_is_enabled_cb ();
       int in_use = (is_up == 2);
       if (is_up) {
         struct timeval midtime;
         gettimeofday (&midtime, NULL);
         long long mtime = delta_us (&midtime, &start);
         if (! in_use) {
-          wifi_config_iface->iface_connect_cb (1);
+          if (!wifi_config_iface->iface_is_connected_cb ())
+            wifi_config_iface->iface_connect_cb (1);
           struct timeval finish;
           gettimeofday (&finish, NULL);
           long long time = delta_us (&finish, &start);

@@ -75,6 +75,7 @@ else
   install_precompiled_gui="no"
 fi
 AM_CONDITIONAL([PRECOMP_GUI], [test "x$install_precompiled_gui" = "xyes"])
+AM_CONDITIONAL([USE_NETWORK_MANAGER], [test "x$use_network_manager" = "xyes"])
 
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h fcntl.h limits.h netdb.h netinet/in.h stdlib.h string.h strings.h sys/socket.h sys/time.h unistd.h])
