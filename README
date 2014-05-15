@@ -1,4 +1,23 @@
+========================= GET ===================================
+
+The latest release is available from https://alnt.org or sourceforge.
+
+alnt.org holds releases in .tar format.  A release is made after the code
+has been tested and evaluated.
+
+Sourceforge holds the latest version of the code, which may be buggier.
+You can get the source from sourceforge as follows:
+
+	mkdir allnet
+	cd allnet
+	git init
+	git remote add origin git://git.code.sf.net/p/allnet/code
+	git pull origin master
+
+At this time there are no official binary releases.
+
 ======================== BUILD ==================================
+
 to build this release, run these programs:
         ./autogen.sh
         ./configure --disable-shared
@@ -11,7 +30,7 @@ the second line with:
 
 Before doing any of this, you may need to install libtool and autoconf.
 On debian/ubuntu and derived systems this requires:
-        sudo apt-get install libtool autoconf
+        sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev
 On other systems, use the native package manager to install these packages.
 
 ======================== RUN ==================================
@@ -25,18 +44,16 @@ the first thing to run is
    bin/astart
 
 this will start the allnet daemon, which is a collection of programs
-that run independently of user programs, and help them communicate over
+that run independently of user programs, and helps them communicate over
 AllNet.
 
-The allnet daemon can be stopped with
+The allnet daemon is lightweight, and can be left running forever.
+Should you wish to stop the allnet daemon, run
+
    bin/astop
 
-If you do not properly alternate astart and astop, you may end up running
-a daemon that bin/astop doesn't know how to stop.  If that should happen, run
-   kill ` ps auxwww | fgrep bin/ad | fgrep -v fgrep | awk '{print $2}' `
-
-(yes, all the different quotes and braces are needed -- if possible, cut and
-paste the command from this file)
+If the allnet daemon is not running when an allnet user program is
+started, the allnet user program will automatically call bin/astart.
 
     ================ allnet user programs ================
 
@@ -46,8 +63,9 @@ broadcast/subscribe, and trace.
          ======== xchat (allnet chat) with gui ========
 
 The functionality of chat is provided by the program xchat, which is built
-unless "--disable-gui" is given to config.  The xchat program is designed
-to be intuitive and easy to use, and will not be further discussed here.
+unless "--disable-gui" is given to config (or unless you don't have java
+on your system).  The xchat program is designed to be intuitive and easy
+to use.
 
 To start the xchat program, type
    bin/xchat
