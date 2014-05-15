@@ -176,16 +176,10 @@ static int abc_wifi_config_iw_connect ()
   int r = if_command ("iw dev %s set type ibss", self.iface, 240,
                       "wireless interface not available for ad-hoc mode",
                       mess);
-  if (r == 0)
+  if (r != 1 || !if_command ("iw dev %s ibss join allnet 2412", self.iface,
+                      142, "allnet ad-hoc mode already set", "unknown problem"))
     return 0;
-  if (r == 2) /* already up, no need to bring up the interface */
-    return 2;
-  r = if_command ("iw dev %s ibss join allnet 2412", self.iface,
-                  142, "allnet ad-hoc mode already set", "unknown problem");
-  if (r == 0) {
-    self.is_connected = 1;
-    return 2;
-  }
+  self.is_connected = 1;
   return 1;
 }
 
@@ -200,15 +194,17 @@ static int abc_wifi_config_iw_set_enabled (int state)
 {
   /* call (sudo) ifconfig $if {up|down} */
   if (state) {
-    if (! if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
+    if (if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 1;
       return 1;
     }
+    self.is_enabled = -1;
   } else {
-    if (! if_command ("ifconfig %s down", self.iface, 0, NULL, NULL)) {
-      self.is_enabled = 1;
-      return 0;
+    if (if_command ("ifconfig %s down", self.iface, 0, NULL, NULL)) {
+      self.is_enabled = 0;
+      return 1;
     }
+    self.is_enabled = -1;
   }
   return -1;
 }
