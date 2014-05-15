@@ -198,7 +198,8 @@ static int setup_connection ()
   /* All connection settings must be defined here */
   char uuid[37]; /* e.g. "c25da751-1b91-4262-9f94-3dcbddfaee5e" (36) + '\0' */
   char rand[18];
-  const char hex[] = "0123456789abcdef";
+  const char hex[] = { '0', '1' ,'2', '3', '4', '5', '6', '7', '8', '9',
+                       'a', 'b', 'c', 'd', 'e', 'f' };
   random_bytes (rand, sizeof (rand));
   rand[9] &= 0xFB; /* uuid[19] is one of 8,9,A,B */
   int i;
