@@ -96,8 +96,16 @@ static int my_system (char * command)
   return (WEXITSTATUS (status));
 }
 
-/* return 1 if successful, 0 otherwise */
-/* return 2 if failed, but returned status matches wireless_status */
+/**
+ * Execute an iw command
+ * @param basic_command Command with %s where interface is to be replaced
+ * @param interface wireless interface (e.g. wlan0)
+ * @param wireless_status alternate expected return status. If matched this
+ *           function returns 2.
+ * @param fail_wireless Error message when wireless_status is encountered or NULL.
+ * @param fail_other Error message for unexpected errors or NULL.
+ * @return 1 if successful (command returned 0), 2 if command status matches
+ *           wireless_status, 0 otherwise */
 static int if_command (const char * basic_command, const char * interface,
                        int wireless_status, const char * fail_wireless,
                        const char * fail_other)
@@ -106,8 +114,8 @@ static int if_command (const char * basic_command, const char * interface,
   int size = strlen (basic_command) + strlen (interface) + 1;
   char * command = malloc (size);
   if (command == NULL) {
-    printf ("abc: unable to allocate %d bytes for command:\n", size);
-    printf (basic_command, interface);
+    fprintf (stderr, "abc-iw: unable to allocate %d bytes for command:\n", size);
+    fprintf (stderr, basic_command, interface);
     return 0;
   }
   snprintf (command, size, basic_command, interface);
@@ -124,11 +132,11 @@ static int if_command (const char * basic_command, const char * interface,
               command, sys_result);
     if (sys_result != wireless_status) {
       if (fail_other != NULL)
-        printf ("abc: call to '%s' failed, %s\n", command, fail_other);
+        fprintf (stderr, "abc-iw: call to '%s' failed, %s\n", command, fail_other);
       else
-        printf ("abc: call to '%s' failed\n", command);
+        fprintf (stderr, "abc-iw: call to '%s' failed\n", command);
     } else {
-      printf ("abc: call to '%s' failed, %s\n", command, fail_wireless);
+      fprintf (stderr, "abc-iw: call to '%s' failed, %s\n", command, fail_wireless);
       free (command);
       return 2;
     }
@@ -181,18 +189,17 @@ static int abc_wifi_config_iw_connect ()
   return 1;
 }
 
-/** Returns wlan state (1: enabled or 0: disabled) */ 
+/** Returns wlan state (1: enabled or 0: disabled) */
 static int abc_wifi_config_iw_is_wireless_on ()
 {
   return self.is_enabled;
 }
 
-/** Enable or disable wlan depending on state (1 or 0) */ 
+/** Enable or disable wlan depending on state (1 or 0) */
 static int abc_wifi_config_iw_set_enabled (int state)
 {
   /* call (sudo) ifconfig $if {up|down} */
   if (state) {
-    /* continue with the other commands, which should succeed */
     if (! if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 1;
       return 1;
