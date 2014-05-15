@@ -2,9 +2,9 @@
 
 #include <assert.h>
 #include <dbus-1.0/dbus/dbus.h>
-#include <stdio.h>              /* sprintf */
+#include <stdio.h>              /* fprintf, printf, sprintf */
 #include <stdlib.h>             /* malloc */
-#include <string.h>             /* strcmp, strncopy */
+#include <string.h>             /* strcmp, strncpy */
 #include <unistd.h>             /* sleep */
 
 #include "lib/util.h"           /* random_bytes */
@@ -92,8 +92,8 @@ static int init_dbus_connection (DBusConnection ** conn)
   dbus_error_init (&err);
   *conn = dbus_bus_get (DBUS_BUS_SYSTEM, &err);
   if (dbus_error_is_set (&err)) {
-    // TODO: allnet log
-    // fprintf (stderr, "dbus: Connection Error (%s)\n", err.message);
+    /* TODO: allnet log */
+    fprintf (stderr, "dbus: Connection Error (%s)\n", err.message);
     dbus_error_free (&err);
   }
   return (conn != NULL);
@@ -119,11 +119,10 @@ static int call_nm_dbus_method (DBusMessage ** msg)
   // send message and get a handle for a reply
   if (!dbus_connection_send_with_reply (self.conn, *msg, &pending, -1)) {
     /* -1 param is default timeout */
-    // fprintf (stderr, "dbus: Out of memory!\n"); // TODO: allnet log
     return 0;
   }
   if (pending == NULL) {
-    // fprintf (stderr, "dbus: NULL Pending call\n"); // TODO: allnet log
+    fprintf (stderr, "abc-nm: error calling dbus method (pending == NULL)\n");
     return 0;
   }
   dbus_connection_flush (self.conn);
@@ -388,10 +387,8 @@ nm_is_connected_cleanup:
 static int abc_wifi_config_nm_connect ()
 {
   DBusMessage * msg = init_nm_dbus_method_call ("ActivateConnection");
-  if (msg == NULL) {
-    // TODO: fprintf (stderr, "dbus: NULL message\n");
+  if (msg == NULL)
     return -1;
-  }
   const char * specobj = "/"; /* specific_object argument (path of AP object, or "/" for auto */
   DBusMessageIter args;
   dbus_message_iter_init_append (msg, &args);
@@ -479,9 +476,7 @@ static int get_conn_obj ()
     goto cleanup_fail;
 
   DBusMessageIter args;
-  if (!dbus_message_iter_init (msg, &args)) {
-    /* TODO: log fprintf (stderr, "dbus: Message has no arguments\n"); */
-  } else {
+  if (dbus_message_iter_init (msg, &args)) {
     assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_ARRAY);
     DBusMessageIter arg_var;
     dbus_message_iter_recurse (&args, &arg_var);
@@ -715,12 +710,12 @@ static int abc_wifi_config_nm_init (const char * iface)
     return 0;
 
   if (!get_device_path ()) {
-    // TODO: allnet log
+    fprintf (stderr, "abc-nm: error: failed to resolve interface dbus object\n"); /* TODO: allnet log */
     return 0;
   }
 
   if (!get_conn_obj ()) {
-    // TODO: allnet log
+    printf ("abc-nm: No NetworkManager connection AllNet found, creating new one\n");
     if (!setup_connection ())
       return 0;
   }
