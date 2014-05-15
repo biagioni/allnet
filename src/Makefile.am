@@ -33,7 +33,7 @@ abcmodules = \
 
 if USE_NETWORK_MANAGER
 # conditionally enable NM and DBUS_*
-abcmodules += abc-networkmanager.c abc-networkmanager.h
+abcmodules += abc-networkmanager.c abc-networkmanager.h lib/util.h
 abcmodulesinc += -DUSE_NETWORK_MANAGER ${DBUS_CFLAGS}
 abcmoduleslibs += ${DBUS_LIBS}
 endif

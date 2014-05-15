@@ -7,6 +7,7 @@
 #include <string.h>             /* strcmp, strncopy */
 #include <unistd.h>             /* sleep */
 
+#include "lib/util.h"           /* random_bytes */
 #include "abc-wifi.h"           /* abc_wifi_config_iface */
 #include "abc-networkmanager.h"
 
@@ -192,7 +193,7 @@ static int setup_connection ()
 
   /* Begin of connection settings section */
   /* All connection settings must be defined here */
-  char uuid[37]; /* e.g. "c25da751-1b91-4262-9f94-3dcbddfaee5e" */
+  char uuid[37]; /* e.g. "c25da751-1b91-4262-9f94-3dcbddfaee5e" (36) + '\0' */
   random_bytes (uuid, 18);
   uuid[10] &= 0xBF; /* uuid[19] is one of 8,9,A,B */
   int i = 17;
@@ -203,7 +204,7 @@ static int setup_connection ()
   uuid[14] = '4';
   uuid[18] = '-';
   uuid[23] = '-';
-  uuid[37] = '\0';
+  uuid[36] = '\0';
   const char * connection = "connection",
              * conn_keys[] = { "id",     "type",           "uuid", "zone" },
              * conn_vals[] = { "AllNet", "802-11-wireless", NULL, "public" };
