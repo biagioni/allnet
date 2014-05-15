@@ -96,7 +96,7 @@ static int abc_wifi_set_enabled (int state)
 {
   printf ("abc-wifi: %s wifi\n", state ? "enable" : "disable");
   int ret = wifi_config_iface->iface_set_enabled_cb (state);
-  if (ret && state) {
+  if (ret == 1 && state) {
     printf ("abc-wifi: connecting\n");
     return wifi_config_iface->iface_connect_cb ();
   }
@@ -127,7 +127,9 @@ static int abc_wifi_init (const char * interface, int * sock,
       gettimeofday (&start, NULL);
       int is_up = wifi_config_iface->iface_is_enabled_cb ();
       int in_use = (is_up == 2);
-      if (is_up) {
+      printf ("abc-wifi: interface is enabled: %s (%d)\n",
+        in_use ? "yes, but busy" : (is_up > 0 ? "yes" : "no"), is_up);
+      if (is_up > 0) {
         struct timeval midtime;
         gettimeofday (&midtime, NULL);
         long long mtime = delta_us (&midtime, &start);
