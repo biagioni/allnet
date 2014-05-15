@@ -642,7 +642,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
   /* init sockfd and set two globals: &sockfd_global and iface_is_on */
   iface->init_iface_cb (interface, &sockfd_global, &if_address, &bc_address);
-  if (iface->iface_is_enabled_cb () < 0) {
+  if (!iface->iface_is_enabled_cb () && !iface->iface_set_enabled_cb (1)) {
     snprintf (log_buf, LOG_SIZE,
               "abc: unable to bring up interface %s\n", interface);
     log_print ();
