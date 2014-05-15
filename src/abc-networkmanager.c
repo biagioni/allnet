@@ -18,6 +18,7 @@
 
 /* forward declarations */
 static int abc_wifi_config_nm_init (const char * iface);
+static int abc_wifi_config_nm_is_connected ();
 static int abc_wifi_config_nm_connect ();
 static int abc_wifi_config_nm_is_wireless_on ();
 static int abc_wifi_config_nm_enable_wireless (int state);
@@ -40,6 +41,7 @@ abc_wifi_config_iface abc_wifi_config_nm_wlan = {
   .init_iface_cb = abc_wifi_config_nm_init,
   .iface_is_enabled_cb = abc_wifi_config_nm_is_wireless_on,
   .iface_set_enabled_cb = abc_wifi_config_nm_enable_wireless,
+  .iface_is_connected_cb = abc_wifi_config_nm_is_connected,
   .iface_connect_cb = abc_wifi_config_nm_connect
 };
 
