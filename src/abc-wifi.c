@@ -88,12 +88,14 @@ static void print_sll_addr (struct sockaddr_ll * a, char * desc)
 
 static int abc_wifi_is_enabled ()
 {
-  return wifi_config_iface->iface_is_enabled_cb ();
+  return wifi_config_iface->iface_is_enabled_cb () &&
+         wifi_config_iface->iface_is_connected_cb ();
 }
 
 static int abc_wifi_set_enabled (int state)
 {
-  return wifi_config_iface->iface_set_enabled_cb (state);
+  return wifi_config_iface->iface_set_enabled_cb (state) &&
+         wifi_config_iface->iface_connect_cb ();
 }
 
 /* returns -1 if the interface is not found */
