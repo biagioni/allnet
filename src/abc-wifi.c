@@ -31,7 +31,6 @@
 /* forward declarations */
 static int abc_wifi_init (const char * interface, int * sock,
                 struct sockaddr_ll * address, struct sockaddr_ll * bc);
-static int abc_wifi_is_wireless_on ();
 static int abc_wifi_is_enabled ();
 static int abc_wifi_set_enabled (int state);
 
