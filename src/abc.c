@@ -644,7 +644,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   iface->init_iface_cb (interface, &sockfd_global, &if_address, &bc_address);
   if (iface->iface_is_enabled_cb () < 0) {
     snprintf (log_buf, LOG_SIZE,
-              "unable to bring up interface %s, for now aborting\n", interface);
+              "abc: unable to bring up interface %s\n", interface);
     log_print ();
     return;
   }
