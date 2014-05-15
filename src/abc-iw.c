@@ -170,7 +170,7 @@ static int abc_wifi_config_iw_connect ()
       sudo iw dev $if set type ibss
       sudo iw dev $if ibss join allnet 2412
  */
-  const char * mess;
+  const char * mess = NULL;
   if (geteuid () != 0)
     mess = "probably need to be root";
   int r = if_command ("iw dev %s set type ibss", self.iface, 240,
