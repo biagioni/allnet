@@ -68,7 +68,22 @@ struct addr_info {
   struct internet_addr ip;   /* how to reach the peer */
   unsigned char destination [ADDRESS_SIZE];
   unsigned char nbits;       /* how many bits of the destination are given */
-  char pad [7];              /* always sent as 0 */
+  unsigned char type;        /* Rendezvous Point or DHT node */
+  char pad [6];              /* always sent as 0 */
+};
+
+#define ALLNET_ADDR_INFO_NONE	0
+#define ALLNET_ADDR_INFO_RP	1
+#define ALLNET_ADDR_INFO_DHT	2
+
+/* used to record address mapping information in the DHT to aip */
+struct dht_range {
+  struct internet_addr ip;   /* how to reach the peer */
+  unsigned char start [ADDRESS_SIZE];
+  unsigned char finish [ADDRESS_SIZE];
+  unsigned char start_nbits;  /* how many bits of start are given  */
+  unsigned char finish_nbits; /* how many bits of finish are given */
+  char pad [6];              /* always sent as 0 */
 };
 
 /* sent to a connecting listener to let them know who else to connect to */
@@ -82,15 +97,11 @@ struct allnet_mgmt_peers {
 
 /* a DHT message reports a number of DHT nodes, each claiming to accept
  * messages for a given destination address */
-struct allnet_dht_info {
-  unsigned char destination [ADDRESS_SIZE];
-  struct internet_addr ip;      /* how to reach the peer */
-};
 
 struct allnet_mgmt_dht {
   unsigned char num_dht_nodes;
   char pad [7];
-  struct allnet_dht_info nodes [0];   /* how to reach each DHT */
+  struct addr_info nodes [0];   /* how to reach each DHT */
 };
 
 /* a trace should contain a timestamp of the time of receipt using the

@@ -46,7 +46,8 @@ bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/acache \
 	$(ALLNET_BINDIR)/astart \
 	$(ALLNET_BINDIR)/astop \
-	$(ALLNET_BINDIR)/abc
+	$(ALLNET_BINDIR)/abc \
+	$(ALLNET_BINDIR)/adht
 
 __ALLNET_BINDIR__ad_SOURCES = ad.c ${adlink} ${includes}
 __ALLNET_BINDIR__abc_SOURCES = abc.c abc-iface.h ${abcmodules} ${includes} lib/mgmt.h lib/pqueue.h
@@ -56,6 +57,8 @@ __ALLNET_BINDIR__alocal_SOURCES = alocal.c listen.c ${includes} lib/mgmt.h
 __ALLNET_BINDIR__alocal_LDFLAGS = -lpthread
 __ALLNET_BINDIR__aip_SOURCES = aip.c listen.c ${includes} lib/mgmt.h
 __ALLNET_BINDIR__aip_LDFLAGS = -lpthread
+__ALLNET_BINDIR__adht_SOURCES = adht.c routing.c ${includes} lib/mgmt.h routing.h
+__ALLNET_BINDIR__adht_LDFLAGS = -lpthread
 __ALLNET_BINDIR__acache_SOURCES = acache.c ${includes}
 __ALLNET_BINDIR__astart_SOURCES = astart.c ${includes}
 __ALLNET_BINDIR__astop_SOURCES = astart.c ${includes}
