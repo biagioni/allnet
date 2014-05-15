@@ -186,6 +186,7 @@ static int abc_wifi_config_iw_connect ()
 /** Returns wlan state (1: enabled or 0: disabled) */
 static int abc_wifi_config_iw_is_wireless_on ()
 {
+  /* TODO: check if already connected to something else (busy) and return 2. */
   return self.is_enabled;
 }
 
