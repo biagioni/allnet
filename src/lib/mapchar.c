@@ -163,7 +163,6 @@ static int string_in_string (char * substring, int substring_length,
 int map_char (char * string, char ** next)
 {
   /* printf ("mapchar (%s) ==> ", string); */
-  char * original_next = *next;
   long long int unicode = get_next_char (string, next);
   if (unicode < 0)
     return MAPCHAR_UNKNOWN_CHAR;

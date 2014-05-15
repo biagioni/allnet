@@ -251,7 +251,6 @@ char * chat_time_to_string (unsigned char * t, int static_result)
   char * result = buffer;
   if (! static_result)
     result = malloc (size);
-  char * p = result;
 
   uint64_t time;
   int time_offset;

@@ -41,9 +41,10 @@ static void remove_tail ()
   if ((head == tail) || (tail->prev == NULL)) {
     tail = NULL;
     head = NULL;
-  } else
+  } else {
     tail->prev->next = NULL;
-  tail = tail->prev;
+    tail = tail->prev;
+  }
 }
 
 /* return 1 for success, 0 if wanted > max_size or priority < tail->priority */

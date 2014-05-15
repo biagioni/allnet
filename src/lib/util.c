@@ -877,9 +877,11 @@ time_t compute_next (time_t from, time_t granularity, int immediate_ok)
 void set_time_random (struct timeval * start, unsigned long long min,
                       unsigned long long max, struct timeval * result)
 {
-  unsigned long long int delta = 0;
-  if (max > min)
-    delta = max - min;
+  if (min <= max) {
+    *result = *start;
+    return;
+  }
+  unsigned long long int delta = max - min;
   unsigned long long int r = random ();
   unsigned long long int us = min + r % delta;
   *result = *start;
