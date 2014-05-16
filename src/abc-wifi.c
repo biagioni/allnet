@@ -130,37 +130,38 @@ static int abc_wifi_init (const char * interface, int * sock,
       int in_use = (is_up == 2);
       printf ("abc-wifi: interface is enabled: %s (%d)\n",
         in_use ? "yes, but busy" : (is_up > 0 ? "yes" : "no"), is_up);
-      if (is_up > 0) {
-        struct timeval midtime;
-        gettimeofday (&midtime, NULL);
-        long long mtime = delta_us (&midtime, &start);
-        if (! in_use) {
-          if (!wifi_config_iface->iface_is_connected_cb ())
-            wifi_config_iface->iface_connect_cb (1);
-          struct timeval finish;
-          gettimeofday (&finish, NULL);
-          long long time = delta_us (&finish, &start);
-          printf ("abc: %s is wireless, %lld.%03lld ms to turn on+off\n",
-                  interface, time / 1000LL, time % 1000LL);
-          printf ("  (%lld.%03lld ms to turn on)\n",
-                  mtime / 1000LL, mtime % 1000LL);
-          abc_iface_wifi.iface_on_off_ms = time;
-        }
-        /* create the socket and initialize the address */
-        *sock = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
-        *address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
-        if (ifa_loop->ifa_flags & IFF_BROADCAST)
-          *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
-        else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
-          *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_dstaddr));
-        else
-          default_broadcast_address (bc);
-        bc->sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
-        print_sll_addr (address, "interface address");
-        print_sll_addr (bc,      "broadcast address");
-        freeifaddrs (ifa);
-        return 1;
+      if (is_up == 0)
+        wifi_config_iface->iface_set_enabled_cb (1);
+
+      struct timeval midtime;
+      gettimeofday (&midtime, NULL);
+      long long mtime = delta_us (&midtime, &start);
+      if (! in_use) {
+        if (!wifi_config_iface->iface_is_connected_cb ())
+          wifi_config_iface->iface_connect_cb (1);
+        struct timeval finish;
+        gettimeofday (&finish, NULL);
+        long long time = delta_us (&finish, &start);
+        printf ("abc: %s is wireless, %lld.%03lld ms to turn on+off\n",
+                interface, time / 1000LL, time % 1000LL);
+        printf ("  (%lld.%03lld ms to turn on)\n",
+                mtime / 1000LL, mtime % 1000LL);
+        abc_iface_wifi.iface_on_off_ms = time;
       }
+      /* create the socket and initialize the address */
+      *sock = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
+      *address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
+      if (ifa_loop->ifa_flags & IFF_BROADCAST)
+        *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
+      else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
+        *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_dstaddr));
+      else
+        default_broadcast_address (bc);
+      bc->sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
+      print_sll_addr (address, "interface address");
+      print_sll_addr (bc,      "broadcast address");
+      freeifaddrs (ifa);
+      return 1;
     }
     ifa_loop = ifa_loop->ifa_next;
   }
