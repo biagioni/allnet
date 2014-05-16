@@ -13,7 +13,7 @@
 #include <netpacket/packet.h> /* struct sockaddr_ll */
 #include <sys/time.h>         /* gettimeofday */
 
-#include "lib/packet.h"
+#include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */
 #include "lib/util.h"         /* delta_us */
 
 #include "abc-iface.h"
