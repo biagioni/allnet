@@ -49,13 +49,13 @@
 
 #include "abc-iface.h"
 #include "abc-wifi.h"         /* abc_iface_wifi */
-#include "lib/packet.h"
-#include "lib/mgmt.h"
+#include "lib/packet.h"       /* struct allnet_header */
+#include "lib/mgmt.h"         /* struct allnet_mgmt_header */
 #include "lib/log.h"
-#include "lib/pipemsg.h"
-#include "lib/priority.h"
+#include "lib/pipemsg.h"      /* receive_pipe_message_fd, receive_pipe_message_any */
+#include "lib/priority.h"     /* ALLNET_PRIORITY_FRIENDS_LOW */
 #include "lib/util.h"         /* delta_us */
-#include "lib/pqueue.h"
+#include "lib/pqueue.h"       /* queue_max_priority */
 
 
 /* we don't know how big messages will be on the interface until we get them */
@@ -115,10 +115,10 @@ static void clear_nonces (int mine, int other)
   bzero (zero_nonce, NONCE_SIZE);
 }
 
-/* sets the high priority variable, and turns on the interface if
- * we are now in high priority mode */
-/* returns the sockfd if we are in high priority, and -1 otherwise */
-static int check_priority_mode (const char * interface)
+/**
+ * sets the high priority variable
+ * returns the sockfd if we are in high priority, and -1 otherwise
+ */
 {
   if ((! lan_is_on) && (! high_priority) &&
       ((received_high_priority) ||
