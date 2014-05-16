@@ -2,11 +2,12 @@
 
 #include <assert.h>
 #include <dbus-1.0/dbus/dbus.h>
-#include <stdio.h>              /* sprintf */
+#include <stdio.h>              /* fprintf, printf, sprintf */
 #include <stdlib.h>             /* malloc */
-#include <string.h>             /* strcmp, strncopy */
+#include <string.h>             /* strcmp, strncpy */
 #include <unistd.h>             /* sleep */
 
+#include "lib/util.h"           /* random_bytes */
 #include "abc-wifi.h"           /* abc_wifi_config_iface */
 #include "abc-networkmanager.h"
 
@@ -17,8 +18,11 @@
 
 /* forward declarations */
 static int abc_wifi_config_nm_init (const char * iface);
+static int abc_wifi_config_nm_is_connected ();
 static int abc_wifi_config_nm_connect ();
+static int abc_wifi_config_nm_await_connection ();
 static int abc_wifi_config_nm_is_wireless_on ();
+static int abc_wifi_config_nm_await_wireless ();
 static int abc_wifi_config_nm_enable_wireless (int state);
 
 
@@ -39,6 +43,7 @@ abc_wifi_config_iface abc_wifi_config_nm_wlan = {
   .init_iface_cb = abc_wifi_config_nm_init,
   .iface_is_enabled_cb = abc_wifi_config_nm_is_wireless_on,
   .iface_set_enabled_cb = abc_wifi_config_nm_enable_wireless,
+  .iface_is_connected_cb = abc_wifi_config_nm_is_connected,
   .iface_connect_cb = abc_wifi_config_nm_connect
 };
 
@@ -87,8 +92,8 @@ static int init_dbus_connection (DBusConnection ** conn)
   dbus_error_init (&err);
   *conn = dbus_bus_get (DBUS_BUS_SYSTEM, &err);
   if (dbus_error_is_set (&err)) {
-    // TODO: allnet log
-    // fprintf (stderr, "dbus: Connection Error (%s)\n", err.message);
+    /* TODO: allnet log */
+    fprintf (stderr, "dbus: Connection Error (%s)\n", err.message);
     dbus_error_free (&err);
   }
   return (conn != NULL);
@@ -114,11 +119,10 @@ static int call_nm_dbus_method (DBusMessage ** msg)
   // send message and get a handle for a reply
   if (!dbus_connection_send_with_reply (self.conn, *msg, &pending, -1)) {
     /* -1 param is default timeout */
-    // fprintf (stderr, "dbus: Out of memory!\n"); // TODO: allnet log
     return 0;
   }
   if (pending == NULL) {
-    // fprintf (stderr, "dbus: NULL Pending call\n"); // TODO: allnet log
+    fprintf (stderr, "abc-nm: error calling dbus method (pending == NULL)\n");
     return 0;
   }
   dbus_connection_flush (self.conn);
@@ -192,18 +196,24 @@ static int setup_connection ()
 
   /* Begin of connection settings section */
   /* All connection settings must be defined here */
-  char uuid[37]; /* e.g. "c25da751-1b91-4262-9f94-3dcbddfaee5e" */
-  random_bytes (uuid, 18);
-  uuid[10] &= 0xBF; /* uuid[19] is one of 8,9,A,B */
-  int i = 17;
-  for (i = 17; i >= 0; --i)
-    sprintf (&uuid[2*i], "%x", uuid[i]);
+  char uuid[37]; /* e.g. "c25da751-1b91-4262-9f94-3dcbddfaee5e" (36) + '\0' */
+  char rand[18];
+  const char hex[] = { '0', '1' ,'2', '3', '4', '5', '6', '7', '8', '9',
+                       'a', 'b', 'c', 'd', 'e', 'f' };
+  random_bytes (rand, sizeof (rand));
+  rand[9] &= 0xFB; /* uuid[19] is one of 8,9,A,B */
+  int i;
+  for (i = 0; i < sizeof (rand); ++i) {
+    uuid[2*i] = hex[(rand[i] >> 4) & 0xF];
+    uuid[2*i + 1] = hex[rand[i] & 0xF];
+  }
+
   uuid[8] = '-';
   uuid[13] = '-';
   uuid[14] = '4';
   uuid[18] = '-';
   uuid[23] = '-';
-  uuid[37] = '\0';
+  uuid[36] = '\0';
   const char * connection = "connection",
              * conn_keys[] = { "id",     "type",           "uuid", "zone" },
              * conn_vals[] = { "AllNet", "802-11-wireless", NULL, "public" };
@@ -295,6 +305,51 @@ static int setup_connection ()
   return 1;
 }
 
+/**
+ * Synchronously await a dbus event.
+ * @param rule valid rule for dbus_bus_add_match ().
+ * @param msg_handler_cb Handler to invoke on matched messages. It is the
+ *     handler's responsability to call dbus_message_is_signal (msg, sig_iface,
+ *     sig_name). The handler must not call dbus_message_unref ().
+ *     This function returns when it times out or the handler returns 0.
+ * @param timeout Minimum timeout in seconds to wait for a message. 0 to wait
+ *     indefinitely.
+ * @return retval, if set by the callback, 0 otherwise.
+ */
+static int nm_dbus_await_match (const char * rule, int (*msg_handler_cb)(DBusMessage *, int * retval, void * data), int timeout, void * data)
+{
+  DBusError err;
+  dbus_error_init (&err);
+
+  int ret = 0;
+  dbus_bus_add_match (self.conn, rule, &err);
+  dbus_connection_flush (self.conn);
+  if (dbus_error_is_set (&err))
+    fprintf (stderr, "abc-nm: match error (%s)\n", err.message);
+
+  else {
+    int i = 0;
+    while (1) {
+      dbus_connection_read_write (self.conn, 0); /* non-blocking */
+      DBusMessage * msg = dbus_connection_pop_message (self.conn);
+      if (msg == NULL) {
+        sleep (1);
+        if (timeout > 0 && ++i > timeout)
+          break;
+        continue;
+      }
+
+      if (!msg_handler_cb (msg, &ret, data)) {
+        dbus_message_unref (msg);
+        break;
+      }
+      dbus_message_unref (msg);
+    }
+  }
+  dbus_bus_remove_match (self.conn, rule, NULL);
+  return ret;
+}
+
 static int abc_wifi_config_nm_is_connected ()
 {
   if (self.nm_act_conn_obj == NULL)
@@ -333,10 +388,8 @@ nm_is_connected_cleanup:
 static int abc_wifi_config_nm_connect ()
 {
   DBusMessage * msg = init_nm_dbus_method_call ("ActivateConnection");
-  if (msg == NULL) {
-    // TODO: fprintf (stderr, "dbus: NULL message\n");
+  if (msg == NULL)
     return -1;
-  }
   const char * specobj = "/"; /* specific_object argument (path of AP object, or "/" for auto */
   DBusMessageIter args;
   dbus_message_iter_init_append (msg, &args);
@@ -351,48 +404,29 @@ static int abc_wifi_config_nm_connect ()
     dbus_message_unref (msg);
     return 0;
   }
-  assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_OBJECT_PATH);
+  if (dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_OBJECT_PATH) {
+    if (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_STRING) {
+      dbus_message_iter_get_basic (&args, &actconnobj);
+      printf ("abc-nm: Error %s\n", actconnobj);
+    } else
+      printf ("abc-nm: Error in connect\n");
+    dbus_message_unref (msg);
+    return 0;
+  }
   dbus_message_iter_get_basic (&args, &actconnobj);
   strncpy (self.nm_act_conn_obj_buf, actconnobj, sizeof (self.nm_act_conn_obj_buf));
   self.nm_act_conn_obj = self.nm_act_conn_obj_buf;
   dbus_message_unref (msg);
+  return abc_wifi_config_nm_await_connection ();
+}
 
-  /* now wait for activation signal... */
-  const char * fmt = "type='signal',interface='" ABC_NM_DBUS_IFACE
-                     ".Connection.Active',path='%s'";
-  char * rule = (char *)malloc ((strlen (fmt) -2 + strlen (actconnobj) + 1) * sizeof (char));
-  sprintf (rule, fmt, actconnobj);
-  DBusError err;
-  dbus_error_init (&err);
-
-  dbus_bus_add_match (self.conn, rule, &err);
-  dbus_connection_flush (self.conn);
-  if (dbus_error_is_set (&err)) {
-    fprintf (stderr, "abc-nm: match error (%s)\n", err.message);
-    free (rule);
-    return 0;
-  }
-
-  int ret = 0;
-  int i = 0;
-  while (1) {
-    dbus_connection_read_write (self.conn, 0); /* non-blocking */
-    msg = dbus_connection_pop_message (self.conn);
-    if (msg == NULL) {
-      sleep (1);
-      fflush(stdout);
-      if (++i > 24) /* wait for at least 25s to activate */
-        break;
-      continue;
-    }
-
-    if (dbus_message_is_signal (msg, ABC_NM_DBUS_IFACE ".Connection.Active", "PropertiesChanged")) {
-      if (!dbus_message_iter_init (msg, &args))
-        goto nm_activate_clean;
-      if (dbus_message_iter_get_arg_type (&args) != DBUS_TYPE_ARRAY) {
-        // fprintf(stderr, "abc-nm: Argument is not an array!\n");
-        goto nm_activate_clean;
-      }
+static int abc_wifi_config_nm_await_connection_handler (DBusMessage * msg, int * retval, void * data)
+{
+  if (dbus_message_is_signal (msg, ABC_NM_DBUS_IFACE ".Connection.Active", "PropertiesChanged")) {
+    DBusMessageIter args;
+    if (dbus_message_iter_init (msg, &args) &&
+        dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_ARRAY)
+    {
       DBusMessageIter arg_a[2];
       dbus_message_iter_recurse (&args, &arg_a[0]);
       do {
@@ -407,20 +441,26 @@ static int abc_wifi_config_nm_connect ()
           assert (dbus_message_iter_get_arg_type (&arg_a[1]) == DBUS_TYPE_VARIANT);
           dbus_uint32_t state;
           retrieve_variant (&arg_a[1], DBUS_TYPE_UINT32, &state);
-          if (state == 2 /* NM_ACTIVE_CONNECTION_STATE_ACTIVATED */) {
-            ret = 1;
-            goto nm_activate_clean;
-          } else if (state == 4 /* NM_ACTIVE_CONNECTION_STATE_DEACTIVATED */)
+          if (state == 2 /* NM_ACTIVE_CONNECTION_STATE_ACTIVATED */)
+            *retval = 1;
+          else if (state == 4 /* NM_ACTIVE_CONNECTION_STATE_DEACTIVATED */)
             self.nm_act_conn_obj = NULL;
-          goto nm_activate_clean;
+          return 0;
         }
       } while (dbus_message_iter_next (&arg_a[0]));
     }
-nm_activate_clean:
-    dbus_message_unref(msg);
   }
+  return 1;
+}
 
-  dbus_bus_remove_match (self.conn, rule, NULL);
+/** Wait for activation signal... */
+static int abc_wifi_config_nm_await_connection ()
+{
+  const char * fmt = "type='signal',interface='" ABC_NM_DBUS_IFACE
+                     ".Connection.Active',path='%s'";
+  char * rule = (char *)malloc ((strlen (fmt) -2 + strlen (self.nm_act_conn_obj) + 1) * sizeof (char));
+  sprintf (rule, fmt, self.nm_act_conn_obj);
+  int ret = nm_dbus_await_match (rule, abc_wifi_config_nm_await_connection_handler, 25, NULL);
   free (rule);
   return ret;
 }
@@ -437,9 +477,7 @@ static int get_conn_obj ()
     goto cleanup_fail;
 
   DBusMessageIter args;
-  if (!dbus_message_iter_init (msg, &args)) {
-    /* TODO: log fprintf (stderr, "dbus: Message has no arguments\n"); */
-  } else {
+  if (dbus_message_iter_init (msg, &args)) {
     assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_ARRAY);
     DBusMessageIter arg_var;
     dbus_message_iter_recurse (&args, &arg_var);
@@ -673,16 +711,60 @@ static int abc_wifi_config_nm_init (const char * iface)
     return 0;
 
   if (!get_device_path ()) {
-    // TODO: allnet log
+    fprintf (stderr, "abc-nm: error: failed to resolve interface dbus object\n"); /* TODO: allnet log */
     return 0;
   }
 
   if (!get_conn_obj ()) {
-    // TODO: allnet log
+    printf ("abc-nm: No NetworkManager connection AllNet found, creating new one\n");
     if (!setup_connection ())
       return 0;
   }
   return 1;
+}
+
+static int abc_wifi_config_nm_await_wireless_handler (DBusMessage * msg, int * retval, void * data)
+{
+  if (dbus_message_is_signal (msg, ABC_NM_DBUS_IFACE ".Device.Wireless", "PropertiesChanged")) {
+    DBusMessageIter args;
+    if (dbus_message_iter_init (msg, &args) &&
+        dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_ARRAY)
+    {
+      DBusMessageIter arg_a[2];
+      dbus_message_iter_recurse (&args, &arg_a[0]);
+      do {
+        assert (dbus_message_iter_get_arg_type (&arg_a[0]) == DBUS_TYPE_DICT_ENTRY);
+        dbus_message_iter_recurse (&arg_a[0], &arg_a[1]);
+        assert (dbus_message_iter_get_arg_type (&arg_a[1]) == DBUS_TYPE_STRING);
+        const char * keyval;
+        dbus_message_iter_get_basic (&arg_a[1], &keyval);
+        if (strcmp (keyval, "State") == 0) {
+          int has_next = dbus_message_iter_next (&arg_a[1]);
+          assert (has_next);
+          assert (dbus_message_iter_get_arg_type (&arg_a[1]) == DBUS_TYPE_VARIANT);
+          dbus_uint32_t state;
+          retrieve_variant (&arg_a[1], DBUS_TYPE_UINT32, &state);
+          /* All states between those are active states */
+          if (state > 20 || /* NM_DEVICE_STATE_UNAVAILABLE */
+              state <= 100) /* NM_DEVICE_STATE_ACTIVATED */
+            *retval = 1;
+          return 0;
+        }
+      } while (dbus_message_iter_next (&arg_a[0]));
+    }
+  }
+  return 1;
+}
+
+static int abc_wifi_config_nm_await_wireless (int state)
+{
+  const char * fmt = "type='signal',interface='" ABC_NM_DBUS_IFACE
+                     ".Device.Wireless',path='%s'";
+  char * rule = (char *)malloc ((strlen (fmt) -2 + strlen (self.nm_iface_obj) + 1) * sizeof (char));
+  sprintf (rule, fmt, self.nm_iface_obj);
+  int ret = nm_dbus_await_match (rule, abc_wifi_config_nm_await_wireless_handler, 5, NULL);
+  free (rule);
+  return ret == state;
 }
 
 static int abc_wifi_config_nm_enable_wireless (int state)
@@ -705,5 +787,5 @@ static int abc_wifi_config_nm_enable_wireless (int state)
   dbus_message_unref (msg);
   if (!state)
     self.nm_act_conn_obj = NULL;
-  return ret;
+  return ret && abc_wifi_config_nm_await_wireless (state);
 }

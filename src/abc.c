@@ -49,13 +49,13 @@
 
 #include "abc-iface.h"
 #include "abc-wifi.h"         /* abc_iface_wifi */
-#include "lib/packet.h"
-#include "lib/mgmt.h"
+#include "lib/packet.h"       /* struct allnet_header */
+#include "lib/mgmt.h"         /* struct allnet_mgmt_header */
 #include "lib/log.h"
-#include "lib/pipemsg.h"
-#include "lib/priority.h"
+#include "lib/pipemsg.h"      /* receive_pipe_message_fd, receive_pipe_message_any */
+#include "lib/priority.h"     /* ALLNET_PRIORITY_FRIENDS_LOW */
 #include "lib/util.h"         /* delta_us */
-#include "lib/pqueue.h"
+#include "lib/pqueue.h"       /* queue_max_priority */
 
 
 /* we don't know how big messages will be on the interface until we get them */
@@ -115,10 +115,11 @@ static void clear_nonces (int mine, int other)
   bzero (zero_nonce, NONCE_SIZE);
 }
 
-/* sets the high priority variable, and turns on the interface if
- * we are now in high priority mode */
-/* returns the sockfd if we are in high priority, and -1 otherwise */
-static int check_priority_mode (const char * interface)
+/**
+ * sets the high priority variable
+ * returns the sockfd if we are in high priority, and -1 otherwise
+ */
+static int check_priority_mode ()
 {
   if ((! lan_is_on) && (! high_priority) &&
       ((received_high_priority) ||
@@ -515,7 +516,7 @@ static void handle_network_message (char * message, int msize,
 static void handle_quiet (struct timeval * quiet_end,
                           const char * interface, int rpipe, int wpipe)
 {
-  int sockfd = check_priority_mode (interface);
+  int sockfd = check_priority_mode ();
   while (is_before (quiet_end)) {
     char * message;
     int fd;
@@ -535,7 +536,7 @@ static void handle_quiet (struct timeval * quiet_end,
                                 &fake_type, &fake_size, fake_message);
       free (message);
       /* see if priority has changed */
-      sockfd = check_priority_mode (interface);
+      sockfd = check_priority_mode ();
     }
   } 
 }
@@ -545,7 +546,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
                           const char * interface, int rpipe, int wpipe,
                           struct sockaddr * bc_addr, socklen_t alen)
 {
-  int sockfd = check_priority_mode (interface);
+  int sockfd = check_priority_mode ();
   struct timeval * beacon_deadline = NULL;
   struct timeval time_buffer;   /* beacon_deadline sometimes points here */
   while (is_before (t)) {
@@ -574,7 +575,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
                       bc_addr, alen);
       }
       /* see if priority has changed */
-      sockfd = check_priority_mode (interface);
+      sockfd = check_priority_mode ();
     }
     if ((beacon_deadline != NULL) && (! is_before (beacon_deadline))) {
       /* we have not been granted permission to send, allow new beacons */
@@ -638,16 +639,22 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
 
   struct timeval quiet_end;   /* should we keep quiet? */
   gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
-  /* init sockfd and set two globals: &sockfd_global and iface_is_on */
-  iface->init_iface_cb (interface, &sockfd_global, &if_address, &bc_address);
-  if (iface->iface_is_enabled_cb () < 0) {
+  /* init sockfd and set global variable sockfd_global */
+  if (!iface->init_iface_cb (interface, &sockfd_global, &if_address, &bc_address)) {
     snprintf (log_buf, LOG_SIZE,
-              "unable to bring up interface %s, for now aborting\n", interface);
+              "abc: unable initialize interface %s\n", interface);
+    log_print ();
+    return;
+  }
+  int is_on = iface->iface_is_enabled_cb ();
+  if (is_on < 0 || is_on == 0 && iface->iface_set_enabled_cb (1) != 1) {
+    snprintf (log_buf, LOG_SIZE,
+              "abc: unable to bring up interface %s\n", interface);
     log_print ();
     return;
   }
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
-  /* check_priority_mode (interface); called by handle_until */
+  /* check_priority_mode (); called by handle_until */
   while (1)
     one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_ll),
                &quiet_end);
