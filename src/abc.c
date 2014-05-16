@@ -119,6 +119,7 @@ static void clear_nonces (int mine, int other)
  * sets the high priority variable
  * returns the sockfd if we are in high priority, and -1 otherwise
  */
+static int check_priority_mode ()
 {
   if ((! lan_is_on) && (! high_priority) &&
       ((received_high_priority) ||
@@ -516,7 +517,7 @@ static void handle_network_message (char * message, int msize,
 static void handle_quiet (struct timeval * quiet_end,
                           const char * interface, int rpipe, int wpipe)
 {
-  int sockfd = check_priority_mode (interface);
+  int sockfd = check_priority_mode ();
   while (is_before (quiet_end)) {
     char * message;
     int fd;
@@ -536,7 +537,7 @@ static void handle_quiet (struct timeval * quiet_end,
                                 &fake_type, &fake_size, fake_message);
       free (message);
       /* see if priority has changed */
-      sockfd = check_priority_mode (interface);
+      sockfd = check_priority_mode ();
     }
   } 
 }
@@ -546,7 +547,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
                           const char * interface, int rpipe, int wpipe,
                           struct sockaddr * bc_addr, socklen_t alen)
 {
-  int sockfd = check_priority_mode (interface);
+  int sockfd = check_priority_mode ();
   struct timeval * beacon_deadline = NULL;
   struct timeval time_buffer;   /* beacon_deadline sometimes points here */
   while (is_before (t)) {
@@ -575,7 +576,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
                       bc_addr, alen);
       }
       /* see if priority has changed */
-      sockfd = check_priority_mode (interface);
+      sockfd = check_priority_mode ();
     }
     if ((beacon_deadline != NULL) && (! is_before (beacon_deadline))) {
       /* we have not been granted permission to send, allow new beacons */
@@ -655,7 +656,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
     return;
   }
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
-  /* check_priority_mode (interface); called by handle_until */
+  /* check_priority_mode (); called by handle_until */
   while (1)
     one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_ll),
                &quiet_end);
