@@ -49,9 +49,9 @@
 
 #include "abc-iface.h"
 #include "abc-wifi.h"         /* abc_iface_wifi */
-#include "lib/packet.h"       /* struct allnet_header */
 #include "lib/mgmt.h"         /* struct allnet_mgmt_header */
 #include "lib/log.h"
+#include "lib/packet.h"       /* struct allnet_header */
 #include "lib/pipemsg.h"      /* receive_pipe_message_fd, receive_pipe_message_any */
 #include "lib/priority.h"     /* ALLNET_PRIORITY_FRIENDS_LOW */
 #include "lib/util.h"         /* delta_us */
