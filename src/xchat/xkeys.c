@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "lib/app_util.h"
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"

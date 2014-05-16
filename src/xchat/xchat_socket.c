@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/ip.h>
 
 #include "lib/packet.h"
