@@ -112,12 +112,13 @@ static int abc_wifi_init (const char * interface, int * sock,
 {
   /* TODO: select wifi_config_iface, currently the first available is chosen */
   wifi_config_iface = wifi_config_types[0];
-  wifi_config_iface->init_iface_cb (interface);
+  if (!wifi_config_iface->init_iface_cb (interface))
+    return 0;
 
   struct ifaddrs * ifa;
   if (getifaddrs (&ifa) != 0) {
     perror ("getifaddrs");
-    exit (1);
+    return 0;
   }
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
@@ -158,11 +159,11 @@ static int abc_wifi_init (const char * interface, int * sock,
         print_sll_addr (address, "interface address");
         print_sll_addr (bc,      "broadcast address");
         freeifaddrs (ifa);
-        return in_use;
+        return 1;
       }
     }
     ifa_loop = ifa_loop->ifa_next;
   }
   freeifaddrs (ifa);
-  return -1;  /* interface not found */
+  return 0;  /* interface not found */
 }
