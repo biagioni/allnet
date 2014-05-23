@@ -131,10 +131,10 @@ int handle_packet (int sock, char * packet, int psize,
 /*    } else if (ack_number == -2) {
         printf ("packet acked again\n"); */
       } else if (is_recently_sent_ack (ack)) {
-        printf ("received my own ack\n");
+        /* printf ("received my own ack\n"); */
       } else {
-        print_buffer (ack, MESSAGE_ID_SIZE, "unknown ack rcvd",
-                      MESSAGE_ID_SIZE, 1);
+        /* print_buffer (ack, MESSAGE_ID_SIZE, "unknown ack rcvd",
+                      MESSAGE_ID_SIZE, 1); */
       }
       fflush (NULL);
 /* */

@@ -306,18 +306,24 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
    * of second_line should still have worked */
 
   if (! parse_seq_time (second_line, seq, time, tz)) {
-    bzero (message_ack, MESSAGE_ID_SIZE);   *seq = 0;  *time = 0;
+    bzero (message_ack, MESSAGE_ID_SIZE);
+    if (seq != NULL)  *seq = 0;
+    if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
   }
 
   char * user_data = index (second_line, '\n');
   if (user_data == NULL) {
-    bzero (message_ack, MESSAGE_ID_SIZE);   *seq = 0;  *time = 0;
+    bzero (message_ack, MESSAGE_ID_SIZE);
+    if (seq != NULL)  *seq = 0;
+    if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
   }
   user_data++;
   if (*user_data != ' ') {
-    bzero (message_ack, MESSAGE_ID_SIZE);   *seq = 0;  *time = 0;
+    bzero (message_ack, MESSAGE_ID_SIZE);
+    if (seq != NULL)  *seq = 0;
+    if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
   }
   user_data++;
