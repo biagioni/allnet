@@ -178,6 +178,7 @@ public class XchatSocket extends Thread {
       socket.send (packet);
     } catch (java.io.IOException e) {
       System.out.println ("send exception: " + e);
+      return -1;
     }
     return time.value;
   }

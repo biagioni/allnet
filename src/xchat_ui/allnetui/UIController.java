@@ -327,9 +327,11 @@ class UIController implements ControllerInterface, UIAPI {
                 String msgText = cp.getMsgToSend();
                 String peer = cp.getContactName();
                 long sentTime = XchatSocket.sendToPeer(peer, msgText);
-                messageSent(peer, sentTime, msgText);
-                System.out.println("UIController.java: sent to " + peer +
-                                   ": " + msgText);
+                if (sentTime > 0) {
+                  messageSent(peer, sentTime, msgText);
+                  System.out.println("UIController.java: sent to " + peer +
+                                     ": " + msgText);
+                }
                 break;
             case ConversationPanel.EXCHANGE_KEYS_COMMAND:
                 // here we yank the message data from the ConversationPanel and 
