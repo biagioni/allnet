@@ -65,16 +65,17 @@ struct internet_addr {
 /* used to send address mapping information to aip,
  * and peer information from aip */
 struct addr_info {
-  struct internet_addr ip;   /* how to reach the peer */
+  struct internet_addr ip; /* how to reach the peer */
   unsigned char destination [ADDRESS_SIZE];
-  unsigned char nbits;       /* how many bits of the destination are given */
-  unsigned char type;        /* Rendezvous Point or DHT node */
+  unsigned char nbits;     /* how many bits of the destination are given */
+  /* for DHT nodes, nbits should always equal ADDRESS_BITS.  Received
+   * entries that have fewer bits should be ignored */
+  unsigned char type;      /* Rendezvous Point or DHT node -- one of: */
+#define ALLNET_ADDR_INFO_TYPE_NONE	0    /* not a valid entry */
+#define ALLNET_ADDR_INFO_TYPE_RP	1
+#define ALLNET_ADDR_INFO_TYPE_DHT	2
   char pad [6];              /* always sent as 0 */
 };
-
-#define ALLNET_ADDR_INFO_NONE	0
-#define ALLNET_ADDR_INFO_RP	1
-#define ALLNET_ADDR_INFO_DHT	2
 
 /* used to record address mapping information in the DHT to aip */
 struct dht_range {

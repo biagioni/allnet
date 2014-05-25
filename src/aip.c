@@ -95,14 +95,14 @@ static void * receive_addrs (void * arg)
       /* error checking, print or abort loop if find inconsistencies */
       if ((ai->ip.ip_version != 6) && (ai->ip.ip_version != 4))
         printf ("ip version %d, expected 4 or 6\n", ai->ip.ip_version);
-      if ((ai->type != ALLNET_ADDR_INFO_RP) &&
-          (ai->type != ALLNET_ADDR_INFO_DHT))
+      if ((ai->type != ALLNET_ADDR_INFO_TYPE_RP) &&
+          (ai->type != ALLNET_ADDR_INFO_TYPE_DHT))
         printf ("ai type %d, expected 1 or 2\n", ai->type);
       printf ("receive_addrs got %d bytes, ", bytes);
       print_addr_info (ai);
-      if (ai->type == ALLNET_ADDR_INFO_RP)
+      if (ai->type == ALLNET_ADDR_INFO_TYPE_RP)
         cache_add (ra->rp_cache, ai); /* if already in cache, records usage */
-      else if (ai->type == ALLNET_ADDR_INFO_DHT)
+      else if (ai->type == ALLNET_ADDR_INFO_TYPE_DHT)
         cache_add (ra->dht_cache, ai); /* if already in cache, records usage */
       else
         printf ("ai type %d, expected 1 or 2\n", ai->type);

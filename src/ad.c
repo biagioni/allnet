@@ -68,7 +68,11 @@ static int process_mgmt (char * message, int msize, int is_local,
   case ALLNET_MGMT_PEER_REQUEST:
   case ALLNET_MGMT_PEERS:
   case ALLNET_MGMT_DHT:
-    return PROCESS_PACKET_LOCAL;  /* forward to local daemons only */
+    if (is_local) {
+      return PROCESS_PACKET_ALL;  /* forward to the DHT */
+    } else {                      /* from local application or DHT daemon */
+      return PROCESS_PACKET_LOCAL;/* only forward to the DHT or other local */
+    }
   case ALLNET_MGMT_TRACE_REQ:
     if ((is_local) && (*priority == ALLNET_PRIORITY_TRACE_FWD)) {
       return PROCESS_PACKET_ALL;  /* forward as a normal data packet */

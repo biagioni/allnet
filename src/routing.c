@@ -75,7 +75,7 @@ int routing_table (struct addr_info * data, int num_entries)
   data->ip.ip_version = 6;
   random_bytes (data->destination, ADDRESS_SIZE);
   data->nbits = 32;
-  data->type = ALLNET_ADDR_INFO_DHT;
+  data->type = ALLNET_ADDR_INFO_TYPE_DHT;
   return 1;
 }
 
