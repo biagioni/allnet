@@ -503,20 +503,23 @@ index, now->tv_sec, now->tv_usec, save_to_intermediate); */
   /* printf ("%ld.%06ld - %ld.%06ld = %lld\n",
           timestamp.tv_sec, timestamp.tv_usec,
           start->tv_sec, start->tv_usec, delta); */
-    printf (" %6lld.%03lldms", delta / 1000LL, delta % 1000LL);
+    if (delta > 0)
+      printf (" %6lld.%03lldms timestamp, ", delta / 1000LL, delta % 1000LL);
+    else
+      printf ("                         ");
   
     delta = delta_us (now, start);
     if ((save_to_intermediate) && (intermediate_arrivals [index].tv_sec == 0))
       intermediate_arrivals [index] = *now;
-    else if (intermediate_arrivals [index].tv_sec != 0)
-      delta = delta_us (intermediate_arrivals + index, start);
-    printf (" timestamp, %6lld.%03lldms rtt,", delta / 1000LL, delta % 1000LL);
+/*    else if (intermediate_arrivals [index].tv_sec != 0)
+      delta = delta_us (intermediate_arrivals + index, start); */
+    printf (" %6lld.%03lldms rtt,", delta / 1000LL, delta % 1000LL);
   }
 }
 
 static void print_entry (struct allnet_mgmt_trace_entry * entry,
                          struct timeval * start, struct timeval * now,
-                         int save_to_intermediate, int print_eol)
+                         int print_eol)
 {
   int index = (entry->hops_seen) & 0xff;
   printf ("%3d ", index);
@@ -533,12 +536,12 @@ static void print_entry (struct allnet_mgmt_trace_entry * entry,
 }
 
 static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
-                                struct timeval * start,
-                                struct timeval * finish)
+                                struct timeval start,
+                                struct timeval finish)
 {
   /* put the unix times into allnet format */
-  start->tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
-  finish->tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
+  start.tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
+  finish.tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
   if (trp->encrypted) {
     printf ("to do: implement decrypting encrypted trace result\n");
     return;
@@ -549,29 +552,29 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
       int i;
       for (i = 1; i < trp->num_entries; i++) {
         printf ("         ");
-        print_times (trp->trace + i, start, finish, 1);
-        print_entry (trp->trace + i, start, finish, 0, 1);
+        print_times (trp->trace + i, &start, &finish, 1);
+        print_entry (trp->trace + i, &start, &finish, 1);
       }
     }
   } else if (trp->num_entries == 2) {
     /* generally two trace entries for intermediate replies */
     printf ("forward: ");
-    print_times (trp->trace + 1, start, finish, 1);
-    print_entry (trp->trace + 0, NULL, NULL, 0, 0);
+    print_times (trp->trace + 1, &start, &finish, 1);
+    print_entry (trp->trace + 0, NULL, NULL, 0);
     printf ("  to");
-    print_entry (trp->trace + 1, start, finish, 1, 1);
+    print_entry (trp->trace + 1, &start, &finish, 1);
   } else if (trp->num_entries == 1) {
     /* generally only one trace entry, so always print the first */
     printf ("local:   ");
-    print_times (trp->trace, start, finish, 1);
-    print_entry (trp->trace, start, finish, 1, 1);
+    print_times (trp->trace, &start, &finish, 1);
+    print_entry (trp->trace, &start, &finish, 1);
   } else {
     printf ("intermediate response with %d entries\n", trp->num_entries);
   }
 }
 
 static void handle_packet (char * message, int msize, char * seeking,
-                           struct timeval * start)
+                           struct timeval start)
 {
 /* print_packet (message, msize, "handle_packet got", 1); */
   if (! is_valid_message (message, msize))
@@ -609,7 +612,7 @@ static void handle_packet (char * message, int msize, char * seeking,
   printf ("%ld.%06ld: ", now.tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX, now.tv_usec);
   print_packet (message, msize, "trace reply packet received", 1);
 */
-  print_trace_result (trp, start, &now);
+  print_trace_result (trp, start, now);
 }
 
 static void wait_for_responses (int sock, char * trace_id, int sec)
@@ -634,7 +637,7 @@ static void wait_for_responses (int sock, char * trace_id, int sec)
       exit (1);
     }
     struct timeval start_copy = start;
-    handle_packet (message, found, trace_id, &start_copy);
+    handle_packet (message, found, trace_id, start_copy);
     free (message);
     remaining = time (NULL) - start.tv_sec;
   }
