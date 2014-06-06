@@ -474,15 +474,43 @@ static unsigned long long int power10 (int n)
   return 10 * power10 (n - 1);
 }
 
-static struct timeval intermediate_arrivals [256];
+struct arrival {
+  struct timeval time;
+  struct allnet_mgmt_trace_entry value;
+};
+
+#define MAX_ARRIVALS	256
+static int num_arrivals = 0;
+static struct arrival arrivals [MAX_ARRIVALS];
+
+/* returns -1 if not found, otherwise the index */
+static int find_arrival (struct allnet_mgmt_trace_entry * entry)
+{
+  int ebits = entry->nbits;
+  int ehops = entry->hops_seen & 0xff;
+/* printf ("\nfinding  %d/%d: ", ebits, ehops);
+print_bitstring (entry->address, 0, ebits, 1); */
+  int i;
+  for (i = 0; i < num_arrivals; i++) {
+    int abits = arrivals [i].value.nbits;
+    int ahops = arrivals [i].value.hops_seen & 0xff;
+/*
+printf ("comparing %d/%d (%d): ", abits, arrivals [i].value.hops_seen,
+        matches (entry->address, ebits, arrivals [i].value.address, abits));
+print_bitstring (arrivals [i].value.address, 0, abits, 1);
+*/
+    if ((abits == ebits) && (ehops == ahops) &&
+        (matches (entry->address, ebits, arrivals [i].value.address, abits)
+         >= ebits))
+      return i;
+  }
+  return -1;
+}
 
 static void print_times (struct allnet_mgmt_trace_entry * entry,
                          struct timeval * start, struct timeval * now,
                          int save_to_intermediate)
 {
-  int index = (entry->hops_seen) & 0xff;
-/* printf ("print_times index %d time %d.%06d, save %d\n",
-index, now->tv_sec, now->tv_usec, save_to_intermediate); */
   if ((start != NULL) && (now != NULL)) {
     unsigned long long int fraction = readb64 (entry->seconds_fraction);
     if (entry->precision <= 64)
@@ -509,10 +537,14 @@ index, now->tv_sec, now->tv_usec, save_to_intermediate); */
       printf ("                         ");
   
     delta = delta_us (now, start);
-    if ((save_to_intermediate) && (intermediate_arrivals [index].tv_sec == 0))
-      intermediate_arrivals [index] = *now;
-/*    else if (intermediate_arrivals [index].tv_sec != 0)
-      delta = delta_us (intermediate_arrivals + index, start); */
+    int index = find_arrival (entry);
+    if (index >= 0) {
+      delta = delta_us (&(arrivals [index].time), start);
+    } else if ((save_to_intermediate) && (num_arrivals + 1 < MAX_ARRIVALS)) {
+      arrivals [num_arrivals].value = *entry;
+      arrivals [num_arrivals].time = *now;
+      num_arrivals++;
+    }
     printf (" %6lld.%03lldms rtt,", delta / 1000LL, delta % 1000LL);
   }
 }
@@ -617,12 +649,7 @@ static void handle_packet (char * message, int msize, char * seeking,
 
 static void wait_for_responses (int sock, char * trace_id, int sec)
 {
-  int i;
-  for (i = 0; i < 256; i++) {
-    intermediate_arrivals [i].tv_sec = 0;
-    intermediate_arrivals [i].tv_usec = 0;
-  }
-
+  num_arrivals = 0;   /* not received anything yet */
   struct timeval start;
   gettimeofday (&start, NULL);
   int remaining = time (NULL) - start.tv_sec;
