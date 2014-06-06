@@ -113,18 +113,18 @@ struct allnet_mgmt_dht {
  * the fraction of a second is in binary, (multiplied by 2^64).
  * A precision gives the number of valid bits in the fraction, and may be 0.
  *
- * since times are sometimes accurate to powers of 10, we use nbits > 64
- * to mean a decimal number <= (10^(nbits-64)) is stored in the low-order
+ * since times are sometimes accurate to powers of 10, we use precision > 64
+ * to mean a decimal number <= (10^(precision-64)) is stored in the low-order
  * part of fraction, and this should be used as the fractional part.
- * if the value > (10^(nbits-64)), the fraction is not valid or usable.
+ * if the value > (10^(precision-64)), the fraction is not valid or usable.
  *
  * The trace may optionally carry an AllNet address.  Any unused bits of
  * the address should be set to zero. */
 struct allnet_mgmt_trace_entry {
   unsigned char precision;      /* see comment */
-  unsigned char nbits;          /* meaningful bits of address, may be zero */
                                 /* or n-64 digits if n > 64 */
                                 /* or -1/0xff/255 for an unused entry */
+  unsigned char nbits;          /* meaningful bits of address, may be zero */
   unsigned char hops_seen;      /* may be zero */
   unsigned char pad [5];
   unsigned char seconds [ALLNET_TIME_SIZE];
