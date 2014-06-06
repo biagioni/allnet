@@ -14,6 +14,10 @@ You can get the source from sourceforge as follows:
 	git remote add origin git://git.code.sf.net/p/allnet/code
 	git pull origin master
 
+For a copy that lets you read and compile the code but not update the
+repository, you can replace the last three lines with:
+	git clone git://git.code.sf.net/p/allnet/code .
+
 At this time there are no official binary releases.
 
 ======================== BUILD ==================================
@@ -32,6 +36,10 @@ Before doing any of this, you may need to install libtool and autoconf.
 On debian/ubuntu and derived systems this requires:
         sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev
 On other systems, use the native package manager to install these packages.
+
+additional packages you may need to install:
+	GIT and SSL: git libssl-dev
+	Java: openjdk-7-jre openjdk-7-jdk
 
 ======================== RUN ==================================
 
