@@ -25,7 +25,6 @@ static int init_xtime (char * arg0)
   int sock = connect_to_local ("xtime", arg0);
   if (sock < 0)
     exit (1);
-  add_pipe (sock);
   return sock;
 }
 

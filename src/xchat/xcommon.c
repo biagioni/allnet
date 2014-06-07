@@ -33,7 +33,6 @@ int xchat_init (char * arg0)
   int sock = connect_to_local ("xcommon", arg0);
   if (sock < 0)
     return -1;
-  add_pipe (sock);
   request_cached_data (sock, 10);
   return sock;
 }

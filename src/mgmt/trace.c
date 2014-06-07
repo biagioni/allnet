@@ -717,7 +717,6 @@ int main (int argc, char ** argv)
   int sock = connect_to_local (argv [0], argv [0]);
   if (sock < 0)
     return 1;
-  add_pipe (sock);
 /* print_buffer (address, abits, "argument address", 8, 1); */
 
   if (is_daemon) {     /* called as daemon */

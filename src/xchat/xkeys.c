@@ -128,7 +128,6 @@ printf ("wait_for_key, nbits %d\n", nbits);
     printf ("error: unable to get my own private key\n");
     exit (1);
   }
-  add_pipe (sock);
   struct timeval finish;
   finish = *start;
   int done = 0;

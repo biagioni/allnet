@@ -106,7 +106,6 @@ static void wait_for_key (int sock, char * secret, char * contact,
 {
   struct timeval start;
   gettimeofday (&start, NULL);
-  add_pipe (sock);
   char * packet;
   int pipe;
   int pri;

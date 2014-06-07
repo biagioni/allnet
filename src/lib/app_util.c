@@ -114,6 +114,7 @@ int connect_to_local (char * program_name, char * arg0)
       return -1;
     }
   }
+  add_pipe (sock);   /* tell pipe_msg to listen to this socket */
   /* it takes alocal up to 50ms to update the list of sockets it listens on.
    * here we wait 60ms so that by the time we return, alocal is listening
    * on this new socket. */
