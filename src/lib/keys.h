@@ -106,9 +106,9 @@ extern char * generate_key (int key_bits, char * phrase, char * lang,
 
 /* these give the "normal" version of the broadcast address, without the
  * language, bits, or both.  The existing string is modified in place */
-extern char * delete_lang (char * key);
-extern char * delete_bits (char * key);
-extern char * delete_lang_bits (char * key);
+extern void delete_lang (char * key);
+extern void delete_bits (char * key);
+extern void delete_lang_bits (char * key);
 
 /* useful, e.g. for requesting a key.  Returns the public key size. */
 /* pubkey and privkey should be free'd when done */

@@ -1157,7 +1157,7 @@ char * generate_key (int key_bits, char * phrase, char * lang,
 
 /* these give the "normal" version of the broadcast address, without the
  * language, bits, or both.  The existing string is modified in place */
-char * delete_lang (char * ahra)
+void delete_lang (char * ahra)
 {
   char * comma = index (ahra, ',');
   if (comma == NULL)
@@ -1176,7 +1176,7 @@ char * delete_lang (char * ahra)
   }
 }
 
-char * delete_bits (char * ahra)
+void delete_bits (char * ahra)
 {
   char * comma = index (ahra, ',');
   if (comma == NULL)
@@ -1195,7 +1195,7 @@ char * delete_bits (char * ahra)
   }
 }
 
-char * delete_lang_bits (char * ahra)
+void delete_lang_bits (char * ahra)
 {
   char * comma = index (ahra, ',');
   if (comma != NULL)
