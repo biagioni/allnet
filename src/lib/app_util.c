@@ -99,6 +99,21 @@ static void seed_rng ()
 /* if (count > 0) printf ("added %d bytes to entropy pool\n", count); */
 }
 
+/* need to keep reading and emptying the socket buffer, otherwise
+ * it will fill and alocal will get an error from sending to us,
+ * and so close the socket. */
+static void * receive_ignore (void * arg)
+{
+  int * sockp = (int *) arg;
+  while (1) {
+    char * message;
+    int priority;
+    int n = receive_pipe_message (*sockp, &message, &priority);
+    /* ignore the message and recycle the storage */
+    free (message);
+  }
+}
+
 /* returns the socket, or -1 in case of failure */
 /* arg0 is the first argument that main gets -- useful for finding binaries */
 int connect_to_local (char * program_name, char * arg0)
@@ -115,7 +130,19 @@ int connect_to_local (char * program_name, char * arg0)
     }
   }
   add_pipe (sock);   /* tell pipe_msg to listen to this socket */
-  /* it takes alocal up to 50ms to update the list of sockets it listens on.
+#ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */
+  if (send_only == 1) {
+    int * arg = malloc_or_fail (sizeof (int), "connect_to_local");
+    *arg = sock;
+    pthread_t receive_thread;
+    if (pthread_create (&receive_thread, NULL, receive_ignore, (void *) arg)
+        != 0) {
+      perror ("connect_to_local pthread_create/receive");
+      return -1;
+    }
+  }
+#endif /* CREATE_READ_IGNORE_THREAD */
+  /* it takes alocal up to 50ms to update the list of sockets it listens on. 
    * here we wait 60ms so that by the time we return, alocal is listening
    * on this new socket. */
   struct timespec sleep;

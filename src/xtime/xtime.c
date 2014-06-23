@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <pthread.h>
 
 #include "lib/packet.h"
 #include "lib/util.h"
@@ -26,6 +27,21 @@ static int init_xtime (char * arg0)
   if (sock < 0)
     exit (1);
   return sock;
+}
+
+/* need to keep reading and emptying the socket buffer, otherwise
+ * it will fill and alocal will get an error from sending to us,
+ * and so close the socket. */
+static void * receive_ignore (void * arg)
+{
+  int * sockp = (int *) arg;
+  while (1) {
+    char * message;
+    int priority;
+    int n = receive_pipe_message (*sockp, &message, &priority);
+    /* ignore the message and recycle the storage */
+    free (message);
+  }
 }
 
 static void wait_until (time_t end_time)
@@ -238,6 +254,11 @@ int main (int argc, char ** argv)
           key->address [1] & 0xff);
   
   int sock = init_xtime (argv [0]);
+  pthread_t receive_thread;
+  if (pthread_create (&receive_thread, NULL, receive_ignore, &sock) != 0) {
+    perror ("xtime pthread_create/receive");
+    return 1;
+  }
 
   while (1)
     announce (interval, sock, hops, key->priv_key, key->priv_klen,
