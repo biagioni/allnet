@@ -113,6 +113,26 @@ int config_file_name (char * program, char * file, char ** name)
   return total_length;
 }
 
+/* returns the (system) time of last modification of the config file, or 0
+ * if the file does not exist */
+time_t config_file_mod_time (char * program, char * file)
+{
+  char * name = NULL;
+  int size = config_file_name (program, file, &name);
+  if (size < 0) {
+    if (name != NULL)
+      free (name);
+    return 0;
+  }
+  struct stat st;
+  int result = stat (name, &st);
+  if (name != NULL)
+    free (name);
+  if (result < 0)
+    return 0;
+  return st.st_mtime;
+}
+
 /* returns a file descriptor, -1 if the file does not exist,
  * or -2 in case of errors */
 int open_read_config (char * program, char * file, int print_errors)

@@ -49,4 +49,11 @@ extern void listen_add_fd (struct listen_info * info, int fd,
 /* call to remove an fd from the data structure */
 extern void listen_remove_fd (struct listen_info * info, int fd);
 
+/* returned addr_info is statically allocated (until remove_fd is called),
+ * do not modify in any way.  Returns NULL for no match */
+extern struct addr_info * listen_fd_addr (struct listen_info * info, int fd);
+
+extern int already_listening (struct addr_info * ai,
+                              struct listen_info * info);
+
 #endif /* LISTEN_H */

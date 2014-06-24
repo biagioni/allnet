@@ -140,9 +140,11 @@ static int add_my_entry (char * in, int insize, struct allnet_header * inhp,
     printf ("add_my_entry unable to allocate %d bytes for %d\n", needed, n);
     return 0;
   }
+/*
   packet_to_string (in, insize, "add_my_entry original packet", 1,
                     log_buf, LOG_SIZE);
   log_print ();
+*/
 
   /* can copy the header verbatim, and all of the trace request
    * except the pubkey */
@@ -177,9 +179,11 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
                              char ** result)
 {
   *result = NULL;
+/*
   snprintf (log_buf, LOG_SIZE, "making trace reply with %d entries, int %d\n",
             num_entries, intermediate);
   log_print ();
+ */
   int insize_needed =
     ALLNET_TRACE_REQ_SIZE (inhp->transport, intrp->num_entries, 0);
   if (insize < insize_needed) {
@@ -235,6 +239,34 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   return size_needed;
 }
 
+/* see if adht has an address, if so, use that */
+static void get_my_addr (char * my_addr, int my_addr_size)
+{
+  random_bytes (my_addr, my_addr_size);  /* in case cannot find in file */
+  int fd = open_read_config ("adht", "peers", 1);
+  if (fd < 0)
+    return;
+#define EXPECTED_FIRST_LINE	33  /* first line should always be 33 bytes */
+  char line [EXPECTED_FIRST_LINE];
+  int n = read (fd, line, EXPECTED_FIRST_LINE);
+  close (fd);
+  if (n != EXPECTED_FIRST_LINE)
+    return;
+  line [EXPECTED_FIRST_LINE - 1] = '\0';  /* terminate by overwriting \n */
+#undef EXPECTED_FIRST_LINE
+  int i;
+  char * start = line + 9;
+  for (i = 0; i < ADDRESS_SIZE; i++) {
+    char * end;
+    my_addr [i] = strtol (start, &end, 16);
+    if (start == end) {   /* nothing read */
+      random_bytes (my_addr, my_addr_size);
+      return;
+    }
+    start = end;
+  }
+}
+
 static void debug_prt_trace_id (void * state, void * n)
 {
   print_buffer (n, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 1);
@@ -281,7 +313,10 @@ static void acknowledge_bcast (int sock, char * message, int msize)
     return;
   if (! send_pipe_message_free (sock, (char *) ack, asize,
                                 ALLNET_PRIORITY_DEFAULT_LOW))
-    printf ("unable to send trace response\n");
+    snprintf (log_buf, LOG_SIZE, "unable to send broadcast ack\n");
+  else
+    snprintf (log_buf, LOG_SIZE, "sent broadcast ack\n");
+  log_print ();
 }
 
 static void respond_to_trace (int sock, char * message, int msize,
@@ -292,11 +327,6 @@ static void respond_to_trace (int sock, char * message, int msize,
   /* ignore any packet other than valid trace requests with at least 1 entry */
   if (msize <= ALLNET_HEADER_SIZE)
     return;
-  snprintf (log_buf, LOG_SIZE, "got %d bytes, %d %d\n", msize,
-            match_only, forward_only);
-  log_print ();
-  packet_to_string (message, msize, "respond_to_trace", 1, log_buf, LOG_SIZE);
-  log_print ();
   struct allnet_header * hp = (struct allnet_header *) message;
   if ((hp->message_type != ALLNET_TYPE_MGMT) ||
       (msize < ALLNET_TRACE_REQ_SIZE (hp->transport, 1, 0)))
@@ -311,12 +341,19 @@ static void respond_to_trace (int sock, char * message, int msize,
   struct allnet_mgmt_trace_req * trp =
     (struct allnet_mgmt_trace_req *)
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-  int n = (trp->num_entries & 0xff);
+  int off = snprintf (log_buf, LOG_SIZE,
+                      "respond_to_trace got %d byte trace request, %d %d: ",
+                      msize, match_only, forward_only);
+  packet_to_string (message, msize, NULL, 1, log_buf + off, LOG_SIZE - off);
+  log_print ();
+  int num_entries = (trp->num_entries & 0xff);
   int k = readb16 (trp->pubkey_size);
 /* snprintf (log_buf, LOG_SIZE, "packet has %d entries %d key, size %d/%zd\n",
-            n, k, msize, ALLNET_TRACE_REQ_SIZE (hp->transport, n, k));
+             num_entries, k, msize,
+             ALLNET_TRACE_REQ_SIZE (hp->transport, num_entries, k));
   log_print (); */
-  if ((n < 1) || (msize < ALLNET_TRACE_REQ_SIZE (hp->transport, n, k)))
+  if ((num_entries < 1) ||
+      (msize < ALLNET_TRACE_REQ_SIZE (hp->transport, num_entries, k)))
     return;
 
   /* found a valid trace request */
@@ -360,43 +397,62 @@ static void respond_to_trace (int sock, char * message, int msize,
     if (! send_pipe_message (sock, message, msize, fwd_priority))
       printf ("unable to forward trace response\n");
     snprintf (log_buf, LOG_SIZE, "forwarded %d bytes\n", msize);
-  } else {   /* add my entry before forwarding */
-    char * new_msg;
-    int n = add_my_entry (message, msize, hp, mp, trp, &timestamp,
-                          my_address, abits, &new_msg);
-    packet_to_string (new_msg, n, "forwarding packet", 1, log_buf, LOG_SIZE);
     log_print ();
-    if ((n <= 0) || (! send_pipe_message (sock, new_msg, n, fwd_priority)))
-      printf ("unable to forward new trace response of size %d\n", n);
-    else if (! send_pipe_message (sock, message, msize, fwd_priority))
-      printf ("unable to forward old trace response\n");
-    snprintf (log_buf, LOG_SIZE, "added and forwarded %d %d\n", n, msize);
-    if (new_msg != NULL)
-      free (new_msg);
+    return;  /* we are done, no need to reply */
+  } /* else: add my entry before forwarding */
+  char * new_msg;
+  int n = add_my_entry (message, msize, hp, mp, trp, &timestamp,
+                        my_address, abits, &new_msg);
+  if (n > 0) {
+    int off = snprintf (log_buf, LOG_SIZE,
+                        "forwarding trace req %d <- %d ", n, msize);
+    packet_to_string (new_msg, n, NULL, 1, log_buf + off, LOG_SIZE - off);
+    log_print ();
   }
-  log_print ();
-  if ((forward_only) || ((match_only) && (nmatch < mbits)) ||
-      (! trp->intermediate_replies))   /* do not reply, we are done */
-    return;
 
-  /* RSVP, the favor of your reply is requested -- respond to the trace */
   char * response;
   int rsize = 0;
-  if (nmatch >= mbits)  /* exact match, send final response */
-    rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
-                              trp, 0, trp->num_entries + 1, &response);
-  else if (hp->hops > 0) /* not my local sender, send back 2 trace entries */
-    rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
-                              trp, 1, 2, &response);
-  else   /* my local sender, send a 1-entry response */
-    rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
-                              trp, 1, 1, &response);
-  if (rsize <= 0)
-    return;
-/* trace messages go with the lowest possible priority */
-  if (! send_pipe_message (sock, response, rsize, ALLNET_PRIORITY_TRACE))
-    printf ("unable to send trace response\n");
-  free (response);
+  if (trp->intermediate_replies) {   /* generate a reply */
+
+    if (nmatch >= mbits)  /* exact match, send final response */
+      rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
+                                trp, 0, trp->num_entries + 1, &response);
+    else if (hp->hops > 0) /* not my local sender, send back 2 trace entries */
+      rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
+                                trp, 1, 2, &response);
+    else   /* my local sender, send a 1-entry response */
+      rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
+                                trp, 1, 1, &response);
+  }
+
+/* send request, reply, or both */
+  char * messages [2];
+  int mlens [2];
+  int priorities [2];
+  messages [0] = new_msg;
+  mlens [0] = n;
+  priorities [0] = fwd_priority;
+  messages [1] = response;
+  mlens [1] = rsize;
+/* trace responses go with the lowest possible priority */
+  priorities [1] = ALLNET_PRIORITY_TRACE;
+
+  int count = 0;  /* how many to send? */
+  int first = 1;  /* send the request first, or only the reply? */
+  if (n > 0) {
+    count = 1;
+    first = 0;
+  }
+  if (rsize > 0)
+    count += 1;
+
+  if (! send_pipe_multiple_free (sock, count, messages + first,
+                                 mlens + first, priorities + first))
+    snprintf (log_buf, LOG_SIZE, "unable to send trace request+reply\n");
+  else
+    snprintf (log_buf, LOG_SIZE, "sent trace request+reply of sizes %d+%d\n",
+              n, rsize);
+  log_print ();
 }
 
 static void main_loop (int sock, char * my_address, int nbits,
@@ -457,14 +513,18 @@ static void send_trace (int sock, char * address, int abits, char * trace_id,
   gettimeofday (&time, NULL);
   init_entry (trp->trace, 0, &time, my_address, my_abits);
 
-/*  print_packet (buffer, total_size, "sending trace", 1); */
+/*  print_packet (buffer, total_size, "sending trace", 1);
   snprintf (log_buf, LOG_SIZE, "sending trace of size %d\n", total_size);
-  log_print ();
+  log_print (); */
   /* sending with priority epsilon indicates to ad that we only want to
    * send to the trace server, which then forwards to everyone else */
-  if (! send_pipe_message (sock, buffer, total_size, ALLNET_PRIORITY_TRACE))
-    printf ("unable to send trace message of %d bytes\n", total_size);
-  free (hp);
+  if (! send_pipe_message_free (sock, buffer, total_size,
+                                ALLNET_PRIORITY_TRACE))
+    snprintf (log_buf, LOG_SIZE,
+              "unable to send trace message of %d bytes\n", total_size);
+  else
+    snprintf (log_buf, LOG_SIZE, "sent %d-byte trace message\n", total_size);
+  log_print ();
 }
 
 static unsigned long long int power10 (int n)
@@ -644,6 +704,8 @@ static void handle_packet (char * message, int msize, char * seeking,
   printf ("%ld.%06ld: ", now.tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX, now.tv_usec);
   print_packet (message, msize, "trace reply packet received", 1);
 */
+  snprintf (log_buf, LOG_SIZE, "matching trace response of size %d\n", msize);
+  log_print ();
   print_trace_result (trp, start, now);
 }
 
@@ -696,17 +758,22 @@ int main (int argc, char ** argv)
       match_only = 1;
       argc--;
     }
-   }
-      
+  }
+
   if (argc > 2) {
     usage (argv [0], is_daemon);
     return 1;
   }
 
-  char address [100];
-  bzero (address, sizeof (address));  /* set unused part to all zeros */
+  char address [ADDRESS_SIZE];
+  bzero (address, sizeof (address));  /* set any unused part to all zeros */
   int abits = 0;
-  if (argc > 1) {
+  if (is_daemon) {
+    get_my_addr (address, sizeof (address));
+    abits = 16;
+  }
+  if (argc > 1) {   /* use the address specified on the command line */
+    bzero (address, sizeof (address));  /* set unused part to all zeros */
     abits = get_address (argv [1], address, sizeof (address));
     if (abits <= 0) {
       usage (argv [0], is_daemon);

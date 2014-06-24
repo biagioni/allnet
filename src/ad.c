@@ -15,8 +15,9 @@
 #include "lib/util.h"
 
 #define PROCESS_PACKET_DROP	1
-#define PROCESS_PACKET_LOCAL	2
-#define PROCESS_PACKET_ALL	3
+#define PROCESS_PACKET_LOCAL	2  /* only forward to alocal */
+#define PROCESS_PACKET_OUT	3  /* only forward to aip and the abc's */
+#define PROCESS_PACKET_ALL	4  /* forward to alocal, aip, and the abc's */
 
 /* compute a forwarding priority for non-local packets */
 static int packet_priority (char * packet, struct allnet_header * hp, int size,
@@ -68,21 +69,27 @@ static int process_mgmt (char * message, int msize, int is_local,
   case ALLNET_MGMT_PEER_REQUEST:
   case ALLNET_MGMT_PEERS:
   case ALLNET_MGMT_DHT:
-    if (is_local) {               /* from local application or DHT daemon */
-      return PROCESS_PACKET_ALL;  /* forward to the DHT */
+    if (is_local) {               /* from DHT daemon */
+      return PROCESS_PACKET_OUT;  /* forward to the internet */
     } else {
-      return PROCESS_PACKET_LOCAL;/* only forward to the DHT or other local */
+      return PROCESS_PACKET_LOCAL;/* only forward to the DHT */
     }
   case ALLNET_MGMT_TRACE_REQ:
     if ((is_local) && (*priority == ALLNET_PRIORITY_TRACE_FWD)) {
-      return PROCESS_PACKET_ALL;  /* forward as a normal data packet */
-    } else {                      /* from trace app or from outside */
+      /* from trace daemon, send out */
+      return PROCESS_PACKET_OUT;  /* forward as a normal data packet */
+    } else if (is_local) {
+      return PROCESS_PACKET_DROP; /* from trace app, ignore */
+    } else {                      /* from outside */
       return PROCESS_PACKET_LOCAL;/* only forward to the trace server/app */
     }
   case ALLNET_MGMT_TRACE_REPLY:
-    if (! is_local)
-      *priority = ALLNET_PRIORITY_TRACE;
-    return PROCESS_PACKET_ALL;    /* forward to all with very low priority */
+    if (! is_local) {
+      *priority = ALLNET_PRIORITY_TRACE;  /* give it very low priority */
+      return PROCESS_PACKET_ALL;          /* forward locally and out */
+    } else {
+      return PROCESS_PACKET_OUT;          /* local packet, forward out */
+    }
   default:
     snprintf (log_buf, LOG_SIZE, "unknown management message type %d\n",
               ahm->mgmt_type);
@@ -108,8 +115,6 @@ static int process_packet (char * packet, int size, int is_local,
   int time = record_packet_time (packet + HEADER_SKIP, size - HEADER_SKIP, 0);
 #undef HEADER_SKIP
   if ((time > 0) && (time < 60)) {
-    if (is_local)
-      return PROCESS_PACKET_LOCAL;  /* should be OK to forward locally */
     snprintf (log_buf, LOG_SIZE, 
               "packet received in the last %d seconds, dropping\n", time);
     log_print ();
@@ -131,7 +136,7 @@ static int process_packet (char * packet, int size, int is_local,
   }
 
   if (is_local)
-    return PROCESS_PACKET_ALL;
+    return PROCESS_PACKET_OUT;
 
   if (ah->hops >= ah->max_hops)   /* reached hop count */
   /* no matter what it is, only forward locally, i.e. to alocal */
@@ -148,11 +153,12 @@ static void send_all (char * packet, int psize, int priority,
                       int * write_pipes, int nwrite, char * desc)
 {
   int n = snprintf (log_buf, LOG_SIZE,
-                    "send_all (%s) sending %d bytes to %d pipes: ",
-                    desc, psize, nwrite);
+                    "send_all (%s) sending %d bytes priority %d to %d pipes: ",
+                    desc, psize, priority, nwrite);
   int i;
   for (i = 0; i < nwrite; i++)
-    n += snprintf (log_buf + n, LOG_SIZE - n, "%d, ", write_pipes [i]);
+    n += snprintf (log_buf + n, LOG_SIZE - n, "%d%s", write_pipes [i],
+                   (((i + 1) < nwrite) ? ", " : "\n"));
   log_print ();
   for (i = 0; i < nwrite; i++) {
     if (! send_pipe_message (write_pipes [i], packet, psize, priority)) {
@@ -207,6 +213,10 @@ log_print ();
     case PROCESS_PACKET_ALL:
       log_packet ("sending to all", packet, psize);
       send_all (packet, psize, priority, write_pipes, nwrite, "all");
+      break;
+    case PROCESS_PACKET_OUT:
+      log_packet ("sending out", packet, psize);
+      send_all (packet, psize, priority, write_pipes + 1, nwrite - 1, "out");
       break;
     /* all the rest are not forwarded, so priority does not matter */
     case PROCESS_PACKET_LOCAL:   /* send only to alocal */ 

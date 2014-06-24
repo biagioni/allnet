@@ -77,32 +77,25 @@ struct addr_info {
   char pad [6];              /* always sent as 0 */
 };
 
-/* used to record address mapping information in the DHT to aip */
-struct dht_range {
-  struct internet_addr ip;   /* how to reach the peer */
-  unsigned char start [ADDRESS_SIZE];
-  unsigned char finish [ADDRESS_SIZE];
-  unsigned char start_nbits;  /* how many bits of start are given  */
-  unsigned char finish_nbits; /* how many bits of finish are given */
-  char pad [6];              /* always sent as 0 */
-};
-
 /* sent to a connecting listener to let them know who else to connect to */
 /* - sent in response to a peer request, or */
 /* - sent right before closing the connection/forgetting the UDP */
 struct allnet_mgmt_peers {
   unsigned char num_peers;
   char pad [7];              /* always sent as 0 */
-  struct internet_addr peers [0];   /* num_peers internet addr structs */
+  /* num_sender_addresses + num_peers internet addr structs */
+  struct internet_addr peers [0];
 };
 
 /* a DHT message reports a number of DHT nodes, each claiming to accept
  * messages for a given destination address */
-
 struct allnet_mgmt_dht {
-  unsigned char num_dht_nodes;
-  char pad [7];
-  struct addr_info nodes [0];   /* how to reach each DHT */
+  unsigned char num_sender;    /* num addresses belonging to sender */
+  unsigned char num_dht_nodes; /* num addresses belonging to other nodes */
+  char pad [6];
+  unsigned char timestamp  [ALLNET_TIME_SIZE];
+  /* how to reach each DHT node, beginning with the sender */
+  struct addr_info nodes [0];
 };
 
 /* a trace should contain a timestamp of the time of receipt using the
@@ -168,6 +161,8 @@ struct allnet_mgmt_trace_reply {
   struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
 };
 
+/* keepalives have no content, only the header */
+
 /* the header that precedes each of the management messages */
 struct allnet_mgmt_header {
   /* specify the kind of management message */
@@ -179,9 +174,7 @@ struct allnet_mgmt_header {
 #define ALLNET_MGMT_DHT			6	/* DHT information */
 #define ALLNET_MGMT_TRACE_REQ		7	/* request a trace response */
 #define ALLNET_MGMT_TRACE_REPLY		8	/* response to trace req */
-#if 0
-#define ALLNET_MGMT_TRACE_PATH		9	/* response to trace header */
-#endif /* 0 */
+#define ALLNET_MGMT_KEEPALIVE		9	/* to keep connection open */
   unsigned char mgmt_type;   /* every management packet has this */
   char mpad [7];
 };
@@ -195,6 +188,10 @@ struct allnet_mgmt_header {
 #define ALLNET_PEER_SIZE(t, npeers)	\
 	(ALLNET_MGMT_HEADER_SIZE(t) + (sizeof (struct allnet_mgmt_peers)) + \
 	 (npeers) * sizeof (struct internet_addr))
+
+#define ALLNET_DHT_SIZE(t, naddrs)	\
+	(ALLNET_MGMT_HEADER_SIZE(t) + (sizeof (struct allnet_mgmt_dht)) + \
+	 (naddrs) * sizeof (struct addr_info))
 
 #define ALLNET_TRACE_REQ_SIZE(t, n, ks)	\
 	(ALLNET_MGMT_HEADER_SIZE(t) +   \

@@ -19,6 +19,16 @@ extern int send_pipe_message (int pipe, char * message, int mlen, int priority);
 extern int send_pipe_message_free (int pipe, char * message, int mlen,
                                    int priority);
 
+/* send multiple messages at once, again to avoid the mysterious system
+ * delay when sending multiple times in close succession on a socket.
+ * messages are not freed */
+extern int send_pipe_multiple (int pipe, int num_messages,
+                               char ** messages, int * mlens, int * priorities);
+/* same, but messages are freed */
+extern int send_pipe_multiple_free (int pipe, int num_messages,
+                                    char ** messages, int * mlens,
+                                    int * priorities);
+
 /* receives the message into a buffer it allocates for the purpose. */
 /* the caller is responsible for freeing the message buffer. */
 extern int receive_pipe_message (int pipe, char ** message, int * priority);

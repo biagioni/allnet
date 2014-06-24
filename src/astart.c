@@ -98,6 +98,7 @@ static void my_exec0 (char * path, char * program, int fd, pid_t ad)
   }
 }
 
+#if 0
 static void my_exec_trace (char * path, char * program, int fd, pid_t ad)
 {
   /* for now, hard-code to 16-bit random addresses */
@@ -124,6 +125,7 @@ static void my_exec_trace (char * path, char * program, int fd, pid_t ad)
     log_print ();
   }
 }
+#endif 0
 
 static void my_exec2 (char * path, char * program, int * pipes, int fd,
                       pid_t ad)
@@ -332,8 +334,9 @@ int main (int argc, char ** argv)
   int i;
   for (i = 0; i < num_interfaces; i++)
     my_exec3 (path, "abc", pipes + 8 + (4 * i), argv [i + 1], pid_fd, ad_pid);
-  sleep (2);
-  my_exec_trace (path, "traced", pid_fd, ad_pid);
+  sleep (1);
+  my_exec0 (path, "adht", pid_fd, ad_pid);
+  my_exec0 (path, "traced", pid_fd, ad_pid);
   my_exec0 (path, "acache", pid_fd, ad_pid);
   my_exec0 (path, "keyd", pid_fd, ad_pid);
   return 0;

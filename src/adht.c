@@ -86,6 +86,9 @@ open questions:
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <ifaddrs.h>
+#include <sys/types.h>
+#include <net/if.h>
 
 #include "lib/packet.h"
 #include "lib/mgmt.h"
@@ -95,188 +98,184 @@ open questions:
 #include "lib/util.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
-
 #include "routing.h"
 
-#define MAX_PEERS	(64 * 4)
+/* #define ADHT_INTERVAL	86400 /* 24 * 60 * 60 seconds == 1 day */
+/* #define EXPIRATION_MULT	10 /* wait 10 intervals to expire a route */
+#define ADHT_INTERVAL	30    /* for debugging */
+#define EXPIRATION_MULT	3    /* for debugging */
 
-struct addr_info peers [MAX_PEERS];
-
-static void init_peers (int always)
+#if 0
+/* returns the number of entries filled in, 0...max */
+/* entry may be NULL, in which case nothing is filled in */
+int init_own_routing_entries (struct addr_info * entry, int max,
+                              const char * dest, int nbits)
 {
-  static int initialized = 0;
-  if ((initialized) && (! always))
-    return;
-  /* an unused entry has nbits set to 0 -- and might as well clear the rest */
-  bzero ((char *) (peers), sizeof (peers));
-  initialized = 1;
+  int result = 0;
+  if (entry != NULL)
+    bzero (entry, sizeof (struct addr_info) * max);
+
+  struct ifaddrs * ifap;
+  if (getifaddrs (&ifap) != 0) {
+    perror ("getifaddrs");
+    printf ("unable to obtain own IP addresses, ignoring\n");
+    return 0;
+  }
+  struct ifaddrs * next = ifap;
+  while ((max > 0) && (next != NULL)) {
+    int valid = 0;
+    if (next->ifa_flags & IFF_LOOPBACK) {
+#ifdef DEBUG_PRINT
+      printf ("skipping loopback address\n");
+#endif /* DEBUG_PRINT */
+    } else if (next->ifa_addr->sa_family == AF_INET) {
+      struct sockaddr_in * sinp = (struct sockaddr_in *) (next->ifa_addr);
+      int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
+      int next_byte = ((char *) (&(sinp->sin_addr.s_addr))) [1] & 0xff;
+      if ((high_byte != 10) &&  /* anything beginning with 10 is private */
+          ((high_byte != 172) || ((next_byte & 0xf0) != 16)) &&
+          ((high_byte != 192) || (next_byte != 168))) {
+        if (entry != NULL) {
+/* the address is already zeroed.  Assign the IP address to the last four
+ * bytes (entry->ip.ip.s6_addr + 12), and 0xff to the immediately preceding
+ * two bytes */
+          uint32_t s_addr = sinp->sin_addr.s_addr;
+          * ((uint32_t *) (entry->ip.ip.s6_addr + 12)) = s_addr;
+          entry->ip.ip.s6_addr [10] = entry->ip.ip.s6_addr [11] = 0xff;
+          entry->ip.ip_version = 4;
+        }
+        valid = 1;
+      }
+    } else if (next->ifa_addr->sa_family == AF_INET6) {
+      struct sockaddr_in6 * sinp = (struct sockaddr_in6 *) (next->ifa_addr);
+      int high_byte = sinp->sin6_addr.s6_addr [0] & 0xff;
+      int next_bits = sinp->sin6_addr.s6_addr [1] & 0xc0;
+      if ((high_byte != 0xff) &&  /* 0xff/8 is a multicast address */
+                                  /* 0xfe80/10 is a link-local address */
+          ((high_byte != 0xfe) || (next_bits != 0x80))) {
+        if (entry != NULL) {
+          entry->ip.ip = sinp->sin6_addr;
+          entry->ip.ip_version = 6;
+        }
+        valid = 1;
+      } else {
+#ifdef DEBUG_PRINT
+        printf ("ignoring address %02x%02x::\n", high_byte, next_bits);
+#endif /* DEBUG_PRINT */
+      }
+    } else {
+#ifdef DEBUG_PRINT
+      printf ("interface %s, ignoring address family %d\n", next->ifa_name,
+              next->ifa_addr->sa_family);
+#endif /* DEBUG_PRINT */
+    }
+    if (valid) {
+      if (entry != NULL) {
+        entry->ip.port = ALLNET_PORT;
+        memcpy (entry->destination, dest, ADDRESS_SIZE);
+        entry->nbits = nbits;
+        entry->type = ALLNET_ADDR_INFO_TYPE_DHT;
+#ifdef DEBUG_PRINT
+        printf ("%d/%d: added own address: ", result, max);
+        print_addr_info (entry);
+#endif /* DEBUG_PRINT */
+        entry++;
+      }
+      result++;
+      max--;
+    }
+    next = next->ifa_next;
+  }
+  freeifaddrs (ifap);
+  return result;
 }
 
-static void save_peers ()
+/* returns 1 if the given addr is one of mine, or matches my_address */
+int is_own_address (struct addr_info * addr)
 {
-  init_peers (0);
-  int fd = open_write_config ("adht", "peers", 1);
-  if (fd < 0)
-    return;
+  char my_address [ADDRESS_SIZE];
+  routing_my_address (my_address);
+  if (memcmp (addr->destination, my_address, ADDRESS_SIZE) == 0)
+    return 1;
+#define MAX_MY_ADDRS	100
+  struct addr_info mine [MAX_MY_ADDRS];
+  int n = init_own_routing_entries (mine, addr->destination, MAX_MY_ADDRS);
+#undef MAX_MY_ADDRS
   int i;
-  for (i = 0; i < MAX_PEERS; i++) {
-    if (peers [i].nbits != 0) {
-      char line [300];
-      char buf [200];
-      addr_info_to_string (peers + i, buf, sizeof (buf));
-      snprintf (line, sizeof (line), "%d:%s", i, buf);
-      write (fd, line, strlen (line));
-    }
-  }
-  close (fd);
-}
-
-static int read_line (int fd, char * buf, int bsize)
-{
-  if (bsize <= 0)
-    return 0;
-  buf [0] = '\0';
-  int index = 0;
-  while (1) {
-    if (index + 1 >= bsize)
-      return (index > 0);
-    buf [index + 1] = '\0';   /* set this in case we return */
-    char cbuf [1];
-    if (read (fd, cbuf, 1) != 1) {
-      return (index > 0);
-    }
-    if (cbuf [0] == '\n')      /* do not include the newline in the string */
+  for (i = 0; i < n; i++)
+    if (same_ai (mine + i, addr))
       return 1;
-    buf [index++] = cbuf [0];
-  }
-  return 0;   /* should never happen */
+  return 0;
 }
 
-/* returns the new input after skipping all of the chars read into buffer */
-static char * read_buffer (char * in, int nbytes, char * buf, int bsize)
+#endif /* 0 */
+
+static void ping_all_pending (int sock, char * my_address, int nbits)
 {
-  if (nbytes > bsize)
-    nbytes = bsize;
-  while (nbytes > 0) {
-    if ((*in == '.') || (*in == ' '))
-      in++;
-    char * end;
-    buf [0] = strtol (in, &end, 16);
-    if (end == in) {
-      return in;
+#define MAX_MY_ADDRS	10
+  int dsize = ALLNET_DHT_SIZE (0, MAX_MY_ADDRS);
+  int msize;
+/* for now, create a packet addressed to my own address.  In the loop,
+ * replace this address with the actual address we are sending to */
+  struct allnet_header * hp =
+    create_packet (dsize - ALLNET_SIZE (0), ALLNET_TYPE_MGMT, 1,
+                   ALLNET_SIGTYPE_NONE,
+                   my_address, nbits, my_address, ADDRESS_BITS,
+                   NULL, &msize);
+  if (msize != dsize) {
+    printf ("error: created message expected size %d, actual %d\n",
+            dsize, msize);
+    exit (1);  /* for now */
+  }
+  int t = hp->transport;
+  char * message = (char *) hp;
+  bzero (message + ALLNET_SIZE (t), msize - ALLNET_SIZE (t));
+  struct allnet_mgmt_header * mhp = 
+    (struct allnet_mgmt_header *) (message + ALLNET_SIZE (t));
+  struct allnet_mgmt_dht * mdp = 
+    (struct allnet_mgmt_dht *) (message + ALLNET_MGMT_HEADER_SIZE (t));
+  mhp->mgmt_type = ALLNET_MGMT_DHT;
+  int n = init_own_routing_entries (mdp->nodes, MAX_MY_ADDRS,
+                                    my_address, ADDRESS_BITS);
+  mdp->num_sender = n;
+  mdp->num_dht_nodes = 0;
+  writeb64 (mdp->timestamp, allnet_time ());
+  if (n < MAX_MY_ADDRS)
+    msize -= (MAX_MY_ADDRS - n) * sizeof (struct addr_info);
+#undef MAX_MY_ADDRS
+  int iter = 0;
+  struct addr_info ai;
+  while ((iter = routing_ping_iterator (iter, &ai)) >= 0) {
+    memcpy (hp->destination, ai.destination, ADDRESS_SIZE);
+    hp->dst_nbits = ai.nbits;
+    packet_to_string (message, msize, "ping_all_pending sending", 1,
+                      log_buf, LOG_SIZE);
+    log_print ();
+    if (! send_pipe_message (sock, message, msize,
+                             ALLNET_PRIORITY_LOCAL_LOW)) {
+      printf ("unable to send dht ping packet to socket %d\n", sock);
+      exit (1);
     }
-    in = end;
-    buf++;
-    nbytes--;
+    sleep (1); /* sleep a bit between messages, to avoid oveflowing the pipe */
   }
-  return in;
+  free (message);
 }
 
-static void load_peer (struct addr_info * peer, char * line)
-{
-  /* printf ("load_peer parsing line %s\n", line); */
-  if (*line != ':')
-    return;
-  line++;
-  if (*line != ' ')
-    return;
-  line++;
-  char * end;
-  int ptr = strtol (line, &end, 16);
-  if (end == line)
-    return;
-  if ((end [0] != ' ') || (end [1] != '('))
-    return;
-  line = end + 2;
-  int nbits = strtol (line, &end, 10);
-  if (end == line)
-    return;
-  if ((end [0] != ')') || (end [1] != ' '))
-    return;
-  line = end + 2;
-  strtol (line, &end, 10);
-  if ((end == line) || (memcmp (end, " bytes: ", 8) != 0))
-    return;
-  line = end + 8;
-  char address [ADDRESS_SIZE];
-  bzero (address, sizeof (address));
-  line = read_buffer (line, (nbits + 7) / 8, address, sizeof (address));
-  if (memcmp (line, ", v ", 4) != 0)
-    return;
-  line += 4;
-  int ipversion = strtol (line, &end, 10);
-  if (end == line)
-    return;
-  if ((ipversion != 4) && (ipversion != 6)) {
-    printf ("error: IP version %d\n", ipversion);
-    return;
-  }
-  line = end;
-  if (memcmp (line, ", port ", 7) != 0)
-    return;
-  line += 7;
-  int port = strtol (line, &end, 10);
-  if (end == line)
-    return;
-  line = end;
-  if (memcmp (line, ", addr ", 7) != 0)
-    return;
-  line += 7;
-  strtol (line, &end, 10);
-  if ((end == line) || (memcmp (end, " bytes: ", 8) != 0))
-    return;
-  line = end + 8;
-  char ip [16];   /* maximum size needed for IPv6 addresses */
-  bzero (ip, sizeof (ip));
-  ip [10] = 0xff;
-  ip [11] = 0xff;
-  if (ipversion == 4)
-    line = read_buffer (line, 4, ip + 12, 4);
-  else
-    line = read_buffer (line, 16, ip, 16);
-  bzero (((char *) (peer)), sizeof (struct addr_info));
-  memcpy (((char *) (&(peer->ip.ip))), ip, sizeof (ip));
-  peer->ip.port = htons (port);
-  peer->ip.ip_version = ipversion;
-  memcpy (peer->destination, address, ADDRESS_SIZE);
-  peer->nbits = nbits;
-}
-
-static int load_peers ()
-{
-  init_peers (1);
-  int fd = open_read_config ("adht", "peers", 1);
-  if (fd < 0)
-    return 0;
-  char line [300];
-  while (read_line (fd, line, sizeof (line))) {
-    char * end;
-    int peer = strtol (line, &end, 10);
-    if ((end != line) && (peer >= 0) && (peer < MAX_PEERS))
-      load_peer (peers + peer, end);
-  }
-  close (fd);
-}
-
-struct send_arg {
-  int sock;
-  unsigned char my_id [ADDRESS_SIZE];
-  int my_bits;
-};
-
+/* sends parts of my DHT routing table to all my DHT peers */
 static void * send_loop (void * a)
 {
-  struct send_arg * arg = (struct send_arg *) a;
+  int sock = *((int *) a);
   char packet [1024 /* ALLNET_MTU */ ];
   char dest [ADDRESS_SIZE];
-  memset (dest, 0, sizeof (dest));
+  routing_my_address (dest);
+  int expire_count = 0;    /* when it reaches 10, expire old entries */
   while (1) {
     memset (packet, 0, sizeof (packet));
-    sleep (30);  /* good for debugging.  later maybe sleep longer */
+    time_t ping_time = 0;
     struct allnet_header * hp =
       init_packet (packet, sizeof (packet),
-                   ALLNET_TYPE_MGMT, 5, ALLNET_SIGTYPE_NONE,
-                   arg->my_id, arg->my_bits, dest, 0, NULL);
+                   ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
+                   dest, ADDRESS_BITS, dest, 0, NULL);
     int hsize = ALLNET_SIZE_HEADER (hp);
     struct allnet_mgmt_header * mp = 
       (struct allnet_mgmt_header *) (packet + hsize);
@@ -289,20 +288,54 @@ static void * send_loop (void * a)
     int total_header_bytes = (((char *) entries) - ((char *) hp));
     int possible = (sizeof (packet) - total_header_bytes)
                  / sizeof (struct addr_info);
-    int actual = routing_table (entries, possible);
-    if (actual <= 0) {
-      printf ("adht: routing table returned %d\n", actual);
-    } else {
+    int self = init_own_routing_entries (entries, 2, dest, ADDRESS_BITS);
+    if (self > 0) {  /* only send if we have one or more public IP addresses */
+      int added = routing_table (entries + self, possible - self);
+#ifdef DEBUG_PRINT
+      if (added <= 0)
+        printf ("adht: routing table returned %d\n", added);
+#endif /* DEBUG_PRINT */
+      int actual = self;
+      if (added > 0)
+        actual += added;
       mp->mgmt_type = ALLNET_MGMT_DHT;
-      dhtp->num_dht_nodes = actual;
+      dhtp->num_sender = self;
+      dhtp->num_dht_nodes = added;
+      writeb64 (dhtp->timestamp, allnet_time ());
       int send_size = total_header_bytes + actual * sizeof (struct addr_info);
-      if (! send_pipe_message (arg->sock, (char *) hp, send_size,
+      if (! send_pipe_message (sock, (char *) hp, send_size,
                                ALLNET_PRIORITY_LOCAL_LOW)) {
         printf ("unable to send dht packet\n");
         exit (1);
       }
+#ifdef DEBUG_PRINT
       print_packet (packet, send_size, "sent packet", 1);
+#endif /* DEBUG_PRINT */
+    } else {
+      snprintf (log_buf, LOG_SIZE,
+                "no publically routable IP address, not sending\n");
+      log_print ();
+      print_dht (1);
+      print_ping_list (1);
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
     }
+    ping_time = time (NULL);
+    ping_all_pending (sock, dest, ADDRESS_BITS);
+    ping_time = time (NULL) - ping_time; /* num seconds it took to ping */
+    snprintf (log_buf, LOG_SIZE, "    expiration count %d\n", expire_count);
+    log_print ();
+    if (expire_count++ >= EXPIRATION_MULT) {
+      routing_expire_dht ();
+      expire_count = 0;
+    }
+    /* sleep for ADHT_INTERVAL +- 10%, and skipping the ping time */
+    time_t interval = ((ADHT_INTERVAL * (90 + (random () % 21))) / 100)
+                    - ping_time;
+#ifdef DEBUG_PRINT
+    printf ("sleep interval %ld\n", interval);
+#endif /* DEBUG_PRINT */
+    sleep (interval);
   }
 }
 
@@ -311,15 +344,11 @@ static void respond_to_dht (int sock, char * message, int msize)
   /* ignore any packet other than valid dht packets */
   if (msize <= ALLNET_HEADER_SIZE)
     return;
-  snprintf (log_buf, LOG_SIZE, "got %d bytes\n", msize);
-  log_print ();
-  packet_to_string (message, msize, "respond_to_dht", 1, log_buf, LOG_SIZE);
-  log_print ();
   struct allnet_header * hp = (struct allnet_header *) message;
   if ((hp->message_type != ALLNET_TYPE_MGMT) ||
       (msize < ALLNET_MGMT_HEADER_SIZE(hp->transport) +
                sizeof (struct allnet_mgmt_dht) +
-               sizeof (struct addr_info)))
+               sizeof (struct addr_info)))  /* only process if >= 1 entry */
     return;
 /* snprintf (log_buf, LOG_SIZE, "survived msize %d/%zd\n", msize,
              ALLNET_MGMT_HEADER_SIZE(hp->transport) +
@@ -333,32 +362,54 @@ static void respond_to_dht (int sock, char * message, int msize)
   struct allnet_mgmt_dht * dhtp =
     (struct allnet_mgmt_dht *)
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-  int n = (dhtp->num_dht_nodes & 0xff);
-/* snprintf (log_buf, LOG_SIZE, "packet has %d entries, size %d\n", n, msize);
-  log_print (); */
+
+  int off = snprintf (log_buf, LOG_SIZE, "got %d byte DHT packet: ", msize);
+  packet_to_string (message, msize, NULL, 1, log_buf + off, LOG_SIZE - off);
+  log_print ();
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+
+  int n_sender = (dhtp->num_sender & 0xff);
+  int n_dht = (dhtp->num_dht_nodes & 0xff);
+  int n = n_sender + n_dht;
+#ifdef DEBUG_PRINT
+  snprintf (log_buf, LOG_SIZE, "packet has %d entries, size %d\n", n, msize);
+  log_print ();
+#endif /* DEBUG_PRINT */
   int expected_size = ALLNET_MGMT_HEADER_SIZE(hp->transport) + 
                       sizeof (struct allnet_mgmt_dht) + 
                       n * sizeof (struct addr_info);
-  if ((n < 1) || (msize < expected_size))
+  if ((n < 1) || (msize < expected_size)) {
+    printf ("packet has %d entries, %d/%d size, nothing to add to DHT/pings\n",
+            n, msize, expected_size);
     return;
+  }
 
   /* found a valid dht packet */
   int i;
-  for (i = 0; i < n; i++)
-    routing_add_dht (dhtp->nodes + i);
+  for (i = 0; i < n_sender; i++)
+    if (! is_own_address (dhtp->nodes + i))
+      routing_add_dht (dhtp->nodes + i);
+  print_dht (1);
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+  for (i = 0; i < n_dht; i++)
+    if (! is_own_address (dhtp->nodes + n_sender + i))
+      routing_add_ping (dhtp->nodes + n_sender + i);
+  print_ping_list (1);
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
 }
 
 int main (int argc, char ** argv)
 {
   /* connect to alocal */
   int sock = connect_to_local ("adht", argv [0]);
+  if (sock < 0)
+    return 1;
 
   pthread_t send_thread;
-  struct send_arg arg;
-  arg.sock = sock;
-  random_bytes (arg.my_id, sizeof (arg.my_id));
-  arg.my_bits = 8;
-  if (pthread_create (&send_thread, NULL, send_loop, &arg) != 0) {
+  if (pthread_create (&send_thread, NULL, send_loop, &sock) != 0) {
     perror ("pthread_create/addrs");
     return 1;
   }
@@ -372,23 +423,10 @@ int main (int argc, char ** argv)
       pthread_cancel (send_thread);
       exit (1);
     }
-    print_packet (message, found, "received", 1);
 #ifdef DEBUG_PRINT
+    print_packet (message, found, "received", 1);
 #endif /* DEBUG_PRINT */
     respond_to_dht (sock, message, found);
     free (message);
   }
-
-#if 0  /* debugging */
-  load_peers ();
-  srandom (time (NULL));
-  int p = random () % MAX_PEERS;
-  random_bytes ((char *) (&(peers [p].ip.ip)), sizeof (peers [p].ip.ip));
-  peers [p].ip.port = random () % 65536;
-  peers [p].ip.ip_version = ((random () % 2) ? 4 : 6); 
-  random_bytes (peers [p].destination, ADDRESS_SIZE);
-  peers [p].nbits = random () % (ADDRESS_SIZE * 8 + 1);
-  save_peers ();
-/*  load_peers (); */
-#endif /* 0 */
 }

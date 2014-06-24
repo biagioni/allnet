@@ -5,16 +5,19 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <netdb.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <openssl/rand.h>
 
 #include "app_util.h"
 #include "packet.h"
 #include "sha.h"
 #include "priority.h"
+#include "log.h"
 
 static void find_path (char * arg, char ** path, char ** program)
 {
@@ -65,7 +68,16 @@ static void exec_allnet (char * arg)
 
 static int connect_once (int print_error)
 {
-  int sock = socket (AF_INET, SOCK_STREAM, 0);
+  int sock = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  /* disable Nagle algorithm on sockets to alocal, because it delays
+   * successive sends and, since the communication is local, doesn't
+   * substantially improve performance anyway */
+  int option = 1;  /* disable Nagle algorithm */
+  if (setsockopt (sock, IPPROTO_TCP, TCP_NODELAY, &option, sizeof (option))
+      != 0) {
+    snprintf (log_buf, LOG_SIZE, "unable to set nodelay TCP socket option\n");
+    log_print ();
+  }
   struct sockaddr_in sin;
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr ("127.0.0.1");

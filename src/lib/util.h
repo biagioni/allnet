@@ -67,6 +67,13 @@ extern int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
 /* print a message with the current time */
 extern void print_timestamp (char * message);
 
+/* it is a good idea to understand the difference between the next three
+ * functions, and use the correct one.
+ * - matches MUST match n = min(xbits, ybits), and otherwise returns 0
+ * - bitstring_matches is the same, except n=nbits, and bit offset are allowed
+ * - matching_bits returns the number of bits that do match, up to n bits
+ */
+
 /* return nbits if the first nbits of x match the first nbits of y, else 0 */
 /* where nbits is the lesser of xbits and ybits */
 extern int matches (unsigned char * x, int xbits, unsigned char * y, int ybits);
@@ -75,6 +82,11 @@ extern int matches (unsigned char * x, int xbits, unsigned char * y, int ybits);
  * the first nbits of y after yoff bits, else 0 */
 extern int bitstring_matches (unsigned char * x, int xoff,
                               unsigned char * y, int yoff, int nbits);
+
+/* returns the number of matching bits starting from the front of the
+ * bitstrings, not to exceed xbits or ybits.  Returns 0 for no match */
+extern int matching_bits (unsigned char * x, int xbits,
+                          unsigned char * y, int ybits);
 
 /* AllNet time begins January 1st, 2000.  This may be different from
  * the time bases (epochs) on other systems, including specifically
@@ -159,5 +171,7 @@ extern void writeb64 (char * p, unsigned long long int value);
 
 /* returns 1 if the message is valid, 0 otherwise */
 extern int is_valid_message (const char * packet, int size);
+
+extern void print_gethostbyname_error (char * hostname);
 
 #endif /* ALLNET_UTIL_H */

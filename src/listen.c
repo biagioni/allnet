@@ -132,21 +132,26 @@ static void * listen_loop (void * arg)
   pthread_setcanceltype (PTHREAD_CANCEL_ASYNCHRONOUS, &notinteresting);
 
   struct sockaddr_storage address;
-  struct sockaddr * ap  = (struct sockaddr *) &address;
+  struct sockaddr     * ap   = (struct sockaddr     *) &address;
   socklen_t addr_size = sizeof (address);
 
   /* listen for connections, add them to the data structure */
   int connection;
   while ((connection = accept (ra->fd, ap, &addr_size)) >= 0) {
-    snprintf (log_buf, LOG_SIZE, "opened connection socket fd = %d port %d\n",
-              connection, ntohs (info->port));
+    int off = snprintf (log_buf, LOG_SIZE,
+                        "opened connection socket fd = %d port %d from ",
+                        connection, ntohs (info->port));
+    print_sockaddr_str (ap, addr_size, 1, log_buf + off, LOG_SIZE - off);
     log_print ();
+/* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
+ * we want to record it as an IPv4 connection */
+    standardize_ip (ap, addr_size);
+
     struct addr_info addr;
     sockaddr_to_ai (ap, addr_size, &addr);
-/* if we are full, could just send the peer info and close the connection */
     listen_add_fd (info, connection, &addr);
 
-    addr_size = sizeof (address);
+    addr_size = sizeof (address);  /* reset for next call to accept */
   }
   perror ("accept");
   printf ("error calling accept (%d)\n", ra->fd);
@@ -337,8 +342,10 @@ void listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr)
 void listen_remove_fd (struct listen_info * info, int fd)
 {
   pthread_mutex_lock (&(info->mutex));
-  if (info->add_remove_pipe)
+  if (info->add_remove_pipe) {
     remove_pipe (fd);
+    /* printf ("removed_pipe (%d)\n", fd); */
+  }
   int i;
   for (i = 0; i < info->num_fds; i++) {
     if (info->fds [i] == fd) {
@@ -350,4 +357,33 @@ void listen_remove_fd (struct listen_info * info, int fd)
   }
   pthread_mutex_unlock (&(info->mutex));
 }
+
+/* returned addr_info is statically allocated (until remove_fd is called),
+ * do not modify in any way.  Returns NULL for no match */
+struct addr_info * listen_fd_addr (struct listen_info * info, int fd)
+{
+  struct addr_info * result = NULL;
+  pthread_mutex_lock (&(info->mutex));
+  int i;
+  for (i = 0; i < info->num_fds; i++) {
+    if (info->fds [i] == fd)
+      result = info->peers + i;
+  }
+  pthread_mutex_unlock (&(info->mutex));
+  return result;
+}
+
+int already_listening (struct addr_info * ai, struct listen_info * info)
+{
+  int result = 0;
+  pthread_mutex_lock (&(info->mutex));
+  int i;
+  for (i = 0; (i < info->num_fds) && (! result); i++) {
+    if (same_ai (info->peers + i, ai))
+      result = 1;
+  }
+  pthread_mutex_unlock (&(info->mutex));
+  return result;
+}
+
 

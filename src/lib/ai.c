@@ -6,34 +6,51 @@
 
 #include "packet.h"
 #include "ai.h"
+#include "log.h"
+
+/* buffer parameter must have at least size 42 */
+/* returns the number of buffer characters used */
+static int ip6_to_string (const unsigned char * ip, char * buffer)
+{
+  unsigned short s [8];
+  int i;
+  for (i = 0; i < 8; i ++)
+    s [i] = (ip [2 * i] * 256) + (ip [2 * i + 1]);
+  return snprintf (buffer, 42, "%x:%x:%x:%x:%x:%x:%x:%x",
+                   s [0], s [1], s [2], s [3], s [4], s [5], s [6], s [7]);
+}
 
 void print_addr_info (struct addr_info * ai)
 {
-  printf (" %p (%d) ", ai, ai->nbits);
-  print_buffer (ai->destination, (ai->nbits + 7) / 8, NULL, 4, 0);
+  printf ("(%d) ", ai->nbits);
+  print_buffer (ai->destination, (ai->nbits + 7) / 8, NULL, ADDRESS_SIZE, 0);
   printf (", v %d, port %d, addr ", ai->ip.ip_version, ntohs (ai->ip.port));
+  unsigned char * ap = (unsigned char *) &(ai->ip.ip);
+  char ip6_buf [50];
+  ip6_to_string (ap, ip6_buf);
   if (ai->ip.ip_version == 4)
-    print_buffer (((char *) &(ai->ip.ip)) + 12, 4, NULL, 4, 1);
+    printf ("%d.%d.%d.%d\n", ap [12], ap [13], ap [14], ap [15]);
   else
-    print_buffer ((char *) &(ai->ip.ip), 16, NULL, 16, 1);
+    printf ("%s\n", ip6_buf);
 }
 
 /* includes a newline at the end of the address info */
 int addr_info_to_string (struct addr_info * ai, char * buf, int bsize)
 {
   int offset = 0;
-  offset += snprintf (buf, bsize, " %p (%d) ", ai, ai->nbits);
+  offset += snprintf (buf, bsize, "(%d) ", ai->nbits);
   offset += buffer_to_string (ai->destination, (ai->nbits + 7) / 8, NULL,
                               ADDRESS_SIZE, 0, buf + offset, bsize - offset);
   offset += snprintf (buf + offset, bsize - offset,
                       ", v %d, port %d, addr ", ai->ip.ip_version,
                       ntohs (ai->ip.port));
+  unsigned char * ap = (unsigned char *) &(ai->ip.ip);
   if (ai->ip.ip_version == 4)
-    offset += buffer_to_string (((char *) &(ai->ip.ip)) + 12, 4, NULL, 4, 1,
-                                buf + offset, bsize - offset);
-  else
-    offset += buffer_to_string ((char *) &(ai->ip.ip), 16, NULL, 16, 1,
-                                buf + offset, bsize - offset);
+    offset += snprintf (buf + offset, bsize - offset,
+                        "%d.%d.%d.%d", ap [12], ap [13], ap [14], ap [15]);
+  else if ((bsize - offset) >= 42)
+    offset += ip6_to_string (ap, buf + offset);
+  offset += snprintf (buf + offset, bsize - offset, "\n");
   return offset;
 }
 
@@ -138,25 +155,6 @@ int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
 int ai_to_sockaddr (struct addr_info * ai, struct sockaddr * sap)
 {
   return ia_to_sockaddr (&(ai->ip), sap);
-
-#if 0
-  struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
-  struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
-
-  if (ai->ip.ip_version == 6) {
-    sin6->sin6_family = AF_INET6;
-    memcpy (&(sin6->sin6_addr), &(ai->ip.ip), 16);
-    sin6->sin6_port = ai->ip.port;
-  } else if (ai->ip.ip_version == 4) {
-    sin->sin_family = AF_INET;
-    memcpy (&(sin->sin_addr), ((char *) (&(ai->ip.ip))) + 12, 4);
-    sin->sin_port = ai->ip.port;
-  } else {   /* not found */
-    printf ("coding error: addr_info has version %d\n", ai->ip.ip_version);
-    return 0;
-  }
-  return 1;
-#endif /* 0 */
 }
 
 /* addr must point to 4 bytes if af is AF_INET, 16 bytes for AF_INET6 */
@@ -191,24 +189,48 @@ int sockaddr_to_ai (struct sockaddr * sap, int addr_size,
   /* init_ai with 0 bits and NULL address simply sets address to all 0s */
   memset ((char *) ai, 0, sizeof (struct addr_info));
   return sockaddr_to_ia (sap, addr_size, &(ai->ip));
-#if 0
-  struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
-  struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
-  if ((sap->sa_family == AF_INET) &&
-      (addr_size >= sizeof (struct sockaddr_in))) {
-    init_ai (AF_INET, (char *) &(sin->sin_addr), sin->sin_port, 0, NULL, ai);
-    return 1;
-  } else if ((sap->sa_family == AF_INET6) &&
-           (addr_size >= sizeof (struct sockaddr_in6))) {
-    init_ai (AF_INET6, (char *) &(sin6->sin6_addr), sin6->sin6_port, 0, NULL,
-             ai);
-    return 1;
-  } else {
-    printf ("unable to create address info with family %d, size %d\n",
-            sap->sa_family, addr_size);
-    return 0;
-  }
-#endif /* 0 */
 }
 
+/* returns 1 if the two addresses are the same, 0 otherwise */
+int same_ai (struct addr_info * a, struct addr_info * b)
+{
+  if (a->ip.ip_version == b->ip.ip_version) {
+    if (memcmp (a->ip.ip.s6_addr, b->ip.ip.s6_addr, 16) == 0)
+      return 1;
+    if (a->ip.ip_version == 6)
+      return 0;
+    return (memcmp (a->ip.ip.s6_addr + 12, b->ip.ip.s6_addr + 12, 4) == 0);
+  }
+  unsigned char ipv4_in_ipv6 [] =
+    { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff }; 
+  if ((a->ip.ip_version == 6) &&
+      (memcmp (a->ip.ip.s6_addr, ipv4_in_ipv6, 12) == 0))
+    return (memcmp (a->ip.ip.s6_addr + 12, b->ip.ip.s6_addr + 12, 4) == 0);
+  if ((b->ip.ip_version == 6) &&
+      (memcmp (b->ip.ip.s6_addr, ipv4_in_ipv6, 12) == 0))
+    return (memcmp (a->ip.ip.s6_addr + 12, b->ip.ip.s6_addr + 12, 4) == 0);
+  return 0;  /* different versions, no ipv4 in ipv6 match */
+}
 
+/* if this is an IPv4-encoded-as-IPv6 address, make it an IPv4 address again */
+void standardize_ip (struct sockaddr * ap, socklen_t asize)
+{
+  struct sockaddr_in  * ap4  = (struct sockaddr_in  *) ap;
+  struct sockaddr_in6 * ap6  = (struct sockaddr_in6 *) ap;
+  /* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
+   * we want to record it as an IPv4 connection */
+  char ipv4_in_ipv6_prefix [] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
+  if ((ap->sa_family == AF_INET6) &&
+      (asize >= sizeof (struct sockaddr_in)) &&
+      (memcmp (ap6->sin6_addr.s6_addr, ipv4_in_ipv6_prefix, 12) == 0)) {
+    int port = ap6->sin6_port;
+    uint32_t ip4; 
+    memcpy ((char *) (&ip4), ap6->sin6_addr.s6_addr + 12, 4);
+    ap4->sin_family = AF_INET;
+    ap4->sin_port = port;
+    ap4->sin_addr.s_addr = ip4;
+    int off = snprintf (log_buf, LOG_SIZE, "converted IPv6 to IPv4 address: ");
+    print_sockaddr_str (ap, asize, 1, log_buf + off, LOG_SIZE - off);
+    log_print ();
+  }
+}

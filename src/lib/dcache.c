@@ -207,6 +207,8 @@ void cache_map (void * cp, map_function f, void * arg1)
 /* called with lock held */
 static int find_data (struct dcache * cache, void * data)
 {
+  if (data == NULL)
+    return -1;
   int i;
   for (i = 0; i < cache->num_entries; i++)
     if (cache->entries [i].data == data)

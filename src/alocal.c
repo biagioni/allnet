@@ -35,9 +35,15 @@ void * main_loop (int rpipe, int wpipe, struct listen_info * info)
  * If this value is changed, should change the corresponding value in
  * app_util.c */
     int result = receive_pipe_message_any (50, &message, &fd, &priority);
-if (result != 0) {
-snprintf (log_buf, LOG_SIZE, "receive_pipe_message_any returns %d\n", result);
-log_print (); }
+#define DEBUG_PRINT
+#ifdef DEBUG_PRINT
+    if (result != 0) {
+      snprintf (log_buf, LOG_SIZE, "receive_pipe_message_any returns %d\n",
+                result);
+      log_print ();
+    }
+#endif /* DEBUG_PRINT */
+#undef DEBUG_PRINT
     if (result < 0) {
       if (fd == rpipe) {
         snprintf (log_buf, LOG_SIZE, "ad pipe %d closed\n", rpipe);
@@ -54,33 +60,41 @@ log_print (); }
                 "got %d bytes from %s (fd %d, priority %d)\n", result,
                 (fd == rpipe) ? "ad" : "client", fd, priority);
       log_print ();
-      if (fd == rpipe) {    /* message from ad, send to all clients */
-        int i;    /* start with i = 1, no sending to ad read pipe */
-        pthread_mutex_lock (&(info->mutex));
-        for (i = 1; i < info->num_fds; i++) {
-          if (! send_pipe_message (info->fds [i], message, result, priority)) {
-            snprintf (log_buf, LOG_SIZE, "error sending to info pipe %d at %d\n",
-                      info->fds [i], i);
-            /* listen_remove_fd (info, info->fds [i]); */
-          } else {
-            snprintf (log_buf, LOG_SIZE,
-                      "sent to client %d at %d %d bytes, prio %08x\n",
-                      info->fds [i], i, result, priority);
-          }
-          log_print ();
-        }
-        pthread_mutex_unlock (&(info->mutex));
-      } else {              /* message from a client, send to ad */
+      int i;
+      pthread_mutex_lock (&(info->mutex));
+      if (fd != rpipe)
         listen_record_usage (info, fd);  /* make it most recently used */
-        if (! send_pipe_message (wpipe, message, result, priority)) {
-          snprintf (log_buf, LOG_SIZE, "error sending to ad pipe %d\n", wpipe);
+      for (i = 0; i < info->num_fds; i++) {
+        int xfd = info->fds [i];
+        int same = (fd == xfd);
+        if (xfd == rpipe)
+          xfd = wpipe;
+        same = (same || (fd == xfd));
+        if (! same) {
+          if (! send_pipe_message (xfd, message, result, priority)) {
+            snprintf (log_buf, LOG_SIZE,
+                      "error sending to info pipe %d/%d at %d\n",
+                      info->fds [i], xfd, i);
+            log_print ();
+            /* listen_remove_fd (info, info->fds [i]);  now only on recv err */
+          } else {
+#ifdef DEBUG_PRINT
+            snprintf (log_buf, LOG_SIZE,
+                      "sent to fd %d/%d at %d %d bytes, prio %08x\n",
+                      info->fds [i], xfd, i, result, priority);
+            log_print ();
+#endif /* DEBUG_PRINT */
+          }
+        } else {  /* else same pipe, do not send back */
+#ifdef DEBUG_PRINT
+          snprintf (log_buf, LOG_SIZE,
+                    "not sending on same info pipe %d/%d at %d\n",
+                    info->fds [i], xfd, i);
           log_print ();
-          break;
+#endif /* DEBUG_PRINT */
         }
-        snprintf (log_buf, LOG_SIZE, "sent %d bytes to ad pipe %d\n",
-                  result, wpipe);
-        log_print ();
       }
+      pthread_mutex_unlock (&(info->mutex));
       free (message);
     }   /* else result is zero, timed out, try again */
   }

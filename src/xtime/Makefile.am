@@ -13,4 +13,5 @@ bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/xtime \
 	$(ALLNET_BINDIR)/allnet-radio
 __ALLNET_BINDIR__xtime_SOURCES = xtime.c ${libincludes} lib/packet.h
+__ALLNET_BINDIR__xtime_LDFLAGS = -lpthread
 __ALLNET_BINDIR__allnet_radio_SOURCES = allnet_radio.c ${libincludes}

@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <time.h>
 #include <assert.h>
+#include <errno.h>
+#include <netdb.h>  /* h_errno */
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
@@ -232,16 +234,19 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         r += snprintf (to + r, tsize - r, "dht size %d, needed %d\n",
                        hsize, needed);
       } else {
-        r += snprintf (to + r, tsize - r, "dht %d ", dht->num_dht_nodes);
+        char time_string [100];
+        allnet_time_string (readb64 (dht->timestamp), time_string);
+        r += snprintf (to + r, tsize - r, "dht %d+%d @%s ",
+                       dht->num_sender, dht->num_dht_nodes, time_string);
         int i;
-        for (i = 0; i < dht->num_dht_nodes; i++) {
+        for (i = 0; i < dht->num_sender + dht->num_dht_nodes; i++) {
           char local [100];
           ia_to_string (&(dht->nodes [i].ip), local, sizeof (local));
           char * nl = index (local, '\n');
           *nl = '\0';   /* segfault if no newline */
           r += snprintf (to + r, tsize - r, "%s %s",
                          b2s (dht->nodes [i].destination, ADDRESS_SIZE), local);
-          if (i + 1 < dht->num_dht_nodes)
+          if (i + 1 < dht->num_sender + dht->num_dht_nodes)
             r += snprintf (to + r, tsize - r, ", ");
         }
       }
@@ -515,7 +520,7 @@ struct allnet_header *
 }
 
 int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
-                         char * s, int len)
+                        char * s, int len)
 {
   char * proto = "";
   if (tcp == 1)
@@ -537,7 +542,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
     n += snprintf (s + n, len - n, "ip4%s %s %d/%x",
                    proto, inet_ntoa (sin->sin_addr),
                    ntohs (sin->sin_port), ntohs (sin->sin_port));
-    if ((addr_size != 0) && (addr_size != sizeof (struct sockaddr_in)))
+    if ((addr_size != 0) && (addr_size < sizeof (struct sockaddr_in)))
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_in));
     break;
@@ -549,21 +554,26 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
         num_initial_zeros++;
       else
         break;
+    if ((num_initial_zeros & 0x1) > 0)  /* make it even */
+      num_initial_zeros--;
     if (num_initial_zeros > 0)
       n += snprintf (s + n, len - n, "::");
-    for (i = num_initial_zeros; i + 1 < sizeof (sin6->sin6_addr); i++)
-      n += snprintf (s + n, len - n, "%x:", sin6->sin6_addr.s6_addr [i] & 0xff);
-    /* last one is not followed by : */
-    n += snprintf (s + n, len - n, "%x %d/%x",
-                   sin6->sin6_addr.s6_addr [i] & 0xff,
+    for (i = num_initial_zeros; i < sizeof (sin6->sin6_addr); i += 2) {
+      int two_byte = ((sin6->sin6_addr.s6_addr [i] & 0xff) << 8) |
+                      (sin6->sin6_addr.s6_addr [i + 1] & 0xff);
+      n += snprintf (s + n, len - n, "%x", two_byte);
+      if (i + 2 < sizeof (sin6->sin6_addr)) /* last one is not followed by : */
+        n += snprintf (s + n, len - n, ":");
+    }
+    n += snprintf (s + n, len - n, " %d/%x",
                    ntohs (sin6->sin6_port), ntohs (sin6->sin6_port));
-    if ((addr_size != 0) && (addr_size != sizeof (struct sockaddr_in6)))
+    if ((addr_size != 0) && (addr_size < sizeof (struct sockaddr_in6)))
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_in6));
     break;
   case AF_UNIX:
     n += snprintf (s + n, len - n, "unix%s %s", proto, sun->sun_path);
-    if ((addr_size != 0) && (addr_size != sizeof (struct sockaddr_un)))
+    if ((addr_size != 0) && (addr_size < sizeof (struct sockaddr_un)))
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_un));
     break;
@@ -594,82 +604,36 @@ void print_sockaddr (struct sockaddr * sap, int addr_size, int tcp)
   printf ("%s", buffer);
 }
 
-#if 0
-/* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
-void print_sockaddr (struct sockaddr * sap, int addr_size, int tcp)
-{
-  char * proto = "";
-  if (tcp == 1)
-    proto = "/tcp";
-  else if (tcp == 0)
-    proto = "/udp";
-  if (sap == NULL) {
-    printf ("(null %s)", proto);
-    return;
-  }
-  struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
-  struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
-  struct sockaddr_un  * sun  = (struct sockaddr_un  *) sap;
-  struct sockaddr_ll  * sll  = (struct sockaddr_ll  *) sap;
-  /* char str [INET_ADDRSTRLEN]; */
-  int num_initial_zeros = 0;  /* for printing ipv6 addrs */
-  int i;
-  switch (sap->sa_family) {
-  case AF_INET:
-    printf ("ip4%s %s %d/%x", proto, inet_ntoa (sin->sin_addr),
-            ntohs (sin->sin_port), ntohs (sin->sin_port));
-    if ((addr_size != 0) && (addr_size != sizeof (struct sockaddr_in)))
-      printf (" (size %d rather than %zd)",
-              addr_size, sizeof (struct sockaddr_in));
-    break;
-  case AF_INET6:
-    /* inet_ntop (AF_INET6, sap, str, sizeof (str)); */
-    printf ("ip6%s ", proto);
-    for (i = 0; i + 1 < sizeof (sin6->sin6_addr); i++)
-      if ((sin6->sin6_addr.s6_addr [i] & 0xff) == 0)
-        num_initial_zeros++;
-      else
-        break;
-    if (num_initial_zeros > 0)
-      printf ("::");
-    for (i = num_initial_zeros; i + 1 < sizeof (sin6->sin6_addr); i++)
-      printf ("%x:", sin6->sin6_addr.s6_addr [i] & 0xff);
-    /* last one is not followed by : */
-    printf ("%x %d/%x", sin6->sin6_addr.s6_addr [i] & 0xff,
-            ntohs (sin6->sin6_port), ntohs (sin6->sin6_port));
-    if ((addr_size != 0) && (addr_size != sizeof (struct sockaddr_in6)))
-      printf (" (size %d rather than %zd)",
-              addr_size, sizeof (struct sockaddr_in6));
-    break;
-  case AF_UNIX:
-    printf ("unix%s %s", proto, sun->sun_path);
-    if ((addr_size != 0) && (addr_size != sizeof (struct sockaddr_un)))
-      printf (" (size %d rather than %zd)",
-              addr_size, sizeof (struct sockaddr_un));
-    break;
-  case AF_PACKET:
-    printf ("packet protocol%s 0x%x if %d ha %d pkt %d address (%d)",
-            proto, sll->sll_protocol, sll->sll_ifindex, sll->sll_hatype,
-            sll->sll_pkttype, sll->sll_halen);
-    for (i = 0; i < sll->sll_halen; i++)
-      printf (" %02x", sll->sll_addr [i] & 0xff);
-    if ((addr_size != 0) && (addr_size != sizeof (struct sockaddr_ll)))
-      printf (" (size %d rather than %zd)",
-              addr_size, sizeof (struct sockaddr_ll));
-    break;
-  default:
-    printf ("unknown address family %d%s", sap->sa_family, proto);
-    break;
-  }
-}
-#endif /* 0 */
-
 /* print a message with the current time */
 void print_timestamp (char * message)
 {
   struct timeval now;
   gettimeofday (&now, NULL);
   printf ("%s at %ld.%06ld\n", message, now.tv_sec, now.tv_usec);
+}
+
+static int get_bit (const unsigned char * data, int pos)
+{
+  int byte = data [pos / 8];
+  int shift = 7 - (pos % 8);
+  int bit = byte;
+  if (shift > 0)
+    bit = (byte >> shift);
+  return bit & 0x1;
+}
+
+/* returns the number of matching bits starting from the front of the
+ * bitstrings, not to exceed xbits or ybits.  Returns 0 for no match */
+int matching_bits (unsigned char * x, int xbits, unsigned char * y, int ybits)
+{
+  int nbits = xbits;
+  if (nbits > ybits)
+    nbits = ybits;
+  int i;
+  for (i = 0; i < nbits; i++)
+    if (get_bit (x, i) != get_bit (y, i))
+      return i;
+  return nbits;
 }
 
 /* return nbits+1 if the first nbits of x match the first nbits of y, else 0 */
@@ -701,35 +665,6 @@ int matches (unsigned char * x, int xbits, unsigned char * y, int ybits)
   return 0;
 }
 
-static int bit_at (const unsigned char * b, int xoff)
-{
-  b += (xoff / 8);
-  int byte = (*b) & 0xff;
-  int bit_off = xoff % 8;
-  int bit = byte;
-  if (bit_off < 7)
-    bit = byte >> (7 - bit_off);
-  bit = bit & 0x01;
-/*
-  static int printed = 0;
-  if (printed < 30) {
-    printf ("bit_at (%02x, %d/%d=%d) is %d\n",
-            byte, bit_off, xoff, xoff / 8, bit);
-    printed++;
-  }
-*/
-  return bit;
-}
-
-static int bit_match (unsigned char * x, int xoff, unsigned char * y, int yoff)
-{
-  int xbit = bit_at (x, xoff);
-  int ybit = bit_at (y, yoff);
-  if (xbit == ybit)
-    return 1;
-  return 0;
-}
-
 void print_bitstring (unsigned char * x, int xoff, int nbits, int print_eol)
 {
   int i;
@@ -754,15 +689,8 @@ int bitstring_matches (unsigned char * x, int xoff,
 {
   int i;
   for (i = 0; i < nbits; i++)
-    if (! bit_match (x, xoff + i, y, yoff + i))
+    if (get_bit (x, xoff + i) != get_bit (y, yoff + i))
       return 0;
-/*
-  printf ("\nbitstring ");
-  print_bitstring (x, xoff, nbits);
-  printf ("\n  matches ");
-  print_bitstring (y, yoff, nbits);
-  printf ("\n");
-*/
   return 1;
 }
 
@@ -1215,5 +1143,36 @@ int is_valid_message (const char * packet, int size)
     }
   }
   return 1;
+}
+
+void print_gethostbyname_error (char * hostname)
+{
+  switch (h_errno) {
+  case HOST_NOT_FOUND:
+    snprintf (log_buf, LOG_SIZE,
+              "error resolving host name %s: host not found\n", hostname);
+    break;
+#if defined NO_ADDRESS
+  case NO_ADDRESS:  /* same as NO_DATA */
+#else
+  case NO_DATA:
+#endif
+    snprintf (log_buf, LOG_SIZE,
+              "error resolving host name %s: no address/no data\n", hostname);
+    break;
+  case NO_RECOVERY:
+    snprintf (log_buf, LOG_SIZE,
+              "error resolving host name %s: unrecoverable error\n", hostname);
+    break;
+  case TRY_AGAIN:
+    snprintf (log_buf, LOG_SIZE,
+              "error resolving host name %s: try again\n", hostname);
+    break;
+  default:
+    snprintf (log_buf, LOG_SIZE,
+              "error resolving host name %s: unknown %d\n", hostname, h_errno);
+    break;
+  }
+  log_print ();
 }
 

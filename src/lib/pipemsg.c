@@ -21,7 +21,7 @@
 #include "util.h"
 #include "log.h"
 
-#define MAGIC_STRING	"MAGICPIPE"
+#define MAGIC_STRING	"MAGICPIE"  /* magic pipe, squeezed into 8 chars */
 
 /* MAGIC_SIZE does not include null character at the end */
 #define MAGIC_SIZE	(sizeof (MAGIC_STRING) - 1)
@@ -147,6 +147,8 @@ static inline int read_big_endian32 (char * array)
 static int send_pipe_message_orig (int pipe, char * message, int mlen,
                                    int priority)
 {
+  snprintf (log_buf, LOG_SIZE, "warning: send_pipe_message_orig\n");
+  log_print ();  /* normally should not happen */
   char header [HEADER_SIZE];
   memcpy (header, MAGIC_STRING, MAGIC_SIZE);
   write_big_endian32 (header + MAGIC_SIZE, priority);
@@ -171,6 +173,35 @@ static int send_pipe_message_orig (int pipe, char * message, int mlen,
   return 1;
 }
 
+static int send_buffer (int pipe, char * buffer, int blen, int do_free)
+{
+  int result = 1;
+  int w = send (pipe, buffer, blen, MSG_DONTWAIT); 
+  int is_send = 1;
+  if ((w < 0) && (errno == ENOTSOCK)) {
+    w = write (pipe, buffer, blen); 
+    is_send = 0;
+  }
+  if (w != blen) {
+    if (is_send)
+      perror ("send_pipe_msg send");
+    else
+      perror ("send_pipe_msg write");
+    snprintf (log_buf, LOG_SIZE,
+              "pipe %d, result %d, wanted %d\n", pipe, w, blen);
+    log_print ();
+    result = 0;
+  }
+#ifdef DEBUG_PRINT
+  snprintf (log_buf, LOG_SIZE, "send_buffer sent %d/%d bytes on %s %d\n",
+            blen, w, ((is_send) ? "socket" : "pipe"), pipe);
+  log_print ();
+#endif /* DEBUG_PRINT */
+  if (do_free)
+    free (buffer);
+  return result;
+}
+
 static int send_header_data (int pipe, char * message, int mlen, int priority)
 {
   char stack_packet [HEADER_SIZE + ALLNET_MTU];
@@ -180,9 +211,8 @@ static int send_header_data (int pipe, char * message, int mlen, int priority)
     snprintf (log_buf, LOG_SIZE,
               "send_header_data warning: mlen %d > ALLNET_MTU %d\n",
               mlen, ALLNET_MTU);
+    printf ("%s", log_buf);
     log_print ();
-    printf ("send_header_data warning: mlen %d > ALLNET_MTU %d\n",
-            mlen, ALLNET_MTU);
 /* and malloc the packet (free'd below) */
     packet = malloc (HEADER_SIZE + mlen);
   }
@@ -197,23 +227,9 @@ static int send_header_data (int pipe, char * message, int mlen, int priority)
   write_big_endian32 (header + MAGIC_SIZE + 4, mlen);
   memcpy (header + HEADER_SIZE, message, mlen);
 
-  int result = 1;
-  int w = send (pipe, packet, HEADER_SIZE + mlen, MSG_DONTWAIT); 
-  if ((w < 0) && (errno == ENOTSOCK)) {
-    w = write (pipe, packet, HEADER_SIZE + mlen); 
-  }
-  if (w != HEADER_SIZE + mlen) {
-    perror ("send_pipe_msg send");
-    snprintf (log_buf, LOG_SIZE,
-              "pipe %d, result %d, wanted %zd\n", pipe, w, HEADER_SIZE + mlen);
-    log_print ();
-    result = 0;
-  }
-/* snprintf (log_buf, LOG_SIZE, "send_header_data sent\n");
-log_print (); */
   if (packet != stack_packet)
-    free (packet);
-  return result;
+    return send_buffer (pipe, packet, HEADER_SIZE + mlen, 1);
+  return send_buffer (pipe, packet, HEADER_SIZE + mlen, 0);
 }
 
 int send_pipe_message (int pipe, char * message, int mlen, int priority)
@@ -231,6 +247,78 @@ int send_pipe_message (int pipe, char * message, int mlen, int priority)
 
   sigaction (SIGPIPE, &old_sa, NULL);
   return result;
+}
+
+/* send multiple messages at once, again to avoid the mysterious system
+ * delay when sending multiple times in close succession on a socket.
+ * (Nagle's delay?).  Each message gets its own header */
+static int send_multiple_packets (int pipe, int num_messages,
+                                  char ** messages, int * mlens,
+                                  int * priorities)
+{
+  if (num_messages <= 0)
+    return 0;
+  int i;
+  int total = 0;
+  for (i = 0; i < num_messages; i++)
+    total += HEADER_SIZE + mlens [i];
+  int result = 1;
+
+  char * packet = malloc (total);
+  if (packet == NULL) {  /* unable to malloc, use the slow strategy */
+    snprintf (log_buf, LOG_SIZE,
+              "unable to malloc %d bytes for %d packets, falling back\n",
+              total, num_messages);
+    log_print ();
+    for (i = 0; i < num_messages; i++) {
+      if (! send_pipe_message (pipe, messages [i], mlens [i], priorities [i]))
+        result = 0;
+    }
+    return result;
+  }
+  char * header = packet;
+  for (i = 0; i < num_messages; i++) {
+    memcpy (header, MAGIC_STRING, MAGIC_SIZE);
+    write_big_endian32 (header + MAGIC_SIZE, priorities [i]);
+    write_big_endian32 (header + MAGIC_SIZE + 4, mlens [i]);
+    memcpy (header + HEADER_SIZE, messages [i], mlens [i]);
+    header += HEADER_SIZE + mlens [i];
+  }
+
+  return send_buffer (pipe, packet, total, 1);
+}
+
+/* send multiple messages at once, again to avoid the mysterious system
+ * delay when sending multiple times in close succession on a socket.
+ * messages are not freed */
+int send_pipe_multiple (int pipe, int num_messages,
+                        char ** messages, int * mlens, int * priorities)
+{
+  /* avoid SIGPIPE signals when writing to a closed pipe */
+  struct sigaction sa;
+  sa.sa_handler = SIG_IGN;
+  sa.sa_flags = 0;
+  sa.sa_mask;
+  sigemptyset (&(sa.sa_mask));
+  struct sigaction old_sa;
+  sigaction (SIGPIPE, &sa, &old_sa);
+
+  int result = send_multiple_packets (pipe, num_messages, messages, mlens,
+                                      priorities);
+
+  sigaction (SIGPIPE, &old_sa, NULL);
+  return result;
+}
+
+/* same, but messages are freed */
+int send_pipe_multiple_free (int pipe, int num_messages,
+                             char ** messages, int * mlens, int * priorities)
+{
+  int r = send_pipe_multiple (pipe, num_messages, messages, mlens, priorities);
+  int i;
+  for (i = 0; i < num_messages; i++)
+    free (messages [i]);
+  return r;
 }
 
 /* same as send_pipe_message, but frees the memory referred to by message */
@@ -316,6 +404,10 @@ static int find_fd (fd_set * set, int extra, int select_result, int max_pipe)
  * PIPE_MESSAGE_NO_WAIT */
 static int next_available (int extra, int timeout)
 {
+#ifdef DEBUG_PRINT
+  snprintf (log_buf, LOG_SIZE, "next_available (%d, %d)\n", extra, timeout);
+  log_print ();
+#endif /* DEBUG_PRINT */
   /* set up the readfd bitset */
   int i;
   int max_pipe = 0;
@@ -332,9 +424,10 @@ static int next_available (int extra, int timeout)
 
   /* call select */
   int s = select (max_pipe + 1, &receiving, NULL, NULL, tvp);
-/* if (timeout == 1000) {
-snprintf (log_buf, LOG_SIZE, "select completed, %d pipes\n", num_pipes);
-log_print (); } */
+#ifdef DEBUG_PRINT
+  snprintf (log_buf, LOG_SIZE, "select done, pipe %d/%d\n", s, num_pipes);
+  log_print ();
+#endif /* DEBUG_PRINT */
   if (s < 0) {
     perror ("next_available/select");
     print_pipes ("current", max_pipe);
@@ -390,13 +483,13 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
     int new_recvd = read (pipe, buffer + recvd, blen - recvd);
 /*  printf ("%d\n", new_recvd); */
     if (new_recvd <= 0) {
-#ifdef DEBUG_PRINT
       if (new_recvd < 0)
         perror ("pipemsg.c receive_bytes read");
+#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
       snprintf (log_buf, LOG_SIZE,
-                "receive_bytes: %d bytes on pipe %d, expected %d/%d\n",
-                new_recvd, pipe, blen - recvd, blen);
+                "receive_bytes: %d/%d bytes on pipe %d, expected %d/%d\n",
+                new_recvd, recvd, pipe, blen - recvd, blen);
       log_print ();
       if ((new_recvd == 0) && (recvd > 0))
         return recvd; /* return this data for now, and -1 next time */
@@ -463,7 +556,7 @@ static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
   int offset = bp->filled;
   int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0);
   if (read <= 0) {
-  /* printf ("receive_pipe_message_poll error %d on pipe %d\n", read, pipe); */
+printf ("receive_pipe_message_poll error %d on pipe %d\n", read, pipe);
     return -1;
   }
   offset += read;
@@ -578,7 +671,8 @@ static int receive_dgram (int fd, char ** message,
     return -1;
   }
 #ifdef DEBUG_PRINT
-  printf ("ready to receive datagram on fd %d\n", fd);
+  snprintf (log_buf, LOG_SIZE, "ready to receive datagram on fd %d\n", fd);
+  log_print ();
 #endif /* DEBUG_PRINT */
   int result = recvfrom (fd, *message, ALLNET_MTU, MSG_DONTWAIT, sa, salen);
   if (result < 0) {
@@ -607,7 +701,6 @@ static int receive_dgram (int fd, char ** message,
 int receive_pipe_message_fd (int timeout, char ** message, int fd,
                              struct sockaddr * sa, socklen_t * salen,
                              int * from_pipe, int * priority)
-
 {
   struct timeval now, finish;
   gettimeofday (&now, NULL);
@@ -616,6 +709,7 @@ int receive_pipe_message_fd (int timeout, char ** message, int fd,
     add_us (&finish, timeout * 1000LL);
 
   if (from_pipe != NULL) *from_pipe = -1;
+  if (priority != NULL) *priority = ALLNET_PRIORITY_EPSILON;
   while ((timeout == PIPE_MESSAGE_WAIT_FOREVER) ||
          (tv_compare (&now, &finish) <= 0)) {
     int pipe;
@@ -623,10 +717,17 @@ int receive_pipe_message_fd (int timeout, char ** message, int fd,
     if (pipe >= 0) { /* can read pipe */
       if (from_pipe != NULL) *from_pipe = pipe;
       int r;
-      if (pipe != fd)  /* it is a pipe, not a datagram socket */
+      if (pipe != fd) { /* it is a pipe, not a datagram socket */
         r = receive_pipe_message_poll (pipe, message, priority);
-      else           /* UDP or raw socket */
+if (r < 0) printf ("receive_pipe_message_poll returned %d\n", r);
+        if ((sa != NULL) && (salen != NULL) && (*salen > 0))
+          bzero (sa, *salen);
+        if (salen != NULL)
+          *salen = 0;
+      } else {         /* UDP or raw socket */
         r = receive_dgram (pipe, message, sa, salen);
+if (r < 0) printf ("receive_dgram returned %d\n", r);
+      }
       if (r < 0)
         return -1;
       if (r > 0)

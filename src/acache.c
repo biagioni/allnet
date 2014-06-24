@@ -86,13 +86,15 @@ static int save_packet (void * cache, char * message, int msize)
 {
   int i;
   struct allnet_header * hp = (struct allnet_header *) message;
-  int off = snprintf (log_buf, LOG_SIZE, "save_packet: size %d, id ", msize);
+#ifdef DEBUG_PRINT
+  snprintf (log_buf, LOG_SIZE, "save_packet: size %d\n", msize);
   log_print ();
+#endif /* DEBUG_PRINT */
   char * id = get_id (message, msize);
   if (id == NULL)   /* no sort of message or packet ID found */
     return 0;
 #ifdef DEBUG_PRINT
-  buffer_to_string (id, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 1,
+  buffer_to_string (id, MESSAGE_ID_SIZE, "id", MESSAGE_ID_SIZE, 1,
                     log_buf + off, LOG_SIZE - off);
   log_print ();
   for (i = 0; i < CACHE_SIZE; i++) {
@@ -231,11 +233,12 @@ void * main_loop (int sock)
           ack_packets (cache, message, result);
         if (save_packet (cache, message, result)) {
           mfree = 0;   /* saved, so do not free */
-          snprintf (log_buf, LOG_SIZE, "saved packet of type %d\n",
-                    hp->message_type);
+          snprintf (log_buf, LOG_SIZE, "saved packet of type %d, size %d\n",
+                    hp->message_type, result);
         } else {
-          snprintf (log_buf, LOG_SIZE, "did not save packet, type %d\n",
-                    hp->message_type);
+          snprintf (log_buf, LOG_SIZE,
+                    "did not save packet, type %d, size %d\n",
+                    hp->message_type, result);
         }
         log_print ();
       }
