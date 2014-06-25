@@ -251,13 +251,13 @@ static int send_udp_addr (int udp, char * message, int msize,
 {
   struct sockaddr_storage sas;
   bzero (&sas, sizeof (sas));
-  struct sockaddr * sap = (struct sockaddr *) (&sas);
-  struct sockaddr_in * si4p = (struct sockaddr_in *) (&sas);
+  struct sockaddr     * sap  = (struct sockaddr     *) (&sas);
+  struct sockaddr_in  * si4p = (struct sockaddr_in  *) (&sas);
   struct sockaddr_in6 * si6p = (struct sockaddr_in6 *) (&sas);
   if (addr->ip_version == 4) {
     si4p->sin_family = AF_INET;
     si4p->sin_port = addr->port;
-    si4p->sin_addr.s_addr = readb32 (addr->ip.s6_addr + 12);
+    memcpy ((char *) (&(si4p->sin_addr.s_addr)), (addr->ip.s6_addr + 12), 4);
   } else if (addr->ip_version == 6) {
     si6p->sin6_family = AF_INET6;
     si6p->sin6_port = addr->port;
@@ -268,6 +268,11 @@ static int send_udp_addr (int udp, char * message, int msize,
             addr->ip_version);
     return 0;
   }
+  int off = snprintf (log_buf, LOG_SIZE,
+                      "send_udp_addr sending %d bytes to: ", msize);
+  print_sockaddr_str (sap, sizeof (sas), 0, log_buf + off, LOG_SIZE - off);
+  log_print ();
+
   send_udp (udp, message, msize, sap);
   return 1;
 }
@@ -645,6 +650,9 @@ void send_keepalive (void * udp_cache, int fd,
 static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
                                     struct allnet_header * in_hp, int fd)
 {
+  int off = snprintf (log_buf, LOG_SIZE, "send_dht_ping_response (");
+  print_sockaddr_str (sap, sasize, 0, log_buf + off, LOG_SIZE - off);
+  log_print ();
   unsigned char message [1024];
   bzero (message, sizeof (message));
   struct allnet_header * hp =
@@ -657,8 +665,9 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
   unsigned char * dhtp = message + ALLNET_MGMT_HEADER_SIZE (hp->transport);
   struct allnet_mgmt_dht * dht = (struct allnet_mgmt_dht *) dhtp;
   
-  int max = (sizeof (message) - (dhtp - message)) /
-            sizeof (struct allnet_mgmt_dht);
+  int max = (sizeof (message) - (((unsigned char *) (dht->nodes)) - message)) /
+                  sizeof (struct addr_info);
+
   unsigned char my_addr [ADDRESS_SIZE];
   routing_my_address (my_addr);
   int n = init_own_routing_entries (dht->nodes, max, my_addr, ADDRESS_BITS);
@@ -667,9 +676,14 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
     dht->num_dht_nodes = 0;
     writeb64 (dht->timestamp, allnet_time ());
     send_udp (fd, message, ALLNET_DHT_SIZE (hp->transport, n), sap);
+#ifdef DEBUG_PRINT
     packet_to_string (message, ALLNET_DHT_SIZE (hp->transport, n),
                       "sent ping response", 1, log_buf, LOG_SIZE);
+    int off = strlen (log_buf);
+    off += snprintf (log_buf + off, LOG_SIZE - off, " to: ");
+    print_sockaddr_str (sap, sasize, 0, log_buf + off, LOG_SIZE - off);
     log_print ();
+#endif /* DEBUG_PRINT */
   }
 }
 
@@ -681,7 +695,7 @@ static int dht_filter_senders (struct sockaddr * sap, socklen_t sasize,
   int result = 0;
   int n_sender = mdp->num_sender & 0xff;
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "handle_mgmt %d senders\n", n_sender);
+  snprintf (log_buf, LOG_SIZE, "dht_filter_senders %d senders\n", n_sender);
   log_print ();
 #endif /* DEBUG_PRINT */
   if (n_sender == 0)
@@ -821,7 +835,10 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
     struct allnet_mgmt_dht * mdp =
       (struct allnet_mgmt_dht *)
         (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-    if (((mdp->num_sender & 0xff) == 0) && (mdp->num_dht_nodes & 0xff == 0)) {
+snprintf (log_buf, LOG_SIZE, "%d senders, %d nodes\n",
+mdp->num_sender, mdp->num_dht_nodes);
+log_print ();
+    if ((mdp->num_sender == 0) && (mdp->num_dht_nodes == 0)) {
       /* ping req from behind a NAT/firewall */
       send_dht_ping_response (sap, sasize, hp, udp);
       return 1;   /* message handled */

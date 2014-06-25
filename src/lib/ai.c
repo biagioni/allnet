@@ -223,14 +223,21 @@ void standardize_ip (struct sockaddr * ap, socklen_t asize)
   if ((ap->sa_family == AF_INET6) &&
       (asize >= sizeof (struct sockaddr_in)) &&
       (memcmp (ap6->sin6_addr.s6_addr, ipv4_in_ipv6_prefix, 12) == 0)) {
+#ifdef DEBUG_PRINT
+    int off = snprintf (log_buf, LOG_SIZE, "converting IPv6 address: ");
+    print_sockaddr_str (ap, asize, 1, log_buf + off, LOG_SIZE - off);
+    log_print ();
+#endif /* DEBUG_PRINT */
     int port = ap6->sin6_port;
     uint32_t ip4; 
     memcpy ((char *) (&ip4), ap6->sin6_addr.s6_addr + 12, 4);
     ap4->sin_family = AF_INET;
     ap4->sin_port = port;
     ap4->sin_addr.s_addr = ip4;
-    int off = snprintf (log_buf, LOG_SIZE, "converted IPv6 to IPv4 address: ");
+#ifdef DEBUG_PRINT
+    off = snprintf (log_buf, LOG_SIZE, "converted to IPv4 address: ");
     print_sockaddr_str (ap, asize, 1, log_buf + off, LOG_SIZE - off);
     log_print ();
+#endif /* DEBUG_PRINT */
   }
 }
