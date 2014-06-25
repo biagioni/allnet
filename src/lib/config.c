@@ -69,7 +69,8 @@ int config_file_name (char * program, char * file, char ** name)
     if ((home_env == NULL) || (strcmp (home_env, "/nonexistent") == 0)) {
       static int printed = 0;
       if (! printed)
-        printf ("no home environment, running without configs\n");
+        printf ("no home environment (%s), running without configs\n",
+                home_env);
       printed = 1;
       return -1;
     }
