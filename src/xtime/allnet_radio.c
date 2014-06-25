@@ -13,8 +13,9 @@
 #include "lib/cipher.h"
 #include "lib/keys.h"
 
-static int handle_packet (char * message, int msize, int debug)
+static int handle_packet (char * message, int msize, int * rcvd, int debug)
 {
+  *rcvd = 0;
   struct timeval receive_time;
   gettimeofday (&receive_time, NULL);
 
@@ -72,6 +73,7 @@ static int handle_packet (char * message, int msize, int debug)
     else
       printf ("clock skew detected (%lld.%06ld seconds before)\n",
               delta, receive_time.tv_usec);
+    *rcvd = 1;
   } else {
     if (debug)
       printf ("psize %d, strlen %zd\n", psize, strlen (payload));
@@ -83,7 +85,7 @@ static int handle_packet (char * message, int msize, int debug)
   return 0;  /* continue */
 }
 
-static void main_loop (int sock, int debug)
+static void main_loop (int sock, int debug, int max)
 {
   while (1) {
     int pipe;
@@ -95,9 +97,15 @@ static void main_loop (int sock, int debug)
       printf ("pipe closed, exiting\n");
       exit (1);
     }
-    if (handle_packet (message, found, debug))
+    int received = 0;
+    if (handle_packet (message, found, &received, debug))
       return;
     free (message);
+    if ((max > 0) && (received)) {
+      max--;
+      if (max == 0)
+        return;
+    }
   }
 }
 
@@ -118,6 +126,7 @@ static int debug_switch (int * argc, char ** argv)
   return debug;
 }
 
+/* optional argument: quit after n messages */
 int main (int argc, char ** argv)
 {
   int sock = connect_to_local (argv [0], argv [0]);
@@ -126,6 +135,10 @@ int main (int argc, char ** argv)
 
   int debug = debug_switch (&argc, argv);
 
-  main_loop (sock, debug);
+  int max = 0;
+  if (argc > 1)
+    max = atoi (argv [1]);
+
+  main_loop (sock, debug, max);
 }
 
