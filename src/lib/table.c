@@ -9,19 +9,20 @@
 #include <sys/types.h>
 
 #include "table.h"
+#include "util.h"
 
 /* a table is an array of pointers to entries, each of which may
  * point to another entry */
 struct table_entry {
   struct table_entry * next;
-  char data [0];    /* actually, table->bytes_per_address of data */
+  char data [0];    /* actually, table->bytes_per_entry of data */
 };
 
 void init_table (struct table * table)
 {
   table->num_entries = 0;
   table->num_slots = 0;
-  table->bytes_per_address = 0;
+  table->bytes_per_entry = 0;
   /* table->bytes_per_entry = 0; */
   table->storage_size = 0;
   table->table = NULL;
@@ -107,8 +108,7 @@ static int init_table_size (struct table * table, int num_entries,
   table->freeptr = table->storage;
   table->num_entries = num_entries;
   table->num_slots = num_slots;
-  table->bytes_per_address = num_data_bytes;
-  /* table->bytes_per_entry = needed_per_entry; */
+  table->bytes_per_entry = num_data_bytes;
   table->storage_size = needed;
   int i;
   for (i = 0; i < num_slots; i++)
@@ -120,6 +120,7 @@ static int init_table_size (struct table * table, int num_entries,
   return needed;
 }
 
+#if 0
 /* like memcmp, bur for fewer than 8 bits */
 static int bitcmp (char b1, char b2, int bits)
 {
@@ -152,6 +153,7 @@ static int get32bits (char * bitstring, int bits)
     return - result;
   return result;
 }
+#endif /* 0 */
 
 static void get_indices (char * bitstring, int bits, int num_slots,
                          int * first_index, int * last_index)
@@ -194,6 +196,7 @@ static void get_indices (char * bitstring, int bits, int num_slots,
 */
 }
 
+#if 0  /* older version repeats the code in util.c/matches */
 static int bits_match (char * data, int bytes, char * bitstring, int bits)
 {
   int min_bits = bits;
@@ -213,6 +216,7 @@ static int bits_match (char * data, int bytes, char * bitstring, int bits)
     return 1;    /* match */
   return 0;      /* no match */
 }
+#endif /* 0 */
 
 /* returns 1 if found, 0 otherwise */
 /* if returns 1, also fills in *data and *dsize */
@@ -236,8 +240,9 @@ int table_find (char * bitstring, int bits, struct table * table,
   while (first <= last) {
     struct table_entry * entry = table->table [first];
     while (entry != NULL) {
-      /* print_table_entry (first, entry, table->bytes_per_address); */
-      if (bits_match (entry->data, table->bytes_per_address, bitstring, bits))
+      /* print_table_entry (first, entry, table->bytes_per_entry); */
+/*    if (bits_match (entry->data, table->bytes_per_entry, bitstring, bits)) */
+      if (matches (entry->data, table->bytes_per_entry * 8, bitstring, bits))
         return 1;
       /* printf ("no match on entry\n"); */
       entry = entry->next;
@@ -276,8 +281,8 @@ static void table_add (struct table * table, char * data, int dsize)
   table->freeptr += entry_size;
   /* link the new entry to the old entry (if any) */
   new->next = table->table [first];
-  if (dsize > table->bytes_per_address)
-    dsize = table->bytes_per_address;
+  if (dsize > table->bytes_per_entry)
+    dsize = table->bytes_per_entry;
   memcpy (new->data, data, dsize);
   table->table [first] = new;
   /* printf ("added new entry at index %d\n", first); */

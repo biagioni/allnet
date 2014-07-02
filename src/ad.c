@@ -29,10 +29,13 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
   int valid = 0;
   int social_distance = UNKNOWN_SOCIAL_TIER;
   int rate_fraction = largest_rate ();
-  if ((sig_size > 0) && (ALLNET_SIZE (hp->transport) + sig_size + 2 > size)) {
-    char * sig = packet + (size - 2 - sig_size);
-    char * verify = packet + ALLNET_HEADER_SIZE; 
-    int vsize = size - (ALLNET_HEADER_SIZE + sig_size + 2);
+  int hsize = ALLNET_SIZE (hp->transport);
+snprintf (log_buf, LOG_SIZE, "packet_priority (%d, %d + %d + 2 = %d <? %d)\n",
+hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size); log_print ();
+  if ((sig_size > 0) && (hsize + sig_size + 2 < size)) {
+    char * verify = packet + hsize; 
+    int vsize = size - (hsize + sig_size + 2);
+    char * sig = packet + hsize + vsize;
     social_distance =
        social_connection (soc, verify, vsize, hp->source, hp->src_nbits,
                           hp->sig_algo, sig, sig_size, &valid);

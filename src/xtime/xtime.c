@@ -39,9 +39,12 @@ static void * receive_ignore (void * arg)
     char * message;
     int priority;
     int n = receive_pipe_message (*sockp, &message, &priority);
-    /* ignore the message and recycle the storage */
-    free (message);
+    if (n > 0)    /* ignore the message and recycle the storage */
+      free (message);
+    else          /* some error -- quit */
+      return NULL;
   }
+  return NULL;
 }
 
 static void wait_until (time_t end_time)

@@ -192,7 +192,9 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
   free (signature);
   writeb16 (message + hsize + esize + ssize, ssize);
 
-print_packet (message, msize, "sending", 1);
+#ifdef DEBUG_PRINT
+  print_packet (message, msize, "sending", 1);
+#endif /* DEBUG_PRINT */
   if (! send_pipe_message_free (sock, message, msize, priority)) {
     printf ("unable to request retransmission from %s\n", contact);
     return 0;
@@ -274,7 +276,9 @@ char * chat_time_to_string (unsigned char * t, int static_result)
       strcat (result, tzname [0]);
     return result;
   }
-printf ("time offset %d, my time offset %d\n", time_offset, my_time_offset);
+#ifdef DEBUG_PRINT
+  printf ("time offset %d, my time offset %d\n", time_offset, my_time_offset);
+#endif /* DEBUG_PRINT */
   int print_offset = strlen (result);
   int delta = time_offset - my_time_offset;
   while (delta < 0)

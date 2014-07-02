@@ -414,7 +414,9 @@ static void write_address_file (char * fname, char * address, int nbits)
 static void save_contact (struct key_info * k)
 {
   char * dirname = k->dir_name;
-printf ("save_contact dirname is %s\n", dirname);
+#ifdef DEBUG_PRINT
+  printf ("save_contact dirname is %s\n", dirname);
+#endif /* DEBUG_PRINT */
   if (dirname == NULL) {
     char fname [DATE_TIME_LEN + 1];
     time_t now = time (NULL);
@@ -453,7 +455,9 @@ printf ("save_contact dirname is %s\n", dirname);
     write_address_file (remote_fname, k->remote.address, k->remote.nbits);
     free (remote_fname);
   }
+#ifdef DEBUG_PRINT
   printf ("save_contact %d file name is %s\n", ((int) (k - kip)), dirname);
+#endif /* DEBUG_PRINT */
 }
 
 static int do_set_contact_pubkey (struct key_info * k,
@@ -565,9 +569,11 @@ keyset create_contact (char * contact, int keybits, int feedback,
   kip [new_contact] = new;
   generate_contacts ();
 
-printf ("for %s new.keys are %p %p, kip keys are %p %p\n",
-kip [new_contact].contact_name, new.contact_pubkey, new.my_key,
-kip [new_contact].contact_pubkey, kip [new_contact].my_key);
+#ifdef DEBUG_PRINT
+  printf ("for %s new.keys are %p %p, kip keys are %p %p\n",
+  kip [new_contact].contact_name, new.contact_pubkey, new.my_key,
+  kip [new_contact].contact_pubkey, kip [new_contact].my_key);
+#endif /* DEBUG_PRINT */
 
   /* now save to disk */
   save_contact (kip + new_contact);

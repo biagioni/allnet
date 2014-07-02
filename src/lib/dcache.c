@@ -68,7 +68,7 @@ static void release_entry (struct dcache * cache, int index)
   cache->busy = 1;
   cache->f (cache->entries [index].data);   /* release the data */
   cache->busy = 0;
-  cache->entries [index].data = NULL;;
+  cache->entries [index].data = NULL;
   snprintf (log_buf, LOG_SIZE, "released entry %d of %d (max %d)\n",
             index, cache->num_entries, cache->max_entries);
   log_print ();

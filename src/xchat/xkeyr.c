@@ -28,15 +28,18 @@ static void wait_for_ack (char * contact, char * message_ack,
     int pipe;
     int prio;
     int asize = receive_pipe_message_any (1000, &ack, &pipe, &prio);
+#ifdef DEBUG_PRINT
     printf ("received %d bytes\n", asize);
+#endif /* DEBUG_PRINT */
     if (asize <= 0) {
       printf ("pipe closed, exiting\n");
       exit (1);
     }
-    if (asize >= ALLNET_HEADER_SIZE) {
+    if (is_valid_message (ack, asize)) {
       struct allnet_header * hp = (struct allnet_header *) ack;
-      char * data = ack + ALLNET_SIZE (hp->transport);
-      if ((asize >= ALLNET_SIZE (hp->transport) + MESSAGE_ID_SIZE) &&
+      int hsize = ALLNET_SIZE (hp->transport);
+      char * data = ack + hsize;
+      if ((asize >= hsize + MESSAGE_ID_SIZE) &&
           (hp->message_type == ALLNET_TYPE_ACK) &&
           (memcmp (data, message_ack, MESSAGE_ID_SIZE) == 0)) {
         printf ("key exchange is complete with contact %s\n", contact);
@@ -59,8 +62,10 @@ static void send_key_message (int sock, char * contact, keyset keys,
   int contact_ksize = get_contact_pubkey (keys, &contact_key);
   char * my_pubkey;
   int my_ksize = get_my_pubkey (keys, &my_pubkey);
-printf ("send_key_message: my key %p/%d, contact key %p/%d\n",
-        my_pubkey, my_ksize, contact_key, contact_ksize);
+#ifdef DEBUG_PRINT
+  printf ("send_key_message: my key %p/%d, contact key %p/%d\n",
+          my_pubkey, my_ksize, contact_key, contact_ksize);
+#endif /* DEBUG_PRINT */
   char addr [ADDRESS_SIZE];
   int nbits = get_remote (keys, addr);
   char my_addr [ADDRESS_SIZE];
@@ -77,7 +82,9 @@ printf ("send_key_message: my key %p/%d, contact key %p/%d\n",
   char * cipher;
   int csize = encrypt (text, length, contact_key, contact_ksize, &cipher);
 
-printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);
+#ifdef DEBUG_PRINT
+  printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);
+#endif /* DEBUG_PRINT */
 
   int psize;
   struct allnet_header * hp =
@@ -85,7 +92,9 @@ printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);
                    ALLNET_SIGTYPE_NONE, my_addr, my_bits, addr, nbits,
                    text, &psize);
   char * packet = (char *) hp;
-printf ("packet size is %d bytes\n", psize);
+#ifdef DEBUG_PRINT
+  printf ("packet size is %d bytes\n", psize);
+#endif /* DEBUG_PRINT */
 
   memcpy (packet + ALLNET_SIZE(hp->transport), cipher, csize);
   free (cipher);
@@ -121,8 +130,9 @@ static void wait_for_key (int sock, char * secret, char * contact,
       printf ("pipe closed (timeout %lld), exiting\n", ms);
       exit (1);
     }
-    if (found > ALLNET_HEADER_SIZE + SHA512_SIZE) {
-      struct allnet_header * hp = (struct allnet_header *) packet;
+    struct allnet_header * hp = (struct allnet_header *) packet;
+    if ((is_valid_message (packet, found)) &&
+        (found > (ALLNET_SIZE (hp->transport) + SHA512_SIZE))) {
       if (hp->message_type == ALLNET_TYPE_KEY_XCHG) {  /* look at it */
         int usec = finish.tv_usec - start.tv_usec;
         int sec = finish.tv_sec - start.tv_sec;

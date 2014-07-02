@@ -74,7 +74,9 @@ printf ("packet not requesting an ack, no ack sent\n");
   currently_sent_ack = (currently_sent_ack + 1) % NUM_ACKS;
   memcpy (recently_sent_acks [currently_sent_ack], message_ack,
           MESSAGE_ID_SIZE);
-print_packet ((char *) ackp, size, "sending ack", 1);
+#ifdef DEBUG_PRINT
+  print_packet ((char *) ackp, size, "sending ack", 1);
+#endif /* DEBUG_PRINT */
   send_pipe_message_free (sock, (char *) ackp, size, ALLNET_PRIORITY_LOCAL);
 /* after sending the ack, see if we can get any outstanding
  * messages from the peer */
@@ -94,10 +96,12 @@ int handle_packet (int sock, char * packet, int psize,
                    int * verified, time_t * sent, int * duplicate)
 {
 /*  print_timestamp ("received packet"); */
+/*
   struct timeval tv;
   gettimeofday (&tv, NULL);
   printf ("%ld.%06ld: got %d-byte packet from socket %d\n",
           tv.tv_sec, tv.tv_usec, psize, sock);
+*/
 /*  print_buffer (packet, psize, "handle_packet", 24, 1); */
   if (! is_valid_message (packet, psize)) {
 /*
@@ -114,8 +118,10 @@ int handle_packet (int sock, char * packet, int psize,
     return 0;
   }
 
+#ifdef DEBUG_PRINT
   if (hp->hops > 0)  /* not my own packet */
     print_packet (packet, psize, "xcommon received", 1);
+#endif /* DEBUG_PRINT */
 
   if (hp->message_type == ALLNET_TYPE_ACK) {
     /* save the acks */
@@ -125,7 +131,9 @@ int handle_packet (int sock, char * packet, int psize,
     for (i = 0; i < count; i++) {
       long long int ack_number = ack_received (ack, contact, kset);
       if (ack_number > 0) {
+#ifdef DEBUG_PRINT
         printf ("sequence number %lld acked\n", ack_number);
+#endif /* DEBUG_PRINT */
         request_and_resend (sock, *contact, *kset);
 /*    } else if (ack_number == -2) {
         printf ("packet acked again\n"); */
@@ -243,7 +251,9 @@ long long int send_data_message (int sock, char * peer,
   uint64_t seq = readb64 (cp->counter);
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
   /* send_to_contact initializes the message ack in data_with_cd/cp */
-printf ("sending seq %" PRIu64 ":\n", seq);
+#ifdef DEBUG_PRINT
+  printf ("sending seq %" PRIu64 ":\n", seq);
+#endif /* DEBUG_PRINT */
   send_to_contact (data_with_cd, dsize, peer, sock,
                    NULL, 16, NULL, 16, 4, ALLNET_PRIORITY_LOCAL, 1);
   free (data_with_cd);

@@ -197,7 +197,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
   int total;
   struct allnet_header * hp =
-    create_packet (size_needed - ALLNET_HEADER_SIZE, ALLNET_TYPE_MGMT,
+    create_packet (size_needed - ALLNET_SIZE (0), ALLNET_TYPE_MGMT,
                    inhp->hops + 4, ALLNET_SIGTYPE_NONE, my_address, abits,
                    inhp->source, inhp->src_nbits, NULL, &total);
   if ((hp == NULL) || (total != size_needed)) {
@@ -297,8 +297,6 @@ static int same_trace_id (void * n1, void * n2)
 static void acknowledge_bcast (int sock, char * message, int msize)
 {
   /* ignore any packet other than unencrypted packets requesting an ack */
-  if (msize <= ALLNET_HEADER_SIZE)
-    return;
   struct allnet_header * hp = (struct allnet_header *) message;
   if ((hp->message_type != ALLNET_TYPE_CLEAR) ||
       (hp->transport & ALLNET_TRANSPORT_ACK_REQ == 0))  /* ignore */
@@ -325,8 +323,6 @@ static void respond_to_trace (int sock, char * message, int msize,
                               void * cache)
 {
   /* ignore any packet other than valid trace requests with at least 1 entry */
-  if (msize <= ALLNET_HEADER_SIZE)
-    return;
   struct allnet_header * hp = (struct allnet_header *) message;
   if ((hp->message_type != ALLNET_TYPE_MGMT) ||
       (msize < ALLNET_TRACE_REQ_SIZE (hp->transport, 1, 0)))
@@ -471,21 +467,23 @@ static void main_loop (int sock, char * my_address, int nbits,
 #ifdef DEBUG_PRINT
     print_packet (message, found, "received", 1);
 #endif /* DEBUG_PRINT */
-    acknowledge_bcast (sock, message, found);
-    respond_to_trace (sock, message, found, pri + 1, my_address, nbits,
-                      match_only, forward_only, cache);
+    if (is_valid_message (message, found)) {
+      acknowledge_bcast (sock, message, found);
+      respond_to_trace (sock, message, found, pri + 1, my_address, nbits,
+                        match_only, forward_only, cache);
+    }
     free (message);
   }
 }
 
 static void send_trace (int sock, char * address, int abits, char * trace_id,
-                        char * my_address, int my_abits)
+                        char * my_address, int my_abits, int max_hops)
 {
   int total_size = ALLNET_TRACE_REQ_SIZE (0, 1, 0);
-  int data_size = total_size - ALLNET_HEADER_SIZE;
+  int data_size = total_size - ALLNET_SIZE (0);
   int allocated = 0;
   struct allnet_header * hp =
-    create_packet (data_size, ALLNET_TYPE_MGMT, 10, ALLNET_SIGTYPE_NONE,
+    create_packet (data_size, ALLNET_TYPE_MGMT, max_hops, ALLNET_SIGTYPE_NONE,
                    my_address, my_abits, address, abits, NULL, &allocated);
   if (allocated != total_size) {
     printf ("error in send_trace: %d %d %d\n", allocated,
@@ -739,7 +737,8 @@ static void usage (char * pname, int daemon)
     printf ("usage: %s [-m] [<my_address_in_hex>[/<number_of_bits>]]\n", pname);
     printf ("       -m specifies tracing only when we match the address\n"); 
   } else {
-    printf ("usage: %s [<my_address_in_hex>[/<number_of_bits>]]\n", pname);
+    printf ("usage: %s [<my_address_in_hex>[/<number_of_bits> [hops]]]\n",
+            pname);
   }
 }
 
@@ -760,7 +759,9 @@ int main (int argc, char ** argv)
     }
   }
 
-  if (argc > 2) {
+  if ((argc > 2) && ((is_daemon) || (argc > 3))) {
+    printf ("argc %d, at most %d allowed for %s\n", argc,
+            ((is_daemon) ? 2 : 3), ((is_daemon) ? "traced" : "trace"));
     usage (argv [0], is_daemon);
     return 1;
   }
@@ -776,6 +777,8 @@ int main (int argc, char ** argv)
     bzero (address, sizeof (address));  /* set unused part to all zeros */
     abits = get_address (argv [1], address, sizeof (address));
     if (abits <= 0) {
+      printf ("argc %d, invalid number of bits specified, should be > 0\n",
+              argc);
       usage (argv [0], is_daemon);
       return 1;
     }
@@ -795,15 +798,21 @@ int main (int argc, char ** argv)
     printf ("trace error: main loop returned\n");
     return 1;
   } else {                                    /* called as client */
+    int nhops = 10;
+    if (argc > 2) {   /* number of hops is specified on the command line */
+      int n = atoi (argv [2]);
+      if (n > 0)
+        nhops = n;
+    }
 #ifdef DEBUG_PRINT
-    printf ("tracing %d bits: ", abits);
+    printf ("tracing %d bits to %d hops: ", abits, nhops);
     print_bitstring (address, 0, abits, 1);
 #endif /* DEBUG_PRINT */
     char trace_id [MESSAGE_ID_SIZE];
     char my_addr [ADDRESS_SIZE];
     random_bytes (trace_id, sizeof (trace_id));
     random_bytes (my_addr, sizeof (my_addr));
-    send_trace (sock, address, abits, trace_id, my_addr, 5);
+    send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
     wait_for_responses (sock, trace_id, 60);
   }
   return 0;

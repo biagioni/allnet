@@ -556,7 +556,6 @@ static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
   int offset = bp->filled;
   int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0);
   if (read <= 0) {
-printf ("receive_pipe_message_poll error %d on pipe %d\n", read, pipe);
     return -1;
   }
   offset += read;
@@ -719,14 +718,14 @@ int receive_pipe_message_fd (int timeout, char ** message, int fd,
       int r;
       if (pipe != fd) { /* it is a pipe, not a datagram socket */
         r = receive_pipe_message_poll (pipe, message, priority);
-if (r < 0) printf ("receive_pipe_message_poll returned %d\n", r);
+/* if (r < 0) printf ("receive_pipe_message_poll returned %d\n", r); */
         if ((sa != NULL) && (salen != NULL) && (*salen > 0))
           bzero (sa, *salen);
         if (salen != NULL)
           *salen = 0;
       } else {         /* UDP or raw socket */
         r = receive_dgram (pipe, message, sa, salen);
-if (r < 0) printf ("receive_dgram returned %d\n", r);
+/* if (r < 0) printf ("receive_dgram returned %d\n", r); */
       }
       if (r < 0)
         return -1;

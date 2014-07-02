@@ -50,8 +50,6 @@ static void return_cache_entry (void * arg)
 static char * get_id (char * message, int size)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
-  if (size < ALLNET_HEADER_SIZE)
-    return NULL;
   char * id = ALLNET_PACKET_ID (hp, hp->transport, size);
   if (id == NULL)
     id = ALLNET_MESSAGE_ID (hp, hp->transport, size);
@@ -84,7 +82,6 @@ static int match_packet_id (void * packet_id, void * cache_entry)
 /* returns 1 if successful, 0 otherwise */
 static int save_packet (void * cache, char * message, int msize)
 {
-  int i;
   struct allnet_header * hp = (struct allnet_header *) message;
 #ifdef DEBUG_PRINT
   snprintf (log_buf, LOG_SIZE, "save_packet: size %d\n", msize);
@@ -93,6 +90,7 @@ static int save_packet (void * cache, char * message, int msize)
   char * id = get_id (message, msize);
   if (id == NULL)   /* no sort of message or packet ID found */
     return 0;
+  int i;
 #ifdef DEBUG_PRINT
   buffer_to_string (id, MESSAGE_ID_SIZE, "id", MESSAGE_ID_SIZE, 1,
                     log_buf + off, LOG_SIZE - off);
@@ -158,20 +156,12 @@ static int respond_to_packet (void * cache, char * message,
                               int msize, int fd)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
-  if (msize < ALLNET_HEADER_SIZE) {
-    snprintf (log_buf, LOG_SIZE,
-              "respond_to_packet: size %d, min %zd, ignoring request\n",
-              msize, ALLNET_HEADER_SIZE);
-    log_print ();
-    return 0;
-  }
   void * * matches;
   int nmatches = 
     cache_all_matches (cache, request_matches_packet, message, &matches);
   if (nmatches == 0)
     return 0;
-  snprintf (log_buf, LOG_SIZE,
-            "respond_to_packet: found %d matches\n", nmatches);
+  snprintf (log_buf, LOG_SIZE, "respond_to_packet: %d matches\n", nmatches);
   log_print ();
   struct cache_entry * * cep = (struct cache_entry * *) matches;
   int i;
@@ -211,24 +201,24 @@ void * main_loop (int sock)
     char * message;
     int priority;
     int result = receive_pipe_message (sock, &message, &priority);
+    struct allnet_header * hp = (struct allnet_header *) message;
+    /* unless we save it, free the message */
+    int mfree = 1;
     if (result <= 0) {
       snprintf (log_buf, LOG_SIZE, "ad pipe %d closed, result %d\n",
                 sock, result);
       log_print ();
+      mfree = 0;  /* is this ever needed or useful? */
       break;
-    }
-    /* message from ad: save, respond, or ignore */
-    /* unless we save it, free the message */
-    int mfree = 1;
-    if (result >= ALLNET_HEADER_SIZE) {
-      struct allnet_header * hp = (struct allnet_header *) message;
+    } else if ((result >= ALLNET_HEADER_SIZE) &&
+               (result >= ALLNET_SIZE (hp->transport))) {
+      /* valid message from ad: save, respond, or ignore */
       if (hp->message_type == ALLNET_TYPE_DATA_REQ) { /* respond */
         if (respond_to_packet (cache, message, result, sock))
           snprintf (log_buf, LOG_SIZE, "responded to data request packet\n");
         else
           snprintf (log_buf, LOG_SIZE, "no response to data request packet\n");
-        log_print ();
-      } else {
+      } else {   /* not a data request */
         if (hp->message_type == ALLNET_TYPE_ACK) /* erase if have */
           ack_packets (cache, message, result);
         if (save_packet (cache, message, result)) {
@@ -240,8 +230,8 @@ void * main_loop (int sock)
                     "did not save packet, type %d, size %d\n",
                     hp->message_type, result);
         }
-        log_print ();
       }
+      log_print ();
     } else {
       snprintf (log_buf, LOG_SIZE, "ignoring packet of size %d\n", result);
       log_print ();

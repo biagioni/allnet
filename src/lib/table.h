@@ -7,7 +7,7 @@ struct table {
   int num_entries;
   int num_slots;    /* the next higher power of two for num_entries */
   struct table_entry ** table;
-  int bytes_per_address;   /* how many address bytes are kept per entry */
+  int bytes_per_entry;   /* how many bytes are kept per entry */
   int stored_size;
   int storage_size;
   char * storage;   /* freed when reallocating */
@@ -22,7 +22,7 @@ extern void init_table (struct table * table);
 /* returns the number of bytes in the table. */
 /* in case of failure returns 0 and the table is unchanged */
 extern int table_from_file (struct table * table, int fd,
-                            int bytes_per_address, int free_bytes);
+                            int bytes_per_entry, int free_bytes);
 
 /* returns 1 if found, 0 otherwise */
 /* if returns 1, also fills in *data and *dsize */

@@ -119,7 +119,7 @@ int main (int argc, char ** argv)
   struct listen_info info;
   snprintf (log_buf, LOG_SIZE, "calling listen_init_info\n");
   log_print ();
-  listen_init_info (&info, 256, "alocal", ALLNET_LOCAL_PORT, 1, 1);
+  listen_init_info (&info, 256, "alocal", ALLNET_LOCAL_PORT, 1, 1, NULL);
   snprintf (log_buf, LOG_SIZE, "calling listen_add_fd\n");
   log_print ();
   listen_add_fd (&info, rpipe, NULL);

@@ -328,8 +328,6 @@ static int handle_beacon (char * message, int msize, int sockfd,
                           int * send_type, int * send_size, char * send_message)
 {
   *send_type = 0;  /* don't send anything unless we say otherwise */
-  if (msize < ALLNET_HEADER_SIZE)
-    return 0;
   struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type != ALLNET_TYPE_MGMT)
     return 0;
@@ -486,10 +484,8 @@ static void remove_acks (char * message, char * end)
 static void handle_ad_message (char * message, int msize, int priority,
                                int sockfd)
 {
-  if (msize >= ALLNET_HEADER_SIZE) {
-    queue_add (message, msize, priority);
-    remove_acks (message, message + msize);
-  }
+  queue_add (message, msize, priority);
+  remove_acks (message, message + msize);
 }
 
 static void handle_network_message (char * message, int msize,
@@ -500,14 +496,12 @@ static void handle_network_message (char * message, int msize,
                                     int * send_type, int * send_size,
                                     char * send_message)
 {
-  if (msize >= ALLNET_HEADER_SIZE) {
-    if (! handle_beacon (message, msize, sockfd, beacon_deadline, time_buffer,
-                         quiet_end, send_type, send_size, send_message)) {
-      /* send the message to ad */
-      send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
-      /* remove any messages that this message acks */
-      remove_acks (message, message + msize);
-    }
+  if (! handle_beacon (message, msize, sockfd, beacon_deadline, time_buffer,
+                       quiet_end, send_type, send_size, send_message)) {
+    /* send the message to ad */
+    send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
+    /* remove any messages that this message acks */
+    remove_acks (message, message + msize);
   }
 }
 
@@ -527,7 +521,7 @@ static void handle_quiet (struct timeval * quiet_end,
     static char fake_message [ALLNET_MTU];
     struct timeval * fake_timep;
     struct timeval fake_time;
-    if (msize > 0) {
+    if ((msize > 0) && (is_valid_message (message, msize))) {
       if (fd == rpipe)
         handle_ad_message (message, msize, priority, sockfd);
       else

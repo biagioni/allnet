@@ -263,8 +263,8 @@ static int record_resend (uint64_t seq, char * contact, keyset k)
 static void resend_message (uint64_t seq, char * contact,
                             keyset k, int sock, int hops, int priority)
 {
-  printf ("resending message with sequence %" PRIu64 " to %s\n", seq, contact);
 #ifdef DEBUG_PRINT
+  printf ("resending message with sequence %" PRIu64 " to %s\n", seq, contact);
 #endif /* DEBUG_PRINT */
   init_resent ();
   if (was_recently_resent (seq, contact, k)) {
@@ -387,8 +387,10 @@ void resend_unacked (char * contact, keyset k, int sock,
   int singles;
   int ranges;
   char * unacked = get_unacked (contact, k, &singles, &ranges);
-printf ("get_unacked returned %d singles, %d ranges, %p\n", singles, ranges,
-unacked);
+#ifdef DEBUG_PRINT
+  printf ("get_unacked returned %d singles, %d ranges, %p\n",
+          singles, ranges, unacked);
+#endif /* DEBUG_PRINT */
   if (unacked == NULL)
     return;
 
@@ -398,7 +400,9 @@ unacked);
   char * p = unacked;
   for (i = 0; (i < singles) && (send_count < max_send); i++) {
     uint64_t seq = readb64 (p);
-printf ("seq %" PRIu64 " at %p\n", seq, p);
+#ifdef DEBUG_PRINT
+    printf ("seq %" PRIu64 " at %p\n", seq, p);
+#endif /* DEBUG_PRINT */
     p += sizeof (uint64_t);
     resend_message (seq, contact, k, sock, hops, priority);
     send_count++;

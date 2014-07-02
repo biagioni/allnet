@@ -42,11 +42,9 @@ static int handle_packet (int sock, char * message, int msize,
                           char * secret, char * address, int nbits,
                           struct timeval * start, struct timeval * finish)
 {
-print_packet (message, msize, "received", 1);
-  if (msize < ALLNET_HEADER_SIZE) {
-    printf ("got %d bytes, dropping message\n", msize);
-    return 0;
-  }
+#ifdef DEBUG_PRINT
+  print_packet (message, msize, "received", 1);
+#endif /* DEBUG_PRINT */
   struct allnet_header * hp = (struct allnet_header *) message;
   if (msize < ALLNET_SIZE(hp->transport)) {
     printf ("got %d < %zd bytes, dropping message\n", msize,
@@ -121,7 +119,9 @@ static void wait_for_key (int sock, char * secret, char * contact,
                           keyset keys, char * address, int nbits,
                           unsigned long long int ms, struct timeval * start)
 {
-printf ("wait_for_key, nbits %d\n", nbits);
+#ifdef DEBUG_PRINT
+  printf ("wait_for_key, nbits %d\n", nbits);
+#endif /* DEBUG_PRINT */
   char * my_key;
   int ksize = get_my_privkey (keys, &my_key);
   if (ksize <= 0) {
@@ -140,8 +140,9 @@ printf ("wait_for_key, nbits %d\n", nbits);
       printf ("pipe closed, exiting\n");
       exit (1);
     }
-    done = handle_packet (sock, message, found, my_key, ksize, contact, keys,
-                          secret, address, nbits, start, &finish);
+    if (is_valid_message (message, found))
+      done = handle_packet (sock, message, found, my_key, ksize, contact, keys,
+                            secret, address, nbits, start, &finish);
     free (message);
     gettimeofday (&finish, NULL);
   }

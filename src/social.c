@@ -1,4 +1,7 @@
 /* social.c: keep track of social network distance */
+/* social level 0 (our own contacts) is tracked independently by keys.c,
+ * so here we (a) return the results from key.c for level 0, and
+ * (b) keep track of and return the results for social levels 1 and 2 */
 /* to do: lots!!!  Including keeping track by source address and
  * by packet signature.
  */
@@ -11,6 +14,8 @@
 #include "lib/table.h"
 #include "lib/config.h"
 #include "lib/log.h"
+#include "lib/keys.h"
+#include "lib/cipher.h"
 
 struct social_one_tier {
   int address_bytes_per_entry;
@@ -120,43 +125,79 @@ time_t update_social (struct social_info * soc, int update_seconds)
 {
   int free_bytes = soc->max_bytes;
   int i;
-  for (i = 0; i < MAX_SOCIAL_TIER; i++) {
+  for (i = 1; i < MAX_SOCIAL_TIER; i++) {  /* skip social level 0 */
     free_bytes -= update_social_tier (i, soc->info + i, free_bytes);
     print_social_tier (i, soc->info + i);
   }
   return (time (NULL) + update_seconds);
 }
 
-/* return 1 if the signature verifies the buffer for the given key,
- * and otherwise returns 0 */
-static int verify_sig (char * buf, int bsize, int algo, char * sig, int ssize,
-                       char * key, int ksize)
+/* returns 1 if this message is from my contact, and 0 otherwise */
+static int is_my_contact (char * message, int msize, char * sender, int bits,
+                          int algo, char * sig, int ssize)
 {
-  static int print = 1;
-  if (print) {
-    printf ("need to implement verify_sig, for now returning 1\n");
-    print = 0;
+  char ** contacts;
+  int nc = all_contacts (&contacts);
+  int ic;
+  for (ic = 0; ic < nc; ic++) {
+    keyset * keysets;
+    int nk = all_keys (contacts [ic], &keysets);
+    int ink;
+    for (ink = 0; ink < nk; ink++) {
+      char address [ADDRESS_SIZE];
+      int na_bits = get_remote (keysets [ink], address);
+      char * key;
+      int ksize = get_contact_pubkey (keysets [ink], &key);
+      if ((ksize > 0) && (matches (sender, bits, address, na_bits) > 0) &&
+          (verify (message, msize, sig, ssize, key, ksize))) {
+        snprintf (log_buf, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
+        log_print ();
+        return 1;
+      }
+    }
   }
-  return 1;
+
+  struct bc_key_info * bc;
+  int nbc = get_other_keys (&bc);
+  int ibc;
+  for (ibc = 0; ibc < nbc; ibc++) {
+    if ((matches (sender, bits, bc [ibc].address, ADDRESS_BITS) > 0) &&
+        (verify (message, msize, sig, ssize,
+                 bc [ibc].pub_key, bc [ibc].pub_klen))) {
+      snprintf (log_buf, LOG_SIZE, "verified from bc contact %d\n", ibc);
+      log_print ();
+      return 1;
+    }
+  }
+printf ("is_my_contact (%d, %d) => 0\n", nc, nbc);
+  return 0;
 }
 
 /* checks the signature, and sets valid accordingly.
  * returns the social distance if known, and UNKNOWN_SOCIAL_TIER otherwise */
-int social_connection (struct social_info * soc, char * verify, int vsize,
+int social_connection (struct social_info * soc, char * vmessage, int vsize,
                        char * src, int sbits, int algo, char * sig, int ssize,
                        int * valid)
 {
+snprintf (log_buf, LOG_SIZE, "social_connection (%d) called\n", algo);
+log_print ();
+  if (algo == ALLNET_SIGTYPE_NONE)
+    return UNKNOWN_SOCIAL_TIER;
   *valid = 0;
   int checked = 0;
   int i;
-  for (i = 0; (i < MAX_SOCIAL_TIER) && (checked < soc->max_check); i++) {
+  if (is_my_contact (vmessage, vsize, src, sbits, algo, sig, ssize)) {
+    *valid = 1;
+    return 1;
+  }
+  for (i = 1; (i < MAX_SOCIAL_TIER) && (checked < soc->max_check); i++) {
     /* to do: move verification to table_find (otherwise table_find always
        returns the same result */
     char * public_key;
     int ksize;
     if (table_find (src, sbits, &(soc->info [i].connections),
                     &public_key, &ksize)) {
-      if (verify_sig (verify, vsize, algo, sig, ssize, public_key, ksize)) {
+      if (verify (vmessage, vsize, sig, ssize, public_key, ksize)) {
         *valid = 1;
         return i + 1;
       }
@@ -166,25 +207,3 @@ int social_connection (struct social_info * soc, char * verify, int vsize,
   return UNKNOWN_SOCIAL_TIER;
 }
 
-#if 0
-int social_connection (struct social_info * soc, char * src, int sbits,
-                       char * dest, int dbits)
-{
-  int result = COMPLETE_STRANGER;
-  if (dbits < 8)   /* less than 8 bits, no use even checking */
-    return result;
-  int i;
-  for (i = 0; i < MAX_SOCIAL_TIER; i++) {
-    if (table_find (dest, dbits, &(soc->info [i].connections))) {
-      result = i + 1;
-      break;
-    }
-  }
-  /* for every 4 additional bits beyond 8, allow it to be one degree closer */
-  int best_allowed = COMPLETE_STRANGER - (dbits - 4) / 4;
-  if (best_allowed < 1) best_allowed = 1;   /* one means a friend */
-  /* printf ("result %d, best allowed %d for %d bits\n", result, best_allowed, dbits); */
-  if (result < best_allowed) result = best_allowed;
-  return result;
-}
-#endif /* 0 */

@@ -41,6 +41,7 @@ struct listen_info {
   /* for testing, make counter a char.  Normally, unsigned int */
   unsigned char counter;  /* cycle counter for least recently used */
   unsigned int * used;    /* array of most recent access times */
+  void (* callback) (int);
 };
 #endif /* LISTEN_H */
 
@@ -151,6 +152,9 @@ static void * listen_loop (void * arg)
     sockaddr_to_ai (ap, addr_size, &addr);
     listen_add_fd (info, connection, &addr);
 
+    if (info->callback != NULL)
+      info->callback (connection);
+
     addr_size = sizeof (address);  /* reset for next call to accept */
   }
   perror ("accept");
@@ -158,7 +162,8 @@ static void * listen_loop (void * arg)
 }
 
 void listen_init_info (struct listen_info * info, int max_fds, char * name,
-                       int port, int local_only, int add_remove_pipe)
+                       int port, int local_only, int add_remove_pipe,
+                       void (* callback) (int))
 {
   if (max_fds > 1024) {
     printf ("using 1024 as the maximum number of open fds, %d is too large\n",
@@ -178,6 +183,7 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
   info->peers = malloc_or_fail (max_fds * sizeof (struct addr_info),
                                 "listen thread peers");
   info->used = malloc_or_fail (max_fds * sizeof (int), "listen thread used");
+  info->callback = callback;
   int i;
   for (i = 0; i < max_fds; i++)
     info->fds [i] = info->used [i] = info->peers [i].ip.ip_version = 0;
@@ -276,7 +282,7 @@ static void send_peer_message (int fd, struct listen_info * info, int index)
   char * buffer = (char *) hp;
 
   struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (buffer + ALLNET_HEADER_SIZE);
+    (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (hp->transport));
   mp->mgmt_type = ALLNET_MGMT_PEERS;
 
   struct allnet_mgmt_peers * mpp =

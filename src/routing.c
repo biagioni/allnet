@@ -472,7 +472,42 @@ print_dht (0); */
   return peer;
 }
 
-/* returns 1 and fills in result (if not NULL) if it finds an examct
+static void exact_match_print (char * description, int found,
+                               const char * addr, struct addr_info * result)
+{
+#ifdef DEBUG_PRINT
+  printf ("%s (", description);
+  print_buffer (addr, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 0);
+  printf (") ");
+  if (found)
+    print_addr_info (result);
+  else
+    printf ("==> %d\n", found);
+  print_dht (0);
+  print_ping_list (0);
+#endif /* DEBUG_PRINT */
+  snprintf (log_buf, LOG_SIZE, "%s returns %d\n", description, found);
+  log_print ();
+}
+
+/* returns 1 if found (and fills in result if not NULL), otherwise returns 0 */
+static int search_data_structure (struct peer_info * ds, int max,
+                                  const char * addr, struct addr_info * result)
+{
+  int found = 0;
+  int i;
+  for (i = 0; (i < max) && (found == 0); i++) {
+    if ((ds [i].ai.nbits != 0) &&
+        (memcmp (addr, ds [i].ai.destination, ADDRESS_SIZE) == 0)) {
+      found = 1;
+      if (result != NULL)
+        *result = ds [i].ai;
+    }
+  }
+  return found;
+}
+
+/* returns 1 and fills in result (if not NULL) if it finds an exact
  * match for this address (assumed to be of size ADDRESS_SIZE.
  * otherwise returns 0.  */
 int routing_exact_match (const char * addr, struct addr_info * result)
@@ -481,6 +516,7 @@ int routing_exact_match (const char * addr, struct addr_info * result)
   pthread_mutex_lock (&mutex);
   init_peers (0);
   int i;
+#if 0
   for (i = 0; (i < MAX_PEERS) && (found == 0); i++) {
     if ((peers [i].ai.nbits != 0) &&
         (memcmp (addr, peers [i].ai.destination, ADDRESS_SIZE) == 0)) {
@@ -497,20 +533,23 @@ int routing_exact_match (const char * addr, struct addr_info * result)
         *result = pings [i].ai;
     }
   }
+#else /* ! 0 */
+  found = search_data_structure (peers, MAX_PEERS, addr, result);
+  if (! found)
+    found = search_data_structure (pings, MAX_PINGS, addr, result);
+#endif /* 0 */
   pthread_mutex_unlock (&mutex);
-#ifdef DEBUG_PRINT
-  printf ("routing_exact_match (");
-  print_buffer (addr, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 0);
-  printf (") ");
-  if (found)
-  print_addr_info (result);
-  else
-  printf ("==> %d\n", found);
-  print_dht (0);
-  print_ping_list (0);
-#endif /* DEBUG_PRINT */
-  snprintf (log_buf, LOG_SIZE, "routing_exact_match returns %d\n", found);
-  log_print ();
+  exact_match_print ("routing_exact_match", found, addr, result);
+  return found;
+}
+
+int ping_exact_match (const char * addr, struct addr_info * result)
+{
+  pthread_mutex_lock (&mutex);
+  init_peers (0);
+  int found = search_data_structure (pings, MAX_PINGS, addr, result);
+  pthread_mutex_unlock (&mutex);
+  exact_match_print ("ping_exact_match", found, addr, result);
   return found;
 }
 
@@ -811,8 +850,8 @@ int init_own_routing_entries (struct addr_info * entry, int max,
       int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
       int next_byte = ((char *) (&(sinp->sin_addr.s_addr))) [1] & 0xff;
       if ((high_byte != 10) &&  /* anything beginning with 10 is private */
-          ((high_byte != 172) || ((next_byte & 0xf0) != 16)) &&
-          ((high_byte != 192) || (next_byte != 168))) {
+          ((high_byte != 172) || ((next_byte & 0xf0) != 16)) && /* 172.16/12 */
+          ((high_byte != 192) || (next_byte != 168))) {  /* as is 192.168/16 */
         if (entry != NULL) {
 /* the address is already zeroed.  Assign the IP address to the last four
  * bytes (entry->ip.ip.s6_addr + 12), and 0xff to the immediately preceding

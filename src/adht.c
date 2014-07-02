@@ -2,84 +2,31 @@
  * every allnet daemon runs a DHT node.
  * nodes that are externally reachable cooperate to build the distributed
  *   hash table
- * each DHT node stores data for one or more ranges of the possible Allnet
- *   destination addresses, including particularly any of its own addresses,
- *   but also zero or more randomly selected addresses
- * together, all DHT nodes should span the space of AllNet addresses.
- *   Preferably, data for each AllNet address should be in multiple (at
- *   least 4) DHT nodes
- *   To do this, for each of its ranges, each node keeps track of the 3
- *   nodes after it in the AllNet address space, and stores all data for
- *   each of those nodes.  For example, if this node stores address 55,
- *   and the 4 successive nodes store addresses 63, 68, 72, and 99, this
- *   node will store all messages with any destination address
- *   between 55 and 98, inclusive.
- * a DHT node persistently stores all messages whose destination
- *   address is in one of the node's ranges.  These messages may be removed:
- *   - when a message is acked
- *   - once the disk quota for the DHT server is reached, according to priority
- * when a message is generated locally, or when the node receives a message
- *   from another DHT node, the node sends that message to other nodes:
- *   - for each of its own addresses a, each DHT node keeps track of up to
- *     256 other DHT nodes
- *     - specifically, for each n-bit (n in 0..63) prefix of a, the node
- *       tracks up to 4 other nodes that have selected an address x matching
- *       the n-bit prefix of a, but differing from a in bit n+1
- *   - when the node forwards a message for address b, it finds the
- *     four nodes with the longest match between b and x, and forwards to them
- *   - if the node is already responsible for address b, it forwards the
- *     message to the other 3 nodes responsible for address b
+ * each DHT node stores data for one range of the possible AllNet
+ *   destination addresses
+ * together, all DHT nodes span the space of AllNet addresses.
+ *   Data for each AllNet address should be in at multiple DHT nodes,
+ *   preferably at least 4
+ * each node tries to connect as a listener to at least one
+ *   (at most 2, one for IPv4, and one for IPv6) DHT nodes for each
+ *   of its addresses, but in such a way that there is at most one listener
+ *   for each DHT IP addreses
+ * a message is forwarded to the top 4 DHT matches as well as
+ *   local broadcasts, rendez-vous points, or any other destinations
+ * DHT messages refresh each node's DHT table
+ * an empty DHT message is just a ping to confirm the address works
+ * DHT messages are sent once a day, and DHT table entries expire after
+ *   10 days
+ * this program maintains a persistent table of known DHT nodes (up
+ *   to 4 per address bit), and a table of nodes to ping.
+ * the local DHT identifier is maintained or generated here
+
+ * to do (maybe not in this file):
  * when a disconnected node comes online, it sends a message to the first node
  *   it hears from to request any new messages for its address(es) a.
  *   Each node that stores a replies with a bitmap of the hashes of the
  *   available messages.  the node then sends requests for individual
  *   messages matching some of these hashes.
- * when a node forwards a messages that matches a large number n > 4 of
- *   other DHT nodes, it may forward to each with probability 4 / n.
- *
- * to maintain knowledge of the DHT, periodically (at random once a day),
- *   each DHT sends to all the nodes it tracks a subset of the nodes it
- *   is tracking, including any new nodes since the last transmission, and
- *   a fraction of the older nodes.
-
-2014/03/27 to do:
-  - start by figuring out what data structures are needed, implementing
-    them together with save and restore.  Then update these data
-    structures when the underlying file changes, or update and save when
-    new information is received
-  - make sure aip does what is needed, or fix as required
-    note: aip routes to the (5) destinations most closely matching the address,
-          whereas our DHT scheme would have each pick a range from n1 to n2
-  - send routing info to aip
-      initially over /tmp/allnet-addresses, later maybe over a dedicated pipe
-      - send it at initialization time
-      - send it periodically to keep it alive in the cache
-      - add DHT destinations as they become known
-  - define dht messages
-  - initialization by querying prior DHT peers, alnt.org, and local broadcast
-      - if none available, keep broadcasting locally
-
-note: ADHT has info about priority of data to save.  It might eventually
-replace (or supplement) acache.
-      
-
-open questions:
-  - do I need to answer all these questions before implementing the DHT?
-  - how does adht tell aip where to send data?  does it send its own
-    data? should it listen on a different port?  how much do I have to
-    modify aip?  Should I take a bunch of stuff out, and put it into adht?
-  - details of the message request headers
-  - how do I initially locate DHT nodes?  alnt.org?  my friends, I think.
-  - is it sufficient to say I want content for address a?
-  - adht has to keep track of every message ever received, and maybe the
-    acks, so it can send the acks to any DHT node that still offers to
-    send me obsolete packets.
-  - how to do priority?  Obviously, newer messages should be favored over
-    older messages, and "my" messages over other messages.  Also, messages
-    for more specific addresses should be favored, etc.  But how to combine
-    these?
-  - do we need a DHT at all?  Could we just distribute along friend-of-friend
-    links?
  */
 
 #include <stdio.h>
@@ -100,10 +47,17 @@ open questions:
 #include "lib/priority.h"
 #include "routing.h"
 
-/* #define ADHT_INTERVAL	86400 /* 24 * 60 * 60 seconds == 1 day */
-/* #define EXPIRATION_MULT	10 /* wait 10 intervals to expire a route */
+#ifndef DEBUG_SPEED
+
+#define ADHT_INTERVAL	86400 /* 24 * 60 * 60 seconds == 1 day */
+#define EXPIRATION_MULT	10 /* wait 10 intervals to expire a route */
+
+#else /* DEBUG_SPEED */
+
 #define ADHT_INTERVAL	30    /* for debugging */
 #define EXPIRATION_MULT	3    /* for debugging */
+
+#endif /* DEBUG_SPEED */
 
 #if 0
 /* returns the number of entries filled in, 0...max */
@@ -246,6 +200,7 @@ static void ping_all_pending (int sock, char * my_address, int nbits)
   int iter = 0;
   struct addr_info ai;
   while ((iter = routing_ping_iterator (iter, &ai)) >= 0) {
+    sleep (1); /* sleep between messages, to avoid oveflowing the pipe */
     memcpy (hp->destination, ai.destination, ADDRESS_SIZE);
     hp->dst_nbits = ai.nbits;
     packet_to_string (message, msize, "ping_all_pending sending", 1,
@@ -256,7 +211,6 @@ static void ping_all_pending (int sock, char * my_address, int nbits)
       printf ("unable to send dht ping packet to socket %d\n", sock);
       exit (1);
     }
-    sleep (1); /* sleep a bit between messages, to avoid oveflowing the pipe */
   }
   free (message);
 }
@@ -303,6 +257,9 @@ static void * send_loop (void * a)
       dhtp->num_dht_nodes = added;
       writeb64 (dhtp->timestamp, allnet_time ());
       int send_size = total_header_bytes + actual * sizeof (struct addr_info);
+      packet_to_string ((char *) hp, send_size, "send_loop sending", 1,
+                        log_buf, LOG_SIZE);
+      log_print ();
       if (! send_pipe_message (sock, (char *) hp, send_size,
                                ALLNET_PRIORITY_LOCAL_LOW)) {
         printf ("unable to send dht packet\n");

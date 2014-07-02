@@ -26,6 +26,8 @@ struct listen_info {
   /* for testing, make counter a char.  Normally, unsigned int */
   unsigned char counter;  /* cycle counter for least recently used */
   unsigned int * used;   /* array of most recent access times */
+  void (* callback) (int);  /* may be NULL, otherwise called when new
+                               fd added, parameter is fd */
 };
 
 /* exits in case of errors, otherwise initializes info and starts the
@@ -35,7 +37,7 @@ struct listen_info {
  * called when adding or removing pipes */
 extern void listen_init_info (struct listen_info * info, int max_fds,
                               char * name, int port, int local_only,
-                              int add_remove_pipe);
+                              int add_remove_pipe, void (* callback) (int));
 
 /* call to record that this fd was active at this time */
 extern int listen_record_usage (struct listen_info * info, int fd);

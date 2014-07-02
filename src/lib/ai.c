@@ -221,7 +221,7 @@ void standardize_ip (struct sockaddr * ap, socklen_t asize)
    * we want to record it as an IPv4 connection */
   char ipv4_in_ipv6_prefix [] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff};
   if ((ap->sa_family == AF_INET6) &&
-      (asize >= sizeof (struct sockaddr_in)) &&
+      (asize >= sizeof (struct sockaddr_in6)) &&
       (memcmp (ap6->sin6_addr.s6_addr, ipv4_in_ipv6_prefix, 12) == 0)) {
 #ifdef DEBUG_PRINT
     int off = snprintf (log_buf, LOG_SIZE, "converting IPv6 address: ");

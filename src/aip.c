@@ -41,7 +41,11 @@
 #include "lib/log.h"
 #include "lib/keys.h"
 
-#define HAS_DHT
+struct udp_cache_record {
+  struct sockaddr_storage sas;
+  socklen_t salen;
+  time_t last_received;
+};
 
 /* UDPv4 messages are limited to less than 2^16 bytes */
 #define MAX_RECEIVE_BUFFER	ALLNET_MAX_UDP_SIZE
@@ -200,6 +204,34 @@ static int same_sockaddr (void * arg1, void * arg2)
       return 1;
     return 0;
   }
+  snprintf (log_buf, LOG_SIZE,
+            "same_sockaddr: unknown address family %d\n", a1->sin6_family);
+  log_print ();
+  return 0;
+}
+
+static int same_sockaddr_udp (void * arg1, void * arg2)
+{
+  struct sockaddr_in6 * a1 = (struct sockaddr_in6 *) arg1;
+  struct udp_cache_record * ucr2 = (struct udp_cache_record *) arg2;
+  struct sockaddr_in6 * a2 = (struct sockaddr_in6 *) (&(ucr2->sas));
+  if (a1->sin6_family != a2->sin6_family)
+    return 0;
+  if (a1->sin6_family == AF_INET6) {
+    if ((a1->sin6_port == a2->sin6_port) &&
+        (memcmp (a1->sin6_addr.s6_addr, a2->sin6_addr.s6_addr,
+                 sizeof (a1->sin6_addr)) == 0))
+      return 1;
+    return 0;
+  }
+  if (a1->sin6_family == AF_INET) {
+    struct sockaddr_in * sin1 = (struct sockaddr_in  *) arg1;
+    struct sockaddr_in * sin2 = (struct sockaddr_in  *) arg2;
+    if ((sin1->sin_port == sin2->sin_port) &&
+        (sin1->sin_addr.s_addr == sin2->sin_addr.s_addr))
+      return 1;
+    return 0;
+  }
   printf ("same_sockaddr: unknown address family %d\n", a1->sin6_family);
   return 0;
 }
@@ -208,20 +240,40 @@ static int same_sockaddr (void * arg1, void * arg2)
 static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
                                    socklen_t sasize)
 {
+  if ((addr->sa_family != AF_INET) && (addr->sa_family != AF_INET6)) {
+    snprintf (log_buf, LOG_SIZE,
+              "add_sockaddr error: unexpected family %d (not %d or %d)\n", 
+              addr->sa_family, AF_INET, AF_INET6);
+    log_print ();
+  }
+  if ((sasize != sizeof (struct sockaddr_in)) &&
+      (sasize != sizeof (struct sockaddr_in6))) {
+    snprintf (log_buf, LOG_SIZE,
+              "add_sockaddr error: unexpected sasize %d (not %zd or %zd)\n", 
+              sasize,
+              sizeof (struct sockaddr_in), sizeof (struct sockaddr_in6));
+    log_print ();
+  }
   /* found and addr are different pointers, so cannot rely on cache_add
    * detecting that this is a duplicate */
-  void * found = cache_get_match (cache, same_sockaddr, addr);
+  void * found = cache_get_match (cache, same_sockaddr_udp, addr);
   if (found != NULL) {  /* found */
     int off = snprintf (log_buf, LOG_SIZE, "sockaddr already in cache: "); 
     print_sockaddr_str (addr, sasize, -1, log_buf + off, LOG_SIZE - off);
     cache_record_usage (cache, found); /* found, addr are different pointers */
+    struct udp_cache_record * record = (struct udp_cache_record *) found;
+    record->last_received = time (NULL);
   } else { /* add to cache */
     int off = snprintf (log_buf, LOG_SIZE, "adding sockaddr to cache: "); 
     print_sockaddr_str (addr, sasize, -1, log_buf + off, LOG_SIZE - off);
-    /* cannot use caller's pointer, so allocate new space */
-    struct sockaddr * cpy = memcpy_malloc (addr, sasize, "add_sockaddr_cache");
-    cache_add (cache, cpy);
+    struct udp_cache_record * record =
+      malloc_or_fail (sizeof (struct udp_cache_record), "add_sockaddr_cache");
+    memcpy (&(record->sas), addr, sasize);
+    record->salen = sasize;
+    record->last_received = time (NULL);
+    cache_add (cache, record);
   }
+  log_print ();
 }
 
 static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
@@ -277,30 +329,82 @@ static int send_udp_addr (int udp, char * message, int msize,
   return 1;
 }
 
-static int is_nat_ping (struct allnet_header * hp, int msize,
-                        struct addr_info * match)
+/* assumed to be an outgoing, so do not check overall packet validity */
+static int is_outgoing_dht (struct allnet_header * hp, int msize,
+                            int min_entries)
 {
+  char * message = ((char *) hp);
   struct allnet_mgmt_header * mhp = 
-    (struct allnet_mgmt_header *) (((char *) hp) + ALLNET_SIZE (hp->transport));
+    (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   if ((hp->message_type != ALLNET_TYPE_MGMT) ||
-      (msize != ALLNET_DHT_SIZE (hp->transport, 0)) ||
-      (mhp->mgmt_type != ALLNET_MGMT_DHT)) {
-    snprintf (log_buf, LOG_SIZE, "is_nat_ping type %d size %d/%zd, returning\n",
+      (msize < ALLNET_DHT_SIZE (hp->transport, min_entries)) ||
+      (mhp->mgmt_type != ALLNET_MGMT_DHT))
+    return 0;
+  return 1;
+}
+
+static char * cached_dht_packet = NULL;
+static int cached_dht_size = 0;
+
+static void dht_save_cached (struct allnet_header * hp, int msize)
+{
+  if (is_outgoing_dht (hp, msize, 1)) {
+    int off = snprintf (log_buf, LOG_SIZE,
+                        "dht_save_cache saving outgoing %d: ", msize);
+    packet_to_string ((char *) hp, msize, NULL, 1,
+                      log_buf + off, LOG_SIZE - off);
+    log_print ();
+    /* cache if possible, but if malloc fails, no big deal */
+    if (cached_dht_packet != NULL)
+      free (cached_dht_packet);
+    cached_dht_packet = malloc (msize);
+    if (cached_dht_packet != NULL) {
+      cached_dht_size = msize;
+      memcpy (cached_dht_packet, (char *) hp, msize);
+    } else {
+      cached_dht_size = 0;
+      snprintf (log_buf, LOG_SIZE,
+                "dht_save_cached unable to allocate %d bytes\n", msize);
+      log_print ();
+    }
+  }
+}
+
+static int dht_ping_match (struct allnet_header * hp, int msize,
+                           struct addr_info * match)
+{
+  if (! is_outgoing_dht (hp, msize, 0)) {
+    snprintf (log_buf, LOG_SIZE, "dht_ping_match type+size %d+%d/%zd, done\n",
               hp->message_type, msize, ALLNET_DHT_SIZE (hp->transport, 0));
     log_print ();
-    return 0;  /* not a nat ping */
+    return 0;  /* not a dht message */
   }
-  buffer_to_string (hp->destination, ADDRESS_SIZE, "is_nat_ping matching",
+  buffer_to_string (hp->destination, ADDRESS_SIZE, "dht_ping_match matching",
                     ADDRESS_SIZE, 1, log_buf, LOG_SIZE);
   log_print ();
-  if (routing_exact_match (hp->destination, match))
+
+  /* if it is a DHT message, try to send it to the ping addresses first */
+  /* but only with 50% likelihood -- we should use the regular addresses too */
+  if (((random () % 2) == 0) && (ping_exact_match (hp->destination, match))) {
+    int off = snprintf (log_buf, LOG_SIZE, "dht_ping_match matched ping: ");
+    addr_info_to_string (match, log_buf + off, LOG_SIZE - off);
+    log_print ();
     return 1;
-  snprintf (log_buf, LOG_SIZE, "is_nat_ping: no exact match\n");
+  }
+  /* otherwise use the regular addresses -- note this is redundant,
+   * since forward_message calls routing_exact_match if we return 0 */
+  if (routing_exact_match (hp->destination, match)) {
+    int off = snprintf (log_buf, LOG_SIZE, "dht_ping_match exact match: ");
+    addr_info_to_string (match, log_buf + off, LOG_SIZE - off);
+    log_print ();
+    return 1;
+  }
+  snprintf (log_buf, LOG_SIZE, "dht_ping_match: no match\n");
   log_print ();
   return 0;
 }
 
-/* send up to about max_send/2 of the UDPs for which we have matching
+/* send at most about max_send/2 of the UDPs for which we have matching
  * translations, then the rest to a random permutation of other udps
  * we have heard from and tcps we are connected to */
 static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
@@ -312,12 +416,12 @@ log_print ();
   if (! is_valid_message (message, msize))
     return;
   struct allnet_header * hp = (struct allnet_header *) message;
-  int i;
+  dht_save_cached (hp, msize);
 
   struct addr_info exact_match;
   if ((hp->dst_nbits == ADDRESS_BITS) &&
-      ((routing_exact_match (hp->destination, &exact_match)) ||
-       (is_nat_ping (hp, msize, &exact_match))) &&
+      ((dht_ping_match (hp, msize, &exact_match)) ||
+       (routing_exact_match (hp->destination, &exact_match))) &&
       (send_udp_addr (udp, message, msize, &(exact_match.ip)))) {
     int n = snprintf (log_buf, LOG_SIZE, "sent to exact match: ");
     addr_info_to_string (&exact_match, log_buf + n, LOG_SIZE - n);
@@ -325,7 +429,8 @@ log_print ();
     return;   /* sent to exact match, done */
   }
 
-/* send to up to closer 4 DHT nodes */
+/* send to at most 4 closer DHT nodes */
+  int i;
 #define DHT_SENDS	4
   struct sockaddr_storage dht_storage [DHT_SENDS];
   struct sockaddr * dht_next [DHT_SENDS];
@@ -358,6 +463,7 @@ log_print ();
 #define FORWARDING_UDPS	100
   void * udps [FORWARDING_UDPS];
   int nudps = cache_random (udp_cache, FORWARDING_UDPS, udps);
+  struct udp_cache_record * * ucrs = (struct udp_cache_record * *) udps;
 #undef FORWARDING_UDPS
   int size = num_fds + nudps;
   if (size > 0) {
@@ -377,9 +483,8 @@ log_print ();
         log_print ();
         sent_fds++;
       } else {
-        /* udp cache contains sockaddrs */
-        send_udp (udp, message, msize,
-                  (struct sockaddr *) (udps [index - num_fds]));
+        struct udp_cache_record * ucr = ucrs [index - num_fds];
+        send_udp (udp, message, msize, (struct sockaddr *) (&(ucr->sas)));
         sent_udps++;
       }
     }
@@ -419,52 +524,27 @@ static int udp_socket ()
   return udp;
 }
 
-int make_listener_no_dht (struct listen_info * info, void * addr_cache)
+void listen_callback (int fd)
 {
-#ifndef HOST_NAME_MAX
-#define	HOST_NAME_MAX	255
-#endif /* HOST_NAME_MAX */
-  char my_name [HOST_NAME_MAX + 1];
-  if ((gethostname (my_name, sizeof (my_name)) == 0) &&
-      (strcmp (my_name, "alnt.org") == 0))
-    return -1;
-/* open a connection to alnt.org as a listener */
-  struct hostent * he = gethostbyname ("alnt.org");
-  if (he == NULL) {
-    print_gethostbyname_error ("alnt.org");
-    return -1;
+  if ((cached_dht_packet != NULL) && (cached_dht_size > 0)) {
+    if (! send_pipe_message (fd, cached_dht_packet, cached_dht_size,
+                             ALLNET_PRIORITY_EPSILON))
+      snprintf (log_buf, LOG_SIZE, "sent cached dht to new socket %d\n", fd);
+    else
+      snprintf (log_buf, LOG_SIZE,
+                "error sending cached dht to new socket %d\n", fd);
+    log_print ();
   }
-  int size = sizeof (struct addr_info);
-  struct addr_info * ai = malloc_or_fail (size, "make_listener_no_dht");
-  init_ai (he->h_addrtype, he->h_addr_list [0], ALLNET_PORT, 0, NULL, ai);
-  struct sockaddr_storage sas;
-  struct sockaddr * sap = (struct sockaddr *) (&sas);
-  if (! ai_to_sockaddr (ai, sap)) {
-    printf ("error converting address to sockaddr\n");
-    return -1;
-  }
-  int listener = socket (he->h_addrtype, SOCK_STREAM, 0);
-  if (listener < 0) {
-    perror ("listener socket");
-    return -1;
-  }
-  /* add a mapping to alnt.org for any destination -- only until DHT */
-  if (connect (listener, sap, sizeof (sas)) < 0) {
-    snprintf (log_buf, LOG_SIZE, "error connecting listener socket %d\n",
-              listener);
-    log_error ("make_listener_no_dht/connect");
-    close (listener);
-    return -1;
-  }
-  cache_add (addr_cache, ai);
-  listen_add_fd (info, listener, ai);
-  int offset = snprintf (log_buf, LOG_SIZE,
-                         "listening to alnt.org on socket %d at ", listener);
-  offset += addr_info_to_string (ai, log_buf + offset, LOG_SIZE - offset);
-  log_print ();
-  return listener;
 }
 
+/* DHT nodes that we listen to.  We keep at most 2 for each of 2^LISTEN_BITS.
+ * for example, when LISTEN_BITS is 5, we keep at most 32*2 = 64 listeners,
+ * two for each 32nd part of the address space.  However, note that we
+ * only keep listeners for the addresses that we actually care about,
+ * so if all these addresses are in, e.g. 3 of the parts, we only listen
+ * to at most 2 nodes in each of these parts.  Also note that multiple
+ * parts may be assigned to the same DHT node -- if so, we only open a
+ * single listen connection to that node. */
 #define LISTEN_BITS	5
 #define NUM_LISTENERS	(1 << LISTEN_BITS) * 2   /* 2 ^ LISTEN_BITS for v4/v6*/
 static int listener_fds [NUM_LISTENERS];
@@ -478,12 +558,13 @@ static int connect_listener (char * address, struct listen_info * info,
   int num_dhts = routing_top_dht_matches (address, LISTEN_BITS, sas, MAX_DHT);
 #undef MAX_DHT
 #ifdef DEBUG_PRINT
-int i;
-for (i = 0; i < num_dhts; i++) {
-printf ("routing_top_dht_matches [%d]: ", i);
-print_sockaddr ((struct sockaddr *) (sas + i), sizeof (struct sockaddr_storage), -1);
-printf ("\n");
-}
+  int i;
+  for (i = 0; i < num_dhts; i++) {
+    printf ("routing_top_dht_matches [%d]: ", i);
+    print_sockaddr ((struct sockaddr *) (sas + i),
+                    sizeof (struct sockaddr_storage), -1);
+    printf ("\n");
+  }
 #endif /* DEBUG_PRINT */
 
   int k;
@@ -599,11 +680,6 @@ static void remove_listener (int fd, struct listen_info * info,
 void send_keepalive (void * udp_cache, int fd,
                      int * listeners, int num_listeners)
 {
-  void * udp;
-  /* udp cache contains sockaddrs */
-  int nudps = cache_random (udp_cache, 1, &udp);
-  if (nudps <= 0)
-    return;
   int max_size = ALLNET_MGMT_HEADER_SIZE (0xff);
   char keepalive [ALLNET_MTU];
   bzero (keepalive, max_size);
@@ -616,13 +692,34 @@ void send_keepalive (void * udp_cache, int fd,
     (struct allnet_mgmt_header *) (keepalive + ALLNET_SIZE (hp->transport));
   mhp->mgmt_type = ALLNET_MGMT_KEEPALIVE;
   int size = ALLNET_MGMT_HEADER_SIZE (hp->transport);
-  send_udp (fd, keepalive, size, (struct sockaddr *) udp);
-  int off = snprintf (log_buf, LOG_SIZE, "sent keepalive of size %d to ",
-                      size); 
-  off += print_sockaddr_str ((struct sockaddr *) udp,
-                             sizeof (struct sockaddr_in6), 0,
-                             log_buf + off, LOG_SIZE - off);
-  log_print ();
+  if (size > max_size) {  /* sanity check */
+    snprintf (log_buf, LOG_SIZE, "error: keepalive size %d, max %d\n",
+              size, max_size);
+    log_print ();
+  }
+
+  void * udp_void_ptr;
+  int nudps = cache_random (udp_cache, 1, &udp_void_ptr);
+  if (nudps > 0) {
+    struct udp_cache_record * ucr = udp_void_ptr;
+/* keep a copy of the sockaddr, since before we print it, it might be freed */
+    struct sockaddr_storage sas_copy = ucr->sas;
+    struct sockaddr * sap = (struct sockaddr *) (&sas_copy);
+    int off = 0;
+    /* send keepalives for at most 2 hours. after that, remove from cache */
+    if ((time (NULL) - ucr->last_received) < 7200) {
+      send_udp (fd, keepalive, size, sap);
+      off = snprintf (log_buf, LOG_SIZE, "sent %d-byte keepalive to ", size);
+    } else {
+      cache_remove (udp_cache, udp_void_ptr);
+      off = snprintf (log_buf, LOG_SIZE, "time out (%ld seconds), removed ",
+                      time (NULL) - ucr->last_received);
+    }
+    off += print_sockaddr_str (sap, sizeof (sas_copy), 0,
+                               log_buf + off, LOG_SIZE - off);
+    log_print ();
+  }
+
   if (num_listeners > 0) {
     int i;
     int sent = 0;
@@ -666,7 +763,7 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
   struct allnet_mgmt_dht * dht = (struct allnet_mgmt_dht *) dhtp;
   
   int max = (sizeof (message) - (((unsigned char *) (dht->nodes)) - message)) /
-                  sizeof (struct addr_info);
+            sizeof (struct addr_info);
 
   unsigned char my_addr [ADDRESS_SIZE];
   routing_my_address (my_addr);
@@ -863,15 +960,10 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
   int udp = udp_socket ();
   void * udp_cache = NULL;
   udp_cache = cache_init (128, free);
-#ifdef HAS_DHT
   int removed_listener = 0;
-#else /* ! HAS_DHT */
-  int listener = -1;
-#endif /* HAS_DHT */
   time_t last_listen = 0;
   time_t last_keepalive = 0;
   while (1) {
-#ifdef HAS_DHT
     if ((time (NULL) - last_listen > 3600) || /* once an hour try to update */
         /* or once a minute if we've recently removed an fd */
         ((removed_listener) && (time (NULL) - last_listen > 60))) {
@@ -880,18 +972,8 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
       last_listen = time (NULL);
       removed_listener = 0;
     }
-#else /* ! HAS_DHT */
-    if ((listener == -1) && (time (NULL) - last_listen > 60))  {
-      listener = make_listener_no_dht (info, addr_cache);
-      last_listen = time (NULL);
-    }
-#endif /* HAS_DHT */
-    if ((last_keepalive == 0) || (time (NULL) - last_keepalive > 200)) {
-#ifdef HAS_DHT
+    if ((last_keepalive == 0) || (time (NULL) - last_keepalive >= 55)) {
       send_keepalive (udp_cache, udp, listener_fds, NUM_LISTENERS);
-#else /* ! HAS_DHT */
-      send_keepalive (udp_cache, udp, &listener, 1);
-#endif /* HAS_DHT */
       last_keepalive = time (NULL);
     }
     int fd = 0;
@@ -911,17 +993,14 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
         log_print ();
         break;  /* exit the loop and the program */
       }
-#ifdef HAS_DHT
+#ifdef DEBUG_PRINT
       printf ("aip: error %d on file descriptor %d, closing\n", result, fd);
+#endif /* DEBUG_PRINT */
+      snprintf (log_buf, LOG_SIZE,
+                "aip: error %d on file descriptor %d, closing\n", result, fd);
+      log_print ();
       remove_listener (fd, info, addr_cache);
       removed_listener = 1;
-#else /* ! HAS_DHT */
-      /* printf ("aip, error on file descriptor %d, closing\n", fd); */
-      listen_remove_fd (info, fd); /* remove from data structures */
-      close (fd);       /* remove from kernel */
-      if (fd == listener)
-        listener = -1;
-#endif /* HAS_DHT */
     } else if (result > 0) {
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
         /* snprintf (log_buf, LOG_SIZE, "message from ad\n");
@@ -936,7 +1015,7 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
           off += snprintf (log_buf + off, LOG_SIZE - off, "/udp, saving ");
           off += print_sockaddr_str (sap, sasize, 0,
                                      log_buf + off, LOG_SIZE - off);
-          off += snprintf (log_buf + off, LOG_SIZE - off, "\n");
+          log_print ();
           add_sockaddr_to_cache (udp_cache, sap, sasize);
         } else {
           off += snprintf (log_buf + off, LOG_SIZE - off, "\n");
@@ -944,15 +1023,10 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
           if (ai != NULL)
             if (ai_to_sockaddr (ai, sap))
               sasize = sizeof (struct sockaddr_in6);
+          log_print ();
         }
-        log_print ();
-#ifdef HAS_DHT
         if (handle_mgmt (listener_fds, NUM_LISTENERS, fd, message,
                          &result, udp, sap, sasize)) {
-#else /* ! HAS_DHT */
-        if (handle_mgmt (&listener, 1, fd, message,
-                         &result, udp, sap, sasize)) {
-#endif /* HAS_DHT */
           /* handled, no action needed */
           /* if not handled, the message may be changed (for the better!) */
         } else {              /* message from a client, send to ad */
@@ -967,7 +1041,7 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
           }
         }
         listen_record_usage (info, fd);   /* this fd was used */
-      }  /* else -- result is zero, try again */
+      }
       free (message);   /* allocated by receive_pipe_message_fd */
     }   /* else result is zero, timed out, try again */
   }
@@ -1002,7 +1076,7 @@ int main (int argc, char ** argv)
     return 1;
   }
   struct listen_info info;
-  listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1);
+  listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, listen_callback);
 
   listen_add_fd (&info, rpipe, NULL);
   int i;
