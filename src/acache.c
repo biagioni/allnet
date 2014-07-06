@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
@@ -22,6 +23,7 @@
 struct cache_entry {
   char * message;
   int msize;
+  unsigned char rcvd_at [ALLNET_TIME_SIZE];
 };
 
 static struct cache_entry cache_storage [CACHE_SIZE];
@@ -36,6 +38,7 @@ static void return_cache_entry (void * arg)
             cep, (long int) ((cep - cache_storage) / sizeof (cache_storage)),
             cep, cache_storage, sizeof (cache_storage));
   log_print ();
+#ifdef DEBUG_PRINT
   int i;
   for (i = 0; i < CACHE_SIZE; i++) {
     if (cache_storage [i].msize > 0) {
@@ -44,6 +47,7 @@ static void return_cache_entry (void * arg)
       log_print ();
     }
   }
+#endif /* DEBUG_PRINT */
 }
 
 /* if the header includes an id, returns a pointer to the ID field of hp */
@@ -128,6 +132,7 @@ static int save_packet (void * cache, char * message, int msize)
       cache_search = i;
       cep->message = message;
       cep->msize = msize;
+      writeb64 (cep->rcvd_at, time (NULL) - ALLNET_Y2K_SECONDS_IN_UNIX);
       cache_add (cache, cep);  /* may call return_cache_entry */
       return 1;
     }
@@ -139,39 +144,191 @@ static int save_packet (void * cache, char * message, int msize)
   return 0;
 }
 
-static int request_matches_packet (void * packet, void * cache_entry)
+struct request_details {
+  int src_nbits;
+  char source [ADDRESS_SIZE];
+  int empty;     /* the other details are only filled in if emtpy is zero */
+  unsigned char * since;
+  int dpower_two;
+  int dbits;
+  unsigned char * dbitmap;
+  int spower_two;
+  int sbits;
+  unsigned char * sbitmap;
+};
+
+/* all the pointers point into message */
+static void build_request_details (char * message, int msize, 
+                                   struct request_details * result)
 {
-  struct allnet_header * hp = (struct allnet_header *) packet;
+  struct allnet_header * hp = (struct allnet_header *) message;
+  int hsize = ALLNET_SIZE (hp->transport);
+  int drsize = ALLNET_TIME_SIZE + 8;
+  result->src_nbits = hp->src_nbits;
+  if (result->src_nbits > ADDRESS_BITS)
+    result->src_nbits = ADDRESS_BITS;
+  if (result->src_nbits < 0)
+    result->src_nbits = 0;
+  memcpy (result->source, hp->source, ADDRESS_SIZE);
+  if (msize <= hsize + drsize) {
+    result->empty = 1;
+  } else {
+    result->empty = 0;
+    struct allnet_data_request * drp =
+      (struct allnet_data_request *) (message + hsize);
+    result->since = drp->since;
+    char empty_time [ALLNET_TIME_SIZE];
+    bzero (empty_time, sizeof (empty_time));
+    if (memcmp (empty_time, result->since, sizeof (empty_time)) == 0)
+      result->since = NULL;  /* time is zero, so don't use in comparisons */
+    result->dpower_two = 0;
+    result->dbits = 0;
+    result->dbitmap = NULL;
+    result->spower_two = 0;
+    result->sbits = 0;
+    result->sbitmap = NULL;
+    int dbits = 0;
+    int dbytes = 0;
+    int sbits = 0;
+    int sbytes = 0;
+    if (drp->dst_bits_power_two > 0) {
+      dbits = 1 << (drp->dst_bits_power_two - 1);
+      dbytes = (dbits + 7) / 8;
+      if (hsize + drsize + dbytes <= msize) {
+        result->dpower_two = drp->dst_bits_power_two;
+        result->dbits = dbits;
+        result->dbitmap = message + (hsize + drsize);
+      }
+    }
+    if (drp->src_bits_power_two > 0) {
+      sbits = 1 << (drp->src_bits_power_two - 1);
+      sbytes = (sbits + 7) / 8;
+      if (hsize + drsize + dbytes + sbytes <= msize) {
+        result->spower_two = drp->src_bits_power_two;
+        result->sbits = sbits;
+        result->sbitmap = message + (hsize + drsize + dbytes);
+      }
+    }
+  }
+}
+
+static uint64_t get_nbits (unsigned char * bits, int nbits)
+{
+  uint64_t result = 0;
+  while (nbits >= 8) {
+    result = ((result << 8) | ((*bits) & 0xff));
+    nbits = nbits - 8;
+    bits++;
+  }
+  if (nbits > 0)
+    result = ((result << nbits) | (((*bits) & 0xff) >> (8 - nbits)));
+  return result;
+}
+
+/* returns 1 if the address is (or may be) in the bitmap, 0 otherwise */
+static int match_bitmap (int power_two, int bitmap_bits, unsigned char * bitmap,
+                         unsigned char * address, int abits)
+{
+  if ((power_two <= 0) || (bitmap_bits <= 0) || (bitmap == NULL))
+    return 1;   /* an empty bitmap matches every address */
+  if (abits <= 0)
+    return 1;   /* empty address matches every bitmap, even one with all 0's */
+  uint64_t start_index = get_nbits (address, abits);
+  uint64_t end_index = start_index;
+  if (abits > power_two) {
+    start_index = (start_index >> (abits - power_two));
+  } else if (abits < power_two) {
+    /* make end_index have all 1s in the last (power_two - abits)) bits */
+    end_index = ((start_index + 1) << (power_two - abits)) - 1;
+    start_index = (start_index << (power_two - abits));
+  }
+  if ((start_index < 0) || (end_index < 0) || (start_index > end_index) ||
+      (start_index > bitmap_bits) || (end_index > bitmap_bits)) {
+    snprintf (log_buf, LOG_SIZE,
+              "match_bitmap error: index %" PRIu64 "-%" PRIu64 ", %d bits\n",
+              start_index, end_index, bitmap_bits);
+    printf ("%s", log_buf);
+    log_print ();
+    return 1;
+  }
+  while (start_index <= end_index) {
+    int byte = bitmap [start_index / 8] & 0xff;
+    int i;
+    for (i = start_index % 8;
+         (i < 8) && (i < (end_index - (start_index / 8) * 8)); i++)
+      if (((i == 7) && (( byte                   & 0x1) == 0x1)) ||
+          ((i <  7) && (((byte >> (8 - (i + 1))) & 0x1) == 0x1)))
+        return 1;
+    start_index = (start_index - (start_index % 8)) + 8;
+  }
+  return 0;  /* did not match any bit in the bitmap */
+}
+
+static int request_matches_packet (void * rs_void, void * cache_entry)
+{
   struct cache_entry * cep = (struct cache_entry *) cache_entry;
   struct allnet_header * chp = (struct allnet_header *) (cep->message);
-  if ((hp->src_nbits > ADDRESS_BITS) || (chp->dst_nbits > ADDRESS_BITS))
+  struct request_details * req = (struct request_details *) rs_void;
+  if (req->empty) {
+    if (matches (req->source, req->src_nbits, chp->destination, chp->dst_nbits))
+      return 1;
     return 0;
-  if (matches (hp->source, hp->src_nbits, chp->destination, chp->dst_nbits))
-    return 1;
-  return 0;
+  }
+  /* anything not matching leads to the packet being excluded */
+  if (req->since != NULL) {
+    uint64_t since = readb64 (req->since);
+    uint64_t rcvd_at = readb64 (cep->rcvd_at);
+    if (since > rcvd_at)
+      return 0;
+  }
+  if ((req->dbits > 0) && (req->dbitmap != NULL) &&
+      (! match_bitmap (req->dpower_two, req->dbits, req->dbitmap,
+                       chp->destination, chp->dst_nbits)))
+    return 0;
+  if ((req->sbits > 0) && (req->sbitmap != NULL) &&
+      (! match_bitmap (req->spower_two, req->sbits, req->sbitmap,
+                       chp->source, chp->src_nbits)))
+    return 0;
+  return 1;
 }
 
 /* returns 1 if it sent a response, 0 otherwise */
 static int respond_to_packet (void * cache, char * message,
                               int msize, int fd)
 {
-  struct allnet_header * hp = (struct allnet_header *) message;
+  struct request_details rd;
+  build_request_details (message, msize, &rd);
   void * * matches;
-  int nmatches = 
-    cache_all_matches (cache, request_matches_packet, message, &matches);
+  int nmatches =
+    cache_all_matches (cache, request_matches_packet, &rd, &matches);
   if (nmatches == 0)
     return 0;
   snprintf (log_buf, LOG_SIZE, "respond_to_packet: %d matches\n", nmatches);
   log_print ();
   struct cache_entry * * cep = (struct cache_entry * *) matches;
+  struct allnet_header * hp = (struct allnet_header *) (message);
+  int local_request = 0;
+  if (hp->hops == 0)   /* local request, do not forward elsewhere */
+    local_request = 1;
   int i;
+  int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
   for (i = 0; i < nmatches; i++) {
     snprintf (log_buf, LOG_SIZE,
-              "sending %d-byte cached response\n", cep [i]->msize);
+              "sending %d-byte cached response at [%d]\n", cep [i]->msize, i);
     log_print ();
+    int saved_max;
+    struct allnet_header * send_hp =
+      (struct allnet_header *) (cep [i]->message);
+    if (local_request) {  /* only forward locally */
+      saved_max = send_hp->max_hops;
+      send_hp->max_hops = send_hp->hops;
+    }
     /* send, no need to even check the return value of send_pipe_message */
-    send_pipe_message (fd, cep [i]->message, cep [i]->msize,
-                       ALLNET_PRIORITY_CACHE_RESPONSE);
+    send_pipe_message (fd, cep [i]->message, cep [i]->msize, priority);
+    if (local_request)  /* restore the packet as it was */
+      send_hp->max_hops = saved_max;
+    if (priority > ALLNET_PRIORITY_EPSILON)
+      priority--;
   }
   free (matches);
   return 1;
@@ -193,7 +350,7 @@ static void ack_packets (void * cache, char * message, int msize)
   }
 }
 
-void * main_loop (int sock)
+void main_loop (int sock)
 {
   bzero (cache_storage, sizeof (cache_storage));
   void * cache = cache_init (CACHE_SIZE - 1, return_cache_entry);
@@ -247,4 +404,5 @@ int main (int argc, char ** argv)
   main_loop (sock);
   snprintf (log_buf, LOG_SIZE, "end of acache\n");
   log_print ();
+  return 0;
 }

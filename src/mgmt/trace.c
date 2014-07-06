@@ -461,7 +461,7 @@ static void main_loop (int sock, char * my_address, int nbits,
     int timeout = PIPE_MESSAGE_WAIT_FOREVER;
     int found = receive_pipe_message_any (timeout, &message, &pipe, &pri);
     if (found < 0) {
-      printf ("pipe closed, exiting\n");
+      printf ("traced pipe closed, exiting\n");
       exit (1);
     }
 #ifdef DEBUG_PRINT

@@ -69,10 +69,12 @@ extern unsigned int get_remote (keyset k, char * address);
 
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
- * longer be accessed unless marked as valid again */
-extern unsigned int mark_invalid (keyset k);
+ * longer be accessed unless marked as valid again
+ * invalid_keys returns the number of invalid keys, or 0.
+ * mark_* return 1 for success, 0 if not successful */
 extern int invalid_keys (char * contact, keyset ** keysets);
-extern unsigned int mark_valid (keyset k);
+extern int mark_invalid (keyset k);
+extern int mark_valid (keyset k);
 
 /*************** operations on broadcast keys ********************/
 

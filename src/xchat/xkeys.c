@@ -137,7 +137,7 @@ static void wait_for_key (int sock, char * secret, char * contact,
     char * message;
     int found = receive_pipe_message_any (ms, &message, &pipe, &pri);
     if (found <= 0) {
-      printf ("pipe closed, exiting\n");
+      printf ("xkeys pipe closed, exiting\n");
       exit (1);
     }
     if (is_valid_message (message, found))
@@ -220,4 +220,5 @@ int main (int argc, char ** argv)
   else
     printf ("1 hop\n");
   send_key_message (contact, secret, hops, sock);
+  return 0;
 }

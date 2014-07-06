@@ -32,7 +32,7 @@ static void wait_for_ack (char * contact, char * message_ack,
     printf ("received %d bytes\n", asize);
 #endif /* DEBUG_PRINT */
     if (asize <= 0) {
-      printf ("pipe closed, exiting\n");
+      printf ("xkeyr pipe closed, exiting\n");
       exit (1);
     }
     if (is_valid_message (ack, asize)) {
@@ -204,4 +204,5 @@ int main (int argc, char ** argv)
   printf ("waiting for key message from '%s' with (normalized) secret '%s'\n",
           contact, secret);
   wait_for_key (sock, secret, contact, 600 * 1000);
+  return 0;
 }

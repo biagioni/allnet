@@ -22,7 +22,7 @@ void normalize_secret (char * s)
 {
   char * original = s;
   while (*s != '\0') {
-    if ((! isalpha (*s)) && (*s != '0') && (*s != '1')) {
+    if (! isalnum (*s)) {
       char * from = s + 1;  /* delete the char */
       char * to = s;
       while (*from != '\0')
@@ -34,16 +34,18 @@ void normalize_secret (char * s)
     } else if ((*s == '1') || (toupper (*s) == 'I')) {
       *s = 'L';  /* use L for 1 or i */
       s++;
+    } else if (isdigit (*s)) {
+      *s = ('A' + ((*s) - '2'));  /* use A..H for any other digit */
+      s++;
     } else {  /* make it uppercase */
       *s = toupper (*s);
       s++;
     }
   }
-  /* printf ("normalized secret is '%s'\n", original); */
 }
 
 /* only really works within 24 hours -- otherwise, too complicated */
-/* should use mktime, but does not translated GMT/UTC time */
+/* should use mktime, but does not translate GMT/UTC time */
 static int delta_minutes (struct tm * local, struct tm * gm)
 {
   int delta_hour = local->tm_hour - gm->tm_hour;

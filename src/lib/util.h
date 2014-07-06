@@ -148,6 +148,9 @@ extern int read_file_malloc (char * file_name, char ** content_p,
 /* fill this array with random bytes */
 extern void random_bytes (char * buffer, int bsize);
 
+/* fill this array with random alpha characters.  The last byte is set to \0 */
+extern void random_string (char * buffer, int bsize);
+
 /* place the values 0..n-1 at random within the given array */
 extern void random_permute_array (int n, int * array);
 

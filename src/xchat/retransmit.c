@@ -248,7 +248,7 @@ static int was_recently_resent (uint64_t seq, char * contact, keyset k)
   return 0;
 }
 
-static int record_resend (uint64_t seq, char * contact, keyset k)
+static void record_resend (uint64_t seq, char * contact, keyset k)
 {
   latest_resent = (latest_resent + 1) % NUM_RECENTLY_RESENT;
   if (recently_resent [latest_resent].contact != NULL)

@@ -25,8 +25,14 @@
 /* length (4 bytes, big-endian order) includes everything.
  * time (6 bytes, big-endian order) is the time of original transmission,
  *   in the os's local epoch
- * code is 1 byte, value 0 for a data message
- * the peer name and the message are null-terminated
+ * code is 1 byte,
+ * - code value 0 identifies a data message: the peer name and the
+ *   message are null-terminated
+ * - code value 1 identifies a broadcast message: the peer name and the
+ *   message are null-terminated
+ * - code value 2 identifies a new contact, stored in the peer name.  In
+ *   messages received by xchat_socket, this is followed by one or two
+ *   null-terminated secret strings.
  */
 
 static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
@@ -65,7 +71,7 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
 /* return the message length if a message was received, and 0 otherwise */
 /* both peer and message must have length ALLNET_MTU or more */
 static int recv_message (int sock, int * code, time_t * time,
-                         char * peer, char * message)
+                         char * peer, char * message, char * extra)
 {
   char buf [ALLNET_MTU * 10];
   int n = recv (sock, buf, sizeof (buf), MSG_DONTWAIT);
@@ -91,8 +97,8 @@ static int recv_message (int sock, int * code, time_t * time,
   sent_time = readb48 (buf + 4);
   *time = sent_time;
   *code = buf [10] & 0xff;
-  if (*code != 0) {
-    printf ("error: received code %d but only code 0 is supported\n", *code);
+  if ((*code != 0) && (*code != 2)) {
+    printf ("error: received code %d but only 0 and 2 supported\n", *code);
     return 0;
   }
   plen = strlen (buf + 11);
@@ -109,7 +115,19 @@ static int recv_message (int sock, int * code, time_t * time,
     return 0;
   }
   strcpy (peer, buf + 11);
-  strcpy (message, msg);
+  if (mlen > 0)
+    strcpy (message, msg);
+  else
+    message [0] = '\0';
+  extra [0] = '\0';
+  if (((*code) == 2) && (n > (mlen + (msg - buf)))) {   /* second secret */
+    char * secret = msg + mlen + 1;
+    int elen = strlen (secret);
+    if ((elen < ALLNET_MTU) && (elen + (secret - buf) < n))
+      strcpy (extra, secret);
+  }
+printf ("recv_message %d, time %ld, peer '%s', message '%s', extra '%s'\n",
+*code, *time, peer, message, extra);
   return mlen;
 }
 
@@ -143,7 +161,7 @@ static void wait_for_connection (int sock,
     char buf [ALLNET_MTU * 2];
     alen = *slen;
     bytes = recvfrom (sock, buf, sizeof (buf), 0, sap, &alen);
-    printf ("got %d bytes\n", bytes);
+    printf ("got initial %d bytes\n", bytes);
   } while ((bytes > 0) && ((sinp->sin_family != AF_INET) ||
                            (sinp->sin_addr.s_addr != htonl (INADDR_LOOPBACK))));
   *slen = alen;
@@ -260,19 +278,46 @@ int main (int argc, char ** argv)
   int timeout = 100;      /* sleep up to 1/10 second */
   char * old_contact = NULL;
   keyset old_kset = -1;
+  char * key_contact = NULL;
+  char * key_secret = NULL;
+  char * key_secret2 = NULL;
+  char kbuf1 [ALLNET_MTU];
+  char kbuf2 [ALLNET_MTU];
+  char kbuf3 [ALLNET_MTU];
+  int num_hops = 0;
   while (1) {
     char to_send [ALLNET_MTU];
     char peer [ALLNET_MTU];
     int code;
-    time_t time;
-    int len = recv_message (forwarding_socket, &code, &time, peer, to_send);
-    if (len > 0)
-      send_data_message (sock, peer, to_send, strlen (to_send));
+    time_t rtime;
+    int len = recv_message (forwarding_socket, &code, &rtime, peer, to_send,
+                            kbuf3);
+    if (len > 0) {
+      if (code == 0)
+        send_data_message (sock, peer, to_send, strlen (to_send));
+      else if (code == 2) {
+        strcpy (kbuf1, peer);
+        strcpy (kbuf2, to_send);
+        key_contact = kbuf1;
+        key_secret = kbuf2;
+        normalize_secret (key_secret);
+        if (strlen (kbuf3) > 0) {
+          key_secret2 = kbuf3;
+          normalize_secret (key_secret2);
+        }
+        num_hops = rtime;
+printf ("sending key to peer %s/%s, secret %s/%s/%s, %d hops\n",
+peer, key_contact, to_send, key_secret, key_secret2, num_hops);
+        
+        create_contact_send_key (sock, key_contact, key_secret, key_secret2,
+                                 num_hops);
+      }
+    }
     char * packet;
     int pipe, pri;
     int found = receive_pipe_message_any (timeout, &packet, &pipe, &pri);
     if (found < 0) {
-      printf ("pipe closed, exiting\n");
+      printf ("xchat_socket pipe closed, exiting\n");
       kill (child_pid, SIGKILL);
       exit (1);
     }
@@ -283,27 +328,43 @@ int main (int argc, char ** argv)
         old_kset = -1;
       }
     } else {    /* found > 0, got a packet */
-      int verified, duplicate;
+      int verified, duplicate, broadcast;
       char * peer;
       keyset kset;
       char * desc;
       char * message;
-      time_t time = 0;
-      int mlen = handle_packet (sock, packet, found, &peer, &kset,
-                                &message, &desc, &verified, &time, &duplicate);
-      if (mlen > 0) {
-        if (! duplicate)
+      time_t mtime = 0;
+      int mlen = handle_packet (sock, packet, found, &peer, &kset, &message,
+                                &desc, &verified, &mtime, &duplicate,
+                                &broadcast, key_contact, key_secret, 
+                                key_secret2, num_hops);
+      if ((mlen > 0) && (verified)) {
+        int mtype = (broadcast) ? 0 /* data */ : 1; /* broadcast */
+        if (broadcast || (! duplicate))
           send_message (forwarding_socket,
                         (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                        0, time, peer, message);
-        if ((old_contact == NULL) ||
-            (strcmp (old_contact, peer) != 0) || (old_kset != kset)) {
+                        mtype, mtime, peer, message);
+        if ((! broadcast) &&
+            ((old_contact == NULL) ||
+             (strcmp (old_contact, peer) != 0) || (old_kset != kset))) {
           request_and_resend (sock, peer, kset);
           old_contact = peer;
           old_kset = kset;
-        } /* else same peer, do nothing */
+        } else { /* same peer, do nothing */
+          free (peer);
+        }
         free (message);
-        free (desc);
+        if (! broadcast)
+          free (desc);
+      } else if (mlen < 0) {   /* confirm successful key exchange */
+        mtime = time (NULL);
+        send_message (forwarding_socket,
+                      (struct sockaddr *) (&fwd_addr), fwd_addr_size,
+                       2, mtime, key_contact, "");
+        key_contact = NULL;
+        key_secret = NULL;
+        key_secret2 = NULL;
+        num_hops = 0;
       }
     }
   }

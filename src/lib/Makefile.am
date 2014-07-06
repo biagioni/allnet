@@ -1,3 +1,5 @@
+AM_CFLAGS = -Wreturn-type
+
 libincludes = \
 	ai.h \
 	app_util.h \

@@ -1,3 +1,5 @@
+AM_CFLAGS = -Wreturn-type
+
 #SUBDIRS = test
 
 AM_CPPFLAGS = -I$(ALLNET_SRCDIR) -I$(ALLNET_SRCDIR)/xtime

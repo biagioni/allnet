@@ -58,7 +58,8 @@ static int handle_packet (char * message, int msize,
                           char * privkey, int ksize, char * ahra, int debug)
 {
   if (! is_valid_message (message, msize)) {
-    printf ("got invalid message of size %d\n", msize);
+    if (debug)
+      printf ("got invalid message of size %d\n", msize);
     return 0;
   }
   if (debug)
@@ -100,7 +101,7 @@ static void wait_for_response (int sock, char * phrase,
     int found = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
                                           &pipe, &pri);
     if (found <= 0) {
-      printf ("pipe closed, exiting\n");
+      printf ("allnet-subscribe pipe closed, exiting\n");
       exit (1);
     }
     if (handle_packet (message, found, privkey, privsize, ahra, debug))
@@ -164,5 +165,6 @@ int main (int argc, char ** argv)
     wait_for_response (sock, phrase, privkey, privsize, argv [1], debug);
   free (pubkey);   /* not very useful, just pro forma */
   free (privkey);
+  return 0;
 }
 

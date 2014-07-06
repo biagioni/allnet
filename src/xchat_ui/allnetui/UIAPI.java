@@ -16,13 +16,14 @@ public interface UIAPI {
     public void messageSent(String to, long sentTime, String text);
     
     // the application should call this method to tell the UI about a new contact
-    public void contactCreated(String contactName, String key);
+    public void contactCreated(final String contactName, boolean isBroadcast);
+    public void contactCreated(final String contactName);
+    public void broadcastContactCreated(final String contactName);
     
     // the application should call this method to tell the UI to remove a contact
     public void contactDeleted(String contactName);
     
-    // the application should call this method to update a user's key
-    public void updateKey(String contactName, String key);
-    
+//    // the application should call this method to update a user's key
+//    public void updateKey(String contactName, String key);
     
 }

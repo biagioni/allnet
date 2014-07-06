@@ -31,7 +31,7 @@ class ContactsPanel extends JPanel {
     // save the action listener so we can set it for any new buttons created
     private ActionListener listener;
 
-    ContactsPanel(String info, Color background, Color foreground) {
+    ContactsPanel(String info, Color background, Color foreground, Color bc) {
         super();
         map = new HashMap<>();
         topNames = new ArrayList<>();
@@ -43,6 +43,7 @@ class ContactsPanel extends JPanel {
         topLabel = new HtmlLabel(info);
         topLabel.setOpaque(true);
         topLabel.setBackground(foreground);
+System.out.println("ContactsPanel.java todo: make broadcast messages a different color");
         topLabel.setLineBorder(Color.BLACK, 1, false);
         //
         setLayout(new GridBagLayout());

@@ -15,14 +15,40 @@ class NewContactPanel extends JPanel {
 
     private static final long serialVersionUID = 1L;
     private HtmlLabel topLabel;
-    private JTextField nameInput, otherAddress, thirdParty, hisSecret;
+    private JTextField nameInput, variableInput;
+    private String mySecretShortString, mySecretLongString;
     private JPanel selectionPanel;
     private JPanel keyPanel;
     private JButton goButton;
-    private JLabel mySecret;
+    private JLabel mySecretShort, mySecretLong;
     private JRadioButton[] buttons;
     private ButtonGroup group;
     private String commandPrefix = "NewContactPanel";
+
+    private String newSecretChar (byte b) {
+        if (b < 0)
+          b += 128;
+        char [] A = new char [1];
+        byte [] c = new byte [1];
+        A [0] = 'A';
+        c [0] = (byte) ((b % 26) + Character.codePointAt(A, 0));
+        String result = new String(c);
+        if (result.equalsIgnoreCase("I"))
+            result = "L";
+        if (result.equalsIgnoreCase("Q"))
+            result = "O";
+        return result;
+    }
+
+    private String randomString(int numchars) {
+        java.security.SecureRandom random = new java.security.SecureRandom();
+        byte bytes[] = new byte[numchars];
+        random.nextBytes(bytes);
+        String result = "";
+        for (int i = 0; i < numchars; i++)
+            result = result + newSecretChar(bytes [i]);
+        return result;
+    }
 
     NewContactPanel(String info, Color background, Color foreground) {
         setBackground(background);
@@ -45,6 +71,9 @@ class NewContactPanel extends JPanel {
         namePanel.setLayout(new GridLayout(1, 2));
         namePanel.add(enterLabel, 0, 0);
         namePanel.add(nameInput, 0, 1);
+        mySecretShort = new JLabel(" ");
+        mySecretLong = new JLabel(" ");
+        setMySecret();
         makeSelectionPanel();
         makeKeyPanel();
         goButton = new JButton("go");
@@ -88,10 +117,25 @@ class NewContactPanel extends JPanel {
         return (nameInput.getText());
     }
 
-    // display my secret string
-    void setMySecret(String secretString) {
-        mySecret.setText(secretString);
+    // get the new contact's input, whatever it is used for
+    String getVariableInput() {
+        return (variableInput.getText());
     }
+
+    // change my secret string
+    void setMySecret() {
+        mySecretShortString = randomString (6);
+        mySecretLongString = randomString (14);
+        mySecretShort.setText("your short secret: " + mySecretShortString);
+        mySecretLong.setText("or your long secret: " + mySecretLongString);
+    }
+    String getMySecretShort() {
+        return (mySecretShortString);
+    }
+    String getMySecretLong() {
+        return (mySecretLongString);
+    }
+
 
     // return the index of the selected button
     int getSelectedButton() {
@@ -137,23 +181,35 @@ class NewContactPanel extends JPanel {
         buttons = new JRadioButton[5];
         JLabel[] labels = new JLabel[5];
         String[] labelText = new String[]{
-            "new contact has a wireless device and<br>is close enough to be in range",
-            "you are in contact over email<br>or other insecure method",
-            "you are in contact over telephone<br>or other somewhat insecure method",
-            "you know your contact's AllNet address<br>(fill in the address below)",
-            "you are both contacts of:<br>(fill in the name below)"
+            "new contact has a wireless device<br>" +
+                 "  close enough to be in range:<br>" +
+                 "give contact your short secret<br>" +
+                 "or enter their short secret below",
+            "you know your contact's AllNet address:<br>" +
+                 "enter the address below",
+            "you are both contacts of:<br>" +
+                 "enter the name below",
+            "you are in contact over telephone<br>" +
+                 "  or other authenticated method:<br>" +
+                 "give contact your long secret<br>" +
+                 "or enter their long secret below",
+            "you are in contact over email<br>" +
+                 "  or other not authenticated method:<br>" +
+                 "give contact your long secret<br>" +
+                 "or enter their long secret below",
         };
         for (int i = 0; i < 5; i++) {
-            buttons[i] = new JRadioButton();
-            buttons[i].setActionCommand(commandPrefix + ":" + "radiobutton" + i);
+            if (i < 4)
+                buttons[i] = new JRadioButton();
+            else
+                buttons[i] = new JRadioButton("", true);
+            buttons[i].setActionCommand(commandPrefix + ":radiobutton" + i);
             buttons[i].setBackground(Color.WHITE);
             group.add(buttons[i]);
             labels[i] = new HtmlLabel(labelText[i]);
         }
-        otherAddress = getTextField();
-        otherAddress.setBorder(new LineBorder(Color.BLACK, 1));
-        thirdParty = getTextField();
-        thirdParty.setBorder(new LineBorder(Color.BLACK, 1));
+        variableInput = getTextField();
+        variableInput.setBorder(new LineBorder(Color.BLACK, 1));
         // do layout
         panel.setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
@@ -172,14 +228,18 @@ class NewContactPanel extends JPanel {
             gbc.gridx = 1;
             panel.add(labels[i], gbc);
             gbc.gridy++;
-            if (gbc.gridy == 4) {
-                panel.add(otherAddress, gbc);
-                gbc.gridy++;
-            }
-            if (gbc.gridy == 6) {
-                panel.add(thirdParty, gbc);
-                gbc.gridy++;
-            }
+//            if (gbc.gridy == 1) {
+//                panel.add(otherSecretShort, gbc);
+//                gbc.gridy++;
+//            }
+//            if (gbc.gridy == 3) {
+//                panel.add(ahra, gbc);
+//                gbc.gridy++;
+//            }
+//            if (gbc.gridy == 5) {
+//                panel.add(thirdParty, gbc);
+//                gbc.gridy++;
+//            }
         }
         selectionPanel = panel;
     }
@@ -189,11 +249,11 @@ class NewContactPanel extends JPanel {
         panel.setBackground(Color.WHITE);
         panel.setBorder(new LineBorder(Color.BLACK, 1));
         // make components
-        mySecret = new JLabel(" ");
-        hisSecret = getTextField();
-        hisSecret.setBorder(new LineBorder(Color.BLACK, 1));
-        JLabel instruction0 = new HtmlLabel("enter your contact's secret string<br>(displayed on their device)");
-        JLabel instruction1 = new HtmlLabel("or tell your contact this string:");
+        variableInput = getTextField();
+        variableInput.setBorder(new LineBorder(Color.BLACK, 1));
+        JLabel instruction0 =
+            new HtmlLabel("enter your contact's secret or address:");
+        JLabel instruction1 = new HtmlLabel("or tell your contact:");
         // do the layout
         panel.setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
@@ -208,11 +268,13 @@ class NewContactPanel extends JPanel {
         gbc.gridwidth = 1;
         panel.add(instruction0, gbc);
         gbc.gridy++;
-        panel.add(hisSecret, gbc);
+        panel.add(variableInput, gbc);
         gbc.gridy++;
         panel.add(instruction1, gbc);
         gbc.gridy++;
-        panel.add(mySecret, gbc);
+        panel.add(mySecretShort, gbc);
+        gbc.gridy++;
+        panel.add(mySecretLong, gbc);
         keyPanel = panel;
     }
 }

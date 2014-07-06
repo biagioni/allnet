@@ -12,27 +12,31 @@ import java.util.Iterator;
  * @author Henry
  */
 class ClientData {
+    private enum contactType { PERSONAL, BROADCAST };
 
     private String mySecretString;
-    private HashMap<String, String> contactKeys;
+    private HashMap<String, contactType> contactTypes;
     private HashMap<String, Conversation> conversations;
 
     ClientData() {
-        contactKeys = new HashMap<>();
+        contactTypes = new HashMap<>();
         conversations = new HashMap<>();
     }
 
-    void createContact(String contactName, String key) {
+    void createContact(String contactName, boolean isBroadcast) {
         if (contactExists(contactName)) {
             // throw new RuntimeException("tried to create contact with existing contact name: " + contactName);
             return;
         }
-        contactKeys.put(contactName, key);
+        if (isBroadcast)
+          contactTypes.put(contactName, contactType.BROADCAST);
+        else
+          contactTypes.put(contactName, contactType.PERSONAL);
         conversations.put(contactName, new Conversation(contactName));
     }
 
     void removeContact(String contactName) {
-        contactKeys.remove(contactName);
+        contactTypes.remove(contactName);
         conversations.remove(contactName);
     }
 
@@ -45,19 +49,11 @@ class ClientData {
     }
 
     boolean contactExists(String contactName) {
-        return (contactKeys.containsKey(contactName));
+        return (contactTypes.containsKey(contactName));
     }
 
-    String getKey(String contactName) {
-        return (contactKeys.get(contactName));
-    }
-
-    void setKey(String contactName, String key) {
-        if (!contactExists(contactName)) {
-            // throw new RuntimeException("tried to set the key for a non-existent contact: " + contactName);
-            return;
-        }
-        contactKeys.put(contactName, key);
+    boolean isBroadcast(String contactName) {
+        return (contactTypes.get(contactName) == contactType.BROADCAST);
     }
 
     Conversation getConversation(String contactName) {
@@ -66,11 +62,11 @@ class ClientData {
 
     // get an iterator to allow us to iterate through all contacts (contact names)
     Iterator<String> getContactIterator() {
-        return (contactKeys.keySet().iterator());
+        return (contactTypes.keySet().iterator());
     }
 
     int getNumContacts() {
-        return (contactKeys.size());
+        return (contactTypes.size());
     }
 
     int getTotalNewMsgs() {

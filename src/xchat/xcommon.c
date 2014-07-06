@@ -15,6 +15,7 @@
 #include "lib/priority.h"
 #include "lib/util.h"
 #include "lib/log.h"
+#include "lib/sha.h"
 
 static void request_cached_data (int sock, int hops)
 {
@@ -84,90 +85,100 @@ printf ("packet not requesting an ack, no ack sent\n");
     request_and_resend (sock, contact, kset);
 }
 
-/* handle an incoming message, acking it if it is a data message for us */
-/* if it is a data or ack, it is saved in the xchat log */
-/* fills in peer, message, desc (all to point to statically-allocated
- * buffers) and verified, and returns the message length > 0 if this was
- * a valid data message from a peer.  Otherwise returns 0 */
-/* the data message (if any) is null-terminated */
-int handle_packet (int sock, char * packet, int psize,
-                   char ** contact, keyset * kset,
-                   char ** message, char ** desc,
-                   int * verified, time_t * sent, int * duplicate)
+static void handle_ack (int sock, char * packet, int psize, int hsize)
 {
-/*  print_timestamp ("received packet"); */
-/*
-  struct timeval tv;
-  gettimeofday (&tv, NULL);
-  printf ("%ld.%06ld: got %d-byte packet from socket %d\n",
-          tv.tv_sec, tv.tv_usec, psize, sock);
-*/
-/*  print_buffer (packet, psize, "handle_packet", 24, 1); */
-  if (! is_valid_message (packet, psize)) {
-/*
-    printf ("packet size %d less than data header size %zd, dropping\n",
-            psize, ALLNET_HEADER_DATA_SIZE);
-*/
-    return 0;
-  }
-
   struct allnet_header * hp = (struct allnet_header *) packet;
-  int hsize = ALLNET_SIZE (hp->transport);
-  if ((psize < hsize) || ((hp->message_type != ALLNET_TYPE_DATA) &&
-                          (hp->message_type != ALLNET_TYPE_ACK))) {
-    return 0;
-  }
-
+  /* save the acks */
+  char * ack = packet + ALLNET_SIZE (hp->transport);
+  int count = (psize - hsize) / MESSAGE_ID_SIZE; 
+  int i;
+  for (i = 0; i < count; i++) {
+    char * peer;
+    keyset kset;
+    long long int ack_number = ack_received (ack, &peer, &kset);
+    if (ack_number > 0) {
 #ifdef DEBUG_PRINT
-  if (hp->hops > 0)  /* not my own packet */
-    print_packet (packet, psize, "xcommon received", 1);
+      printf ("sequence number %lld acked\n", ack_number);
 #endif /* DEBUG_PRINT */
-
-  if (hp->message_type == ALLNET_TYPE_ACK) {
-    /* save the acks */
-    char * ack = packet + ALLNET_SIZE (hp->transport);
-    int count = (psize - hsize) / MESSAGE_ID_SIZE; 
-    int i;
-    for (i = 0; i < count; i++) {
-      long long int ack_number = ack_received (ack, contact, kset);
-      if (ack_number > 0) {
-#ifdef DEBUG_PRINT
-        printf ("sequence number %lld acked\n", ack_number);
-#endif /* DEBUG_PRINT */
-        request_and_resend (sock, *contact, *kset);
+      request_and_resend (sock, peer, kset);
 /*    } else if (ack_number == -2) {
-        printf ("packet acked again\n"); */
-      } else if (is_recently_sent_ack (ack)) {
-        /* printf ("received my own ack\n"); */
-      } else {
-        /* print_buffer (ack, MESSAGE_ID_SIZE, "unknown ack rcvd",
-                      MESSAGE_ID_SIZE, 1); */
-      }
-      fflush (NULL);
-/* */
-      ack += MESSAGE_ID_SIZE;
+      printf ("packet acked again\n"); */
+    } else if (is_recently_sent_ack (ack)) {
+      /* printf ("received my own ack\n"); */
+    } else {
+      /* print_buffer (ack, MESSAGE_ID_SIZE, "unknown ack rcvd",
+                    MESSAGE_ID_SIZE, 1); */
     }
-    return 0;
+    fflush (NULL);
+/* */
+    ack += MESSAGE_ID_SIZE;
   }
+}
 
-  /* we now know it is a data packet */
-  int verif = 0;
-  int ssize = 0;  /* size of the signature */
-  char * sig = NULL;
-  if (hp->sig_algo != ALLNET_SIGTYPE_NONE)
-    ssize = readb16 (packet + (psize - 2));
-/*  print_buffer (packet + psize - 2, 2, "sigsize", 16, 1); */
-  /* size needed for the unencrypted part of the packet (header+trailer)*/
-  unsigned int htsize = hsize + ssize;
-  if (psize <= htsize) {
-    printf ("data packet size %d less than header and trailer %d, dropping\n",
-            psize, htsize);
+static int handle_clear (struct allnet_header * hp, char * data, int dsize,
+                         char ** contact, char ** message,
+                         int * verified, int * broadcast)
+{
+  if (hp->sig_algo == ALLNET_SIGTYPE_NONE) {
+    printf ("ignoring unsigned clear packet '%s'\n", data);
     return 0;
   }
-/*printf ("header and trailer size %d, signature size %d\n", htsize, ssize); */
+  int ssize = readb16 (data + (dsize - 2)) + 2;  /* size of the signature */
+  if ((ssize <= 2) || (dsize <= ssize)) {
+    printf ("data packet size %d less than sig %d, dropping\n", dsize, ssize);
+    return 0;
+  }
+  char * sig = data + (dsize - ssize);
+#ifdef DEBUG_PRINT
+  printf ("data size %d, signature size %d\n", dsize, ssize);
+#endif /* DEBUG_PRINT */
+  struct bc_key_info * keys;
+  int nkeys = get_other_keys (&keys);
+  int i;
+  for (i = 0; i < nkeys; i++) {
+    if ((matches (keys [i].address, ADDRESS_BITS,
+                  hp->source, hp->src_nbits) > 0) &&
+        (verify (data, dsize - ssize, sig, ssize - 2,
+                 keys [i].pub_key, keys [i].pub_klen))) {
+      *contact = strcpy_malloc (keys [i].identifier,
+                                "handle_message broadcast contact");
+      *message = malloc_or_fail (dsize + 1, "handle_clear message");
+      memcpy (*message, data, dsize);
+      (*message) [dsize] = '\0';   /* null-terminate the message */
+      *broadcast = 1;
+      *verified = 1;
+#ifdef DEBUG_PRINT
+      printf ("verified bc message, contact %s\n", keys [i].identifier);
+#endif /* DEBUG_PRINT */
+      return dsize;
+    } 
+#ifdef DEBUG_PRINT
+      else {
+      printf ("matches (%02x%02x, %02x%02x/%d) == %d\n",
+              keys [i].address [0] & 0xff, keys [i].address [1] & 0xff,
+              hp->source [0] & 0xff, hp->source [1] & 0xff, hp->src_nbits,
+              matches (keys [i].address, ADDRESS_BITS,
+                       hp->source, hp->src_nbits));
+      printf ("verify (%p/%d, %p/%d, %p/%d) == %d\n",
+              data, dsize - ssize, sig, ssize - 2,
+              keys [i].pub_key, keys [i].pub_klen,
+              verify (data, dsize - ssize, sig, ssize - 2,
+                      keys [i].pub_key, keys [i].pub_klen));
+    }
+#endif /* DEBUG_PRINT */
+  }
+  printf ("unable to verify bc message\n");
+  return 0;   /* did not match */
+}
+
+static int handle_data (int sock, struct allnet_header * hp,
+                        char * data, int dsize, char ** contact, keyset * kset,
+                        char ** message, char ** desc, int * verified,
+                        time_t * sent, int * duplicate, int * broadcast)
+{
+  int verif = 0;
   char * text = NULL;
-  int tsize = decrypt_verify (hp->sig_algo, packet + hsize, psize - hsize,
-                              contact, kset, &text,
+  int tsize = decrypt_verify (hp->sig_algo, data, dsize, contact, kset, &text,
                               hp->source, hp->src_nbits, hp->destination,
                               hp->dst_nbits, 0);
   if (tsize < 0) {
@@ -206,13 +217,14 @@ int handle_packet (int sock, char * packet, int psize,
     return 0;
   }
 
+  *broadcast = 0;
   *duplicate = 0;
   if (was_received (*contact, *kset, seq))
     *duplicate = 1;
 
   save_incoming (*contact, *kset, cdp, cleartext, msize);
 
-  *message = malloc_or_fail (msize + 1, "handle_packet message");
+  *message = malloc_or_fail (msize + 1, "handle_data message");
   memcpy (*message, cleartext, msize);
   (*message) [msize] = '\0';   /* null-terminate the message */
   *desc = chat_descriptor_to_string (cdp, 0, 0);
@@ -227,6 +239,186 @@ int handle_packet (int sock, char * packet, int psize,
   free (text);
 
   return msize;
+}
+
+static int send_key (int sock, char * contact, keyset kset, char * secret,
+                      char * address, int abits, int max_hops)
+{
+  char * my_public_key;
+  int pub_ksize = get_my_pubkey (kset, &my_public_key);
+  if (pub_ksize <= 0) {
+    printf ("unable to send key, no public key found for contact %s (%d/%d)\n",
+            contact, kset, pub_ksize);
+    return 0;
+  }
+  int dsize = pub_ksize + SHA512_SIZE;
+  int size;
+  struct allnet_header * hp =
+    create_packet (dsize, ALLNET_TYPE_KEY_XCHG, max_hops, ALLNET_SIGTYPE_NONE,
+                   address, abits, NULL, 0, NULL, &size);
+  char * message = (char *) hp;
+
+  char * data = message + ALLNET_SIZE (hp->transport);
+  memcpy (data, my_public_key, pub_ksize);
+  sha512hmac (my_public_key, pub_ksize, secret, strlen (secret),
+              /* hmac is written directly into the packet */
+              data + pub_ksize);
+
+  if (! send_pipe_message_free (sock, message, size, ALLNET_PRIORITY_LOCAL)) {
+    printf ("unable to send %d-byte key exchange packet to %s\n",
+            contact, size);
+    return 0;
+  }
+  return 1;
+}
+
+static int handle_key (int sock, struct allnet_header * hp,
+                       char * data, int dsize, char * contact,
+                       char * secret1, char * secret2, int max_hops)
+{
+  if ((contact == NULL) || (secret1 == NULL))
+    return 0;
+  if (hp->hops > max_hops)
+    return 0;
+  keyset * keys;
+  int nkeys = all_keys (contact, &keys);
+  if (nkeys < 1) {
+    printf ("error '%s'/%d: create own key before calling handle_packet\n",
+            contact, nkeys);
+    return 0;
+  }
+printf ("handle_key received key\n");
+  char peer_addr [ADDRESS_SIZE];
+  int peer_bits;
+  int key_index = -1;
+  int i;
+  for (i = 0; i < nkeys; i++) {
+    char * key;
+    int klen = get_contact_pubkey (keys [i], &key);
+    peer_bits = get_remote (keys [i], peer_addr);
+    if ((klen <= 0) &&
+        ((peer_bits <= 0) ||
+         (matches (peer_addr, peer_bits, hp->source, hp->src_nbits) > 0))) {
+printf ("handle_key matches at index %d/%d\n", i, nkeys);
+      key_index = i;
+      break;
+    }
+  }
+  if (key_index < 0) {
+    if (nkeys <= 0)
+      printf ("handle_key error: contact '%s' has %d keys\n", contact, nkeys);
+/* it is fairly normal to get multiple copies of the key.  Ignore.
+    else
+      printf ("handle_key: contact '%s' has %d keys, no unmatched key found\n",
+              contact, nkeys);
+*/
+    return 0;
+  }
+
+  char * received_key = data;
+  int ksize = dsize - SHA512_SIZE;
+  char * received_hmac = data + ksize;
+  char hmac [SHA512_SIZE];
+  sha512hmac (received_key, ksize, secret1, strlen (secret1), hmac);
+  int found1 = (memcmp (hmac, received_hmac, SHA512_SIZE) == 0);
+  int found2 = 0;
+  if ((! found1) && (secret2 != NULL)) {
+    sha512hmac (received_key, ksize, secret2, strlen (secret2), hmac);
+    found2 = (memcmp (hmac, received_hmac, SHA512_SIZE) == 0);
+  }
+printf ("hmac gives %d/%d\n", found1, found2);
+  if ((found1) || (found2)) {
+    printf ("received valid public key %p/%d for '%s'/%d\n", received_key,
+            ksize, contact, key_index);
+    print_buffer (received_key, ksize, "key", 10, 1);
+    if (set_contact_pubkey (keys [key_index], received_key, ksize)) {
+      if (hp->src_nbits > 0)
+        set_contact_remote_addr (keys [key_index], hp->src_nbits, hp->source);
+      /* send the key to the peer -- may be redundant, but may be useful */
+      char * secret = secret1;
+      if (found2)   /* use peer's secret */
+        secret = secret2;
+      /* else peer sent us a valid key, must know our secret1 */
+      if (! send_key (sock, contact, keys [key_index], secret,
+                      hp->source, hp->src_nbits, max_hops))
+        printf ("send_key failed for key index %d/%d\n", key_index, nkeys);
+      return -1;  /* successful key exchange */
+    }
+    printf ("handle_key error: set_contact_pubkey returned 0\n");
+    return 0;
+  }
+printf ("public key does not check with secrets %s %s\n", secret1, secret2);
+  return 0;
+}
+
+/* handle an incoming packet, acking it if it is a data packet for us
+ * returns the message length > 0 if this was a valid data message from a peer.
+ * if it gets a valid key, returns -1 (details below)
+ * Otherwise returns 0 and does not fill in any of the following results.
+ *
+ * if it is a data or ack, it is saved in the xchat log
+ * if it is a valid data message from a peer or a broadcaster,
+ * fills in verified and broadcast
+ * fills in contact, message (to point to malloc'd buffers, must be freed)
+ * if not broadcast, fills in desc (also malloc'd), sent (if not null)
+ * and duplicate.
+ * if verified and not broadcast, fills in kset.
+ * the data message (if any) is null-terminated
+ *
+ * if kcontact and ksecret1 are not NULL, assumes we are also looking
+ * for key exchange messages sent to us matching either of ksecret1 or
+ * (if not NULL) ksecret2.  If such a key is found, returns -1.
+ * there are two ways of calling this:
+ * - if the user specified the peer's secret, first send initial key,
+ *   then call handle_packet with our secret in ksecret1 and our
+ *   peer's secret in ksecret2.
+ * - otherwise, put our secret in ksecret1, make ksecret2 and kaddr NULL,
+ *   and handle_packet is ready to receive a key.
+ * In either case, if a matching key is received, it is saved and a
+ * response is sent (if a response is a duplicate, it does no harm).
+ * kmax_hops specifies the maximum hop count of incoming acceptable keys,
+ * and the hop count used in sending the key.
+ */
+int handle_packet (int sock, char * packet, int psize,
+                   char ** contact, keyset * kset,
+                   char ** message, char ** desc,
+                   int * verified, time_t * sent,
+                   int * duplicate, int * broadcast,
+                   char * kcontact, char * ksecret1, char * ksecret2,
+                   int kmax_hops)
+{
+  if (! is_valid_message (packet, psize))
+    return 0;
+
+  struct allnet_header * hp = (struct allnet_header *) packet;
+  int hsize = ALLNET_SIZE (hp->transport);
+  if (psize < hsize)
+    return 0;
+
+#ifdef DEBUG_PRINT
+  if (hp->hops > 0)  /* not my own packet */
+    print_packet (packet, psize, "xcommon received", 1);
+#endif /* DEBUG_PRINT */
+
+  if (hp->message_type == ALLNET_TYPE_ACK) {
+    handle_ack (sock, packet, psize, hsize);
+    return 0;
+  }
+
+  if (hp->message_type == ALLNET_TYPE_CLEAR)  /* a broadcast packet */
+    return handle_clear (hp, packet + hsize, psize - hsize,
+                         contact, message, verified, broadcast);
+
+  if (hp->message_type == ALLNET_TYPE_DATA) /* an encrypted data packet */
+    return handle_data (sock, hp, packet + hsize, psize - hsize,
+                        contact, kset, message, desc, verified, sent,
+                        duplicate, broadcast);
+
+  if (hp->message_type == ALLNET_TYPE_KEY_XCHG)
+    return handle_key (sock, hp, packet + hsize, psize - hsize,
+                       kcontact, ksecret1, ksecret2, kmax_hops);
+
+  return 0;
 }
 
 /* send this message and save it in the xchat log. */
@@ -294,5 +486,34 @@ void request_and_resend (int sock, char * contact, keyset kset)
     last_resend = now;
     resend_unacked (contact, kset, sock, hops, ALLNET_PRIORITY_LOCAL_LOW, 10);
   }
+}
+
+/* send the public key, followed by the hmac of the public key using
+ * the secret as the key for the hmac, and return 1.
+ * secret2 may be NULL, secret1 should not be.
+ * or fail and returns 0 if the contact already exists (or other errors) */
+int create_contact_send_key (int sock, char * contact, char * secret1,
+                             char * secret2, int hops)
+{
+  char address [ADDRESS_SIZE];
+  random_bytes (address, sizeof (address));
+  int abits = 16;
+  keyset kset = create_contact (contact, 4096, 1, NULL, 0,
+                                address, abits, NULL, 0);
+  if (kset < 0) {
+    printf ("contact %s already exists\n", contact);
+    return 0;
+  }
+  if (send_key (sock, contact, kset, secret1, address, abits, hops)) {
+    printf ("send_key sent key to contact %s, %d hops, secret %s\n",
+            contact, hops, secret1);
+    if ((secret2 != NULL) &&
+        (send_key (sock, contact, kset, secret2, address, abits, hops)))
+      printf ("send_key also sent key to contact %s, %d hops, secret %s\n",
+              contact, hops, secret2);
+    return 1;
+  }
+  printf ("send_key failed for create_contact_send_key\n");
+  return 0;
 }
 

@@ -740,17 +740,23 @@ unsigned int get_remote (keyset k, char * address)
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
  * longer be accessed unless the marked as valid again */
-unsigned int mark_invalid (keyset k)
+int mark_invalid (keyset k)
 {
   init_from_file ();
+  printf ("mark_invalid not implemented\n");
+  return 0;
 }
 int invalid_keys (char * contact, keyset ** keysets)
 {
   init_from_file ();
+  printf ("invalid_keys not implemented\n");
+  return 0;
 }
-unsigned int mark_valid (keyset k)
+int mark_valid (keyset k)
 {
   init_from_file ();
+  printf ("mark_valid not implemented\n");
+  return 0;
 }
 
 /*************** operations on broadcast keys ********************/
@@ -1334,6 +1340,7 @@ static struct bc_key_info * find_bc_key (char * address,
                        NULL, 0, 0))
       return keys + i;
   }
+  return NULL;
 }
 
 /* return the specified key (statically allocated, do not modify), or NULL */

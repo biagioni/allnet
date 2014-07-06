@@ -36,6 +36,7 @@ class ConversationPanel extends JPanel {
     private String commandPrefix;
     // default colors to use
     private static Color background = Color.GRAY, foreground = Color.WHITE;
+    private static Color bc = Color.LIGHT_GRAY;
     
     ConversationPanel(String info, String commandPrefix, String contactName) {
         this.commandPrefix = commandPrefix;
@@ -51,6 +52,7 @@ class ConversationPanel extends JPanel {
         JPanel buttonPanel = makeButtonPanel();
 
         // make the panel to hold the messages
+System.out.println ("ConversationPanel.java to do: make bc messages a different color");
         messagePanel = makeMessagePanel(background);
         scrollPane = new JScrollPane(messagePanel,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -113,9 +115,10 @@ class ConversationPanel extends JPanel {
         return (msg);
     }
     
-    static void setDefaultColors(Color background, Color foreground) {
+    static void setDefaultColors(Color background, Color foreground, Color bc) {
         ConversationPanel.background = background;
         ConversationPanel.foreground = foreground;
+        ConversationPanel.bc = bc;
     }
     
     void setListener(ActionListener listener) {

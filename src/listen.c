@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 
 #include "lib/packet.h"
@@ -29,6 +30,7 @@ struct listen_info {
   pthread_mutex_t mutex; /* mutex for accessing fds */
   pthread_t thread4;     /* listen thread for IPv4 */
   pthread_t thread6;     /* listen thread for IPv6 */
+  int nodelay;           /* nodelay 1 on all local sockets, 0 on all other */
   /* the rest of these fields are for listen.c internal use only */
   int max_num_fds;       /* max number of elements with space in fds */
   char * program_name;   /* e.g. alocal, aip */
@@ -144,6 +146,13 @@ static void * listen_loop (void * arg)
                         connection, ntohs (info->port));
     print_sockaddr_str (ap, addr_size, 1, log_buf + off, LOG_SIZE - off);
     log_print ();
+    int option = 1;  /* disable Nagle algorithm if nodelay */
+    if ((ra->info->nodelay) &&
+        (setsockopt (connection, IPPROTO_TCP, TCP_NODELAY, &option,
+                     sizeof (option)) != 0)) {
+      snprintf (log_buf, LOG_SIZE, "unable to set nodelay socket option\n");
+      log_print ();
+    }
 /* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
  * we want to record it as an IPv4 connection */
     standardize_ip (ap, addr_size);
@@ -159,11 +168,12 @@ static void * listen_loop (void * arg)
   }
   perror ("accept");
   printf ("error calling accept (%d)\n", ra->fd);
+  return NULL;
 }
 
 void listen_init_info (struct listen_info * info, int max_fds, char * name,
                        int port, int local_only, int add_remove_pipe,
-                       void (* callback) (int))
+                       int nodelay, void (* callback) (int))
 {
   if (max_fds > 1024) {
     printf ("using 1024 as the maximum number of open fds, %d is too large\n",
@@ -184,6 +194,7 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
                                 "listen thread peers");
   info->used = malloc_or_fail (max_fds * sizeof (int), "listen thread used");
   info->callback = callback;
+  info->nodelay = nodelay;
   int i;
   for (i = 0; i < max_fds; i++)
     info->fds [i] = info->used [i] = info->peers [i].ip.ip_version = 0;
@@ -231,7 +242,7 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
   }
 }
 
-int listen_record_usage (struct listen_info * info, int fd)
+void listen_record_usage (struct listen_info * info, int fd)
 {
   int i;
   if (info->counter + 1 == 0) {  /* wrap around of counter value */

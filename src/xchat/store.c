@@ -14,6 +14,7 @@
 #include <inttypes.h>
 #include <dirent.h>
 #include <sys/types.h>
+#include <sys/file.h>
 #include <sys/stat.h>
 
 #include "lib/util.h"
@@ -83,7 +84,7 @@ struct msg_iter * start_iter (char * contact, keyset k)
   return result;
 }
 
-static is_data_file (char * fname)
+static int is_data_file (char * fname)
 {
   struct stat st;
   if (stat (fname, &st) < 0) {
@@ -626,6 +627,8 @@ void save_record (char * contact, keyset k, int type, uint64_t seq,
     return;
   }
  
+  flock (fd, LOCK_EX);  /* exclusive write, otherwise multiple writers
+                         * make a mess of the file */
   store_save_message_type (fd, type);
   store_save_message_id (fd, message_ack);
   char id [MESSAGE_ID_SIZE];
@@ -637,6 +640,7 @@ void save_record (char * contact, keyset k, int type, uint64_t seq,
     store_save_message_seq_time (fd, seq, t, tz_min);
     store_save_message (fd, message, msize);
   }
+  flock (fd, LOCK_UN);  /* remove the file lock */
 
   close (fd);
   free (path);

@@ -129,7 +129,7 @@ int record_packet_time (char * data, int dsize, int conn)
 }
 
 /* clear all packets sent on this connection */
-int record_packet_clear (int conn)
+void record_packet_clear (int conn)
 {
   init ();
   int i;

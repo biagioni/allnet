@@ -27,7 +27,8 @@ class UIController implements ControllerInterface, UIAPI {
 
     // for formatting message times
     private static SimpleDateFormat formatter =
-            new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss z");
+//          new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss z");
+            new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss");
     //
     // reference to the swing Frame in which the ui is running 
     private ApplicationFrame frame;
@@ -85,17 +86,28 @@ class UIController implements ControllerInterface, UIAPI {
 
     // the application should call this method to tell the UI about a new contact
     @Override
-    public void contactCreated(final String contactName, final String key) {
+    public void contactCreated(final String contactName,
+                               final boolean isBroadcast) {
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
-                clientData.createContact(contactName, key);
+                clientData.createContact(contactName, isBroadcast);
                 updateContactsPanel(contactName);
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
         SwingUtilities.invokeLater(r);
+    }
+
+    @Override
+    public void contactCreated(final String contactName) {
+        contactCreated (contactName, false);
+    }
+
+    @Override
+    public void broadcastContactCreated(final String contactName) {
+        contactCreated (contactName, true);
     }
 
     // the application should call this method to tell the UI to remove a contact
@@ -114,19 +126,19 @@ class UIController implements ControllerInterface, UIAPI {
         SwingUtilities.invokeLater(r);
     }
 
-    // the application should call this method to tell the UI about a new contact
-    @Override
-    public void updateKey(final String contactName, final String key) {
-        Runnable r = new Runnable() {
-
-            @Override
-            public void run() {
-                clientData.setKey(contactName, key);
-            }
-        };
-        // schedule it in the event disp thread, but don't wait for it to execute
-        SwingUtilities.invokeLater(r);
-    }
+//    // the application should call this method to update a user's key
+//    @Override
+//    public void updateKey(final String contactName, final String key) {
+//        Runnable r = new Runnable() {
+//
+//            @Override
+//            public void run() {
+//                clientData.setKey(contactName, key);
+//            }
+//        };
+//        // schedule it in the event disp thread, but don't wait for it to execute
+//        SwingUtilities.invokeLater(r);
+//    }
 
     //-----------------------------------------
     //
@@ -203,7 +215,7 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     // update the ContactsPanel with the info related to this contact 
-    private void updateContactsPanel(String contact) {
+    private void updateContactsPanel(String contact, boolean isBroadcast) {
         Conversation conv = clientData.getConversation(contact);
         if (conv == null) {
             throw new RuntimeException("tried to update contacts panel for invalid contact name: " + contact);
@@ -229,6 +241,12 @@ class UIController implements ControllerInterface, UIAPI {
         }
         // and finally, update the info at the top of the panel
         updateContactsPanelStatus();
+    }
+    private void updateContactsPanel(String contact) {
+        updateContactsPanel(contact, false);
+    }
+    private void updateContactsPanelBC(String contact) {
+        updateContactsPanel(contact, true);
     }
 
     // give method package access so that it can be called at startup
@@ -310,6 +328,68 @@ class UIController implements ControllerInterface, UIAPI {
     private void processNewContactEvent(String command) {
         // here we can use newContactPanel's getter methods to grab
         // the user's input and send it to the application
+        System.out.println("UIController.java: pNCE " + command);
+        if (command.equals("go")) {
+            String contact = newContactPanel.getInputName();
+            int button = newContactPanel.getSelectedButton();
+            switch (button) {
+            case -1:
+                System.out.println("UIController.java: new contact " + contact +
+                                   ", no button selected");
+                break;
+            case 0:
+                System.out.println("new 1-hop contact " + contact + ", " +
+                                   newContactPanel.getVariableInput());
+                if (XchatSocket.sendKeyRequest
+                     (contact, newContactPanel.getMySecretShort(),
+                      newContactPanel.getVariableInput(), 1)) {
+                    System.out.println("sent direct wireless key request");
+                    newContactPanel.setMySecret();
+                } else
+                    System.out.println("unable to send direct key request");
+                break;
+            case 1:
+                System.out.println("new ahra contact " + contact + ", " +
+                                   newContactPanel.getVariableInput());
+                System.out.println("  (not implemented)");
+                break;
+            case 2:
+                System.out.println("new common contact for " + contact + " is "
+                                   + newContactPanel.getVariableInput());
+                System.out.println("  (not implemented)");
+                break;
+            case 3:
+                System.out.println("new authenticated contact " + contact +
+                                   ", secret " +
+                                   newContactPanel.getVariableInput() + "/" +
+                                   newContactPanel.getMySecretLong());
+                if (XchatSocket.sendKeyRequest
+                     (contact, newContactPanel.getMySecretLong(),
+                      newContactPanel.getVariableInput(), 6)) {
+                    System.out.println("sent key request with 6 hops");
+                    newContactPanel.setMySecret();
+                } else
+                    System.out.println("unable to send key request");
+                break;
+            case 4:
+                System.out.println("new unauthenticated contact " + contact +
+                                   ", secret " +
+                                   newContactPanel.getVariableInput() + "/" +
+                                   newContactPanel.getMySecretLong());
+                if (XchatSocket.sendKeyRequest
+                     (contact, newContactPanel.getMySecretLong(),
+                      newContactPanel.getVariableInput(), 6)) {
+                    System.out.println("sent ukey request with 6 hops");
+                    newContactPanel.setMySecret();
+                } else
+                    System.out.println("unable to send ukey request");
+                break;
+            default:
+                System.out.println("UIController.java: unknown button " +
+                                   button + " for contact " + contact);
+                break;
+            }
+        }
     }
 
     private void processConversationPanelEvent(String[] actionCommand) {
@@ -336,12 +416,15 @@ class UIController implements ControllerInterface, UIAPI {
             case ConversationPanel.EXCHANGE_KEYS_COMMAND:
                 // here we yank the message data from the ConversationPanel and 
                 // send it to the application
+                String contact = cp.getContactName();
+                System.out.println("UIController.java: exchange " + contact);
                 break;
             case ConversationPanel.CLOSE_COMMAND:
                 myTabbedPane.removeTab(contactName);
                 myTabbedPane.selectTab("Contacts");
                 break;
             case ConversationPanel.CONTACTS_COMMAND:
+                System.out.println("UIController.java: contacts");
                 myTabbedPane.selectTab("Contacts");
 
         }

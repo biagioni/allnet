@@ -144,6 +144,7 @@ int cache_all_matches (void * cp, match_function f, void * arg, void *** array)
       count++;
   if (count == 0) {
     pthread_mutex_unlock (&(cache->mutex));
+    free (matches);
     return count;
   }
   void * * result = malloc_or_fail (count * sizeof (void *), "cache_all");
@@ -162,7 +163,11 @@ int cache_all_matches (void * cp, match_function f, void * arg, void *** array)
       if (matches [i] == min) {
 /* printf ("in dcache if, result [%d] set to cache->entries [%d] (%p)\n",
 count - found - 1, i, cache->entries [i].data); */
-        result [count - found - 1] = cache->entries [i].data;
+        /* this puts them in reverse order:
+              result [count - found - 1] = cache->entries [i].data;
+         * not sure why, but I was doing that for a while.
+         */
+        result [found] = cache->entries [i].data;
         found++;
         if (found > count) {   /* found should never exceed count */
           snprintf (log_buf, LOG_SIZE,
@@ -275,7 +280,7 @@ void cache_add (void * cp, void * data)
     cache->num_entries = cache->num_entries + 1;
   }
   cache->entries [index].data = data;
-  record_usage (cache, index);
+  record_usage (cache, index);    /* move it to the front */
 /* snprintf (log_buf, LOG_SIZE,
             "now in cache, num_entries %d, max_entries %d\n",
             cache->num_entries, cache->max_entries);

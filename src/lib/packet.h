@@ -103,16 +103,21 @@ struct allnet_signature {
   unsigned char sig_nbytes [2];   /* number of bytes, MSB first */
 };
 
-/* ALLNET_TYPE_KEY_XCHG carries a public key followed by
+/* ALLNET_TYPE_KEY_XCHG carries a public key preceded by
  *   an hmac of (the public key followed by a secret nonce).
  * ALLNET_TYPE_KEY_REQ
  *   carries a (partial) fingerprint of a public key.  The public key sent
  *   in response should match the given fingerprint, and be for transmissions
  *   to the given source address from the given destination address.
- *   The reply is sent as a normal data message, encrypted using the
+ *   The reply is sent as a normal data message.  If a reply key
+ *   is provided, the reply is encrypted using the
  *   given reply key (usually, a different reply key is used for
  *   each request)
  *   If the reply key is not given, the answer is sent in the clear.
+ *   Note that a Man in the Middle attacker could replace the reply
+ *   key with its own key, so this is not secure against MITM attacks.
+ *   So the public key sent in the reply should not be assumed to be
+ *   confidential, even if the reply is encrypted.
  */
 struct allnet_key_exchange {
   unsigned char nbytes_hmac;  	    /* number of bytes in the hmac */
@@ -317,5 +322,32 @@ struct allnet_header_max {
 
 #define ALLNET_DATA_START(hp, t, s)		\
   (((char *) (hp)) + ALLNET_AFTER_HEADER(t, s))
+
+/* a data request may specify the earliest time from which a message is
+ * desired.  It may also specify a bitmap of destinations that are of
+ * interest -- 2^x bits.  Each bit in the bitmap, when set to one,
+ * specifies that destinations matching that prefix are of interest.
+ * if x = destination_bits_power_two > 0, the bitmap has 2^x bits,
+ * and (2^x + 7) / 8 bytes.  Similarly for the source bits.
+ * messages are sent back only if they match ALL the requested constraints.
+ * a zero-bit bitmap will match all packets, as will a 0 time "since".
+ *
+ * It is important for a receiver to ignore the padding, as well as any
+ * data that follows the last bitmap (if any) -- this allows for future
+ * compatible expansion of this message format.
+ *
+ * An empty data request message is also allowed, and requests all
+ * packets addressed TO the sender of the request.  In this case, any
+ * packet with a 0-bit destination address will match any data request,
+ * and a data request with a 0-bit source address will match any packet.
+ */
+struct allnet_data_request {
+  unsigned char since [ALLNET_TIME_SIZE];
+  unsigned char dst_bits_power_two;  /* bitmap has 2^this bits */
+  unsigned char src_bits_power_two;  /* bitmap has 2^this bits */
+  unsigned char padding [6];	     /* sent as 0s, ignored on receipt */
+  unsigned char dst_bitmap [0];
+  unsigned char src_bitmap [0];
+};
 
 #endif /* PACKET_H */

@@ -27,6 +27,7 @@ class UI extends ApplicationFrame {
     // init default colors
     private static Color bgndColor = new Color(0, 255, 255);
     private static Color otherColor = new Color(255, 215, 0);
+    private static Color bcColor = new Color(255, 215, 55);
     // just to avoid a warning
     private static final long serialVersionUID = 1L;
 
@@ -64,8 +65,8 @@ class UI extends ApplicationFrame {
                     ClientData clientData = new ClientData();
                     UIController controller = new UIController(clientData);
                     
-                    ConversationPanel.setDefaultColors(bgndColor, otherColor);
-                    ContactsPanel contactsPanel = new ContactsPanel(" contacts<br>panel ", bgndColor, otherColor);
+                    ConversationPanel.setDefaultColors(bgndColor, otherColor, bcColor);
+                    ContactsPanel contactsPanel = new ContactsPanel(" contacts<br>panel ", bgndColor, otherColor, bcColor);
                     NewContactPanel newContactPanel = new NewContactPanel(" exchange a key with a new contact<br>&nbsp;", bgndColor, otherColor);
                     MyTabbedPane uiTabs = new MyTabbedPane();
                     uiTabs.add("Contacts", contactsPanel);
@@ -88,12 +89,13 @@ class UI extends ApplicationFrame {
                     if (UI.debug) {
                         UITester test = new UITester(controller);
                         for (String contactName : debugContactNames) {
-                            controller.contactCreated(contactName, "no_key");
+                            controller.contactCreated(contactName);
                         }
                     } else {
-                        for (String contactName : AllNetContacts.get ()) {
-                            controller.contactCreated(contactName, "no_key");
-                        }
+                        for (String contactName : AllNetContacts.get())
+                            controller.contactCreated(contactName);
+                        for (String contactName : AllNetContacts.getBroadcast())
+                            controller.broadcastContactCreated(contactName);
                     }
                     XchatSocket s = new XchatSocket(controller);
                     s.start();

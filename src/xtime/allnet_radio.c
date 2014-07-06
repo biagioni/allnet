@@ -20,7 +20,8 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   gettimeofday (&receive_time, NULL);
 
   if (! is_valid_message (message, msize)) {
-    printf ("got invalid message of size %d\n", msize);
+    if (debug)
+      printf ("got invalid message of size %d\n", msize);
     return 0;
   }
   if (debug)
@@ -94,7 +95,7 @@ static void main_loop (int sock, int debug, int max)
     int found = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
                                           &pipe, &pri);
     if (found <= 0) {
-      printf ("pipe closed, exiting\n");
+      printf ("allnet-radio pipe closed, exiting\n");
       exit (1);
     }
     int received = 0;
@@ -140,5 +141,6 @@ int main (int argc, char ** argv)
     max = atoi (argv [1]);
 
   main_loop (sock, debug, max);
+  return 0;
 }
 

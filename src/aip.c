@@ -242,9 +242,11 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
 {
   if ((addr->sa_family != AF_INET) && (addr->sa_family != AF_INET6)) {
     snprintf (log_buf, LOG_SIZE,
-              "add_sockaddr error: unexpected family %d (not %d or %d)\n", 
-              addr->sa_family, AF_INET, AF_INET6);
+              "add_sockaddr error: unexpected family %d (not %d or %d), sasize %d (maybe %zd or %zd?)\n", 
+              addr->sa_family, AF_INET, AF_INET6, sasize,
+              sizeof (struct sockaddr_in), sizeof (struct sockaddr_in6));
     log_print ();
+    return;
   }
   if ((sasize != sizeof (struct sockaddr_in)) &&
       (sasize != sizeof (struct sockaddr_in6))) {
@@ -253,6 +255,7 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
               sasize,
               sizeof (struct sockaddr_in), sizeof (struct sockaddr_in6));
     log_print ();
+    return;
   }
   /* found and addr are different pointers, so cannot rely on cache_add
    * detecting that this is a duplicate */
@@ -976,7 +979,7 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
       send_keepalive (udp_cache, udp, listener_fds, NUM_LISTENERS);
       last_keepalive = time (NULL);
     }
-    int fd = 0;
+    int fd = -1;
     int priority;
     char * message;
     struct sockaddr_storage sockaddr;
@@ -984,9 +987,10 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
     socklen_t sasize = sizeof (sockaddr);
     int result = receive_pipe_message_fd (1000, &message, udp, sap, &sasize,
                                           &fd, &priority);
-    if (fd == udp)
-      standardize_ip (sap, sasize);
     if (result < 0) {
+if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
+snprintf (log_buf, LOG_SIZE, "0: fd %d/%d, bad address family %d\n", udp, fd,
+sap->sa_family); log_print (); }
       if ((fd == rpipe) || (fd == udp)) {
         snprintf (log_buf, LOG_SIZE, "aip %s %d closed\n",
                   ((fd == rpipe) ? "ad pipe" : "udp socket"), fd);
@@ -1002,6 +1006,9 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
       remove_listener (fd, info, addr_cache);
       removed_listener = 1;
     } else if (result > 0) {
+if ((fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
+snprintf (log_buf, LOG_SIZE, "1: fd %d/%d, result %d, bad address family %d\n",
+udp, fd, result, sap->sa_family); log_print (); }
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
         /* snprintf (log_buf, LOG_SIZE, "message from ad\n");
         log_print (); */
@@ -1012,17 +1019,29 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
                             "got %d bytes from Internet on fd %d",
                             result, fd);
         if (fd == udp) {
+if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
+snprintf (log_buf, LOG_SIZE, "2: fd %d/%d, bad address family %d\n", udp, fd,
+sap->sa_family); log_print (); }
+          standardize_ip (sap, sasize);
+if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
+snprintf (log_buf, LOG_SIZE, "3: fd %d/%d, bad address family %d\n", udp, fd,
+sap->sa_family); log_print (); }
           off += snprintf (log_buf + off, LOG_SIZE - off, "/udp, saving ");
           off += print_sockaddr_str (sap, sasize, 0,
                                      log_buf + off, LOG_SIZE - off);
           log_print ();
+if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
+snprintf (log_buf, LOG_SIZE, "4: fd %d/%d, bad address family %d\n", udp, fd,
+sap->sa_family); log_print (); }
           add_sockaddr_to_cache (udp_cache, sap, sasize);
         } else {
-          off += snprintf (log_buf + off, LOG_SIZE - off, "\n");
           struct addr_info * ai = listen_fd_addr (info, fd);
           if (ai != NULL)
             if (ai_to_sockaddr (ai, sap))
               sasize = sizeof (struct sockaddr_in6);
+          off += snprintf (log_buf + off, LOG_SIZE - off, ", ");
+          off += print_sockaddr_str (sap, sasize, 1,
+                                     log_buf + off, LOG_SIZE - off);
           log_print ();
         }
         if (handle_mgmt (listener_fds, NUM_LISTENERS, fd, message,
@@ -1076,7 +1095,7 @@ int main (int argc, char ** argv)
     return 1;
   }
   struct listen_info info;
-  listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, listen_callback);
+  listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0, listen_callback);
 
   listen_add_fd (&info, rpipe, NULL);
   int i;
@@ -1091,4 +1110,5 @@ int main (int argc, char ** argv)
   log_print ();
   if (unlink (addr_socket_name) < 0)
     perror ("unlink");
+  return 0;
 }

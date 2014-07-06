@@ -1,4 +1,4 @@
-AM_CFLAGS = -I$(ALLNET_SRCDIR)
+AM_CFLAGS = -I$(ALLNET_SRCDIR) -Wreturn-type
 libincludes = \
 	lib/app_util.h \
 	lib/dcache.h \

@@ -138,7 +138,8 @@ static int process_packet (char * packet, int size, int is_local,
     return r;
   }
 
-  if (is_local)
+  /* forward out any local packet, unless the hop count has been reached */
+  if ((is_local) && (ah->hops < ah->max_hops))
     return PROCESS_PACKET_OUT;
 
   if (ah->hops >= ah->max_hops)   /* reached hop count */
@@ -292,5 +293,6 @@ int main (int argc, char ** argv)
   main_loop (read_pipes, npipes, write_pipes, npipes, 30, 30000, 5);
   snprintf (log_buf, LOG_SIZE, "ad error: main loop returned, exiting\n");
   log_print ();
+  return 1;
 }
 

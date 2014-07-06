@@ -132,7 +132,9 @@ public class XchatSocket extends Thread {
    * messages have a length, time, code, peer name, and text
    *   length (4 bytes, big-endian order) includes everything.
    *   time (6 bytes, big-endian order) is the time of original transmission
-   *   code is 1 byte, value 0 for a data message, 1 for key exchange
+   *   code is 1 byte, value 0 for a data message, 1 for broadcast,
+   *     2 for key exchange (key exchanges don't have the message)
+   *     3 for secrets
    *   the peer name and the message are null-terminated
    */
   private void decodeForwardPacket (byte [] data, int dlen) {
@@ -145,19 +147,26 @@ public class XchatSocket extends Thread {
     }
     long time = b48 (data, 4, dlen);
     int code = data [10];
-    if (code != 0) {
+    if ((code < 0) || (code > 2)) {
       System.out.println ("unknown message code " + code);
       /* return; */
     }
     IntRef nextIndex = new IntRef();
     String peer = bString (data, 11, dlen, nextIndex);
-    String message = bString (data, nextIndex.value, dlen, null);
-    System.out.println ("message '" + message + "' from " + peer);
-    api.messageReceived (peer, time * 1000, message);
+    if ((code == 0) || (code == 1)) {
+      String message = bString (data, nextIndex.value, dlen, nextIndex);
+      System.out.println ("message '" + message + "' from " + peer);
+      api.messageReceived (peer, time * 1000, message);
+    } else if (code == 2) {
+      System.out.println ("new key from " + peer);
+      api.contactCreated(peer);
+    } else {
+      System.out.println ("unknown code " + code);
+    }
   }
 
   private static DatagramPacket makeMessagePacket(String peer, String text,
-                                                  LongRef time) {
+                                                  LongRef time, boolean bc) {
     int size = peer.length() + text.length() + 2 + 11;
     byte [] buf = new byte [size];
     DatagramPacket packet =
@@ -165,15 +174,36 @@ public class XchatSocket extends Thread {
     w32(buf, 0, size);
     time.value = System.currentTimeMillis();
     w48(buf, 4, time.value / 1000);
-    buf [10] = 0;
+    if (bc)
+      buf [10] = 1;
+    else
+      buf [10] = 0;
     int newIndex = wString (buf, 11, peer);
     wString (buf, newIndex, text);
     return packet;
   }
 
+  private static DatagramPacket makeKeyPacket(String peer, String s1,
+                                              String s2, int hops) {
+    int size = peer.length() + s1.length() + 2 + 11;
+    if ((s2 != null) && (s2.length() > 0))
+      size += s2.length() + 1;
+    byte [] buf = new byte [size];
+    DatagramPacket packet =
+      new DatagramPacket (buf, size, local, xchatSocketPort);
+    w32(buf, 0, size);
+    w48(buf, 4, hops);
+    buf [10] = 2;
+    int newIndex = wString(buf, 11, peer);
+    newIndex = wString(buf, newIndex, s1);
+    if ((s2 != null) && (s2.length() > 0))
+      wString(buf, newIndex, s2);
+    return packet;
+  }
+
   public static long sendToPeer(String peer, String text) {
     LongRef time = new LongRef();
-    DatagramPacket packet = makeMessagePacket(peer, text, time);
+    DatagramPacket packet = makeMessagePacket(peer, text, time, false);
     try {
       socket.send (packet);
     } catch (java.io.IOException e) {
@@ -183,12 +213,25 @@ public class XchatSocket extends Thread {
     return time.value;
   }
 
+  public static boolean sendKeyRequest(String peer, String s1, String s2,
+                                       int hops) {
+    DatagramPacket packet = makeKeyPacket(peer, s1, s2, hops);
+    try {
+      socket.send (packet);
+    } catch (java.io.IOException e) {
+      System.out.println ("send exception: " + e);
+      return false;
+    }
+    return true;
+  }
+
   /* main method, called to start the thread
    * listen to the xchat socket for incoming messages.  Decode them,
    * and call the corresponding API function.
    */
 
   public void run() {
+    System.out.println("running XchatSocket.java");
     sendInitial();
     byte [] input = new byte [allnetMTU];
     DatagramPacket received = new DatagramPacket (input, input.length);

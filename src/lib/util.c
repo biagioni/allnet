@@ -955,6 +955,17 @@ void random_bytes (char * buffer, int bsize)
     computed_random_bytes (buffer, bsize);
 }
 
+/* fill this array with random alpha characters.  The last byte is set to \0 */
+void random_string (char * buffer, int bsize)
+{
+  if (bsize <= 0)
+    return;
+  int i;
+  for (i = 0; i + 1 < bsize; i++)
+    buffer [i] = 'a' + (random () % 26);
+  buffer [bsize - 1] = '\0';
+}
+
 /* place the values 0..n-1 at random within the given array */
 void random_permute_array (int n, int * array)
 {

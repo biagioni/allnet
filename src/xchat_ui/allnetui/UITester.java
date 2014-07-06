@@ -102,7 +102,7 @@ class UITester extends JFrame implements ActionListener {
                         System.currentTimeMillis(), msg.getText());
                 break;
             case createStr:
-                controller.contactCreated(toFrom.getText(),msg.getText());
+                controller.contactCreated(toFrom.getText());
                 break;
             case deleteStr:
                 controller.contactDeleted(toFrom.getText());

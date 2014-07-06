@@ -14,6 +14,7 @@ struct listen_info {
   pthread_mutex_t mutex; /* mutex for accessing fds */
   pthread_t thread4;     /* listen thread for IPv4 */
   pthread_t thread6;     /* listen thread for IPv6 */
+  int nodelay;           /* nodelay 1 on all local sockets, 0 on all other */
   /* the rest of these fields are for listen.c internal use only */
   int max_num_fds;       /* max number of elements with space in fds */
   char * program_name;   /* e.g. alocal, aip */
@@ -37,10 +38,11 @@ struct listen_info {
  * called when adding or removing pipes */
 extern void listen_init_info (struct listen_info * info, int max_fds,
                               char * name, int port, int local_only,
-                              int add_remove_pipe, void (* callback) (int));
+                              int add_remove_pipe, int nodelay,
+                              void (* callback) (int));
 
 /* call to record that this fd was active at this time */
-extern int listen_record_usage (struct listen_info * info, int fd);
+extern void listen_record_usage (struct listen_info * info, int fd);
 
 /* call to add an fd to the data structure */
 /* may close the least recently active fd, and if so, */

@@ -43,6 +43,8 @@ int main (int argc, char ** argv)
 {
   if (argc < 2) {
     printf ("usage: %s contact-name [message]\n", argv [0]);
+    printf ("   or: %s -k contact-name [hops [secret]] (hops defaults to 1)\n",
+            argv [0]);
     return 1;
   }
 
@@ -50,36 +52,87 @@ int main (int argc, char ** argv)
   if (sock < 0)
     return 1;
 
-  sleep (1);/* when measuring time, wait until server has accepted connection */
-
+  int ack_expected = 0;
+  long long int seq = 0;
   char * contact = argv [1];  /* contact we send to, peer we receive from */
 
-  /* to do: subtract the size of the signature */
-  static char text [ALLNET_MTU];
-  char * p = text;
-  int printed = 0;
-  int i;
-  long long int seq = 0;
-  int ack_expected = 0;
-  if (argc > 2) {
-    int size = sizeof (text) - CHAT_DESCRIPTOR_SIZE -
-               ALLNET_SIZE (ALLNET_TRANSPORT_ACK_REQ) -
-               512; /* the likely size of a signature */
-    for (i = 2; i < argc; i++) {
-      int n = snprintf (p, size, "%s%s", argv [i], (i + 1 < argc) ? " " : "");
-      printed += n;
-      p += n;
-      size -= n;
+  char * kcontact = NULL;
+  char * my_secret = NULL;
+  char * peer_secret = NULL;
+#define MAX_SECRET	12
+  char my_secret_buf [MAX_SECRET];
+  char peer_secret_buf [200];
+  int kmax_hops = 0;
+  int wait_time = 5000;   /* 5 seconds to wait for acks and such */
+
+  if (strcmp (contact, "-k") == 0) {   /* send a key */
+    if ((argc != 3) && (argc != 4) && (argc != 5)) {
+      printf ("usage: %s -k contact-name [hops [secret]] (%d)\n",
+              argv [0], argc);
+      return 1;
     }
-/*  printf ("sending %d chars: '%s'\n", printed, text); */
-    seq = send_data_message (sock, contact, text, printed);
-    ack_expected = 1;
+    kcontact = argv [2];
+    int hops = 1;
+    if (argc >= 4) {
+      char * end;
+      int n = strtol (argv [3], &end, 10);
+      if (end != argv [3])
+        hops = n;
+    }
+    random_string (my_secret_buf, MAX_SECRET);
+    if (hops <= 1)
+      my_secret_buf [6] = '\0';   /* for direct contacts, truncate to 6 chars */
+    printf ("%d hops, my secret string is '%s'", hops, my_secret_buf);
+    normalize_secret (my_secret_buf);
+    printf (" (or %s)\n", my_secret_buf);
+    my_secret = my_secret_buf;
+    if (argc >= 5) {
+      snprintf (peer_secret_buf, sizeof (peer_secret_buf), "%s", argv [4]);
+      printf ("peer secret string is '%s'", peer_secret_buf);
+      normalize_secret (peer_secret_buf);
+      printf (" (or %s)\n", peer_secret_buf);
+      peer_secret = peer_secret_buf;
+    }
+    kmax_hops = hops;
+    wait_time = 10 * 60 * 1000;   /* wait up to 10 minutes for a key */
+    char * send_secret = my_secret;
+    if (! create_contact_send_key (sock, kcontact, send_secret,
+                                   peer_secret, hops))
+      return 1;
+  } else { /* send the data packet */
+    int i;
+    keyset * keys;
+    int nkeys = all_keys (contact, &keys);
+    if ((argc > 2) && (nkeys > 0)) {
+      int max_key = 0;
+      for (i = 0; i < nkeys; i++) {
+        char * key;
+        int ksize = get_my_privkey (keys [i], &key);
+        if (ksize > max_key)
+          max_key = ksize;
+      }
+      static char text [ALLNET_MTU];
+      int size = sizeof (text) - CHAT_DESCRIPTOR_SIZE -
+                 ALLNET_SIZE (ALLNET_TRANSPORT_ACK_REQ) -
+                 max_key; /* the maximum size of a signature */
+      char * p = text;
+      int printed = 0;
+      for (i = 2; i < argc; i++) {
+        int n = snprintf (p, size, "%s%s", argv [i], (i + 1 < argc) ? " " : "");
+        printed += n;
+        p += n;
+        size -= n;
+      }
+  /*  printf ("sending %d chars: '%s'\n", printed, text); */
+      seq = send_data_message (sock, contact, text, printed);
+      ack_expected = 1;
+    }
   }
 
   struct timeval start, deadline;
   gettimeofday (&start, NULL);
   gettimeofday (&deadline, NULL);
-  add_time (&deadline, 5000);    /* deadline in 5 seconds */
+  add_time (&deadline, wait_time);
   int max_wait = until_deadline (&deadline);
   int ack_seen = 0;
   while (max_wait > 0) {
@@ -87,18 +140,38 @@ int main (int argc, char ** argv)
     int pipe, pri;
     int found = receive_pipe_message_any (max_wait, &packet, &pipe, &pri);
     if (found < 0) {
-      printf ("pipe closed, exiting\n");
+      printf ("xchats pipe closed, exiting\n");
       exit (1);
     }
-    int verified, duplicate;
+    int verified, duplicate, broadcast;
     char * desc;
     char * message;
     char * peer = NULL;
     keyset kset = -1;
     int mlen = handle_packet (sock, packet, found, &peer, &kset,
-                              &message, &desc, &verified, NULL, &duplicate);
-    if (mlen > 0)
-      printf ("from '%s' got %s\n  %s\n", peer, desc, message);
+                              &message, &desc, &verified, NULL, &duplicate,
+                              &broadcast, kcontact, my_secret, peer_secret,
+                              kmax_hops);
+    if (mlen > 0) {
+      char * ver_mess = "";
+      if (! verified)
+        ver_mess = " (not verified)";
+      char * dup_mess = "";
+      if (duplicate)
+        dup_mess = "duplicate ";
+      char * bc_mess = "";
+      if (broadcast) {
+        bc_mess = "broacast ";
+        dup_mess = "";
+        desc = "";
+      }
+      printf ("from '%s'%s got %s%s%s\n  %s\n", peer, ver_mess, dup_mess, 
+              bc_mess, desc, message);
+    } else if (mlen == -1) {  /* successful key exchange */
+      printf ("success!  got remote key\n");
+      gettimeofday (&deadline, NULL);
+      add_time (&deadline, 5000);  /* wait 5 more seconds */
+    }
   /* handle_packet may change what has been acked */
     if ((ack_expected) && (! ack_seen) && (is_acked (contact, seq))) {
       struct timeval finish;
@@ -115,8 +188,10 @@ int main (int argc, char ** argv)
     if (mlen > 0) {
       free (peer);
       free (message);
-      free (desc);
+      if (! broadcast)
+        free (desc);
     }
     max_wait = until_deadline (&deadline);
   }
+  return 0;
 }

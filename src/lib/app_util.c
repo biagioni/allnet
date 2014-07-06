@@ -97,7 +97,9 @@ static void seed_rng ()
   int fd = open ("/dev/random", O_RDONLY | O_NONBLOCK);
   if (fd < 0)
     return;
-  char buffer [128];  /* certainly don't need any more than 128 */
+  int isize = sizeof (unsigned int);
+  /* SSL won't need any more than 128, initstate can't use more than isize */
+  char buffer [128 + 4];
   int count = 0;
   while (count < sizeof (buffer)) {
     int n = read (fd, buffer + count, 1);
@@ -106,8 +108,13 @@ static void seed_rng ()
     count++;
   }
   close (fd);
-  if (count > 0)
-    RAND_seed (buffer, count);
+  if (count >= isize) {
+    static char state [128];
+    unsigned int seed = readb32 (buffer);
+    initstate (seed, state, sizeof (state));
+  }
+  if (count > isize)
+    RAND_seed (buffer + isize, count - isize);
 /* if (count > 0) printf ("added %d bytes to entropy pool\n", count); */
 }
 
@@ -124,6 +131,7 @@ static void * receive_ignore (void * arg)
     /* ignore the message and recycle the storage */
     free (message);
   }
+  return NULL;  /* never returns */
 }
 
 /* returns the socket, or -1 in case of failure */

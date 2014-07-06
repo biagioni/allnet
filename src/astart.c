@@ -98,35 +98,6 @@ static void my_exec0 (char * path, char * program, int fd, pid_t ad)
   }
 }
 
-#if 0
-static void my_exec_trace (char * path, char * program, int fd, pid_t ad)
-{
-  /* for now, hard-code to 16-bit random addresses */
-  char addr [2];
-  random_bytes (addr, sizeof (addr));
-  char paddr [100];
-  snprintf (paddr, sizeof (paddr), "%02x%02x/16", (addr [0] & 0xff),
-            (addr [1] & 0xff));
-  
-  pid_t self = getpid ();
-  pid_t child = fork ();
-  if (child == 0) {
-    char * args [3];
-    args [0] = make_program_path (path, program);
-    args [1] = paddr;
-    args [2] = NULL;
-    snprintf (log_buf, LOG_SIZE, "calling %s %s\n", args [0], args [1]);
-    log_print ();
-    execv (args [0], args);    /* should never return! */
-    exec_error (args [0], ad, self);
-  } else {  /* parent, not much to do */
-    print_pid (fd, child);
-    snprintf (log_buf, LOG_SIZE, "parent called %s %s\n", program, paddr);
-    log_print ();
-  }
-}
-#endif 0
-
 static void my_exec2 (char * path, char * program, int * pipes, int fd,
                       pid_t ad)
 {
@@ -330,11 +301,11 @@ int main (int argc, char ** argv)
 
   /* start all the other programs */
   my_exec2 (path, "alocal", pipes, pid_fd, ad_pid);
+  usleep (10 * 1000);  /* give 10ms chance to start before others connect */
   my_exec3 (path, "aip", pipes + 4, AIP_UNIX_SOCKET, pid_fd, ad_pid);
   int i;
   for (i = 0; i < num_interfaces; i++)
     my_exec3 (path, "abc", pipes + 8 + (4 * i), argv [i + 1], pid_fd, ad_pid);
-  sleep (1);
   my_exec0 (path, "adht", pid_fd, ad_pid);
   my_exec0 (path, "traced", pid_fd, ad_pid);
   my_exec0 (path, "acache", pid_fd, ad_pid);
