@@ -10,7 +10,7 @@ package allnetui;
 public interface UIAPI {
     
     // the application should call this method after a valid message is received
-    public void messageReceived(String from, long sentTime, String text);
+    public void messageReceived(String from, long sentTime, String text, boolean broadcast);
     
     // the application should call this method after a message has been successfully sent
     public void messageSent(String to, long sentTime, String text);

@@ -54,10 +54,10 @@ class UIController implements ControllerInterface, UIAPI {
     //-----------------------------------------
     // the application should call this method after a valid message is received
     @Override
-    public void messageReceived(final String from, final long sentTime, final String text) {
+    public void messageReceived(final String from, final long sentTime, final String text, final boolean broadcast) {
         Runnable r = new Runnable() {
 
-            Message message = new Message(from, Message.SELF, sentTime, text);
+            Message message = new Message(from, Message.SELF, sentTime, text, broadcast);
 
             @Override
             public void run() {
@@ -73,7 +73,7 @@ class UIController implements ControllerInterface, UIAPI {
     public void messageSent(final String to, final long sentTime, final String text) {
         Runnable r = new Runnable() {
 
-            Message message = new Message(Message.SELF, to, sentTime, text);
+            Message message = new Message(Message.SELF, to, sentTime, text, false);
 
             @Override
             public void run() {
@@ -93,7 +93,7 @@ class UIController implements ControllerInterface, UIAPI {
             @Override
             public void run() {
                 clientData.createContact(contactName, isBroadcast);
-                updateContactsPanel(contactName);
+                updateContactsPanel(contactName, isBroadcast);
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
@@ -150,10 +150,10 @@ class UIController implements ControllerInterface, UIAPI {
         this.contactsPanel = contactsPanel;
         // add all contacts to the contacts panel
         Iterator<String> it = clientData.getContactIterator();
-        String contact;
+        String contactName;
         while (it.hasNext()) {
-            contact = it.next();
-            updateContactsPanel(contact);
+            contactName = it.next();
+            updateContactsPanel(contactName, clientData.isBroadcast(contactName));
         }
         contactsPanel.setActionListener(this);
     }
@@ -215,7 +215,7 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     // update the ContactsPanel with the info related to this contact 
-    private void updateContactsPanel(String contact, boolean isBroadcast) {
+    private void updateContactsPanel(String contact, boolean broadcast) {
         Conversation conv = clientData.getConversation(contact);
         if (conv == null) {
             throw new RuntimeException("tried to update contacts panel for invalid contact name: " + contact);
@@ -223,7 +223,7 @@ class UIController implements ControllerInterface, UIAPI {
         int unreadCount = conv.getNumNewMsgs();
         if (unreadCount > 0) {
             String s = (unreadCount == 1) ? "" : "s";
-            contactsPanel.placeInTop(contact, pad(contact, " ", 12) + " " + unreadCount + "  new message" + s);
+            contactsPanel.placeInTop(contact, pad(contact, " ", 12) + " " + unreadCount + "  new message" + s, broadcast);
         }
         else {
             String timeText;
@@ -237,17 +237,18 @@ class UIController implements ControllerInterface, UIAPI {
             else {
                 timeText = "";
             }
-            contactsPanel.placeInBottom(contact, pad(contact, " ", 12) + " " + timeText);
+            contactsPanel.placeInBottom(contact, pad(contact, " ", 12) + " " + timeText, broadcast);
         }
         // and finally, update the info at the top of the panel
         updateContactsPanelStatus();
     }
-    private void updateContactsPanel(String contact) {
-        updateContactsPanel(contact, false);
-    }
-    private void updateContactsPanelBC(String contact) {
-        updateContactsPanel(contact, true);
-    }
+    
+//    private void updateContactsPanel(String contactName, boolean broadcast) {
+//        updateContactsPanel(contactName, broadcast);
+//    }
+//    private void updateContactsPanelBC(String contact) {
+//        updateContactsPanel(contact, true);
+//    }
 
     // give method package access so that it can be called at startup
     void updateContactsPanelStatus() {
@@ -291,7 +292,7 @@ class UIController implements ControllerInterface, UIAPI {
             throw new RuntimeException("no Conversation Object for contact: " + tabTitle);
         }
         conv.setReadAll();
-        updateContactsPanel(tabTitle);
+        updateContactsPanel(tabTitle, clientData.isBroadcast(tabTitle));
         updateConversationPanels();
     }
 
@@ -301,7 +302,10 @@ class UIController implements ControllerInterface, UIAPI {
         if (i == -1) {
             // no such tab, so make the conversation panel
             // (the contact's name is also the command prefix)
-            cp = new ConversationPanel("conversation with " + contactName, contactName, contactName);
+            if (! clientData.isBroadcast(contactName))
+                cp = new ConversationPanel("conversation with " + contactName, contactName, contactName);
+            else
+                cp = new ConversationPanel("broadcast from " + contactName, contactName, contactName);
             cp.setName(contactName);
             cp.setListener(this);
             // display the conversation on the new panel
@@ -310,7 +314,7 @@ class UIController implements ControllerInterface, UIAPI {
             Message msg;
             while (it.hasNext()) {
                 msg = it.next();
-                cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF));
+                cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
             }
             myTabbedPane.add(cp, 0);
             myTabbedPane.setSelectedComponent(cp);
@@ -320,7 +324,7 @@ class UIController implements ControllerInterface, UIAPI {
             myTabbedPane.setSelectedIndex(i);
         }
         // it's a conversation tab, so update the contacts panel
-        updateContactsPanel(contactName);
+        updateContactsPanel(contactName, clientData.isBroadcast(contactName));
         // update the stats at top of all conversation panels
         updateConversationPanels();
     }
@@ -444,7 +448,7 @@ class UIController implements ControllerInterface, UIAPI {
         if (idx != -1) {
             // add the message to it
             ConversationPanel cp = (ConversationPanel) myTabbedPane.getComponentAt(idx);
-            cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF));
+            cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
             // if the tab is currently selected, then mark message as read
             String selectedName = myTabbedPane.getCurrentTab();
             if (selectedName.equals(msg.from)) {
@@ -453,7 +457,7 @@ class UIController implements ControllerInterface, UIAPI {
         }
         // finally, update the contacts panel 
         // (new messages or time of last msg for this contact)
-        updateContactsPanel(msg.from);
+        updateContactsPanel(msg.from, clientData.isBroadcast(msg.from));
         updateConversationPanels();
     }
 
@@ -474,6 +478,8 @@ class UIController implements ControllerInterface, UIAPI {
 
     private void updateConversationPanel(String contact, ConversationPanel panel) {
         String line1 = " conversation with " + contact;
+        if (clientData.isBroadcast(contact))
+            line1 = " broadcast from " + contact;
         int m = clientData.getNumContactsWithNewMsgs();
         String line2;
         if (m == 0) {
@@ -568,7 +574,7 @@ class UIController implements ControllerInterface, UIAPI {
         if (idx != -1) {
             // add the message to it
             ConversationPanel cp = (ConversationPanel) myTabbedPane.getComponentAt(idx);
-            cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF));
+            cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
             // mark the message as read, even though this is not checked at present
             msg.setRead();
         }

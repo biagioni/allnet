@@ -17,7 +17,7 @@ import utils.HtmlLabel;
  * @author Henry
  */
 class ContactsPanel extends JPanel {
-
+    
     private static final long serialVersionUID = 1L;
     // 2 panels for the buttons
     private JPanel topPanel, bottomPanel;
@@ -30,9 +30,11 @@ class ContactsPanel extends JPanel {
     private String commandPrefix = "ContactsPanel";
     // save the action listener so we can set it for any new buttons created
     private ActionListener listener;
-
-    ContactsPanel(String info, Color background, Color foreground, Color bc) {
+    private Color broadcastColor;
+    
+    ContactsPanel(String info, Color background, Color foreground, Color broadcastColor) {
         super();
+        this.broadcastColor = broadcastColor;
         map = new HashMap<>();
         topNames = new ArrayList<>();
         bottomNames = new ArrayList<>();
@@ -43,7 +45,6 @@ class ContactsPanel extends JPanel {
         topLabel = new HtmlLabel(info);
         topLabel.setOpaque(true);
         topLabel.setBackground(foreground);
-System.out.println("ContactsPanel.java todo: make broadcast messages a different color");
         topLabel.setLineBorder(Color.BLACK, 1, false);
         //
         setLayout(new GridBagLayout());
@@ -71,7 +72,7 @@ System.out.println("ContactsPanel.java todo: make broadcast messages a different
         gbc.weighty = 1.0;
         add(Box.createRigidArea(new Dimension(0, 10)), gbc);
     }
-
+    
     private JPanel makePanel(Color background) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -81,20 +82,21 @@ System.out.println("ContactsPanel.java todo: make broadcast messages a different
     }
 
     // set the named button's text and place it in the top panel
-    void placeInTop(String name, String text) {
-        placeIt(name, text, topPanel, bottomPanel, topNames, bottomNames);
+    void placeInTop(String name, String text, boolean broadcast) {
+        placeIt(name, text, topPanel, bottomPanel, topNames, bottomNames, broadcast);
     }
-
-    void placeInBottom(String name, String text) {
-        placeIt(name, text, bottomPanel, topPanel, bottomNames, topNames);
+    
+    void placeInBottom(String name, String text, boolean broadcast) {
+        placeIt(name, text, bottomPanel, topPanel, bottomNames, topNames, broadcast);
     }
-
-    private void placeIt(String name, String text, JPanel to, JPanel other, ArrayList<String> toNames, ArrayList<String> otherNames) {
+    
+    private void placeIt(String name, String text, JPanel to, JPanel other,
+            ArrayList<String> toNames, ArrayList<String> otherNames, boolean broadcast) {
         boolean changed = false;
         JButton button = map.get(name);
         if (button == null) {
             // doesn't exist yet
-            button = makeButton(name, text);
+            button = makeButton(name, text, broadcast);
             map.put(name, button);
             toNames.add(name);
             updatePanel(to, toNames);
@@ -116,7 +118,7 @@ System.out.println("ContactsPanel.java todo: make broadcast messages a different
             validate();
         }
     }
-
+    
     private void updatePanel(JPanel to, ArrayList<String> toNames) {
         JButton b;
         Collections.sort(toNames);
@@ -126,10 +128,14 @@ System.out.println("ContactsPanel.java todo: make broadcast messages a different
             to.add(b);
         }
     }
-
-    private JButton makeButton(String name, String text) {
+    
+    private JButton makeButton(String name, String text, boolean broadcast) {
         JButton button = new JButton(text);
-        button.setBackground(Color.WHITE);
+        if (broadcast) {
+            // use L&F default if not broadcast
+            button.setForeground(broadcastColor);
+        }
+        // button.setBackground(Color.WHITE);
         // button.setRolloverEnabled(false); 
         button.setActionCommand(commandPrefix + ":" + name);
         button.setText(text);
@@ -145,7 +151,7 @@ System.out.println("ContactsPanel.java todo: make broadcast messages a different
         button.setMaximumSize(d);
         return (button);
     }
-
+    
     void removeName(String name) {
         JButton button = map.get(name);
         if (button != null) {
@@ -158,7 +164,7 @@ System.out.println("ContactsPanel.java todo: make broadcast messages a different
             validate();
         }
     }
-
+    
     void setTopLabelText(String... lines) {
         topLabel.setText(lines);
     }
@@ -174,7 +180,7 @@ System.out.println("ContactsPanel.java todo: make broadcast messages a different
             button.addActionListener(listener);
         }
     }
-
+    
     String getCommandPrefix() {
         return commandPrefix;
     }

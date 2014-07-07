@@ -155,8 +155,13 @@ public class XchatSocket extends Thread {
     String peer = bString (data, 11, dlen, nextIndex);
     if ((code == 0) || (code == 1)) {
       String message = bString (data, nextIndex.value, dlen, nextIndex);
-      System.out.println ("message '" + message + "' from " + peer);
-      api.messageReceived (peer, time * 1000, message);
+      // System.out.println ("message '" + message + "' from " + peer);
+      boolean broadcastReceived = (code == 1);
+      if (broadcastReceived)
+        time = System.currentTimeMillis();
+      else
+        time *= 1000;  // convert seconds to milliseconds
+      api.messageReceived (peer, time, message, broadcastReceived);
     } else if (code == 2) {
       System.out.println ("new key from " + peer);
       api.contactCreated(peer);

@@ -339,7 +339,7 @@ peer, key_contact, to_send, key_secret, key_secret2, num_hops);
                                 &broadcast, key_contact, key_secret, 
                                 key_secret2, num_hops);
       if ((mlen > 0) && (verified)) {
-        int mtype = (broadcast) ? 0 /* data */ : 1; /* broadcast */
+        int mtype = (broadcast) ? 1 /* broadcast */ : 0; /* data */
         if (broadcast || (! duplicate))
           send_message (forwarding_socket,
                         (struct sockaddr *) (&fwd_addr), fwd_addr_size,

@@ -11,14 +11,16 @@ class Message {
     final String from, to;
     final long sentTime;
     final String text;
+    final boolean broadcast;
     // set to false by the client when message has been read
     private boolean newMessgeFlag;
     
-    Message(String from, String to, long sentTime, String text) {
+    Message(String from, String to, long sentTime, String text, boolean broadcast) {
         this.from = from;
         this.to = to;
         this.sentTime = sentTime;
         this.text = text;
+        this.broadcast = broadcast;
         newMessgeFlag = true;
     }
 

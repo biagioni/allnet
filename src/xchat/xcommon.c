@@ -128,9 +128,10 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
     printf ("data packet size %d less than sig %d, dropping\n", dsize, ssize);
     return 0;
   }
-  char * sig = data + (dsize - ssize);
+  int text_size = dsize - ssize;
+  char * sig = data + text_size;
 #ifdef DEBUG_PRINT
-  printf ("data size %d, signature size %d\n", dsize, ssize);
+  printf ("data size %d, text %d + sig %d\n", dsize, text_size, ssize);
 #endif /* DEBUG_PRINT */
   struct bc_key_info * keys;
   int nkeys = get_other_keys (&keys);
@@ -142,15 +143,15 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
                  keys [i].pub_key, keys [i].pub_klen))) {
       *contact = strcpy_malloc (keys [i].identifier,
                                 "handle_message broadcast contact");
-      *message = malloc_or_fail (dsize + 1, "handle_clear message");
-      memcpy (*message, data, dsize);
-      (*message) [dsize] = '\0';   /* null-terminate the message */
+      *message = malloc_or_fail (text_size + 1, "handle_clear message");
+      memcpy (*message, data, text_size);
+      (*message) [text_size] = '\0';   /* null-terminate the message */
       *broadcast = 1;
       *verified = 1;
 #ifdef DEBUG_PRINT
       printf ("verified bc message, contact %s\n", keys [i].identifier);
 #endif /* DEBUG_PRINT */
-      return dsize;
+      return text_size;
     } 
 #ifdef DEBUG_PRINT
       else {

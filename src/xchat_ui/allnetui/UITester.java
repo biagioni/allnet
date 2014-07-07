@@ -17,15 +17,15 @@ import javax.swing.*;
 class UITester extends JFrame implements ActionListener {
 
     private static final long serialVersionUID = 1L;
-    private final String createStr =  "createContact";
-    private final String deleteStr =  "deleteContact";
-    private final String sendStr =  "sendMsg";
-    private final String receiveStr =  "receiveMsg";
-    
+    private final String createStr = "createContact";
+    private final String deleteStr = "deleteContact";
+    private final String sendStr = "sendMsg";
+    private final String receiveStr = "receiveMsg";
     //
     private UIController controller;
     private JTextField toFrom;
     private JTextField msg;
+    private JCheckBox broadcastCheckBox;
 
     UITester(UIController controller) {
         super("AllNet Java UI Tester");
@@ -34,6 +34,14 @@ class UITester extends JFrame implements ActionListener {
         JLabel msgLabel = new JLabel("message / key");
         toFrom = new JTextField();
         msg = new JTextField();
+        //
+        JLabel broadcastLabel = new JLabel(" broadcast?");
+        broadcastCheckBox = new JCheckBox();
+        JPanel broadcastPanel = new JPanel();
+        broadcastPanel.setLayout(new BoxLayout(broadcastPanel, BoxLayout.X_AXIS));
+        broadcastPanel.add(broadcastCheckBox);
+        broadcastPanel.add(broadcastLabel);
+        //
         JButton send = new JButton(sendStr);
         send.addActionListener(this);
         JButton receive = new JButton(receiveStr);
@@ -78,6 +86,11 @@ class UITester extends JFrame implements ActionListener {
         panel.add(create, gbc);
         gbc.gridx++;
         panel.add(delete, gbc);
+        // add broadcast label and check box
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        panel.add(broadcastPanel, gbc);
+        //
         gbc.gridy = 3;
         gbc.gridx = 0;
         gbc.gridwidth = 4;
@@ -95,14 +108,20 @@ class UITester extends JFrame implements ActionListener {
         switch (cmd) {
             case receiveStr:
                 controller.messageReceived(toFrom.getText(),
-                        System.currentTimeMillis() - 1000, msg.getText());
+                        System.currentTimeMillis() - 1000, msg.getText(),
+                        broadcastCheckBox.isSelected());
                 break;
             case sendStr:
                 controller.messageSent(toFrom.getText(),
                         System.currentTimeMillis(), msg.getText());
                 break;
             case createStr:
-                controller.contactCreated(toFrom.getText());
+                if (broadcastCheckBox.isSelected()) {
+                    controller.broadcastContactCreated(toFrom.getText());
+                }
+                else {
+                    controller.contactCreated(toFrom.getText());
+                }
                 break;
             case deleteStr:
                 controller.contactDeleted(toFrom.getText());

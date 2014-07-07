@@ -14,15 +14,15 @@ import utils.HtmlLabel;
  * @author Henry
  */
 class ConversationPanel extends JPanel {
-    
+
     // just to avoid a warning
     private static final long serialVersionUID = 1L;
     //
     // define this panel's command here; later we should move all commands to one place
-    public static final String SEND_COMMAND = "SEND"; 
-    public static final String CLOSE_COMMAND = "CLOSE"; 
-    public static final String CONTACTS_COMMAND = "CONTACTS"; 
-    public static final String EXCHANGE_KEYS_COMMAND = "EXCHANGE_KEYS"; 
+    public static final String SEND_COMMAND = "SEND";
+    public static final String CLOSE_COMMAND = "CLOSE";
+    public static final String CONTACTS_COMMAND = "CONTACTS";
+    public static final String EXCHANGE_KEYS_COMMAND = "EXCHANGE_KEYS";
     //
     private String contactName;
     private JPanel messagePanel;
@@ -36,8 +36,8 @@ class ConversationPanel extends JPanel {
     private String commandPrefix;
     // default colors to use
     private static Color background = Color.GRAY, foreground = Color.WHITE;
-    private static Color bc = Color.LIGHT_GRAY;
-    
+    private static Color broadcastColor = Color.LIGHT_GRAY;
+
     ConversationPanel(String info, String commandPrefix, String contactName) {
         this.commandPrefix = commandPrefix;
         this.contactName = contactName;
@@ -52,7 +52,6 @@ class ConversationPanel extends JPanel {
         JPanel buttonPanel = makeButtonPanel();
 
         // make the panel to hold the messages
-System.out.println ("ConversationPanel.java to do: make bc messages a different color");
         messagePanel = makeMessagePanel(background);
         scrollPane = new JScrollPane(messagePanel,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
@@ -108,19 +107,19 @@ System.out.println ("ConversationPanel.java to do: make bc messages a different 
     public String getContactName() {
         return contactName;
     }
-    
+
     public String getMsgToSend() {
         String msg = msgField.getText();
         msgField.setText("");
         return (msg);
     }
-    
-    static void setDefaultColors(Color background, Color foreground, Color bc) {
+
+    static void setDefaultColors(Color background, Color foreground, Color broadcastColor) {
         ConversationPanel.background = background;
         ConversationPanel.foreground = foreground;
-        ConversationPanel.bc = bc;
+        ConversationPanel.broadcastColor = broadcastColor;
     }
-    
+
     void setListener(ActionListener listener) {
         close.addActionListener(listener);
         exchangeKeys.addActionListener(listener);
@@ -129,7 +128,7 @@ System.out.println ("ConversationPanel.java to do: make bc messages a different 
         // send event when return key is entered
         msgField.addActionListener(listener);
     }
-    
+
     private JPanel makeButtonPanel() {
         close = makeButton("Close", CLOSE_COMMAND);
         exchangeKeys = makeButton("Exchange Keys", EXCHANGE_KEYS_COMMAND);
@@ -142,7 +141,8 @@ System.out.println ("ConversationPanel.java to do: make bc messages a different 
         panel.setBackground(background);
         panel.setLayout(new BoxLayout(panel, BoxLayout.X_AXIS));
         // panel.add(Box.createHorizontalGlue());
-        panel.add(exchangeKeys);
+// exchanging keys is now done through "New Contact"
+//        panel.add(exchangeKeys);
         panel.add(Box.createHorizontalGlue());
         panel.add(close);
         panel.add(Box.createHorizontalGlue());
@@ -151,23 +151,23 @@ System.out.println ("ConversationPanel.java to do: make bc messages a different 
         // panel.setBorder(new LineBorder(Color.BLACK, 1));
         return (panel);
     }
-    
+
     private JButton makeButton(String text, String command) {
         JButton button = new JButton(text);
         button.setActionCommand(commandPrefix + ":" + command);
         return (button);
     }
-    
+
     private JPanel makeMessagePanel(Color background) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBackground(background);
         return (panel);
     }
-    
-    void addMsg(String text, boolean left) {
+
+    void addMsg(String text, boolean left, boolean broadcast) {
         String[] lines = text.split("\n");
-        JPanel bubble = makeBubble(left, lines);
+        JPanel bubble = makeBubble(left, broadcast ? broadcastColor : Color.WHITE, lines);
         JPanel inner = new JPanel();
         inner.setBackground(background);
         inner.setLayout(new BoxLayout(inner, BoxLayout.X_AXIS));
@@ -187,16 +187,16 @@ System.out.println ("ConversationPanel.java to do: make bc messages a different 
         scrollToBottom = true;
         messagePanel.revalidate();
     }
-    
-    private JPanel makeBubble(boolean leftJustified, String... lines) {
+
+    private JPanel makeBubble(boolean leftJustified, Color color, String... lines) {
         JPanel panel = new JPanel();
-        panel.setBackground(Color.WHITE);
+        panel.setBackground(color);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         JLabel label;
         for (int i = 0; i < lines.length; i++) {
             label = new JLabel(lines[i]);
             label.setOpaque(true);
-            label.setBackground(Color.WHITE);
+            label.setBackground(color);
             if (leftJustified) {
                 label.setAlignmentX(Component.LEFT_ALIGNMENT);
             }
@@ -205,7 +205,7 @@ System.out.println ("ConversationPanel.java to do: make bc messages a different 
             }
             panel.add(label);
         }
-        Border compound = BorderFactory.createCompoundBorder(new LineBorder(Color.BLACK, 1, true), new LineBorder(Color.WHITE, 2, true));
+        Border compound = BorderFactory.createCompoundBorder(new LineBorder(Color.BLACK, 1, true), new LineBorder(color, 2, true));
         // panel.setBorder(new LineBorder(Color.BLACK, 1, true));
         panel.setBorder(compound);
         return (panel);
@@ -227,21 +227,21 @@ System.out.println ("ConversationPanel.java to do: make bc messages a different 
         panel.setBorder(compound);
         return (panel);
     }
-    
+
     void removeAllMsgs() {
         messagePanel.removeAll();
         validate();
     }
-    
+
     void setTopLabelText(String... lines) {
         topLabel.setText(lines);
     }
-    
+
     private class MyAdjustmentListener implements AdjustmentListener {
-        
+
         private MyAdjustmentListener() {
         }
-        
+
         @Override
         public void adjustmentValueChanged(AdjustmentEvent e) {
             if (scrollToBottom) {
