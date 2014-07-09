@@ -107,17 +107,9 @@ struct allnet_signature {
  *   an hmac of (the public key followed by a secret nonce).
  * ALLNET_TYPE_KEY_REQ
  *   carries a (partial) fingerprint of a public key.  The public key sent
- *   in response should match the given fingerprint, and be for transmissions
- *   to the given source address from the given destination address.
- *   The reply is sent as a normal data message.  If a reply key
- *   is provided, the reply is encrypted using the
- *   given reply key (usually, a different reply key is used for
- *   each request)
- *   If the reply key is not given, the answer is sent in the clear.
- *   Note that a Man in the Middle attacker could replace the reply
- *   key with its own key, so this is not secure against MITM attacks.
- *   So the public key sent in the reply should not be assumed to be
- *   confidential, even if the reply is encrypted.
+ *   in response should match the given fingerprint.
+ *   The reply is sent as a broadcast message, using as destination address
+ *   the source address of the sender.
  */
 struct allnet_key_exchange {
   unsigned char nbytes_hmac;  	    /* number of bytes in the hmac */
@@ -129,7 +121,6 @@ struct allnet_key_request {
                                        may be zero */
   unsigned char fingerprint [0];    /* (nbits + 7) / 8 bytes of fingerprint,
                                        identifies requested public key */
-  unsigned char reply_key [0];      /* public key for reply, may be omitted */
 };
 
 /* a LARGE packet must be an ACK packet.  All the other flags are orthogonal */

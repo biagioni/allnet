@@ -33,6 +33,8 @@
  * - code value 2 identifies a new contact, stored in the peer name.  In
  *   messages received by xchat_socket, this is followed by one or two
  *   null-terminated secret strings.
+ * - code value 3 identifies an ahra, stored in the peer name, to which
+ *   we want to subscribe or have subscribed
  */
 
 static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
@@ -73,6 +75,9 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
 static int recv_message (int sock, int * code, time_t * time,
                          char * peer, char * message, char * extra)
 {
+  *peer = '\0';
+  *message = '\0';
+  *extra = '\0';
   char buf [ALLNET_MTU * 10];
   int n = recv (sock, buf, sizeof (buf), MSG_DONTWAIT);
   int len, plen, mlen;
@@ -97,8 +102,8 @@ static int recv_message (int sock, int * code, time_t * time,
   sent_time = readb48 (buf + 4);
   *time = sent_time;
   *code = buf [10] & 0xff;
-  if ((*code != 0) && (*code != 2)) {
-    printf ("error: received code %d but only 0 and 2 supported\n", *code);
+  if ((*code != 0) && (*code != 2) && (*code != 3)) {
+    printf ("error: received code %d but only 0, 2, and 3 supported\n", *code);
     return 0;
   }
   plen = strlen (buf + 11);
@@ -126,6 +131,8 @@ static int recv_message (int sock, int * code, time_t * time,
     if ((elen < ALLNET_MTU) && (elen + (secret - buf) < n))
       strcpy (extra, secret);
   }
+  if ((*code) == 3)
+    mlen = strlen (peer);
 printf ("recv_message %d, time %ld, peer '%s', message '%s', extra '%s'\n",
 *code, *time, peer, message, extra);
   return mlen;
@@ -161,7 +168,7 @@ static void wait_for_connection (int sock,
     char buf [ALLNET_MTU * 2];
     alen = *slen;
     bytes = recvfrom (sock, buf, sizeof (buf), 0, sap, &alen);
-    printf ("got initial %d bytes\n", bytes);
+    /* printf ("got initial %d bytes\n", bytes); */
   } while ((bytes > 0) && ((sinp->sin_family != AF_INET) ||
                            (sinp->sin_addr.s_addr != htonl (INADDR_LOOPBACK))));
   *slen = alen;
@@ -234,7 +241,7 @@ static void * child_wait_thread (void * arg)
   int status;
   waitpid (pid, &status, 0);
   /* child has terminated, exit the entire program */
-  printf ("shutting down\n");
+  /* printf ("shutting down\n"); */
   exit (0);
   return NULL;
 }
@@ -281,10 +288,14 @@ int main (int argc, char ** argv)
   char * key_contact = NULL;
   char * key_secret = NULL;
   char * key_secret2 = NULL;
-  char kbuf1 [ALLNET_MTU];
-  char kbuf2 [ALLNET_MTU];
-  char kbuf3 [ALLNET_MTU];
+  char kbuf1 [ALLNET_MTU];  /* key buffer to hold the contact name */
+  char kbuf2 [ALLNET_MTU];  /* key buffer to hold the first secret */
+  char kbuf3 [ALLNET_MTU];  /* key buffer to hold the second secret, if any */
   int num_hops = 0;
+  char * subscription = NULL;
+  char sbuf [ALLNET_MTU];   /* subscribe buffer */
+  char saddr [ADDRESS_SIZE];
+  int sbits = 0;
   while (1) {
     char to_send [ALLNET_MTU];
     char peer [ALLNET_MTU];
@@ -308,10 +319,15 @@ int main (int argc, char ** argv)
         num_hops = rtime;
 printf ("sending key to peer %s/%s, secret %s/%s/%s, %d hops\n",
 peer, key_contact, to_send, key_secret, key_secret2, num_hops);
-        
         create_contact_send_key (sock, key_contact, key_secret, key_secret2,
                                  num_hops);
-      }
+      } else if (code == 3) {   /* subscribe message -- peer is only field */
+        strcpy (sbuf, peer);
+printf ("sending subscription to %s/%s\n", peer, sbuf);
+        if (subscribe_broadcast (sock, sbuf, saddr, &sbits))
+          subscription = sbuf;
+      } else
+        printf ("received message with code %d\n", code);
     }
     char * packet;
     int pipe, pri;
@@ -337,7 +353,8 @@ peer, key_contact, to_send, key_secret, key_secret2, num_hops);
       int mlen = handle_packet (sock, packet, found, &peer, &kset, &message,
                                 &desc, &verified, &mtime, &duplicate,
                                 &broadcast, key_contact, key_secret, 
-                                key_secret2, num_hops);
+                                key_secret2, num_hops,
+                                subscription, saddr, sbits);
       if ((mlen > 0) && (verified)) {
         int mtype = (broadcast) ? 1 /* broadcast */ : 0; /* data */
         if (broadcast || (! duplicate))
@@ -356,7 +373,7 @@ peer, key_contact, to_send, key_secret, key_secret2, num_hops);
         free (message);
         if (! broadcast)
           free (desc);
-      } else if (mlen < 0) {   /* confirm successful key exchange */
+      } else if (mlen == -1) {   /* confirm successful key exchange */
         mtime = time (NULL);
         send_message (forwarding_socket,
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
@@ -365,6 +382,13 @@ peer, key_contact, to_send, key_secret, key_secret2, num_hops);
         key_secret = NULL;
         key_secret2 = NULL;
         num_hops = 0;
+      } else if (mlen == -2) {   /* confirm successful subscription */
+        if (subscription != NULL) {
+          send_message (forwarding_socket,
+                        (struct sockaddr *) (&fwd_addr), fwd_addr_size,
+                         3, 0, subscription, "");
+          subscription = NULL;
+        }
       }
     }
   }

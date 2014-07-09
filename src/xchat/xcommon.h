@@ -38,13 +38,17 @@ extern void xchat_end (int sock);
  * response is sent (if a response is a duplicate, it does no harm).
  * kmax_hops specifies the maximum hop count of incoming acceptable keys,
  * and the hop count used in sending the key.
+ *
+ * if subscription is not null, listens for a reply containing a key
+ * matching the subscription, returning -2 if a match is found.
  */
 extern int handle_packet (int sock, char * packet, int psize,
                           char ** contact, keyset * kset,
                           char ** message, char ** desc, int * verified,
                           time_t * sent, int * duplicate, int * broadcast,
                           char * kcontact, char * ksecret1, char * ksecret2,
-                          int kmax_hops);
+                          int kmax_hops,
+                          char * subscription, char * addr, int nbits);
 
 /* send this message and save it in the xchat log. */
 /* returns the sequence number of this message, or 0 for errors */
@@ -61,8 +65,12 @@ extern void request_and_resend (int sock, char * peer, keyset kset);
  * secret2 may be NULL, secret1 should not be.
  * return 1 if successful, 0 for failure (usually if the contact already
  * exists, but other errors are possible) */
-
 extern int create_contact_send_key (int sock, char * contact, char * secret1,
                                     char * secret2, int hops);
+
+/* sends out a request for a key matching the subscription.
+ * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
+extern int subscribe_broadcast (int sock, char * ahra,
+                                char * my_addr, int * nbits);
 
 #endif /* ALLNET_XCHAT_COMMON_H */

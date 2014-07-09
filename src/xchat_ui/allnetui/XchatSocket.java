@@ -147,10 +147,6 @@ public class XchatSocket extends Thread {
     }
     long time = b48 (data, 4, dlen);
     int code = data [10];
-    if ((code < 0) || (code > 2)) {
-      System.out.println ("unknown message code " + code);
-      /* return; */
-    }
     IntRef nextIndex = new IntRef();
     String peer = bString (data, 11, dlen, nextIndex);
     if ((code == 0) || (code == 1)) {
@@ -165,6 +161,9 @@ public class XchatSocket extends Thread {
     } else if (code == 2) {
       System.out.println ("new key from " + peer);
       api.contactCreated(peer);
+    } else if (code == 3) {
+      System.out.println ("subscription complete from " + peer);
+      api.contactCreated(peer, true);
     } else {
       System.out.println ("unknown code " + code);
     }
@@ -206,6 +205,18 @@ public class XchatSocket extends Thread {
     return packet;
   }
 
+  private static DatagramPacket makeSubPacket(String ahra) {
+    int size = ahra.length() + 1 + 11;
+    byte [] buf = new byte [size];
+    DatagramPacket packet =
+      new DatagramPacket (buf, size, local, xchatSocketPort);
+    w32(buf, 0, size);
+    w48(buf, 4, 0);
+    buf [10] = 3;
+    wString(buf, 11, ahra);
+    return packet;
+  }
+
   public static long sendToPeer(String peer, String text) {
     LongRef time = new LongRef();
     DatagramPacket packet = makeMessagePacket(peer, text, time, false);
@@ -230,13 +241,24 @@ public class XchatSocket extends Thread {
     return true;
   }
 
+  public static boolean sendSubscription(String peer) {
+    DatagramPacket packet = makeSubPacket(peer);
+    try {
+      socket.send (packet);
+    } catch (java.io.IOException e) {
+      System.out.println ("send exception: " + e);
+      return false;
+    }
+    return true;
+  }
+
   /* main method, called to start the thread
    * listen to the xchat socket for incoming messages.  Decode them,
    * and call the corresponding API function.
    */
 
   public void run() {
-    System.out.println("running XchatSocket.java");
+//    System.out.println("running XchatSocket.java");
     sendInitial();
     byte [] input = new byte [allnetMTU];
     DatagramPacket received = new DatagramPacket (input, input.length);

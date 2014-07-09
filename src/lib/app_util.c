@@ -141,6 +141,8 @@ int connect_to_local (char * program_name, char * arg0)
   seed_rng ();
   int sock = connect_once (0);
   if (sock < 0) {
+    printf ("%s/%s unable to connect to alocal, starting allnet\n",
+            program_name, arg0);
     exec_allnet (arg0);
     sleep (1);
     sock = connect_once (1);

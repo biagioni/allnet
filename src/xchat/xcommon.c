@@ -120,7 +120,9 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
                          int * verified, int * broadcast)
 {
   if (hp->sig_algo == ALLNET_SIGTYPE_NONE) {
-    printf ("ignoring unsigned clear packet '%s'\n", data);
+#ifdef DEBUG_PRINT
+    printf ("ignoring unsigned clear packet of size %d\n", dsize);
+#endif /* DEBUG_PRINT */
     return 0;
   }
   int ssize = readb16 (data + (dsize - 2)) + 2;  /* size of the signature */
@@ -242,8 +244,31 @@ static int handle_data (int sock, struct allnet_header * hp,
   return msize;
 }
 
+static int handle_sub (int sock, struct allnet_header * hp,
+                       char * data, int dsize,
+                       char * subscription, const char * addr, int nbits)
+{
+  if ((nbits == 0) ||
+      ((hp->dst_nbits == nbits) && 
+       (matches (hp->destination, nbits, addr, nbits)))) {
+#ifdef DEBUG_PRINT
+    printf ("handle_sub calling verify_bc_key\n");
+#endif /* DEBUG_PRINT */
+    int correct = verify_bc_key (subscription, data, dsize, "en", 16, 1);
+    if (correct)
+      printf ("received key does verify %s, saved\n", subscription);
+    else
+      printf ("received key does not verify\n");
+    return correct;
+  }
+#ifdef DEBUG_PRINT
+  printf ("handle_sub did not call verify_bc_key\n");
+#endif /* DEBUG_PRINT */
+  return 0;
+}
+
 static int send_key (int sock, char * contact, keyset kset, char * secret,
-                      char * address, int abits, int max_hops)
+                     char * address, int abits, int max_hops)
 {
   char * my_public_key;
   int pub_ksize = get_my_pubkey (kset, &my_public_key);
@@ -267,7 +292,7 @@ static int send_key (int sock, char * contact, keyset kset, char * secret,
 
   if (! send_pipe_message_free (sock, message, size, ALLNET_PRIORITY_LOCAL)) {
     printf ("unable to send %d-byte key exchange packet to %s\n",
-            contact, size);
+            size, contact);
     return 0;
   }
   return 1;
@@ -379,6 +404,9 @@ printf ("public key does not check with secrets %s %s\n", secret1, secret2);
  * response is sent (if a response is a duplicate, it does no harm).
  * kmax_hops specifies the maximum hop count of incoming acceptable keys,
  * and the hop count used in sending the key.
+ *
+ * if subscription is not null, listens for a reply containing a key
+ * matching the subscription, returning -2 if a match is found.
  */
 int handle_packet (int sock, char * packet, int psize,
                    char ** contact, keyset * kset,
@@ -386,7 +414,8 @@ int handle_packet (int sock, char * packet, int psize,
                    int * verified, time_t * sent,
                    int * duplicate, int * broadcast,
                    char * kcontact, char * ksecret1, char * ksecret2,
-                   int kmax_hops)
+                   int kmax_hops,
+                   char * subscription, char * addr, int nbits)
 {
   if (! is_valid_message (packet, psize))
     return 0;
@@ -406,9 +435,26 @@ int handle_packet (int sock, char * packet, int psize,
     return 0;
   }
 
-  if (hp->message_type == ALLNET_TYPE_CLEAR)  /* a broadcast packet */
+  if (hp->message_type == ALLNET_TYPE_CLEAR) { /* a broadcast packet */
+    if ((subscription != NULL) && (addr != NULL)) {
+      int sub = handle_sub (sock, hp, packet + hsize, psize - hsize,
+                            subscription, addr, nbits);
+#ifdef DEBUG_PRINT
+      printf ("handle_sub (%d, %p, %p, %d, %s, %p, %d) ==> %d\n",
+              sock, hp, packet + hsize, psize - hsize, subscription,
+              addr, nbits, sub);
+#endif /* DEBUG_PRINT */
+      if (sub > 0)   /* received a key in response to our subscription */
+        return sub;
+    }
+#ifdef DEBUG_PRINT
+    else
+      printf ("subscription %p, addr %p, did not call handle_sub\n",
+              subscription, addr);
+#endif /* DEBUG_PRINT */
     return handle_clear (hp, packet + hsize, psize - hsize,
                          contact, message, verified, broadcast);
+  }
 
   if (hp->message_type == ALLNET_TYPE_DATA) /* an encrypted data packet */
     return handle_data (sock, hp, packet + hsize, psize - hsize,
@@ -516,5 +562,64 @@ int create_contact_send_key (int sock, char * contact, char * secret1,
   }
   printf ("send_key failed for create_contact_send_key\n");
   return 0;
+}
+
+static int send_key_request (int sock, char * phrase, char * addr, int * nbits)
+{
+  /* compute the destination address from the phrase */
+  char destination [ADDRESS_SIZE];
+  char * mapped;
+  int mlen = map_string (phrase, &mapped);
+  sha512_bytes (mapped, mlen, destination, 1);
+  free (mapped);
+
+  random_bytes (addr, ADDRESS_SIZE);
+  *nbits = 8;
+  int dsize = 1;  /* nbits_fingerprint with no key */
+  int psize = -1;
+  struct allnet_header * hp =
+    create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
+                   addr, *nbits, destination, *nbits, NULL, &psize);
+  
+  if (hp == NULL) {
+    printf ("send_key_request: unable to create packet of size %d/%d\n",
+            dsize, psize);
+    return 0;
+  }
+  int hsize = ALLNET_SIZE(hp->transport);
+  if (psize != hsize + dsize) {
+    printf ("send_key_request error: psize %d != %d = %d + %d\n", psize,
+            hsize + dsize, hsize, dsize);
+    return 0;
+  }
+  char * packet = (char *) hp;
+
+  struct allnet_key_request * kp =
+    (struct allnet_key_request *) (packet + hsize);
+  kp->nbits_fingerprint = 0;
+
+#ifdef DEBUG_PRINT
+  printf ("sending %d-byte key request\n", psize);
+#endif /* DEBUG_PRINT */
+  if (! send_pipe_message_free (sock, packet, psize, ALLNET_PRIORITY_LOCAL)) {
+    printf ("unable to send key request message\n");
+    return 0;
+  }
+  return 1;
+}
+
+/* sends out a request for a key matching the subscription.
+ * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
+int subscribe_broadcast (int sock, char * ahra, char * my_addr, int * nbits)
+{
+  char * phrase;
+  char * reason;
+  if (! parse_ahra (ahra, &phrase, NULL, NULL, NULL, NULL, &reason)) {
+    printf ("subcribe_broadcast unable to parse '%s': %s\n", ahra, reason);
+    return 0;
+  }
+  if (! send_key_request (sock, phrase, my_addr, nbits))
+    return 0;
+  return 1;
 }
 

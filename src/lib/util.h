@@ -55,8 +55,8 @@ extern struct allnet_header *
 
 /* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
  * offset (in bits) within x, nbits the number of bits to print */
-extern void print_bitstring (unsigned char * x, int xoff, int nbits,
-                               int print_eol);
+extern void print_bitstring (const unsigned char * x, int xoff, int nbits,
+                             int print_eol);
 
 /* print an arbitrary socket address */
 /* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
@@ -76,17 +76,18 @@ extern void print_timestamp (char * message);
 
 /* return nbits if the first nbits of x match the first nbits of y, else 0 */
 /* where nbits is the lesser of xbits and ybits */
-extern int matches (unsigned char * x, int xbits, unsigned char * y, int ybits);
+extern int matches (const unsigned char * x, int xbits,
+                    const unsigned char * y, int ybits);
 
 /* return 1 if the first nbits of x after xoff bits match
  * the first nbits of y after yoff bits, else 0 */
-extern int bitstring_matches (unsigned char * x, int xoff,
-                              unsigned char * y, int yoff, int nbits);
+extern int bitstring_matches (const unsigned char * x, int xoff,
+                              const unsigned char * y, int yoff, int nbits);
 
 /* returns the number of matching bits starting from the front of the
  * bitstrings, not to exceed xbits or ybits.  Returns 0 for no match */
-extern int matching_bits (unsigned char * x, int xbits,
-                          unsigned char * y, int ybits);
+extern int matching_bits (const unsigned char * x, int xbits,
+                          const unsigned char * y, int ybits);
 
 /* AllNet time begins January 1st, 2000.  This may be different from
  * the time bases (epochs) on other systems, including specifically

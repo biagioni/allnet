@@ -961,6 +961,10 @@ int parse_ahra (char * ahra,
                 char ** phrase, int ** positions, int * num_positions,
                 char ** language, int * matching_bits, char ** reason)
 {
+  if (ahra == NULL) {
+    if (reason != NULL) *reason = "AHRA is NULL";
+    return 0;
+  }
   char * middle = index (ahra, '@');
   if (middle == NULL) {
     if (reason != NULL) *reason = "AHRA lacks '@'";

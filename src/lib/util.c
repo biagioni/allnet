@@ -624,7 +624,8 @@ static int get_bit (const unsigned char * data, int pos)
 
 /* returns the number of matching bits starting from the front of the
  * bitstrings, not to exceed xbits or ybits.  Returns 0 for no match */
-int matching_bits (unsigned char * x, int xbits, unsigned char * y, int ybits)
+int matching_bits (const unsigned char * x, int xbits,
+                   const unsigned char * y, int ybits)
 {
   int nbits = xbits;
   if (nbits > ybits)
@@ -638,7 +639,8 @@ int matching_bits (unsigned char * x, int xbits, unsigned char * y, int ybits)
 
 /* return nbits+1 if the first nbits of x match the first nbits of y, else 0 */
 /* where nbits is the lesser of xbits and ybits */
-int matches (unsigned char * x, int xbits, unsigned char * y, int ybits)
+int matches (const unsigned char * x, int xbits,
+             const unsigned char * y, int ybits)
 {
   int nbits = xbits;
   if (nbits > ybits)
@@ -665,7 +667,8 @@ int matches (unsigned char * x, int xbits, unsigned char * y, int ybits)
   return 0;
 }
 
-void print_bitstring (unsigned char * x, int xoff, int nbits, int print_eol)
+void print_bitstring (const unsigned char * x, int xoff, int nbits,
+                      int print_eol)
 {
   int i;
   for (i = 0; i < nbits; i++) {
@@ -684,8 +687,8 @@ void print_bitstring (unsigned char * x, int xoff, int nbits, int print_eol)
 
 /* return 1 if the first nbits of x after xoff bits match
  * the first nbits of y after yoff bits, else 0 */
-int bitstring_matches (unsigned char * x, int xoff,
-                       unsigned char * y, int yoff, int nbits)
+int bitstring_matches (const unsigned char * x, int xoff,
+                       const unsigned char * y, int yoff, int nbits)
 {
   int i;
   for (i = 0; i < nbits; i++)

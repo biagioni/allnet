@@ -151,7 +151,7 @@ int main (int argc, char ** argv)
     int mlen = handle_packet (sock, packet, found, &peer, &kset,
                               &message, &desc, &verified, NULL, &duplicate,
                               &broadcast, kcontact, my_secret, peer_secret,
-                              kmax_hops);
+                              kmax_hops, NULL, NULL, 0);
     if (mlen > 0) {
       char * ver_mess = "";
       if (! verified)

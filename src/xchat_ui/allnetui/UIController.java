@@ -332,7 +332,7 @@ class UIController implements ControllerInterface, UIAPI {
     private void processNewContactEvent(String command) {
         // here we can use newContactPanel's getter methods to grab
         // the user's input and send it to the application
-        System.out.println("UIController.java: pNCE " + command);
+//        System.out.println("UIController.java: pNCE " + command);
         if (command.equals("go")) {
             String contact = newContactPanel.getInputName();
             int button = newContactPanel.getSelectedButton();
@@ -355,7 +355,16 @@ class UIController implements ControllerInterface, UIAPI {
             case 1:
                 System.out.println("new ahra contact " + contact + ", " +
                                    newContactPanel.getVariableInput());
-                System.out.println("  (not implemented)");
+                String ahra = newContactPanel.getVariableInput();
+                if ((ahra == null) || (ahra.indexOf ('@') < 0))
+                    ahra = contact;
+                if ((ahra == null) || (ahra.indexOf ('@') < 0))
+                    System.out.println("new ahra contact " + contact +
+                                       " must contain '@' sign");
+                else if (XchatSocket.sendSubscription (ahra))
+                    System.out.println("sent ahra subscription");
+                else
+                    System.out.println("unable to send ahra subscription");
                 break;
             case 2:
                 System.out.println("new common contact for " + contact + " is "

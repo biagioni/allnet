@@ -79,7 +79,8 @@ int main (int argc, char ** argv)
       char * message;
       int mlen = handle_packet (sock, packet, found, &peer, &kset,
                                 &message, &desc, &verified, NULL, &duplicate,
-                                &broadcast, contact, secret, NULL, key_hops);
+                                &broadcast, contact, secret, NULL, key_hops,
+                                NULL, NULL, 0);
       if (mlen > 0) {
         char * ver_mess = "";
         if (! verified)

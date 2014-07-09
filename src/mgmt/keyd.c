@@ -22,8 +22,9 @@
 static void send_key (int sock, struct bc_key_info * key, char * return_key,
                       int rksize, char * address, int abits, int hops)
 {
-/* printf ("send_key ((%p, %d), %p)\n", key->pub_key,
-           key->pub_klen, return_key); */
+#ifdef DEBUG_PRINT
+  printf ("send_key ((%p, %d), %p)\n", key->pub_key, key->pub_klen, return_key);
+#endif /* DEBUG_PRINT */
   char * data = key->pub_key;
   int dlen = key->pub_klen;
   int type = ALLNET_TYPE_CLEAR;
@@ -31,8 +32,10 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   if ((return_key != NULL) && (rksize > 0)) {  /* encrypt the key */
     type = ALLNET_TYPE_DATA;
     char * cipher;
-/* printf ("calling encrypt (%p, %d, %p, %d) ==> %p\n",
-        body, key->pub_klen, return_key, rksize, &cipher); */
+#ifdef DEBUG_PRINT
+    printf ("calling encrypt (%p/%d, %d, %p, %d) ==> %p\n",
+            data, dlen, key->pub_klen, return_key, rksize, &cipher);
+#endif /* DEBUG_PRINT */
     int csize = encrypt (data, dlen, return_key, rksize, &cipher);
     if (csize <= 0) {
       snprintf (log_buf, LOG_SIZE, "send_key: encryption error\n");
@@ -57,24 +60,32 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   send_pipe_message (sock, message, bytes, ALLNET_PRIORITY_DEFAULT);
 }
 
+#ifdef DEBUG_PRINT
 void ** keyd_debug = NULL;
+#endif /* DEBUG_PRINT */
 
 static void handle_packet (int sock, char * message, int msize)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type != ALLNET_TYPE_KEY_REQ)
     return;
-/* print_packet (message, msize, "key request", 1); */
+#ifdef DEBUG_PRINT
+  print_packet (message, msize, "key request", 1);
+#endif /* DEBUG_PRINT */
   packet_to_string (message, msize, "key request", 1, log_buf, LOG_SIZE);
   log_print ();
   char * kp = message + ALLNET_SIZE (hp->transport);
-/* keyd_debug = ((void **) (&kp)); */
+#ifdef DEBUG_PRINT
+  keyd_debug = ((void **) (&kp));
+#endif /* DEBUG_PRINT */
   unsigned int nbits = (*kp) & 0xff;
   int offset = (nbits + 7) / 8;
   /* ignore the fingerprint for now -- not implemented */
   kp += offset + 1;
   int ksize = msize - (kp - message);
-/* printf ("kp is %p\n", kp); */
+#ifdef DEBUG_PRINT
+  printf ("kp is %p\n", kp);
+#endif /* DEBUG_PRINT */
   if (((msize - (kp - message)) != 513) ||
       (*kp != KEY_RSA4096_E65537)) {
     snprintf (log_buf, LOG_SIZE,
@@ -84,11 +95,15 @@ static void handle_packet (int sock, char * message, int msize)
     kp = NULL;
     ksize = 0;
   }
-/* printf (" ==> kp is %p (%d bytes)\n", kp, ksize); */
+#ifdef DEBUG_PRINT
+  printf (" ==> kp is %p (%d bytes)\n", kp, ksize);
+#endif /* DEBUG_PRINT */
 
   struct bc_key_info * keys;
   unsigned int nkeys = get_own_keys (&keys);
-/* printf (" ==> kp %p, keys %p\n", kp, keys); */
+#ifdef DEBUG_PRINT
+  printf (" ==> kp %p, %d keys %p\n", kp, nkeys, keys);
+#endif /* DEBUG_PRINT */
   if (nkeys <= 0) {
     snprintf (log_buf, LOG_SIZE, "no keys found\n");
     log_print ();
@@ -104,7 +119,10 @@ static void handle_packet (int sock, char * message, int msize)
               keys [i].address [0] & 0xff, matching_bits, hp->dst_nbits);
     log_print ();
     if (matching_bits >= hp->dst_nbits) {  /* send the key */
-      /* printf ("sending key %d, kp %p, %d bytes\n", i, kp, ksize); */
+#ifdef DEBUG_PRINT
+      printf ("sending key %d, kp %p, %d bytes to %x/%d\n", i, kp, ksize,
+hp->source [0] & 0xff, hp->src_nbits);
+#endif /* DEBUG_PRINT */
       send_key (sock, keys + i, kp, ksize,
                 hp->source, hp->src_nbits, hp->hops + 4);
     }
