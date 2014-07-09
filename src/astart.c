@@ -98,31 +98,58 @@ static void my_exec0 (char * path, char * program, int fd, pid_t ad)
   }
 }
 
-static void my_exec2 (char * path, char * program, int * pipes, int fd,
-                      pid_t ad)
+static void my_exec_alocal (char * path, char * program, int * pipes, int fd,
+                            pid_t ad)
 {
   pid_t self = getpid ();
   pid_t child = fork ();
+  int syncpipe [2] = {-1, -1};
+  int do_sleep = 0;
+  char buf [1];
+  if (pipe (syncpipe) != 0) {
+    perror ("syncpipe");
+    do_sleep = 1;
+  }
   if (child == 0) {
     char * args [4];
     args [0] = make_program_path (path, program);
     args [1] = itoa (pipes [0]);
     args [2] = itoa (pipes [3]);
     args [3] = NULL;
-    close (pipes [1]);
-    close (pipes [2]);
     snprintf (log_buf, LOG_SIZE, "calling %s %s %s\n",
               args [0], args [1], args [2]);
     log_print ();
+    /* tell parent we are about to exec */
+    if (! do_sleep) {
+/*    printf ("writing to sync pipe %d, other pipes are %d %d %d %d\n",
+              syncpipe [1], pipes [0], pipes [1], pipes [2], pipes [3]); */
+      if (write (syncpipe [1], buf, 1) != 1)
+        perror ("write syncpipe");
+      close (syncpipe [0]);
+      close (syncpipe [1]);
+    }
+    close (pipes [1]);
+    close (pipes [2]);
     execv (args [0], args);    /* should never return! */
     exec_error (args [0], ad, self);
   } else {  /* parent, close the child pipes */
     print_pid (fd, child);
-    close (pipes [0]);
-    close (pipes [3]);
     snprintf (log_buf, LOG_SIZE, "parent called %s %d %d, closed %d %d\n",
               program, pipes [0], pipes [3], pipes [0], pipes [3]);
     log_print ();
+    if (! do_sleep) {
+      close (syncpipe [1]);
+      if (read (syncpipe [0], buf, 1) != 1) {
+      }  /* successful or not, we are now synchronized */
+      close (syncpipe [0]);
+    }
+    if (do_sleep)  /* no synch, give child chance to start */
+      sleep (2);
+    usleep (10 * 1000);
+    close (pipes [0]);
+    close (pipes [3]);
+    pipes [0] = -1;
+    pipes [3] = -1;
   }
 }
 
@@ -185,6 +212,8 @@ static pid_t my_exec_ad (char * path, int * pipes, int num_pipes, int fd)
     for (i = 0; i < num_pipes / 2; i++) {
       close (pipes [4 * i + 1]);
       close (pipes [4 * i + 2]);
+      pipes [4 * i + 1] = -1;
+      pipes [4 * i + 2] = -1;
     }
   }
   return child;
@@ -276,6 +305,8 @@ int main (int argc, char ** argv)
   /* printf ("astart path is %s\n", path); */
 
   init_log ("astart");  /* only do logging in astart, not in astop */
+  snprintf (log_buf, LOG_SIZE, "astart called with %d arguments\n", argc);
+  log_print ();
   /* two pipes from ad to alocal and back, plus */
   /* two pipes from ad to aip and back */
 #define NUM_FIXED_PIPES		4
@@ -300,12 +331,15 @@ int main (int argc, char ** argv)
   pid_t ad_pid = my_exec_ad (path, pipes, num_pipes, pid_fd);
 
   /* start all the other programs */
-  my_exec2 (path, "alocal", pipes, pid_fd, ad_pid);
-  usleep (10 * 1000);  /* give 10ms chance to start before others connect */
+  my_exec_alocal (path, "alocal", pipes, pid_fd, ad_pid);
   my_exec3 (path, "aip", pipes + 4, AIP_UNIX_SOCKET, pid_fd, ad_pid);
   int i;
-  for (i = 0; i < num_interfaces; i++)
+  for (i = 0; i < num_interfaces; i++) {
+    snprintf (log_buf, LOG_SIZE, "starting abc [%d/%d] %s\n",
+              i, num_interfaces, argv [i + 1]);
+    log_print ();
     my_exec3 (path, "abc", pipes + 8 + (4 * i), argv [i + 1], pid_fd, ad_pid);
+  }
   my_exec0 (path, "adht", pid_fd, ad_pid);
   my_exec0 (path, "traced", pid_fd, ad_pid);
   my_exec0 (path, "acache", pid_fd, ad_pid);
