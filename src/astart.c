@@ -14,9 +14,11 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>
+#include <netinet/in.h>
 
 #include "lib/util.h"
 #include "lib/log.h"
+#include "lib/packet.h"
 
 static void init_pipes (int * pipes, int num_pipes)
 {
@@ -98,18 +100,23 @@ static void my_exec0 (char * path, char * program, int fd, pid_t ad)
   }
 }
 
+static int connect_to_local ()
+{
+  int sock = socket (AF_INET, SOCK_STREAM, 0);
+  struct sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
+  sin.sin_port = ALLNET_LOCAL_PORT;
+  int success = (connect (sock, (struct sockaddr *) &sin, sizeof (sin)) == 0);
+  close (sock);
+  return success;
+}
+
 static void my_exec_alocal (char * path, char * program, int * pipes, int fd,
                             pid_t ad)
 {
   pid_t self = getpid ();
   pid_t child = fork ();
-  int syncpipe [2] = {-1, -1};
-  int do_sleep = 0;
-  char buf [1];
-  if (pipe (syncpipe) != 0) {
-    perror ("syncpipe");
-    do_sleep = 1;
-  }
   if (child == 0) {
     char * args [4];
     args [0] = make_program_path (path, program);
@@ -119,15 +126,6 @@ static void my_exec_alocal (char * path, char * program, int * pipes, int fd,
     snprintf (log_buf, LOG_SIZE, "calling %s %s %s\n",
               args [0], args [1], args [2]);
     log_print ();
-    /* tell parent we are about to exec */
-    if (! do_sleep) {
-/*    printf ("writing to sync pipe %d, other pipes are %d %d %d %d\n",
-              syncpipe [1], pipes [0], pipes [1], pipes [2], pipes [3]); */
-      if (write (syncpipe [1], buf, 1) != 1)
-        perror ("write syncpipe");
-      close (syncpipe [0]);
-      close (syncpipe [1]);
-    }
     close (pipes [1]);
     close (pipes [2]);
     execv (args [0], args);    /* should never return! */
@@ -137,15 +135,8 @@ static void my_exec_alocal (char * path, char * program, int * pipes, int fd,
     snprintf (log_buf, LOG_SIZE, "parent called %s %d %d, closed %d %d\n",
               program, pipes [0], pipes [3], pipes [0], pipes [3]);
     log_print ();
-    if (! do_sleep) {
-      close (syncpipe [1]);
-      if (read (syncpipe [0], buf, 1) != 1) {
-      }  /* successful or not, we are now synchronized */
-      close (syncpipe [0]);
-    }
-    if (do_sleep)  /* no synch, give child chance to start */
-      sleep (2);
-    usleep (10 * 1000);
+    while (! connect_to_local())
+      usleep (10 * 1000);
     close (pipes [0]);
     close (pipes [3]);
     pipes [0] = -1;
