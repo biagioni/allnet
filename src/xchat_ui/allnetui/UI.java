@@ -93,8 +93,10 @@ class UI extends ApplicationFrame {
                             controller.contactCreated(contactName);
                         }
                     } else {
-                        for (String contactName : AllNetContacts.get())
+                        for (String contactName : AllNetContacts.get()) {
                             controller.contactCreated(contactName);
+                            controller.savedMessages(ConversationData.get(contactName, 100));
+                        }
                         for (String contactName : AllNetContacts.getBroadcast())
                             controller.broadcastContactCreated(contactName);
                     }

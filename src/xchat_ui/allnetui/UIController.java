@@ -66,7 +66,26 @@ class UIController implements ControllerInterface, UIAPI {
         };
         // schedule it in the event disp thread, but don't wait for it to execute
         SwingUtilities.invokeLater(r);
-    }
+    } 
+
+    // initialization should call this method at startup with older messages
+    public void savedMessages(final Message[] messages) {
+        Runnable r = new Runnable() {
+
+            @Override
+            public void run() {
+                for (Message message: messages) {
+                    if (message.sentNotReceived)
+                        displaySentMessage(message);
+                    else
+                        processReceivedMessage(message);
+                }
+            }
+        };
+        // schedule it in the event disp thread, but don't wait for it to execute
+        SwingUtilities.invokeLater(r);
+    } 
+
 
     // the application should call this method after a message has been successfully sent
     @Override

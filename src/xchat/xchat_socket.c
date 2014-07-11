@@ -67,7 +67,7 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
             sock, buf, length, MSG_DONTWAIT, sap, slen);
     exit (1);   /* terminate the program */
   }
-  print_buffer (buf, length, "sent", 20, 1);
+/* print_buffer (buf, length, "sent", 20, 1); */
 }
 
 /* return the message length if a message was received, and 0 otherwise */
@@ -133,8 +133,8 @@ static int recv_message (int sock, int * code, time_t * time,
   }
   if ((*code) == 3)
     mlen = strlen (peer);
-printf ("recv_message %d, time %ld, peer '%s', message '%s', extra '%s'\n",
-*code, *time, peer, message, extra);
+/* printf ("recv_message %d, time %ld, peer '%s', message '%s', extra '%s'\n",
+*code, *time, peer, message, extra); */
   return mlen;
 }
 
