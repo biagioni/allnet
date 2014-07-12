@@ -363,8 +363,6 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         if (broadcast) {
           mtype = 1;  /* broadcast */
         }
-printf ("mtype %d, broadcast %d, duplicate %d, peer %s\n", 
-mtype, broadcast, duplicate, peer);
         if (broadcast || (! duplicate))
           send_message (forwarding_socket,
                         (struct sockaddr *) (&fwd_addr), fwd_addr_size,

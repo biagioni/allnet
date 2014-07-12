@@ -168,9 +168,9 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
       (*message) [text_size] = '\0';   /* null-terminate the message */
       *broadcast = 1;
       *verified = 1;
+#ifdef DEBUG_PRINT
       printf ("verified bc message, contact %s, %d bytes\n",
               keys [i].identifier, text_size);
-#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
       return text_size;
     } 
