@@ -209,12 +209,12 @@ int decrypt (char * cipher, int csize, char * key, int ksize, char ** res)
                                    RSA_PKCS1_OAEP_PADDING);
   RSA_free (rsa);
   if (bytes < 0) {
+#ifdef DEBUG_PRINT
     ERR_load_crypto_strings ();
     ERR_print_errors_fp (stdout);
     printf ("RSA failed to decrypt %d bytes, got %d, cipher size %d\n",
             rsa_size, bytes, csize);
-/*
-*/
+#endif /* DEBUG_PRINT */
     free (rsa_text);
 /*
 static int first_time = 1;
@@ -335,6 +335,8 @@ int sign (char * text, int tsize, char * key, int ksize, char ** result)
   return siglen;
 }
 
+/* #define DEBUG_PRINT */
+
 /* returns the data size > 0, and malloc's and fills in the contact, if able
  * to decrypt and verify the packet.
  * If there is no signature but it is able to decrypt, returns the
@@ -370,15 +372,20 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
     keyset * keys;
     int nkeys = all_keys (contacts [i], &keys);
     for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
-      int do_decrypt = 1;
+      int do_decrypt = 1;  /* for now, try to decrypt unsigned messages */
       if (sig_algo != ALLNET_SIGTYPE_NONE) {  /* verify signature */
+        do_decrypt = 0;
         char * pub_key;
         int pub_ksize = get_contact_pubkey (keys [j], &pub_key);
-        if ((pub_key != NULL) && (pub_ksize > 0))
+        if ((pub_key != NULL) && (pub_ksize > 0)) {
           do_decrypt =
             verify (encrypted, csize, sig, ssize - 2, pub_key, pub_ksize);
+        }
       }
       if (do_decrypt) {
+#ifdef DEBUG_PRINT
+        printf ("signature match for contact %s, key %d\n", contacts [i], j);
+#endif /* DEBUG_PRINT */
         char * priv_key;
         int priv_ksize = get_my_privkey (keys [j], &priv_key);
         int res = 0;

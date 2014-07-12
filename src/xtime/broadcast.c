@@ -58,12 +58,17 @@ static void broadcast (int sock, char * data, int dsize, int hops,
     init_packet (buffer, sizeof (buffer), ALLNET_TYPE_CLEAR, hops,
                  ALLNET_SIGTYPE_NONE, source, sbits, dest, dbits, NULL);
   int hsize = ALLNET_SIZE (hp->transport);
-  if (hsize + dsize + ksize + 2 > ALLNET_MTU) {
-    printf ("broadcast error: %d + %d + %d + 2 > %d\n", 
-            hsize, dsize, ksize, ALLNET_MTU);
+  int h2size = sizeof (struct allnet_app_media_header);
+  if (hsize + h2size + dsize + ksize + 2 > ALLNET_MTU) {
+    printf ("broadcast error: %d + %d + %d + %d + 2 > %d\n", 
+            hsize, h2size, dsize, ksize, ALLNET_MTU);
     return;
   }
-  char * dp = buffer + hsize;
+  struct allnet_app_media_header * amhp =
+    (struct allnet_app_media_header *) (buffer + hsize);
+  writeb32 (amhp->app, 0);
+  writeb32 (amhp->media, ALLNET_MEDIA_TEXT_PLAIN);
+  char * dp = buffer + hsize + h2size;
   memcpy (dp, data, dsize);
   int ssize = 0;
   if ((key != NULL) && (ksize > 0)) {
@@ -85,7 +90,7 @@ static void broadcast (int sock, char * data, int dsize, int hops,
       free (sig);
     }
   }
-  int send_size = hsize + dsize + ssize;
+  int send_size = hsize + h2size + dsize + ssize;
   /* send with relatively low priority */
   send_pipe_message (sock, buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW);
 }
@@ -120,8 +125,12 @@ int main (int argc, char ** argv)
 
   char buffer [100000];
   while (fgets (buffer, sizeof (buffer), stdin) == buffer) {
+    char * eol = rindex (buffer, '\n');
+    if ((eol != NULL) && (strlen (buffer) == 1 + (eol - buffer)))
+       *eol = '\0';
     broadcast (sock, buffer, strlen (buffer), hops,
                key->priv_key, key->priv_klen,
                key->address, ADDRESS_BITS, key->address, ADDRESS_BITS);
   }
+  return 0;
 }

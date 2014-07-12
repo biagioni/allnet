@@ -226,6 +226,65 @@ struct allnet_key_request {
  * The difference is: */
 #define ALLNET_Y2K_SECONDS_IN_UNIX	946720800
 
+/* data messages and clear messages carry, after the message ID (if any),
+ * an application and media header that identifies the intended application
+ * and media type.  It is up to the receiving application to use these
+ * to identify messages intended for itself.
+ */
+#define ALLNET_APP_ID_SIZE		4
+#define ALLNET_MEDIA_ID_SIZE		4
+struct allnet_app_media_header {
+  unsigned char app [ALLNET_APP_ID_SIZE];
+  unsigned char media [ALLNET_MEDIA_ID_SIZE];
+};
+
+/* common media types */
+#define ALLNET_MEDIA_TEXT_PLAIN		1	   /* UTF-8 text */
+#define ALLNET_MEDIA_TEXT_HTML		2	   /* UTF-8 text */
+#define ALLNET_MEDIA_TEXT_XML		3	   /* UTF-8 text */
+#define ALLNET_MEDIA_TEXT_VCARD		4	   /* UTF-8 text */
+
+#define ALLNET_MEDIA_DATA		0x10000001 /* uninterpreted data */
+#define ALLNET_MEDIA_COMPOUND_ALLNET	0x10000002 /* compound, see below */
+
+#define ALLNET_MEDIA_AUDIO_RAW		0x20000001 /* WAV raw LPCM audio */
+#define ALLNET_MEDIA_AUDIO_BASIC	0x20000002 /* mu-law 8KHz audio */
+#define ALLNET_MEDIA_AUDIO_MP4		0x20000003 /* MP4 audio */
+#define ALLNET_MEDIA_AUDIO_OGG_VORBIS	0x20000004 /* Ogg Vorbis audio */
+
+#define ALLNET_MEDIA_IMAGE_RAW_TIFF	0x30000001 /* TIFF/EP raw image */
+#define ALLNET_MEDIA_IMAGE_RAW_EXIF	0x30000002 /* Exif/TIFF raw image */
+#define ALLNET_MEDIA_IMAGE_JPEG		0x30000003 /* JPEG compressed image */
+#define ALLNET_MEDIA_IMAGE_PNG		0x30000004 /* PNG compressed image */
+#define ALLNET_MEDIA_IMAGE_GIF		0x30000005 /* GIF compressed image */
+#define ALLNET_MEDIA_IMAGE_SVG		0x30000006 /* SVG vector image */
+
+#define ALLNET_MEDIA_VIDEO_WEBM		0x40000002 /* WebM compressed video */
+#define ALLNET_MEDIA_VIDEO_MPEG		0x40000003 /* MPEG-1 video/audio */
+#define ALLNET_MEDIA_VIDEO_MP4		0x40000004 /* MP4 video/audio */
+#define ALLNET_MEDIA_VIDEO_OGG_THEORA	0x40000005 /* Ogg Theora video */
+#define ALLNET_MEDIA_VIDEO_QUICKTIME	0x40000006 /* Quicktime video */
+#define ALLNET_MEDIA_VIDEO_AVI		0x40000007 /* AVI video */
+/* allnet-specific media types */
+#define ALLNET_MEDIA_TIME_TEXT_BIN	0x80000001 /* in UTF-8 then binary */
+#define ALLNET_MEDIA_PUBLIC_KEY		0x80000002
+#define ALLNET_MEDIA_UNKNOWN		0xFFFFFFFF
+
+/* a compound data in AllNet format is a sequence of entries, each of format: */
+struct allnet_compound_data {
+  /* the media field may be ALLNET_MEDIA_COMPOUND_ALLNET, allowing recursion */
+  unsigned char media [ALLNET_MEDIA_ID_SIZE];
+  /* if 1, the field is terminated by the string.  If 0, the field has
+   * length given by the string (interpreted in binary big-endian) */
+  unsigned char terminated_not_length;
+  unsigned char term_or_length_size;   /* number of bytes in term_or_length */
+  /* if terminated_not_length > 0, term_or_length contains the terminating
+   * string that indicates the end of the content.
+   * if terminated_not_length == 0, term_or_length contains the length
+   * of the content, in bytes. */
+  unsigned char term_or_length [0 /* really, term_or_length_size */ ]; 
+};
+
 /* a message with all possible header fields */
 struct allnet_header_max {
   unsigned char version;

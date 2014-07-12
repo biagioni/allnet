@@ -212,8 +212,6 @@ int same_ai (struct addr_info * a, struct addr_info * b)
   return 0;  /* different versions, no ipv4 in ipv6 match */
 }
 
-#define DEBUG_PRINT
-
 /* if this is an IPv4-encoded-as-IPv6 address, make it an IPv4 address again */
 void standardize_ip (struct sockaddr * ap, socklen_t asize)
 {

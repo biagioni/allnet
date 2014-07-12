@@ -59,7 +59,7 @@ int main (int argc, char ** argv)
   char * kcontact = NULL;
   char * my_secret = NULL;
   char * peer_secret = NULL;
-#define MAX_SECRET	12
+#define MAX_SECRET	15  /* including a terminating null character */
   char my_secret_buf [MAX_SECRET];
   char peer_secret_buf [200];
   int kmax_hops = 0;
@@ -168,7 +168,7 @@ int main (int argc, char ** argv)
       printf ("from '%s'%s got %s%s%s\n  %s\n", peer, ver_mess, dup_mess, 
               bc_mess, desc, message);
     } else if (mlen == -1) {  /* successful key exchange */
-      printf ("success!  got remote key\n");
+      printf ("success!  got remote key for %s\n", kcontact);
       gettimeofday (&deadline, NULL);
       add_time (&deadline, 5000);  /* wait 5 more seconds */
     }

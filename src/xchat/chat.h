@@ -3,7 +3,7 @@
 #ifndef ALLNET_CHAT_H
 #define ALLNET_CHAT_H
 
-#include "lib/packet.h"	/* MESSAGE_ID_SIZE */
+#include "lib/packet.h"	/* MESSAGE_ID_SIZE, struct app_media_header */
 
 /* messages are indexed by a 64-bit counter, which must be forever unique over
  * all messages between a given pair of sender and receiver, or for a given
@@ -32,7 +32,9 @@
  *
  */
 
-#define XCHAT_SOCKET_PORT 	     (htons (0xa11c))  /* ALLnet Chat, 41244 */
+#define XCHAT_ALLNET_APP_ID	0x58434854 /* XCHT */
+
+#define XCHAT_SOCKET_PORT 	(htons (0xa11c))  /* ALLnet Chat, 41244 */
 
 /* the chat descriptor is sent before the user text, in the first
  * 32 bytes of the data of the AllNet packet */
@@ -42,6 +44,7 @@
 
 struct chat_descriptor {
   unsigned char message_ack [MESSAGE_ID_SIZE];
+  struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];
   unsigned char timestamp   [ TIMESTAMP_SIZE];
 };
@@ -52,6 +55,7 @@ struct chat_descriptor {
 
 struct chat_control {
   unsigned char message_ack [MESSAGE_ID_SIZE];
+  struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
   unsigned char type;
 };
@@ -72,6 +76,7 @@ struct chat_control {
  */
 struct chat_control_request {
   unsigned char message_ack [MESSAGE_ID_SIZE];
+  struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
   unsigned char type;                   /* always CHAT_CONTROL_TYPE_REQUEST */
   unsigned char num_singles;

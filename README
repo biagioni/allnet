@@ -91,41 +91,62 @@ In one window simply run
 In another window, run
    bin/xchats friends-name message
 
-where "friends-name" is the name of your friend as specified to xkeys/xkeyr
-(see below), and message is the message you want to send to your friend.
-The message ends when you press return.  It is generally best to enclose
-the message in double quotes, otherwise the shell may interpret any special
-characters such as quotes, question marks, etc.
+where "friends-name" is the name of your friend as specified in the key
+exchange (see below), and message is the message you want to send to
+your friend.  The message ends when you press return.  It is generally
+best to enclose the message in double quotes, otherwise the shell may
+interpret any special characters such as quotes, question marks, etc.
 
 For example,
-   /bin/xchats john "how are you today?"
+   bin/xchats john "how are you today?"
 
 john's answer, if any, appears in the xchatr window.  You can then type:
-   /bin/xchats john "life is wonderful!"
+   bin/xchats john "life is wonderful!"
 
-Before you can chat with a friend, you must exchange keys.  In order
-to do this securely, you and your friend must both know a shared secret
-string.  This string should be a string of 6-12 random letters, preferably
-exchanged in person, over the phone, or through some other secure medium.
-(if your exchange is not secure, an attacker may be able to listen in
-on your conversations, or even send fake messages to one or both of you).
+Before you can chat with a friend, you must exchange keys.  This can be
+done from the GUI, in the "New Contact" tab, or using bin/xchats -k
+(the commands xkeyr and xkeys from previous versions of AllNet are now
+obsolete).
 
-The secret string should NOT have digits, punctuation, or the like.
-Anything other than the letters A-Z is ignored, as is the case (upper
-or lower case) of the letters.
+In order to securely exchange keys, you and your friend must both know
+a shared secret string that is provided for you by either the GUI,
+or xchats -k.  The string is conveniently short if you are directly
+connected to your contact, and more securely long if you are communicating
+over longer distances.  One side needs to enter the other side's secret
+string -- it does not matter which of the two is used.
 
-Once you have the secret, the first one of you runs
-   bin/xkeyr friends-name secret-string
+The secret string must be exchanged in an authenticated way between you
+and your friend.  That means you must be sure that it is really your
+friend that gave you the secret, and not somebody else.  The secret
+also really should be a secret, that is, only known to the two of you,
+for at least the time needed for the key exchange.  If your exchange is
+not secure, an attacker may be able to listen in on your conversations,
+or even send fake messages to one or both of you.
+
+Once you have the secret, one of you runs
+   bin/xchats -k contact-name number-of-hops secret-string
 
 and the second one runs
-   bin/xkeys friends-name secret-string 10
+   bin/xchats -k contact-name number-of-hops
 
-Again, "friends-name" is any name each of you chooses, to identify
-the other friend.
+The equivalent in the bin/xchat program is to enter the contact name,
+and select the appropriate button (1st, 4th, or 5th).  One of you also
+has to enter the contact's secret.
 
-This exchange normally succeeds the first time, but if necessary, can
-be repeated, as often as needed until it succeeds.  After the key exchange
-is successful, you can use chat as described above.
+Again, "contact-name" is any name each of you chooses, to identify
+the other person.  Number-of-hops is 1 for a direct connection, and
+typically 10 otherwise.
+
+If the exchange is not successful, the contact may have been
+partially created.  If so, find it under your home directory's
+.allnet/contacts/ directory (i.e. ~/.allnet/contacts/), under
+the date and time that you tried to exchange the keys.  Check
+the name with
+   cat ~/.allnet/contacts/YYYYMMDDhhmmss/name
+(where YYYYMMDDhhmmss are the date and time), then, if you really
+want to remove it, do so using
+   mkdir -p ~/.allnet/unused
+   mv ~/.allnet/contacts/YYYYMMDDhhmmss ~/.allnet/unused/
 
             ======== broadcast/subscribe ======== 
 
@@ -174,7 +195,8 @@ ahra is secure as long as the word pairs are different.
 
 This rather long explanation is needed to make it clear that more word
 pairs make an ahra more secure -- the personal phrase by itself ("AllNet
-is wonderful"@) is a valid ahra, but is not at all secure.
+is wonderful"@) is a valid ahra, but is not at all secure, since anybody
+can claim it and use it.
 
 Finally, if someone gives you an ahra for a broadcast server, you may
 subscribe to that.  AllNet runs an hourly time signal server with ahra

@@ -845,7 +845,7 @@ static void init_key_info (char * config_dir, char * file,
   sha512_bytes (mapped, mlen, key->address, ADDRESS_SIZE);
   free (mapped);
 
-  key->identifier = strcpy_malloc (phrase, "keys.c init_key_info");
+  key->identifier = strcpy_malloc (file, "keys.c init_key_info");
 
   char * fname = strcat3_malloc (config_dir, "/", file, "init_key_info fname");
   RSA * rsa = NULL;
@@ -1122,13 +1122,15 @@ static char * make_address (RSA * key, int key_bits,
     free (encoded_position);
   }
   off += snprintf (result + off, rsize - off, ",%s,%d", lang, bitstring_bits);
-/*
+
   printf ("make_address ==> %s\n", result);
 char * pkey;
 int pklen;
 rsa_to_external_pubkey (key, &pkey, &pklen);
 print_buffer (pkey, pklen, "public key", 12, 1);
-*/
+printf ("make_address verify_bc_key (%s) = %d\n", result,
+verify_bc_key (result, pkey, pklen, "en", 16, 0));
+
   return result;
 }
 
@@ -1294,10 +1296,12 @@ unsigned int verify_bc_key (char * address, char * key, int key_bytes,
     int hashpos = SHA512_BITS - ((i + 1) * bitstring_bits);
     if (! bitstring_matches (encrypted, positions [i], hash, hashpos,
                              bitstring_bits)) {
-/*    printf ("%d: no %d-bit match at positions %d/%d\n", i,
+
+      printf ("%d: no %d-bit match at positions %d/%d\n", i,
               bitstring_bits, positions [i], hashpos);
       print_bitstring (encrypted, positions [i], bitstring_bits, 1);
-      print_bitstring (hash, hashpos, bitstring_bits, 1); */
+      print_bitstring (hash, hashpos, bitstring_bits, 1);
+
       free (positions);
       return 0;
     }

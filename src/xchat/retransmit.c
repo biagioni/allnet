@@ -27,7 +27,9 @@ static char * gather_missing_info (char * contact, keyset k,
 {
   *rcvd_sequence = get_last_received (contact, k);
   if (*rcvd_sequence <= 0) {
+#ifdef DEBUG_PRINT
     printf ("never received for contact %s\n", contact);
+#endif /* DEBUG_PRINT */
     return NULL;
   }
   char * missing = get_missing (contact, k, singles, ranges);
@@ -70,6 +72,8 @@ static char * create_chat_control_request (char * contact, char * missing,
 
   bzero (request, size);
   struct chat_control_request * ccrp = (struct chat_control_request *) request;
+  writeb32 (ccrp->app_media.app, XCHAT_ALLNET_APP_ID);
+  writeb32 (ccrp->app_media.media, ALLNET_MEDIA_DATA);
   writeb64 (ccrp->counter, COUNTER_FLAG);
   ccrp->type = CHAT_CONTROL_TYPE_REQUEST;
   ccrp->num_singles = num_singles;
@@ -317,6 +321,11 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
   if (hp->type != CHAT_CONTROL_TYPE_REQUEST) {
     printf ("message type %d != %d, not a retransmit request\n",
             hp->type, CHAT_CONTROL_TYPE_REQUEST);
+    return;
+  }
+  if (readb32 (hp->app_media.app) != XCHAT_ALLNET_APP_ID) {
+    printf ("message app %08lx != %08x, not an xchat message\n",
+            readb32 (hp->app_media.app), XCHAT_ALLNET_APP_ID);
     return;
   }
   int expected_size = COUNTER_SIZE * (hp->num_singles + 2 * hp->num_ranges)

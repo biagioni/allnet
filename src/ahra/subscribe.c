@@ -14,8 +14,7 @@
 #include "lib/cipher.h"
 #include "lib/keys.h"
 
-static int send_key_request (int sock, char * phrase,
-                             char * pubkey, int ksize) 
+static int send_key_request (int sock, char * phrase)
 {
   /* compute the destination address from the phrase */
   char destination [ADDRESS_SIZE];
@@ -24,7 +23,7 @@ static int send_key_request (int sock, char * phrase,
   sha512_bytes (mapped, mlen, destination, 1);
   free (mapped);
 
-  int dsize = 1 + ksize;  /* nbits_fingerprint plust the key */
+  int dsize = 1;  /* nbits_fingerprint plus the key */
   int psize;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
@@ -43,8 +42,6 @@ static int send_key_request (int sock, char * phrase,
   struct allnet_key_request * kp =
     (struct allnet_key_request *) (packet + hsize);
   kp->nbits_fingerprint = 0;
-  char * reply_key = packet + hsize + 1;
-  memcpy (reply_key, pubkey, ksize);
 
 /* printf ("sending %d-byte key request\n", psize); */
   if (! send_pipe_message_free (sock, packet, psize, ALLNET_PRIORITY_LOCAL)) {
@@ -54,8 +51,7 @@ static int send_key_request (int sock, char * phrase,
   return 1;
 }
 
-static int handle_packet (char * message, int msize,
-                          char * privkey, int ksize, char * ahra, int debug)
+static int handle_packet (char * message, int msize, char * ahra, int debug)
 {
   if (! is_valid_message (message, msize)) {
     if (debug)
@@ -66,32 +62,30 @@ static int handle_packet (char * message, int msize,
     print_packet (message, msize, "handle_packet", 1);
   struct allnet_header * hp = (struct allnet_header *) message;
   int hsize = ALLNET_SIZE (hp->transport);
-  if (hp->message_type != ALLNET_TYPE_DATA)
+  int h2size = sizeof (struct allnet_app_media_header);
+  if (hp->message_type != ALLNET_TYPE_CLEAR)
     return 0;
-  if (msize <= hsize)  /* nothing to decrypt */
+  if (msize <= hsize + h2size)  /* nothing */
     return 0;
+  int ksize = msize - (hsize + h2size);
 
-  char * after_header = message + hsize;
-  /* print_buffer (after_header, msize - hsize, "payload", 900, 1); */
-  char * text;
-  int tsize = decrypt (after_header, msize - hsize, privkey, ksize, &text);
-  if (tsize <= 0) {
-    printf ("decryption of %d bytes with %d-byte key failed\n",
-            msize - hsize, ksize);
+  char * amp = message + hsize;
+  struct allnet_app_media_header * amhp =
+    (struct allnet_app_media_header *) amp;
+  if (readb32 (amhp->media) != ALLNET_MEDIA_PUBLIC_KEY)
     return 0;
-  }
+  char * key = amp + h2size;
+  print_buffer (key, ksize, "key", 10, 1);
 
-  int correct = verify_bc_key (ahra, text, tsize, "en", 16, 1);
+  int correct = verify_bc_key (ahra, key, ksize, "en", 16, 1);
   if (correct)
     printf ("received key %s does verify, saved\n", ahra);
   else
     printf ("received key does not verify\n");
-  free (text);
   return correct;  /* we are done */
 }
 
-static void wait_for_response (int sock, char * phrase,
-                               char * privkey, int privsize, char * ahra,
+static void wait_for_response (int sock, char * phrase, char * ahra,
                                int debug)
 {
   while (1) {
@@ -104,7 +98,7 @@ static void wait_for_response (int sock, char * phrase,
       printf ("allnet-subscribe pipe closed, exiting\n");
       exit (1);
     }
-    if (handle_packet (message, found, privkey, privsize, ahra, debug))
+    if (handle_packet (message, found, ahra, debug))
       return;
     free (message);
   }
@@ -156,15 +150,8 @@ int main (int argc, char ** argv)
   if (sock < 0)
     return 1;
 
-  char * pubkey;
-  char * privkey;
-  int privsize;
-  int ksize = get_temporary_key (&pubkey, &privkey, &privsize);
-  /* print_buffer (pubkey, ksize, "public key", ksize, 1); */
-  if (send_key_request (sock, phrase, pubkey, ksize)) 
-    wait_for_response (sock, phrase, privkey, privsize, argv [1], debug);
-  free (pubkey);   /* not very useful, just pro forma */
-  free (privkey);
+  if (send_key_request (sock, phrase)) 
+    wait_for_response (sock, phrase, argv [1], debug);
   return 0;
 }
 

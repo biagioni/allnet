@@ -18,6 +18,7 @@
 #include "lib/keys.h"
 
 #define CONFIG_DIR	"~/.allnet/keys"
+#define DEBUG_PRINT
 
 static void send_key (int sock, struct bc_key_info * key, char * return_key,
                       int rksize, char * address, int abits, int hops)
@@ -29,6 +30,7 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   int dlen = key->pub_klen;
   int type = ALLNET_TYPE_CLEAR;
   int allocated = 0;
+#if 0   /* if want to support, must encrypt allnet_app_media_header */
   if ((return_key != NULL) && (rksize > 0)) {  /* encrypt the key */
     type = ALLNET_TYPE_DATA;
     char * cipher;
@@ -46,14 +48,23 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
     dlen = csize;
     allocated = 1;
   }
+#endif /* 0 */
+  int amhsize = sizeof (struct allnet_app_media_header);
   int bytes;
   struct allnet_header * hp =
-    create_packet (dlen, type, hops, ALLNET_SIGTYPE_NONE, key->address, 16,
-                   address, abits, NULL, &bytes);
-  char * dp = ALLNET_DATA_START(hp, hp->transport, bytes);
+    create_packet (dlen + amhsize, type, hops, ALLNET_SIGTYPE_NONE,
+                   key->address, 16, address, abits, NULL, &bytes);
+  char * adp = ALLNET_DATA_START(hp, hp->transport, bytes);
+  struct allnet_app_media_header * amhp =
+    (struct allnet_app_media_header *) adp;
+  writeb32 (amhp->app, 0x6b657964 /* keyd */ );
+  writeb32 (amhp->media, ALLNET_MEDIA_PUBLIC_KEY);
+  char * dp = adp + amhsize;
   memcpy (dp, data, dlen);
   if (allocated)
     free (data);
+  print_buffer (dp, dlen, "key", 10, 1);
+printf ("verification is %d\n", verify_bc_key ("testxyzzy@by_sign.that_health", dp, dlen, "en", 16, 0));
 
   /* send with relatively low priority */
   char * message = (char *) hp;
@@ -114,6 +125,9 @@ static void handle_packet (int sock, char * message, int msize)
   for (i = 0; i < nkeys; i++) {
     int matching_bits =
       matches (hp->destination, hp->dst_nbits, keys [i].address, ADDRESS_BITS);
+    printf ("%02x <> %02x (%s): %d matching bits, %d needed\n",
+            hp->destination [0] & 0xff, keys [i].address [0] & 0xff,
+            keys [i].identifier, matching_bits, hp->dst_nbits);
     snprintf (log_buf, LOG_SIZE, "%02x <> %02x: %d matching bits, %d needed\n",
               hp->destination [0] & 0xff,
               keys [i].address [0] & 0xff, matching_bits, hp->dst_nbits);

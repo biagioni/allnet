@@ -22,15 +22,17 @@ int main (int argc, char ** argv)
 
   char * contact = NULL;
   char * secret = NULL;
-#define MAX_SECRET	14
+#define MAX_SECRET	15  /* including a terminating null character */
   char secret_buf [MAX_SECRET];
   int key_hops = 0;
   int print_duplicates = 0;
+  int seeking_key = 0;
   int i;
   for (i = 1; i < argc; i++) {
     if (strcmp (argv [i], "-a") == 0)
       print_duplicates = 1;
     if ((i + 1 < argc) && (strcmp (argv [i], "-k") == 0)) {
+      seeking_key = 1;
       /* -k contact-name [max-hops]: exchange keys for this new contact */
       contact = argv [i + 1];
       if (i + 2 < argc) {
@@ -112,6 +114,8 @@ int main (int argc, char ** argv)
         free (message);
         if (! broadcast)
           free (desc);
+      } else if ((mlen == -1) && (seeking_key)) {
+        printf ("success!  got remote key for %s\n", contact);
       }
     }
   }

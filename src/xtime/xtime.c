@@ -108,7 +108,8 @@ static void binary_time_to_buf (time_t t, char * dp, int n)
 
 /* sent as string, followed by null char, followed by 8 bytes of binary time
  * in big-endian format */
-#define TIMESTAMP_SIZE 	(25 + 4 + 8)  /* ctime requires 26, plus " UTC" */
+#define TIMESTAMP_SIZE 	(25 + 4 + 8 +  /* ctime requires 26, plus " UTC" */ \
+                         sizeof (struct allnet_app_media_header))
 /* we remove the \n that ctime returns, so the actual size is one less */
 /* returns the number of bytes to send */
 
@@ -121,6 +122,12 @@ static int time_to_buf (time_t t, char * dp, int n)
     /* best we can do -- empty binary string */
     return 9;
   }
+  struct allnet_app_media_header * amhp = (struct allnet_app_media_header *) dp;
+  writeb32 (amhp->app, 0x7874696d /* xtim */ );
+  writeb32 (amhp->media, ALLNET_MEDIA_TIME_TEXT_BIN);
+  dp += sizeof (struct allnet_app_media_header);
+  n -= sizeof (struct allnet_app_media_header);
+
   time_t unix_time = t + ALLNET_Y2K_SECONDS_IN_UNIX;  /* restore unix time */
   struct tm details;
   gmtime_r (&unix_time, &details);
@@ -141,9 +148,11 @@ static int make_announcement (char * buffer, int n,
                               char * source, int sbits,
                               char * dest, int dbits)
 {
-  if (n < ALLNET_HEADER_SIZE + ALLNET_TIME_SIZE) {
-    printf ("error: n %d should be at least %zd + %d\n",
-            n, ALLNET_HEADER_SIZE, ALLNET_TIME_SIZE);
+  int hsize = ALLNET_SIZE (ALLNET_TRANSPORT_EXPIRATION);
+  int h2size = sizeof (struct allnet_app_media_header);
+  if (n < hsize + h2size + ALLNET_TIME_SIZE) {
+    printf ("error: n %d should be at least %d + %d + %d\n",
+            n, hsize, h2size, ALLNET_TIME_SIZE);
     exit (1);
   }
   /* the signature type will be changed later when we sign the message */
@@ -157,10 +166,12 @@ static int make_announcement (char * buffer, int n,
   }
   hp->transport |= ALLNET_TRANSPORT_EXPIRATION;
 
-  int hsize = ALLNET_SIZE (hp->transport);
-  if (hsize > n) {
+  hsize = ALLNET_SIZE (hp->transport); /* there may be other transport fields */
+  if (n < hsize + h2size + ALLNET_TIME_SIZE) {
+    printf ("error2: n %d should be at least %d + %d + %d\n",
+            n, hsize, h2size, ALLNET_TIME_SIZE);
     snprintf (log_buf, LOG_SIZE,
-              "error: header size %d, buffer size %d\n", hsize, n);
+              "error: sizes %d + %d, buffer size %d\n", hsize, h2size, n);
     log_print ();
     return -1;
   }

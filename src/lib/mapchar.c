@@ -312,6 +312,16 @@ char * aaddr_encode_value (int value, char * lang)
   return result;
 } 
 
+static void aaddr_copy (char * buf, int bsize, char * in, char terminator)
+{
+  int i = 0;
+  while ((i + 1 < bsize) && (in [i] != terminator)) {
+    buf [i] = in [i];
+    i ++;
+  }
+  buf [i] = '\0';
+}
+
 /* return a value encoded by the string, or -1 in case of errors. */
 int aaddr_decode_value (char * string, int slen) 
 {
@@ -320,10 +330,16 @@ int aaddr_decode_value (char * string, int slen)
     printf ("unable to decode value %s, no underscore\n", string);
     return -1;
   }
+  char pre_buf [1000];
+  aaddr_copy (pre_buf, sizeof (pre_buf), string, '_');
+  char post_buf [1000];
+  aaddr_copy (post_buf, sizeof (post_buf), middle + 1, '\0');
+printf ("pre is %s, post is %s\n", pre_buf, post_buf);
+
   int pre, post;
   int first = -1;
   for (pre = 0; pre < 128; pre++) {
-    if (strncmp (default_pre [pre], string, strlen (default_pre [pre])) == 0) {
+    if (strcmp (default_pre [pre], pre_buf) == 0) {
       first = pre;
       break;
     }
@@ -334,8 +350,7 @@ int aaddr_decode_value (char * string, int slen)
   }
   int second = -1;
   for (post = 0; post < 128; post++) {
-    if (strncmp (default_post [post], middle + 1,
-                 strlen (default_post [post])) == 0) {
+    if (strcmp (default_post [post], post_buf) == 0) {
       second = post;
       break;
     }

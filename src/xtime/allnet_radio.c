@@ -28,10 +28,16 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
     print_packet (message, msize, "handle_packet", 1);
 
   struct allnet_header * hp = (struct allnet_header *) message;
-  int hsize = ALLNET_SIZE (hp->transport);
+  int hsize = ALLNET_SIZE (hp->transport) +
+              sizeof (struct allnet_app_media_header);
+  if (msize <= hsize)  /* nothing to receive */
+    return 0;
   if (hp->message_type != ALLNET_TYPE_CLEAR)
     return 0;
-  if (msize <= hsize)  /* nothing to receive */
+  struct allnet_app_media_header * amhp =
+    (struct allnet_app_media_header *) (message + ALLNET_SIZE (hp->transport));
+  if ((readb32 (amhp->media) != ALLNET_MEDIA_TEXT_PLAIN) &&
+      (readb32 (amhp->media) != ALLNET_MEDIA_TIME_TEXT_BIN))
     return 0;
 
   char * payload = message + hsize;
@@ -61,8 +67,11 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   if (strcmp (from, "unknown sender") == 0)
     printf ("got %d other keys, none matched %d %p\n", nkeys, ssize, sig);
 
+  *sig = '\0';  /* null-terminate the string */
   printf ("from %s: %s\n", from, payload);
-  if (psize == strlen (payload) + 9) {  /* see how long it took */
+  if ((psize == strlen (payload) + 9) &&
+      (readb32 (amhp->media) == ALLNET_MEDIA_TIME_TEXT_BIN)) {
+  /* message from time server, see how long it took */
     char * bin_time = payload + strlen (payload) + 1;
     unsigned long long int packet_time = readb64 (bin_time);
     printf ("  sent at %lld seconds, ", packet_time);

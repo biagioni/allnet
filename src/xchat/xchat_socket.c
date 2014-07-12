@@ -297,12 +297,14 @@ int main (int argc, char ** argv)
   char saddr [ADDRESS_SIZE];
   int sbits = 0;
   while (1) {
+/* use temp (loop local) buffers, then copy them to kbuf* if code is 2 */
     char to_send [ALLNET_MTU];
     char peer [ALLNET_MTU];
+    char extra [ALLNET_MTU];
     int code;
     time_t rtime;
     int len = recv_message (forwarding_socket, &code, &rtime, peer, to_send,
-                            kbuf3);
+                            extra);
     if (len > 0) {
       if (code == 0)
         send_data_message (sock, peer, to_send, strlen (to_send));
@@ -312,7 +314,8 @@ int main (int argc, char ** argv)
         key_contact = kbuf1;
         key_secret = kbuf2;
         normalize_secret (key_secret);
-        if (strlen (kbuf3) > 0) {
+        if (strlen (extra) > 0) {
+          strcpy (kbuf3, extra);
           key_secret2 = kbuf3;
           normalize_secret (key_secret2);
         }

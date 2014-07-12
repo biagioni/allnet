@@ -441,8 +441,8 @@ class UIController implements ControllerInterface, UIAPI {
                 long sentTime = XchatSocket.sendToPeer(peer, msgText);
                 if (sentTime > 0) {
                   messageSent(peer, sentTime, msgText);
-                  System.out.println("UIController.java: sent to " + peer +
-                                     ": " + msgText);
+//                  System.out.println("UIController.java: sent to " + peer +
+//                                     ": " + msgText);
                 }
                 break;
             case ConversationPanel.EXCHANGE_KEYS_COMMAND:

@@ -106,6 +106,10 @@ int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
 
   uint64_t compound = make_time_tz (now, my_time_offset);
   writeb64 (cp->timestamp, compound);
+
+  /* the fixed part of the header */
+  writeb32 (cp->app_media.app, XCHAT_ALLNET_APP_ID);
+  writeb32 (cp->app_media.media, ALLNET_MEDIA_TEXT_PLAIN);
   return 1;
 }
 

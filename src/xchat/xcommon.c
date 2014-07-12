@@ -17,6 +17,8 @@
 #include "lib/log.h"
 #include "lib/sha.h"
 
+/* #define DEBUG_PRINT */
+
 static void request_cached_data (int sock, int hops)
 {
   int size;
@@ -125,12 +127,26 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
 #endif /* DEBUG_PRINT */
     return 0;
   }
+  struct allnet_app_media_header * amhp =
+    (struct allnet_app_media_header *) data;
+  int media = 0;
+  if (dsize >= sizeof (struct allnet_app_media_header) + 2)
+    media = readb32 (amhp->media);
+  if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
+      (media != ALLNET_MEDIA_TIME_TEXT_BIN)) {
+#ifdef DEBUG_PRINT
+    printf ("handle_clear ignoring unknown media type %08x, dsize %d\n",
+            media, dsize);
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
   int ssize = readb16 (data + (dsize - 2)) + 2;  /* size of the signature */
   if ((ssize <= 2) || (dsize <= ssize)) {
     printf ("data packet size %d less than sig %d, dropping\n", dsize, ssize);
     return 0;
   }
-  int text_size = dsize - ssize;
+  data += sizeof (struct allnet_app_media_header);
+  int text_size = dsize - sizeof (struct allnet_app_media_header) - ssize;
   char * sig = data + text_size;
 #ifdef DEBUG_PRINT
   printf ("data size %d, text %d + sig %d\n", dsize, text_size, ssize);
@@ -208,6 +224,16 @@ static int handle_data (int sock, struct allnet_header * hp,
   printf ("got packet from contact %s\n", *contact);
 #endif /* DEBUG_PRINT */
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
+  int app = readb32 (cdp->app_media.app);
+  int media = readb32 (cdp->app_media.media);
+  if ((app != XCHAT_ALLNET_APP_ID) || (media != ALLNET_MEDIA_TEXT_PLAIN)) {
+#ifdef DEBUG_PRINT
+    printf ("handle_data ignoring unknown app %08x, media type %08x\n",
+            app, media);
+    print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
   char * cleartext = text + CHAT_DESCRIPTOR_SIZE;
   int msize = tsize - CHAT_DESCRIPTOR_SIZE;
 
@@ -254,6 +280,20 @@ static int handle_sub (int sock, struct allnet_header * hp,
 #ifdef DEBUG_PRINT
     printf ("handle_sub calling verify_bc_key\n");
 #endif /* DEBUG_PRINT */
+    struct allnet_app_media_header * amhp =
+      (struct allnet_app_media_header *) data;
+    int media = 0;
+    if (dsize >= sizeof (struct allnet_app_media_header) + 2)
+      media = readb32 (amhp->media);
+    if (media != ALLNET_MEDIA_PUBLIC_KEY) {
+#ifdef DEBUG_PRINT
+      printf ("handle_sub ignoring unknown media type %08x, dsize %d\n",
+              media, dsize);
+#endif /* DEBUG_PRINT */
+      return 0;
+    }
+    data += sizeof (struct allnet_app_media_header);
+    dsize -= sizeof (struct allnet_app_media_header);
     int correct = verify_bc_key (subscription, data, dsize, "en", 16, 1);
     if (correct)
       printf ("received key does verify %s, saved\n", subscription);
@@ -302,6 +342,9 @@ static int handle_key (int sock, struct allnet_header * hp,
                        char * data, int dsize, char * contact,
                        char * secret1, char * secret2, int max_hops)
 {
+#ifdef DEBUG_PRINT
+  printf ("in handle_key (%s, %s, %s)\n", contact, secret1, secret2);
+#endif /* DEBUG_PRINT */
   if ((contact == NULL) || (secret1 == NULL))
     return 0;
   if (hp->hops > max_hops)
@@ -313,7 +356,9 @@ static int handle_key (int sock, struct allnet_header * hp,
             contact, nkeys);
     return 0;
   }
-printf ("handle_key received key\n");
+#ifdef DEBUG_PRINT
+  printf ("handle_key received key\n");
+#endif /* DEBUG_PRINT */
   char peer_addr [ADDRESS_SIZE];
   int peer_bits;
   int key_index = -1;
@@ -325,7 +370,9 @@ printf ("handle_key received key\n");
     if ((klen <= 0) &&
         ((peer_bits <= 0) ||
          (matches (peer_addr, peer_bits, hp->source, hp->src_nbits) > 0))) {
-printf ("handle_key matches at index %d/%d\n", i, nkeys);
+#ifdef DEBUG_PRINT
+      printf ("handle_key matches at index %d/%d\n", i, nkeys);
+#endif /* DEBUG_PRINT */
       key_index = i;
       break;
     }
@@ -343,6 +390,17 @@ printf ("handle_key matches at index %d/%d\n", i, nkeys);
 
   char * received_key = data;
   int ksize = dsize - SHA512_SIZE;
+  /* check to see if it is my own key */
+  for (i = 0; i < nkeys; i++) {
+    char * test_key;
+    int test_klen = get_my_pubkey (keys [i], &test_key);
+    if ((test_klen == ksize) && (memcmp (received_key, test_key, ksize) == 0)) {
+/* it is fairly normal to get my own key back.  Ignore.
+*/
+      printf ("handle_key: got my own key\n");
+      return 0;
+    }
+  }
   char * received_hmac = data + ksize;
   char hmac [SHA512_SIZE];
   sha512hmac (received_key, ksize, secret1, strlen (secret1), hmac);
@@ -352,11 +410,15 @@ printf ("handle_key matches at index %d/%d\n", i, nkeys);
     sha512hmac (received_key, ksize, secret2, strlen (secret2), hmac);
     found2 = (memcmp (hmac, received_hmac, SHA512_SIZE) == 0);
   }
-printf ("hmac gives %d/%d\n", found1, found2);
+#ifdef DEBUG_PRINT
+  printf ("hmac gives %d/%d\n", found1, found2);
+#endif /* DEBUG_PRINT */
   if ((found1) || (found2)) {
+#ifdef DEBUG_PRINT
     printf ("received valid public key %p/%d for '%s'/%d\n", received_key,
             ksize, contact, key_index);
     print_buffer (received_key, ksize, "key", 10, 1);
+#endif /* DEBUG_PRINT */
     if (set_contact_pubkey (keys [key_index], received_key, ksize)) {
       if (hp->src_nbits > 0)
         set_contact_remote_addr (keys [key_index], hp->src_nbits, hp->source);
@@ -365,6 +427,7 @@ printf ("hmac gives %d/%d\n", found1, found2);
       if (found2)   /* use peer's secret */
         secret = secret2;
       /* else peer sent us a valid key, must know our secret1 */
+printf ("sending back key with secret %s\n", secret);
       if (! send_key (sock, contact, keys [key_index], secret,
                       hp->source, hp->src_nbits, max_hops))
         printf ("send_key failed for key index %d/%d\n", key_index, nkeys);
@@ -373,7 +436,9 @@ printf ("hmac gives %d/%d\n", found1, found2);
     printf ("handle_key error: set_contact_pubkey returned 0\n");
     return 0;
   }
-printf ("public key does not check with secrets %s %s\n", secret1, secret2);
+#ifdef DEBUG_PRINT
+  printf ("public key does not check with secrets %s %s\n", secret1, secret2);
+#endif /* DEBUG_PRINT */
   return 0;
 }
 
@@ -554,7 +619,7 @@ int create_contact_send_key (int sock, char * contact, char * secret1,
   if (send_key (sock, contact, kset, secret1, address, abits, hops)) {
     printf ("send_key sent key to contact %s, %d hops, secret %s\n",
             contact, hops, secret1);
-    if ((secret2 != NULL) &&
+    if ((secret2 != NULL) && (strlen (secret2) > 0) &&
         (send_key (sock, contact, kset, secret2, address, abits, hops)))
       printf ("send_key also sent key to contact %s, %d hops, secret %s\n",
               contact, hops, secret2);
