@@ -186,7 +186,7 @@ class NewContactPanel extends JPanel {
                  "give contact your short secret<br>" +
                  "or enter their short secret below",
             "you know your contact's AllNet address:<br>" +
-                 "enter the address below",
+                 "enter the address above, as the contact name",
             "you are both contacts of:<br>" +
                  "enter the name below",
             "you are in contact over telephone<br>" +
