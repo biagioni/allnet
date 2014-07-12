@@ -18,7 +18,6 @@
 #include "lib/keys.h"
 
 #define CONFIG_DIR	"~/.allnet/keys"
-#define DEBUG_PRINT
 
 static void send_key (int sock, struct bc_key_info * key, char * return_key,
                       int rksize, char * address, int abits, int hops)

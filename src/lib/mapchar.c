@@ -1,6 +1,7 @@
 /* mapchar.c: encode characters to 4-bit strings in ways that make it more
  *            difficult to make mistakes.
  * also encode numeric positions as memorable strings
+ * and finally, a homage to the humble mapcar of LISP fame.
  */
 
 #include <stdio.h>
@@ -312,10 +313,10 @@ char * aaddr_encode_value (int value, char * lang)
   return result;
 } 
 
-static void aaddr_copy (char * buf, int bsize, char * in, char terminator)
+static void aaddr_copy (char * buf, int bsize, char * in)
 {
   int i = 0;
-  while ((i + 1 < bsize) && (in [i] != terminator)) {
+  while ((i + 1 < bsize) && (in [i] != '\0') && (isalpha (in [i]))) {
     buf [i] = in [i];
     i ++;
   }
@@ -326,15 +327,18 @@ static void aaddr_copy (char * buf, int bsize, char * in, char terminator)
 int aaddr_decode_value (char * string, int slen) 
 {
   char * middle = index (string, '_');
+  if (middle == NULL) 
+    middle = index (string, '-');
+  if (middle == NULL) 
+    middle = index (string, ' ');  /* using spaces is bad form */
   if (middle == NULL) { 
     printf ("unable to decode value %s, no underscore\n", string);
     return -1;
   }
   char pre_buf [1000];
-  aaddr_copy (pre_buf, sizeof (pre_buf), string, '_');
+  aaddr_copy (pre_buf, sizeof (pre_buf), string);
   char post_buf [1000];
-  aaddr_copy (post_buf, sizeof (post_buf), middle + 1, '\0');
-printf ("pre is %s, post is %s\n", pre_buf, post_buf);
+  aaddr_copy (post_buf, sizeof (post_buf), middle + 1);
 
   int pre, post;
   int first = -1;

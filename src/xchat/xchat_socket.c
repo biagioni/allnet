@@ -359,7 +359,12 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
                                 key_secret2, num_hops,
                                 subscription, saddr, sbits);
       if ((mlen > 0) && (verified)) {
-        int mtype = (broadcast) ? 1 /* broadcast */ : 0; /* data */
+        int mtype = 0; /* data */
+        if (broadcast) {
+          mtype = 1;  /* broadcast */
+        }
+printf ("mtype %d, broadcast %d, duplicate %d, peer %s\n", 
+mtype, broadcast, duplicate, peer);
         if (broadcast || (! duplicate))
           send_message (forwarding_socket,
                         (struct sockaddr *) (&fwd_addr), fwd_addr_size,

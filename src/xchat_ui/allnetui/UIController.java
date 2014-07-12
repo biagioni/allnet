@@ -61,6 +61,7 @@ class UIController implements ControllerInterface, UIAPI {
 
             @Override
             public void run() {
+// System.out.println("processing received message " + message.toString());
                 processReceivedMessage(message);
             }
         };
@@ -467,6 +468,7 @@ class UIController implements ControllerInterface, UIAPI {
     private void processReceivedMessage(Message msg) {
         if (!clientData.contactExists(msg.from)) {
             // maybe should throw Exception here, in production code 
+            System.out.println("got message from unknown contact " + msg.from);
             return;
         }
         Conversation conv = clientData.getConversation(msg.from);

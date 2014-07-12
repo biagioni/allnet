@@ -71,7 +71,8 @@ public class AllNetContacts {
 //          System.out.println ("looking at path " + p + ", file " + name);
           int pos = name.indexOf("@");
           if (pos > 0) {
-            String contact = name.substring(0, pos);
+//            String contact = name.substring(0, pos);
+            String contact = name;
 //            System.out.println ("contact name " + contact);
             rlist.add (contact);
           }

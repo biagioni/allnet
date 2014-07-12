@@ -28,20 +28,22 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
     print_packet (message, msize, "handle_packet", 1);
 
   struct allnet_header * hp = (struct allnet_header *) message;
-  int hsize = ALLNET_SIZE (hp->transport) +
-              sizeof (struct allnet_app_media_header);
-  if (msize <= hsize)  /* nothing to receive */
+  int hsize = ALLNET_SIZE (hp->transport);
+  int h2size = sizeof (struct allnet_app_media_header);
+  if (msize <= hsize + h2size)  /* nothing to receive */
     return 0;
   if (hp->message_type != ALLNET_TYPE_CLEAR)
     return 0;
+  char * verif = message + hsize;
+  int vsize = msize - hsize;
   struct allnet_app_media_header * amhp =
-    (struct allnet_app_media_header *) (message + ALLNET_SIZE (hp->transport));
+    (struct allnet_app_media_header *) verif;
   if ((readb32 (amhp->media) != ALLNET_MEDIA_TEXT_PLAIN) &&
       (readb32 (amhp->media) != ALLNET_MEDIA_TIME_TEXT_BIN))
     return 0;
 
-  char * payload = message + hsize;
-  int psize = msize - hsize;
+  char * payload = verif + h2size;
+  int psize = vsize - h2size;
 
   int ssize = 0;
   char * sig = NULL;
@@ -51,15 +53,17 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
     if (ssize + 2 < psize) {
       sig = payload + (psize - (ssize + 2));
       psize -= ssize + 2;
+      vsize -= ssize + 2;
     }
   }
   char * from = "unknown sender";
   struct bc_key_info * keys;
   int nkeys = get_other_keys (&keys);
   if ((nkeys > 0) && (ssize > 0) && (sig != NULL)) {
+print_buffer (verif, vsize, "verifying", vsize, 1);
     int i;
     for (i = 0; i < nkeys; i++) {
-      if (verify (payload, psize, sig, ssize,
+      if (verify (verif, vsize, sig, ssize,
                   keys [i].pub_key, keys [i].pub_klen))
         from = keys [i].identifier;
     }

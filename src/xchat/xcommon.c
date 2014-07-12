@@ -129,6 +129,7 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   }
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) data;
+  char * verif = data;
   int media = 0;
   if (dsize >= sizeof (struct allnet_app_media_header) + 2)
     media = readb32 (amhp->media);
@@ -154,10 +155,11 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   struct bc_key_info * keys;
   int nkeys = get_other_keys (&keys);
   int i;
+/* print_buffer (verif, dsize - ssize, "verifying BC message", dsize, 1); */
   for (i = 0; i < nkeys; i++) {
     if ((matches (keys [i].address, ADDRESS_BITS,
                   hp->source, hp->src_nbits) > 0) &&
-        (verify (data, dsize - ssize, sig, ssize - 2,
+        (verify (verif, dsize - ssize, sig, ssize - 2,
                  keys [i].pub_key, keys [i].pub_klen))) {
       *contact = strcpy_malloc (keys [i].identifier,
                                 "handle_message broadcast contact");
@@ -166,8 +168,9 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
       (*message) [text_size] = '\0';   /* null-terminate the message */
       *broadcast = 1;
       *verified = 1;
+      printf ("verified bc message, contact %s, %d bytes\n",
+              keys [i].identifier, text_size);
 #ifdef DEBUG_PRINT
-      printf ("verified bc message, contact %s\n", keys [i].identifier);
 #endif /* DEBUG_PRINT */
       return text_size;
     } 
