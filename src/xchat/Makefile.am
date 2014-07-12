@@ -25,5 +25,5 @@ __ALLNET_BINDIR__xchatr_SOURCES = xchatr.c ${link} ${includes} ${libincludes}
 __ALLNET_BINDIR__xchats_SOURCES = xchats.c ${link} ${includes} ${libincludes}
 __ALLNET_BINDIR__xchat_SOURCES = xchat_socket.c ${link} ${includes} ${libincludes}
 __ALLNET_BINDIR__xchat_LDFLAGS = -lpthread
-__ALLNET_BINDIR__xkeys_SOURCES = xkeys.c ${link} ${includes} ${libincludes}
-__ALLNET_BINDIR__xkeyr_SOURCES = xkeyr.c ${link} ${includes} ${libincludes}
+# __ALLNET_BINDIR__xkeys_SOURCES = xkeys.c ${link} ${includes} ${libincludes}
+# __ALLNET_BINDIR__xkeyr_SOURCES = xkeyr.c ${link} ${includes} ${libincludes}
