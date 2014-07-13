@@ -60,7 +60,6 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   struct bc_key_info * keys;
   int nkeys = get_other_keys (&keys);
   if ((nkeys > 0) && (ssize > 0) && (sig != NULL)) {
-print_buffer (verif, vsize, "verifying", vsize, 1);
     int i;
     for (i = 0; i < nkeys; i++) {
       if (verify (verif, vsize, sig, ssize,
