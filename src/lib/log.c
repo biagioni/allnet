@@ -18,6 +18,10 @@ char log_buf [LOG_SIZE];    /* global */
 
 #define LOG_DIR		"log"
 
+#ifndef PATH_MAX
+#define PATH_MAX	1025
+#endif /* PATH_MAX */
+
 static char log_dir [PATH_MAX + 1] = LOG_DIR;
 
 static char * module_name = "unknown module -- have main call init_log()";
