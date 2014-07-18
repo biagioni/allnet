@@ -190,6 +190,7 @@ log_print ();
     *valid = 1;
     return 1;
   }
+#if 0    /* to do: keep track of public keys of f^n */
   for (i = 1; (i < MAX_SOCIAL_TIER) && (checked < soc->max_check); i++) {
     /* to do: move verification to table_find (otherwise table_find always
        returns the same result */
@@ -204,6 +205,7 @@ log_print ();
       checked++;
     }
   }
+#endif /* 0 */
   return UNKNOWN_SOCIAL_TIER;
 }
 

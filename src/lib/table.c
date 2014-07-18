@@ -241,7 +241,6 @@ int table_find (char * bitstring, int bits, struct table * table,
     struct table_entry * entry = table->table [first];
     while (entry != NULL) {
       /* print_table_entry (first, entry, table->bytes_per_entry); */
-/*    if (bits_match (entry->data, table->bytes_per_entry, bitstring, bits)) */
       if (matches (entry->data, table->bytes_per_entry * 8, bitstring, bits))
         return 1;
       /* printf ("no match on entry\n"); */
