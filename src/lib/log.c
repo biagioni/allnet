@@ -18,14 +18,17 @@ char log_buf [LOG_SIZE];    /* global */
 
 #define LOG_DIR		"log"
 
-#ifndef PATH_MAX
-#define PATH_MAX	1025
+#ifndef PATH_MAX	/* defined in a different place in some OS's */
+#include <sys/syslimits.h>
+#ifndef PATH_MAX	/* give up, just define it */
+#define PATH_MAX	4096
+#endif /* PATH_MAX */
 #endif /* PATH_MAX */
 
-static char log_dir [PATH_MAX + 1] = LOG_DIR;
+static char log_dir [PATH_MAX] = LOG_DIR;
 
 static char * module_name = "unknown module -- have main call init_log()";
-static char log_file_name [100] = "";
+static char log_file_name [PATH_MAX] = "";
 
 static int make_string ()
 {
@@ -118,7 +121,7 @@ void init_log (char * name)
   char * home = getenv ("HOME");
   if (home != NULL)
     snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
-  if (geteuid () == 0)
+  if (geteuid () == 0)  /* root user, keep the log in /var/log/allnet/ */
     snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
 
   module_name = name;
@@ -248,13 +251,8 @@ void log_packet (char * desc, char * packet, int plen)
 void log_error (char * syscall)
 {
   static char local_buf [LOG_SIZE + LOG_SIZE];
-  if (errno < sys_nerr) {
-    snprintf (local_buf, sizeof (local_buf), "%s: %s\n    %s",
-              syscall, sys_errlist [errno], log_buf);
-  } else {
-    snprintf (local_buf, sizeof (local_buf), "%s: unknown error %d\n    %s",
-              syscall, errno, log_buf);
-  }
+  snprintf (local_buf, sizeof (local_buf), "%s: %s\n    %s",
+            syscall, strerror (errno), log_buf);
   log_print_str (local_buf);
 }
 
