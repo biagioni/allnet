@@ -66,7 +66,7 @@ static void aes_ctr_crypt (char * key, char * ctr, char * data, int dsize,
 
 /* returns the number of encrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
-int encrypt (char * text, int tsize, char * key, int ksize, char ** res)
+int allnet_encrypt (char * text, int tsize, char * key, int ksize, char ** res)
 {
 #ifdef DEBUG_PRINT
   print_buffer (text, tsize, "encrypting", 16, 1);
@@ -180,7 +180,8 @@ static void test_rsa_encryption (char * key, int ksize)
 
 /* returns the number of decrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
-int decrypt (char * cipher, int csize, char * key, int ksize, char ** res)
+int allnet_decrypt (char * cipher, int csize, char * key, int ksize,
+                    char ** res)
 {
   if ((cipher == NULL) || (key == NULL) || (res == NULL) ||
       (csize < 0) || (ksize <= 0)) {
@@ -253,13 +254,15 @@ test_rsa_encryption (key, ksize);
 }
 
 /* returns 1 if it verifies, 0 otherwise */
-int verify (char * text, int tsize, char * sig, int ssize,
-            char * key, int ksize)
+int allnet_verify (char * text, int tsize, char * sig, int ssize,
+                   char * key, int ksize)
 {
   if ((text == NULL) || (sig == NULL) || (key == NULL) ||
       (tsize < 0) || (ssize <= 0) || (ksize <= 0)) {
-    printf ("cipher.c verify: %p %p %p %d %d %d, returning 0\n",
-            text, sig, key, tsize, ssize, ksize);
+/* null sig or 0 ssize are not really errors, I think */
+    if ((text == NULL) || (key == NULL) || (tsize < 0) || (ksize <= 0))
+      printf ("cipher.c verify: %p %p %p %d %d %d, returning 0\n",
+              text, sig, key, tsize, ssize, ksize);
     return 0;
   }
   /* convert key into internal format */
@@ -300,7 +303,7 @@ int verify (char * text, int tsize, char * sig, int ssize,
 #undef DEBUG_PRINT
 
 /* returns the size of the signature and mallocs the signature into result */
-int sign (char * text, int tsize, char * key, int ksize, char ** result)
+int allnet_sign (char * text, int tsize, char * key, int ksize, char ** result)
 {
   /* convert key into internal format */
   BIO * mbio = BIO_new_mem_buf (key, ksize);
@@ -379,7 +382,8 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
         int pub_ksize = get_contact_pubkey (keys [j], &pub_key);
         if ((pub_key != NULL) && (pub_ksize > 0)) {
           do_decrypt =
-            verify (encrypted, csize, sig, ssize - 2, pub_key, pub_ksize);
+            allnet_verify (encrypted, csize, sig, ssize - 2,
+                           pub_key, pub_ksize);
         }
       }
       if (do_decrypt) {
@@ -390,7 +394,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
         int priv_ksize = get_my_privkey (keys [j], &priv_key);
         int res = 0;
         if ((priv_key != NULL) && (priv_ksize > 0))
-          res = decrypt (encrypted, csize, priv_key, priv_ksize, text);
+          res = allnet_decrypt (encrypted, csize, priv_key, priv_ksize, text);
         if (res) {
           *contact = strcpy_malloc (contacts [i], "verify contact");
           *kset = keys [j];

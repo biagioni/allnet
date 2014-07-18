@@ -159,7 +159,7 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
 
   /* encrypt */
   char * encrypted;
-  int esize = encrypt (data, dsize, key, ksize, &encrypted);
+  int esize = allnet_encrypt (data, dsize, key, ksize, &encrypted);
   if (esize == 0) {  /* some serious problem */
     printf ("unable to encrypt retransmit request for key %d of %s\n",
             k, contact);
@@ -167,7 +167,7 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
   }
   /* sign */
   char * signature;
-  int ssize = sign (encrypted, esize, priv_key, priv_ksize, &signature);
+  int ssize = allnet_sign (encrypted, esize, priv_key, priv_ksize, &signature);
   if (ssize == 0) {
     printf ("unable to sign retransmit request\n");
     free (encrypted);

@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <endian.h>
+#include <sys/types.h>
 
 #include "sha.h"
 

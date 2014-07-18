@@ -182,7 +182,7 @@ static int make_announcement (char * buffer, int n,
   int dsize = time_to_buf (send, dp, TIMESTAMP_SIZE);
   if ((key != NULL) && (ksize > 0)) {
     char * sig;
-    ssize = sign (dp, TIMESTAMP_SIZE, key, ksize, &sig);
+    ssize = allnet_sign (dp, TIMESTAMP_SIZE, key, ksize, &sig);
     if (ssize > 0) {
       int size = hsize + TIMESTAMP_SIZE + ssize + 2;
       if (size > n) {

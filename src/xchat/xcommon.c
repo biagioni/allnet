@@ -159,8 +159,8 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   for (i = 0; i < nkeys; i++) {
     if ((matches (keys [i].address, ADDRESS_BITS,
                   hp->source, hp->src_nbits) > 0) &&
-        (verify (verif, dsize - ssize, sig, ssize - 2,
-                 keys [i].pub_key, keys [i].pub_klen))) {
+        (allnet_verify (verif, dsize - ssize, sig, ssize - 2,
+                        keys [i].pub_key, keys [i].pub_klen))) {
       *contact = strcpy_malloc (keys [i].identifier,
                                 "handle_message broadcast contact");
       *message = malloc_or_fail (text_size + 1, "handle_clear message");

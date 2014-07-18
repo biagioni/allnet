@@ -62,8 +62,8 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   if ((nkeys > 0) && (ssize > 0) && (sig != NULL)) {
     int i;
     for (i = 0; i < nkeys; i++) {
-      if (verify (verif, vsize, sig, ssize,
-                  keys [i].pub_key, keys [i].pub_klen))
+      if (allnet_verify (verif, vsize, sig, ssize,
+                         keys [i].pub_key, keys [i].pub_klen))
         from = keys [i].identifier;
     }
   }

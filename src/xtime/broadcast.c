@@ -73,7 +73,7 @@ static void broadcast (int sock, char * data, int dsize, int hops,
   int ssize = 0;
   if ((key != NULL) && (ksize > 0)) {
     char * sig;
-    ssize = sign (dp, dsize, key, ksize, &sig);
+    ssize = allnet_sign (dp, dsize, key, ksize, &sig);
     if (ssize > 0) {
       int size = hsize + dsize + ssize + 2;
       if (size > ALLNET_MTU) {

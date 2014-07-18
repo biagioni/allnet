@@ -149,7 +149,7 @@ static int is_my_contact (char * message, int msize, char * sender, int bits,
       char * key;
       int ksize = get_contact_pubkey (keysets [ink], &key);
       if ((ksize > 0) && (matches (sender, bits, address, na_bits) > 0) &&
-          (verify (message, msize, sig, ssize, key, ksize))) {
+          (allnet_verify (message, msize, sig, ssize, key, ksize))) {
         snprintf (log_buf, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
         log_print ();
         return 1;
@@ -162,7 +162,7 @@ static int is_my_contact (char * message, int msize, char * sender, int bits,
   int ibc;
   for (ibc = 0; ibc < nbc; ibc++) {
     if ((matches (sender, bits, bc [ibc].address, ADDRESS_BITS) > 0) &&
-        (verify (message, msize, sig, ssize,
+        (allnet_verify (message, msize, sig, ssize,
                  bc [ibc].pub_key, bc [ibc].pub_klen))) {
       snprintf (log_buf, LOG_SIZE, "verified from bc contact %d\n", ibc);
       log_print ();

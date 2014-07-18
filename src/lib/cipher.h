@@ -15,20 +15,21 @@
 
 /* returns the number of encrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
-extern int encrypt (char * text, int tsize, char * key, int ksize,
-                    char ** res);
+extern int allnet_encrypt (char * text, int tsize, char * key, int ksize,
+                           char ** res);
 
 /* returns the number of decrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
-extern int decrypt (char * cipher, int csize, char * key, int ksize,
-                    char ** res);
+extern int allnet_decrypt (char * cipher, int csize, char * key, int ksize,
+                           char ** res);
 
 /* returns 1 if it verifies, 0 otherwise */
-extern int verify (char * text, int tsize, char * sig, int ssize,
-                   char * key, int ksize);
+extern int allnet_verify (char * text, int tsize, char * sig, int ssize,
+                          char * key, int ksize);
 
 /* returns the size of the signature and mallocs the signature into result */
-extern int sign (char * text, int tsize, char * key, int ksize, char ** result);
+extern int allnet_sign (char * text, int tsize, char * key, int ksize,
+                        char ** result);
 
 /* returns the data size > 0, and malloc's and fills in the contact, if able
  * to decrypt and verify the packet.
