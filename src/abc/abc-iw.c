@@ -7,6 +7,9 @@
 
 #include "abc-wifi.h" /* abc_wifi_config_iface */
 #include "abc-iw.h"
+#ifdef USE_NETWORK_MANAGER
+#include "abc-networkmanager.h"
+#endif
 
 /* forward declarations */
 static int abc_wifi_config_iw_init (const char * iface);
@@ -149,6 +152,10 @@ static int if_command (const char * basic_command, const char * interface,
 
 static int abc_wifi_config_iw_init (const char * iface)
 {
+#ifdef USE_NETWORK_MANAGER
+  if (abc_wifi_config_nm_init (iface))
+    abc_wifi_config_nm_enable_wireless (0);
+#endif
   self.iface = iface;
   self.is_connected = 0;
   self.is_enabled = 0;

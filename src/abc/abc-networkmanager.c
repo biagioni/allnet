@@ -17,13 +17,11 @@
 #define ALLNET_SSID_BYTE_ARRAY { 'a', 'l', 'l', 'n', 'e', 't' }
 
 /* forward declarations */
-static int abc_wifi_config_nm_init (const char * iface);
 static int abc_wifi_config_nm_is_connected ();
 static int abc_wifi_config_nm_connect ();
 static int abc_wifi_config_nm_await_connection ();
 static int abc_wifi_config_nm_is_wireless_on ();
 static int abc_wifi_config_nm_await_wireless ();
-static int abc_wifi_config_nm_enable_wireless (int state);
 
 
 typedef struct abc_nm_settings {
@@ -699,7 +697,7 @@ static int abc_wifi_config_nm_is_wireless_on ()
   return wlan_enabled;
 }
 
-static int abc_wifi_config_nm_init (const char * iface)
+int abc_wifi_config_nm_init (const char * iface)
 {
   self.conn = NULL;
   self.iface = iface;
@@ -767,7 +765,7 @@ static int abc_wifi_config_nm_await_wireless (int state)
   return ret == state;
 }
 
-static int abc_wifi_config_nm_enable_wireless (int state)
+int abc_wifi_config_nm_enable_wireless (int state)
 {
   dbus_bool_t on = state;
   DBusMessage * msg = dbus_message_new_method_call (ABC_NM_DBUS_DEST,
