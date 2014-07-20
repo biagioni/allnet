@@ -40,6 +40,7 @@
  * two basic cycles.
  */
 
+#include <signal.h>           /* signal */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -66,6 +67,9 @@
 #define	BEACON_MS		(BASIC_CYCLE_SEC * 1000 / 100)
 /* maximum amount of time to wait for a beacon grant */
 #define BEACON_MAX_COMPLETION_US	2000    /* 0.002s */
+
+/** exit flag set by TERM signal. Set by term_handler. */
+static volatile sig_atomic_t term = 0;
 
 static unsigned long long int bits_per_s = 1000 * 1000;  /* 1Mb/s default */
 
@@ -101,6 +105,10 @@ static const char * iface_type_strings[] = {
   "wifi"
 };
 static abc_iface * iface = NULL; /* used interface ptr */
+
+static void term_handler (int sig) {
+  term = 1;
+}
 
 static void clear_nonces (int mine, int other)
 {
@@ -649,9 +657,10 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   }
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
   /* check_priority_mode (); called by handle_until */
-  while (1)
+  while (!term)
     one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_ll),
                &quiet_end);
+  iface->iface_cleanup_cb ();
 }
 
 int main (int argc, char ** argv)
@@ -684,6 +693,12 @@ int main (int argc, char ** argv)
             "read pipe is fd %d, write pipe fd %d, interface is '%s'\n",
             rpipe, wpipe, interface);
   log_print ();
+  struct sigaction sa;
+  sa.sa_handler = term_handler;
+  sa.sa_flags = 0;
+  sigemptyset (&sa.sa_mask);
+  sigaction (SIGINT, &sa, NULL);
+  sigaction (SIGTERM, &sa, NULL);
   main_loop (interface, rpipe, wpipe);
   snprintf (log_buf, LOG_SIZE, "end of abc (%s) main thread\n", interface);
   log_print ();
