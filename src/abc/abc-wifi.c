@@ -46,10 +46,11 @@ abc_iface abc_iface_wifi = {
 };
 
 static abc_wifi_config_iface * wifi_config_types[] = {
+  &abc_wifi_config_iw,
 #ifdef USE_NETWORK_MANAGER
   &abc_wifi_config_nm_wlan,
 #endif /* USE_NETWORK_MANAGER */
-  &abc_wifi_config_iw
+  NULL
 };
 static abc_wifi_config_iface * wifi_config_iface = NULL;
 
