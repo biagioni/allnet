@@ -636,7 +636,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   /* init sockfd and set global variable sockfd_global */
   if (!iface->init_iface_cb (interface, &sockfd_global, &if_address, &bc_address)) {
     snprintf (log_buf, LOG_SIZE,
-              "abc: unable initialize interface %s\n", interface);
+              "abc: unable to initialize interface %s\n", interface);
     log_print ();
     return;
   }
