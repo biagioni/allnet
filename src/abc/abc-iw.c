@@ -158,8 +158,10 @@ static int abc_wifi_config_iw_init (const char * iface)
 {
 #ifdef USE_NETWORK_MANAGER
   if (abc_wifi_config_nm_init (iface)) {
+    printf ("abc-iw: disabling NetworkManager on iface `%s'\n", iface);
     nm_init = 1;
-    abc_wifi_config_nm_enable_wireless (0);
+    if (abc_wifi_config_nm_enable_wireless (0))
+      printf ("abc-iw: NetworkManager disabled on iface `%s'\n", iface);
   }
 #endif
   self.iface = iface;
