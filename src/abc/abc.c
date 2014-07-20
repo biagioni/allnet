@@ -646,20 +646,22 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
     snprintf (log_buf, LOG_SIZE,
               "abc: unable to initialize interface %s\n", interface);
     log_print ();
-    return;
+    goto iface_cleanup;
   }
   int is_on = iface->iface_is_enabled_cb ();
   if (is_on < 0 || is_on == 0 && iface->iface_set_enabled_cb (1) != 1) {
     snprintf (log_buf, LOG_SIZE,
               "abc: unable to bring up interface %s\n", interface);
     log_print ();
-    return;
+    goto iface_cleanup;
   }
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
   /* check_priority_mode (); called by handle_until */
   while (!term)
     one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_ll),
                &quiet_end);
+
+iface_cleanup:
   iface->iface_cleanup_cb ();
 }
 
