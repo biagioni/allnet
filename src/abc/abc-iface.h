@@ -40,6 +40,11 @@ typedef struct abc_iface {
    * @return 1 if succeeded in enabling/disabling. 0 otherwise, -1 on failure.
    */
   int (* iface_set_enabled_cb) (int state);
+  /**
+   * Callback to cleans up the interface and possibly restores the previous state
+   * @return 1 on success, 0 on failure.
+   */
+  int (* iface_cleanup_cb) ();
 } abc_iface;
 
 #endif /* ABC_IFACE_H */

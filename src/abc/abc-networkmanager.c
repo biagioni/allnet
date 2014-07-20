@@ -22,6 +22,7 @@ static int abc_wifi_config_nm_connect ();
 static int abc_wifi_config_nm_await_connection ();
 static int abc_wifi_config_nm_is_wireless_on ();
 static int abc_wifi_config_nm_await_wireless ();
+static int abc_wifi_config_nm_cleanup ();
 
 
 typedef struct abc_nm_settings {
@@ -42,7 +43,8 @@ abc_wifi_config_iface abc_wifi_config_nm_wlan = {
   .iface_is_enabled_cb = abc_wifi_config_nm_is_wireless_on,
   .iface_set_enabled_cb = abc_wifi_config_nm_enable_wireless,
   .iface_is_connected_cb = abc_wifi_config_nm_is_connected,
-  .iface_connect_cb = abc_wifi_config_nm_connect
+  .iface_connect_cb = abc_wifi_config_nm_connect,
+  .iface_cleanup_cb = abc_wifi_config_nm_cleanup
 };
 
 static abc_nm_settings self;
@@ -786,4 +788,9 @@ int abc_wifi_config_nm_enable_wireless (int state)
   if (!state)
     self.nm_act_conn_obj = NULL;
   return ret && abc_wifi_config_nm_await_wireless (state);
+}
+
+static int abc_wifi_config_nm_cleanup ()
+{
+  return 1;
 }

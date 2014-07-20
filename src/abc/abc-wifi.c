@@ -33,6 +33,7 @@ static int abc_wifi_init (const char * interface, int * sock,
                 struct sockaddr_ll * address, struct sockaddr_ll * bc);
 static int abc_wifi_is_enabled ();
 static int abc_wifi_set_enabled (int state);
+static int abc_wifi_cleanup ();
 
 
 abc_iface abc_iface_wifi = {
@@ -40,7 +41,8 @@ abc_iface abc_iface_wifi = {
   .init_iface_cb = abc_wifi_init,
   .iface_on_off_ms = 150, /* default value, updated on runtime */
   .iface_is_enabled_cb = abc_wifi_is_enabled,
-  .iface_set_enabled_cb = abc_wifi_set_enabled
+  .iface_set_enabled_cb = abc_wifi_set_enabled,
+  .iface_cleanup_cb = abc_wifi_cleanup
 };
 
 static abc_wifi_config_iface * wifi_config_types[] = {
@@ -167,4 +169,8 @@ static int abc_wifi_init (const char * interface, int * sock,
   }
   freeifaddrs (ifa);
   return 0;  /* interface not found */
+}
+
+static int abc_wifi_cleanup () {
+  return wifi_config_iface->iface_cleanup_cb ();
 }

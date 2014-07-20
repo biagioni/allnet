@@ -17,6 +17,7 @@ static int abc_wifi_config_iw_is_connected ();
 static int abc_wifi_config_iw_connect ();
 static int abc_wifi_config_iw_is_wireless_on ();
 static int abc_wifi_config_iw_set_enabled (int state);
+static int abc_wifi_config_iw_cleanup ();
 
 typedef struct abc_wifi_config_iw_settings {
   const char * iface;
@@ -31,7 +32,8 @@ abc_wifi_config_iface abc_wifi_config_iw = {
   .iface_is_enabled_cb = abc_wifi_config_iw_is_wireless_on,
   .iface_set_enabled_cb = abc_wifi_config_iw_set_enabled,
   .iface_is_connected_cb = abc_wifi_config_iw_is_connected,
-  .iface_connect_cb = abc_wifi_config_iw_connect
+  .iface_connect_cb = abc_wifi_config_iw_connect,
+  .iface_cleanup_cb = abc_wifi_config_iw_cleanup
 };
 
 static abc_wifi_config_iw_settings self;
@@ -215,4 +217,9 @@ static int abc_wifi_config_iw_set_enabled (int state)
     self.is_enabled = -1;
   }
   return -1;
+}
+
+static int abc_wifi_config_iw_cleanup ()
+{
+  return 1;
 }
