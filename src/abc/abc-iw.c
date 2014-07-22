@@ -158,10 +158,19 @@ static int abc_wifi_config_iw_init (const char * iface)
 {
 #ifdef USE_NETWORK_MANAGER
   if (abc_wifi_config_nm_init (iface)) {
-    printf ("abc-iw: disabling NetworkManager on iface `%s'\n", iface);
-    nm_init = 1;
-    if (abc_wifi_config_nm_enable_wireless (0))
-      printf ("abc-iw: NetworkManager disabled on iface `%s'\n", iface);
+    nm_init = abc_wifi_config_nm_is_wireless_on ();
+    if (nm_init) {
+      printf ("abc-iw: disabling NetworkManager on iface `%s'\n", iface);
+      if (abc_wifi_config_nm_enable_wireless (0)) {
+        printf ("abc-iw: NetworkManager disabled on iface `%s'\n", iface);
+      }
+    }
+    /* disabling an iface in NM sets soft RFKILL which needs to be cleared for
+     * ifconfig to work. */
+    /* TODO: this should look up the device index and only unblock that in case
+     * that the iface is not wifi or multiple wifi ifaces are present. */
+    int ret = system ("rfkill unblock wifi");
+    printf ("abc-iw: DEBUG: result of rfkill unblock: %d\n", ret);
   }
 #endif
   self.iface = iface;
