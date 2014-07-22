@@ -20,7 +20,6 @@
 static int abc_wifi_config_nm_is_connected ();
 static int abc_wifi_config_nm_connect ();
 static int abc_wifi_config_nm_await_connection ();
-static int abc_wifi_config_nm_is_wireless_on ();
 static int abc_wifi_config_nm_await_wireless ();
 static int abc_wifi_config_nm_cleanup ();
 
@@ -677,7 +676,7 @@ device_is_busy_cleanup:
   return ret;
 }
 
-static int abc_wifi_config_nm_is_wireless_on ()
+int abc_wifi_config_nm_is_wireless_on ()
 {
   DBusMessage * msg;
   if (get_dbus_property (&msg, ABC_NM_DBUS_OBJ, ABC_NM_DBUS_IFACE,
