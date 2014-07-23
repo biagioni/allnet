@@ -573,7 +573,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
       beacon_deadline = NULL;
       clear_nonces (0, 1); /* we have not been granted permission to send */
     }
-  } 
+  }
 }
 
 /* sets bstart to a random time between bstart and
