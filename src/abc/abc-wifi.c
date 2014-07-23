@@ -28,6 +28,7 @@
 #include "abc-iw.h"
 #include "abc-wifi.h"
 
+/* Maintain abc_wifi_config_t length and order */
 const char * abc_wifi_config_type_strings[] = {
     "iw",
     "nm"
