@@ -4,6 +4,7 @@
 #include <stdlib.h>   /* exit */
 #include <string.h>   /* strlen */
 #include <unistd.h>   /* fork, dup2, execvp */
+#include <sys/wait.h> /* waitpid */
 
 #include "abc-wifi.h" /* abc_wifi_config_iface */
 #include "abc-iw.h"
