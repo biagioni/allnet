@@ -674,7 +674,7 @@ int main (int argc, char ** argv)
   if (iface_type != NULL) {
     int i;
     for (i = 0; i < sizeof (iface_types); ++i) {
-      if ((iface_type_strings[i], iface_type) == 0) {
+      if (strcmp (iface_type_strings[i], iface_type) == 0) {
         iface = iface_types[i];
         if (argc > 4)
           iface->iface_type_args = argv [5];
