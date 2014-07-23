@@ -200,7 +200,7 @@ static int abc_wifi_config_iw_connect ()
   int r = if_command ("iw dev %s set type ibss", self.iface, 240,
                       "wireless interface not available for ad-hoc mode",
                       mess);
-  if (r != 1 || !if_command ("iw dev %s ibss join allnet 2412", self.iface,
+  if (r != 1 || !if_command ("iw dev %s ibss join allnet 2412 fixed-freq", self.iface,
                       142, "allnet ad-hoc mode already set", "unknown problem"))
     return 0;
   self.is_connected = 1;
