@@ -221,10 +221,17 @@ static int abc_wifi_config_iw_set_enabled (int state)
   if (state) {
     if (if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 1;
+      /* set power save mode (if available) */
+      if_command ("iw dev %s set power_save on", self.iface, 0, NULL, NULL);
       return 1;
     }
     self.is_enabled = -1;
   } else {
+    if (self.is_connected)
+      if_command ("iw dev %s ibss leave", self.iface,
+                          /* 161, "interface is not in ibss mode" */
+                          189, "ad-hoc network already disconnected", "unknown problem");
+
     if (if_command ("ifconfig %s down", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 0;
       return 1;
