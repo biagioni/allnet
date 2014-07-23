@@ -207,7 +207,7 @@ static int abc_wifi_config_iw_connect ()
   return 1;
 }
 
-/** Returns wlan state (1: enabled or 0: disabled) */
+/** Returns wlan state (1: enabled or 0: disabled, -1: unknown) */
 static int abc_wifi_config_iw_is_wireless_on ()
 {
   /* TODO: check if already connected to something else (busy) and return 2. */
