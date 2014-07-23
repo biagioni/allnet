@@ -148,17 +148,6 @@ static int check_priority_mode ()
   return -1;
 }
 
-static void jitter_deadline (struct timeval * t)
-{
-  struct timeval now;
-  gettimeofday (&now, NULL);
-  unsigned long long int delta = delta_us (t, &now);
-  if (delta > 0) {
-    *t = now;
-    add_us (t, random () % delta);
-  }
-}
-
 static void jitter_deadline_from_now (struct timeval * t, int us)
 {
   struct timeval now;
