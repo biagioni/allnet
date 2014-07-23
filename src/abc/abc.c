@@ -658,9 +658,12 @@ int main (int argc, char ** argv)
 {
   init_log ("abc");
   queue_init (16 * 1024 * 1024);  /* 16MBi */
-  if (argc != 4) {
-    printf ("arguments must be a read pipe, a write pipe, and an interface\n");
-    printf ("argc == %d\n", argc);
+  if (argc < 4) {
+    printf ("usage %s <read pipe> <write pipe> <interface> [interface type] [interface manager arguments]\n", argv [0]);
+    printf ("  interface types: wifi\n");
+    printf ("  arguments for wifi type interfaces:\n");
+    printf ("    iw (use iwtools)\n");
+    printf ("    nm (use NetworkManager)\n");
     return -1;
   }
   int rpipe = atoi (argv [1]);  /* read pipe */
@@ -673,6 +676,8 @@ int main (int argc, char ** argv)
     for (i = 0; i < sizeof (iface_types); ++i) {
       if ((iface_type_strings[i], iface_type) == 0) {
         iface = iface_types[i];
+        if (argc > 4)
+          iface->iface_type_args = argv [5];
         break;
       }
     }

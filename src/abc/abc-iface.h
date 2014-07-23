@@ -12,6 +12,8 @@ typedef enum abc_iface_type {
 typedef struct abc_iface {
   /** The interface type this set of callbacks represents */
   abc_iface_type iface_type;
+  /** Additional parameters passed on to the iface driver */
+  const char * iface_type_args;
   /**
    * Callback to initialize the interface.
    * The callback must initialize all paramteres except interface

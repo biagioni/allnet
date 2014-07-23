@@ -5,9 +5,12 @@
 
 /** enum of all available wifi config modules */
 typedef enum abc_wifi_config {
-  ABC_WIFI_CONFIG_IW,
+  ABC_WIFI_CONFIG_IW = 0,
   ABC_WIFI_CONFIG_NETWORKMANAGER
 } abc_wifi_config_t;
+
+/** String representation of wifi config types. */
+extern const char * abc_wifi_config_type_strings[];
 
 /** public wifi config interface */
 typedef struct abc_wifi_config_iface {

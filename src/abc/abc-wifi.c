@@ -28,6 +28,11 @@
 #include "abc-iw.h"
 #include "abc-wifi.h"
 
+const char * abc_wifi_config_type_strings[] = {
+    "iw",
+    "nm"
+};
+
 /* forward declarations */
 static int abc_wifi_init (const char * interface, int * sock,
                 struct sockaddr_ll * address, struct sockaddr_ll * bc);
@@ -38,6 +43,7 @@ static int abc_wifi_cleanup ();
 
 abc_iface abc_iface_wifi = {
   .iface_type = ABC_IFACE_TYPE_WIFI,
+  .iface_type_args = NULL,
   .init_iface_cb = abc_wifi_init,
   .iface_on_off_ms = 150, /* default value, updated on runtime */
   .iface_is_enabled_cb = abc_wifi_is_enabled,
@@ -113,8 +119,18 @@ static int abc_wifi_set_enabled (int state)
 static int abc_wifi_init (const char * interface, int * sock,
                 struct sockaddr_ll * address, struct sockaddr_ll * bc)
 {
-  /* TODO: select wifi_config_iface, currently the first available is chosen */
-  wifi_config_iface = wifi_config_types[0];
+  if (abc_iface_wifi.iface_type_args != NULL) {
+    int i;
+    for (i = 0; i < sizeof (wifi_config_types); ++i) {
+      if (strcmp (abc_wifi_config_type_strings[i], abc_iface_wifi.iface_type_args) == 0) {
+        wifi_config_iface = wifi_config_types[i];
+        break;
+      }
+    }
+  }
+  if (!wifi_config_iface)
+    wifi_config_iface = wifi_config_types[0];
+
   if (!wifi_config_iface->init_iface_cb (interface))
     return 0;
 
