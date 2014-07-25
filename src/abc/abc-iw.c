@@ -188,6 +188,8 @@ static int abc_wifi_config_iw_is_connected ()
 /** Join allnet adhoc network */
 static int abc_wifi_config_iw_connect ()
 {
+  if (self.is_connected)
+    return 1;
 #ifdef DEBUG_PRINT
   printf ("abc: opening interface %s\n", self.iface);
 #endif /* DEBUG_PRINT */
@@ -218,6 +220,9 @@ static int abc_wifi_config_iw_is_wireless_on ()
 /** Enable or disable wlan depending on state (1 or 0) */
 static int abc_wifi_config_iw_set_enabled (int state)
 {
+  if (self.is_enabled == state)
+    return 1;
+
   /* call (sudo) ifconfig $if {up|down} */
   if (state) {
     if (if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
@@ -226,19 +231,20 @@ static int abc_wifi_config_iw_set_enabled (int state)
       if_command ("iw dev %s set power_save on", self.iface, 0, NULL, NULL);
       return 1;
     }
-    self.is_enabled = -1;
   } else {
-    if (self.is_connected)
+    if (self.is_connected) {
       if_command ("iw dev %s ibss leave", self.iface,
                           /* 161, "interface is not in ibss mode" */
                           189, "ad-hoc network already disconnected", "unknown problem");
+      self.is_connected = 0;
+    }
 
     if (if_command ("ifconfig %s down", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 0;
       return 1;
     }
-    self.is_enabled = -1;
   }
+  self.is_enabled = -1;
   return -1;
 }
 
