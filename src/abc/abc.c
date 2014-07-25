@@ -479,8 +479,7 @@ static void remove_acks (char * message, char * end)
   }
 }
 
-static void handle_ad_message (char * message, int msize, int priority,
-                               int sockfd)
+static void handle_ad_message (char * message, int msize, int priority)
 {
   queue_add (message, msize, priority);
   remove_acks (message, message + msize);
@@ -521,7 +520,7 @@ static void handle_quiet (struct timeval * quiet_end,
     struct timeval fake_time;
     if ((msize > 0) && (is_valid_message (message, msize))) {
       if (fd == rpipe)
-        handle_ad_message (message, msize, priority, sockfd);
+        handle_ad_message (message, msize, priority);
       else
         handle_network_message (message, msize, wpipe, sockfd,
                                 &fake_timep, &fake_time, quiet_end,
@@ -554,7 +553,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     static char send_message [ALLNET_MTU];
     if (msize > 0) {
       if (fd == rpipe)
-        handle_ad_message (message, msize, priority, sockfd);
+        handle_ad_message (message, msize, priority);
       else
         handle_network_message (message, msize, wpipe, sockfd,
                                 &beacon_deadline, &time_buffer, quiet_end,
