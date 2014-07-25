@@ -171,6 +171,8 @@ static int abc_wifi_init (const char * interface, int * sock,
       /* create the socket and initialize the address */
       *sock = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
       *address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
+      if (bind (*sock, (const struct sockaddr *) address, sizeof (struct sockaddr_ll)) == -1)
+        printf ("abc-wifi: error binding interface, continuing without..\n");
       if (ifa_loop->ifa_flags & IFF_BROADCAST)
         *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
       else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
