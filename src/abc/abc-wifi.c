@@ -180,6 +180,7 @@ static int abc_wifi_init (const char * interface, int * sock,
       else
         default_broadcast_address (bc);
       bc->sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
+      bc->sll_ifindex = address->sll_ifindex;
       print_sll_addr (address, "interface address");
       print_sll_addr (bc,      "broadcast address");
       freeifaddrs (ifa);
