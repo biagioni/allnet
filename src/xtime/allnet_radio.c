@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/sha.h"

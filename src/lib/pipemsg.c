@@ -203,7 +203,7 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free)
   } else {
     /* try to send with write -- I don't think this has ever been used */
     if ((w < 0) && (errno == ENOTSOCK)) {
-snprintf (log_buf, LOG_SIZE, "trying write instead of send on fd \n", pipe);
+snprintf (log_buf, LOG_SIZE, "trying write instead of send on fd %d\n", pipe);
 log_print ();
       w = write (pipe, buffer, blen); 
       is_send = 0;

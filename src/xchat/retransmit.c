@@ -5,6 +5,8 @@
 #include <string.h>
 #include <inttypes.h>
 
+#include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/keys.h"

@@ -13,6 +13,7 @@
 #include <pthread.h>
 
 #include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/pipemsg.h"
