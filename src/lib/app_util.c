@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
@@ -15,6 +16,8 @@
 
 #include "app_util.h"
 #include "packet.h"
+#include "pipemsg.h"
+#include "util.h"
 #include "sha.h"
 #include "priority.h"
 #include "log.h"

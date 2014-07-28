@@ -5,13 +5,16 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <ctype.h>
 
 #include "lib/packet.h"
 #include "lib/media.h"
 #include "lib/util.h"
+#include "lib/pipemsg.h"
 #include "lib/sha.h"
 #include "lib/priority.h"
 #include "lib/keys.h"
+#include "lib/cipher.h"
 #include "lib/log.h"
 #include "chat.h"
 #include "cutil.h"
@@ -100,17 +103,17 @@ int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
     printf ("unable to locate key for contact '%s'\n", contact);
     return 0;
   }
-  writeb64 (cp->counter, counter);
+  writeb64 ((char *) (cp->counter), counter);
 
   int my_time_offset = local_time_offset ();
   uint64_t now = allnet_time ();
 
   uint64_t compound = make_time_tz (now, my_time_offset);
-  writeb64 (cp->timestamp, compound);
+  writeb64 ((char *) (cp->timestamp), compound);
 
   /* the fixed part of the header */
-  writeb32 (cp->app_media.app, XCHAT_ALLNET_APP_ID);
-  writeb32 (cp->app_media.media, ALLNET_MEDIA_TEXT_PLAIN);
+  writeb32 ((char *) (cp->app_media.app), XCHAT_ALLNET_APP_ID);
+  writeb32 ((char *) (cp->app_media.media), ALLNET_MEDIA_TEXT_PLAIN);
   return 1;
 }
 
@@ -120,9 +123,10 @@ int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
  * be best to stop trying */
 /* can only do_save if also do_ack */
 static int send_to_one (keyset k, char * data, int dsize, char * contact,
-                        int sock, char * src, int sbits, char * dst, int dbits,
-                        int hops, int priority, int do_ack, char * ack,
-                        int do_save)
+                        int sock, unsigned char * src, int sbits,
+                        unsigned char * dst, int dbits,
+                        int hops, int priority, int do_ack,
+                        unsigned char * ack, int do_save)
 {
   char * priv_key;
   char * key;
@@ -134,14 +138,14 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
     return 1;  /* skip to the next key */
   }
   /* if not already specified, get the addresses for the specific key */
-  char a1 [ADDRESS_SIZE];
+  unsigned char a1 [ADDRESS_SIZE];
   if (src == NULL) {
     int nbits = get_local (k, a1);
     if (nbits < sbits)
       sbits = nbits;
     src = a1;
   }
-  char a2 [ADDRESS_SIZE];
+  unsigned char a2 [ADDRESS_SIZE];
   if (dst == NULL) {
     int nbits = get_remote (k, a2);
     if (nbits < dbits)
@@ -149,13 +153,13 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
     dst = a2;
   }
   /* set the message ack */
-  char * message_ack = NULL;
+  unsigned char * message_ack = NULL;
   if (do_ack) {
     if (ack != NULL)
       memcpy (data, ack, MESSAGE_ID_SIZE);
     else
       random_bytes (data, MESSAGE_ID_SIZE);
-    message_ack = data;
+    message_ack = (unsigned char *) data;
   } /* else message_ack is null, to make sure we don't ack, below */
 
   /* encrypt */
@@ -220,7 +224,7 @@ int resend_packet (char * data, int dsize, char * contact, keyset key, int sock,
                    int hops, int priority)
 {
   /* ack should already be in the packet data */
-  char ack [MESSAGE_ID_SIZE];
+  unsigned char ack [MESSAGE_ID_SIZE];
   memcpy (ack, data, MESSAGE_ID_SIZE);
   return send_to_one (key, data, dsize, contact, sock, NULL, ADDRESS_BITS,
                       NULL, ADDRESS_BITS, hops, priority, 1, ack, 0);
@@ -233,7 +237,8 @@ int resend_packet (char * data, int dsize, char * contact, keyset key, int sock,
 /* unless ack_and_save is 0, requests an ack, and after the message is sent,
  * calls save_outgoing. */
 int send_to_contact (char * data, int dsize, char * contact, int sock,
-                     char * src, int sbits, char * dst, int dbits,
+                     unsigned char * src, int sbits,
+                     unsigned char * dst, int dbits,
                      int hops, int priority, int ack_and_save)
 {
   /* get the keys */
@@ -263,7 +268,7 @@ char * chat_time_to_string (unsigned char * t, int static_result)
 
   uint64_t time;
   int time_offset;
-  get_time_tz (readb64 (t), &time, &time_offset);
+  get_time_tz (readb64 ((char *) t), &time, &time_offset);
   int my_time_offset = local_time_offset ();
 
   struct tm time_tm;
@@ -342,13 +347,13 @@ char * chat_descriptor_to_string (struct chat_descriptor * cdp,
   if (show_id) {
     written = snprintf (p, size, "id ");
     p += written; size -= written;
-    written = make_hex (cdp->message_ack, 6, p, size);
+    written = make_hex ((char *) (cdp->message_ack), 6, p, size);
     p += written; size -= written;
     written = snprintf (p, size, ", ");
     p += written; size -= written;
   }
 
-  unsigned long long int counter = readb64 (cdp->counter);
+  unsigned long long int counter = readb64 ((char *) (cdp->counter));
   char * time_string = chat_time_to_string (cdp->timestamp, 1);
   written = snprintf (p, size, "sequence %lld, time %s", counter, time_string);
   p += written; size -= written;

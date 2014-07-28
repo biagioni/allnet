@@ -51,7 +51,8 @@ static void * receive_ignore (void * arg)
 
 static void broadcast (int sock, char * data, int dsize, int hops,
                        char * key, int ksize,
-                       char * source, int sbits, char * dest, int dbits)
+                       unsigned char * source, int sbits,
+                       unsigned char * dest, int dbits)
 {
   static char buffer [ALLNET_MTU];
   bzero (buffer, sizeof (buffer));
@@ -67,8 +68,8 @@ static void broadcast (int sock, char * data, int dsize, int hops,
   }
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) (buffer + hsize);
-  writeb32 (amhp->app, 0);
-  writeb32 (amhp->media, ALLNET_MEDIA_TEXT_PLAIN);
+  writeb32u (amhp->app, 0);
+  writeb32u (amhp->media, ALLNET_MEDIA_TEXT_PLAIN);
   char * dp = buffer + hsize + h2size;
   memcpy (dp, data, dsize);
   int ssize = 0;
@@ -106,7 +107,7 @@ int main (int argc, char ** argv)
   char * address = argv [1];
   if (argc > 2)
     hops = atoi (argv [2]);
-  struct bc_key_info * key = get_own_key (address);
+  struct bc_key_info * key = get_own_bc_key (address);
   if (key == NULL) {
     printf ("key '%s' not found\n", address);
     exit (1);

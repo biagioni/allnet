@@ -17,9 +17,11 @@
 #include <sys/file.h>
 #include <sys/stat.h>
 
+#include "lib/packet.h"
 #include "lib/util.h"
 #include "lib/keys.h"
-#include "lib/packet.h"
+#include "lib/config.h"
+#include "lib/sha.h"
 #include "store.h"
 
 /* start_iter and prev_message define an iterator over messages.
@@ -37,7 +39,7 @@ struct msg_iter {
   char * current_fname;   /* dynamically allocated */
   char * current_file;    /* dynamically allocated */
   uint64_t current_size;
-  uint64_t current_pos;
+  int64_t current_pos;
 };
 
 static char * string_replace (char * original, char * pattern, char * repl)
@@ -174,7 +176,7 @@ printf ("debug time: %d\n", 5 / debug);
                                          &(iter->current_file), 1);
   iter->current_pos = iter->current_size;  /* decremented before use */
 /*
-printf ("loaded file %s, size %" PRIu64 ", pos %" PRIu64 "\n",
+printf ("loaded file %s, size %" PRIu64 ", pos %" PRI64 "\n",
         iter->current_fname, iter->current_size, iter->current_pos);
 */
   return 1;
@@ -196,6 +198,8 @@ static int found_at_line_start (char * p, uint64_t pos, char * pattern)
 #define PATTERN_ACK     "got ack: "
 static int match_record_start (struct msg_iter * iter)
 {
+  if (iter->current_pos < 0)
+    return 0;
   uint64_t length = iter->current_size - iter->current_pos;
   if (length < strlen (PATTERN_SENT))
     return 0;
@@ -364,7 +368,7 @@ static char * find_prev_record (struct msg_iter * iter)
     do {
       (iter->current_pos)--;
     } while ((iter->current_pos >= 0) && (! match_record_start (iter)));
-    if (match_record_start (iter)) {
+    if ((iter->current_pos >= 0) && (match_record_start (iter))) {
       uint64_t size = record_end_pos - iter->current_pos;
       char * result = malloc_or_fail (size + 1, "find_prev_record");
       memcpy (result, (iter->current_file) + (iter->current_pos), size);
@@ -648,7 +652,8 @@ void save_record (char * contact, keyset k, int type, uint64_t seq,
 
 #ifdef TEST_STORE
 /* compile with:
-   gcc -DTEST_STORE -g -o tstore store.c -I.. ../lib/*.c -lcrypto
+   gcc -DTEST_STORE -g -o tstore store.c -I.. ../lib/ *.c -lcrypto
+   (without the space before *.c)
  */
 int main (int argc, char ** argv)
 {

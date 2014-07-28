@@ -124,8 +124,8 @@ static int time_to_buf (time_t t, char * dp, int n)
     return 9;
   }
   struct allnet_app_media_header * amhp = (struct allnet_app_media_header *) dp;
-  writeb32 (amhp->app, 0x7874696d /* xtim */ );
-  writeb32 (amhp->media, ALLNET_MEDIA_TIME_TEXT_BIN);
+  writeb32u (amhp->app, 0x7874696d /* xtim */ );
+  writeb32u (amhp->media, ALLNET_MEDIA_TIME_TEXT_BIN);
   dp += sizeof (struct allnet_app_media_header);
   n -= sizeof (struct allnet_app_media_header);
 
@@ -146,8 +146,8 @@ static int time_to_buf (time_t t, char * dp, int n)
 static int make_announcement (char * buffer, int n,
                               time_t send, time_t expiration, int hops,
                               char * key, int ksize,
-                              char * source, int sbits,
-                              char * dest, int dbits)
+                              unsigned char * source, int sbits,
+                              unsigned char * dest, int dbits)
 {
   int hsize = ALLNET_SIZE (ALLNET_TRANSPORT_EXPIRATION);
   int h2size = sizeof (struct allnet_app_media_header);
@@ -210,7 +210,8 @@ static int make_announcement (char * buffer, int n,
 
 static void announce (time_t interval, int sock,
                       int hops, char * key, int ksize,
-                      char * source, int sbits, char * dest, int dbits)
+                      unsigned char * source, int sbits,
+                      unsigned char * dest, int dbits)
 {
   static int called_before = 0;
   struct timeval now;
@@ -259,7 +260,7 @@ int main (int argc, char ** argv)
   int interval = 3600;
   if (argc > 3)
     interval = atoi (argv [3]);
-  struct bc_key_info * key = get_own_key (address);
+  struct bc_key_info * key = get_own_bc_key (address);
   if (key == NULL) {
     printf ("key '%s' not found\n", address);
     exit (1);

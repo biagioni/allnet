@@ -9,6 +9,8 @@
 #include <pthread.h>
 #include <errno.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "packet.h"
 #include "log.h"
@@ -186,7 +188,7 @@ void log_print_str (char * string)
   else
     snprintf (time_str, sizeof (time_str), "%02d/%02d %02d:%02d:%02d.%06ld",
               n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec,
-              now.tv_usec);
+              (long int) (now.tv_usec));
   int len = snprintf (buffer, sizeof (buffer), "%s %s: %s",
                       time_str, module_name, string);
   /* add a newline if it is not already at the end of the string */

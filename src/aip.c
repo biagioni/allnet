@@ -382,7 +382,8 @@ static int dht_ping_match (struct allnet_header * hp, int msize,
     log_print ();
     return 0;  /* not a dht message */
   }
-  buffer_to_string (hp->destination, ADDRESS_SIZE, "dht_ping_match matching",
+  buffer_to_string ((char *) (hp->destination), ADDRESS_SIZE,
+                    "dht_ping_match matching",
                     ADDRESS_SIZE, 1, log_buf, LOG_SIZE);
   log_print ();
 
@@ -552,7 +553,7 @@ void listen_callback (int fd)
 #define NUM_LISTENERS	(1 << LISTEN_BITS) * 2   /* 2 ^ LISTEN_BITS for v4/v6*/
 static int listener_fds [NUM_LISTENERS];
 
-static int connect_listener (char * address, struct listen_info * info,
+static int connect_listener (unsigned char * address, struct listen_info * info,
                              void * addr_cache, int af)
 {
   int result = -1;
@@ -573,13 +574,13 @@ static int connect_listener (char * address, struct listen_info * info,
   int k;
   for (k = 0; (k < num_dhts) && (result < 0); k++) {
     if (af == sas [k].ss_family) {
-      char * ip_addrp = NULL;
+      unsigned char * ip_addrp = NULL;
       socklen_t salen = 0;
       int port;
       struct sockaddr_in  * sin  = (struct sockaddr_in *) (&(sas [k]));
       struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) (&(sas [k]));
       if (af == AF_INET) {
-        ip_addrp = (char *) (&(sin->sin_addr));
+        ip_addrp = (unsigned char *) (&(sin->sin_addr));
         port = sin->sin_port;
         salen = sizeof (struct sockaddr_in);
       } else if (af == AF_INET6) {
@@ -635,7 +636,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
     keyset * keysets;
     int num_keysets = all_keys (contacts [i], &keysets);
     for (j = 0; j < num_keysets; j++) {
-      char address [ADDRESS_SIZE];
+      unsigned char address [ADDRESS_SIZE];
       if (get_local (keysets [j], address) >= LISTEN_BITS) {
         int index = ((address [0] & 0xff) >> (8 - LISTEN_BITS)) * 2;
 /* printf ("calling connect_listener [%d/%d] [%d/%d] [%d, %d]\n",
@@ -686,7 +687,7 @@ void send_keepalive (void * udp_cache, int fd,
   int max_size = ALLNET_MGMT_HEADER_SIZE (0xff);
   char keepalive [ALLNET_MTU];
   bzero (keepalive, max_size);
-  char address [ADDRESS_SIZE];
+  unsigned char address [ADDRESS_SIZE];
   bzero (address, sizeof (address));
   struct allnet_header * hp =
     init_packet (keepalive, sizeof (keepalive), ALLNET_TYPE_MGMT, 1,
@@ -756,7 +757,7 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
   unsigned char message [1024];
   bzero (message, sizeof (message));
   struct allnet_header * hp =
-    init_packet (message, sizeof (message), ALLNET_TYPE_MGMT, 1,
+    init_packet ((char *) message, sizeof (message), ALLNET_TYPE_MGMT, 1,
                  ALLNET_SIGTYPE_NONE, in_hp->destination, in_hp->dst_nbits,
                  in_hp->source, in_hp->src_nbits, NULL);
   struct allnet_mgmt_header * mp =
@@ -774,10 +775,10 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
   if (n > 0) {
     dht->num_sender = n;
     dht->num_dht_nodes = 0;
-    writeb64 (dht->timestamp, allnet_time ());
-    send_udp (fd, message, ALLNET_DHT_SIZE (hp->transport, n), sap);
+    writeb64u (dht->timestamp, allnet_time ());
+    send_udp (fd, (char *) message, ALLNET_DHT_SIZE (hp->transport, n), sap);
 #ifdef DEBUG_PRINT
-    packet_to_string (message, ALLNET_DHT_SIZE (hp->transport, n),
+    packet_to_string ((char *) message, ALLNET_DHT_SIZE (hp->transport, n),
                       "sent ping response", 1, log_buf, LOG_SIZE);
     int off = strlen (log_buf);
     off += snprintf (log_buf + off, LOG_SIZE - off, " to: ");
@@ -930,7 +931,7 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
     snprintf (log_buf, LOG_SIZE, "handle_mgmt DHT %d\n", sap->sa_family);
     log_print ();
 #endif /* DEBUG_PRINT */
-    if (sap->sa_family == -1)
+    if (((int) (sap->sa_family)) == -1)
       return 1;   /* discard message, don't forward any further */
     struct allnet_mgmt_dht * mdp =
       (struct allnet_mgmt_dht *)

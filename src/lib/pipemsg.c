@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
@@ -268,7 +269,6 @@ int send_pipe_message (int pipe, char * message, int mlen, int priority)
   struct sigaction sa;
   sa.sa_handler = SIG_IGN;
   sa.sa_flags = 0;
-  sa.sa_mask;
   sigemptyset (&(sa.sa_mask));
   struct sigaction old_sa;
   sigaction (SIGPIPE, &sa, &old_sa);
@@ -328,7 +328,6 @@ int send_pipe_multiple (int pipe, int num_messages,
   struct sigaction sa;
   sa.sa_handler = SIG_IGN;
   sa.sa_flags = 0;
-  sa.sa_mask;
   sigemptyset (&(sa.sa_mask));
   struct sigaction old_sa;
   sigaction (SIGPIPE, &sa, &old_sa);

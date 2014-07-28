@@ -15,6 +15,7 @@
 #include "cutil.h"
 #include "retransmit.h"
 #include "xcommon.h"
+#include "message.h"
 
 /* returns the number of ms from now until the deadline, or 0 if the
  * deadline has passed */

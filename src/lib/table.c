@@ -184,7 +184,7 @@ static void get_indices (char * bitstring, int bits, int num_slots,
        which implies a 4GB table, which leads to negative indices anyway.
        so it should be OK
      */
-    *last_index  = (index + 1) << (bits_to_use - bits) - 1;
+    *last_index = ((index + 1) << (bits_to_use - bits)) - 1;
   }
 /*
   printf ("get_indices (%02x %02x %02x %02x, %d, %d) => %d, %d\n",
@@ -241,7 +241,8 @@ int table_find (char * bitstring, int bits, struct table * table,
     struct table_entry * entry = table->table [first];
     while (entry != NULL) {
       /* print_table_entry (first, entry, table->bytes_per_entry); */
-      if (matches (entry->data, table->bytes_per_entry * 8, bitstring, bits))
+      if (matches ((unsigned char *) (entry->data), table->bytes_per_entry * 8,
+                   (unsigned char *) bitstring, bits))
         return 1;
       /* printf ("no match on entry\n"); */
       entry = entry->next;

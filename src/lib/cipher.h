@@ -15,13 +15,13 @@
 
 /* returns the number of encrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
-extern int allnet_encrypt (char * text, int tsize, char * key, int ksize,
-                           char ** res);
+extern int allnet_encrypt (const char * text, int tsize,
+                           const char * key, int ksize, char ** res);
 
 /* returns the number of decrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
-extern int allnet_decrypt (char * cipher, int csize, char * key, int ksize,
-                           char ** res);
+extern int allnet_decrypt (const char * cipher, int csize,
+                           const char * key, int ksize, char ** res);
 
 /* returns 1 if it verifies, 0 otherwise */
 extern int allnet_verify (char * text, int tsize, char * sig, int ssize,

@@ -34,8 +34,8 @@ extern int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
 /* addr must point to 4 bytes if af is AF_INET, 16 bytes for AF_INET6 */
 /* if nbits > 0, dest should point to at least (nbits + 7) / 8 bytes */
 /* returns 1 for success, 0 for failure */
-extern int init_ai (int af, char * addr, int port, int nbits, char * dest,
-                    struct addr_info * ai);
+extern int init_ai (int af, unsigned char * addr, int port, int nbits,
+                    unsigned char * dest, struct addr_info * ai);
 
 /* returns 1 if the two addresses are the same, 0 otherwise */
 extern int same_ai (struct addr_info * a, struct addr_info * b);

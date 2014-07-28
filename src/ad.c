@@ -9,6 +9,7 @@
 #include "lib/mgmt.h"
 #include "social.h"
 #include "track.h"
+#include "record.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/log.h"
@@ -25,7 +26,7 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
 {
   int sig_size = 0;
   if (hp->sig_algo != ALLNET_SIGTYPE_NONE)
-    sig_size = (packet [size - 2] & 0xff) << 8 + (packet [size - 1] & 0xff);
+    sig_size = ((packet [size - 2] & 0xff) << 8) + (packet [size - 1] & 0xff);
   int valid = 0;
   int social_distance = UNKNOWN_SOCIAL_TIER;
   int rate_fraction = largest_rate ();

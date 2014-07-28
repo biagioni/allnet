@@ -1,8 +1,11 @@
 AM_CFLAGS = -I$(ALLNET_SRCDIR) -Wreturn-type
 libincludes = \
+	lib/app_util.h \
 	lib/cipher.h \
 	lib/config.h \
 	lib/log.h \
+	lib/media.h \
+	lib/packet.h \
 	lib/pipemsg.h \
 	lib/priority.h \
 	lib/sha.h \
@@ -13,8 +16,8 @@ bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/xtime \
 	$(ALLNET_BINDIR)/allnet-radio \
 	$(ALLNET_BINDIR)/broadcast
-__ALLNET_BINDIR__xtime_SOURCES = xtime.c ${libincludes} lib/packet.h
+__ALLNET_BINDIR__xtime_SOURCES = xtime.c ${libincludes}
 __ALLNET_BINDIR__xtime_LDFLAGS = -lpthread
 __ALLNET_BINDIR__allnet_radio_SOURCES = allnet_radio.c ${libincludes}
-__ALLNET_BINDIR__broadcast_SOURCES = broadcast.c ${libincludes} lib/packet.h
+__ALLNET_BINDIR__broadcast_SOURCES = broadcast.c ${libincludes}
 __ALLNET_BINDIR__broadcast_LDFLAGS = -lpthread
