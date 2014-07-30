@@ -11,6 +11,7 @@
 #include <time.h>
 #include <inttypes.h>
 
+#include "lib/app_util.h"
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
