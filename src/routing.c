@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <pthread.h>
 #include <ifaddrs.h>
@@ -16,6 +17,7 @@
 #include "lib/util.h"
 #include "lib/ai.h"
 #include "lib/log.h"
+#include "lib/config.h"
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -127,7 +129,8 @@ static int entry_to_file (int fd, struct addr_info * entry, int index)
       snprintf (line, sizeof (line), "%d: %s", index, buf);
     else
       snprintf (line, sizeof (line), "p: %s", buf);
-    write (fd, line, strlen (line));
+    if (write (fd, line, strlen (line)) != strlen (line))
+      perror ("write entry to peer file");
     return 1;
   }
   return 0;
@@ -146,7 +149,8 @@ static void save_peers ()
   char line [300];  /* write my address first */
   buffer_to_string (my_address, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 1,
                     line, sizeof (line));
-  write (fd, line, strlen (line));
+  if (write (fd, line, strlen (line)) != strlen (line))
+    perror ("save_peers write");  /* report, but continue */
   int i;
   int cpeer = 0;
   int cping = 0;
@@ -394,7 +398,7 @@ static int init_peers (int always)
 }
 
 /* fills in addr (of size at least ADDRESS_SIZE) with my address */
-void routing_my_address (char * addr)
+void routing_my_address (unsigned char * addr)
 {
   pthread_mutex_lock (&mutex);
   init_peers (0);
@@ -448,7 +452,8 @@ print_dht (0); */
     for (col = 0; col < PEERS_PER_BIT; col++) {
       struct addr_info * ai = &(peers [row * PEERS_PER_BIT + col].ai);
       if ((ai->nbits > 0) &&
-          (addr_closer (dest, nbits, my_address, ai->destination))) {
+          (addr_closer (dest, nbits, (unsigned char *) my_address,
+                        ai->destination))) {
         struct sockaddr * sap = (struct sockaddr *) (& (result [peer]));
         if (ai_to_sockaddr (ai, sap))
           peer++;   /* a valid translation */
@@ -473,11 +478,12 @@ print_dht (0); */
 }
 
 static void exact_match_print (char * description, int found,
-                               const char * addr, struct addr_info * result)
+                               const unsigned char * addr,
+                               struct addr_info * result)
 {
 #ifdef DEBUG_PRINT
   printf ("%s (", description);
-  print_buffer (addr, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 0);
+  print_buffer ((char *) addr, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 0);
   printf (") ");
   if (found)
     print_addr_info (result);
@@ -492,7 +498,8 @@ static void exact_match_print (char * description, int found,
 
 /* returns 1 if found (and fills in result if not NULL), otherwise returns 0 */
 static int search_data_structure (struct peer_info * ds, int max,
-                                  const char * addr, struct addr_info * result)
+                                  const unsigned char * addr,
+                                  struct addr_info * result)
 {
   int found = 0;
   int i;
@@ -510,7 +517,7 @@ static int search_data_structure (struct peer_info * ds, int max,
 /* returns 1 and fills in result (if not NULL) if it finds an exact
  * match for this address (assumed to be of size ADDRESS_SIZE.
  * otherwise returns 0.  */
-int routing_exact_match (const char * addr, struct addr_info * result)
+int routing_exact_match (const unsigned char * addr, struct addr_info * result)
 {
   int found = 0;
   pthread_mutex_lock (&mutex);
@@ -543,7 +550,7 @@ int routing_exact_match (const char * addr, struct addr_info * result)
   return found;
 }
 
-int ping_exact_match (const char * addr, struct addr_info * result)
+int ping_exact_match (const unsigned char * addr, struct addr_info * result)
 {
   pthread_mutex_lock (&mutex);
   init_peers (0);
@@ -604,7 +611,7 @@ int routing_add_dht (struct addr_info * addr)
   if ((addr->nbits == ADDRESS_BITS) &&
       (addr->type == ALLNET_ADDR_INFO_TYPE_DHT)) {
     int bit_pos = matching_bits (addr->destination, ADDRESS_BITS,
-                                 my_address, ADDRESS_BITS);
+                                 (unsigned char *) my_address, ADDRESS_BITS);
 #ifdef DEBUG_PRINT
     printf ("adding at bit position %d, address ", bit_pos);
     print_addr_info (addr);
@@ -742,11 +749,12 @@ static struct addr_info * get_nth_peer (int n)
 {
   int i;
   for (i = 0; i < MAX_PEERS; i++) {
-    if (peers [i].ai.nbits > 0)
+    if (peers [i].ai.nbits > 0) {
       if (n == 0)
         return &(peers [i].ai);
       else
         n--;
+    }
   }
   return NULL;
 }
@@ -826,7 +834,7 @@ int routing_ping_iterator (int iter, struct addr_info * ai)
 /* returns the number of entries filled in, 0...max */
 /* entry may be NULL, in which case nothing is filled in */
 int init_own_routing_entries (struct addr_info * entry, int max,
-                              const char * dest, int nbits)
+                              const unsigned char * dest, int nbits)
 {
   int result = 0;
   if (entry != NULL)

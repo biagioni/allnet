@@ -10,6 +10,7 @@
 /*        also some mechanism to get new private keys for a contact */
 
 #include <stdio.h>
+#include <unistd.h>
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
@@ -470,7 +471,7 @@ static int do_set_contact_pubkey (struct key_info * k,
     return 0;
   }
   RSA * rsa = RSA_new ();
-  rsa->n = BN_bin2bn (contact_key + 1, ksize - 1, NULL);
+  rsa->n = BN_bin2bn ((unsigned char *) (contact_key + 1), ksize - 1, NULL);
   rsa->e = NULL;
   BN_dec2bn (&(rsa->e), RSA_E65537_STRING);
   k->contact_pubkey = rsa;
@@ -494,7 +495,7 @@ int set_contact_pubkey (keyset k, char * contact_key, int contact_ksize)
   return 1;
 }
 
-int set_contact_local_addr (keyset k, int nbits, char * address)
+int set_contact_local_addr (keyset k, int nbits, unsigned char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
@@ -505,7 +506,7 @@ int set_contact_local_addr (keyset k, int nbits, char * address)
   return 1;
 }
 
-int set_contact_remote_addr (keyset k, int nbits, char * address)
+int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
@@ -522,8 +523,8 @@ int set_contact_remote_addr (keyset k, int nbits, char * address)
 /* if feedback is nonzero, gives feedback while creating the key */
 keyset create_contact (char * contact, int keybits, int feedback,
                        char * contact_key, int contact_ksize,
-                       char * local, int loc_nbits,
-                       char * remote, int rem_nbits)
+                       unsigned char * local, int loc_nbits,
+                       unsigned char * remote, int rem_nbits)
 {
   init_from_file ();
   if (contact_exists (contact))
@@ -655,7 +656,7 @@ static unsigned int get_pubkey (RSA * rsa, char ** bytes,
   if (bytes != NULL) {
     if (size + 1 > ssize)
       return 0;
-    BN_bn2bin (rsa->n, storage + 1);
+    BN_bn2bin (rsa->n, (unsigned char *) (storage + 1));
     storage [0] = KEY_RSA4096_E65537;
     *bytes = storage;
   }
@@ -716,7 +717,7 @@ int debug_n = 0;
 
 /* returns the number of bits in the address, 0 if none */
 /* address must have length at least ADDRESS_SIZE */
-unsigned int get_local (keyset k, char * address)
+unsigned int get_local (keyset k, unsigned char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
@@ -727,7 +728,7 @@ unsigned int get_local (keyset k, char * address)
   return kip [k].local.nbits;
 }
 
-unsigned int get_remote (keyset k, char * address)
+unsigned int get_remote (keyset k, unsigned char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
@@ -815,7 +816,7 @@ static void rsa_to_external_pubkey (RSA * rsa, char ** key, int * klen)
   /* the public key in external format */
   int size = BN_num_bytes (rsa->n) + 1;
   char * p = malloc_or_fail (size, "external public key");
-  BN_bn2bin (rsa->n, p + 1);
+  BN_bn2bin (rsa->n, (unsigned char *) (p + 1));
   p [0] = KEY_RSA4096_E65537;
   *key = p;
   *klen = size;
@@ -842,7 +843,7 @@ static void init_key_info (char * config_dir, char * file,
 
   char * mapped;
   int mlen = map_string (phrase, &mapped);
-  sha512_bytes (mapped, mlen, key->address, ADDRESS_SIZE);
+  sha512_bytes (mapped, mlen, (char *) (key->address), ADDRESS_SIZE);
   free (mapped);
 
   key->identifier = strcpy_malloc (file, "keys.c init_key_info");
@@ -1033,12 +1034,13 @@ static char * make_address (RSA * key, int key_bits,
   }
 
   /* get the bits of the ciphertext */
-  char * encrypted = malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
+  unsigned char * encrypted =
+     malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
 
 /* in general, RSA_NO_PADDING is not secure for RSA encryptions.  However,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
-  char * padded = malloc_or_fail (rsa_size, "make_address padded");
+  unsigned char * padded = malloc_or_fail (rsa_size, "make_address padded");
   bzero (padded, rsa_size);
   memcpy (padded + (rsa_size - msize), mapped, msize);
   int esize = RSA_public_encrypt (rsa_size, padded, encrypted, key,
@@ -1064,7 +1066,8 @@ static char * make_address (RSA * key, int key_bits,
     int hashpos = SHA512_BITS - ((i + 1) * bitstring_bits);
     int found = 0;  /* if no match, cannot continue the outer loop */
     for (j = 0; j <= esize * 8 - bitstring_bits; j++) {
-      if (bitstring_matches (encrypted, j, hash, hashpos, bitstring_bits)) {
+      if (bitstring_matches (encrypted, j, (unsigned char *) hash, hashpos,
+                             bitstring_bits)) {
         match_pos [nmatches++] = j;
 /*
         printf ("match %d found at encr bit %d hash bit %d, bitstring: ",
@@ -1237,7 +1240,7 @@ int get_temporary_key (char ** pubkey, char ** privkey, int * privksize)
 
 /* verifies that a key obtained by a key exchange matches the address */
 /* the default lang and bits are used if they are not part of the address */
-unsigned int verify_bc_key (char * address, char * key, int key_bytes,
+unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
                             char * default_lang, int bitstring_bits,
                             int save_if_correct)
 {
@@ -1247,7 +1250,7 @@ unsigned int verify_bc_key (char * address, char * key, int key_bytes,
     return 0;
   }
   RSA * rsa = RSA_new ();
-  rsa->n = BN_bin2bn (key + 1, key_bytes - 1, NULL);
+  rsa->n = BN_bin2bn ((unsigned char *) (key + 1), key_bytes - 1, NULL);
   rsa->e = NULL;
   BN_dec2bn (&(rsa->e), RSA_E65537_STRING);
   int rsa_size = RSA_size (rsa);
@@ -1257,10 +1260,10 @@ unsigned int verify_bc_key (char * address, char * key, int key_bytes,
   int * positions;
   int num_positions;
   char * reason;
-  if (! parse_ahra (address, &phrase, &positions, &num_positions,
+  if (! parse_ahra (ahra, &phrase, &positions, &num_positions,
                     &default_lang, &bitstring_bits, &reason)) {
     printf ("unable to parse allnet human-readable address '%s', %s\n",
-            address, reason);
+            ahra, reason);
     return 0;
   }
 
@@ -1273,11 +1276,12 @@ unsigned int verify_bc_key (char * address, char * key, int key_bytes,
   /* get the bits of the ciphertext */
   if (mlen > max_rsa)
     mlen = max_rsa;
-  char * encrypted = malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
+  unsigned char * encrypted =
+    malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
 /* in general, RSA_NO_PADDING is not secure for RSA encryptions.  However,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
-  char * padded = malloc_or_fail (rsa_size, "verify_bc_key padded");
+  unsigned char * padded = malloc_or_fail (rsa_size, "verify_bc_key padded");
   bzero (padded, rsa_size);
   memcpy (padded + (rsa_size - mlen), mapped, mlen);
   int esize = RSA_public_encrypt (rsa_size, padded, encrypted, rsa,
@@ -1294,27 +1298,30 @@ unsigned int verify_bc_key (char * address, char * key, int key_bytes,
   int i;
   for (i = 0; i < num_positions; i++) {
     int hashpos = SHA512_BITS - ((i + 1) * bitstring_bits);
-    if (! bitstring_matches (encrypted, positions [i], hash, hashpos,
+    if (! bitstring_matches (encrypted, positions [i],
+                             (unsigned char *) hash, hashpos,
                              bitstring_bits)) {
 
       printf ("%d: no %d-bit match at positions %d/%d\n", i,
               bitstring_bits, positions [i], hashpos);
       print_bitstring (encrypted, positions [i], bitstring_bits, 1);
-      print_bitstring (hash, hashpos, bitstring_bits, 1);
+      print_bitstring ((unsigned char *) hash, hashpos, bitstring_bits, 1);
 
+      free (encrypted);
       free (positions);
       return 0;
     }
   }
   char * fname;
-  if (config_file_name ("other_bc_keys", address, &fname) < 0) {
-    printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", address);
+  if (config_file_name ("other_bc_keys", ahra, &fname) < 0) {
+    printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", ahra);
   } else {
     write_RSA_file (fname, rsa, 0);
     free (fname);
   }
   
   free (positions);
+  free (encrypted);
   RSA_free (rsa);
   return 1;
 }
@@ -1334,7 +1341,7 @@ unsigned int get_own_keys (struct bc_key_info ** keys)
  * if not successful, returns 0 */
 unsigned int get_other_keys (struct bc_key_info ** keys)
 {
-  init_bc_keys (NULL);
+  init_bc_keys ();
   *keys = other_bc_keys;
   return num_other_bc_keys;
 }
@@ -1352,16 +1359,16 @@ static struct bc_key_info * find_bc_key (char * address,
 }
 
 /* return the specified key (statically allocated, do not modify), or NULL */
-struct bc_key_info * get_own_key (char * address)
+struct bc_key_info * get_own_bc_key (char * ahra)
 {
   init_bc_keys ();
-  return find_bc_key (address, own_bc_keys, num_own_bc_keys);
+  return find_bc_key (ahra, own_bc_keys, num_own_bc_keys);
 }
 
-struct bc_key_info * get_other_key (char * address)
+struct bc_key_info * get_other_bc_key (char * ahra)
 {
   init_bc_keys ();
-  return find_bc_key (address, other_bc_keys, num_other_bc_keys);
+  return find_bc_key (ahra, other_bc_keys, num_other_bc_keys);
 }
 
 #ifdef TEST_KEYS

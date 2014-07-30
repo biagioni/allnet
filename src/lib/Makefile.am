@@ -9,6 +9,7 @@ libincludes = \
 	keys.h \
 	log.h \
 	mapchar.h \
+	media.h \
 	mgmt.h \
 	packet.h \
 	pipemsg.h \

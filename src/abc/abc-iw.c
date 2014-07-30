@@ -1,10 +1,11 @@
 /* abc-iw.c: Configure wireless card using iw-tools */
 
-#include <stdio.h>    /* perror, printf, snprintf */
-#include <stdlib.h>   /* exit */
-#include <string.h>   /* strlen */
-#include <unistd.h>   /* fork, dup2, execvp */
-#include <sys/wait.h> /* waitpid */
+#include <stdio.h>     /* perror, printf, snprintf */
+#include <stdlib.h>    /* exit */
+#include <string.h>    /* strlen */
+#include <unistd.h>    /* fork, dup2, execvp */
+#include <sys/types.h> /* pid_t */
+#include <sys/wait.h>  /* waitpid */
 
 #include "abc-wifi.h" /* abc_wifi_config_iface */
 #include "abc-iw.h"

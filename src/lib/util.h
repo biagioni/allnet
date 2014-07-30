@@ -33,16 +33,18 @@ extern void packet_to_string (const char * buffer, int count, char * desc,
 extern struct allnet_header *
   init_packet (char * packet, int psize,
                int message_type, int max_hops, int sig_algo,
-               char * source, int sbits, char * dest, int dbits, char * ack);
+               unsigned char * source, int sbits,
+               unsigned char * dest, int dbits, unsigned char * ack);
 
 /* malloc's (must be free'd), initializes, and returns a packet with the
-/* given data size. */
-/* If ack is not NULL, the data size parameter should NOT include the */
-/* MESSAGE_ID_SIZE bytes of the ack. */
-/* *size is set to the size to send */
+ * given data size.
+ * If ack is not NULL, the data size parameter should NOT include the
+ * MESSAGE_ID_SIZE bytes of the ack.
+ * *size is set to the size to send */
 extern struct allnet_header *
   create_packet (int data_size, int message_type, int max_hops, int sig_algo,
-                 char * source, int sbits, char * dest, int dbits, char * ack,
+                 unsigned char * source, int sbits,
+                 unsigned char * dest, int dbits, unsigned char * ack,
                  int * size);
 
 /* malloc, initialize, and return an ack message for a received packet.
@@ -50,8 +52,8 @@ extern struct allnet_header *
 /* *size is set to the size to send */
 /* if from is NULL, the source address is taken from packet->destination */
 extern struct allnet_header *
-  create_ack (struct allnet_header * packet, char * ack,
-              char * from, int nbits, int * size);
+  create_ack (struct allnet_header * packet, unsigned char * ack,
+              unsigned char * from, int nbits, int * size);
 
 /* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
  * offset (in bits) within x, nbits the number of bits to print */
@@ -172,6 +174,16 @@ extern void writeb16 (char * p, unsigned int value);
 extern void writeb32 (char * p, unsigned long int value);
 extern void writeb48 (char * p, unsigned long long int value);
 extern void writeb64 (char * p, unsigned long long int value);
+
+/* the same functions on arrays of unsigned characters */
+extern unsigned int readb16u (const unsigned char * p);
+extern unsigned long int readb32u (const unsigned char * p);
+extern unsigned long long int readb48u (const unsigned char * p);
+extern unsigned long long int readb64u (const unsigned char * p);
+extern void writeb16u (unsigned char * p, unsigned int value);
+extern void writeb32u (unsigned char * p, unsigned long int value);
+extern void writeb48u (unsigned char * p, unsigned long long int value);
+extern void writeb64u (unsigned char * p, unsigned long long int value);
 
 /* returns 1 if the message is valid, 0 otherwise */
 extern int is_valid_message (const char * packet, int size);

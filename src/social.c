@@ -8,9 +8,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
-#include "lib/packet.h"
 #include "social.h"
+#include "lib/packet.h"
+#include "lib/util.h"
 #include "lib/table.h"
 #include "lib/config.h"
 #include "lib/log.h"
@@ -133,7 +135,8 @@ time_t update_social (struct social_info * soc, int update_seconds)
 }
 
 /* returns 1 if this message is from my contact, and 0 otherwise */
-static int is_my_contact (char * message, int msize, char * sender, int bits,
+static int is_my_contact (char * message, int msize,
+                          unsigned char * sender, int bits,
                           int algo, char * sig, int ssize)
 {
   char ** contacts;
@@ -144,7 +147,7 @@ static int is_my_contact (char * message, int msize, char * sender, int bits,
     int nk = all_keys (contacts [ic], &keysets);
     int ink;
     for (ink = 0; ink < nk; ink++) {
-      char address [ADDRESS_SIZE];
+      unsigned char address [ADDRESS_SIZE];
       int na_bits = get_remote (keysets [ink], address);
       char * key;
       int ksize = get_contact_pubkey (keysets [ink], &key);
@@ -161,7 +164,8 @@ static int is_my_contact (char * message, int msize, char * sender, int bits,
   int nbc = get_other_keys (&bc);
   int ibc;
   for (ibc = 0; ibc < nbc; ibc++) {
-    if ((matches (sender, bits, bc [ibc].address, ADDRESS_BITS) > 0) &&
+    if ((matches (sender, bits,
+                  (unsigned char *) (bc [ibc].address), ADDRESS_BITS) > 0) &&
         (allnet_verify (message, msize, sig, ssize,
                  bc [ibc].pub_key, bc [ibc].pub_klen))) {
       snprintf (log_buf, LOG_SIZE, "verified from bc contact %d\n", ibc);
@@ -176,8 +180,8 @@ static int is_my_contact (char * message, int msize, char * sender, int bits,
 /* checks the signature, and sets valid accordingly.
  * returns the social distance if known, and UNKNOWN_SOCIAL_TIER otherwise */
 int social_connection (struct social_info * soc, char * vmessage, int vsize,
-                       char * src, int sbits, int algo, char * sig, int ssize,
-                       int * valid)
+                       unsigned char * src, int sbits, int algo,
+                       char * sig, int ssize, int * valid)
 {
 snprintf (log_buf, LOG_SIZE, "social_connection (%d) called\n", algo);
 log_print ();

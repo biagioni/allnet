@@ -43,6 +43,7 @@
 #include <signal.h>           /* signal */
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -58,6 +59,7 @@
 #include "lib/priority.h"     /* ALLNET_PRIORITY_FRIENDS_LOW */
 #include "lib/util.h"         /* delta_us */
 #include "lib/pqueue.h"       /* queue_max_priority */
+#include "lib/sha.h"          /* sha512_bytes */
 
 
 /* we don't know how big messages will be on the interface until we get them */
@@ -227,8 +229,8 @@ static void send_beacon (int awake_ms, const char * interface,
   clear_nonces (1, 0);   /* mark new cycle -- should not be needed, but safe */
   random_bytes (my_beacon_rnonce, NONCE_SIZE);
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
-  writeb64 (mbp->awake_time,
-            ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
+  writeb64u (mbp->awake_time,
+             ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
   if (sendto (sockfd_global, buf, size, MSG_DONTWAIT, addr, addrlen) < size)
     perror ("beacon sendto");
 }
@@ -282,7 +284,7 @@ static void make_beacon_grant (char * buffer, int bsize,
   mp->mgmt_type = ALLNET_MGMT_BEACON_GRANT;
   memcpy (mbgp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   memcpy (mbgp->sender_nonce  , my_beacon_snonce, NONCE_SIZE);
-  writeb64 (mbgp->send_time, send_time_ns);
+  writeb64u (mbgp->send_time, send_time_ns);
 }
 
 /* if type is 1, sends the message */
@@ -342,7 +344,7 @@ static int handle_beacon (char * message, int msize, int sockfd,
     struct allnet_mgmt_beacon * mbp = (struct allnet_mgmt_beacon *) beaconp;
 
     /* compute when to send the reply */
-    unsigned long long int awake_us = readb64 (mbp->awake_time) / 1000LL;
+    unsigned long long int awake_us = readb64u (mbp->awake_time) / 1000LL;
     if (awake_us == 0)   /* not given, use 50ms */
       awake_us = 50 * 1000;
     struct timeval deadline;  /* send in the first 1/2 of the awake time */
@@ -411,7 +413,7 @@ static int handle_beacon (char * message, int msize, int sockfd,
         /* granted to me, so send now */
         *send_type = 2;   /* send from the queue */
         unsigned long long int bytes_to_send = queue_total_bytes ();
-        unsigned long long int send_ns = readb64 (mbgp->send_time);
+        unsigned long long int send_ns = readb64u (mbgp->send_time);
         /* bytes/second = bits/second / 8
            bytes/nanosecond = bits/second / 8,000,000,000
            bytes I may send = ns I may send * bits/second / 8,000,000,000 */
@@ -434,7 +436,7 @@ bytes_to_send, queue_total_bytes (), may_send, send_ns, bits_per_s);
 #endif /* 0 */
       } else { /* granted to somebody else, so start listening again */
         /* should keep quiet while they send */
-        update_quiet (quiet_end, readb64 (mbgp->send_time) / 1000LL);
+        update_quiet (quiet_end, readb64u (mbgp->send_time) / 1000LL);
       }
       clear_nonces (0, 1);      /* be open to new beacon messages */
       *beacon_deadline = NULL;
@@ -638,7 +640,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
     goto iface_cleanup;
   }
   int is_on = iface->iface_is_enabled_cb ();
-  if (is_on < 0 || is_on == 0 && iface->iface_set_enabled_cb (1) != 1) {
+  if ((is_on < 0) || ((is_on == 0) && (iface->iface_set_enabled_cb (1) != 1))) {
     snprintf (log_buf, LOG_SIZE,
               "abc: unable to bring up interface %s\n", interface);
     log_print ();
@@ -698,4 +700,5 @@ int main (int argc, char ** argv)
   main_loop (interface, rpipe, wpipe);
   snprintf (log_buf, LOG_SIZE, "end of abc (%s) main thread\n", interface);
   log_print ();
+  return 1;
 }

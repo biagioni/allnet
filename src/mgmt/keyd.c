@@ -8,6 +8,7 @@
 #include <openssl/rsa.h>
 
 #include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/pipemsg.h"
@@ -20,7 +21,7 @@
 #define CONFIG_DIR	"~/.allnet/keys"
 
 static void send_key (int sock, struct bc_key_info * key, char * return_key,
-                      int rksize, char * address, int abits, int hops)
+                      int rksize, unsigned char * address, int abits, int hops)
 {
 #ifdef DEBUG_PRINT
   printf ("send_key ((%p, %d), %p)\n", key->pub_key, key->pub_klen, return_key);
@@ -56,8 +57,8 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   char * adp = ALLNET_DATA_START(hp, hp->transport, bytes);
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) adp;
-  writeb32 (amhp->app, 0x6b657964 /* keyd */ );
-  writeb32 (amhp->media, ALLNET_MEDIA_PUBLIC_KEY);
+  writeb32u (amhp->app, 0x6b657964 /* keyd */ );
+  writeb32u (amhp->media, ALLNET_MEDIA_PUBLIC_KEY);
   char * dp = adp + amhsize;
   memcpy (dp, data, dlen);
   if (allocated)
@@ -123,7 +124,8 @@ static void handle_packet (int sock, char * message, int msize)
   int i;
   for (i = 0; i < nkeys; i++) {
     int matching_bits =
-      matches (hp->destination, hp->dst_nbits, keys [i].address, ADDRESS_BITS);
+      matches (hp->destination, hp->dst_nbits,
+               (unsigned char *) (keys [i].address), ADDRESS_BITS);
     printf ("%02x <> %02x (%s): %d matching bits, %d needed\n",
             hp->destination [0] & 0xff, keys [i].address [0] & 0xff,
             keys [i].identifier, matching_bits, hp->dst_nbits);
