@@ -27,6 +27,7 @@ AC_PROG_LN_S
 
 # Checks for libraries.
 # PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
+PKG_CHECK_MODULES(GSTREAMER, [gstreamer >= 1.0])
 
 build_gui="auto"
 build_gui_flag_set="no"
