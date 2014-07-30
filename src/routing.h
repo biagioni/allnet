@@ -4,13 +4,15 @@
 #define ROUTING_H
 
 /* fills in addr (of size at least ADDRESS_SIZE) with my address */
-extern void routing_my_address (char * addr);
+extern void routing_my_address (unsigned char * addr);
 
 /* returns 1 and fills in result (if not NULL) if it finds an examct
  * match for this address (assumed to be of size ADDRESS_SIZE.
  * otherwise returns 0.  */
-extern int routing_exact_match (const char * addr, struct addr_info * result);
-extern int ping_exact_match (const char * addr, struct addr_info * result);
+extern int routing_exact_match (const unsigned char * addr,
+                                struct addr_info * result);
+extern int ping_exact_match (const unsigned char * addr,
+                             struct addr_info * result);
 
 /* fills in an array of sockaddr_storage to the top internet addresses
  * (up to max_matches) for the given AllNet address.
@@ -51,7 +53,7 @@ extern void print_ping_list (int to_log);
 /* returns the number of entries filled in, 0...max */
 /* entry may be NULL, in which case nothing is filled in */
 extern int init_own_routing_entries (struct addr_info * entry, int max,
-                                     const char * dest, int nbits);
+                                     const unsigned char * dest, int nbits);
 
 /* returns 1 if the given addr is one of mine, or matches my_address */
 extern int is_own_address (struct addr_info * addr);

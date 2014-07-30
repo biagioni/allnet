@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
@@ -203,7 +204,7 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free)
   } else {
     /* try to send with write -- I don't think this has ever been used */
     if ((w < 0) && (errno == ENOTSOCK)) {
-snprintf (log_buf, LOG_SIZE, "trying write instead of send on fd \n", pipe);
+snprintf (log_buf, LOG_SIZE, "trying write instead of send on fd %d\n", pipe);
 log_print ();
       w = write (pipe, buffer, blen); 
       is_send = 0;
@@ -268,7 +269,6 @@ int send_pipe_message (int pipe, char * message, int mlen, int priority)
   struct sigaction sa;
   sa.sa_handler = SIG_IGN;
   sa.sa_flags = 0;
-  sa.sa_mask;
   sigemptyset (&(sa.sa_mask));
   struct sigaction old_sa;
   sigaction (SIGPIPE, &sa, &old_sa);
@@ -328,7 +328,6 @@ int send_pipe_multiple (int pipe, int num_messages,
   struct sigaction sa;
   sa.sa_handler = SIG_IGN;
   sa.sa_flags = 0;
-  sa.sa_mask;
   sigemptyset (&(sa.sa_mask));
   struct sigaction old_sa;
   sigaction (SIGPIPE, &sa, &old_sa);

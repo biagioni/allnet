@@ -11,7 +11,7 @@
 #define SAVED_ADDRESSES	128
 
 struct rate_record {
-  char address [ADDRESS_SIZE];
+  unsigned char address [ADDRESS_SIZE];
   unsigned char num_bits;
   int packet_size;
 };
@@ -32,7 +32,7 @@ int largest_rate ()
  * fraction of the available bandwidth this source is using.
  * ALLNET_PRIORITY_MAX is defined in priority.h
  */
-int track_rate (char * source, int sbits, int packet_size)
+int track_rate (unsigned char * source, int sbits, int packet_size)
 {
   int i;
   if (next < 0) {    /* initialize */

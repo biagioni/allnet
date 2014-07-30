@@ -30,8 +30,8 @@ extern int all_contacts (char *** contacts);
 /* if feedback is nonzero, gives feedback while creating the key */
 extern keyset create_contact (char * contact, int keybits, int feedback,
                               char * contact_key, int contact_ksize,
-                              char * local, int loc_nbits,
-                              char * remote, int rem_nbits);
+                              unsigned char * local, int loc_nbits,
+                              unsigned char * remote, int rem_nbits);
 
 /*************** operations on keysets and keys ********************/
 
@@ -53,8 +53,10 @@ extern char * key_dir (keyset key);
  * for this contact, returns 0 otherwise */
 extern int set_contact_pubkey (keyset k, char * contact_key, int contact_ksize);
 /* return 1 and set the address if the keyset is valid, 0 otherwise */
-extern int set_contact_local_addr (keyset k, int nbits, char * address);
-extern int set_contact_remote_addr (keyset k, int nbits, char * address);
+extern int set_contact_local_addr (keyset k, int nbits,
+                                   unsigned char * address);
+extern int set_contact_remote_addr (keyset k, int nbits,
+                                    unsigned char * address);
 
 /* if successful returns the key length and sets *key to point to
  * statically allocated storage for the key (do not modify in any way)
@@ -64,8 +66,8 @@ extern unsigned int get_my_pubkey (keyset k, char ** key);
 extern unsigned int get_my_privkey (keyset k, char ** key);
 /* returns the number of bits in the address, 0 if none */
 /* address must have length at least ADDRESS_SIZE */
-extern unsigned int get_local (keyset k, char * address);
-extern unsigned int get_remote (keyset k, char * address);
+extern unsigned int get_local (keyset k, unsigned char * address);
+extern unsigned int get_remote (keyset k, unsigned char * address);
 
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
@@ -116,15 +118,16 @@ extern void delete_lang_bits (char * key);
 /* pubkey and privkey should be free'd when done */
 extern int get_temporary_key (char ** pubkey, char ** privkey, int * privksize);
 
-/* verifies that a key obtained by a key exchange matches the address */
+/* verifies that a key obtained by a key exchange matches the ahra */
 /* the default lang and bits are used if they are not part of the address */
 /* if save_is_correct != 0, also saves it to a file using the given address */
-extern unsigned int verify_bc_key (char * address, char * key, int key_bits,
+extern unsigned int verify_bc_key (char * ahra, char * key, int key_bits,
                                    char * default_lang, int default_bits,
                                    int save_if_correct);
 
 struct bc_key_info {
-  char address [ADDRESS_SIZE];      /* the address associated with this key */
+     /* the AllNet address associated with this key */
+  unsigned char address [ADDRESS_SIZE];
   char * identifier;                /* the sender associated with this key */
   int pub_klen;
   char * pub_key;                   /* in a format suitable for sending */
@@ -145,8 +148,8 @@ extern unsigned int get_own_keys (struct bc_key_info ** key);
 extern unsigned int get_other_keys (struct bc_key_info ** key);
 
 /* return the specified key (statically allocated, do not modify), or NULL */
-extern struct bc_key_info * get_own_key (char * address);
-extern struct bc_key_info * get_other_key (char * address);
+extern struct bc_key_info * get_own_bc_key (char * ahra);
+extern struct bc_key_info * get_other_bc_key (char * ahra);
 
 /* returns 1 for a successful parse, 0 otherwise */
 extern int parse_ahra (char * ahra,

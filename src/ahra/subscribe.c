@@ -7,20 +7,23 @@
 #include <string.h>
 
 #include "lib/packet.h"
-#include "lib/pipemsg.h"
+#include "lib/media.h"
 #include "lib/util.h"
+#include "lib/app_util.h"
+#include "lib/pipemsg.h"
 #include "lib/sha.h"
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
+#include "lib/mapchar.h"
 
 static int send_key_request (int sock, char * phrase)
 {
   /* compute the destination address from the phrase */
-  char destination [ADDRESS_SIZE];
+  unsigned char destination [ADDRESS_SIZE];
   char * mapped;
   int mlen = map_string (phrase, &mapped);
-  sha512_bytes (mapped, mlen, destination, 1);
+  sha512_bytes (mapped, mlen, (char *) destination, 1);
   free (mapped);
 
   int dsize = 1;  /* nbits_fingerprint plus the key */
@@ -72,7 +75,7 @@ static int handle_packet (char * message, int msize, char * ahra, int debug)
   char * amp = message + hsize;
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) amp;
-  if (readb32 (amhp->media) != ALLNET_MEDIA_PUBLIC_KEY)
+  if (readb32u (amhp->media) != ALLNET_MEDIA_PUBLIC_KEY)
     return 0;
   char * key = amp + h2size;
   print_buffer (key, ksize, "key", 10, 1);

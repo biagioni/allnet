@@ -15,4 +15,4 @@ bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/allnet-generate \
 	$(ALLNET_BINDIR)/allnet-subscribe
 __ALLNET_BINDIR__allnet_generate_SOURCES = generate.c ${libincludes}
-__ALLNET_BINDIR__allnet_subscribe_SOURCES = subscribe.c ${libincludes} lib/packet.h
+__ALLNET_BINDIR__allnet_subscribe_SOURCES = subscribe.c ${libincludes} lib/packet.h lib/media.h

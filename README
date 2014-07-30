@@ -32,6 +32,9 @@ Graphical User Interface (GUI) that comes with xchat, replace
 the second line with:
         ./configure --disable-shared --disable-gui
 
+you can also set specific CFLAGS with:
+        ./configure --disable-shared CFLAGS="-Wreturn-type -g"
+
 Before doing any of this, you may need to install libtool and autoconf.
 On debian/ubuntu and derived systems this requires:
         sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev

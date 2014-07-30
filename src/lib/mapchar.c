@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "mapchar.h"
 
@@ -141,7 +142,7 @@ static int string_in_string (char * substring, int substring_length,
     while (*string != '\0') {
       if (*substring == *string)
         return 1;
-      *string++;
+      string++;
     }
     return 0;
   }

@@ -31,6 +31,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <pthread.h>
 #include <ifaddrs.h>
@@ -147,7 +148,7 @@ int init_own_routing_entries (struct addr_info * entry, int max,
 /* returns 1 if the given addr is one of mine, or matches my_address */
 int is_own_address (struct addr_info * addr)
 {
-  char my_address [ADDRESS_SIZE];
+  unsigned char my_address [ADDRESS_SIZE];
   routing_my_address (my_address);
   if (memcmp (addr->destination, my_address, ADDRESS_SIZE) == 0)
     return 1;
@@ -164,7 +165,7 @@ int is_own_address (struct addr_info * addr)
 
 #endif /* 0 */
 
-static void ping_all_pending (int sock, char * my_address, int nbits)
+static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
 {
 #define MAX_MY_ADDRS	10
   int dsize = ALLNET_DHT_SIZE (0, MAX_MY_ADDRS);
@@ -193,7 +194,7 @@ static void ping_all_pending (int sock, char * my_address, int nbits)
                                     my_address, ADDRESS_BITS);
   mdp->num_sender = n;
   mdp->num_dht_nodes = 0;
-  writeb64 (mdp->timestamp, allnet_time ());
+  writeb64u (mdp->timestamp, allnet_time ());
   if (n < MAX_MY_ADDRS)
     msize -= (MAX_MY_ADDRS - n) * sizeof (struct addr_info);
 #undef MAX_MY_ADDRS
@@ -220,7 +221,7 @@ static void * send_loop (void * a)
 {
   int sock = *((int *) a);
   char packet [1024 /* ALLNET_MTU */ ];
-  char dest [ADDRESS_SIZE];
+  unsigned char dest [ADDRESS_SIZE];
   routing_my_address (dest);
   int expire_count = 0;    /* when it reaches 10, expire old entries */
   while (1) {
@@ -255,7 +256,7 @@ static void * send_loop (void * a)
       mp->mgmt_type = ALLNET_MGMT_DHT;
       dhtp->num_sender = self;
       dhtp->num_dht_nodes = added;
-      writeb64 (dhtp->timestamp, allnet_time ());
+      writeb64u (dhtp->timestamp, allnet_time ());
       int send_size = total_header_bytes + actual * sizeof (struct addr_info);
       packet_to_string ((char *) hp, send_size, "send_loop sending", 1,
                         log_buf, LOG_SIZE);

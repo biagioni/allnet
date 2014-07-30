@@ -145,7 +145,7 @@ struct allnet_mgmt_trace_req {
 
 /* if a pubkey was provided, this is the structure of the decrypted message */
 /* otherwise, this is the structure of the plaintext message */
-/* (the first byte is not encrypted, and indicates whether the rest of the
+/* (the first byte is not encrypted, and indicates whether the rest of the */
 /* message is encrypted) */
 /* the message may or may not be signed by the sender */
 /* an intermediate reply will normally have just one unsigned,

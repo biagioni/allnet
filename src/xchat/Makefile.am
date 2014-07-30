@@ -7,6 +7,7 @@ libincludes = \
     app_util.h \
     config.h \
     log.h \
+    media.h \
     packet.h \
     pipemsg.h \
     priority.h \

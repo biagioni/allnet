@@ -295,7 +295,7 @@ int main (int argc, char ** argv)
   int num_hops = 0;
   char * subscription = NULL;
   char sbuf [ALLNET_MTU];   /* subscribe buffer */
-  char saddr [ADDRESS_SIZE];
+  unsigned char saddr [ADDRESS_SIZE];
   int sbits = 0;
   while (1) {
 /* use temp (loop local) buffers, then copy them to kbuf* if code is 2 */

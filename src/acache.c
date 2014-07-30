@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <inttypes.h>
 
 #include "lib/app_util.h"
@@ -15,12 +16,13 @@
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/util.h"
+#include "lib/app_util.h"
 #include "lib/dcache.h"
 #include "lib/log.h"
 #include "lib/sha.h"
 
 #define CACHE_SIZE	1024
-/* #define CACHE_SIZE	4  /* for testing */
+/* #define CACHE_SIZE	4  */ /* for testing only */
 struct cache_entry {
   char * message;
   int msize;
@@ -133,7 +135,7 @@ static int save_packet (void * cache, char * message, int msize)
       cache_search = i;
       cep->message = message;
       cep->msize = msize;
-      writeb64 (cep->rcvd_at, time (NULL) - ALLNET_Y2K_SECONDS_IN_UNIX);
+      writeb64u (cep->rcvd_at, time (NULL) - ALLNET_Y2K_SECONDS_IN_UNIX);
       cache_add (cache, cep);  /* may call return_cache_entry */
       return 1;
     }
@@ -147,7 +149,7 @@ static int save_packet (void * cache, char * message, int msize)
 
 struct request_details {
   int src_nbits;
-  char source [ADDRESS_SIZE];
+  unsigned char source [ADDRESS_SIZE];
   int empty;     /* the other details are only filled in if emtpy is zero */
   unsigned char * since;
   int dpower_two;
@@ -198,7 +200,7 @@ static void build_request_details (char * message, int msize,
       if (hsize + drsize + dbytes <= msize) {
         result->dpower_two = drp->dst_bits_power_two;
         result->dbits = dbits;
-        result->dbitmap = message + (hsize + drsize);
+        result->dbitmap = (unsigned char *) (message + (hsize + drsize));
       }
     }
     if (drp->src_bits_power_two > 0) {
@@ -207,7 +209,8 @@ static void build_request_details (char * message, int msize,
       if (hsize + drsize + dbytes + sbytes <= msize) {
         result->spower_two = drp->src_bits_power_two;
         result->sbits = sbits;
-        result->sbitmap = message + (hsize + drsize + dbytes);
+        result->sbitmap =
+          (unsigned char *) (message + (hsize + drsize + dbytes));
       }
     }
   }
@@ -243,7 +246,7 @@ static int match_bitmap (int power_two, int bitmap_bits, unsigned char * bitmap,
     end_index = ((start_index + 1) << (power_two - abits)) - 1;
     start_index = (start_index << (power_two - abits));
   }
-  if ((start_index < 0) || (end_index < 0) || (start_index > end_index) ||
+  if ((start_index > end_index) ||
       (start_index > bitmap_bits) || (end_index > bitmap_bits)) {
     snprintf (log_buf, LOG_SIZE,
               "match_bitmap error: index %" PRIu64 "-%" PRIu64 ", %d bits\n",
@@ -277,8 +280,8 @@ static int request_matches_packet (void * rs_void, void * cache_entry)
   }
   /* anything not matching leads to the packet being excluded */
   if (req->since != NULL) {
-    uint64_t since = readb64 (req->since);
-    uint64_t rcvd_at = readb64 (cep->rcvd_at);
+    uint64_t since = readb64u (req->since);
+    uint64_t rcvd_at = readb64u (cep->rcvd_at);
     if (since > rcvd_at)
       return 0;
   }

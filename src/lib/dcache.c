@@ -122,7 +122,7 @@ void * cache_get_match (void * cp, match_function f, void * arg1)
 /* return all matching elements, sorted in order from highest to lowest match.
  * The result is the number of matches. which are returned in array.
  * The caller should free array when done.
-/* if there is no match, returns 0 and array is set to NULL */
+ * if there is no match, returns 0 and array is set to NULL */
 int cache_all_matches (void * cp, match_function f, void * arg, void *** array)
 {
   *array = NULL;

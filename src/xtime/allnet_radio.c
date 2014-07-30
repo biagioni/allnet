@@ -6,8 +6,10 @@
 
 #include "lib/app_util.h"
 #include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
+#include "lib/app_util.h"
 #include "lib/sha.h"
 #include "lib/log.h"
 #include "lib/priority.h"
@@ -39,8 +41,8 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   int vsize = msize - hsize;
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) verif;
-  if ((readb32 (amhp->media) != ALLNET_MEDIA_TEXT_PLAIN) &&
-      (readb32 (amhp->media) != ALLNET_MEDIA_TIME_TEXT_BIN))
+  if ((readb32u (amhp->media) != ALLNET_MEDIA_TEXT_PLAIN) &&
+      (readb32u (amhp->media) != ALLNET_MEDIA_TIME_TEXT_BIN))
     return 0;
 
   char * payload = verif + h2size;
@@ -74,7 +76,7 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   *sig = '\0';  /* null-terminate the string */
   printf ("from %s: %s\n", from, payload);
   if ((psize == strlen (payload) + 9) &&
-      (readb32 (amhp->media) == ALLNET_MEDIA_TIME_TEXT_BIN)) {
+      (readb32u (amhp->media) == ALLNET_MEDIA_TIME_TEXT_BIN)) {
   /* message from time server, see how long it took */
     char * bin_time = payload + strlen (payload) + 1;
     unsigned long long int packet_time = readb64 (bin_time);

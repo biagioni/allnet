@@ -3,6 +3,7 @@ libincludes = \
 	lib/app_util.h \
 	lib/dcache.h \
 	lib/log.h \
+	lib/media.h \
 	lib/mgmt.h \
 	lib/packet.h \
 	lib/pipemsg.h \
