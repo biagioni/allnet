@@ -306,7 +306,8 @@ int main (int argc, char ** argv)
     memcpy (dest_address, argv[1], dest_addr_bits);
   }
 
-  gboolean is_encoder = TRUE;
+  gboolean is_encoder = (strcmp (argv [0], "./voas") == 0);
+  g_print ("is_encoder: %d\n", is_encoder);
   init_audio (is_encoder);
   return 0;
 }
