@@ -516,7 +516,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
   int sockfd = check_priority_mode ();
   struct timeval * beacon_deadline = NULL;
   struct timeval time_buffer;   /* beacon_deadline sometimes points here */
-  while (is_before (t)) {
+  while (is_before (t) && !term) {
     char * message;
     int fd;
     int priority;
