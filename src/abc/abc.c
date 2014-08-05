@@ -557,6 +557,8 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
       }
       /* see if priority has changed */
       sockfd = check_priority_mode ();
+    } else {
+      usleep (10 * 1000); /* 10ms */
     }
     if ((beacon_deadline != NULL) && (! is_before (beacon_deadline))) {
       /* we have not been granted permission to send, allow new beacons */
