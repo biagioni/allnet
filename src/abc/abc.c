@@ -40,6 +40,7 @@
  * two basic cycles.
  */
 
+#include <assert.h>
 #include <signal.h>           /* signal */
 #include <stdio.h>
 #include <stdlib.h>
@@ -236,14 +237,8 @@ static void send_beacon (int awake_ms, const char * interface,
 
 static void make_beacon_reply (char * buffer, int bsize)
 {
-  if (bsize != ALLNET_MGMT_HEADER_SIZE (0) +
-               sizeof (struct allnet_mgmt_beacon_reply)) {
-    snprintf (log_buf, LOG_SIZE,
-              "coding error in make_beacon_reply: expected %zd, got %d\n",
-              ALLNET_MGMT_HEADER_SIZE (0) +
-              sizeof (struct allnet_mgmt_beacon_reply), bsize);
-    exit (1);
-  }
+  assert (bsize >= ALLNET_MGMT_HEADER_SIZE (0) +
+               sizeof (struct allnet_mgmt_beacon_reply));
   struct allnet_header * hp =
     init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                  NULL, 0, NULL, 0, NULL);
@@ -262,14 +257,8 @@ static void make_beacon_reply (char * buffer, int bsize)
 static void make_beacon_grant (char * buffer, int bsize,
                                unsigned long long int send_time_ns)
 {
-  if (bsize != ALLNET_MGMT_HEADER_SIZE (0) +
-               sizeof (struct allnet_mgmt_beacon_grant)) {
-    snprintf (log_buf, LOG_SIZE,
-              "coding error in make_beacon_grant: expected %zd, got %d\n",
-              ALLNET_MGMT_HEADER_SIZE (0) +
-              sizeof (struct allnet_mgmt_beacon_grant), bsize);
-    exit (1);
-  }
+  assert (bsize >= ALLNET_MGMT_HEADER_SIZE (0) +
+               sizeof (struct allnet_mgmt_beacon_grant));
   struct allnet_header * hp =
     init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                  NULL, 0, NULL, 0, NULL);
