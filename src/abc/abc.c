@@ -349,20 +349,9 @@ static int handle_beacon (char * message, int msize, int sockfd,
     *send_type = 1;
     *send_size = ALLNET_MGMT_HEADER_SIZE (0) +
                  sizeof (struct allnet_mgmt_beacon_reply);
+    /* make the beacon which will be sent by caller (handle_until()) */
     make_beacon_reply (send_message, ALLNET_MTU);
 
-#if 0
-    /* wait until the reply time, then send */
-    wait_until (&deadline);
-    /* others may issue beacon grants while we sleep.  Handling it would
-     * require handling packets in wait_until, while if we do violate the
-     * quiet time, it is not really the end of the world.  So here we
-     * just wait until we have permission to send from any prior beacon
-     * grants */
-    wait_until (quiet_end);
-    if (sendto (sockfd, reply, rsize, MSG_DONTWAIT, bc_addr, alen) < rsize)
-      perror ("beacon reply sendto");
-#endif /* 0*/
 
     *beacon_deadline = time_buffer;
     gettimeofday (*beacon_deadline, NULL);
@@ -386,15 +375,8 @@ static int handle_beacon (char * message, int msize, int sockfd,
     *send_type = 1;
     *send_size = ALLNET_MGMT_HEADER_SIZE (0) +
                  sizeof (struct allnet_mgmt_beacon_grant);
+    /* make the beacon grant which will be sent by caller (handle_until()) */
     make_beacon_grant (send_message, ALLNET_MTU, BEACON_MS * 1000LL * 1000LL);
-#if 0
-    char reply [ALLNET_MGMT_HEADER_SIZE (0) +
-                sizeof (struct allnet_mgmt_beacon_grant)];
-    int rsize = sizeof (reply);
-    wait_until (quiet_end);
-    if (sendto (sockfd, reply, rsize, MSG_DONTWAIT, bc_addr, alen) < rsize)
-      perror ("beacon grant sendto");
-#endif /* 0 */
     return 1;
   } else if (mp->mgmt_type == ALLNET_MGMT_BEACON_GRANT) {
     struct allnet_mgmt_beacon_grant * mbgp =
