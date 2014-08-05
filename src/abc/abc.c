@@ -151,14 +151,6 @@ static int check_priority_mode ()
   return -1;
 }
 
-static void jitter_deadline_from_now (struct timeval * t, int us)
-{
-  struct timeval now;
-  gettimeofday (&now, NULL);
-  add_us (&now, random () % us);
-  *t = now;
-}
-
 static void wait_until (struct timeval * t)
 {
   do {
@@ -332,13 +324,25 @@ static int handle_beacon (char * message, int msize, int sockfd,
     struct allnet_mgmt_beacon * mbp = (struct allnet_mgmt_beacon *) beaconp;
 
     /* compute when to send the reply */
-    unsigned long long int awake_us = readb64u (mbp->awake_time) / 1000LL;
-    if (awake_us == 0)   /* not given, use 50ms */
-      awake_us = 50 * 1000;
-    struct timeval deadline;  /* send in the first 1/2 of the awake time */
-    jitter_deadline_from_now (&deadline, awake_us / 2);
-    if (delta_us (&deadline, quiet_end) > 0)  /* wait until deadline */
-      *quiet_end = deadline;
+    struct timeval now;
+    gettimeofday (&now, NULL);
+    unsigned long long awake_us = readb64u (mbp->awake_time) / 1000LL;
+    unsigned long long quiet_end_us = delta_us (quiet_end, &now);
+    long long int diff_us = awake_us - quiet_end_us;
+    if (diff_us <= 0 && awake_us != 0) {
+      /* reply instantly and violate silence period */
+      diff_us = 0;
+      *quiet_end = now;
+    } else if (diff_us < 100000 && awake_us != 0) {
+      /* send in first half */
+      diff_us /= 2;
+    } else {
+      /* not given, unreasonable or irrelevant, assume 50-99ms / 2 */
+      diff_us = 25000 + (random () % 24000);
+    }
+
+    if (diff_us)
+      add_us (quiet_end, random () % diff_us);
 
     /* create the reply */
     memcpy (other_beacon_rnonce, mbp->receiver_nonce, NONCE_SIZE);
