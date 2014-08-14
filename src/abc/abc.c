@@ -51,6 +51,7 @@
 
 #include "abc-iface.h"
 #include "abc-wifi.h"         /* abc_iface_wifi */
+#include "../social.h"        /* UNKNOWN_SOCIAL_TIER */
 #include "lib/mgmt.h"         /* struct allnet_mgmt_header */
 #include "lib/log.h"
 #include "lib/packet.h"       /* struct allnet_header */
@@ -83,9 +84,6 @@ static int high_priority = 0;   /* start out in low priority mode */
 /* when we receive high priority packets, we want to stay in high
  * priority mode one more cycle, in case there are any more packets to
  * receive */
-/* todo: never set.  Should be set in handle_network_message */
-/* todo: no connection between cycles and setting this.  Should probably
- * be reset in one_cycle */
 static int received_high_priority = 0;
 
 static int lan_is_on = 0; /* if on, we should never be in high priority mode */
@@ -469,6 +467,13 @@ static void handle_network_message (char * message, int msize,
 {
   if (! handle_beacon (message, msize, sockfd, beacon_deadline, time_buffer,
                        quiet_end, send_type, send_size, send_message)) {
+    /* check for high-priority message */
+    struct allnet_header * hp = (struct allnet_header *) message;
+    int msgpriority = compute_priority (msize, hp->src_nbits, hp->dst_nbits,
+                            hp->hops, hp->max_hops, UNKNOWN_SOCIAL_TIER, 1);
+    if (msgpriority >= ALLNET_PRIORITY_DEFAULT_HIGH)
+      received_high_priority = 1;
+
     /* send the message to ad */
     send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
     /* remove any messages that this message acks */
@@ -598,6 +603,7 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
   if (! high_priority)
     iface->iface_set_enabled_cb (0);
   handle_until (&finish, quiet_end, interface, rpipe, wpipe, addr, alen);
+  received_high_priority = 0;
 }
 
 static void main_loop (const char * interface, int rpipe, int wpipe)
