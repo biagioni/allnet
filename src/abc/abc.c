@@ -482,7 +482,7 @@ static void handle_quiet (struct timeval * quiet_end,
                           const char * interface, int rpipe, int wpipe)
 {
   int sockfd = check_priority_mode ();
-  while (is_before (quiet_end)) {
+  while (is_before (quiet_end) && !term) {
     char * message;
     int fd;
     int priority;
@@ -502,8 +502,10 @@ static void handle_quiet (struct timeval * quiet_end,
       free (message);
       /* see if priority has changed */
       sockfd = check_priority_mode ();
+    } else {
+      usleep (10 * 1000); /* 10ms */
     }
-  } 
+  }
 }
 
 /* handle incoming packets until time t.  Do not send before quiet_end */
