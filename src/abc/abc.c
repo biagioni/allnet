@@ -22,18 +22,18 @@
  * each cycle, then listen (for fraction * basic cycle time) for senders
  * to contact me.
  *
- * When sending high priority data, I keep the radio on, and forward
+ * When sending high priority data, I keep the iface on, and forward
  * all the data I can (within their time limit) to anyone who sends
  * me a beacon.
  *
  * I leave send mode as soon as I no longer have high priority data to send.
  *
- * In energy saving mode, the radio is turned on right before sending the
+ * In energy saving mode, the iface is turned on right before sending the
  * beacon.  If someone has contacted us during our beacon interval, and
  * sends us a beacon, we then send them our own queued data (even low
- * priority).  Either way, the radio is then turned off.
+ * priority).  Either way, the iface is then turned off.
  * If we have low priority data to send, then once every 2/fraction cycles,
- * the radio is turned on for two full cycles, and during that time we
+ * the iface is turned on for two full cycles, and during that time we
  * behave as if we had high priority data to send.
  *
  * packets are removed from the queue after being forwarded for at least
