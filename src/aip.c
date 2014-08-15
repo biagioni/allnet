@@ -183,6 +183,7 @@ static int top_destinations (void * addr_cache, int max, unsigned char * dest,
   return num_matches;
 }
 
+#if 0
 static int same_sockaddr (void * arg1, void * arg2)
 {
   struct sockaddr_in6 * a1 = (struct sockaddr_in6 *) arg1;
@@ -209,6 +210,7 @@ static int same_sockaddr (void * arg1, void * arg2)
   log_print ();
   return 0;
 }
+#endif /* 0 */
 
 static int same_sockaddr_udp (void * arg1, void * arg2)
 {
@@ -437,9 +439,6 @@ log_print ();
   int i;
 #define DHT_SENDS	4
   struct sockaddr_storage dht_storage [DHT_SENDS];
-  struct sockaddr * dht_next [DHT_SENDS];
-  for (i = 0; i < DHT_SENDS; i++)
-    dht_next [i] = ((struct sockaddr *) (&(dht_storage [i])));
   int dht_sends = routing_top_dht_matches (hp->destination, hp->dst_nbits,
                                            dht_storage, DHT_SENDS);
 #undef DHT_SENDS
@@ -511,7 +510,7 @@ static int udp_socket ()
   struct sockaddr     * ap  = (struct sockaddr     *) &address;
   /* struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap; */
   struct sockaddr_in6 * ap6 = (struct sockaddr_in6 *) ap;
-  int addr_size = sizeof (address);
+  int addr_size = sizeof (struct sockaddr_in6);
 
   memset (&address, 0, addr_size);
   ap6->sin6_family = AF_INET6;
@@ -536,7 +535,8 @@ void listen_callback (int fd)
       snprintf (log_buf, LOG_SIZE, "sent cached dht to new socket %d\n", fd);
     else
       snprintf (log_buf, LOG_SIZE,
-                "error sending cached dht to new socket %d\n", fd);
+                "error sending %d-byte cached dht to new socket %d\n",
+                fd, cached_dht_size);
     log_print ();
   }
 }
@@ -602,7 +602,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         continue;
       }
       if (connect (s, (struct sockaddr *) (sin), salen) < 0) {
-        perror ("listener connect");
+        log_error ("listener connect");
         continue;
       }
       /* ai now needs to be malloc'd, to make it good even after we return */
@@ -620,8 +620,9 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       log_print ();
     }
   }
-  snprintf (log_buf, LOG_SIZE, "connect_listener (%d, %d) => %d\n",
-            (address [0] & 0xff) >> (8 - LISTEN_BITS), af, result);
+  snprintf (log_buf, LOG_SIZE, "connect_listener (%d/0x%x, %d) => %d\n",
+            (address [0] & 0xff) >> (8 - LISTEN_BITS), address [0] & 0xff,
+            af, result);
   log_print ();
   return result;
 }
@@ -815,8 +816,8 @@ static int dht_filter_senders (struct sockaddr * sap, socklen_t sasize,
   for (i = 0; i < n_sender; i++) {
     if (((mdp->nodes [i].ip.ip_version == 4) &&
          (sap->sa_family == AF_INET) &&
-         (* ((int *) (mdp->nodes [i].ip.ip.s6_addr + 12)) ==
-          sin->sin_addr.s_addr) &&
+         (memcmp (mdp->nodes [i].ip.ip.s6_addr + 12,
+                  &(sin->sin_addr.s_addr), 4) == 0) &&
          (mdp->nodes [i].ip.port == sin->sin_port)) ||
         ((mdp->nodes [i].ip.ip_version == 6) &&
          (sap->sa_family == AF_INET6) &&
@@ -988,6 +989,9 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
     socklen_t sasize = sizeof (sockaddr);
     int result = receive_pipe_message_fd (1000, &message, udp, sap, &sasize,
                                           &fd, &priority);
+if ((result > 0) && (fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
+snprintf (log_buf, LOG_SIZE, "00: fd %d/%d, result %d/%d/%zd, bad afamily %d\n",
+udp, fd, result, sasize, sizeof (sockaddr), sap->sa_family); log_print (); }
     if (result < 0) {
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "0: fd %d/%d, bad address family %d\n", udp, fd,
@@ -1008,8 +1012,8 @@ sap->sa_family); log_print (); }
       removed_listener = 1;
     } else if (result > 0) {
 if ((fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (log_buf, LOG_SIZE, "1: fd %d/%d, result %d, bad address family %d\n",
-udp, fd, result, sap->sa_family); log_print (); }
+snprintf (log_buf, LOG_SIZE, "1: fd %d/%d, result %d/%d, bad addr family %d\n",
+udp, fd, result, sasize, sap->sa_family); log_print (); }
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
         /* snprintf (log_buf, LOG_SIZE, "message from ad\n");
         log_print (); */
@@ -1110,6 +1114,6 @@ int main (int argc, char ** argv)
             "end of aip main thread, deleting %s\n", addr_socket_name);
   log_print ();
   if (unlink (addr_socket_name) < 0)
-    perror ("unlink");
+    perror ("aip unlink addr_socket");
   return 0;
 }

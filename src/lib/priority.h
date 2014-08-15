@@ -65,6 +65,10 @@ extern void print_fraction (int value, char * str);
 
 extern int power_half_fraction (int power);
 
-extern int multiply (int p1, int p2);
+extern int allnet_multiply (int p1, int p2);
+
+/* if n1 < n2,  returns n1 / n2 */
+/* if n1 >= n2, returns ALLNET_PRIORITY_MAX */
+extern int allnet_divide (int n1, int n2);
 
 #endif /* PRIORITY_H */

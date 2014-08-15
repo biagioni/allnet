@@ -24,7 +24,7 @@ static void init_pipes (int * pipes, int num_pipes)
 {
   int i;
   for (i = 0; i < num_pipes; i++) {
-    if (pipe (pipes + i * 2) < 0) {
+    if (pipe2 (pipes + i * 2, O_NONBLOCK) < 0) {
       perror ("pipe");
       printf ("error creating pipe set %d\n", i);
       snprintf (log_buf, LOG_SIZE, "error creating pipe set %d\n", i);

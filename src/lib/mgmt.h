@@ -104,19 +104,23 @@ struct allnet_mgmt_dht {
  * The timestamp is in fixed-point format: an allnet time in the first
  * ALLNET_TIME_SIZE bytes, followed by a fraction of a second.
  * the fraction of a second is in binary, (multiplied by 2^64).
+ *
  * A precision gives the number of valid bits in the fraction, and may be 0.
+ *
+ * Preferably the precision should not be higher than the accuracy of
+ * the local system clock, but since the accuracy can be hard to
+ * estimate exactly, a default precision may be used.
  *
  * since times are sometimes accurate to powers of 10, we use precision > 64
  * to mean a decimal number <= (10^(precision-64)) is stored in the low-order
- * part of fraction, and this should be used as the fractional part.
- * if the value > (10^(precision-64)), the fraction is not valid or usable.
+ * part of fraction, and this should be used as the fractional part.  So
+ * for example a precision of 67 means 3 digits, or 1ms precision.
+ * if the fraction > (10^(precision-64)), the fraction is not valid or usable.
  *
  * The trace may optionally carry an AllNet address.  Any unused bits of
  * the address should be set to zero. */
 struct allnet_mgmt_trace_entry {
   unsigned char precision;      /* see comment */
-                                /* or n-64 digits if n > 64 */
-                                /* or -1/0xff/255 for an unused entry */
   unsigned char nbits;          /* meaningful bits of address, may be zero */
   unsigned char hops_seen;      /* may be zero */
   unsigned char pad [5];
