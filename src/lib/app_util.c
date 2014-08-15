@@ -121,6 +121,7 @@ static void seed_rng ()
 /* if (count > 0) printf ("added %d bytes to entropy pool\n", count); */
 }
 
+#ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */
 /* need to keep reading and emptying the socket buffer, otherwise
  * it will fill and alocal will get an error from sending to us,
  * and so close the socket. */
@@ -133,9 +134,12 @@ static void * receive_ignore (void * arg)
     int n = receive_pipe_message (*sockp, &message, &priority);
     /* ignore the message and recycle the storage */
     free (message);
+    if (n < 0)
+      break;
   }
-  return NULL;  /* never returns */
+  return NULL;  /* returns if the pipe is closed */
 }
+#endif /* CREATE_READ_IGNORE_THREAD */
 
 /* returns the socket, or -1 in case of failure */
 /* arg0 is the first argument that main gets -- useful for finding binaries */
@@ -196,18 +200,20 @@ int connect_to_local (char * program_name, char * arg0)
 unsigned int get_bckey (char * address, char ** key,
                         int max_time_ms, int max_keys, int max_hops)
 {
-  static char result [512];
   struct timeval finish;
   gettimeofday (&finish, NULL);
   add_us (&finish, max_time_ms);
-  int keys_found = 0;
 
   printf ("please implement get_bckey\n");
   exit (1);
 
+/*
+  int keys_found = 0;
+  static char result [512];
   while ((is_before (&finish)) && (keys_found < max_keys)) {
     
   }
+*/
 }
 
 

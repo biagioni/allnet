@@ -111,7 +111,6 @@ static int process_packet (char * packet, int size, int is_local,
 {
   if (! is_valid_message (packet, size))
     return PROCESS_PACKET_DROP;
-  static time_t trace_received = 0;
 
 /* skip the hop count in the hash, since it changes at each hop */
 #define HEADER_SKIP	3

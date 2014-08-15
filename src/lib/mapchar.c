@@ -64,7 +64,6 @@ static long long int get_next_char (char * string, char ** next)
   int count = 1;
   while ((count < 6) && ((string [count] & 0xC0) == 0x80))
     count++;
-  long long int result = 0;
   switch (count) {
   case 1:
     printf ("mapchar get_next_char error: illegal count 1\n");

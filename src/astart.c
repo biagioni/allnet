@@ -20,17 +20,30 @@
 #include "lib/log.h"
 #include "lib/packet.h"
 
+static void set_nonblock (int fd)
+{
+  int flags = fcntl (fd, F_GETFL, 0);
+  if (flags < 0) {
+    printf ("unable to set nonblocking on fd %d (unable to get flags)\n", fd);
+    return;
+  }
+  if (fcntl (fd, F_SETFL, flags | O_NONBLOCK) < 0)
+    printf ("unable to set nonblocking on fd %d\n", fd);
+}
+
 static void init_pipes (int * pipes, int num_pipes)
 {
   int i;
   for (i = 0; i < num_pipes; i++) {
-    if (pipe2 (pipes + i * 2, O_NONBLOCK) < 0) {
+    if (pipe (pipes + i * 2) < 0) {
       perror ("pipe");
       printf ("error creating pipe set %d\n", i);
       snprintf (log_buf, LOG_SIZE, "error creating pipe set %d\n", i);
       log_print ();
       exit (1);
     }
+    set_nonblock (pipes [i * 2]);
+    set_nonblock (pipes [i * 2 + 1]);
   }
 }
 

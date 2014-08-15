@@ -101,6 +101,11 @@ static int update_social_tier (int tier, struct social_one_tier * st,
   if (fd < 0) {
     char * path;
     int result = config_file_name ("ad", file_name, &path);
+    if (result < 0) {
+      snprintf (log_buf, LOG_SIZE, "unable to get config file name\n");
+      log_print ();
+      return 0;
+    }
     if (! printed) {
       if (fd == -1)   /* no such file */
         snprintf (log_buf, LOG_SIZE,
@@ -108,7 +113,7 @@ static int update_social_tier (int tier, struct social_one_tier * st,
       else
         snprintf (log_buf, LOG_SIZE,
                   "error reading social info file %s for ad\n", path);
-     log_print ();
+      log_print ();
     }
     printed = 1;
     free (path);
@@ -188,13 +193,13 @@ log_print ();
   if (algo == ALLNET_SIGTYPE_NONE)
     return UNKNOWN_SOCIAL_TIER;
   *valid = 0;
-  int checked = 0;
-  int i;
   if (is_my_contact (vmessage, vsize, src, sbits, algo, sig, ssize)) {
     *valid = 1;
     return 1;
   }
 #if 0    /* to do: keep track of public keys of f^n */
+  int checked = 0;
+  int i;
   for (i = 1; (i < MAX_SOCIAL_TIER) && (checked < soc->max_check); i++) {
     /* to do: move verification to table_find (otherwise table_find always
        returns the same result */

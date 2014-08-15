@@ -80,6 +80,7 @@ static inline unsigned long long int sigma1 (unsigned long long int x)
   return rotr (19, x) ^ rotr (61, x) ^ shr (6, x);
 }
 
+#ifdef DEBUG_PRINT
 static void print_data (char * data, int length)
 {
   int i;
@@ -93,6 +94,7 @@ static void print_data (char * data, int length)
   if (length % 32 != 0)
     printf ("\n");
 }
+#endif /* DEBUG_PRINT */
 
 static inline unsigned long long int read_int (char * data)
 {
@@ -240,9 +242,6 @@ void sha512 (char * input, int bytes, char * result)
   }
   /* padding */
   unsigned int bits = bytes * 8;
-  int needed = (bytes + 17);
-  int full = ((needed + 127) / 128) * 128;
-  int blocks = full / 128;
   int input_blocks = ((bytes + 127) / 128) - 1;
 
   char last1 [SHA512_BLOCK_SIZE];  /* next-to-last block, has data from input */

@@ -13,7 +13,6 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
-#include "lib/app_util.h"
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"

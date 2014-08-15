@@ -1,4 +1,4 @@
-AM_CFLAGS = -Wreturn-type
+AM_CFLAGS = -g
 
 libincludes = \
 	ai.h \

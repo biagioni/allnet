@@ -224,7 +224,7 @@ static void load_peer (struct addr_info * peer, char * line, int real_peer)
     return;
   line = end + 2;
   int num_bytes = strtol (line, &end, 10);
-  if ((end == line) || (memcmp (end, " bytes: ", 8) != 0))
+  if ((num_bytes > 8) || (end == line) || (memcmp (end, " bytes: ", 8) != 0))
     return;
   line = end + 8;
   char address [ADDRESS_SIZE];
@@ -279,7 +279,6 @@ static void init_defaults ()
 
 static void load_peers (int only_if_newer)
 {
-  time_t now = time (NULL);
   time_t mtime = config_file_mod_time ("adht", "peers");
   if ((only_if_newer) && ((mtime == 0) || (mtime <= peers_file_time)))
     return;
@@ -418,6 +417,7 @@ static int addr_closer (unsigned char * dest, int nbits,
   return 0;
 }
 
+#if 0
 /* return true if the destination is no farther from target than from
  * current.  Target and current are assumed to have ADDRESS_BITS */
 /* if nbits is 0, will always return 1 */
@@ -429,6 +429,7 @@ static int addr_not_farther (unsigned char * dest, int nbits,
     return 1;
   return 0;
 }
+#endif /* 0 */
 
 /* fills in an array of sockaddr_storage to the top internet addresses
  * (up to max_matches) for the given AllNet address.
@@ -522,8 +523,8 @@ int routing_exact_match (const unsigned char * addr, struct addr_info * result)
   int found = 0;
   pthread_mutex_lock (&mutex);
   init_peers (0);
-  int i;
 #if 0
+  int i;
   for (i = 0; (i < MAX_PEERS) && (found == 0); i++) {
     if ((peers [i].ai.nbits != 0) &&
         (memcmp (addr, peers [i].ai.destination, ADDRESS_SIZE) == 0)) {
@@ -727,8 +728,11 @@ void routing_expire_dht ()
       peers [i].ai.nbits = 0;
       changed = 1;
       int rapl = routing_add_ping_locked (&copy);
+      if (rapl < 0)
+        printf ("rapl result is %d for", rapl);
 #ifdef DEBUG_PRINT
-      printf ("rapl result is %d for", rapl);
+      else
+        printf ("rapl result is %d for", rapl);
       print_addr_info (&copy);
 #endif /* DEBUG_PRINT */
     }
@@ -864,8 +868,7 @@ int init_own_routing_entries (struct addr_info * entry, int max,
 /* the address is already zeroed.  Assign the IP address to the last four
  * bytes (entry->ip.ip.s6_addr + 12), and 0xff to the immediately preceding
  * two bytes */
-          uint32_t s_addr = sinp->sin_addr.s_addr;
-          * ((uint32_t *) (entry->ip.ip.s6_addr + 12)) = s_addr;
+          memcpy (entry->ip.ip.s6_addr + 12, &(sinp->sin_addr.s_addr), 4);
           entry->ip.ip.s6_addr [10] = entry->ip.ip.s6_addr [11] = 0xff;
           entry->ip.ip_version = 4;
         }

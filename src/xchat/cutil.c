@@ -24,7 +24,6 @@
 /* strip most non-alphabetic characters, and convert the rest to uppercase */
 void normalize_secret (char * s)
 {
-  char * original = s;
   while (*s != '\0') {
     if (! isalnum (*s)) {
       char * from = s + 1;  /* delete the char */

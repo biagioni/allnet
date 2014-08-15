@@ -94,6 +94,7 @@ static char * mtype_to_string (int mtype)
   }
 }
 
+#if 0
 static char * mgmt_type_to_string (int mtype)
 {
   switch (mtype) {
@@ -117,6 +118,7 @@ static char * mgmt_type_to_string (int mtype)
     return "unknown management type";
   }
 }
+#endif /* 0 */
 
 /* returned buffer is statically allocated */
 static char * b2s (const char * buffer, int count)

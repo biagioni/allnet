@@ -15,7 +15,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
-#include "lib/ai.h"
+#include "listen.h"
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/mgmt.h"

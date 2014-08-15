@@ -555,7 +555,6 @@ long long int send_data_message (int sock, char * peer,
     return 0;
   }
 
-  int transport = ALLNET_TRANSPORT_ACK_REQ;
   int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
   char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
   struct chat_descriptor * cp = (struct chat_descriptor *) data_with_cd;

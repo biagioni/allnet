@@ -142,6 +142,7 @@ static int check_priority_mode ()
   return -1;
 }
 
+#ifdef JITTER_DEADLINE_USED
 static void jitter_deadline (struct timeval * t)
 {
   struct timeval now;
@@ -152,6 +153,7 @@ static void jitter_deadline (struct timeval * t)
     add_us (t, random () % delta);
   }
 }
+#endif /* JITTER_DEADLINE_USED */
 
 static void jitter_deadline_from_now (struct timeval * t, int us)
 {
@@ -161,6 +163,7 @@ static void jitter_deadline_from_now (struct timeval * t, int us)
   *t = now;
 }
 
+#ifdef WAIT_UNTIL_USED
 static void wait_until (struct timeval * t)
 {
   do {
@@ -170,6 +173,7 @@ static void wait_until (struct timeval * t)
     usleep (wait);
   } while (is_before (t));
 }
+#endif /* WAIT_UNTIL_USED */
 
 /* returns -1 in case of error, 0 for timeout, and message size otherwise */
 /* may return earlier than t if a packet is received or there is an error */
@@ -247,7 +251,7 @@ static void make_beacon_reply (char * buffer, int bsize)
               sizeof (struct allnet_mgmt_beacon_reply), bsize);
     exit (1);
   }
-  struct allnet_header * hp =
+  /* struct allnet_header * hp = */  /* not used */
     init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                  NULL, 0, NULL, 0, NULL);
 
@@ -273,7 +277,7 @@ static void make_beacon_grant (char * buffer, int bsize,
               sizeof (struct allnet_mgmt_beacon_grant), bsize);
     exit (1);
   }
-  struct allnet_header * hp =
+  /* struct allnet_header * hp = */  /* not used */
     init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                  NULL, 0, NULL, 0, NULL);
 

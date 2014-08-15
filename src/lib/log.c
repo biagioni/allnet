@@ -206,6 +206,7 @@ void log_print ()
   bzero (log_buf, sizeof (log_buf));
 }
 
+#ifdef ADDRS_TO_STR_USED
 static int addr_to_str (int nbits, char * addr,
                         int rsize, char * result)
 {
@@ -231,6 +232,7 @@ static int addrs_to_str (int src_nbits, char * source,
   offset += addr_to_str (dst_nbits, destination, rsize, result);
   return offset;
 }
+#endif /* ADDRS_TO_STR_USED */
 
 static char * pck_str (char * packet, int plen)
 {
