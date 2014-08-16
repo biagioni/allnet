@@ -24,19 +24,28 @@ int power_half_fraction (int power)
 }
 
 /* multiplying fractions, so compute with 64 bits, then shift down 30 bits */
-int multiply (int p1, int p2)
+int allnet_multiply (int p1, int p2)
 {
   long long int product = ((long long int) p1) * ((long long int) p2);
   int result = product >> 30;
   return result;
 }
 
-int divide (int dividend, int divisor)
+static int divide (int dividend, int divisor)
 {
   long long int product =
      ((long long int) ALLNET_PRIORITY_MAX) * ((long long int) dividend);
   long long int result = product / divisor;
   return (int) result;
+}
+
+/* if n1 < n2,  returns n1 / n2 */
+/* if n1 >= n2, returns ALLNET_PRIORITY_MAX */
+int allnet_divide (int n1, int n2)
+{
+  if (n1 >= n2)
+    return ALLNET_PRIORITY_MAX;
+  return divide (n1, n2);
 }
 
 
@@ -73,18 +82,38 @@ int compute_priority (int size, int sbits, int dbits,
   int bits_priority = ALLNET_PRIORITY_MAX - power_half_fraction (dbits + 1);
   if (debug) print_fraction (bits_priority, "bits");
 
-  /* Pl = 1 - r' / r, where r' is our sending rate, and r is the maximu
+  /* Pl = 1 - r' / r, where r' is our sending rate, and r is the maximum
    * sending rate.  rate_fraction is already r' / r */
   int rate_priority = ALLNET_PRIORITY_MAX - rate_fraction;
-  if (rate_priority == 0) rate_priority = 1;
+  if (rate_priority < ALLNET_ONE_HALF) rate_priority = ALLNET_ONE_HALF;
   if (debug) print_fraction (rate_priority, "rate");
 
   /* combine these as 1 - (1 - Ps) * (1 - Pb * Pg * Ph * Pl) */
-  int result = multiply (social_priority,
-                         multiply (multiply (bits_priority, rate_priority),
-                                   multiply (hops_carried_priority,
-                                             hops_total_priority)));
-  if (debug) print_fraction (result, "result");
+  int result =
+    allnet_multiply
+      (social_priority,
+       allnet_multiply (allnet_multiply (bits_priority, rate_priority),
+                        allnet_multiply (hops_carried_priority,
+                                         hops_total_priority)));
+/* to do: fix
+compute_priority (88, 64, 64, 1, 1, 4, 1073741823)
+resulting priority: 0.000000
+*/
+if (result <= 0) debug = 1;
+  if (debug)
+    printf ("compute_priority (%d, %d, %d, %d, %d, %d, %d)\n",
+            size, sbits, dbits, hops_already,
+            hops_max, social_distance, rate_fraction);
+  if (debug)
+    printf ("result %x product of %x %x %x %x %x\n",
+            result, social_priority, bits_priority, rate_priority,
+            hops_carried_priority, hops_total_priority);
+  if (debug)
+    printf ("result %d product of %d %d %d %d %d\n",
+            result, social_priority, bits_priority, rate_priority,
+            hops_carried_priority, hops_total_priority);
+  if (debug) print_fraction (result, "resulting priority");
+if (result <= 0) result = ALLNET_PRIORITY_EPSILON;
   
   return result;
 }

@@ -192,35 +192,46 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free)
   if ((w < 0) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
     is_partial_send = 1;
   if (is_partial_send) {
-    static int printed = -1;
-    if (printed != pipe) {
+    static int partial_printed = -1;
+    if (partial_printed != pipe) {
       snprintf (log_buf, LOG_SIZE,
                 "pipe %d, result %d, wanted %d, original errno %d\n",
                 pipe, w, blen, save_errno);
       log_error ("send_pipe_msg partial send");
-      printed = pipe;
+      partial_printed = pipe;
     }
     result = 0;
   } else {
     /* try to send with write -- I don't think this has ever been used */
     if ((w < 0) && (errno == ENOTSOCK)) {
+static int notsock_printed = -1;
+if (notsock_printed != pipe) {
 snprintf (log_buf, LOG_SIZE, "trying write instead of send on fd %d\n", pipe);
 log_print ();
+notsock_printed = pipe;
+}
       w = write (pipe, buffer, blen); 
       is_send = 0;
     }
-    static int printed = -1;
-    if ((w != blen) && (printed != pipe)) {
-      printed = pipe;
-      char * name = "send_pipe_msg write";
-      if (is_send)
-        name = "send_pipe_msg send";
-      perror (name);
-      snprintf (log_buf, LOG_SIZE,
-                "pipe %d, result %d, wanted %d, original errno %d\n",
-                pipe, w, blen, save_errno);
-      log_error (name);
-      result = 0;
+    if (w != blen) {
+      static int badwrite_printed = -1;
+      if (badwrite_printed != pipe) {
+        badwrite_printed = pipe;
+        char * name = "send_pipe_msg write";
+        if (is_send)
+          name = "send_pipe_msg send";
+        if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
+          perror (name);
+        snprintf (log_buf, LOG_SIZE,
+                  "pipe %d, result %d, wanted %d, original errno %d\n",
+                  pipe, w, blen, save_errno);
+        log_error (name);
+      }
+/* 2014/08/11 not sure if this is correct: should return 0 even if pipe is
+ * busy, because we did not write.  But if we do this, daemons think their
+ * pipe to ad has been closed, and terminate.  */
+      if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
+        result = 0;
     }
   }
 #ifdef DEBUG_PRINT

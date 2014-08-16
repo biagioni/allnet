@@ -158,6 +158,7 @@ static int is_ndigits (char * path, int ndigits)
   return 1;
 }
 
+#if 0
 static void debug_read_public_RSA_file (char * fname, RSA * * key)
 {
   *key = NULL;
@@ -176,6 +177,7 @@ static void debug_read_public_RSA_file (char * fname, RSA * * key)
 */
   }
 }
+#endif /* 0 */
 
 static void read_RSA_file (char * fname, RSA * * key, int expect_private)
 {
@@ -428,6 +430,11 @@ static void save_contact (struct key_info * k)
               t.tm_hour, t.tm_min, t.tm_sec);
  
     int dirnamesize = config_file_name ("contacts", fname, &dirname);
+    if (dirnamesize < 0) {
+      snprintf (log_buf, LOG_SIZE, "unable to get config file name");
+      log_print ();
+      return;
+    }
     k->dir_name = dirname;
   }
   create_dir (dirname);

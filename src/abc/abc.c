@@ -147,6 +147,7 @@ static int check_priority_mode ()
   return -1;
 }
 
+#ifdef WAIT_UNTIL_USED
 static void wait_until (struct timeval * t)
 {
   do {
@@ -156,6 +157,7 @@ static void wait_until (struct timeval * t)
     usleep (wait);
   } while (is_before (t));
 }
+#endif /* WAIT_UNTIL_USED */
 
 /* returns -1 in case of error, 0 for timeout, and message size otherwise */
 /* may return earlier than t if a packet is received or there is an error */
@@ -228,8 +230,8 @@ static void make_beacon_reply (char * buffer, int bsize)
   assert (bsize >= ALLNET_MGMT_HEADER_SIZE (0) +
                sizeof (struct allnet_mgmt_beacon_reply));
   struct allnet_header * hp =
-    init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-                 NULL, 0, NULL, 0, NULL);
+  init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
+               NULL, 0, NULL, 0, NULL);
 
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
@@ -247,9 +249,8 @@ static void make_beacon_grant (char * buffer, int bsize,
 {
   assert (bsize >= ALLNET_MGMT_HEADER_SIZE (0) +
                sizeof (struct allnet_mgmt_beacon_grant));
-  struct allnet_header * hp =
-    init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-                 NULL, 0, NULL, 0, NULL);
+  init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
+               NULL, 0, NULL, 0, NULL);
 
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));

@@ -62,7 +62,6 @@ static int get_byte (char * string, int * offset, unsigned char * result)
 static int get_address (char * address, unsigned char * result, int rsize)
 {
   int offset = 0;
-  int value = 0;
   int index = 0;
   int bits = 0;
   while (index < rsize) {
@@ -83,45 +82,22 @@ static int get_address (char * address, unsigned char * result, int rsize)
   return bits;
 }
 
-static void callback (int type, int count, void * arg)
+static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
+                              int hops, struct timeval * now,
+                              unsigned char * my_address, int abits)
 {
-  if (type == 0)
-    printf (".");
-  else if (type == 1)
-    printf (",");
-  else if (type == 2)
-    printf ("!");
-  else if (type == 3)
-    printf (":");
-  else
-    printf ("?");
-  fflush (stdout);
-}
-  
-static void init_entry (struct allnet_mgmt_trace_entry * new_entry, int hops,
-                        struct timeval * now,
-                        unsigned char * my_address, int abits)
-{
-  unsigned long long int time = now->tv_sec;
-  if (time < ALLNET_Y2K_SECONDS_IN_UNIX) {
-    /* incorrect clock, or time travel */
-    new_entry->precision = 0;
+  bzero (new_entry, sizeof (struct allnet_mgmt_trace_entry));
+  /* assume accuracy is 1ms, or 3 decimal digits */
+  new_entry->precision = 64 + 3;
+  writeb64u (new_entry->seconds, now->tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX);
+  writeb64u (new_entry->seconds_fraction, now->tv_usec / 1000);
+  if (now->tv_sec <= ALLNET_Y2K_SECONDS_IN_UNIX) { /* clock is wrong */
     writeb64u (new_entry->seconds, 0);
     writeb64u (new_entry->seconds_fraction, 0);
-  } else {
-    unsigned long long int usec = now->tv_usec;
-    if (hops == 0) {  /* special case: microsecond precision */
-      new_entry->precision = 64 + 6;   /* 6 digits, 1us precision */
-      writeb64u (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
-      writeb64u (new_entry->seconds_fraction, usec);
-    } else {   /* the common case */
-      new_entry->precision = 64 + 3;   /* 3 digits, 1ms precision */
-      writeb64u (new_entry->seconds, time - ALLNET_Y2K_SECONDS_IN_UNIX);
-      writeb64u (new_entry->seconds_fraction, usec / 1000);
-    }
+    new_entry->precision = 0;
   }
-  new_entry->nbits = abits;
   new_entry->hops_seen = hops;
+  new_entry->nbits = abits;
   memcpy (new_entry->address, my_address, (abits + 7) / 8);
 }
 
@@ -161,7 +137,7 @@ static int add_my_entry (char * in, int insize, struct allnet_header * inhp,
       ((*result) + ALLNET_MGMT_HEADER_SIZE (t));
   trp->num_entries = n;
   struct allnet_mgmt_trace_entry * new_entry = trp->trace + (n - 1);
-  init_entry (new_entry, inhp->hops, now, my_address, abits);
+  init_trace_entry (new_entry, inhp->hops, now, my_address, abits);
   if (k > 0) {
     char * inkey = ((char *) (intrp->trace)) +
                    (sizeof (struct allnet_mgmt_trace_entry) * (n - 1));
@@ -231,7 +207,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   for (i = 0; i + 1 < num_entries; i++)
     trp->trace [i] = intrp->trace [i + intrp->num_entries - (num_entries - 1)];
   struct allnet_mgmt_trace_entry * new_entry = trp->trace + (num_entries - 1);
-  init_entry (new_entry, inhp->hops, now, my_address, abits);
+  init_trace_entry (new_entry, inhp->hops, now, my_address, abits);
 
   int ksize = readb16u (intrp->pubkey_size);
   if (ksize > 0) {
@@ -274,6 +250,7 @@ static void get_my_addr (unsigned char * my_addr, int my_addr_size)
   }
 }
 
+/*
 static void debug_prt_trace_id (void * state, void * n)
 {
   print_buffer (n, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 1);
@@ -284,6 +261,7 @@ static void debug_prt_trace_id (void * state, void * n)
                               log_buf + offset, LOG_SIZE - offset);
   * ((int *) state) = offset;
 }
+*/
 
 static int same_trace_id (void * n1, void * n2)
 {
@@ -469,7 +447,9 @@ static void main_loop (int sock, unsigned char * my_address, int nbits,
     int timeout = PIPE_MESSAGE_WAIT_FOREVER;
     int found = receive_pipe_message_any (timeout, &message, &pipe, &pri);
     if (found < 0) {
-      printf ("traced pipe closed, exiting\n");
+      snprintf (log_buf, LOG_SIZE, "traced pipe closed, exiting\n");
+      log_print ();
+      /* printf ("traced pipe closed, exiting\n"); */
       exit (1);
     }
 #ifdef DEBUG_PRINT
@@ -518,7 +498,7 @@ static void send_trace (int sock, unsigned char * address, int abits,
   memcpy (trp->trace_id, trace_id, MESSAGE_ID_SIZE);
   struct timeval time;
   gettimeofday (&time, NULL);
-  init_entry (trp->trace, 0, &time, my_address, my_abits);
+  init_trace_entry (trp->trace, 0, &time, my_address, my_abits);
 
 /*  print_packet (buffer, total_size, "sending trace", 1);
   snprintf (log_buf, LOG_SIZE, "sending trace of size %d\n", total_size);
@@ -731,7 +711,9 @@ static void wait_for_responses (int sock, char * trace_id, int sec)
     int ms = remaining * 1000 + 999;
     int found = receive_pipe_message_any (ms, &message, &pipe, &pri);
     if (found <= 0) {
-      printf ("trace pipe closed, exiting\n");
+#ifdef DEBUG_PRINT
+      printf ("trace pipe closed, exiting\n");  
+#endif /* DEBUG_PRINT */
       exit (1);
     }
     struct timeval start_copy = start;
@@ -760,7 +742,7 @@ int main (int argc, char ** argv)
     is_daemon = 1;
 
   int match_only = 0;
-  int i, j;
+  int i;
   for (i = 1; i < argc; i++) {
     if (match_only) {
       argv [i] = argv [i + 1];

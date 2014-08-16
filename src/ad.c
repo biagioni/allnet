@@ -111,7 +111,6 @@ static int process_packet (char * packet, int size, int is_local,
 {
   if (! is_valid_message (packet, size))
     return PROCESS_PACKET_DROP;
-  static time_t trace_received = 0;
 
 /* skip the hop count in the hash, since it changes at each hop */
 #define HEADER_SKIP	3
@@ -128,9 +127,13 @@ static int process_packet (char * packet, int size, int is_local,
   /* should be valid */
   struct allnet_header * ah = (struct allnet_header *) packet;
 
-  /* before forwarding, increment the number of hops seen */
-  if ((! is_local) && (ah->hops < 255))   /* do not increment 255 to 0 */
-    ah->hops++;
+  /* compute a forwarding priority for non-local packets */
+  if (! is_local) {
+    *priority = packet_priority (packet, ah, size, soc);
+    /* before forwarding, increment the number of hops seen */
+    if (ah->hops < 255)   /* do not increment 255 to 0 */
+      ah->hops++;
+  }
   snprintf (log_buf, LOG_SIZE, "forwarding packet with %d hops\n", ah->hops);
   log_print ();
 
@@ -140,15 +143,17 @@ static int process_packet (char * packet, int size, int is_local,
   }
 
   /* forward out any local packet, unless the hop count has been reached */
-  if ((is_local) && (ah->hops < ah->max_hops))
-    return PROCESS_PACKET_OUT;
+  /* this allows packets with hops == max_hops to be forwarded locally */
+  if (is_local) {
+    if (ah->hops < ah->max_hops)
+      return PROCESS_PACKET_OUT;
+    else
+      return PROCESS_PACKET_DROP;  /* already forwarded by alocal */
+  }
 
   if (ah->hops >= ah->max_hops)   /* reached hop count */
   /* no matter what it is, only forward locally, i.e. to alocal */
     return PROCESS_PACKET_LOCAL;
-
-  /* compute a forwarding priority for non-local packets */
-  *priority = packet_priority (packet, ah, size, soc);
 
   /* send each of the packets, with its priority, to each of the pipes */
   return PROCESS_PACKET_ALL;

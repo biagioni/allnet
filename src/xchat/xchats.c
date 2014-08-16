@@ -127,6 +127,10 @@ int main (int argc, char ** argv)
   /*  printf ("sending %d chars: '%s'\n", printed, text); */
       seq = send_data_message (sock, contact, text, printed);
       ack_expected = 1;
+    } else if (nkeys == 0) {
+      printf ("error: no keys for contact '%s'\n", contact);
+    } else if (nkeys < 0) {
+      printf ("error: contact '%s' does not exist\n", contact);
     }
   }
 

@@ -34,7 +34,7 @@ void init_table (struct table * table)
  * result would be negative infinity -- we return -1 */
 static int log2_floor (int n)
 {
-  int debug_n = n;
+  /* int debug_n = n; */
   int result = -1;
   while (n > 0) {
     result++;

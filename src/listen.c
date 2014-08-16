@@ -15,7 +15,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
-#include "lib/ai.h"
+#include "listen.h"
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/mgmt.h"
@@ -97,15 +97,15 @@ static int init_listen_socket (int version, int port, int local)
     if (version == 6) {
       perror ("bind");
       n = snprintf (log_buf, LOG_SIZE,
-                    "ipv%d unable to bind to %d/%x, probably already running\n",
-                    version, ntohs (port), ntohs (port));
+                    "ipv%d unable to bind %d/%x(%d), maybe already running\n",
+                    version, ntohs (port), ntohs (port), addr_size);
       n += snprintf (log_buf + n, LOG_SIZE - n, "bind address is ");
       n += print_sockaddr_str (ap, addr_size, 1, log_buf + n, LOG_SIZE - n);
       log_print ();
     } else {
       snprintf (log_buf, LOG_SIZE,
-                "ipv%d unable to bind to %d/%x, probably handled by ipv6\n",
-                version, ntohs (port), ntohs (port));
+                "ipv%d unable to bind to %d/%x(%d), probably handled by ipv6\n",
+                version, ntohs (port), ntohs (port), addr_size);
       log_print ();
     }
     return -1;
@@ -148,8 +148,12 @@ static void * listen_loop (void * arg)
     int off = snprintf (log_buf, LOG_SIZE,
                         "opened connection socket fd = %d port %d from ",
                         connection, ntohs (info->port));
+/* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
+ * we want to record it as an IPv4 connection */
+    standardize_ip (ap, addr_size);
     print_sockaddr_str (ap, addr_size, 1, log_buf + off, LOG_SIZE - off);
     log_print ();
+
     int option = 1;  /* disable Nagle algorithm if nodelay */
     if ((ra->info->nodelay) &&
         (setsockopt (connection, IPPROTO_TCP, TCP_NODELAY, &option,
@@ -157,9 +161,6 @@ static void * listen_loop (void * arg)
       snprintf (log_buf, LOG_SIZE, "unable to set nodelay socket option\n");
       log_print ();
     }
-/* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
- * we want to record it as an IPv4 connection */
-    standardize_ip (ap, addr_size);
 
     struct addr_info addr;
     sockaddr_to_ai (ap, addr_size, &addr);

@@ -15,6 +15,7 @@
 #include "packet.h"
 #include "log.h"
 #include "util.h"
+#include "config.h"
 
 char log_buf [LOG_SIZE];    /* global */
 
@@ -130,7 +131,8 @@ void init_log (char * name)
   char * last_slash = rindex (module_name, '/');
   if (last_slash != NULL)
     module_name = last_slash + 1;
-  mkdir (log_dir, 0700);  /* if it fails because it already exists, it's OK */
+  if (! create_dir (log_dir))
+    printf ("unable to create directory %s\n", log_dir);
   time_t now = time (NULL);
   /* only open a new log file if this is the astart module */
   if (strcasecmp (name, "astart") == 0)
@@ -206,6 +208,7 @@ void log_print ()
   bzero (log_buf, sizeof (log_buf));
 }
 
+#ifdef ADDRS_TO_STR_USED
 static int addr_to_str (int nbits, char * addr,
                         int rsize, char * result)
 {
@@ -231,6 +234,7 @@ static int addrs_to_str (int src_nbits, char * source,
   offset += addr_to_str (dst_nbits, destination, rsize, result);
   return offset;
 }
+#endif /* ADDRS_TO_STR_USED */
 
 static char * pck_str (char * packet, int plen)
 {

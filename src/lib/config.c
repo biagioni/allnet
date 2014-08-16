@@ -22,7 +22,7 @@ int create_dir (char * path)
   }
 
   /* path does not exist, attempt to create it */
-  if (mkdir (path, 0777) == 0) /* created */
+  if (mkdir (path, 0700) == 0) /* created */
     return 1;
   if (errno != ENOENT) { /* some other error, give up */
     perror ("1-mkdir");
@@ -39,7 +39,7 @@ int create_dir (char * path)
   if (create_dir (path)) {
     /* and try again to create this directory */
     *last_slash = '/';
-    if (mkdir (path, 0777) == 0) {
+    if (mkdir (path, 0700) == 0) {
       return 1;
     }
     perror ("mkdir");
@@ -134,47 +134,43 @@ time_t config_file_mod_time (char * program, char * file)
   return st.st_mtime;
 }
 
-/* returns a file descriptor, -1 if the file does not exist,
- * or -2 in case of errors */
-int open_read_config (char * program, char * file, int print_errors)
+static int open_config (char * program, char * file, int flags,
+                        int print_errors, char * caller)
 {
   char * name;
   int size = config_file_name (program, file, &name);
   if (size < 0)
     return -1;
-  int result = open (name, O_RDONLY);
+  int result = open (name, flags, 0600);
   if (result < 0) {
-    if (print_errors) {
-      if (errno == ENOENT)   /* file not found */
-        return -1;
-      perror ("open_read_config open");
-      printf ("unable to open file %s\n", name);
+    if ((print_errors) &&
+        (errno != ENOENT)) {   /* ENOENT is file not found, do not print */
+      perror ("open_config open");
+      printf ("%s unable to open file %s, flags %x\n", caller, name, flags);
     }
-    free (name);
-    return -1;
+    result = -1;
   }
   free (name);
   return result;
 }
 
+/* returns a file descriptor, -1 if the file does not exist,
+ * or -2 in case of errors */
+int open_read_config (char * program, char * file, int print_errors)
+{
+  return open_config (program, file, O_RDONLY, print_errors,
+                      "open_read_config");
+}
 /* returns a file descriptor, or -1 in case of errors */
 int open_write_config (char * program, char * file, int print_errors)
 {
-  char * name;
-  int size = config_file_name (program, file, &name);
-  if (size < 0)
-    return -1;
-  int result = open (name, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-  if (result < 0) {
-    if (print_errors) {
-      if (errno == ENOENT)   /* file not found */
-        return -1;
-      perror ("open_read_config open");
-      printf ("unable to open file %s\n", name);
-    }
-    free (name);
-    return -1;
-  }
-  free (name);
-  return result;
+  int flags = O_WRONLY | O_CREAT | O_TRUNC;
+  return open_config (program, file, flags, print_errors, "open_write_config");
+}
+
+/* returns a file descriptor, or -1 in case of errors */
+int open_rw_config (char * program, char * file, int print_errors)
+{
+  int flags = O_RDWR | O_CREAT;
+  return open_config (program, file, flags, print_errors, "open_write_config");
 }

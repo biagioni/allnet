@@ -377,7 +377,7 @@ int main (int argc, char ** argv)
     int timeout = PIPE_MESSAGE_WAIT_FOREVER;
     int found = receive_pipe_message_any (timeout, &message, &pipe, &pri);
     if (found < 0) {
-      printf ("adht: pipe closed, exiting\n");
+      /* printf ("adht: pipe closed, exiting\n"); */
       pthread_cancel (send_thread);
       exit (1);
     }

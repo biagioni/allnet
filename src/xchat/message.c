@@ -283,7 +283,6 @@ int is_acked_one (char * contact, keyset k, uint64_t wanted)
   if (iter == NULL)
     return 0;
   int type;
-  uint64_t max = 0;
   uint64_t seq;
   char ack [MESSAGE_ID_SIZE];
   while ((type = prev_message (iter, &seq, NULL, NULL, ack, NULL, NULL))
@@ -308,7 +307,6 @@ int was_received (char * contact, keyset k, uint64_t wanted)
   if (iter == NULL)
     return 0;
   int type;
-  uint64_t max = 0;
   uint64_t seq;
   while ((type = prev_message (iter, &seq, NULL, NULL, NULL, NULL, NULL))
          != MSG_TYPE_DONE) {

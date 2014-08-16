@@ -1,5 +1,5 @@
 SUBDIRS = lib abc ahra mgmt xchat xtime xchat_ui
-AM_CFLAGS = -g -O2
+AM_CFLAGS = -g
 
 libincludes = \
 	lib/ai.h \
