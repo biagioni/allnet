@@ -207,7 +207,8 @@ static int abc_wifi_config_iw_connect ()
   if (r != 1 || !if_command ("iw dev %s ibss join allnet 2412 fixed-freq", self.iface,
                       142, "allnet ad-hoc mode already set", "unknown problem"))
     return 0;
-  usleep (50 * 1000); /* 50ms */
+  /* 50ms: empirically established time to connect to an _existing_ adhoc net */
+  usleep (50 * 1000);
   self.is_connected = 1;
   return 1;
 }
