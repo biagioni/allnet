@@ -22,7 +22,7 @@ int create_dir (char * path)
   }
 
   /* path does not exist, attempt to create it */
-  if (mkdir (path, 0777) == 0) /* created */
+  if (mkdir (path, 0700) == 0) /* created */
     return 1;
   if (errno != ENOENT) { /* some other error, give up */
     perror ("1-mkdir");
@@ -39,7 +39,7 @@ int create_dir (char * path)
   if (create_dir (path)) {
     /* and try again to create this directory */
     *last_slash = '/';
-    if (mkdir (path, 0777) == 0) {
+    if (mkdir (path, 0700) == 0) {
       return 1;
     }
     perror ("mkdir");

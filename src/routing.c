@@ -53,7 +53,7 @@ void print_dht (int to_log)
     if (peers [i].ai.nbits != 0)
       npeers++;
   int n = snprintf (log_buf, LOG_SIZE, "%d peers: ", npeers);
-  n += buffer_to_string (my_address, ADDRESS_SIZE, "my address is ",
+  n += buffer_to_string (my_address, ADDRESS_SIZE, "my address is",
                          ADDRESS_SIZE, 1, log_buf + n, LOG_SIZE - n);
   if (to_log) log_print (); else printf ("%s", log_buf);
   for (i = 0; i < MAX_PEERS; i++) {
@@ -273,7 +273,9 @@ static void load_peer (struct addr_info * peer, char * line, int real_peer)
 static void init_defaults ()
 {
   random_bytes (my_address, ADDRESS_SIZE);
-  print_buffer (my_address, ADDRESS_SIZE, "random address", ADDRESS_SIZE, 1);
+  buffer_to_string (my_address, ADDRESS_SIZE, "new random address",
+                    ADDRESS_SIZE, 1, log_buf, LOG_SIZE);
+  log_print ();
   save_peers ();
 }
 
