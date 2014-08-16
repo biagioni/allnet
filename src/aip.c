@@ -543,14 +543,18 @@ static int udp_socket ()
 void listen_callback (int fd)
 {
   if ((cached_dht_packet != NULL) && (cached_dht_size > 0)) {
-    if (! send_pipe_message (fd, cached_dht_packet, cached_dht_size,
-                             ALLNET_PRIORITY_EPSILON))
+    if (send_pipe_message (fd, cached_dht_packet, cached_dht_size,
+                             ALLNET_PRIORITY_EPSILON)) {
+#ifdef DEBUG_PRINT
       snprintf (log_buf, LOG_SIZE, "sent cached dht to new socket %d\n", fd);
-    else
+      log_print ();
+#endif /* DEBUG_PRINT */
+    } else {
       snprintf (log_buf, LOG_SIZE,
                 "error sending %d-byte cached dht to new socket %d\n",
-                fd, cached_dht_size);
-    log_print ();
+                cached_dht_size, fd);
+      log_print ();
+    }
   }
 }
 
@@ -1015,7 +1019,7 @@ snprintf (log_buf, LOG_SIZE, "00: fd %d/%d, result %d/%d/%zd, bad afamily %d\n",
 udp, fd, result, sasize, sizeof (sockaddr), sap->sa_family); log_print (); }
     if (result < 0) {
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (log_buf, LOG_SIZE, "0: fd %d/%d, bad address family %d\n", udp, fd,
+snprintf (log_buf, LOG_SIZE, "0/%d: fd %d/%d, bad address family %d\n", result, udp, fd,
 sap->sa_family); log_print (); }
       if ((fd == rpipe) || (fd == udp)) {
         snprintf (log_buf, LOG_SIZE, "aip %s %d closed\n",
