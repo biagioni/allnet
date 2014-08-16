@@ -278,7 +278,11 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
     record->last_received = time (NULL);
     cache_add (cache, record);
   }
+#ifdef DEBUG_PRINT
   log_print ();
+#else /* DEBUG_PRINT */
+  log_buf [0] = '\0';
+#endif /* DEBUG_PRINT */
 }
 
 static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
@@ -288,10 +292,15 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
     addr_len = sizeof (struct sockaddr_in);
   int s = sendto (udp, message, msize, 0, sa, addr_len);
   if (s < msize) {
-    int n = snprintf (log_buf, LOG_SIZE,
+#ifdef DEBUG_PRINT
+    int n = 
+#endif /* DEBUG_PRINT */
+    snprintf (log_buf, LOG_SIZE,
                       "error sending %d (sent %d) on udp %d to ",
                       msize, s, udp);
-    n += print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
+#ifdef DEBUG_PRINT
+    print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
+#endif /* DEBUG_PRINT */
     log_error ("sendto");
   } else {
 /*
@@ -325,9 +334,13 @@ static int send_udp_addr (int udp, char * message, int msize,
             addr->ip_version);
     return 0;
   }
+#ifdef DEBUG_PRINT
   int off = snprintf (log_buf, LOG_SIZE,
                       "send_udp_addr sending %d bytes to: ", msize);
   print_sockaddr_str (sap, sizeof (sas), 0, log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+  snprintf (log_buf, LOG_SIZE, "send_udp_addr sending %d bytes\n", msize);
+#endif /* DEBUG_PRINT */
   log_print ();
 
   send_udp (udp, message, msize, sap);
@@ -719,9 +732,13 @@ void send_keepalive (void * udp_cache, int fd,
       cache_remove (udp_cache, udp_void_ptr);
       off = snprintf (log_buf, LOG_SIZE, "time out (%ld seconds), removed ",
                       time (NULL) - ucr->last_received);
-    }
+    } 
+#ifdef DEBUG_PRINT
     off += print_sockaddr_str (sap, sizeof (sas_copy), 0,
                                log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+    snprintf (log_buf + off, LOG_SIZE - off, "\n");
+#endif /* DEBUG_PRINT */
     log_print ();
   }
 
@@ -752,8 +769,12 @@ void send_keepalive (void * udp_cache, int fd,
 static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
                                     struct allnet_header * in_hp, int fd)
 {
-  int off = snprintf (log_buf, LOG_SIZE, "send_dht_ping_response (");
+  int off = snprintf (log_buf, LOG_SIZE, "send_dht_ping_response ");
+#ifdef DEBUG_PRINT
   print_sockaddr_str (sap, sasize, 0, log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+  snprintf (log_buf + off, LOG_SIZE - off, "\n");
+#endif /* DEBUG_PRINT */
   log_print ();
   unsigned char message [1024];
   bzero (message, sizeof (message));
@@ -1031,9 +1052,13 @@ sap->sa_family); log_print (); }
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "3: fd %d/%d, bad address family %d\n", udp, fd,
 sap->sa_family); log_print (); }
+#ifdef DEBUG_PRINT
           off += snprintf (log_buf + off, LOG_SIZE - off, "/udp, saving ");
           off += print_sockaddr_str (sap, sasize, 0,
                                      log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+          off += snprintf (log_buf + off, LOG_SIZE - off, "/udp\n");
+#endif /* DEBUG_PRINT */
           log_print ();
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "4: fd %d/%d, bad address family %d\n", udp, fd,
@@ -1044,9 +1069,13 @@ sap->sa_family); log_print (); }
           if (ai != NULL)
             if (ai_to_sockaddr (ai, sap))
               sasize = sizeof (struct sockaddr_in6);
+#ifdef DEBUG_PRINT
           off += snprintf (log_buf + off, LOG_SIZE - off, ", ");
           off += print_sockaddr_str (sap, sasize, 1,
                                      log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+          off += snprintf (log_buf + off, LOG_SIZE - off, "\n");
+#endif /* DEBUG_PRINT */
           log_print ();
         }
         if (handle_mgmt (listener_fds, NUM_LISTENERS, fd, message,
