@@ -644,7 +644,7 @@ static uint32_t hash_index (char * id)
 {
   static uint32_t hash_div = 0;
   if (hash_div == 0) { /* initialize */
-    hash_div = compute_hash_div (hash_size);
+    hash_div = compute_hash_div ();
 #ifdef DEBUG_PRINT
     printf ("hash_div is %d, hash_size %d, hash_pool_size %d, %d bits\n",
             hash_div, hash_size, hash_pool_size, bits_in_hash_table);
