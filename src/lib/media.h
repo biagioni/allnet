@@ -10,8 +10,8 @@
 #define ALLNET_MEDIA_TEXT_VCARD		4	   /* UTF-8 text */
 
 #define ALLNET_MEDIA_DATA		0x10000001 /* uninterpreted data */
-#define ALLNET_MEDIA_COMPOUND_ALLNET	0x10000002 /* compound, see below */
-#define ALLNET_MEDIA_EARTH_POSITION	0x10000003 /* see below */
+#define ALLNET_MEDIA_COMPOUND	        0x10000002 /* compound, see below */
+#define ALLNET_MEDIA_HTMLPLUS	        0x10000003 /* html w/media, see below */
 
 #define ALLNET_MEDIA_AUDIO_RAW		0x20000001 /* WAV raw LPCM audio */
 #define ALLNET_MEDIA_AUDIO_BASIC	0x20000002 /* mu-law 8KHz audio */
@@ -31,9 +31,23 @@
 #define ALLNET_MEDIA_VIDEO_OGG_THEORA	0x40000005 /* Ogg Theora video */
 #define ALLNET_MEDIA_VIDEO_QUICKTIME	0x40000006 /* Quicktime video */
 #define ALLNET_MEDIA_VIDEO_AVI		0x40000007 /* AVI video */
+
 /* allnet-specific media types */
-#define ALLNET_MEDIA_TIME_TEXT_BIN	0x80000001 /* in UTF-8 then binary */
-#define ALLNET_MEDIA_PUBLIC_KEY		0x80000002
+#define ALLNET_MEDIA_EARTH_POSITION	0x80000001 /* see below */
+#define ALLNET_MEDIA_TIME_TEXT_BIN	0x80000002 /* in UTF-8 then binary */
+#define ALLNET_MEDIA_PUBLIC_KEY		0x80000003
+#define ALLNET_MEDIA_PROFILE	        0x80000004 /* same as compound */
+
+/* for development purposes */
+#define ALLNET_MEDIA_TESTING_1		0xE0000001
+#define ALLNET_MEDIA_TESTING_2		0xE0000002
+#define ALLNET_MEDIA_TESTING_3		0xE0000003
+#define ALLNET_MEDIA_TESTING_4		0xE0000004
+#define ALLNET_MEDIA_TESTING_5		0xE0000005
+#define ALLNET_MEDIA_TESTING_6		0xE0000006
+#define ALLNET_MEDIA_TESTING_7		0xE0000007
+#define ALLNET_MEDIA_TESTING_8		0xE0000008
+/* might be useful*/
 #define ALLNET_MEDIA_UNKNOWN		0xFFFFFFFF
 
 /* a compound data in AllNet format is a sequence of entries, each of format: */
@@ -50,6 +64,13 @@ struct allnet_compound_data {
    * of the content, in bytes. */
   unsigned char term_or_length [0 /* really, term_or_length_size */ ]; 
 };
+
+/* an html-plus is the same as a compound, but the first entry is what
+ * is displayed, and the others may aid in the display.  Each entry i in 1..n
+ * may be referred to with the URI amh://i */
+
+/* a profile is the same as a compound.  It will typically have a vcard
+ * and one or more images */
 
 /* a geographic location in AllNet is given by three coordinates: 
  * a latitude, a longitude, and a height
