@@ -46,7 +46,11 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <sys/time.h>
+#ifndef __APPLE__
 #include <netpacket/packet.h> /* sockaddr_ll */
+#else /* __APPLE__ */
+#include <sys/socket.h>       /* sockaddr */
+#endif /* __APPLE__ */
 
 #include "abc-iface.h"
 #include "abc-wifi.h"         /* abc_iface_wifi */
@@ -633,8 +637,13 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
 
 static void main_loop (const char * interface, int rpipe, int wpipe)
 {
+#ifndef __APPLE__
   struct sockaddr_ll if_address; /* the address of the interface */
   struct sockaddr_ll bc_address; /* broacast address of the interface */
+#else /* __APPLE__ */
+  struct sockaddr_in if_address; /* the address of the interface */
+  struct sockaddr_in bc_address; /* broacast address of the interface */
+#endif /* __APPLE__ */
   struct sockaddr  * bc_sap = (struct sockaddr *) (&bc_address);
 
   struct timeval quiet_end;   /* should we keep quiet? */
@@ -656,8 +665,13 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
   /* check_priority_mode (); called by handle_until */
   while (1)
+#ifndef __APPLE__
     one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_ll),
                &quiet_end);
+#else /* __APPLE__ */
+    one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_in),
+               &quiet_end);
+#endif /* __APPLE__ */
 }
 
 int main (int argc, char ** argv)
