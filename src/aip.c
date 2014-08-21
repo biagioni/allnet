@@ -1104,20 +1104,9 @@ sap->sa_family); log_print (); }
   }
 }
 
-int main (int argc, char ** argv)
+void aip_main (int rpipe, int wpipe, char * addr_socket_name)
 {
   init_log ("aip");
-  if (argc != 4) {
-    printf ("aip: arguments are read pipe from ad and write pipe to ad,\n");
-    printf (" and a unix domain socket for address info (argc == 4)\n");
-    printf (" but argc == %d\n", argc);
-    return -1;
-  }
-
-  int rpipe = atoi (argv [1]);  /* read pipe */
-  int wpipe = atoi (argv [2]);  /* write pipe */
-  char * addr_socket_name = argv [3];
-
   snprintf (log_buf, LOG_SIZE,
             "read pipe is fd %d, write pipe fd %d, socket %s\n",
             rpipe, wpipe, addr_socket_name);
@@ -1130,7 +1119,7 @@ int main (int argc, char ** argv)
   ra.dht_cache = cache_init (256, free);
   if (pthread_create (&addr_thread, NULL, receive_addrs, &ra) != 0) {
     perror ("pthread_create/addrs");
-    return 1;
+    return;
   }
   struct listen_info info;
   listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0, listen_callback);
@@ -1148,5 +1137,22 @@ int main (int argc, char ** argv)
   log_print ();
   if (unlink (addr_socket_name) < 0)
     perror ("aip unlink addr_socket");
+}
+
+#ifndef NO_MAIN_FUNCTION
+int main (int argc, char ** argv)
+{
+  if (argc != 4) {
+    printf ("aip: arguments are read pipe from ad and write pipe to ad,\n");
+    printf (" and a unix domain socket for address info (argc == 4)\n");
+    printf (" but argc == %d\n", argc);
+    return -1;
+  }
+
+  int rpipe = atoi (argv [1]);  /* read pipe */
+  int wpipe = atoi (argv [2]);  /* write pipe */
+  char * addr_socket_name = argv [3];
+  aip_main (rpipe, wpipe, addr_socket_name);
   return 0;
 }
+#endif /* NO_MAIN_FUNCTION */

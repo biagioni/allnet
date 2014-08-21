@@ -674,19 +674,10 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
 #endif /* __APPLE__ */
 }
 
-int main (int argc, char ** argv)
+void abc_main (int rpipe, int wpipe, char * interface, char * iface_type)
 {
   init_log ("abc");
   queue_init (16 * 1024 * 1024);  /* 16MBi */
-  if (argc != 4) {
-    printf ("arguments must be a read pipe, a write pipe, and an interface\n");
-    printf ("argc == %d\n", argc);
-    return -1;
-  }
-  int rpipe = atoi (argv [1]);  /* read pipe */
-  int wpipe = atoi (argv [2]);  /* write pipe */
-  const char * interface = argv [3];
-  const char * iface_type = (argc > 3 ? argv [4] : NULL);
 
   if (iface_type != NULL) {
     int i;
@@ -707,5 +698,21 @@ int main (int argc, char ** argv)
   main_loop (interface, rpipe, wpipe);
   snprintf (log_buf, LOG_SIZE, "end of abc (%s) main thread\n", interface);
   log_print ();
+}
+
+#ifndef NO_MAIN_FUNCTION
+int main (int argc, char ** argv)
+{
+  if (argc != 4) {
+    printf ("arguments must be a read pipe, a write pipe, and an interface\n");
+    printf ("argc == %d\n", argc);
+    return -1;
+  }
+  int rpipe = atoi (argv [1]);  /* read pipe */
+  int wpipe = atoi (argv [2]);  /* write pipe */
+  const char * interface = argv [3];
+  const char * iface_type = (argc > 3 ? argv [4] : NULL);
+  abc_main (rpipe, wpipe, interface, iface_type);
   return 1;
 }
+#endif /* NO_MAIN_FUNCTION */

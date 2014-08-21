@@ -735,6 +735,29 @@ static void usage (char * pname, int daemon)
   }
 }
 
+void traced_main (char * pname)
+{
+  int sock = connect_to_local (pname, pname);
+  if (sock < 0)
+    return;
+
+  unsigned char address [ADDRESS_SIZE];
+  bzero (address, sizeof (address));  /* set any unused part to all zeros */
+  int abits = 16;
+  get_my_addr (address, sizeof (address));
+
+#ifdef DEBUG_PRINT
+  printf ("trace daemon (m %d) for %d bits: ", match_only, abits);
+  print_bitstring (address, 0, abits, 1);
+#endif /* DEBUG_PRINT */
+  main_loop (sock, address, abits, 0, 0);
+  printf ("trace error: main loop returned\n");
+  return;
+}
+
+#ifndef NO_MAIN_FUNCTION
+/* parts of this duplicate some of the code in traced_main, but
+ * supporting the address on the command line seems like a useful feature */
 int main (int argc, char ** argv)
 {
   int is_daemon = 0;
@@ -810,3 +833,4 @@ int main (int argc, char ** argv)
   }
   return 0;
 }
+#endif /* NO_MAIN_FUNCTION */
