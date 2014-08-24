@@ -120,7 +120,6 @@ static void clear_nonces (int mine, int other)
     bzero (other_beacon_rnonce, NONCE_SIZE);
     bzero (other_beacon_snonce, NONCE_SIZE);
   }
-  bzero (zero_nonce, NONCE_SIZE);
 }
 
 /**
@@ -630,6 +629,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
     goto iface_cleanup;
   }
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
+  bzero (zero_nonce, NONCE_SIZE);
   /* check_priority_mode (); called by handle_until */
   while (!term)
     one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_ll),
