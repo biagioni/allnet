@@ -15,10 +15,10 @@ struct queue_element {
   char data [0];   /* actually, however many chars size says */
 };
 
-struct queue_element * head = NULL;
-struct queue_element * tail = NULL;
-int max_size = 0;
-int current_size = 0;
+static struct queue_element * head = NULL;
+static struct queue_element * tail = NULL;
+static int max_size = 0;
+static int current_size = 0;
 
 void queue_init (int max_bytes)
 {
@@ -123,8 +123,8 @@ void queue_add (char * value, int size, int priority)
   prev->next = node->prev;
 }
 
-struct queue_element * iter_next = NULL;
-struct queue_element * iter_remove = NULL;
+static struct queue_element * iter_next = NULL;
+static struct queue_element * iter_remove = NULL;
 
 void queue_iter_start ()
 {
