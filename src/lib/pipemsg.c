@@ -523,7 +523,10 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
     int new_recvd = read (pipe, buffer + recvd, blen - recvd);
 /*  printf ("%d\n", new_recvd); */
     if (new_recvd <= 0) {
-      if (new_recvd < 0)
+      if (new_recvd == 0) {
+        snprintf (log_buf, LOG_SIZE, "receive_bytes: pipe %d is closed\n", pipe);
+        log_print ();
+      } else
         perror ("pipemsg.c receive_bytes read");
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
