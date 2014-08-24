@@ -781,7 +781,7 @@ void allnet_localtime_string (unsigned long long int allnet_seconds,
 
 /* useful time functions */
 /* if t1 < t2, returns 0, otherwise returns t1 - t2 */
-unsigned long long delta_us (struct timeval * t1, struct timeval * t2)
+unsigned long long delta_us (const struct timeval * t1, const struct timeval * t2)
 {
   if ((t1->tv_sec < t2->tv_sec) ||
       ((t1->tv_sec == t2->tv_sec) &&
@@ -831,7 +831,7 @@ time_t compute_next (time_t from, time_t granularity, int immediate_ok)
 }
 
 /* set result to a random time between start + min and start + max */
-void set_time_random (struct timeval * start, unsigned long long min,
+void set_time_random (const struct timeval * start, unsigned long long min,
                       unsigned long long max, struct timeval * result)
 {
   if (min <= max) {
