@@ -532,10 +532,7 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
                 "receive_bytes: %d/%d bytes on pipe %d, expected %d/%d\n",
                 new_recvd, recvd, pipe, blen - recvd, blen);
       log_print ();
-      if ((new_recvd == 0) && (recvd > 0))
-        return recvd; /* return this data for now, and -1 next time */
-      /* not received anything yet -- error or closed pipe */
-      return -1;  /* error */
+      return recvd > 0 ? recvd : -1 /* error */;
     }
     recvd += new_recvd;
   }
