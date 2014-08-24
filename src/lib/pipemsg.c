@@ -519,9 +519,7 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
     if ((! may_block) && (! fd_can_recv (pipe, 0)))
       return recvd;   /* not ready to receive, and should not block */
     /* if we did not call fd_can_recv, the call to read may block */
-/*  printf ("read (%d, %p, %d) => ", pipe, buffer + recvd, blen - recvd); */
     int new_recvd = read (pipe, buffer + recvd, blen - recvd);
-/*  printf ("%d\n", new_recvd); */
     if (new_recvd <= 0) {
       if (new_recvd == 0) {
         snprintf (log_buf, LOG_SIZE, "receive_bytes: pipe %d is closed\n", pipe);
