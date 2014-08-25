@@ -47,13 +47,9 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>           /* usleep */
-#ifndef __APPLE__
-#include <netpacket/packet.h> /* sockaddr_ll */
-#else /* __APPLE__ */
 #include <sys/socket.h>       /* sockaddr */
-#endif /* __APPLE__ */
 
-#include "abc-iface.h"
+#include "abc-iface.h"        /* sockaddr_t */
 #include "abc-wifi.h"         /* abc_iface_wifi */
 #include "../social.h"        /* UNKNOWN_SOCIAL_TIER */
 #include "lib/mgmt.h"         /* struct allnet_mgmt_header */
@@ -612,13 +608,8 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
 
 static void main_loop (const char * interface, int rpipe, int wpipe)
 {
-#ifndef __APPLE__
-  struct sockaddr_ll if_address; /* the address of the interface */
-  struct sockaddr_ll bc_address; /* broacast address of the interface */
-#else /* __APPLE__ */
-  struct sockaddr_in if_address; /* the address of the interface */
-  struct sockaddr_in bc_address; /* broacast address of the interface */
-#endif /* __APPLE__ */
+  sockaddr_t if_address; /* the address of the interface */
+  sockaddr_t bc_address; /* broacast address of the interface */
   struct sockaddr  * bc_sap = (struct sockaddr *) (&bc_address);
 
   struct timeval quiet_end;   /* should we keep quiet? */
@@ -641,13 +632,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   bzero (zero_nonce, NONCE_SIZE);
   /* check_priority_mode (); called by handle_until */
   while (!term)
-#ifndef __APPLE__
-    one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_ll),
-               &quiet_end);
-#else /* __APPLE__ */
-    one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_in),
-               &quiet_end);
-#endif /* __APPLE__ */
+    one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (sockaddr_t), &quiet_end);
 
 iface_cleanup:
   iface->iface_cleanup_cb ();

@@ -10,18 +10,13 @@
 #include <string.h>
 #include <ifaddrs.h>
 #include <net/if.h>           /* ifa_flags */
-#ifndef __APPLE__
-#include <netpacket/packet.h> /* struct sockaddr_ll */
-#else /* __APPLE__ */
 #include <sys/socket.h>       /* struct sockaddr */
-#include <netinet/ip.h>       /* struct sockaddr_in */
-#endif /* __APPLE__ */
 #include <sys/time.h>         /* gettimeofday */
 
 #include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */
 #include "lib/util.h"         /* delta_us */
 
-#include "abc-iface.h"
+#include "abc-iface.h"        /* sockaddr_t */
 
 #define NUM_WIFI_CONFIG_IFACES 1
 #ifdef USE_NETWORK_MANAGER
@@ -41,13 +36,8 @@ const char * abc_wifi_config_type_strings[] = {
 
 /* forward declarations */
 static int abc_wifi_init (const char * interface, int * sock,
-#ifndef __APPLE__
-                          struct sockaddr_ll * address,
-                          struct sockaddr_ll * bc);
-#else /* __APPLE__ */
-                          struct sockaddr_in * address,
-                          struct sockaddr_in * bc);
-#endif /* __APPLE__ */
+                          sockaddr_t * address,
+                          sockaddr_t * bc);
 static int abc_wifi_is_enabled ();
 static int abc_wifi_set_enabled (int state);
 static int abc_wifi_cleanup ();
@@ -131,11 +121,7 @@ static int abc_wifi_set_enabled (int state)
 /* if returning 0 or 1, fills in the socket and the address */
 /* to do: figure out how to set bits_per_s in init_wireless */
 static int abc_wifi_init (const char * interface, int * sock,
-#ifndef __APPLE__
-                          struct sockaddr_ll * address, struct sockaddr_ll * bc)
-#else /* __APPLE__ */
-                          struct sockaddr_in * address, struct sockaddr_in * bc)
-#endif /* __APPLE__ */
+                          sockaddr_t * address, sockaddr_t * bc)
 {
   if (abc_iface_wifi.iface_type_args != NULL) {
     int i;
