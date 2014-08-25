@@ -133,7 +133,6 @@ static int check_priority_mode ()
        (queue_max_priority () >= ALLNET_PRIORITY_FRIENDS_LOW))) {
     /* enter high priority mode */
     high_priority = 1;
-    iface->iface_set_enabled_cb (1);
   } else if ((high_priority) &&
              ((lan_is_on) ||
               ((! received_high_priority) &&
