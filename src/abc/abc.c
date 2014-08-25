@@ -90,6 +90,11 @@ static int lan_is_on = 0; /* if on, we should never be in high priority mode */
 
 static int sockfd_global = -1;  /* -1 means not initialized yet */
 
+/* cycles we skipped because of interface activation delay.
+ * This is also the number of cycles we leave the interface on
+ * in low priority mode to compensate for the delay */
+static unsigned if_cycles_skiped = 0;
+
 static char my_beacon_rnonce [NONCE_SIZE];
 static char my_beacon_snonce [NONCE_SIZE];
 static char other_beacon_snonce [NONCE_SIZE];
@@ -584,12 +589,22 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
                        struct sockaddr * addr, socklen_t alen,
                        struct timeval * quiet_end)
 {
-  struct timeval start, finish, beacon_time, beacon_stop;
+  struct timeval if_off, if_on, start, finish, beacon_time, beacon_stop;
+  if (if_cycles_skiped-- == 0) {
+    gettimeofday (&if_off, NULL);
+    /* enabling the iface might take some time causing us to miss a cycle */
+    iface->iface_set_enabled_cb (1);
+    gettimeofday (&if_on, NULL);
+
+    unsigned long long ds = delta_us (&if_on, &if_off) / (1000LLU * 1000LLU);
+    if_cycles_skiped = ds / BASIC_CYCLE_SEC;
+    printf ("skipped %d\n", if_cycles_skiped);
+  }
+
   gettimeofday (&start, NULL);
   finish.tv_sec = compute_next (start.tv_sec, BASIC_CYCLE_SEC, 0);
   finish.tv_usec = 0;
-  beacon_interval (&beacon_time, &beacon_stop, &start, &finish,
-                   BEACON_MS, iface->iface_on_off_ms * 2);
+  beacon_interval (&beacon_time, &beacon_stop, &start, &finish, BEACON_MS);
 
   clear_nonces (1, 1);   /* start a new cycle */
 
@@ -599,7 +614,7 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
   /* clear_nonces (1, 0);  -- if we stay on, denying beacon replies is
    * not really helpful.  If we are off, we will get no beacon replies
    * anyway, so it doesn't matter */
-  if (! high_priority)
+  if (! high_priority && if_cycles_skiped == 0) /* skipped cycle compensation */
     iface->iface_set_enabled_cb (0);
   handle_until (&finish, quiet_end, interface, rpipe, wpipe, addr, alen);
   received_high_priority = 0;
