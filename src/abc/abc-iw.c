@@ -4,6 +4,7 @@
 #include <stdlib.h>    /* exit */
 #include <string.h>    /* strlen */
 #include <unistd.h>    /* fork, dup2, execvp */
+#include <net/if.h>    /* IFNAMSIZ */
 #include <sys/types.h> /* pid_t */
 #include <sys/wait.h>  /* waitpid */
 
@@ -207,10 +208,38 @@ static int abc_wifi_config_iw_connect ()
   if (r != 1 || !if_command ("iw dev %s ibss join allnet 2412 fixed-freq", self.iface,
                       142, "allnet ad-hoc mode already set", "unknown problem"))
     return 0;
-  /* 50ms: empirically established time to connect to an _existing_ adhoc net */
-  usleep (50 * 1000);
+  /* use `iw dev WLAN0 link` since we're already using iw above.
+   * An alternative way would be to use NL80211 directly
+   * as does "iw event" (see source "case NL80211_CMD_JOIN_IBSS") */
+  char * cmdfmt = "iw dev %s link";
+  char cmd[12 + IFNAMSIZ]; /* IFNAMSIZ includes \0 */
+  char tmp[16];
+  long sleep = 25;
+  long slept = 0;
+  do {
+    /* 50ms: empirically established time to connect to an _existing_ adhoc net */
+    usleep (sleep * 1000L);
+    slept += sleep;
+    if (slept < 7000L)
+      sleep *= 2;
+    if (sleep == 100)
+      sleep = 1000L;
+    snprintf (cmd, sizeof (cmd), cmdfmt, self.iface);
+    FILE * in = popen (cmd, "r");
+    if ((in == NULL) ||
+        (fgets (tmp, sizeof (tmp), in) == NULL) ||
+        (pclose (in) == -1))
+      goto connerr;
+  } while (tmp[0] == 'N' /* strncmp (tmp, "Not connected.", 14) == 0 */ && slept < 14000L);
+  if (slept >= 14000L)
+    printf ("abc-iw: timeout hit, cell still not associated\n");
+
   self.is_connected = 1;
   return 1;
+
+connerr:
+  perror ("abc-iw");
+  return 0;
 }
 
 /** Returns wlan state (1: enabled or 0: disabled, -1: unknown) */
