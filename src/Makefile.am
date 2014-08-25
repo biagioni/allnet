@@ -1,5 +1,6 @@
 SUBDIRS = lib abc ahra mgmt xchat xtime xchat_ui
 AM_CFLAGS = -g
+AUTOMAKE_OPTIONS = subdir-objects
 
 libincludes = \
 	lib/ai.h \
@@ -31,7 +32,8 @@ bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/acache \
 	$(ALLNET_BINDIR)/astart \
 	$(ALLNET_BINDIR)/astop \
-	$(ALLNET_BINDIR)/adht
+	$(ALLNET_BINDIR)/adht \
+	$(ALLNET_BINDIR)/allnetx
 
 __ALLNET_BINDIR__ad_SOURCES = ad.c ${adlink} ${includes}
 __ALLNET_BINDIR__alocal_SOURCES = alocal.c listen.c ${includes} lib/mgmt.h
@@ -43,6 +45,9 @@ __ALLNET_BINDIR__adht_LDFLAGS = -lpthread
 __ALLNET_BINDIR__acache_SOURCES = acache.c ${includes}
 __ALLNET_BINDIR__astart_SOURCES = astart.c ${includes}
 __ALLNET_BINDIR__astop_SOURCES = astart.c ${includes}
+__ALLNET_BINDIR__allnetx_SOURCES = allnetx.c ad.c alocal.c aip.c abc/abc.c adht.c acache.c mgmt/trace.c mgmt/keyd.c listen.c routing.c ${adlink} ${includes} lib/mgmt.h routing.h
+__ALLNET_BINDIR__allnetx_CPPFLAGS = -DNO_MAIN_FUNCTION
+__ALLNET_BINDIR__allnetx_LDFLAGS = -lpthread
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \

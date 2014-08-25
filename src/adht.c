@@ -359,17 +359,17 @@ static void respond_to_dht (int sock, char * message, int msize)
 #endif /* DEBUG_PRINT */
 }
 
-int main (int argc, char ** argv)
+void adht_main (char * pname)
 {
   /* connect to alocal */
-  int sock = connect_to_local ("adht", argv [0]);
+  int sock = connect_to_local ("adht", pname);
   if (sock < 0)
-    return 1;
+    return;
 
   pthread_t send_thread;
   if (pthread_create (&send_thread, NULL, send_loop, &sock) != 0) {
     perror ("pthread_create/addrs");
-    return 1;
+    return;
   }
   while (1) {
     char * message;
@@ -388,3 +388,10 @@ int main (int argc, char ** argv)
     free (message);
   }
 }
+
+#ifndef NO_MAIN_FUNCTION
+int main (int argc, char ** argv)
+{
+  adht_main (argv [0]);
+}
+#endif /* NO_MAIN_FUNCTION */

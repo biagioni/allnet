@@ -151,7 +151,11 @@ static void * listen_loop (void * arg)
 /* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
  * we want to record it as an IPv4 connection */
     standardize_ip (ap, addr_size);
+#ifdef DEBUG_PRINT
     print_sockaddr_str (ap, addr_size, 1, log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+    snprintf (log_buf + off, LOG_SIZE - off, "\n");
+#endif /* DEBUG_PRINT */
     log_print ();
 
     int option = 1;  /* disable Nagle algorithm if nodelay */

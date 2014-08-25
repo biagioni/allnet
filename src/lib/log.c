@@ -134,8 +134,8 @@ void init_log (char * name)
   if (! create_dir (log_dir))
     printf ("unable to create directory %s\n", log_dir);
   time_t now = time (NULL);
-  /* only open a new log file if this is the astart module */
-  if (strcasecmp (name, "astart") == 0)
+  /* only open a new log file if this is the astart or allnet module */
+  if ((strcasecmp (name, "astart") == 0) || (strcasecmp (name, "allnet") == 0))
     file_name (now); /* create a new file */
   else /* use the latest available file, only create new if none are present */
     latest_file (now);

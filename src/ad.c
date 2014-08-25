@@ -186,12 +186,11 @@ static void send_all (char * packet, int psize, int priority,
  * same number, even though the code only explicitly refers to the first
  * three and doesn't require the same number of read and write pipes
  */
-static void main_loop (int * read_pipes, int nread,
-                       int * write_pipes, int nwrite,
+static void main_loop (int npipes, int * read_pipes, int * write_pipes,
                        int update_seconds, int max_social_bytes, int max_checks)
 {
   int i;
-  for (i = 0; i < nread; i++)
+  for (i = 0; i < npipes; i++)
     add_pipe (read_pipes [i]);
 /* snprintf (log_buf, LOG_SIZE, "ad calling init_social\n"); log_print (); */
   struct social_info * soc = init_social (max_social_bytes, max_checks);
@@ -222,15 +221,17 @@ log_print ();
     switch (p) {
     case PROCESS_PACKET_ALL:
       log_packet ("sending to all", packet, psize);
-      send_all (packet, psize, priority, write_pipes, nwrite, "all");
+      send_all (packet, psize, priority, write_pipes, npipes, "all");
       break;
     case PROCESS_PACKET_OUT:
       log_packet ("sending out", packet, psize);
-      send_all (packet, psize, priority, write_pipes + 1, nwrite - 1, "out");
+/* alocal should be the first pipe, so just skip it */
+      send_all (packet, psize, priority, write_pipes + 1, npipes - 1, "out");
       break;
     /* all the rest are not forwarded, so priority does not matter */
     case PROCESS_PACKET_LOCAL:   /* send only to alocal */ 
       log_packet ("sending to alocal", packet, psize);
+/* alocal should be the first pipe, so only write to that */
       send_all (packet, psize, 0, write_pipes, 1, "local");
       break;
     case PROCESS_PACKET_DROP:    /* do not forward */
@@ -246,6 +247,32 @@ log_print ();
   }
 }
 
+/* arguments are: the number of read/write pipes, then an array of pairs of
+ * file descriptors (ints) for each pipe, from/to alocal, aip.
+ * any additional pipes will again be pairs from/to each abc.
+ */
+void ad_main (int npipes, int * rpipes, int * wpipes)
+{
+  init_log ("ad");
+  if (npipes < 2) {
+    printf ("%d pipes, at least 2 needed\n", npipes);
+    return;
+  }
+  snprintf (log_buf, LOG_SIZE, "AllNet (ad) version %d\n", ALLNET_VERSION);
+  log_print ();
+  int i;
+  for (i = 0; i < npipes; i++) {
+    snprintf (log_buf, LOG_SIZE,
+              "read_pipes [%d] = %d, write_pipes [%d] = %d\n",
+              i, rpipes [i], i, wpipes [i]);
+    log_print ();
+  }
+  main_loop (npipes, rpipes, wpipes, 30, 30000, 5);
+  snprintf (log_buf, LOG_SIZE, "ad error: main loop returned, exiting\n");
+  log_print ();
+}
+
+#ifndef NO_MAIN_FUNCTION
 /* arguments are: the number of pipes, then pairs of read and write file
  * file descriptors (ints) for each pipe, from/to alocal, aip.
  * any additional pipes will again be pairs from/to each abc.
@@ -273,32 +300,23 @@ int main (int argc, char ** argv)
   }
   snprintf (log_buf, LOG_SIZE, "AllNet (ad) version %d\n", ALLNET_VERSION);
   log_print ();
-  /* allocate both read and write pipes at once, then point write_pipes
-   * to the middle of the allocated array
-   */
-  int * read_pipes  = malloc (sizeof (int) * npipes * 2);
-  if (read_pipes == NULL) {
+  int * all_pipes  = malloc (sizeof (int) * npipes * 2);
+  if (all_pipes == NULL) {
     printf ("allocation error in ad main\n");
     return -1;
   }
-  int * write_pipes = read_pipes + npipes;
 
   int i;
-  for (i = 0; i < npipes; i++) {
-    read_pipes  [i] = atoi (argv [2 + 2 * i    ]);
-    write_pipes [i] = atoi (argv [2 + 2 * i + 1]);
+  for (i = 0; i < npipes / 2; i++) {
+    all_pipes [i         ] = atoi (argv [2 + 2 * i    ]);
+    all_pipes [npipes + i] = atoi (argv [2 + 2 * i + 1]);
   }
-  for (i = 0; i < npipes; i++) {
-    snprintf (log_buf, LOG_SIZE, "read_pipes [%d] = %d\n", i, read_pipes [i]);
+  for (i = 0; i < 2 * npipes; i++) {
+    snprintf (log_buf, LOG_SIZE, "all_pipes [%d] = %d\n", i, all_pipes [i]);
     log_print ();
   }
-  for (i = 0; i < npipes; i++) {
-    snprintf (log_buf, LOG_SIZE, "write_pipes [%d] = %d\n", i, write_pipes [i]);
-    log_print ();
-  }
-  main_loop (read_pipes, npipes, write_pipes, npipes, 30, 30000, 5);
-  snprintf (log_buf, LOG_SIZE, "ad error: main loop returned, exiting\n");
-  log_print ();
+  ad_main (npipes, all_pipes, all_pipes + npipes);
   return 1;
 }
+#endif /* NO_MAIN_FUNCTION */
 

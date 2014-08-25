@@ -144,11 +144,11 @@ hp->source [0] & 0xff, hp->src_nbits);
   }
 }
 
-int main (int argc, char ** argv)
+void keyd_main (char * pname)
 {
-  int sock = connect_to_local (argv [0], argv [0]);
+  int sock = connect_to_local (pname, pname);
   if (sock < 0)
-    return 1;
+    return;
 
   while (1) {  /* loop forever */
     int pipe;
@@ -168,4 +168,12 @@ int main (int argc, char ** argv)
   snprintf (log_buf, LOG_SIZE, "keyd infinite loop ended, exiting\n");
   log_print ();
 }
+
+#ifndef NO_MAIN_FUNCTION
+int main (int argc, char ** argv)
+{
+  keyd_main (argv [0]);
+  return 0;
+}
+#endif /* NO_MAIN_FUNCTION */
 

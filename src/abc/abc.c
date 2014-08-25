@@ -47,7 +47,11 @@
 #include <string.h>
 #include <sys/time.h>
 #include <unistd.h>           /* usleep */
+#ifndef __APPLE__
 #include <netpacket/packet.h> /* sockaddr_ll */
+#else /* __APPLE__ */
+#include <sys/socket.h>       /* sockaddr */
+#endif /* __APPLE__ */
 
 #include "abc-iface.h"
 #include "abc-wifi.h"         /* abc_iface_wifi */
@@ -608,8 +612,13 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
 
 static void main_loop (const char * interface, int rpipe, int wpipe)
 {
+#ifndef __APPLE__
   struct sockaddr_ll if_address; /* the address of the interface */
   struct sockaddr_ll bc_address; /* broacast address of the interface */
+#else /* __APPLE__ */
+  struct sockaddr_in if_address; /* the address of the interface */
+  struct sockaddr_in bc_address; /* broacast address of the interface */
+#endif /* __APPLE__ */
   struct sockaddr  * bc_sap = (struct sockaddr *) (&bc_address);
 
   struct timeval quiet_end;   /* should we keep quiet? */
@@ -632,37 +641,30 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   bzero (zero_nonce, NONCE_SIZE);
   /* check_priority_mode (); called by handle_until */
   while (!term)
+#ifndef __APPLE__
     one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_ll),
                &quiet_end);
+#else /* __APPLE__ */
+    one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (struct sockaddr_in),
+               &quiet_end);
+#endif /* __APPLE__ */
 
 iface_cleanup:
   iface->iface_cleanup_cb ();
 }
 
-int main (int argc, char ** argv)
+void abc_main (int rpipe, int wpipe, const char * interface,
+                const char * iface_type, const char * iface_type_args)
 {
   init_log ("abc");
   queue_init (16 * 1024 * 1024);  /* 16MBi */
-  if (argc < 4) {
-    printf ("usage %s <read pipe> <write pipe> <interface> [interface type] [interface manager arguments]\n", argv [0]);
-    printf ("  interface types: wifi\n");
-    printf ("  arguments for wifi type interfaces:\n");
-    printf ("    iw (use iwtools)\n");
-    printf ("    nm (use NetworkManager)\n");
-    return -1;
-  }
-  int rpipe = atoi (argv [1]);  /* read pipe */
-  int wpipe = atoi (argv [2]);  /* write pipe */
-  const char * interface = argv [3];
-  const char * iface_type = (argc > 3 ? argv [4] : NULL);
 
   if (iface_type != NULL) {
     int i;
     for (i = 0; i < sizeof (iface_types); ++i) {
       if (strcmp (iface_type_strings[i], iface_type) == 0) {
         iface = iface_types[i];
-        if (argc > 4)
-          iface->iface_type_args = argv [5];
+        iface->iface_type_args = iface_type_args;
         break;
       }
     }
@@ -683,5 +685,22 @@ int main (int argc, char ** argv)
   main_loop (interface, rpipe, wpipe);
   snprintf (log_buf, LOG_SIZE, "end of abc (%s) main thread\n", interface);
   log_print ();
+}
+
+#ifndef NO_MAIN_FUNCTION
+int main (int argc, char ** argv)
+{
+  if (argc != 4) {
+    printf ("arguments must be a read pipe, a write pipe, and an interface\n");
+    printf ("argc == %d\n", argc);
+    return -1;
+  }
+  int rpipe = atoi (argv [1]);  /* read pipe */
+  int wpipe = atoi (argv [2]);  /* write pipe */
+  const char * interface = argv [3];
+  const char * iface_type = (argc > 3 ? argv [4] : NULL);
+  const char * iface_type_args = (argc > 4 ? argv [5] : NULL);
+  abc_main (rpipe, wpipe, interface, iface_type, iface_type_args);
   return 1;
 }
+#endif /* NO_MAIN_FUNCTION */

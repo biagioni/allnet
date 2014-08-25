@@ -74,8 +74,8 @@ static int my_system (char * command)
       p++;
     }
     if (num_args >= sizeof (argv) / sizeof (char *)) {
-      printf ("error: reading beyond array\n");
-      argv [(sizeof (argv) / sizeof (char *)) -1] = NULL;
+      printf ("error: reading beyond array %d\n", num_args);
+      argv [sizeof (argv) / sizeof (char *) - 1] = NULL;
     } else {
       argv [num_args] = NULL;
     }

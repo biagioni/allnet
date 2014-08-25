@@ -14,7 +14,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
+#ifndef __APPLE__
 #include <netpacket/packet.h>
+#endif /* __APPLE__ */
 #include <arpa/inet.h>
 
 #include "packet.h"
@@ -546,7 +548,9 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
   struct sockaddr_un  * sun  = (struct sockaddr_un  *) sap;
+#ifndef __APPLE__
   struct sockaddr_ll  * sll  = (struct sockaddr_ll  *) sap;
+#endif /* __APPLE__ */
   /* char str [INET_ADDRSTRLEN]; */
   int num_initial_zeros = 0;  /* for printing ipv6 addrs */
   int n = 0;   /* offset for printing */
@@ -591,6 +595,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_un));
     break;
+#ifndef __APPLE__
   case AF_PACKET:
     n += snprintf (s + n, len - n,
                    "packet protocol%s 0x%x if %d ha %d pkt %d address (%d)",
@@ -602,6 +607,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_ll));
     break;
+#endif /* __APPLE__ */
   default:
     n += snprintf (s + n, len - n, "unknown address family %d%s",
                    sap->sa_family, proto);

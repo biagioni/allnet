@@ -1323,7 +1323,7 @@ static void init_acache (int * msg_fd, int * max_msg_size,
     init_msgs (*msg_fd, *max_msg_size);
 }
 
-void main_loop (int sock)
+static void main_loop (int sock)
 {
   int msg_fd;
   int max_msg_size;
@@ -1380,13 +1380,21 @@ priority = ALLNET_PRIORITY_EPSILON;
   }
 }
 
-int main (int argc, char ** argv)
+void acache_main (char * pname)
 {
   /* printf ("sizeof struct hash_entry = %zd\n", sizeof (struct hash_entry));
               sizeof struct hash_entry = 56 */
-  int sock = connect_to_local ("acache", argv [0]);
+  int sock = connect_to_local ("acache", pname);
   main_loop (sock);
   snprintf (log_buf, LOG_SIZE, "end of acache\n");
   log_print ();
+}
+
+#ifndef NO_MAIN_FUNCTION
+int main (int argc, char ** argv)
+{
+  acache_main (argv [0]);
   return 0;
 }
+
+#endif /* NO_MAIN_FUNCTION */
