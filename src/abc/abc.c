@@ -178,16 +178,14 @@ static int receive_until (struct timeval * t, char ** message, int sockfd,
   struct sockaddr * sap = (struct sockaddr *) (&recv_addr);
   socklen_t al = sizeof (recv_addr);
 
-  int msize = -1;
+  int msize;
   if (sockfd >= 0) {
     msize = receive_pipe_message_fd (timeout_ms, message, sockfd, sap, &al,
                                      fd, priority);
   } else {
     msize = receive_pipe_message_any (timeout_ms, message, fd, priority);
   }
-  if (msize < 0) /* error */
-    return -1;
-  return msize;  /* zero or positive, the value is correct */
+  return msize;  /* -1 (error), zero (timeout) or positive, the value is correct */
 }
 
 static void update_quiet (struct timeval * quiet_end,
