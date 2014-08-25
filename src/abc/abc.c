@@ -564,24 +564,24 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
   }
 }
 
-/* sets bstart to a random time between bstart and
- * (bfinish - beacon_ms - extra_ms), and bfinish to beacon_ms ms later */
-/* parameters are in ms (sec/1,000), computation is in us (sec/1,000,000) */
+/* sets bstart to a random time between bstart and (bfinish - beacon_ms),
+ * and bfinish to beacon_ms ms later
+ * parameters are in ms, computation is in us (sec/1,000,000) */
 static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
-                             struct timeval * start, struct timeval * finish,
-                             int beacon_ms, int extra_ms)
+                             const struct timeval * start, const struct timeval * finish,
+                             int beacon_ms)
 {
   unsigned long long int interval_us = delta_us (finish, start);
   unsigned long long int beacon_us = beacon_ms * 1000LL;
-  unsigned long long int at_end_us = beacon_us + (extra_ms * 1000LL);
+  unsigned long long int at_end_us = beacon_us;
   *bstart = *start;
   if (interval_us > at_end_us)
     set_time_random (start, 0LL, interval_us - at_end_us, bstart);
   *bfinish = *bstart;
   add_us (bfinish, beacon_us);
-  printf ("b_int (%ld.%06ld, %ld.%06ld + %d, %d) => %ld.%06ld, %ld.%06ld\n",
+  printf ("b_int (%ld.%06ld, %ld.%06ld + %d) => %ld.%06ld, %ld.%06ld\n",
           start->tv_sec, start->tv_usec, finish->tv_sec, finish->tv_usec,
-          beacon_ms, extra_ms,
+          beacon_ms,
           bstart->tv_sec, bstart->tv_usec, bfinish->tv_sec, bfinish->tv_usec);
 }
 
