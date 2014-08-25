@@ -45,9 +45,10 @@ __ALLNET_BINDIR__adht_LDFLAGS = -lpthread
 __ALLNET_BINDIR__acache_SOURCES = acache.c ${includes}
 __ALLNET_BINDIR__astart_SOURCES = astart.c ${includes}
 __ALLNET_BINDIR__astop_SOURCES = astart.c ${includes}
-__ALLNET_BINDIR__allnetx_SOURCES = allnetx.c ad.c alocal.c aip.c abc/abc.c adht.c acache.c mgmt/trace.c mgmt/keyd.c listen.c routing.c ${adlink} ${includes} lib/mgmt.h routing.h
+__ALLNET_BINDIR__allnetx_SOURCES = allnetx.c ad.c alocal.c aip.c adht.c acache.c mgmt/trace.c mgmt/keyd.c listen.c routing.c ${adlink} ${includes} lib/mgmt.h routing.h
 __ALLNET_BINDIR__allnetx_CPPFLAGS = -DNO_MAIN_FUNCTION
 __ALLNET_BINDIR__allnetx_LDFLAGS = -lpthread
+__ALLNET_BINDIR__allnetx_LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la abc/liballnet-abc-$(ALLNET_API_VERSION).la
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
