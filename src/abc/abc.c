@@ -290,8 +290,10 @@ static void send_pending (int type, int size, char * message, int sockfd,
   }
 }
 
-/* return 1 if it is a beacon (not a regular packet), 0 otherwise */
-/* sets *send_type to 1, *send_size to the message size, and send_message
+/* return 1 if message is a beacon (not a regular packet), 0 otherwise.
+ * does no work, expect identifying packet type, when quiet is set.
+ *
+ * Sets *send_type to 1, *send_size to the message size, and send_message
  * (which must have size ALLNET_MTU) to the message to send, if there
  * is a message to be sent after the quiet time.
  * sets *send_type to 2, *send_size to the number of bytes that can be
@@ -302,7 +304,8 @@ static int handle_beacon (char * message, int msize, int sockfd,
                           struct timeval ** beacon_deadline,
                           struct timeval * time_buffer,
                           struct timeval * quiet_end,
-                          int * send_type, int * send_size, char * send_message)
+                          int * send_type, int * send_size, char * send_message,
+                          int quiet)
 {
   *send_type = 0;  /* don't send anything unless we say otherwise */
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -310,6 +313,8 @@ static int handle_beacon (char * message, int msize, int sockfd,
     return 0;
   if (msize < ALLNET_MGMT_HEADER_SIZE (hp->transport))
     return 0;
+  if (quiet)
+    return 1;
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   char * beaconp = message + ALLNET_BEACON_SIZE (hp->transport);
@@ -348,7 +353,6 @@ static int handle_beacon (char * message, int msize, int sockfd,
                  sizeof (struct allnet_mgmt_beacon_reply);
     /* make the beacon which will be sent by caller (handle_until()) */
     make_beacon_reply (send_message, ALLNET_MTU);
-
 
     *beacon_deadline = time_buffer;
     gettimeofday (*beacon_deadline, NULL);
@@ -464,10 +468,10 @@ static void handle_network_message (char * message, int msize,
                                     struct timeval * time_buffer,
                                     struct timeval * quiet_end,
                                     int * send_type, int * send_size,
-                                    char * send_message)
+                                    char * send_message, int quiet)
 {
   if (! handle_beacon (message, msize, sockfd, beacon_deadline, time_buffer,
-                       quiet_end, send_type, send_size, send_message)) {
+                       quiet_end, send_type, send_size, send_message, quiet)) {
     /* check for high-priority message */
     struct allnet_header * hp = (struct allnet_header *) message;
     int msgpriority = compute_priority (msize, hp->src_nbits, hp->dst_nbits,
@@ -493,6 +497,7 @@ static void handle_quiet (struct timeval * quiet_end,
     int fd;
     int priority;
     int msize = receive_until (quiet_end, &message, sockfd, &fd, &priority);
+    /* required params not used in quiet mode */
     int fake_type = 0;
     int fake_size = 0;
     static char fake_message [ALLNET_MTU];
@@ -503,8 +508,7 @@ static void handle_quiet (struct timeval * quiet_end,
         handle_ad_message (message, msize, priority);
       else
         handle_network_message (message, msize, wpipe, sockfd,
-                                &fake_timep, &fake_time, quiet_end,
-                                &fake_type, &fake_size, fake_message);
+                                NULL, NULL, NULL, NULL, NULL, NULL, 1);
       free (message);
       /* see if priority has changed */
       sockfd = check_priority_mode ();
@@ -539,7 +543,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
       else
         handle_network_message (message, msize, wpipe, sockfd,
                                 &beacon_deadline, &time_buffer, quiet_end,
-                                &send_type, &send_size, send_message);
+                                &send_type, &send_size, send_message, 0);
       free (message);
       /* forward any pending messages */
       if (send_type != 0) {
