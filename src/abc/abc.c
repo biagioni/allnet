@@ -645,7 +645,6 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   }
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
   bzero (zero_nonce, NONCE_SIZE);
-  /* check_priority_mode (); called by handle_until */
   while (!term)
     one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (sockaddr_t), &quiet_end);
 
