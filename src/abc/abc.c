@@ -204,7 +204,6 @@ static void update_quiet (struct timeval * quiet_end,
 static void send_beacon (int awake_ms, const char * interface,
                          struct sockaddr * addr, socklen_t addrlen)
 {
-  iface->iface_set_enabled_cb (1);
   char buf [ALLNET_BEACON_SIZE (0)];
   int size = sizeof (buf);
   bzero (buf, size);
