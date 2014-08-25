@@ -171,12 +171,20 @@ static void stop_all (int signal)
 /* list taken from signal(7) */
 /* commented-out signals gave compiler errors */
 static int terminating_signals [] =
- { SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGABRT, SIGFPE, /* SIGKILL, */
-   SIGSEGV, SIGPIPE, SIGALRM, SIGTERM, SIGUSR1, SIGUSR2,
-   SIGBUS, SIGPOLL, SIGPROF, SIGSYS, SIGTRAP, SIGVTALRM,
-   SIGXCPU, SIGXFSZ,
-   SIGIOT, /* SIGEMT, */ SIGSTKFLT, SIGIO, SIGPWR,
-   /* SIGINFO, SIGLOST, */ SIGUNUSED };
+  { SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGABRT, SIGFPE, /* SIGKILL, */
+    SIGSEGV, SIGPIPE, SIGALRM, SIGTERM, SIGUSR1, SIGUSR2,
+    SIGBUS, 
+#ifndef __APPLE__
+    SIGPOLL,
+#endif /* __APPLE__ */
+    SIGPROF, SIGSYS, SIGTRAP, SIGVTALRM,
+    SIGXCPU, SIGXFSZ,
+    SIGIOT, /* SIGEMT, */ SIGIO
+#ifndef __APPLE__
+    , SIGSTKFLT, SIGPWR,
+    /* SIGINFO, SIGLOST, */ SIGUNUSED
+#endif /* __APPLE__ */
+  };
 
 static void setup_signal_handler (int set)
 {
