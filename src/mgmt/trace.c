@@ -29,6 +29,7 @@
 #include "lib/log.h"
 #include "lib/dcache.h"
 
+#ifndef NO_MAIN_FUNCTION
 static int get_nybble (char * string, int * offset)
 {
   char * p = string + *offset;
@@ -44,7 +45,9 @@ static int get_nybble (char * string, int * offset)
   *offset = p - string;   /* point to the offending character */
   return -1;
 }
+#endif /* NO_MAIN_FUNCTION */
 
+#ifndef NO_MAIN_FUNCTION
 static int get_byte (char * string, int * offset, unsigned char * result)
 {
   int first = get_nybble (string, offset);
@@ -58,7 +61,9 @@ static int get_byte (char * string, int * offset, unsigned char * result)
   /* printf ("get_byte returned %x\n", (*result) & 0xff); */
   return 8;
 }
+#endif /* NO_MAIN_FUNCTION */
 
+#ifndef NO_MAIN_FUNCTION
 static int get_address (char * address, unsigned char * result, int rsize)
 {
   int offset = 0;
@@ -81,6 +86,7 @@ static int get_address (char * address, unsigned char * result, int rsize)
   }
   return bits;
 }
+#endif /* NO_MAIN_FUNCTION */
 
 static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
                               int hops, struct timeval * now,
@@ -464,6 +470,7 @@ static void main_loop (int sock, unsigned char * my_address, int nbits,
   }
 }
 
+#ifndef NO_MAIN_FUNCTION
 static void send_trace (int sock, unsigned char * address, int abits,
                         char * trace_id,
                         unsigned char * my_address, int my_abits, int max_hops)
@@ -614,7 +621,9 @@ static void print_entry (struct allnet_mgmt_trace_entry * entry,
   if (print_eol)
     printf ("\n");
 }
+#endif /* NO_MAIN_FUNCTION */
 
+#ifndef NO_MAIN_FUNCTION
 static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                                 struct timeval start,
                                 struct timeval finish)
@@ -652,7 +661,9 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
     printf ("intermediate response with %d entries\n", trp->num_entries);
   }
 }
+#endif /* NO_MAIN_FUNCTION */
 
+#ifndef NO_MAIN_FUNCTION
 static void handle_packet (char * message, int msize, char * seeking,
                            struct timeval start)
 {
@@ -697,7 +708,9 @@ static void handle_packet (char * message, int msize, char * seeking,
   log_print ();
   print_trace_result (trp, start, now);
 }
+#endif /* NO_MAIN_FUNCTION */
 
+#ifndef NO_MAIN_FUNCTION
 static void wait_for_responses (int sock, char * trace_id, int sec)
 {
   num_arrivals = 0;   /* not received anything yet */
@@ -723,7 +736,9 @@ static void wait_for_responses (int sock, char * trace_id, int sec)
   }
   printf ("timeout\n");
 }
+#endif /* NO_MAIN_FUNCTION */
 
+#ifndef NO_MAIN_FUNCTION
 static void usage (char * pname, int daemon)
 {
   if (daemon) {
@@ -734,6 +749,7 @@ static void usage (char * pname, int daemon)
             pname);
   }
 }
+#endif /* NO_MAIN_FUNCTION */
 
 void traced_main (char * pname)
 {
