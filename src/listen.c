@@ -24,33 +24,6 @@
 #include "lib/log.h"
 #include "lib/ai.h"
 
-#ifndef LISTEN_H
-/* this structure is declared in the caller and passed to every function.
- * Some of the fields should not be accessed by the caller */
-struct listen_info {
-  /* accessed by the caller as well as the code in listen.c */
-  int num_fds;           /* counter for number of file descriptors in fds */
-  int * fds;             /* array of ints for file descriptors */
-  pthread_mutex_t mutex; /* mutex for accessing fds */
-  pthread_t thread4;     /* listen thread for IPv4 */
-  pthread_t thread6;     /* listen thread for IPv6 */
-  int nodelay;           /* nodelay 1 on all local sockets, 0 on all other */
-  /* the rest of these fields are for listen.c internal use only */
-  int max_num_fds;       /* max number of elements with space in fds */
-  char * program_name;   /* e.g. alocal, aip */
-  int listen_fd4;        /* fd for listening for new connections on ipv4 */
-  int listen_fd6;        /* fd for listening for new connections on ipv6 */
-  int port;              /* TCP port number */
-  int add_remove_pipe;   /* call add_pipe and remove_pipe */
-  /* if the ip version of a peer is 0, that fd does not have a peer address */
-  struct addr_info * peers;  /* holds peer addrs, allocated max_num_fds */
-  /* for testing, make counter a char.  Normally, unsigned int */
-  unsigned char counter;  /* cycle counter for least recently used */
-  unsigned int * used;    /* array of most recent access times */
-  void (* callback) (int);
-};
-#endif /* LISTEN_H */
-
 /* returns the fd of the new listen socket, or -1 in case of error */
 static int init_listen_socket (int version, int port, int local)
 {
@@ -122,7 +95,7 @@ static int init_listen_socket (int version, int port, int local)
 }
 
 struct real_arg {
-  struct listen_info * info;
+  struct listen_info * info;   /* struct listen_info is defined in listen.h */
   int fd;  /* listen socket for opening new connections */
 };
 
