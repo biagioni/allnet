@@ -128,6 +128,7 @@ struct allnet_key_request {
 #define ALLNET_TRANSPORT_ACK_REQ	2	/* message_id allows acking */
 #define ALLNET_TRANSPORT_LARGE		4	/* packets part of 1 message */
 #define ALLNET_TRANSPORT_EXPIRATION	8	/* expiration specified */
+#define ALLNET_TRANSPORT_DO_NOT_CACHE	16	/* no reason to cache this */
 
 /* a stream is a collection of related messages, such that if too many
  * of them are dropped, might as well drop the rest.  This allows

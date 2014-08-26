@@ -45,9 +45,10 @@ hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size); log_print ();
     rate_fraction = track_rate (hp->source, hp->src_nbits, size);
   else
     social_distance = UNKNOWN_SOCIAL_TIER;
+  int cacheable = ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0);
   return compute_priority (size, hp->src_nbits, hp->dst_nbits,
                            hp->hops, hp->max_hops, social_distance,
-                           rate_fraction);
+                           rate_fraction, cacheable);
 }
 
 static int process_mgmt (char * message, int msize, int is_local,

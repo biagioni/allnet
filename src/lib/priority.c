@@ -48,10 +48,9 @@ int allnet_divide (int n1, int n2)
   return divide (n1, n2);
 }
 
-
 int compute_priority (int size, int sbits, int dbits,
                       int hops_already, int hops_max,
-                      int social_distance, int rate_fraction)
+                      int social_distance, int rate_fraction, int cacheable)
 {
   int debug = 0;
   if (debug)
@@ -95,15 +94,17 @@ int compute_priority (int size, int sbits, int dbits,
        allnet_multiply (allnet_multiply (bits_priority, rate_priority),
                         allnet_multiply (hops_carried_priority,
                                          hops_total_priority)));
-/* to do: fix
-compute_priority (88, 64, 64, 1, 1, 4, 1073741823)
-resulting priority: 0.000000
-*/
+  /* give a slight boost to packets that are not cacheable */
+  if (! cacheable)
+    if (result >= ALLNET_PRIORITY_MAX - (ALLNET_PRIORITY_MAX / 10))
+      result = ALLNET_PRIORITY_MAX;
+    else
+      result += result / 10;
 if (result <= 0) debug = 1;
   if (debug)
-    printf ("compute_priority (%d, %d, %d, %d, %d, %d, %d)\n",
+    printf ("compute_priority (%d, %d, %d, %d, %d, %d, %d, %d)\n",
             size, sbits, dbits, hops_already,
-            hops_max, social_distance, rate_fraction);
+            hops_max, social_distance, rate_fraction, cacheable);
   if (debug)
     printf ("result %x product of %x %x %x %x %x\n",
             result, social_priority, bits_priority, rate_priority,

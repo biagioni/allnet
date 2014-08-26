@@ -229,7 +229,7 @@ static void make_beacon_reply (char * buffer, int bsize)
 {
   assert (bsize >= ALLNET_MGMT_HEADER_SIZE (0) +
                sizeof (struct allnet_mgmt_beacon_reply));
-  struct allnet_header * hp =
+  /* struct allnet_header * hp = */
   init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                NULL, 0, NULL, 0, NULL);
 
@@ -474,8 +474,10 @@ static void handle_network_message (char * message, int msize,
                        quiet_end, send_type, send_size, send_message, quiet)) {
     /* check for high-priority message */
     struct allnet_header * hp = (struct allnet_header *) message;
+    int cacheable = ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0);
     int msgpriority = compute_priority (msize, hp->src_nbits, hp->dst_nbits,
-                            hp->hops, hp->max_hops, UNKNOWN_SOCIAL_TIER, 1);
+                                        hp->hops, hp->max_hops,
+                                        UNKNOWN_SOCIAL_TIER, 1, cacheable);
     if (msgpriority >= ALLNET_PRIORITY_DEFAULT_HIGH)
       received_high_priority = 1;
 
@@ -497,12 +499,6 @@ static void handle_quiet (struct timeval * quiet_end,
     int fd;
     int priority;
     int msize = receive_until (quiet_end, &message, sockfd, &fd, &priority);
-    /* required params not used in quiet mode */
-    int fake_type = 0;
-    int fake_size = 0;
-    static char fake_message [ALLNET_MTU];
-    struct timeval * fake_timep;
-    struct timeval fake_time;
     if ((msize > 0) && (is_valid_message (message, msize))) {
       if (fd == rpipe)
         handle_ad_message (message, msize, priority);

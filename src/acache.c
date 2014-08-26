@@ -1359,6 +1359,8 @@ priority = ALLNET_PRIORITY_EPSILON;
         if (hp->message_type == ALLNET_TYPE_ACK) {
           /* erase the message and save the ack */
           ack_packets (msg_fd, max_msg_size, ack_fd, message, result);
+        } else if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) {
+          snprintf (log_buf, LOG_SIZE, "did not save non-cacheable packet\n");
         } else if (save_packet (msg_fd, max_msg_size,
                                 message, result, priority)) {
           mfree = 0;   /* saved, so do not free */

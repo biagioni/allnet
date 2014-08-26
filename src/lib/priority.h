@@ -58,7 +58,8 @@
  */
 extern int compute_priority (int size, int sbits, int dbits,
                              int hops_already, int hops_max,
-                             int social_distance, int rate_fraction);
+                             int social_distance, int rate_fraction,
+                             int cacheable);
 
 /* for use with priorities and also other fractions */
 extern void print_fraction (int value, char * str);
