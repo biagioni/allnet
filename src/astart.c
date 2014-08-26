@@ -44,6 +44,9 @@ static void init_pipes (int * pipes, int num_pipes)
     }
     set_nonblock (pipes [i * 2]);
     set_nonblock (pipes [i * 2 + 1]);
+    snprintf (log_buf, LOG_SIZE, "pipe [%d/%d] is read %d write %d\n",
+              i * 2, i * 2 + 1, pipes [i * 2], pipes [i * 2 + 1]);
+    log_print ();
   }
 }
 
@@ -199,6 +202,8 @@ static pid_t my_exec_ad (char * path, int * pipes, int num_pipes, int fd)
     args [0] = make_program_path (path, "ad");
     args [1] = itoa (num_pipes / 2);
     int n = snprintf (log_buf, LOG_SIZE, "calling %s %s ", args [0], args [1]);
+    /* the first num_pipes args are set to the read/write sides of the first
+     * num_pipes */
     for (i = 0; i < num_pipes / 2; i++) {
       args [2 + i * 2    ] = itoa (pipes [4 * i + 2]);
       args [2 + i * 2 + 1] = itoa (pipes [4 * i + 1]);

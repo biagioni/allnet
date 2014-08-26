@@ -393,5 +393,6 @@ void adht_main (char * pname)
 int main (int argc, char ** argv)
 {
   adht_main (argv [0]);
+  return 1;
 }
 #endif /* NO_MAIN_FUNCTION */

@@ -1040,8 +1040,8 @@ if ((fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "1: fd %d/%d, result %d/%d, bad addr family %d\n",
 udp, fd, result, sasize, sap->sa_family); log_print (); }
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
-        /* snprintf (log_buf, LOG_SIZE, "message from ad\n");
-        log_print (); */
+        snprintf (log_buf, LOG_SIZE, "got %d-byte message from ad\n", result);
+        log_print ();
         forward_message (info->fds + 1, info->num_fds - 1, udp, udp_cache,
                          addr_cache, message, result, priority, 10);
       } else {

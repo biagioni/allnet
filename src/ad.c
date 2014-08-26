@@ -307,7 +307,7 @@ int main (int argc, char ** argv)
   }
 
   int i;
-  for (i = 0; i < npipes / 2; i++) {
+  for (i = 0; i < npipes; i++) {
     all_pipes [i         ] = atoi (argv [2 + 2 * i    ]);
     all_pipes [npipes + i] = atoi (argv [2 + 2 * i + 1]);
   }
