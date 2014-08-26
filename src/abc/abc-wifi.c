@@ -166,7 +166,7 @@ static int abc_wifi_init (const char * interface, int * sock,
         struct timeval finish;
         gettimeofday (&finish, NULL);
         long long time = delta_us (&finish, &start);
-        printf ("abc: %s is wireless, %lld.%03lld ms to turn on+off\n",
+        printf ("abc: %s is wireless, %lld.%03lld ms to turn on+connect\n",
                 interface, time / 1000LL, time % 1000LL);
         printf ("  (%lld.%03lld ms to turn on)\n",
                 mtime / 1000LL, mtime % 1000LL);
