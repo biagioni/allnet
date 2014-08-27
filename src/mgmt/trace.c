@@ -398,7 +398,7 @@ static void respond_to_trace (int sock, char * message, int msize,
     log_print ();
   }
 
-  char * response;
+  char * response = NULL;
   int rsize = 0;
   if (trp->intermediate_replies) {   /* generate a reply */
 
