@@ -80,7 +80,7 @@ static void send_key_message (int sock, char * contact, keyset keys,
   /* do not copy secret's terminating null byte */
   memcpy (text + MESSAGE_ID_SIZE + my_ksize, secret, strlen (secret));
   char * cipher;
-  int csize = encrypt (text, length, contact_key, contact_ksize, &cipher);
+  int csize = allnet_encrypt (text, length, contact_key, contact_ksize, &cipher);
 
 #ifdef DEBUG_PRINT
   printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);

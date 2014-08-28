@@ -38,7 +38,7 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
     printf ("calling encrypt (%p/%d, %d, %p, %d) ==> %p\n",
             data, dlen, key->pub_klen, return_key, rksize, &cipher);
 #endif /* DEBUG_PRINT */
-    int csize = encrypt (data, dlen, return_key, rksize, &cipher);
+    int csize = allnet_encrypt (data, dlen, return_key, rksize, &cipher);
     if (csize <= 0) {
       snprintf (log_buf, LOG_SIZE, "send_key: encryption error\n");
       log_print ();

@@ -561,8 +561,9 @@ static int parse_header (char * header, int pipe, int * priority)
     log_print ();
   }
   printed = 0;
-  *priority = read_big_endian32 (header + MAGIC_SIZE);
-  return      read_big_endian32 (header + MAGIC_SIZE + PRIORITY_SIZE);
+  if (priority != NULL)
+    *priority = read_big_endian32 (header + MAGIC_SIZE);
+  return        read_big_endian32 (header + MAGIC_SIZE + PRIORITY_SIZE);
 }
 
 /* shift the header left by one position, to make room for one more char */

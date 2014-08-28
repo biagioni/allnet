@@ -59,6 +59,8 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
       vsize -= ssize + 2;
     }
   }
+  if (sig == NULL)  /* ignore */
+    return 0;
   char * from = "unknown sender";
   struct bc_key_info * keys;
   int nkeys = get_other_keys (&keys);

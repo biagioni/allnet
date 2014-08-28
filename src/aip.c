@@ -593,7 +593,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
     if (af == sas [k].ss_family) {
       unsigned char * ip_addrp = NULL;
       socklen_t salen = 0;
-      int port;
+      int port = 0;
       struct sockaddr_in  * sin  = (struct sockaddr_in *) (&(sas [k]));
       struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) (&(sas [k]));
       if (af == AF_INET) {

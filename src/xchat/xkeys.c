@@ -72,7 +72,7 @@ static int handle_packet (int sock, char * message, int msize,
   int csize = msize - ALLNET_SIZE(hp->transport);
 
   char * text;   /* plaintext, if all goes well */
-  int tsize = decrypt (cipher, csize, my_key, ksize, &text);
+  int tsize = allnet_decrypt (cipher, csize, my_key, ksize, &text);
   if (tsize <= 0) {
     print_buffer (cipher, csize, "unable to decrypt", 14, 1);
     return 0;

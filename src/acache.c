@@ -1166,7 +1166,7 @@ static int respond_to_request (int fd, int max_size, char * in_message,
   int count = 0;
   int64_t position = 0;
   char * message;
-  int msize;
+  int msize = 0;
   int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
   /* limit responses to 10ms.  There is probably a better way to do this */
   unsigned long long int limit = start + 10;
@@ -1341,7 +1341,7 @@ static void main_loop (int sock)
       snprintf (log_buf, LOG_SIZE, "ad pipe %d closed, result %d\n",
                 sock, result);
       log_print ();
-      mfree = 0;  /* is this ever needed or useful? */
+      /* mfree = 0;  not useful */
       break;
     } else if ((result >= ALLNET_HEADER_SIZE) &&
                (result >= ALLNET_SIZE (hp->transport))) {
