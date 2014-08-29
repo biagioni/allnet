@@ -105,8 +105,8 @@ static int read_at_pos (int fd, char * data, int max, off_t position)
   if (lseek (fd, position, SEEK_SET) != position) {
     /* perror ("acache read_at_pos lseek"); */
     snprintf (log_buf, LOG_SIZE,
-              "acache unable to lseek to position %zd for %d/%zd\n",
-              position, max, fd_size (fd));
+              "acache unable to lseek to position %d for %d/%d\n",
+              (int) position, max, (int) (fd_size (fd)));
     log_error ("acache read_at_pos lseek");
     return 0;
   }
@@ -114,8 +114,8 @@ static int read_at_pos (int fd, char * data, int max, off_t position)
   if (r < 0) {
     /* perror ("acache read_at_pos read"); */
     snprintf (log_buf, LOG_SIZE,
-              "acache unable to read data at %zd: %d %d %d %zd\n",
-              position, fd, r, max, fd_size (fd));
+              "acache unable to read data at %d: %d %d %d %d\n",
+              (int) position, fd, r, max, (int) (fd_size (fd)));
     log_error ("acache read_at_pos read");
     r = 0;
   }
@@ -127,8 +127,8 @@ static void write_at_pos (int fd, char * data, int dsize, off_t position)
   if (lseek (fd, position, SEEK_SET) != position) {
     /* perror ("acache write_at_pos lseek"); */
     snprintf (log_buf, LOG_SIZE,
-              "acache unable to lseek to pos %zd for %d %zd\n",
-              position, dsize, fd_size (fd));
+              "acache unable to lseek to pos %d for %d %d\n",
+              (int) position, dsize, (int) (fd_size (fd)));
     log_error ("acache write_at_pos lseek");
     return;
   }
@@ -136,8 +136,8 @@ static void write_at_pos (int fd, char * data, int dsize, off_t position)
   if (w != dsize) {
     /* perror ("acache write_at_pos write"); */
     snprintf (log_buf, LOG_SIZE,
-              "acache unable to save data at %zd: %d %d %zd\n",
-              position, w, dsize, fd_size (fd));
+              "acache unable to save data at %d: %d %d %d\n",
+              (int) position, w, dsize, (int) (fd_size (fd)));
     log_error ("acache write_at_pos write");
     return;
   }
@@ -1047,11 +1047,11 @@ static void cache_message (int fd, int max_size,
 #ifdef USING_MESSAGE_LIST
   list_add_message (message + id_off);
 #endif /* USING_MESSAGE_LIST */
-snprintf (log_buf, LOG_SIZE, "saved message at position %zd, hash index %d, ", write_position, hash_index (message + id_off)); log_print (); print_stats (0, -1);
+snprintf (log_buf, LOG_SIZE, "saved message at position %d, hash index %d, ", (int) write_position, hash_index (message + id_off)); log_print (); print_stats (0, -1);
   count = 0;
   while (fd_size (fd) > max_size) {
-    snprintf (log_buf, LOG_SIZE, "gc'ing to reduce space from %zd to %d: %d\n",
-              fd_size (fd), max_size, ++count);
+    snprintf (log_buf, LOG_SIZE, "gc'ing to reduce space from %d to %d: %d\n",
+              (int) (fd_size (fd)), max_size, ++count);
     log_print ();
     gc (fd, max_size);
   }
@@ -1074,8 +1074,8 @@ static void remove_cached_message (int fd, int max_size, char * id,
                                NULL, NULL, NULL, NULL, NULL);
   if ((next != 0) && (next - position != fsize)) {
     snprintf (log_buf, LOG_SIZE,
-              "warning in acache: next %d - pos %d != fsize %d (%zd)\n",
-              next, position, fsize, fd_size (fd));
+              "warning in acache: next %d - pos %d != fsize %d (%d)\n",
+              next, position, fsize, (int) (fd_size (fd)));
     log_print ();
     buffer_to_string (id, MESSAGE_ID_SIZE, "id", MESSAGE_ID_SIZE, 1,
                       log_buf, LOG_SIZE);
@@ -1254,13 +1254,13 @@ static void init_msgs (int msg_fd, int max_msg_size)
       count++;
     }
   }
-  snprintf (log_buf, LOG_SIZE, "init almost done, %d %zd %d, ",
-            msg_fd, fd_size (msg_fd), max_msg_size);
+  snprintf (log_buf, LOG_SIZE, "init almost done, %d %d %d, ",
+            msg_fd, (int) (fd_size (msg_fd)), max_msg_size);
   log_print ();
   print_stats (0, count);
   while (fd_size (msg_fd) > max_msg_size) {
-    snprintf (log_buf, LOG_SIZE, "message file %zd, max %d, gc'ing",
-              fd_size (msg_fd), max_msg_size);
+    snprintf (log_buf, LOG_SIZE, "message file %d, max %d, gc'ing",
+              (int) (fd_size (msg_fd)), max_msg_size);
     log_print ();
     gc (msg_fd, max_msg_size);
   }
