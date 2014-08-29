@@ -190,4 +190,12 @@ extern int is_valid_message (const char * packet, int size);
 
 extern void print_gethostbyname_error (char * hostname);
 
+/* assuming option_letter is 'v', returns 1 if argv has '-v', 0 otherwise
+ * if it returns 1, removes the -v from the argv, and decrements *argcp.
+ */
+extern int get_option (char option_letter, int * argcp, char ** argv);
+
+/* set user_callable to 1 for astart and allnetx, to 0 for all others */
+extern int print_usage (int argc, char ** argv, int user_callable, int do_exit);
+
 #endif /* ALLNET_UTIL_H */

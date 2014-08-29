@@ -167,6 +167,15 @@ struct allnet_mgmt_trace_reply {
 
 /* keepalives have no content, only the header */
 
+/* a data request specifies one or more message/packet IDs.  The
+ * packets/messages are sent back if cached.  Any unsatisfied request
+ * is forwarded onwards. */
+struct allnet_mgmt_id_request {
+  unsigned char n [2];                /* number of packet IDs, big-endian */
+  unsigned char pad [6];              /* always send as 0s */
+  unsigned char ids [MESSAGE_ID_SIZE * 0];  /* really, MESSAGE_ID_SIZE * n */
+};
+
 /* the header that precedes each of the management messages */
 struct allnet_mgmt_header {
   /* specify the kind of management message */
@@ -179,6 +188,7 @@ struct allnet_mgmt_header {
 #define ALLNET_MGMT_TRACE_REQ		7	/* request a trace response */
 #define ALLNET_MGMT_TRACE_REPLY		8	/* response to trace req */
 #define ALLNET_MGMT_KEEPALIVE		9	/* to keep connection open */
+#define ALLNET_MGMT_ID_REQUEST		10	/* request specific IDs */
   unsigned char mgmt_type;   /* every management packet has this */
   char mpad [7];
 };
@@ -207,5 +217,10 @@ struct allnet_mgmt_header {
 	(ALLNET_MGMT_HEADER_SIZE(t) +   \
          (sizeof (struct allnet_mgmt_trace_reply)) + \
 	 (n) * sizeof (struct allnet_mgmt_trace_entry))
+
+#define ALLNET_ID_REQ_SIZE(t, n)	\
+	(ALLNET_MGMT_HEADER_SIZE(t) +   \
+         (sizeof (struct allnet_mgmt_id_request)) + \
+	 (n) * MESSAGE_ID_SIZE)
 
 #endif /* MGMT_H */

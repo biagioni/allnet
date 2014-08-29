@@ -74,7 +74,8 @@ static int process_mgmt (char * message, int msize, int is_local,
   case ALLNET_MGMT_PEER_REQUEST:
   case ALLNET_MGMT_PEERS:
   case ALLNET_MGMT_DHT:
-    if (is_local) {               /* from DHT daemon */
+  case ALLNET_MGMT_ID_REQUEST:
+    if (is_local) {               /* from DHT daemon (idrq: acache or client) */
       return PROCESS_PACKET_OUT;  /* forward to the internet */
     } else {
       return PROCESS_PACKET_LOCAL;/* only forward to the DHT */

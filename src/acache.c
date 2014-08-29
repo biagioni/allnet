@@ -14,6 +14,7 @@
 #include <sys/stat.h>
 
 #include "lib/packet.h"
+#include "lib/mgmt.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/util.h"
@@ -1144,6 +1145,40 @@ static int save_packet (int fd, int max_size, char * message, int msize,
   return 0;
 }
 
+/* to limit resource consumption, only respond to requests that are
+ * local, or to at most 5 requests per second */
+static unsigned long long int limit_resources (int local_request) 
+{
+  static unsigned long long int last_response = 0;
+  unsigned long long int start = allnet_time_ms ();
+  if (local_request)
+    return start + 1000;   /* up to 1s for local requests */
+  if ((last_response != 0) && (start <= last_response + 200))
+    return 0;              /* too many requests */
+
+  return start + 10;       /* allow 10ms */
+}
+
+static void resend_message (char * message, int msize, int64_t position,
+                            int *priorityp, int local_request, int sock)
+{
+  int priority = *priorityp;
+  snprintf (log_buf, LOG_SIZE,
+            "sending %d-byte cached response at [%" PRId64 "]\n",
+            msize, position);
+  log_print ();
+  struct allnet_header * send_hp = (struct allnet_header *) message;
+  int saved_max = send_hp->max_hops;
+  if (local_request)  /* only forward locally */
+    send_hp->max_hops = send_hp->hops;
+  /* send, no need to even check the return value of send_pipe_message */
+  send_pipe_message (sock, message, msize, priority);
+  if (local_request)  /* restore the packet as it was */
+    send_hp->max_hops = saved_max;
+  if (priority > ALLNET_PRIORITY_EPSILON)
+    *priorityp = priority - 1;
+}
+
 /* returns the number of responses sent, or 0 */
 static int respond_to_request (int fd, int max_size, char * in_message,
                                int in_msize, int sock)
@@ -1152,13 +1187,9 @@ static int respond_to_request (int fd, int max_size, char * in_message,
   struct allnet_header * hp = (struct allnet_header *) (in_message);
   if (hp->hops == 0)   /* local request, do not forward elsewhere */
     local_request = 1;
-
-  /* to limit resource consumption, only respond to requests that are
-   * local, or to at most 5 requests per second */
-  static unsigned long long int last_response = 0;
-  unsigned long long int start = allnet_time_ms ();
-  if ((! local_request) && (last_response != 0) &&
-      (start <= last_response + 200))
+  
+  unsigned long long int limit = limit_resources (local_request);
+  if (limit == 0)
     return 0;
 
   struct request_details rd;
@@ -1169,30 +1200,76 @@ static int respond_to_request (int fd, int max_size, char * in_message,
   int msize = 0;
   int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
   /* limit responses to 10ms.  There is probably a better way to do this */
-  unsigned long long int limit = start + 10;
   while ((local_request || (allnet_time_ms () < limit)) &&
          ((position = list_next_matching (fd, max_size, position, &rd,
                                           &message, &msize)) > 0)) {
-    snprintf (log_buf, LOG_SIZE,
-              "sending %d-byte cached response at [%" PRId64 "]\n",
-               msize, position);
-    log_print ();
-    struct allnet_header * send_hp = (struct allnet_header *) message;
-    int saved_max = send_hp->max_hops;
-    if (local_request)  /* only forward locally */
-      send_hp->max_hops = send_hp->hops;
-    /* send, no need to even check the return value of send_pipe_message */
-    send_pipe_message (sock, message, msize, priority);
-    if (local_request)  /* restore the packet as it was */
-      send_hp->max_hops = saved_max;
-    if (priority > ALLNET_PRIORITY_EPSILON)
-      priority--;
+    resend_message (message, msize, position, &priority, local_request, sock);
     count++;
   }
   snprintf (log_buf, LOG_SIZE, "respond_to_request: sent %d\n", count);
   log_print ();
   return count;
 }
+
+/* returns the number of responses sent, or 0 */
+/* if any of the ids in the request are not found, also sends onwards
+ * the message (unless it was sent locally and with max_hops > 0), with
+ * only those ids that were not found */
+static int respond_to_id_request (int fd, int max_size, char * in_message,
+                                  int in_msize, int sock)
+{
+  struct allnet_header * in_hp = (struct allnet_header *) (in_message);
+  struct allnet_mgmt_header * amhp = (struct allnet_mgmt_header *)
+    (ALLNET_DATA_START (in_hp, in_hp->transport, in_msize));
+  if (amhp->mgmt_type != ALLNET_MGMT_ID_REQUEST)
+    return 0;
+  struct allnet_mgmt_id_request * amirp = (struct allnet_mgmt_id_request *)
+    (in_message + ALLNET_MGMT_HEADER_SIZE(in_hp->transport));
+  int n = readb16u (amirp->n);
+  if (n <= 0)
+    return 0;
+
+  int local_request = 0;
+  int sent_locally = 0;
+  if (in_hp->hops == 0) {  /* local request, do not forward elsewhere */
+    local_request = 1;
+    sent_locally = (in_hp->max_hops == 0);
+  }
+  unsigned long long int limit = limit_resources (local_request);
+  if (limit == 0)
+    return 0;
+
+  int forward_missing = (! local_request) || sent_locally;
+  int nmissing = 0;
+  int nsent = 0;
+  int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
+
+  int i;
+  for (i = 0; i < n; i++) {
+    char *id = (char *) (amirp->ids + i * MESSAGE_ID_SIZE);
+    char * message;
+    int msize = 0;
+    int position = 0;
+    if ((! local_request) && (allnet_time_ms () < limit) &&
+        ((position = hash_get_next (fd, max_size, 0, id, &message, &msize,
+                                    NULL, NULL, NULL)) >= 0)) {
+      resend_message (message, msize, position, &priority, local_request, sock);
+      nsent++;
+    } else if (forward_missing) {
+      /* copy the id to the left, so we can send it as a shorter packet */
+      memcpy (amirp->ids + nmissing * MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
+      nmissing++;
+    }
+  }
+  if ((nmissing > 0) && forward_missing) {
+    writeb16u (amirp->n, nmissing);
+    int send_size = ALLNET_ID_REQ_SIZE (in_hp->transport, nmissing);
+  /* send, no need to even check the return value of send_pipe_message */
+    send_pipe_message (sock, in_message, send_size, priority);
+  }
+  return nsent;
+}
+
 
 /* save the ack, and delete any matching packets */
 static void ack_packets (int msg_fd, int msg_size, int ack_fd,
@@ -1355,6 +1432,11 @@ priority = ALLNET_PRIORITY_EPSILON;
           snprintf (log_buf, LOG_SIZE, "responded to data request packet\n");
         else
           snprintf (log_buf, LOG_SIZE, "no response to data request packet\n");
+      } else if (hp->message_type == ALLNET_TYPE_MGMT) {
+        if (respond_to_id_request (msg_fd, max_msg_size, message, result, sock))
+          snprintf (log_buf, LOG_SIZE, "responded to id request packet\n");
+        else
+          snprintf (log_buf, LOG_SIZE, "no response to id request packet\n");
       } else {   /* not a data request */
         if (hp->message_type == ALLNET_TYPE_ACK) {
           /* erase the message and save the ack */

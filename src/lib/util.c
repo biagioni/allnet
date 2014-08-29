@@ -1251,3 +1251,35 @@ void print_gethostbyname_error (char * hostname)
   log_print ();
 }
 
+/* assuming option_letter is 'v', returns 1 if argv has '-v', 0 otherwise
+ * if it returns 1, removes the -v from the argv, and decrements *argcp.
+ */
+int get_option (char option_letter, int * argcp, char ** argv)
+{
+  char buf [] = "-o";  /* o for option */
+  buf [1] = option_letter;
+  int orig_argc = *argcp;
+  int i;
+  for (i = 1; i < orig_argc; i++) {
+    if (strcmp (argv [i], buf) == 0) {  /* found a match */
+      int j;
+      for (j = i; j + 1 < orig_argc; j++)
+        argv [j] = argv [j + 1];
+      *argcp = orig_argc - 1;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* set user_callable to 1 for astart and allnetx, to 0 for all others */
+int print_usage (int argc, char ** argv, int user_callable, int do_exit)
+{
+  if (user_callable)
+    printf ("usage: %s [-v] [interface1 [interface2]]\n", argv [0]);
+  else
+    printf ("%s should only be called from astart or allnetx\n", argv [0]);
+  if (do_exit)
+    exit (1);
+}
+
