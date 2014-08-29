@@ -4,6 +4,11 @@
 #ifndef PRIORITY_H
 #define PRIORITY_H
 
+/* keep track of people up to distance 3, friends of friends of friends */
+#define MAX_SOCIAL_TIER         3
+#define UNKNOWN_SOCIAL_TIER     (MAX_SOCIAL_TIER + 1)
+#define COMPLETE_STRANGER       (MAX_SOCIAL_TIER * 2)
+
 /* 1 is 2^30, 0.5 is 2^30 / 2 = 2^29, and so on */
 #define ALLNET_PRIORITY_MAX	(1 << 30)
 

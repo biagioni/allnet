@@ -18,6 +18,7 @@
 #include "lib/log.h"
 #include "lib/keys.h"
 #include "lib/cipher.h"
+#include "lib/priority.h"
 
 struct social_one_tier {
   int address_bytes_per_entry;

@@ -5,10 +5,11 @@
 
 #include <time.h>
 
+/* these constants are now defined in priority.h */
 /* keep track of people up to distance 3, friends of friends of friends */
-#define MAX_SOCIAL_TIER         3
-#define UNKNOWN_SOCIAL_TIER     (MAX_SOCIAL_TIER + 1)
-#define COMPLETE_STRANGER       (MAX_SOCIAL_TIER * 2)
+/* #define MAX_SOCIAL_TIER */
+/* #define UNKNOWN_SOCIAL_TIER */
+/* #define COMPLETE_STRANGER */
 
 /* opaque type used to store social information */
 /* struct social_info; */
