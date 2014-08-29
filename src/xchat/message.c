@@ -115,13 +115,16 @@ char * get_outgoing (char * contact, keyset k, uint64_t seq,
   int type;
   uint64_t mseq;
   uint64_t mtime;
+  int msize;
   int tz;
   char * result;
   while ((type = prev_message (iter, &mseq, &mtime, &tz, message_ack,
-          &result, size)) != MSG_TYPE_DONE) {
+          &result, &msize)) != MSG_TYPE_DONE) {
     if ((type == MSG_TYPE_SENT) && (mseq == seq)) { /* found */
       if (time != NULL)
         *time = make_time_tz (mtime, tz);
+      if (size != NULL)
+        *size = msize;
       free_iter (iter);
       return result;
     }
