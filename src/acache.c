@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <ctype.h>
 #include <inttypes.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -1346,7 +1347,7 @@ static void init_msgs (int msg_fd, int max_msg_size)
 }
 
 static void init_acache (int * msg_fd, int * max_msg_size,
-                         int * ack_fd, int * max_acks)
+                         int * ack_fd, int * max_acks, int * local_caching)
 {
   /* either read or create ~/.allnet/acache/sizes */
   *max_msg_size = 1000000;  /* default values: 1M bytes for msgs, 5000 acks */
@@ -1361,8 +1362,8 @@ static void init_acache (int * msg_fd, int * max_msg_size,
       printf ("unable to create ~/.allnet/acache/sizes\n");
       exit (1);
     }
-    /* by default, allow 1MB of messages, and 5,000 acks */
-    char string [] = "1000000\n5000\n";
+    /* by default, allow 1MB of messages, 5,000 acks, and no local caching */
+    char string [] = "1000000\n5000\nno\n";
     int len = strlen (string);
     if (write (fd, string, len) != len) {
       snprintf (log_buf, LOG_SIZE, "unable to write ~/.allnet/acache/sizes\n");
@@ -1375,8 +1376,14 @@ static void init_acache (int * msg_fd, int * max_msg_size,
     static char buffer [1000];
     int n = read (fd, buffer, sizeof (buffer));
     if ((n > 0) && (n < sizeof (buffer))) {
+      char yesno [10] = "no";
       buffer [n] = '\0';
-      sscanf (buffer, "%d\n%d", max_msg_size, max_acks);
+      sscanf (buffer, "%d\n%d\n %c", max_msg_size, max_acks, yesno);
+      *local_caching = 1;
+      if (tolower (yesno [0]) == 'n')
+        *local_caching = 0;
+      snprintf (log_buf, LOG_SIZE, "local caching is %d\n", *local_caching);
+      log_print ();
     } else {
       snprintf (log_buf, LOG_SIZE,
                 "unable to read ~/.allnet/acache/sizes (%d)\n", n);
@@ -1406,7 +1413,8 @@ static void main_loop (int sock)
   int max_msg_size;
   int ack_fd;
   int max_acks;
-  init_acache (&msg_fd, &max_msg_size, &ack_fd, &max_acks);
+  int local_caching;
+  init_acache (&msg_fd, &max_msg_size, &ack_fd, &max_acks, &local_caching);
   while (1) {
     char * message;
     int priority;
@@ -1441,6 +1449,8 @@ priority = ALLNET_PRIORITY_EPSILON;
         if (hp->message_type == ALLNET_TYPE_ACK) {
           /* erase the message and save the ack */
           ack_packets (msg_fd, max_msg_size, ack_fd, message, result);
+        } else if ((! local_caching) && (hp->hops == 0)) {
+          snprintf (log_buf, LOG_SIZE, "not saving local packet\n");
         } else if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) {
           snprintf (log_buf, LOG_SIZE, "did not save non-cacheable packet\n");
         } else if (save_packet (msg_fd, max_msg_size,
