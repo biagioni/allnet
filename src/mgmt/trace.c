@@ -233,8 +233,19 @@ static void get_my_addr (unsigned char * my_addr, int my_addr_size)
   /* init to a random value, in case there is no address in the file */
   random_bytes ((char *) my_addr, my_addr_size);
   int fd = open_read_config ("adht", "peers", 1);
-  if (fd < 0)
-    return;
+  int count = 0;
+  while (fd < 0) {  /* wait for adht to create the file */
+    sleep (1);
+    fd = open_read_config ("adht", "peers", 1);
+    if (count++ > 10) {
+      printf ("error: traced still waiting for adht peer file creation\n");
+      snprintf (log_buf, LOG_SIZE,
+                "error: traced still waiting for adht peer file creation\n");
+      log_print ();
+      if (count > 20)
+        exit (1);
+    }
+  }
 #define EXPECTED_FIRST_LINE	33  /* first line should always be 33 bytes */
   char line [EXPECTED_FIRST_LINE];
   int n = read (fd, line, EXPECTED_FIRST_LINE);
@@ -783,21 +794,11 @@ int main (int argc, char ** argv)
   int verbose = get_option ('v', &argc, argv);
   if (verbose)
     allnet_global_debugging = verbose;
+  int match_only = get_option ('m', &argc, argv);
 
   int is_daemon = 0;
   if (strstr (argv [0], "traced") != NULL)  /* called as daemon */
     is_daemon = 1;
-
-  int match_only = 0;
-  int i;
-  for (i = 1; i < argc; i++) {
-    if (match_only) {
-      argv [i] = argv [i + 1];
-    } else if (strcmp (argv [i], "-m") == 0) {
-      match_only = 1;
-      argc--;
-    }
-  }
 
   if ((argc > 2) && ((is_daemon) || (argc > 3))) {
     printf ("argc %d, at most %d allowed for %s\n", argc,

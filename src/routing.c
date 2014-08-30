@@ -45,6 +45,10 @@ static char * default_dns [] = { "alnt.org" };
 struct sockaddr_storage ip4_defaults [NUM_DEFAULTS];
 struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
 
+/* if the address in ~/.allnet/adht/peers begins with '-', generate a
+ * new address on every invocation (and perhaps more frequently?) */
+static int save_my_own_address = 1;
+
 void print_dht (int to_log)
 {
   int npeers = 0;
@@ -139,7 +143,7 @@ static int entry_to_file (int fd, struct addr_info * entry, int index)
 static void save_peers ()
 {
 #ifdef DEBUG_PRINT
-  printf ("save_peers:\n");
+  printf ("save_peers (%d):\n", save_address);
   print_dht (0);
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
@@ -149,6 +153,8 @@ static void save_peers ()
   char line [300];  /* write my address first */
   buffer_to_string (my_address, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 1,
                     line, sizeof (line));
+  if (! save_my_own_address)
+    strcpy (line, "------\n");
   if (write (fd, line, strlen (line)) != strlen (line))
     perror ("save_peers write");  /* report, but continue */
   int i;
@@ -297,13 +303,18 @@ static void load_peers (int only_if_newer)
   char line [1000];
   if ((! read_line (fd, line, sizeof (line))) ||
       (strlen (line) < 30) ||
-      (strncmp (line, "8 bytes: ", 9) != 0)) {
+      ((line [0] != '-') && (strncmp (line, "8 bytes: ", 9) != 0))) {
     close (fd);
     printf ("unable to read my address from peers file\n");
     init_defaults ();
     return;
   }
-  read_buffer (line + 9, strlen (line + 9), my_address, ADDRESS_SIZE);
+  if (line [0] == '-')
+    save_my_own_address = 0;
+  if (save_my_own_address)
+    read_buffer (line + 9, strlen (line + 9), my_address, ADDRESS_SIZE);
+  else   /* use a different address each time we are called */
+    random_bytes (my_address, ADDRESS_SIZE);
   int ping_index = 0;
   while (read_line (fd, line, sizeof (line))) {
     if (strncmp (line, "p: ", 3) != 0) {
