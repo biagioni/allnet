@@ -275,29 +275,41 @@ void ad_main (int npipes, int * rpipes, int * wpipes)
 }
 
 #ifndef NO_MAIN_FUNCTION
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 /* arguments are: the number of pipes, then pairs of read and write file
  * file descriptors (ints) for each pipe, from/to alocal, aip.
  * any additional pipes will again be pairs from/to each abc.
  */
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   init_log ("ad");
   if (argc < 2) {
     printf ("need to have at least the number of read and write pipes\n");
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   int npipes = atoi (argv [1]);
   if (npipes < 2) {
     printf ("%d pipes, at least 2 needed\n", npipes);
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   if (argc != 2 * npipes + 2) {
     printf ("%d arguments, expected 2 + %d for %d pipes\n",
             argc, 2 * npipes, npipes);
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   if (argc < 5) {
     printf ("need to have at least 2 each read and write pipes\n");
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   snprintf (log_buf, LOG_SIZE, "AllNet (ad) version %d\n", ALLNET_VERSION);
@@ -305,6 +317,7 @@ int main (int argc, char ** argv)
   int * all_pipes  = malloc (sizeof (int) * npipes * 2);
   if (all_pipes == NULL) {
     printf ("allocation error in ad main\n");
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
 

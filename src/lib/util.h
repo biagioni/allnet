@@ -196,6 +196,7 @@ extern void print_gethostbyname_error (char * hostname);
 extern int get_option (char option_letter, int * argcp, char ** argv);
 
 /* set user_callable to 1 for astart and allnetx, to 0 for all others */
-extern int print_usage (int argc, char ** argv, int user_callable, int do_exit);
+extern void print_usage (int argc, char ** argv, int user_callable,
+                         int do_exit);
 
 #endif /* ALLNET_UTIL_H */

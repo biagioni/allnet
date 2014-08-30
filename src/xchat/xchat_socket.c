@@ -258,8 +258,16 @@ static void thread_for_child_completion (pid_t pid)
     perror ("pthread_create");
 }
 
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
 /*
   if (argc < 2) {
     printf ("%s should have one socket arg, and never be called directly!\n",

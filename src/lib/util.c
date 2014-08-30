@@ -1273,7 +1273,7 @@ int get_option (char option_letter, int * argcp, char ** argv)
 }
 
 /* set user_callable to 1 for astart and allnetx, to 0 for all others */
-int print_usage (int argc, char ** argv, int user_callable, int do_exit)
+void print_usage (int argc, char ** argv, int user_callable, int do_exit)
 {
   if (user_callable)
     printf ("usage: %s [-v] [interface1 [interface2]]\n", argv [0]);

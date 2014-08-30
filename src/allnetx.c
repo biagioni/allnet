@@ -31,6 +31,10 @@ extern void acache_main (char * pname);
 extern void traced_main (char * pname);
 extern void keyd_main (char * pname);
 
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 static void set_nonblock (int fd)
 {
   int flags = fcntl (fd, F_GETFL, 0);
@@ -377,6 +381,9 @@ static void find_path (char * arg, char ** path, char ** program)
 
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
   int alen = strlen (argv [0]);
   char * path;
   char * pname;
@@ -395,7 +402,7 @@ int main (int argc, char ** argv)
 #define NUM_INTERFACE_PIPES	2 
   int num_interfaces = argc - 1;
   int num_pipes = NUM_FIXED_PIPES + NUM_INTERFACE_PIPES * num_interfaces;
-/* note: two file descriptors (ints) per pipe */
+  /* note: two file descriptors (ints) per pipe */
   int * pipes = malloc_or_fail (num_pipes * 2 * sizeof (int), "astart pipes");
   init_pipes (pipes, num_pipes);
   int * rpipes = pipes;
@@ -410,9 +417,13 @@ int main (int argc, char ** argv)
     log_print ();
     return 1;
   }
-  /* to go into the background, close all standard file descriptors.
-   * comment this out if trying to debug to stdout/stderr */
-  close (0); close (1); close (2);
+  if (! verbose) {
+    /* to go into the background, close all standard file descriptors.
+     * use -v or comment this out if trying to debug to stdout/stderr */
+    close (0);
+    close (1);
+    close (2);
+  }
 
   /* start ad */
   pid_t ad_pid = my_call_ad (argv [0], alen, num_pipes, rpipes, wpipes, pid_fd);
@@ -428,7 +439,8 @@ int main (int argc, char ** argv)
     snprintf (log_buf, LOG_SIZE, "starting abc [%d/%d] %s\n",
               i, num_interfaces, argv [i + 1]);
     log_print ();
-    my_call4 (argv [0], alen, "abc", abc_main_wrapper, rpipes [i + 2], wpipes [i + 2],
+    my_call4 (argv [0], alen, "abc", abc_main_wrapper,
+              rpipes [i + 2], wpipes [i + 2],
               argv [i + 1], NULL, pid_fd, ad_pid);
   }
   my_call1 (argv [0], alen, "adht", adht_main, pid_fd, ad_pid);

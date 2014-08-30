@@ -28,6 +28,8 @@ char log_buf [LOG_SIZE];    /* global */
 #endif /* PATH_MAX */
 #endif /* PATH_MAX */
 
+extern int allnet_global_debugging;   /* defined in main */
+
 static char log_dir [PATH_MAX] = LOG_DIR;
 
 static char * module_name = "unknown module -- have main call init_log()";
@@ -175,6 +177,8 @@ static void log_print_buffer (char * buffer, int blen)
   if (fcntl (fd, F_SETLKW, &lock) < 0)   /* essentially, ignore this error */
     perror ("unable to unlock log file\n");
   close (fd);
+  if (allnet_global_debugging)
+    printf ("%s", buffer);
   pthread_mutex_unlock (&mutex);
 }
 

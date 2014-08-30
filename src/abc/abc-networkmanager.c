@@ -480,7 +480,7 @@ static int get_conn_obj ()
     assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_ARRAY);
     DBusMessageIter arg_var;
     dbus_message_iter_recurse (&args, &arg_var);
-    int found_con = 0;
+    /* int found_con = 0; */
     do {
       const char * connobj;
       assert (dbus_message_iter_get_arg_type (&arg_var) == DBUS_TYPE_OBJECT_PATH);

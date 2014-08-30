@@ -683,11 +683,20 @@ void abc_main (int rpipe, int wpipe, const char * interface,
 }
 
 #ifndef NO_MAIN_FUNCTION
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   if (argc != 4) {
     printf ("arguments must be a read pipe, a write pipe, and an interface\n");
     printf ("argc == %d\n", argc);
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   int rpipe = atoi (argv [1]);  /* read pipe */

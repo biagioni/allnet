@@ -772,10 +772,18 @@ void traced_main (char * pname)
 }
 
 #ifndef NO_MAIN_FUNCTION
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 /* parts of this duplicate some of the code in traced_main, but
  * supporting the address on the command line seems like a useful feature */
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   int is_daemon = 0;
   if (strstr (argv [0], "traced") != NULL)  /* called as daemon */
     is_daemon = 1;

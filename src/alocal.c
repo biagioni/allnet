@@ -19,6 +19,7 @@
 
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
+#include "lib/util.h"
 #include "listen.h"
 #include "lib/log.h"
 
@@ -129,10 +130,19 @@ void alocal_main (int rpipe, int wpipe)
 }
 
 #ifndef NO_MAIN_FUNCTION
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   if (argc != 3) {
     printf ("arguments must be a read and a write pipe\n");
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
 /*

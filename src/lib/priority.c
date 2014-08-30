@@ -95,11 +95,12 @@ int compute_priority (int size, int sbits, int dbits,
                         allnet_multiply (hops_carried_priority,
                                          hops_total_priority)));
   /* give a slight boost to packets that are not cacheable */
-  if (! cacheable)
+  if (! cacheable) {
     if (result >= ALLNET_PRIORITY_MAX - (ALLNET_PRIORITY_MAX / 10))
       result = ALLNET_PRIORITY_MAX;
     else
       result += result / 10;
+  }
 if (result <= 0) debug = 1;
   if (debug)
     printf ("compute_priority (%d, %d, %d, %d, %d, %d, %d, %d)\n",
