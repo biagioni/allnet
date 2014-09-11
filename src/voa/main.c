@@ -307,17 +307,20 @@ static int init_audio (gboolean is_encoder)
   guint source;
   if (is_encoder) {
     data.socket = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    /*
+    // no binding needed when we're not receiving
     struct sockaddr_in sa;
     memset (&sa, 0, sizeof (struct sockaddr_in));
     sa.sin_family = AF_INET;
-    sa.sin_addr.s_addr = inet_addr ("127.0.0.1");
+    sa.sin_addr.s_addr = inet_addr (INADDR_ANY);
     sa.sin_port = htons (12534);
+    if (bind (data.socket, (struct sockaddr *)&sa, sizeof (struct sockaddr_in)) == -1)
+      g_printerr ("couldn't bind socket\n");
+    */
     memset (&data.dest, 0, sizeof (struct sockaddr_in));
     data.dest.sin_family = AF_INET;
     data.dest.sin_addr.s_addr = inet_addr ("127.0.0.1");
     data.dest.sin_port = htons (12535);
-    if (bind (data.socket, (struct sockaddr *)&sa, sizeof (struct sockaddr_in)) == -1)
-      g_printerr ("couldn't bind socket\n");
 
   } else {
 
