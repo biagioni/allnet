@@ -108,8 +108,9 @@ m4_define([m4_ax_prog_java_list], [kaffe java])dnl
 AS_IF([test "x$JAVAPREFIX" = x],
       [test x$JAVA = x && AC_CHECK_PROGS([JAVA], [m4_ax_prog_java_list])],
       [test x$JAVA = x && AC_CHECK_PROGS([JAVA], [m4_ax_prog_java_list], [], [$JAVAPREFIX/bin])])
-test x$JAVA = x && AC_MSG_ERROR([no acceptable Java virtual machine found in \$PATH])
 m4_undefine([m4_ax_prog_java_list])dnl
+if (test -n "$JAVA"); then
 AX_PROG_JAVA_WORKS
+fi
 AC_PROVIDE([$0])dnl
 ])
