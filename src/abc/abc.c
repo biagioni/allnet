@@ -41,6 +41,7 @@
  */
 
 #include <assert.h>
+#include <errno.h>
 #include <signal.h>           /* signal */
 #include <stdio.h>
 #include <stdlib.h>
@@ -221,8 +222,15 @@ static void send_beacon (int awake_ms, const char * interface,
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   writeb64u (mbp->awake_time,
              ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
-  if (sendto (sockfd_global, buf, size, MSG_DONTWAIT, addr, addrlen) < size)
-    perror ("beacon sendto");
+  if (sendto (sockfd_global, buf, size, MSG_DONTWAIT, addr, addrlen) < size) {
+    int e = errno;
+    /* retry, first packet is sometimes dropped */
+    if (sendto (sockfd_global, buf, size, MSG_DONTWAIT, addr, addrlen) < size) {
+      perror ("beacon sendto (2nd try)");
+      if (errno != e)
+        printf ("...different error on 2nd try, first was %d\n", e);
+    }
+  }
 }
 
 static void make_beacon_reply (char * buffer, int bsize)
