@@ -155,7 +155,7 @@ static GstFlowReturn enc_new_sample (GstAppSink * sink, gpointer p) {
 #ifdef ALLNET
     /* TODO: create message */
     // int pak_size;
-    // struct allnet_header * pak = create_packet (buf_siz, ALLNET_TYPE_DATA, 3 /*max hops*/, NULL/*src addr*/, 0 /*src bits*/, NULL, 0 /*dst*/, NULL /*ack*/);
+    // struct allnet_header * pak = create_packet (info.size, ALLNET_TYPE_DATA, 3 /*max hops*/, NULL/*src addr*/, 0 /*src bits*/, NULL, 0 /*dst*/, NULL /*ack*/);
     // pak->transport = ALLNET_TRANSPORT_STREAM;
     // char * sid = new_msg_id ();
     // pak->stream_id = sid;
@@ -407,7 +407,9 @@ static int init_audio (gboolean is_encoder)
 
   if (is_encoder) {
     gst_element_set_state (data.pipeline, GST_STATE_PLAYING);
-    //while (TRUE) enc_new_sample (data.enc.voa_sink, &data);
+    /* instead of using the main loop, use blocking reads:
+     * while (TRUE) enc_new_sample (GST_APP_SINK (data.enc.voa_sink), &data);
+     */
   }
 
   /* Create a GLib Main Loop and set it to run */
