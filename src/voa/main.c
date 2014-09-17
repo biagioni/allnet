@@ -264,6 +264,12 @@ static int init_audio (gboolean is_encoder)
       g_printerr ("Not all elements could be created.\n");
       return -1;
     }
+
+    GstCaps * rawcaps = gst_caps_from_string ("audio/x-raw,clockrate=(int)48000,channels=(int)1");
+    GstPad * srcpad = gst_element_get_static_pad (data.enc.source, "src");
+    gst_pad_set_caps (srcpad, rawcaps);
+    gst_caps_unref (rawcaps);
+
     /* Configure encoder appsink */
     g_object_set (data.enc.voa_sink, "emit-signals", TRUE, /*"caps", appcaps,*/ NULL);
     GstAppSinkCallbacks cbs = {
