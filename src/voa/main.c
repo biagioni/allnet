@@ -38,6 +38,7 @@
 
 #define CHUNK_SIZE 1024   /* Amount of bytes we are sending in each buffer */
 #define AUDIO_CAPS "application/x-rtp,media=(string)audio,payload=(int)96,clock-rate=(int)48000,encoding-name=(string)X-GST-OPUS-DRAFT-SPITTKA-00"
+#define IFACE_PORT 12534
 
 typedef struct _DecoderData {
   GstElement * voa_source; /* Voice-over-allnet source */
@@ -319,14 +320,14 @@ static int init_audio (gboolean is_encoder)
     memset (&sa, 0, sizeof (struct sockaddr_in));
     sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = inet_addr (INADDR_ANY);
-    sa.sin_port = htons (12534);
+    sa.sin_port = htons (12533);
     if (bind (data.socket, (struct sockaddr *)&sa, sizeof (struct sockaddr_in)) == -1)
       g_printerr ("couldn't bind socket\n");
     */
     memset (&data.dest, 0, sizeof (struct sockaddr_in));
     data.dest.sin_family = AF_INET;
     data.dest.sin_addr.s_addr = inet_addr ("127.0.0.1");
-    data.dest.sin_port = htons (12535);
+    data.dest.sin_port = htons (IFACE_PORT);
 
   } else {
 
@@ -341,7 +342,7 @@ static int init_audio (gboolean is_encoder)
     }
     g_socket_bind (data.gsocket,
       G_SOCKET_ADDRESS (g_inet_socket_address_new
-        (g_inet_address_new_any (G_SOCKET_FAMILY_IPV4), 12535)),
+        (g_inet_address_new_any (G_SOCKET_FAMILY_IPV4), IFACE_PORT)),
       FALSE, &err);
     if (err != NULL) {
       g_printerr("%s\n", err->message);
@@ -353,7 +354,7 @@ static int init_audio (gboolean is_encoder)
     g_io_channel_set_buffered (channel, FALSE);
     source = g_io_add_watch (channel, G_IO_IN,
                               (GIOFunc) dec_handle_data, &data);
-    g_print ("Listening for traffic on port %d..\n", 12535);
+    g_print ("Listening for traffic on port %d..\n", IFACE_PORT);
     g_io_channel_unref (channel);
   }
 #endif /* SOCKET */
