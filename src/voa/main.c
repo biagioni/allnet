@@ -134,6 +134,10 @@ static GstFlowReturn enc_new_sample (GstAppSink * sink, gpointer p) {
   if (sample) {
     GstBuffer * buffer = gst_sample_get_buffer (sample);
     gsize bufsiz = gst_buffer_get_size (buffer);
+    g_print ("offset: %lu, duration: %lums, size: %lu\n", buffer->offset, buffer->duration / 1000000, bufsiz);
+    GstMapInfo info;
+    if (!gst_buffer_map (buffer, &info, GST_MAP_READ))
+      g_print ("error mapping buffer\n");
 #ifdef ALLNET
     /* TODO: create message */
     // int pak_size;
@@ -144,15 +148,17 @@ static GstFlowReturn enc_new_sample (GstAppSink * sink, gpointer p) {
     // send_pipe_message (sock, msg, pak_size, ALLNET_PRIORITY_HIGH);
 #endif /* ALLNET */
 #ifdef SOCKET
-    if (sendto (data->socket, buffer, bufsiz, 0, (const struct sockaddr *)&data->dest, sizeof (data->dest)) == -1)
+    if (sendto (data->socket, info.data, info.size, 0, (const struct sockaddr *)&data->dest, sizeof (data->dest)) == -1)
       g_printerr ("error sending\n");
-    g_print ("size: %lu\n", bufsiz);
+    g_print ("size: %lu\n", info.size);
 #endif /* SOCKET */
     g_print (".");
 
+    gst_buffer_unmap (buffer, &info);
     gst_sample_unref (sample);
-  } else
+  } else {
     g_print ("NULL sample\n");
+  }
 
   return GST_FLOW_OK;
 }
