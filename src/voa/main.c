@@ -36,14 +36,19 @@
 #include <stdlib.h>       /* atoi */
 #include <string.h>       /* memcpy */
 
-#define CHUNK_SIZE 1024   /* Amount of bytes we are sending in each buffer */
+#ifdef RTP
 #define AUDIO_CAPS "application/x-rtp,media=(string)audio,payload=(int)96,clock-rate=(int)48000,encoding-name=(string)X-GST-OPUS-DRAFT-SPITTKA-00"
+#else
+#define AUDIO_CAPS "audio/x-opus,media=(string)audio,clockrate=(int)48000,channels=(int)1"
+#endif /* RTP */
 #define IFACE_PORT 12534
 
 typedef struct _DecoderData {
   GstElement * voa_source; /* Voice-over-allnet source */
+#ifdef RTP
   GstElement * jitterbuffer;
   GstElement * rtpdepay;
+#endif /* RTP */
   GstElement * decoder;
   GstElement * sink; /* playback device */
   int sourceid;
@@ -54,7 +59,9 @@ typedef struct _EncoderData {
   GstElement * convert;
   GstElement * resample;
   GstElement * encoder;
+#ifdef RTP
   GstElement * rtp;
+#endif /* RTP */
   GstElement * voa_sink; /* Voice-over-allnet sink */
 } EncoderData;
 
@@ -100,11 +107,13 @@ static gboolean dec_handle_data (GIOChannel * source, GIOCondition condition, gp
   /* Push the buffer into the appsrc */
   VOAData * d = (VOAData *)data;
   g_signal_emit_by_name (d->dec.voa_source, "push-buffer", gstbuf, &ret);
+#ifdef RTP
   GValue val = G_VALUE_INIT;
   g_value_init (&val, G_TYPE_INT);
   g_object_get_property (G_OBJECT (d->dec.jitterbuffer), "percent", &val);
   gint percent = g_value_get_int (&val);
   g_print ("Jitterbuffer %d\n", percent);
+#endif /* RTP */
   gst_buffer_unref (gstbuf);
   if (ret != GST_FLOW_OK) {
     g_printerr ("error inserting packets into gst pipeline\n");
@@ -113,15 +122,19 @@ static gboolean dec_handle_data (GIOChannel * source, GIOCondition condition, gp
   GstState st, pst;
   gst_element_get_state (d->pipeline, &st, &pst, 0);
   g_print ("state: %d, pending: %d\n", st, pst);
-  if (st != GST_STATE_PLAYING && pst != GST_STATE_PLAYING && pst != GST_STATE_PLAYING) {
+  if (st != GST_STATE_PLAYING && pst != GST_STATE_PLAYING && pst != GST_STATE_PLAYING)
     gst_element_set_state (d->pipeline, GST_STATE_PLAYING);
-  }
 
   return TRUE;
 }
 
 static void enc_eos (GstAppSink * sink, gpointer data) {
   g_print ("EOS received\n");
+}
+
+static GstFlowReturn enc_new_preroll (GstAppSink * sink, gpointer p) {
+  g_print ("preroll received\n");
+  return GST_FLOW_OK;
 }
 
 /* voa_sink has received a sample */
@@ -237,11 +250,17 @@ static int init_audio (gboolean is_encoder)
     data.enc.convert = gst_element_factory_make ("audioconvert", "convert");
     data.enc.resample = gst_element_factory_make ("audioresample", "resample");
     data.enc.encoder = gst_element_factory_make ("opusenc", "encoder");
+#ifdef RTP
     data.enc.rtp = gst_element_factory_make ("rtpopuspay", "rtp");
+#endif /* RTP */
     data.enc.voa_sink = gst_element_factory_make ("appsink", "voa_sink");
 
     if (!data.enc.source || !data.enc.convert || !data.enc.resample ||
-        !data.enc.encoder || !data.enc.rtp || !data.enc.voa_sink) {
+        !data.enc.encoder ||
+#ifdef RTP
+        !data.enc.rtp ||
+#endif /* RTP */
+        !data.enc.voa_sink) {
       g_printerr ("Not all elements could be created.\n");
       return -1;
     }
@@ -262,10 +281,17 @@ static int init_audio (gboolean is_encoder)
 
     gst_bin_add_many (GST_BIN (data.pipeline), data.enc.source,
             data.enc.convert, data.enc.resample, data.enc.encoder,
-            data.enc.rtp, data.enc.voa_sink, NULL);
+#ifdef RTP
+            data.enc.rtp,
+#endif /* RTP */
+           data.enc.voa_sink, NULL);
+
     if (! gst_element_link_many (data.enc.source,
             data.enc.convert, data.enc.resample, data.enc.encoder,
-            data.enc.rtp, data.enc.voa_sink, NULL)) {
+#ifdef RTP
+            data.enc.rtp,
+#endif /* RTP */
+            data.enc.voa_sink, NULL)) {
       g_printerr ("Elements could not be linked.\n");
       gst_object_unref (data.pipeline);
       return -1;
@@ -275,11 +301,16 @@ static int init_audio (gboolean is_encoder)
     /* decoder */
     data.dec.sourceid = 0;
     data.dec.voa_source = gst_element_factory_make ("appsrc", "voa_source");
+#ifdef RTP
     data.dec.jitterbuffer = gst_element_factory_make ("rtpjitterbuffer", "jitterbuffer");
     data.dec.rtpdepay = gst_element_factory_make ("rtpopusdepay", "rtpdepay");
+#endif /* RTP */
     data.dec.decoder = gst_element_factory_make ("opusdec", "decoder");
     data.dec.sink = gst_element_factory_make ("autoaudiosink", "sink");
-    if (!data.dec.voa_source || !data.dec.jitterbuffer || !data.dec.rtpdepay ||
+    if (!data.dec.voa_source ||
+#ifdef RTP
+        !data.dec.jitterbuffer || !data.dec.rtpdepay ||
+#endif /* RTP */
         !data.dec.decoder || !data.dec.sink) {
       g_printerr ("Not all elements could be created.\n");
       return -1;
@@ -290,15 +321,22 @@ static int init_audio (gboolean is_encoder)
       "format", GST_FORMAT_TIME /*_BYTES?*/,
       "caps", appcaps,
       NULL);
+#ifdef RTP
     g_object_set (data.dec.jitterbuffer, "latency", 100, "do-lost", TRUE, NULL); /* opus: 20ms of data per packet */
+#endif /* RTP */
     g_object_set (data.dec.decoder, "plc", TRUE, NULL); /* packet loss concealment */
 
     gst_bin_add_many (GST_BIN (data.pipeline), data.dec.voa_source,
-            data.dec.jitterbuffer, data.dec.rtpdepay, data.dec.decoder,
+#ifdef RTP
+            data.dec.jitterbuffer, data.dec.rtpdepay,
+#endif /* RTP */
+            data.dec.decoder,
             data.dec.sink, NULL);
     if (! gst_element_link_many (data.dec.voa_source,
-            data.dec.jitterbuffer, data.dec.rtpdepay, data.dec.decoder,
-            data.dec.sink, NULL)) {
+#ifdef RTP
+            data.dec.jitterbuffer, data.dec.rtpdepay,
+#endif /* RTP */
+            data.dec.decoder, data.dec.sink, NULL)) {
       g_printerr ("Elements could not be linked.\n");
       gst_object_unref (data.pipeline);
       return -1;
