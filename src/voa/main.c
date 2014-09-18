@@ -331,6 +331,9 @@ static int init_audio (gboolean is_encoder)
     g_object_set (data.dec.jitterbuffer, "latency", 100, "do-lost", TRUE, NULL); /* opus: 20ms of data per packet */
 #endif /* RTP */
     g_object_set (data.dec.decoder, "plc", TRUE, NULL); /* packet loss concealment */
+    /* play as soon as possible and continue playing after packet loss by
+     * disabling sync */
+    g_object_set (data.dec.sink, "sync", FALSE, NULL);
 
     gst_bin_add_many (GST_BIN (data.pipeline), data.dec.voa_source,
 #ifdef RTP
