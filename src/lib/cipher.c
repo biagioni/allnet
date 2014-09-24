@@ -14,6 +14,7 @@
 #include "packet.h"
 #include "util.h"
 #include "sha.h"
+#include "log.h"
 #include "keys.h"
 #include "cipher.h"
 
@@ -192,6 +193,7 @@ static void test_rsa_encryption (char * key, int ksize)
 int allnet_decrypt (const char * cipher, int csize,
                     const char * key, int ksize, char ** res)
 {
+  unsigned long long int start = allnet_time_us ();
   if ((cipher == NULL) || (key == NULL) || (res == NULL) ||
       (csize < 0) || (ksize <= 0)) {
     printf ("cipher.c decrypt: %p %p %p %d %d, returning 0\n",
@@ -259,6 +261,11 @@ int allnet_decrypt (const char * cipher, int csize,
 #ifdef DEBUG_PRINT
   print_buffer (result, rsize, "decrypted", 16, 1);
 #endif /* DEBUG_PRINT */
+  unsigned long long int time_delta = allnet_time_us () - start;
+  snprintf (log_buf, LOG_SIZE,
+            "successful decryption took %lld.%06lld seconds\n",
+            time_delta / 1000000, time_delta % 1000000);
+  log_print ();
   return rsize;
 }
 
@@ -301,8 +308,25 @@ int allnet_verify (char * text, int tsize, char * sig, int ssize,
     hsize = SHA512_SIZE;
   sha512_bytes (text, tsize, hash, hsize);
 
+#ifdef USING_MD5_SIGNATURES
   int verifies = RSA_verify (NID_md5, (unsigned char *) hash, hsize,
                              (unsigned char *) sig, ssize, rsa);
+#else /* USING_MD5_SIGNATURES */
+  int verifies = RSA_verify (NID_sha512, (unsigned char *) hash, hsize,
+                             (unsigned char *) sig, ssize, rsa);
+  /* for now (2014/09/23, allnet release 3.1), accept older style
+   * signatures as well */
+  /* I think this is secure because the hash is still SHA512, and only
+   * the ASN.1 shows MD5.  It may use fewer bytes (16) than SHA512 (64) */
+  if ((! verifies) &&
+      (RSA_verify (NID_md5, (unsigned char *) hash, hsize,
+                   (unsigned char *) sig, ssize, rsa))) {
+#ifdef DEBUG_PRINT
+    printf ("accepting an SSH512/MD5-encoded signature\n");
+#endif /* DEBUG_PRINT */
+    verifies = 1;
+  }
+#endif /* USING_MD5_SIGNATURES */
   RSA_free (rsa);
 #ifdef DEBUG_PRINT
   printf ("RSA_verify returned %d\n", verifies);
@@ -336,8 +360,13 @@ int allnet_sign (char * text, int tsize, char * key, int ksize, char ** result)
     hsize = SHA512_SIZE;
   sha512_bytes (text, tsize, hash, hsize);
 
+#ifdef USING_MD5_SIGNATURES
   if (! RSA_sign (NID_md5, (unsigned char *) hash, hsize,
                   (unsigned char *) (*result), &siglen, rsa)) {
+#else /* USING_MD5_SIGNATURES */
+  if (! RSA_sign (NID_sha512, (unsigned char *) hash, hsize,
+                  (unsigned char *) (*result), &siglen, rsa)) {
+#endif /* USING_MD5_SIGNATURES */
     unsigned long e = ERR_get_error ();
     printf ("RSA signature (%d) failed %ld: %s\n", rsa_size, e,
             ERR_error_string (e, NULL));
@@ -366,6 +395,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
                     char * sender, int sbits, char * dest, int dbits,
                     int maxcontacts)
 {
+  unsigned long long int start = allnet_time_us ();
   *contact = NULL;
   *kset = -1;
   *text = NULL;
@@ -423,5 +453,10 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
 #ifdef DEBUG_PRINT
   printf ("unable to decrypt packet, dropping\n");
 #endif /* DEBUG_PRINT */
+  unsigned long long int time_delta = allnet_time_us () - start;
+  snprintf (log_buf, LOG_SIZE,
+            "successful decrypt/verify took %lld.%06lld seconds\n",
+            time_delta / 1000000, time_delta % 1000000);
+  log_print ();
   return 0;
 }
