@@ -45,9 +45,7 @@ static int get_nybble (char * string, int * offset)
   *offset = p - string;   /* point to the offending character */
   return -1;
 }
-#endif /* NO_MAIN_FUNCTION */
 
-#ifndef NO_MAIN_FUNCTION
 static int get_byte (char * string, int * offset, unsigned char * result)
 {
   int first = get_nybble (string, offset);
@@ -61,9 +59,7 @@ static int get_byte (char * string, int * offset, unsigned char * result)
   /* printf ("get_byte returned %x\n", (*result) & 0xff); */
   return 8;
 }
-#endif /* NO_MAIN_FUNCTION */
 
-#ifndef NO_MAIN_FUNCTION
 static int get_address (char * address, unsigned char * result, int rsize)
 {
   int offset = 0;
@@ -632,9 +628,7 @@ static void print_entry (struct allnet_mgmt_trace_entry * entry,
   if (print_eol)
     printf ("\n");
 }
-#endif /* NO_MAIN_FUNCTION */
 
-#ifndef NO_MAIN_FUNCTION
 static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                                 struct timeval start,
                                 struct timeval finish)
@@ -672,9 +666,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
     printf ("intermediate response with %d entries\n", trp->num_entries);
   }
 }
-#endif /* NO_MAIN_FUNCTION */
 
-#ifndef NO_MAIN_FUNCTION
 static void handle_packet (char * message, int msize, char * seeking,
                            struct timeval start)
 {
@@ -682,7 +674,6 @@ static void handle_packet (char * message, int msize, char * seeking,
   if (! is_valid_message (message, msize))
     return;
   struct allnet_header * hp = (struct allnet_header *) message;
-    
 
   int min_size = ALLNET_TRACE_REPLY_SIZE (0, 1);
   if (msize < min_size)
@@ -719,37 +710,37 @@ static void handle_packet (char * message, int msize, char * seeking,
   log_print ();
   print_trace_result (trp, start, now);
 }
-#endif /* NO_MAIN_FUNCTION */
 
-#ifndef NO_MAIN_FUNCTION
 static void wait_for_responses (int sock, char * trace_id, int sec)
 {
   num_arrivals = 0;   /* not received anything yet */
-  struct timeval start;
-  gettimeofday (&start, NULL);
-  int remaining = time (NULL) - start.tv_sec;
-  while (remaining < sec) {
+  unsigned long long int max_ms = sec * 1000;
+  unsigned long long int time_spent = 0;
+  unsigned long long int start = allnet_time_ms ();
+  struct timeval tv_start;
+  gettimeofday (&tv_start, NULL);
+  while (time_spent < max_ms) {
     int pipe;
     int pri;
     char * message;
-    int ms = remaining * 1000 + 999;
+    int ms = max_ms - time_spent;
     int found = receive_pipe_message_any (ms, &message, &pipe, &pri);
-    if (found <= 0) {
+    if (found < 0) {
 #ifdef DEBUG_PRINT
       printf ("trace pipe closed, exiting\n");  
 #endif /* DEBUG_PRINT */
       exit (1);
     }
-    struct timeval start_copy = start;
-    handle_packet (message, found, trace_id, start_copy);
-    free (message);
-    remaining = time (NULL) - start.tv_sec;
+    handle_packet (message, found, trace_id, tv_start);
+    if (found > 0)
+      free (message);
+    time_spent = allnet_time_ms () - start;
   }
+#ifdef DEBUG_PRINT
   printf ("timeout\n");
+#endif /* DEBUG_PRINT */
 }
-#endif /* NO_MAIN_FUNCTION */
 
-#ifndef NO_MAIN_FUNCTION
 static void usage (char * pname, int daemon)
 {
   if (daemon) {
@@ -854,7 +845,7 @@ int main (int argc, char ** argv)
     random_bytes (trace_id, sizeof (trace_id));
     random_bytes ((char *) my_addr, sizeof (my_addr));
     send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
-    wait_for_responses (sock, trace_id, 60);
+    wait_for_responses (sock, trace_id, 10);
   }
   return 0;
 }
