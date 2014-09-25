@@ -11,6 +11,8 @@ libincludes = \
 abcmodulesinc =
 abcmoduleslibs =
 abcmodules = \
+    abc-ip.c \
+    abc-ip.h \
     abc-wifi.c \
     abc-wifi.h \
     abc-iw.c \

@@ -13,6 +13,7 @@ typedef struct sockaddr_in sockaddr_t;
 
 /** enum of all compile-time supported abc iface modules */
 typedef enum abc_iface_type {
+  ABC_IFACE_TYPE_IP,
   ABC_IFACE_TYPE_WIFI
 } abc_iface_type;
 

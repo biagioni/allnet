@@ -51,6 +51,7 @@
 #include <sys/socket.h>       /* sockaddr */
 
 #include "abc-iface.h"        /* sockaddr_t */
+#include "abc-ip.h"           /* abc_iface_ip */
 #include "abc-wifi.h"         /* abc_iface_wifi */
 #include "../social.h"        /* UNKNOWN_SOCIAL_TIER */
 #include "lib/mgmt.h"         /* struct allnet_mgmt_header */
@@ -104,10 +105,12 @@ static char zero_nonce [NONCE_SIZE];
 
 /** array of broadcast interface types (wifi, ethernet, ...) */
 static abc_iface * iface_types[] = {
+  &abc_iface_ip,
   &abc_iface_wifi
 };
 /* must match length and order of iface_types[] */
 static const char * iface_type_strings[] = {
+  "ip",
   "wifi"
 };
 static abc_iface * iface = NULL; /* used interface ptr */
