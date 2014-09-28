@@ -26,7 +26,10 @@ AC_PROG_CC
 AC_PROG_LN_S
 
 # Checks for libraries.
-PKG_CHECK_MODULES(OPENSSL, [openssl >= 1.0])
+PKG_CHECK_MODULES(CRYPTO, [openssli >= 1.0], [], [
+  CRYPTO_LIBS=-lcrypto
+  CRYPTO_CFLAGS=
+])
 
 AC_ARG_ENABLE(network-manager,
   AC_HELP_STRING([--disable-network-manager],
