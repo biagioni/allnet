@@ -544,7 +544,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     int send_type = 0;
     int send_size = 0;
     static char send_message [ALLNET_MTU];
-    if (msize > 0) {
+    if ((msize > 0) && (is_valid_message (message, msize))) {
       if (fd == rpipe)
         handle_ad_message (message, msize, priority);
       else
