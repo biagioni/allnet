@@ -93,6 +93,11 @@ static int received_high_priority = 0;
  * in low priority mode to compensate for the delay */
 static unsigned if_cycles_skiped = 0;
 
+enum abc_send_type {
+    ABC_SEND_TYPE_NONE = 0,  /* nothing to send */
+    ABC_SEND_TYPE_REPLY,     /* send a mgmt-type reply */
+    ABC_SEND_TYPE_QUEUE      /* send queued messages */
+};
 static char my_beacon_rnonce [NONCE_SIZE];
 static char my_beacon_snonce [NONCE_SIZE];
 static char other_beacon_snonce [NONCE_SIZE];
@@ -257,48 +262,63 @@ static void make_beacon_grant (char * buffer, int bsize,
   writeb64u (mbgp->send_time, send_time_ns);
 }
 
-/* if type is 1, sends the message */
-/* if type is 2, sends the specified number of bytes from the queue,
- * ignoring message */
-static void send_pending (int type, int size, char * message)
+/**
+ * Send pending message and update pending beacon state
+ * @param type if type is ABC_SEND_TYPE_REPLY, sends the message
+ *    if type is ABC_SEND_TYPE_QUEUE, sends the specified number of bytes from
+ *    the queue, ignoring message.
+ * @param size size of message
+ */
+static void send_pending (enum abc_send_type type, int size, char * message)
 {
-  if (type == 1) {
-    if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
-        BC_ADDR (iface), sizeof (sockaddr_t)) < size)
-      perror ("sendto for type 1");
-  } else if (type == 2) {
-    int total_sent = 0;
-    char * my_message = NULL;
-    int nsize;
-    int priority;
-    while ((queue_iter_next (&my_message, &nsize, &priority)) &&
-           (total_sent + nsize <= size)) {
-      if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
-          BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
-        perror ("sendto for type 2");
-      total_sent += nsize;
+  switch (type) {
+    case ABC_SEND_TYPE_REPLY:
+      if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
+          BC_ADDR (iface), sizeof (sockaddr_t)) < size)
+        perror ("sendto for type 1");
+      else
+        beacon_state = pending_beacon_state;
+      pending_beacon_state = BEACON_NONE;
+      break;
+
+    case ABC_SEND_TYPE_QUEUE:
+    {
+      int total_sent = 0;
+      char * my_message = NULL;
+      int nsize;
+      int priority;
+      while ((queue_iter_next (&my_message, &nsize, &priority)) &&
+             (total_sent + nsize <= size)) {
+        if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
+            BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
+          perror ("sendto for type 2");
+        total_sent += nsize;
+      }
+      break;
     }
-  } else if (type != 0) {
-    printf ("error: send_pending type %d not supported\n", type);
+
+    case ABC_SEND_TYPE_NONE:
+    default:
+      break; /* nothing to do */
   }
 }
 
-/* return 1 if message is a beacon (not a regular packet), 0 otherwise.
- * does no work, expect identifying packet type, when quiet is set.
+/** Returns 1 if message is a beacon (not a regular packet), 0 otherwise.
+ * Does no work, expect identifying packet type, when quiet is set.
  *
- * Sets *send_type to 1, *send_size to the message size, and send_message
- * (which must have size ALLNET_MTU) to the message to send, if there
- * is a message to be sent after the quiet time.
- * sets *send_type to 2, *send_size to the number of bytes that can be
- * sent if we have been granted permission to send that many bytes.
- * if there is nothing to send, sets *send_type to 0
+ * Sets *send_type to ABC_SEND_TYPE_REPLY, *send_size to the message size, and
+ * send_message (which must have size ALLNET_MTU) to the message to send, if
+ * there is a message to be sent after the quiet time.
+ * sets *send_type to ABC_SEND_TYPE_QUEUE, *send_size to the number of bytes
+ * that can be sent if we have been granted permission to send that many bytes.
+ * If there is nothing to send, sets *send_type to ABC_SEND_TYPE_NONE
  */
 static int handle_beacon (char * message, int msize,
                           struct timeval ** beacon_deadline,
                           struct timeval * time_buffer,
                           struct timeval * quiet_end,
-                          int * send_type, int * send_size, char * send_message,
-                          int quiet)
+                          enum abc_send_type * send_type, int * send_size,
+                          char * send_message, int quiet)
 {
   *send_type = 0;  /* don't send anything unless we say otherwise */
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -459,7 +479,7 @@ static void handle_network_message (char * message, int msize, int ad_pipe,
                                     struct timeval ** beacon_deadline,
                                     struct timeval * time_buffer,
                                     struct timeval * quiet_end,
-                                    int * send_type, int * send_size,
+                                    enum abc_send_type * send_type, int * send_size,
                                     char * send_message, int quiet)
 {
   if (! handle_beacon (message, msize, beacon_deadline, time_buffer,
@@ -520,7 +540,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     if ((beacon_deadline != NULL) && (delta_us (t, beacon_deadline) > 0))
       deadline = beacon_deadline;
     int msize = receive_until (deadline, &message, &fd, &priority, 0);
-    int send_type = 0;
+    enum abc_send_type send_type = ABC_SEND_TYPE_NONE;
     int send_size = 0;
     static char send_message [ALLNET_MTU];
     if ((msize > 0) && (is_valid_message (message, msize))) {
@@ -532,12 +552,13 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
                                 &send_type, &send_size, send_message, 0);
       free (message);
       /* forward any pending messages */
-      if (send_type != 0) {
+      if (send_type != ABC_SEND_TYPE_NONE) {
         handle_quiet (quiet_end, rpipe, wpipe);
         send_pending (send_type, send_size, send_message);
       }
       /* see if priority has changed */
       check_priority_mode ();
+
     } else {
       usleep (10 * 1000); /* 10ms */
     }
