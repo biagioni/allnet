@@ -17,11 +17,15 @@ libincludes = \
 	priority.h \
 	sha.h \
 	table.h \
-	util.h
+	util.h \
+	wp_aes.h \
+	wp_arith.h \
+	wp_rsa.h
 
 libsrc = \
 	ai.c \
 	app_util.c \
+	asn1.c \
 	cipher.c \
 	config.c \
 	dcache.c \
@@ -33,7 +37,10 @@ libsrc = \
 	priority.c \
 	sha.c \
 	table.c \
-	util.c
+	util.c \
+	wp_aes.c \
+	wp_arith.c \
+	wp_rsa.c
 
 DEPS_LIBS = -lcrypto
 
