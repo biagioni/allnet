@@ -88,8 +88,6 @@ static int high_priority = 0;   /* start out in low priority mode */
  * receive */
 static int received_high_priority = 0;
 
-static int lan_is_on = 0; /* if on, we should never be in high priority mode */
-
 /* cycles we skipped because of interface activation delay.
  * This is also the number of cycles we leave the interface on
  * in low priority mode to compensate for the delay */
@@ -129,27 +127,12 @@ static void clear_nonces (int mine, int other)
   }
 }
 
-/**
- * sets the high priority variable
- * returns the sockfd if we are in high priority, and -1 otherwise
- */
+/** Sets the high priority variable */
 static int check_priority_mode ()
 {
-  if ((! lan_is_on) && (! high_priority) &&
-      ((received_high_priority) ||
-       (queue_max_priority () >= ALLNET_PRIORITY_FRIENDS_LOW))) {
-    /* enter high priority mode */
-    high_priority = 1;
-  } else if ((high_priority) &&
-             ((lan_is_on) ||
-              ((! received_high_priority) &&
-               (queue_max_priority () < ALLNET_PRIORITY_FRIENDS_LOW)))) {
-    /* leave high priority mode */
-    high_priority = 0;
-  }
-  if (high_priority)
-    return sockfd_global;
-  return -1;
+  high_priority = received_high_priority ||
+                  (!high_priority &&
+                   queue_max_priority () >= ALLNET_PRIORITY_FRIENDS_LOW);
 }
 
 #ifdef WAIT_UNTIL_USED
