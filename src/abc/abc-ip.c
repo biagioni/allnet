@@ -16,9 +16,7 @@
 #include "abc-ip.h"
 
 /* forward declarations */
-static int abc_ip_init (const char * interface, int * sock,
-                        sockaddr_t * address,
-                        sockaddr_t * bc);
+static int abc_ip_init (const char * interface);
 static int abc_ip_is_enabled ();
 static int abc_ip_set_enabled (int state);
 static int abc_ip_cleanup ();
@@ -27,13 +25,15 @@ static int abc_ip_cleanup ();
 abc_iface abc_iface_ip = {
   .iface_type = ABC_IFACE_TYPE_IP,
   .iface_type_args = NULL,
+  .iface_sockfd = -1,
+  .if_address = {},
+  .bc_address = {},
   .init_iface_cb = abc_ip_init,
   .iface_on_off_ms = 0, /* assume always on iface */
   .iface_is_enabled_cb = abc_ip_is_enabled,
   .iface_set_enabled_cb = abc_ip_set_enabled,
   .iface_cleanup_cb = abc_ip_cleanup
 };
-
 
 static int abc_ip_is_enabled ()
 {
@@ -45,12 +45,8 @@ static int abc_ip_set_enabled (int state)
   return 1;
 }
 
-/* returns -1 if the interface is not found */
-/* returns 0 if the interface is off, and 1 if it is on already */
-/* if returning 0 or 1, fills in the socket and the address */
-/* to do: figure out how to set bits_per_s in init_wireless */
-static int abc_ip_init (const char * interface, int * sock,
-                          sockaddr_t * address, sockaddr_t * bc)
+/* returns 0 if the interface is not found, 1 otherwise */
+static int abc_ip_init (const char * interface)
 {
   struct ifaddrs * ifa;
   if (getifaddrs (&ifa) != 0) {
@@ -74,22 +70,22 @@ static int abc_ip_init (const char * interface, int * sock,
       gettimeofday (&midtime, NULL);
       long long mtime = delta_us (&midtime, &start);
       /* create the socket and initialize the address */
-      *sock = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
-      *address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
-      if (bind (*sock, (const struct sockaddr *) address, sizeof (struct sockaddr_ll)) == -1)
+      abc_iface_ip.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
+      abc_iface_ip.if_address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
+      if (bind (abc_iface_ip.iface_sockfd, (const struct sockaddr *) &abc_iface_ip.if_address, sizeof (sockaddr_t)) == -1)
         printf ("abc-ip: error binding interface %s, continuing without..\n", interface);
       if (ifa_loop->ifa_flags & IFF_BROADCAST) {
-        *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
+        abc_iface_ip.bc_address = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
       } else if (ifa_loop->ifa_flags & IFF_POINTOPOINT) {
-        *bc = *((struct sockaddr_ll *) (ifa_loop->ifa_dstaddr));
+        abc_iface_ip.bc_address = *((struct sockaddr_ll *) (ifa_loop->ifa_dstaddr));
       } else {
-        default_broadcast_address (bc);
-        printf ("abc:-ip: set default broadcast address on %s\n", interface);
+        abc_iface_set_default_broadcast_address (&abc_iface_ip.bc_address);
+        printf ("abc-ip: set default broadcast address on %s\n", interface);
       }
-      bc->sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
-      bc->sll_ifindex = address->sll_ifindex;
-      print_sll_addr (address, "interface address");
-      print_sll_addr (bc,      "broadcast address");
+      abc_iface_ip.bc_address.sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
+      abc_iface_ip.bc_address.sll_ifindex = abc_iface_ip.if_address.sll_ifindex;
+      abc_iface_print_sll_addr (&abc_iface_ip.if_address, "interface address");
+      abc_iface_print_sll_addr (&abc_iface_ip.if_address, "broadcast address");
       freeifaddrs (ifa);
       return 1;
     }

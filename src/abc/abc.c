@@ -90,8 +90,6 @@ static int received_high_priority = 0;
 
 static int lan_is_on = 0; /* if on, we should never be in high priority mode */
 
-static int sockfd_global = -1;  /* -1 means not initialized yet */
-
 /* cycles we skipped because of interface activation delay.
  * This is also the number of cycles we leave the interface on
  * in low priority mode to compensate for the delay */
@@ -168,9 +166,9 @@ static void wait_until (struct timeval * t)
 
 /* returns -1 in case of error, 0 for timeout, and message size otherwise */
 /* may return earlier than t if a packet is received or there is an error */
-/* if sockfd < 0, only receives from ad, otherwise from both ad and sockfd */
-static int receive_until (struct timeval * t, char ** message, int sockfd,
-                          int * fd, int * priority)
+/* if ad_only is set, receives only from ad, otherwise from both ad and abc interface */
+static int receive_until (struct timeval * t, char ** message,
+                          int * from_fd, int * priority, int ad_only)
 {
   struct timeval now;
   gettimeofday (&now, NULL);
@@ -183,11 +181,11 @@ static int receive_until (struct timeval * t, char ** message, int sockfd,
   socklen_t al = sizeof (recv_addr);
 
   int msize;
-  if (sockfd >= 0) {
-    msize = receive_pipe_message_fd (timeout_ms, message, sockfd, sap, &al,
-                                     fd, priority);
+  if (ad_only) {
+    msize = receive_pipe_message_any (timeout_ms, message, from_fd, priority);
   } else {
-    msize = receive_pipe_message_any (timeout_ms, message, fd, priority);
+    msize = receive_pipe_message_fd (timeout_ms, message, iface->iface_sockfd,
+                                     sap, &al, from_fd, priority);
   }
   return msize;  /* -1 (error), zero (timeout) or positive, the value is correct */
 }
@@ -205,8 +203,7 @@ static void update_quiet (struct timeval * quiet_end,
     *quiet_end = new_quiet;
 }
 
-static void send_beacon (int awake_ms, const char * interface,
-                         struct sockaddr * addr, socklen_t addrlen)
+static void send_beacon (int awake_ms)
 {
   char buf [ALLNET_BEACON_SIZE (0)];
   int size = sizeof (buf);
@@ -225,10 +222,12 @@ static void send_beacon (int awake_ms, const char * interface,
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   writeb64u (mbp->awake_time,
              ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
-  if (sendto (sockfd_global, buf, size, MSG_DONTWAIT, addr, addrlen) < size) {
+  if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT, BC_ADDR (iface),
+      sizeof (sockaddr_t)) < size) {
     int e = errno;
     /* retry, first packet is sometimes dropped */
-    if (sendto (sockfd_global, buf, size, MSG_DONTWAIT, addr, addrlen) < size) {
+    if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT, BC_ADDR (iface),
+        sizeof (sockaddr_t)) < size) {
       perror ("beacon sendto (2nd try)");
       if (errno != e)
         printf ("...different error on 2nd try, first was %d\n", e);
@@ -278,11 +277,11 @@ static void make_beacon_grant (char * buffer, int bsize,
 /* if type is 1, sends the message */
 /* if type is 2, sends the specified number of bytes from the queue,
  * ignoring message */
-static void send_pending (int type, int size, char * message, int sockfd,
-                          struct sockaddr * bc_addr, socklen_t alen)
+static void send_pending (int type, int size, char * message)
 {
   if (type == 1) {
-    if (sendto (sockfd, message, size, MSG_DONTWAIT, bc_addr, alen) < size)
+    if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
+        BC_ADDR (iface), sizeof (sockaddr_t)) < size)
       perror ("sendto for type 1");
   } else if (type == 2) {
     int total_sent = 0;
@@ -291,8 +290,8 @@ static void send_pending (int type, int size, char * message, int sockfd,
     int priority;
     while ((queue_iter_next (&my_message, &nsize, &priority)) &&
            (total_sent + nsize <= size)) {
-      if (sendto (sockfd, my_message, nsize, MSG_DONTWAIT, bc_addr, alen)
-            != nsize)
+      if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
+          BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
         perror ("sendto for type 2");
       total_sent += nsize;
     }
@@ -311,7 +310,7 @@ static void send_pending (int type, int size, char * message, int sockfd,
  * sent if we have been granted permission to send that many bytes.
  * if there is nothing to send, sets *send_type to 0
  */
-static int handle_beacon (char * message, int msize, int sockfd,
+static int handle_beacon (char * message, int msize,
                           struct timeval ** beacon_deadline,
                           struct timeval * time_buffer,
                           struct timeval * quiet_end,
@@ -473,15 +472,14 @@ static void handle_ad_message (char * message, int msize, int priority)
   remove_acks (message, message + msize);
 }
 
-static void handle_network_message (char * message, int msize,
-                                    int ad_pipe, int sockfd,
+static void handle_network_message (char * message, int msize, int ad_pipe,
                                     struct timeval ** beacon_deadline,
                                     struct timeval * time_buffer,
                                     struct timeval * quiet_end,
                                     int * send_type, int * send_size,
                                     char * send_message, int quiet)
 {
-  if (! handle_beacon (message, msize, sockfd, beacon_deadline, time_buffer,
+  if (! handle_beacon (message, msize, beacon_deadline, time_buffer,
                        quiet_end, send_type, send_size, send_message, quiet)) {
     /* check for high-priority message */
     struct allnet_header * hp = (struct allnet_header *) message;
@@ -501,24 +499,23 @@ static void handle_network_message (char * message, int msize,
 
 /* same as handle_until, but does not send any messages or change any
  * global state other than possibly quiet_end */
-static void handle_quiet (struct timeval * quiet_end,
-                          const char * interface, int rpipe, int wpipe)
+static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
 {
-  int sockfd = check_priority_mode ();
+  check_priority_mode ();
   while (is_before (quiet_end) && !term) {
     char * message;
-    int fd;
+    int from_fd;
     int priority;
-    int msize = receive_until (quiet_end, &message, sockfd, &fd, &priority);
-    if ((msize > 0) && (is_valid_message (message, msize))) {
-      if (fd == rpipe)
+    int msize = receive_until (quiet_end, &message, &from_fd, &priority, 0);
+    if (msize > 0 && is_valid_message (message, msize)) {
+      printf ("handle_quiet: got ad/net msg\n");
+      if (from_fd == rpipe)
         handle_ad_message (message, msize, priority);
       else
-        handle_network_message (message, msize, wpipe, sockfd,
+        handle_network_message (message, msize, wpipe,
                                 NULL, NULL, NULL, NULL, NULL, NULL, 1);
       free (message);
-      /* see if priority has changed */
-      sockfd = check_priority_mode ();
+      check_priority_mode ();
     } else {
       usleep (10 * 1000); /* 10ms */
     }
@@ -527,10 +524,9 @@ static void handle_quiet (struct timeval * quiet_end,
 
 /* handle incoming packets until time t.  Do not send before quiet_end */
 static void handle_until (struct timeval * t, struct timeval * quiet_end,
-                          const char * interface, int rpipe, int wpipe,
-                          struct sockaddr * bc_addr, socklen_t alen)
+                          int rpipe, int wpipe)
 {
-  int sockfd = check_priority_mode ();
+  check_priority_mode ();
   struct timeval * beacon_deadline = NULL;
   struct timeval time_buffer;   /* beacon_deadline sometimes points here */
   while (is_before (t) && !term) {
@@ -540,7 +536,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     struct timeval * deadline = t;
     if ((beacon_deadline != NULL) && (delta_us (t, beacon_deadline) > 0))
       deadline = beacon_deadline;
-    int msize = receive_until (deadline, &message, sockfd, &fd, &priority);
+    int msize = receive_until (deadline, &message, &fd, &priority, 0);
     int send_type = 0;
     int send_size = 0;
     static char send_message [ALLNET_MTU];
@@ -548,18 +544,17 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
       if (fd == rpipe)
         handle_ad_message (message, msize, priority);
       else
-        handle_network_message (message, msize, wpipe, sockfd,
-                                &beacon_deadline, &time_buffer, quiet_end,
+        handle_network_message (message, msize, wpipe, &beacon_deadline,
+                                &time_buffer, quiet_end,
                                 &send_type, &send_size, send_message, 0);
       free (message);
       /* forward any pending messages */
       if (send_type != 0) {
-        handle_quiet (quiet_end, interface, rpipe, wpipe);
-        send_pending (send_type, send_size, send_message, sockfd,
-                      bc_addr, alen);
+        handle_quiet (quiet_end, rpipe, wpipe);
+        send_pending (send_type, send_size, send_message);
       }
       /* see if priority has changed */
-      sockfd = check_priority_mode ();
+      check_priority_mode ();
     } else {
       usleep (10 * 1000); /* 10ms */
     }
@@ -594,7 +589,6 @@ static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
 
 /* do one basic 5s cycle */
 static void one_cycle (const char * interface, int rpipe, int wpipe,
-                       struct sockaddr * addr, socklen_t alen,
                        struct timeval * quiet_end)
 {
   struct timeval if_off, if_on, start, finish, beacon_time, beacon_stop;
@@ -616,28 +610,23 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
 
   clear_nonces (1, 1);   /* start a new cycle */
 
-  handle_until (&beacon_time, quiet_end, interface, rpipe, wpipe, addr, alen);
-  send_beacon (BEACON_MS, interface, addr, alen);
-  handle_until (&beacon_stop, quiet_end, interface, rpipe, wpipe, addr, alen);
+  handle_until (&beacon_time, quiet_end, rpipe, wpipe);
+  send_beacon (BEACON_MS);
+  handle_until (&beacon_stop, quiet_end, rpipe, wpipe);
   /* clear_nonces (1, 0);  -- if we stay on, denying beacon replies is
    * not really helpful.  If we are off, we will get no beacon replies
    * anyway, so it doesn't matter */
   if (! high_priority && if_cycles_skiped == 0) /* skipped cycle compensation */
     iface->iface_set_enabled_cb (0);
-  handle_until (&finish, quiet_end, interface, rpipe, wpipe, addr, alen);
+  handle_until (&finish, quiet_end, rpipe, wpipe);
   received_high_priority = 0;
 }
 
 static void main_loop (const char * interface, int rpipe, int wpipe)
 {
-  sockaddr_t if_address; /* the address of the interface */
-  sockaddr_t bc_address; /* broacast address of the interface */
-  struct sockaddr  * bc_sap = (struct sockaddr *) (&bc_address);
-
   struct timeval quiet_end;   /* should we keep quiet? */
   gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
-  /* init sockfd and set global variable sockfd_global */
-  if (!iface->init_iface_cb (interface, &sockfd_global, &if_address, &bc_address)) {
+  if (!iface->init_iface_cb (interface)) {
     snprintf (log_buf, LOG_SIZE,
               "abc: unable to initialize interface %s\n", interface);
     log_print ();
@@ -653,7 +642,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
   bzero (zero_nonce, NONCE_SIZE);
   while (!term)
-    one_cycle (interface, rpipe, wpipe, bc_sap, sizeof (sockaddr_t), &quiet_end);
+    one_cycle (interface, rpipe, wpipe, &quiet_end);
 
 iface_cleanup:
   iface->iface_cleanup_cb ();
