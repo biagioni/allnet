@@ -128,7 +128,7 @@ static void clear_nonces (int mine, int other)
 }
 
 /** Sets the high priority variable */
-static int check_priority_mode ()
+static void check_priority_mode ()
 {
   high_priority = received_high_priority ||
                   (!high_priority &&
