@@ -205,7 +205,6 @@ static void send_beacon (int awake_ms)
                NULL, 0, NULL, 0, NULL);
 
   mp->mgmt_type = ALLNET_MGMT_BEACON;
-  clear_nonces (1, 0);   /* mark new cycle -- should not be needed, but safe */
   random_bytes (my_beacon_rnonce, NONCE_SIZE);
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   writeb64u (mbp->awake_time,
