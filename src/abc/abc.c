@@ -275,9 +275,6 @@ static void send_pending (enum abc_send_type type, int size, char * message)
       if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
           BC_ADDR (iface), sizeof (sockaddr_t)) < size)
         perror ("sendto for type 1");
-      else
-        beacon_state = pending_beacon_state;
-      pending_beacon_state = BEACON_NONE;
       break;
 
     case ABC_SEND_TYPE_QUEUE:
