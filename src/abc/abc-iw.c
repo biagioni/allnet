@@ -260,7 +260,7 @@ static int abc_wifi_config_iw_set_enabled (int state)
     if (if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 1;
       /* set power save mode (if available) */
-      if_command ("iw dev %s set power_save on", self.iface, 0, NULL, NULL);
+      if_command ("iw dev %s set power_save on", self.iface, 161, "Power saving mode not supported", NULL);
       return 1;
     }
   } else {
