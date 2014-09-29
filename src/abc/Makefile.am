@@ -11,12 +11,12 @@ libincludes = \
 abcmodulesinc =
 abcmoduleslibs =
 abcmodules = \
-    abc-ip.c \
-    abc-ip.h \
-    abc-wifi.c \
-    abc-wifi.h \
-    abc-iw.c \
-    abc-iw.h
+	abc-ip.c \
+	abc-ip.h \
+	abc-wifi.c \
+	abc-wifi.h \
+	abc-iw.c \
+	abc-iw.h
 
 if USE_NETWORK_MANAGER
 # conditionally enable NM and DBUS_*
