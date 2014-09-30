@@ -98,11 +98,11 @@ enum abc_send_type {
     ABC_SEND_TYPE_REPLY,     /* send a mgmt-type reply */
     ABC_SEND_TYPE_QUEUE      /* send queued messages */
 };
-static char my_beacon_rnonce [NONCE_SIZE];
-static char my_beacon_snonce [NONCE_SIZE];
-static char other_beacon_snonce [NONCE_SIZE];
-static char other_beacon_rnonce [NONCE_SIZE];
-static char zero_nonce [NONCE_SIZE];
+static unsigned char my_beacon_rnonce [NONCE_SIZE];
+static unsigned char my_beacon_snonce [NONCE_SIZE];
+static unsigned char other_beacon_snonce [NONCE_SIZE];
+static unsigned char other_beacon_rnonce [NONCE_SIZE];
+static unsigned char zero_nonce [NONCE_SIZE];
 
 /** array of broadcast interface types (wifi, ethernet, ...) */
 static abc_iface * iface_types[] = {
@@ -205,7 +205,7 @@ static void send_beacon (int awake_ms)
                NULL, 0, NULL, 0, NULL);
 
   mp->mgmt_type = ALLNET_MGMT_BEACON;
-  random_bytes (my_beacon_rnonce, NONCE_SIZE);
+  random_bytes ((char *)my_beacon_rnonce, NONCE_SIZE);
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   writeb64u (mbp->awake_time,
              ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
@@ -237,7 +237,7 @@ static void make_beacon_reply (char * buffer, int bsize)
 
   mp->mgmt_type = ALLNET_MGMT_BEACON_REPLY;
   memcpy (mbrp->receiver_nonce, other_beacon_rnonce, NONCE_SIZE);
-  random_bytes (other_beacon_snonce, NONCE_SIZE);
+  random_bytes ((char *)other_beacon_snonce, NONCE_SIZE);
   memcpy (mbrp->sender_nonce, other_beacon_snonce, NONCE_SIZE);
 }
 
