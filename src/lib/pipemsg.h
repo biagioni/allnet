@@ -13,7 +13,7 @@
  * in case of timeout, and -1 in case of error, including the pipe
  * no longer being usable. */
 
-extern int send_pipe_message (int pipe, char * message, int mlen, int priority);
+extern int send_pipe_message (int pipe, const char * message, int mlen, int priority);
 
 /* same as send_pipe_message, but frees the memory referred to by message */
 extern int send_pipe_message_free (int pipe, char * message, int mlen,
@@ -23,11 +23,11 @@ extern int send_pipe_message_free (int pipe, char * message, int mlen,
  * delay when sending multiple times in close succession on a socket.
  * messages are not freed */
 extern int send_pipe_multiple (int pipe, int num_messages,
-                               char ** messages, int * mlens, int * priorities);
+                               const char ** messages, const int * mlens, const int * priorities);
 /* same, but messages are freed */
 extern int send_pipe_multiple_free (int pipe, int num_messages,
-                                    char ** messages, int * mlens,
-                                    int * priorities);
+                                    char ** messages, const int * mlens,
+                                    const int * priorities);
 
 /* receives the message into a buffer it allocates for the purpose. */
 /* the caller is responsible for freeing the message buffer. */

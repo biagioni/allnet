@@ -74,7 +74,7 @@ int queue_total_bytes ()
 }
 
 static struct queue_element *
-  new_element (char * value, int size, int priority,
+  new_element (const char * value, int size, int priority,
                struct queue_element * prev, struct queue_element * next)
 {
   int total_size = size + sizeof (struct queue_element);
@@ -92,7 +92,7 @@ static struct queue_element *
   return result;
 }
 
-void queue_add (char * value, int size, int priority)
+void queue_add (const char * value, int size, int priority)
 {
   if (! make_room (size, priority)) {
     printf ("unable to add element of size %d, max size %d\n", size, max_size);

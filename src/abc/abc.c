@@ -315,24 +315,24 @@ static void send_pending (enum abc_send_type type, int size, char * message)
  * that can be sent if we have been granted permission to send that many bytes.
  * If there is nothing to send, sets *send_type to ABC_SEND_TYPE_NONE
  */
-static int handle_beacon (char * message, int msize,
+static int handle_beacon (const char * message, int msize,
                           struct timeval ** beacon_deadline,
                           struct timeval * time_buffer,
                           struct timeval * quiet_end,
                           enum abc_send_type * send_type, int * send_size,
                           char * send_message, int quiet)
 {
+  const struct allnet_header * hp = (const struct allnet_header *) message;
   *send_type = 0;  /* don't send anything unless we say otherwise */
-  struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type != ALLNET_TYPE_MGMT)
     return 0;
   if (msize < ALLNET_MGMT_HEADER_SIZE (hp->transport))
     return 0;
   if (quiet)
     return 1;
-  struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
-  char * beaconp = message + ALLNET_MGMT_HEADER_SIZE (hp->transport);
+  const struct allnet_mgmt_header * mp =
+    (const struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
+  const char * beaconp = message + ALLNET_MGMT_HEADER_SIZE (hp->transport);
 
   switch (mp->mgmt_type) {
   case ALLNET_MGMT_BEACON:
@@ -340,7 +340,7 @@ static int handle_beacon (char * message, int msize,
     /* TODO: only reply if we have something to send */
     if (beacon_state == BEACON_REPLY_SENT /* && is_before (*beacon_deadline) // is implied */)
       return 1;
-    struct allnet_mgmt_beacon * mbp = (struct allnet_mgmt_beacon *) beaconp;
+    const struct allnet_mgmt_beacon * mbp = (const struct allnet_mgmt_beacon *) beaconp;
 
     /* compute when to send the reply */
     struct timeval now;
@@ -402,8 +402,8 @@ static int handle_beacon (char * message, int msize,
 
   case ALLNET_MGMT_BEACON_GRANT:
   {
-    struct allnet_mgmt_beacon_grant * mbgp =
-      (struct allnet_mgmt_beacon_grant *) beaconp;
+    const struct allnet_mgmt_beacon_grant * mbgp =
+      (const struct allnet_mgmt_beacon_grant *) beaconp;
     /* make sure this is a grant for something we signed up for */
     if (memcmp (mbgp->receiver_nonce, other_beacon_rnonce, NONCE_SIZE) == 0) {
       if (memcmp (mbgp->sender_nonce, other_beacon_snonce, NONCE_SIZE) == 0) {
@@ -437,7 +437,7 @@ static int handle_beacon (char * message, int msize,
   }
 }
 
-static void remove_acked (char * ack)
+static void remove_acked (const char * ack)
 {
   char hashed_ack [MESSAGE_ID_SIZE];
   sha512_bytes (ack, MESSAGE_ID_SIZE, hashed_ack, MESSAGE_ID_SIZE);
@@ -460,24 +460,24 @@ static void remove_acked (char * ack)
   }
 }
 
-static void remove_acks (char * message, char * end)
+static void remove_acks (const char * message, const char * end)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type == ALLNET_TYPE_ACK) {
-    char * ack;
+    const char * ack;
     for (ack = message + ALLNET_SIZE (hp->transport);
            ack < end; ack += MESSAGE_ID_SIZE)
       remove_acked (ack);
   }
 }
 
-static void handle_ad_message (char * message, int msize, int priority)
+static void handle_ad_message (const char * message, int msize, int priority)
 {
   queue_add (message, msize, priority);
   remove_acks (message, message + msize);
 }
 
-static void handle_network_message (char * message, int msize, int ad_pipe,
+static void handle_network_message (const char * message, int msize, int ad_pipe,
                                     struct timeval ** beacon_deadline,
                                     struct timeval * time_buffer,
                                     struct timeval * quiet_end,
