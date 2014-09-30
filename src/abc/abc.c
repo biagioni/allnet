@@ -422,17 +422,9 @@ static int handle_beacon (char * message, int msize,
 printf ("sending %lld (%d/%lld) bytes, max time is %lld ns, %lld b/s\n",
 bytes_to_send, queue_total_bytes (), may_send, send_ns, bits_per_s);
         *send_size = bytes_to_send;
-#if 0
-        wait_until (quiet_end);  /* but only after a prior sender finishes */
-        char * next = NULL;
-        int nsize;
-        int priority;
-        while (queue_iter_next (&next, &nsize, &priority)) {
-          if (sendto (sockfd, next, nsize, MSG_DONTWAIT, bc_addr, alen) < nsize)
-            perror ("beacon data sendto");
-        }
-#endif /* 0 */
-      } else { /* granted to somebody else, so start listening again */
+
+      } else {
+        /* granted to somebody else, so start listening again */
         /* should keep quiet while they send */
         beacon_state = BEACON_NONE;
         update_quiet (quiet_end, readb64u (mbgp->send_time) / 1000LL);
