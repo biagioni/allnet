@@ -598,9 +598,9 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
     iface->iface_set_enabled_cb (1);
     gettimeofday (&if_on, NULL);
 
-    unsigned long long ds = delta_us (&if_on, &if_off) / (1000LLU * 1000LLU);
-    if_cycles_skiped = ds / BASIC_CYCLE_SEC;
-    printf ("skipped %d\n", if_cycles_skiped);
+    unsigned long long dms = delta_us (&if_on, &if_off) / 1000LLU;
+    if_cycles_skiped = dms / (1000 * BASIC_CYCLE_SEC);
+    printf ("took %llums, skipped %d cycle(s)\n", dms, if_cycles_skiped);
   }
 
   gettimeofday (&start, NULL);
