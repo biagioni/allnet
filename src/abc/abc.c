@@ -560,6 +560,11 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     }
     if ((beacon_deadline != NULL) && (! is_before (beacon_deadline))) {
       /* we have not been granted permission to send, allow new beacons */
+#ifdef DEBUG_PRINT
+      struct timeval now;
+      gettimeofday (&now, NULL);
+      printf ("abc: missed beacon-grant by %lldms\n", delta_us (&now, beacon_deadline) / 1000);
+#endif /* DEBUG_PRINT */
       beacon_deadline = NULL;
       clear_nonces (0, 1); /* we have not been granted permission to send */
     }
