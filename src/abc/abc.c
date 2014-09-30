@@ -326,7 +326,7 @@ static int handle_beacon (char * message, int msize,
     return 1;
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
-  char * beaconp = message + ALLNET_BEACON_SIZE (hp->transport);
+  char * beaconp = message + ALLNET_MGMT_HEADER_SIZE (hp->transport);
   if (mp->mgmt_type == ALLNET_MGMT_BEACON) {
     if (*beacon_deadline != NULL)  /* already waiting for another grant */
       return 1;
