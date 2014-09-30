@@ -338,7 +338,6 @@ static int handle_beacon (char * message, int msize,
   case ALLNET_MGMT_BEACON:
   {
     /* TODO: only reply if we have something to send */
-    printf ("got beacon, state: %d\n", beacon_state);
     if (beacon_state == BEACON_REPLY_SENT /* && is_before (*beacon_deadline) // is implied */)
       return 1;
     struct allnet_mgmt_beacon * mbp = (struct allnet_mgmt_beacon *) beaconp;
@@ -419,8 +418,6 @@ static int handle_beacon (char * message, int msize,
           bits_per_s * send_ns / (8 * 1000LL * 1000LL * 1000LL);
         if (bytes_to_send > may_send)
           bytes_to_send = may_send;
-printf ("sending %lld (%d/%lld) bytes, max time is %lld ns, %lld b/s\n",
-bytes_to_send, queue_total_bytes (), may_send, send_ns, bits_per_s);
         *send_size = bytes_to_send;
 
       } else {
@@ -516,7 +513,6 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
     int priority;
     int msize = receive_until (quiet_end, &message, &from_fd, &priority, 0);
     if (msize > 0 && is_valid_message (message, msize)) {
-      printf ("handle_quiet: got ad/net msg\n");
       if (from_fd == rpipe)
         handle_ad_message (message, msize, priority);
       else
