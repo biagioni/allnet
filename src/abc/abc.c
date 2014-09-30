@@ -366,7 +366,7 @@ static int handle_beacon (char * message, int msize,
 
     /* create the reply */
     memcpy (other_beacon_rnonce, mbp->receiver_nonce, NONCE_SIZE);
-    *send_type = 1;
+    *send_type = ABC_SEND_TYPE_REPLY;
     *send_size = ALLNET_MGMT_HEADER_SIZE (0) +
                  sizeof (struct allnet_mgmt_beacon_reply);
     /* make the beacon which will be sent by caller (handle_until()) */
@@ -409,7 +409,7 @@ static int handle_beacon (char * message, int msize,
     if (memcmp (mbgp->receiver_nonce, other_beacon_rnonce, NONCE_SIZE) == 0) {
       if (memcmp (mbgp->sender_nonce, other_beacon_snonce, NONCE_SIZE) == 0) {
         /* granted to me, so send now */
-        *send_type = 2;   /* send from the queue */
+        *send_type = ABC_SEND_TYPE_QUEUE;   /* send from the queue */
         unsigned long long int bytes_to_send = queue_total_bytes ();
         unsigned long long int send_ns = readb64u (mbgp->send_time);
         /* bytes/second = bits/second / 8
