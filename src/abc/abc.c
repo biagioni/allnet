@@ -327,8 +327,11 @@ static int handle_beacon (char * message, int msize,
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   char * beaconp = message + ALLNET_MGMT_HEADER_SIZE (hp->transport);
-  if (mp->mgmt_type == ALLNET_MGMT_BEACON) {
-    if (*beacon_deadline != NULL)  /* already waiting for another grant */
+
+  switch (mp->mgmt_type) {
+  case ALLNET_MGMT_BEACON:
+  {
+    if (*beacon_deadline != NULL) /* already waiting for another grant */
       return 1;
     if (memcmp (other_beacon_rnonce, zero_nonce, NONCE_SIZE) != 0) /* same */
       return 1;
@@ -367,8 +370,10 @@ static int handle_beacon (char * message, int msize,
     gettimeofday (*beacon_deadline, NULL);
     add_us (*beacon_deadline, BEACON_MAX_COMPLETION_US);
     return 1;
+  } /* case ALLNET_MGMT_BEACON */
 
-  } else if (mp->mgmt_type == ALLNET_MGMT_BEACON_REPLY) {
+  case ALLNET_MGMT_BEACON_REPLY:
+  {
     struct allnet_mgmt_beacon_reply * mbrp =
       (struct allnet_mgmt_beacon_reply *) beaconp;
     /* make sure we are in the right state.  We should have sent a beacon
@@ -388,7 +393,10 @@ static int handle_beacon (char * message, int msize,
     /* make the beacon grant which will be sent by caller (handle_until()) */
     make_beacon_grant (send_message, ALLNET_MTU, BEACON_MS * 1000LL * 1000LL);
     return 1;
-  } else if (mp->mgmt_type == ALLNET_MGMT_BEACON_GRANT) {
+  } /* case ALLNET_MGMT_BEACON_REPLY */
+
+  case ALLNET_MGMT_BEACON_GRANT:
+  {
     struct allnet_mgmt_beacon_grant * mbgp =
       (struct allnet_mgmt_beacon_grant *) beaconp;
     /* make sure this is a grant for something we signed up for */
@@ -426,9 +434,11 @@ bytes_to_send, queue_total_bytes (), may_send, send_ns, bits_per_s);
       *beacon_deadline = NULL;
     }
     return 1;
+  } /* case ALLNET_MGMT_BEACON_GRANT */
+
+  default:
+    return 0; /* not a beacon packet */
   }
-  /* else: not a beacon packet */
-  return 0;
 }
 
 static void remove_acked (char * ack)
