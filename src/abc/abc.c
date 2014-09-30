@@ -387,7 +387,7 @@ static int handle_beacon (char * message, int msize,
       return 1;
     /* grant this sender exclusive permission to send */
     memcpy (my_beacon_snonce, mbrp->sender_nonce, NONCE_SIZE);
-    *send_type = 1;
+    *send_type = ABC_SEND_TYPE_REPLY;
     *send_size = ALLNET_MGMT_HEADER_SIZE (0) +
                  sizeof (struct allnet_mgmt_beacon_grant);
     /* make the beacon grant which will be sent by caller (handle_until()) */
