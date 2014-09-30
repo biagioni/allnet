@@ -71,7 +71,7 @@
 /* a beacon time is 1/100 of a basic cycle */
 #define	BEACON_MS		(BASIC_CYCLE_SEC * 1000 / 100)
 /* maximum amount of time to wait for a beacon grant */
-#define BEACON_MAX_COMPLETION_US	2000    /* 0.002s */
+#define BEACON_MAX_COMPLETION_US	100000    /* 0.1s */
 
 /** exit flag set by TERM signal. Set by term_handler. */
 static volatile sig_atomic_t term = 0;
