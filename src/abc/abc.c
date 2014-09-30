@@ -98,6 +98,9 @@ enum abc_send_type {
     ABC_SEND_TYPE_REPLY,     /* send a mgmt-type reply */
     ABC_SEND_TYPE_QUEUE      /* send queued messages */
 };
+static enum { BEACON_NONE, BEACON_SENT, BEACON_REPLY_SENT, BEACON_GRANT_SENT }
+  beacon_state = BEACON_NONE,
+  pending_beacon_state = BEACON_NONE;
 static unsigned char my_beacon_rnonce [NONCE_SIZE];
 static unsigned char my_beacon_snonce [NONCE_SIZE];
 static unsigned char other_beacon_snonce [NONCE_SIZE];
@@ -275,6 +278,9 @@ static void send_pending (enum abc_send_type type, int size, char * message)
       if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
           BC_ADDR (iface), sizeof (sockaddr_t)) < size)
         perror ("sendto for type 1");
+      else
+        beacon_state = pending_beacon_state;
+      pending_beacon_state = BEACON_NONE;
       break;
 
     case ABC_SEND_TYPE_QUEUE:
@@ -331,9 +337,9 @@ static int handle_beacon (char * message, int msize,
   switch (mp->mgmt_type) {
   case ALLNET_MGMT_BEACON:
   {
-    if (*beacon_deadline != NULL) /* already waiting for another grant */
-      return 1;
-    if (memcmp (other_beacon_rnonce, zero_nonce, NONCE_SIZE) != 0) /* same */
+    /* TODO: only reply if we have something to send */
+    printf ("got beacon, state: %d\n", beacon_state);
+    if (beacon_state == BEACON_REPLY_SENT /* && is_before (*beacon_deadline) // is implied */)
       return 1;
     struct allnet_mgmt_beacon * mbp = (struct allnet_mgmt_beacon *) beaconp;
 
@@ -365,6 +371,7 @@ static int handle_beacon (char * message, int msize,
                  sizeof (struct allnet_mgmt_beacon_reply);
     /* make the beacon which will be sent by caller (handle_until()) */
     make_beacon_reply (send_message, ALLNET_MTU);
+    pending_beacon_state = BEACON_REPLY_SENT;
 
     *beacon_deadline = time_buffer;
     gettimeofday (*beacon_deadline, NULL);
@@ -379,11 +386,10 @@ static int handle_beacon (char * message, int msize,
     /* make sure we are in the right state.  We should have sent a beacon
      * (my_beacon_rnonce not zero) matching this reply, but we should not
      * yet have sent a grant (my_beacon_snonce should be zero) */
-    if (memcmp (my_beacon_rnonce, zero_nonce, NONCE_SIZE) == 0)
+    if (beacon_state >= BEACON_GRANT_SENT)
       return 1;
+
     if (memcmp (mbrp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE) != 0)
-      return 1;
-    if (memcmp (my_beacon_snonce, zero_nonce, NONCE_SIZE) != 0)
       return 1;
     /* grant this sender exclusive permission to send */
     memcpy (my_beacon_snonce, mbrp->sender_nonce, NONCE_SIZE);
@@ -428,6 +434,7 @@ bytes_to_send, queue_total_bytes (), may_send, send_ns, bits_per_s);
 #endif /* 0 */
       } else { /* granted to somebody else, so start listening again */
         /* should keep quiet while they send */
+        beacon_state = BEACON_NONE;
         update_quiet (quiet_end, readb64u (mbgp->send_time) / 1000LL);
       }
       clear_nonces (0, 1);      /* be open to new beacon messages */
@@ -575,8 +582,9 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
       gettimeofday (&now, NULL);
       printf ("abc: missed beacon-grant by %lldms\n", delta_us (&now, beacon_deadline) / 1000);
 #endif /* DEBUG_PRINT */
+      beacon_state = BEACON_NONE;
       beacon_deadline = NULL;
-      clear_nonces (0, 1); /* we have not been granted permission to send */
+      clear_nonces (0, 1);
     }
   }
 }
@@ -623,10 +631,12 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
   finish.tv_usec = 0;
   beacon_interval (&beacon_time, &beacon_stop, &start, &finish, BEACON_MS);
 
+  beacon_state = BEACON_NONE;
   clear_nonces (1, 1);   /* start a new cycle */
 
   handle_until (&beacon_time, quiet_end, rpipe, wpipe);
   send_beacon (BEACON_MS);
+  beacon_state = BEACON_SENT;
   handle_until (&beacon_stop, quiet_end, rpipe, wpipe);
   /* clear_nonces (1, 0);  -- if we stay on, denying beacon replies is
    * not really helpful.  If we are off, we will get no beacon replies
