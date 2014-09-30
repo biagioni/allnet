@@ -11,10 +11,12 @@ libincludes = \
 abcmodulesinc =
 abcmoduleslibs =
 abcmodules = \
-    abc-wifi.c \
-    abc-wifi.h \
-    abc-iw.c \
-    abc-iw.h
+	abc-ip.c \
+	abc-ip.h \
+	abc-wifi.c \
+	abc-wifi.h \
+	abc-iw.c \
+	abc-iw.h
 
 if USE_NETWORK_MANAGER
 # conditionally enable NM and DBUS_*
@@ -26,11 +28,11 @@ endif
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = $(ALLNET_BINDIR)/abc
 lib_LTLIBRARIES = liballnet-abc-0.3.la
-liballnet_abc_0_3_la_SOURCES = abc.c abc-iface.h ${abcmodules} ${libincludes}
+liballnet_abc_0_3_la_SOURCES = abc.c abc-iface.c abc-iface.h ${abcmodules} ${libincludes}
 liballnet_abc_0_3_la_CFLAGS = -DNO_MAIN_FUNCTION -I$(ALLNET_SRCDIR) ${abcmodulesinc}
 liballnet_abc_0_3_la_LDFLAGS = -version-info 0:3:0 $(ALLNET_LT_LDFLAGS) ${abcmoduleslibs}
 liballnet_abc_0_3_la_LIBADD = $(abcmodulelibs) $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
-__ALLNET_BINDIR__abc_SOURCES = abc.c abc-iface.h ${abcmodules} ${libincludes}
+__ALLNET_BINDIR__abc_SOURCES = abc.c abc-iface.c abc-iface.h ${abcmodules} ${libincludes}
 __ALLNET_BINDIR__abc_CFLAGS = -I$(ALLNET_SRCDIR) ${abcmodulesinc}
 __ALLNET_BINDIR__abc_LDFLAGS = ${abcmoduleslibs}
 
