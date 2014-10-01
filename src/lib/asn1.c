@@ -624,8 +624,8 @@ int wp_rsa_read_key_from_file (const char * fname, int * nbits,
     printf ("ans1.c: file %s too large\n", fname);
     return 0;
   }
-  printf ("wp_rsa_read_key_from_file read %d bytes\n", nread);
 #ifdef DEBUG_PRINT
+  printf ("wp_rsa_read_key_from_file read %d bytes\n", nread);
 #endif /* DEBUG_PRINT */
   return wp_rsa_read_key_from_bytes (wp_buffer, nread, nbits, key);
 }

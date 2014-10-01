@@ -128,7 +128,7 @@ static int read_all_or_none (int fd, char * buffer, int bsize)
   return total;
 }
 
-#define PREDICTABLE_RANDOM  /* used for repeatability when debugging */
+/* #define PREDICTABLE_RANDOM   used for repeatability when debugging */
 static void init_random (char * buffer, int bsize, int pure_random)
 {
 #ifdef PREDICTABLE_RANDOM
@@ -459,58 +459,46 @@ static void generate_prime (int nbits, uint64_t * bits, int init,
  */
 }
 
-#ifdef TEST_AGAINST_BN_LIBRARY
-#include <openssl/bn.h>
-#endif /* TEST_AGAINST_BN_LIBRARY */
-
-/* keep only the low nbits of the product of two nbits numbers */
-static void multiply_low_bits (int nbits, uint64_t * result,
-                               const uint64_t * n1, const uint64_t * n2)
-{
-  rsa_double product;
-  wp_multiply (nbits * 2, product, nbits, n1, n2);
-  int offset = NUM_WORDS (nbits);
-  wp_copy (nbits, result, product + offset);
-}
-
 /* 2014/09/01: from
  * https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm#Modular_integers
+        function inverse(a, n)
+            t := 0;     newt := 1;    
+            r := n;     newr := a;    
+            while newr ≠ 0
+                quotient := r div newr
+                (t, newt) := (newt, t - quotient * newt) 
+                (r, newr) := (newr, r - quotient * newr)
+            if r > 1 then return "a is not invertible"
+            if t < 0 then t := t + n
+            return t
  */
 static int inverse_mod (int nbits, const uint64_t * value,
                         const uint64_t * mod, uint64_t * result)
 {
-printf ("inverse_mod (%d, %s, ", nbits, wp_itox (nbits, value));
-printf ("%s)\n", wp_itox (nbits, mod));
+#ifdef DEBUG_PRINT
+  printf ("inverse_mod (%d, %s, ", nbits, wp_itox (nbits, value));
+  printf ("%s)\n", wp_itox (nbits, mod));
+#endif /* DEBUG_PRINT */
   rsa_int t, newt, r, newr;
   wp_init (nbits, t, 0);
   wp_init (nbits, newt, 1);
   wp_copy (nbits, r, mod);
   wp_copy (nbits, newr, value);
   int ndouble = nbits * 2;
-#ifdef TEST_AGAINST_BN_LIBRARY
-  char tstorage [WP_RSA_MAX_KEY_BYTES];
-  rsa_int_to_bytes (nbits, tstorage, t);
-  BIGNUM * bnt = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
-  rsa_int_to_bytes (nbits, tstorage, newt);
-  BIGNUM * bnnewt = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
-  rsa_int_to_bytes (nbits, tstorage, r);
-  BIGNUM * bnr = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
-  rsa_int_to_bytes (nbits, tstorage, newr);
-  BIGNUM * bnnewr = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
-  BN_CTX * ctx = BN_CTX_new ();
-#endif /* TEST_AGAINST_BN_LIBRARY */
-rsa_int oldr;
-wp_copy (nbits, oldr, r);
-uint64_t count = 1;
+  rsa_double moddouble;
+  wp_extend (ndouble, moddouble, nbits, mod);
+  uint64_t debug_count = 1;
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
   while (! wp_is_zero (nbits, newr)) {
-/* if (wp_compare (nbits, r, newr) <= 0) */ {  printf ("%" PRId64 ": ", count);
-    printf ("t %s -> ", wp_itox (nbits, t));
-    printf ("%s, ", wp_itox (nbits, newt));
-    printf ("r %s -> ", wp_itox (nbits, r));
-    printf ("%s\n", wp_itox (nbits, newr));
-printf ("  oldr %s\n", wp_itox (nbits, oldr));
-}
-count++;
+    if (wp_compare (nbits, r, newr) <= 0) {
+      printf ("%" PRId64 ": ", debug_count);
+      printf ("t %s -> ", wp_itox (nbits, t));
+      printf ("%s, ", wp_itox (nbits, newt));
+      printf ("r %s -> ", wp_itox (nbits, r));
+      printf ("%s\n", wp_itox (nbits, newr));
+    }
+    debug_count++;
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
     rsa_double div_arg;
@@ -518,80 +506,50 @@ count++;
     uint64_t * qp;
     wp_div (ndouble, div_arg, nbits, newr, &qp, NULL);  /* qp = r / nrewr */
 
-    rsa_int product1;
-    multiply_low_bits (nbits, product1, qp, newt);
+    rsa_double product1;
+    wp_multiply (ndouble, product1, nbits, qp, newt);
+#ifdef DEBUG_PRINT
+    printf ("product1 %s\n", wp_itox (ndouble, product1));
+#endif /* DEBUG_PRINT */
+    /* the product may be greater than mod, so reduce it modulo mod */
+    uint64_t * pm;
+    wp_div (ndouble, product1, nbits, mod, NULL, &pm);
+#ifdef DEBUG_PRINT
+    printf ("productm %s\n", wp_itox (nbits, pm));
+#endif /* DEBUG_PRINT */
     rsa_int x;
-    wp_sub (nbits, x, t, product1);
+    wp_sub (nbits, x, t, pm);
+    if (wp_compare (nbits, t, pm) < 0)   /* t < pm, add mod to x */
+      wp_add (nbits, x, x, mod);
+#ifdef DEBUG_PRINT
+    if (wp_compare (nbits, x, mod) >= 0) {  /* result is negative */
+      printf ("negative result   %s\n", wp_itox (nbits, x));
+      printf ("even after adding %s\n", wp_itox (nbits, mod));
+    exit (1);
+    }
+    printf ("  newt mod n %s\n", wp_itox (nbits, x));
+#endif /* DEBUG_PRINT */
     wp_copy (nbits, t, newt);
     wp_copy (nbits, newt, x);
 
-    rsa_int product2;
-    multiply_low_bits (nbits, product2, qp, newr);
-    rsa_int y;
-    wp_sub (nbits, y, r, product2);
-wp_copy (nbits, oldr, r);
-    wp_copy (nbits, r, newr);
-    wp_copy (nbits, newr, y);
-
-#if 0
-    rsa_double product1;
-    wp_multiply (ndouble, product1, nbits, qp, newt);
-printf ("product1 %s\n", wp_itox (ndouble, product1));
-    rsa_double tfull;
-    wp_extend (ndouble, tfull, nbits, t);
-    rsa_double x;
-    wp_sub (ndouble, x, tfull, product1);
-    wp_copy (nbits, t, newt);
-    wp_shrink (nbits, newt, ndouble, x);
-
+    /* since qp is r / newr and r and newr fit in nbits,
+     * qp * newr = (r / newr) * newr also fits in nbits,
+     * as does r - qp * newr (since r >= newr) */
     rsa_double product2;
     wp_multiply (ndouble, product2, nbits, qp, newr);
+#ifdef DEBUG_PRINT
+    if (! wp_is_zero (nbits, product2)) { /* check product2 fits in nbits */
+      printf ("error: top %d bits of product2 are not all 0\n%s\n",
+              nbits, wp_itox (nbits, product2));
+      exit (1);
+    }
+#endif /* DEBUG_PRINT */
     rsa_double rfull;
     wp_extend (ndouble, rfull, nbits, r);
     rsa_double y;
     wp_sub (ndouble, y, rfull, product2);
-wp_copy (nbits, oldr, r);
     wp_copy (nbits, r, newr);
     wp_shrink (nbits, newr, ndouble, y);
-#endif /* 0 */
-
-#ifdef TEST_AGAINST_BN_LIBRARY
-    BIGNUM * bnq = BN_new ();
-    BN_div (bnq, NULL, bnr, bnnewr, ctx);
-
-    BIGNUM * bnprod = BN_new ();
-    BN_mul (bnprod, bnq, bnnewt, ctx);
-    BIGNUM * bnswap = BN_dup (bnt);
-    bnt = BN_dup (bnnewt);
-    BN_sub (bnnewt, bnswap, bnprod);
-
-    BN_mul (bnprod, bnq, bnnewr, ctx);
-    bnswap = BN_dup (bnr);
-    bnr = BN_dup (bnnewr);
-    BN_sub (bnnewr, bnswap, bnprod);
-    BIGNUM * bnzero = BN_new ();
-    BN_zero (bnzero);
-    if (BN_cmp (bnr, bnzero) < 0) {
-      printf ("r is negative\n");
-      exit (1);
-    }
-    if (BN_cmp (bnnewr, bnzero) < 0) {
-      printf ("newr is negative\n");
-      exit (1);
-    }
-    rsa_int_to_bytes (nbits, tstorage, r);
-    BIGNUM * bntest = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
-    if (BN_cmp (bnr, bntest) != 0) {
-      printf ("r does not match BN r\n%s\n%s", BN_bn2hex (bnr), BN_bn2hex (bntest));
-      exit (1);
-    }
-    rsa_int_to_bytes (nbits, tstorage, newr);
-    bntest = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
-    if (BN_cmp (bnnewr, bntest) != 0) {
-      printf ("newr does not match BN newr\n%s\n%s", BN_bn2hex (bnnewr), BN_bn2hex (bntest));
-      exit (1);
-    }
-#endif /* TEST_AGAINST_BN_LIBRARY */
   }
   rsa_int one;
   wp_init (nbits, one, 1);
@@ -762,12 +720,14 @@ int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
       wp_copy (nhalf, q_candidate, key->q);
       wp_add_int (nhalf, q_candidate, 1);
     } else {
+#ifdef DEBUG_PRINT
       printf ("n %s = ", wp_itox (nbits, key->n));
       printf ("p %s * ", wp_itox (nhalf, key->p));
       printf ("q %s\n", wp_itox (nhalf, key->q));
       printf ("phi %s, ", wp_itox (nbits, phi));
-/*      printf ("e %s, ", wp_itox (nhalf, ehalf)); */
+      printf ("e %s, ", wp_itox (nhalf, ehalf));
       printf ("d %s\n", wp_itox (nbits, key->d));
+#endif /* DEBUG_PRINT */
     }
     count++;
   } while (do_over);
