@@ -145,7 +145,7 @@ static inline int read_big_endian32 (char * array)
           (array [2] & 0xff) <<  8 | (array [3] & 0xff));
 }
 
-static int send_pipe_message_orig (int pipe, char * message, int mlen,
+static int send_pipe_message_orig (int pipe, const char * message, int mlen,
                                    int priority)
 {
   snprintf (log_buf, LOG_SIZE, "warning: send_pipe_message_orig\n");
@@ -244,7 +244,7 @@ notsock_printed = pipe;
   return result;
 }
 
-static int send_header_data (int pipe, char * message, int mlen, int priority)
+static int send_header_data (int pipe, const char * message, int mlen, int priority)
 {
   char stack_packet [HEADER_SIZE + ALLNET_MTU];
   char * packet = stack_packet;
@@ -274,7 +274,7 @@ static int send_header_data (int pipe, char * message, int mlen, int priority)
   return send_buffer (pipe, packet, HEADER_SIZE + mlen, 0);
 }
 
-int send_pipe_message (int pipe, char * message, int mlen, int priority)
+int send_pipe_message (int pipe, const char * message, int mlen, int priority)
 {
   /* avoid SIGPIPE signals when writing to a closed pipe */
   struct sigaction sa;
@@ -294,8 +294,8 @@ int send_pipe_message (int pipe, char * message, int mlen, int priority)
  * delay when sending multiple times in close succession on a socket.
  * (Nagle's delay?).  Each message gets its own header */
 static int send_multiple_packets (int pipe, int num_messages,
-                                  char ** messages, int * mlens,
-                                  int * priorities)
+                                  const char ** messages, const int * mlens,
+                                  const int * priorities)
 {
   if (num_messages <= 0)
     return 0;
@@ -333,7 +333,8 @@ static int send_multiple_packets (int pipe, int num_messages,
  * delay when sending multiple times in close succession on a socket.
  * messages are not freed */
 int send_pipe_multiple (int pipe, int num_messages,
-                        char ** messages, int * mlens, int * priorities)
+                        const char ** messages, const int * mlens,
+                        const int * priorities)
 {
   /* avoid SIGPIPE signals when writing to a closed pipe */
   struct sigaction sa;
@@ -352,9 +353,9 @@ int send_pipe_multiple (int pipe, int num_messages,
 
 /* same, but messages are freed */
 int send_pipe_multiple_free (int pipe, int num_messages,
-                             char ** messages, int * mlens, int * priorities)
+                             char ** messages, const int * mlens, const int * priorities)
 {
-  int r = send_pipe_multiple (pipe, num_messages, messages, mlens, priorities);
+  int r = send_pipe_multiple (pipe, num_messages, (const char **)messages, mlens, priorities);
   int i;
   for (i = 0; i < num_messages; i++)
     free (messages [i]);
