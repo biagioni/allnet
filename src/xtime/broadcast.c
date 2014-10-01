@@ -50,7 +50,7 @@ static void * receive_ignore (void * arg)
 }
 
 static void broadcast (int sock, char * data, int dsize, int hops,
-                       char * key, int ksize,
+                       allnet_rsa_prvkey key,
                        unsigned char * source, int sbits,
                        unsigned char * dest, int dbits)
 {
@@ -61,9 +61,10 @@ static void broadcast (int sock, char * data, int dsize, int hops,
                  ALLNET_SIGTYPE_NONE, source, sbits, dest, dbits, NULL);
   int hsize = ALLNET_SIZE (hp->transport);
   int h2size = sizeof (struct allnet_app_media_header);
-  if (hsize + h2size + dsize + ksize + 2 > ALLNET_MTU) {
+  int rsa_size = allnet_rsa_prvkey_size (key);
+  if (hsize + h2size + dsize + rsa_size + 2 > ALLNET_MTU) {
     printf ("broadcast error: %d + %d + %d + %d + 2 > %d\n", 
-            hsize, h2size, dsize, ksize, ALLNET_MTU);
+            hsize, h2size, dsize, rsa_size, ALLNET_MTU);
     return;
   }
   struct allnet_app_media_header * amhp =
@@ -73,9 +74,9 @@ static void broadcast (int sock, char * data, int dsize, int hops,
   char * dp = buffer + hsize + h2size;
   memcpy (dp, data, dsize);
   int ssize = 0;
-  if ((key != NULL) && (ksize > 0)) {
+  if (rsa_size > 0) {
     char * sig;
-    ssize = allnet_sign (dp, dsize, key, ksize, &sig);
+    ssize = allnet_sign (dp, dsize, key, &sig);
     if (ssize > 0) {
       int size = hsize + dsize + ssize + 2;
       if (size > ALLNET_MTU) {
@@ -138,8 +139,7 @@ int main (int argc, char ** argv)
     char * eol = rindex (buffer, '\n');
     if ((eol != NULL) && (strlen (buffer) == 1 + (eol - buffer)))
        *eol = '\0';
-    broadcast (sock, buffer, strlen (buffer), hops,
-               key->priv_key, key->priv_klen,
+    broadcast (sock, buffer, strlen (buffer), hops, key->prv_key,
                key->address, ADDRESS_BITS, key->address, ADDRESS_BITS);
   }
   return 0;

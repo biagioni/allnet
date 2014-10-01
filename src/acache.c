@@ -1413,7 +1413,7 @@ static void main_loop (int sock)
   int max_msg_size;
   int ack_fd;
   int max_acks;
-  int local_caching;
+  int local_caching = 0;
   init_acache (&msg_fd, &max_msg_size, &ack_fd, &max_acks, &local_caching);
   while (1) {
     char * message;

@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-m4_define([allnet_api_version], [0.3])
+m4_define([allnet_api_version], [3.1])
 
 AC_PREREQ([2.68])
 AC_INIT([allnet],[allnet_api_version],[esb@hawaii.edu])
@@ -26,10 +26,54 @@ AC_PROG_CC
 AC_PROG_LN_S
 
 # Checks for libraries.
-PKG_CHECK_MODULES(CRYPTO, [openssli >= 1.0], [], [
-  CRYPTO_LIBS=-lcrypto
-  CRYPTO_CFLAGS=
-])
+
+# openssl check taken from
+# http://cgit.sukimashita.com/libimobiledevice.git/tree/configure.ac
+AC_ARG_ENABLE([openssl],
+            [AS_HELP_STRING([--disable-openssl],
+            [Do not look for OpenSSL])],
+            [use_openssl=no],
+            [use_openssl=yes])
+pkg_req_openssl="openssl >= 1.0"
+PKG_CHECK_MODULES(openssl, $pkg_req_openssl, have_openssl=yes, have_openssl=no)
+if test "x$have_openssl" = "xyes"; then
+  if test "x$use_openssl" != "xyes"; then
+    enable_openssl=no
+    echo "*** Note: OpenSSL support explicitly disabled ***"
+  else
+    enable_openssl=yes
+  fi
+else
+  if test "x$use_openssl" == "xyes" -a "x$have_openssl" != "xyes"; then
+    AC_MSG_ERROR([OpenSSL support explicitly requested but OpenSSL could not be found])
+  fi
+fi
+if test "x$enable_openssl" = "xyes"; then
+  AC_DEFINE(HAVE_OPENSSL, 1, [Define if you have OpenSSL support])
+  AC_SUBST(openssl_CFLAGS)
+  AC_SUBST(openssl_LIBS)
+  ssl_provider="OpenSSL";
+  ssl_requires="$pkg_req_openssl"
+  AC_SUBST(ssl_requires)
+  CFLAGS+=" -DHAVE_OPENSSL"
+  LDFLAGS+=" -lcrypto"
+# else
+#   pkg_req_gnutls="gnutls >= 2.2.0"
+#   pkg_req_libtasn1="libtasn1 >= 1.1"
+#   PKG_CHECK_MODULES(libgnutls, $pkg_req_gnutls)
+#   AC_CHECK_LIB(gcrypt, gcry_control, [AC_SUBST(libgcrypt_LIBS,[-lgcrypt])], [AC_MSG_ERROR([libgcrypt is required to build libimobiledevice with GnuTLS])])
+#   PKG_CHECK_MODULES(libtasn1, $pkg_req_libtasn1)
+#   ssl_provider="GnuTLS"
+#   ssl_requires="$pkg_req_gnutls $pkg_req_libtasn1"
+#   AC_SUBST(ssl_requires)
+fi
+
+# PKG_CHECK_MODULES(OPENSSL, [openssli >= 1.0], [
+#   OPENSSL_LIBS=-lcrypto
+#   OPENSSL_CFLAGS=-DALLNET_USES_OPENSSL
+# ], [
+#   CFLAGS+=" -DALLNET_DOES_NOT_USE_OPENSSL"
+# ])
 
 AC_ARG_ENABLE(network-manager,
   AC_HELP_STRING([--disable-network-manager],
@@ -57,6 +101,7 @@ elif test "x$enable_network_manager" = "xyes"; then
 fi
 if test "x$enable_network_manager" = "xyes"; then
   AC_DEFINE(USE_NETWORK_MANAGER, [], [Enable NetworkManager support])
+  LDFLAGS+=" -ldbus-1"
 fi
 AM_CONDITIONAL(USE_NETWORK_MANAGER, test "x$enable_network_manager" = "xyes")
 
@@ -133,6 +178,7 @@ echo "  Prefix                 : ${prefix}"
 echo "  Compiler flags         : ${CFLAGS}"
 echo "  NetworkManager support : ${enable_network_manager}"
 echo "  Build User Interface   : ${build_gui}"
+echo "  Openssl                : ${enable_openssl}"
 if test "x$build_gui" = "xno"; then
 echo "  Install precompiled UI : ${install_precompiled_gui} (only available when Build User Interface is \"no\")"
 fi

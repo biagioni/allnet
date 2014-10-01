@@ -12,7 +12,6 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <openssl/rand.h>
 
 #include "app_util.h"
 #include "packet.h"
@@ -101,8 +100,7 @@ static void seed_rng ()
   if (fd < 0)
     return;
   int isize = sizeof (unsigned int);
-  /* SSL won't need any more than 128, initstate can't use more than isize */
-  char buffer [128 + 4];
+  char buffer [sizeof (unsigned int)];
   int count = 0;
   while (count < sizeof (buffer)) {
     int n = read (fd, buffer + count, 1);
@@ -116,8 +114,6 @@ static void seed_rng ()
     unsigned int seed = readb32 (buffer);
     initstate (seed, state, sizeof (state));
   }
-  if (count > isize)
-    RAND_seed (buffer + isize, count - isize);
 /* if (count > 0) printf ("added %d bytes to entropy pool\n", count); */
 }
 

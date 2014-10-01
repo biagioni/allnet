@@ -26,8 +26,10 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
 #ifdef DEBUG_PRINT
   printf ("send_key ((%p, %d), %p)\n", key->pub_key, key->pub_klen, return_key);
 #endif /* DEBUG_PRINT */
-  char * data = key->pub_key;
-  int dlen = key->pub_klen;
+  int dlen = allnet_rsa_pubkey_size (key->pub_key) + 1;
+  char * data = malloc_or_fail (dlen, "keyd send_key");
+  if (! allnet_pubkey_to_raw (key->pub_key, data, dlen))
+    return;
   int type = ALLNET_TYPE_CLEAR;
   int allocated = 0;
 #if 0   /* if want to support, must encrypt allnet_app_media_header */

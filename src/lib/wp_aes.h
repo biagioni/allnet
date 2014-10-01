@@ -21,6 +21,7 @@
  * in, out may be the same or different buffer, both should
  * have WP_AES_BLOCK_SIZE bytes
  * ksize must be 16, 24, or 32 */
-extern void wp_aes_encrypt_block (int ksize, char * key, char * in, char * out);
+extern void wp_aes_encrypt_block (int ksize, const char * key,
+                                  const char * in, char * out);
 
 #endif /* WP_AES_H */

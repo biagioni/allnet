@@ -259,7 +259,7 @@ static void compute_sha512 (const uint64_t * block,
 
 /* the result array must have size SHA512_SIZE */
 /* #define SHA512_SIZE	64 */
-void sha512 (char * input, int bytes, char * result)
+void sha512 (const char * input, int bytes, char * result)
 {
   int i;
   if (bytes < 0) {
@@ -325,7 +325,7 @@ void sha512 (char * input, int bytes, char * result)
 
 /* the result array must have size rsize, only the first rsize bytes
  * of the hash are saved (or the hash is padded with zeros) */
-void sha512_bytes (char * data, int dsize, char * result, int rsize)
+void sha512_bytes (const char * data, int dsize, char * result, int rsize)
 {
   char sha [SHA512_SIZE];
   sha512 (data, dsize, sha);
@@ -447,7 +447,7 @@ static void compute_sha1 (const uint32_t * block,
 }
 
 /* the result array must have size SHA1_SIZE */
-void sha1 (char * data, int dsize, char * result)
+void sha1 (const char * data, int dsize, char * result)
 {
   int i;
   if (dsize < 0) {
@@ -511,7 +511,7 @@ void sha1 (char * data, int dsize, char * result)
 
 /* the result array must have size rsize, only the first rsize bytes
  * of the hash are saved (or the hash is padded with zeros) */
-void sha1_bytes (char * data, int dsize, char * result, int rsize)
+void sha1_bytes (const char * data, int dsize, char * result, int rsize)
 {
   char sha [SHA1_SIZE];
   sha512 (data, dsize, sha);
@@ -523,7 +523,8 @@ void sha1_bytes (char * data, int dsize, char * result, int rsize)
   }
 }
 
-static char * malloc_concat (char * s1, int s1len, char * s2, int s2len)
+static char * malloc_concat (const char * s1, int s1len,
+                             const char * s2, int s2len)
 {
   char * result = malloc (s1len + s2len);
   if (result == NULL) {
@@ -537,7 +538,8 @@ static char * malloc_concat (char * s1, int s1len, char * s2, int s2len)
 }
 
 /* the result array must have size SHA512_SIZE */
-void sha512hmac (char * data, int dsize, char * key, int ksize, char * result)
+void sha512hmac (const char * data, int dsize, const char * key, int ksize,
+                 char * result)
 {
   char key_copy [SHA512_BLOCK_SIZE];
   bzero (key_copy, sizeof (key_copy));

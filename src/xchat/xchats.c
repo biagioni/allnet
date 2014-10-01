@@ -115,7 +115,7 @@ int main (int argc, char ** argv)
     if ((argc > 2) && (nkeys > 0)) {
       int max_key = 0;
       for (i = 0; i < nkeys; i++) {
-        char * key;
+        allnet_rsa_prvkey key;
         int ksize = get_my_privkey (keys [i], &key);
         if (ksize > max_key)
           max_key = ksize;

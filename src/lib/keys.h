@@ -11,6 +11,7 @@
 #define ALLNET_KEYS_H
 
 #include "packet.h"		/* ADDRESS_SIZE */
+#include "crypt_sel.h"		/* allnet_rsa_prvkey/pubkey */
 
 typedef int keyset;  /* opaque type, do not access directly */
 
@@ -61,9 +62,9 @@ extern int set_contact_remote_addr (keyset k, int nbits,
 /* if successful returns the key length and sets *key to point to
  * statically allocated storage for the key (do not modify in any way)
  * if not successful, returns 0 */
-extern unsigned int get_contact_pubkey (keyset k, char ** key);
-extern unsigned int get_my_pubkey (keyset k, char ** key);
-extern unsigned int get_my_privkey (keyset k, char ** key);
+extern unsigned int get_contact_pubkey (keyset k, allnet_rsa_pubkey * key);
+extern unsigned int get_my_pubkey      (keyset k, allnet_rsa_pubkey * key);
+extern unsigned int get_my_privkey     (keyset k, allnet_rsa_prvkey * key);
 /* returns the number of bits in the address, 0 if none */
 /* address must have length at least ADDRESS_SIZE */
 extern unsigned int get_local (keyset k, unsigned char * address);
@@ -116,7 +117,7 @@ extern void delete_lang_bits (char * key);
 
 /* useful, e.g. for requesting a key.  Returns the public key size. */
 /* pubkey and privkey should be free'd when done */
-extern int get_temporary_key (char ** pubkey, char ** privkey, int * privksize);
+extern int get_temporary_key (char ** pubkey, allnet_rsa_prvkey * prvkey);
 
 /* verifies that a key obtained by a key exchange matches the ahra */
 /* the default lang and bits are used if they are not part of the address */
@@ -129,12 +130,11 @@ struct bc_key_info {
      /* the AllNet address associated with this key */
   unsigned char address [ADDRESS_SIZE];
   char * identifier;                /* the sender associated with this key */
-  int pub_klen;
-  char * pub_key;                   /* in a format suitable for sending */
+  allnet_rsa_pubkey pub_key;        /* in a format suitable for encrypting */
   /* the remainder of the information is only valid for my keys.
-   * for keys that belong to others, priv_klen will be zero */
-  int priv_klen;
-  char * priv_key;                  /* in a format suitable for decrypting */
+   * for keys that belong to others, has_priv will be zero */
+  int has_private;
+  allnet_rsa_prvkey prv_key;        /* in a format suitable for decrypting */
 };
 
 /* if successful returns the number of keys and sets *keys to point to

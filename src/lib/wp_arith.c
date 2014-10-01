@@ -63,7 +63,7 @@ static void times_power2 (int nbits, uint64_t * n, int power2)
     wp_shift_left (nbits, n);
 }
 
-void wp_from_bytes (int nbits, uint64_t * n, int dsize, char * data)
+void wp_from_bytes (int nbits, uint64_t * n, int dsize, const char * data)
 {
   int nbytes = nbits / 8;
   wp_init (nbits, n, 0);
@@ -72,6 +72,14 @@ void wp_from_bytes (int nbits, uint64_t * n, int dsize, char * data)
     times_power2 (nbits, n, 8);
     wp_add_int (nbits, n, data [i] & 0xff);
   }
+}
+
+void wp_to_bytes (int nbits, const uint64_t * n, int dsize, char * data)
+{
+  int nbytes = nbits / 8;
+  int i;
+  for (i = 0; (i < nbytes) && (i < dsize); i++)
+    data [i] = (n [i / 8] >> (56 - ((i % 8) * 8))) & 0xff;
 }
 
 void wp_from_hex (int nbits, uint64_t * n, int dsize, char * data)
@@ -121,18 +129,23 @@ void wp_shrink (int new_bits, uint64_t * new,
   int old_words = NUM_WORDS (old_bits);
   int new_words = NUM_WORDS (new_bits);
   /* check to make sure we only delete all 0s or all 1s*/
-/*
+  int new_high = (old [old_words - new_words]) >> 63;
+  uint64_t expected = 0;
+  if (new_high)
+    expected = expected - 1;  /* all 1s */
   int i;
   for (i = 0; i < old_words - new_words; i++) {
-    if ((old [i] != 0) && (old [i] != ~0)) {
-      printf ("wp_shrink (%d %d error: ", new_bits, old_bits);
+    if (old [i] != expected) {
+      printf ("wp_shrink (%d %d %" PRIx64 " %016" PRIx64 " error: ",
+              new_bits, old_bits, expected, old [old_words - new_words]);
       int j;
       for (j = 0; j < old_words; j++)
         printf ("%016" PRIx64 ", ", old [j]);
       printf ("\n");
-      my_assert (0, "wp_shrink leading zeros");
+      my_assert (0, "wp_shrink leading zeros or ones");
     }
   }
+/*
 */
   memcpy (new, old + (old_words - new_words), new_bits / 8);
 }
@@ -392,18 +405,79 @@ void wp_add_int (int nbits, uint64_t * res, int value)
   }
 }
 
+static int wp_sub_unrolled (int nwords, uint64_t * res,
+                            const uint64_t * from, const uint64_t * sub)
+{
+  int borrow = 0;
+  int i;
+  for (i = nwords - 1; i >= 0; i -= 16) {
+    uint64_t spb = sub [i] + borrow;   /* spb = sub plus borrow */
+    borrow = (((spb == 0) && borrow) || (from [i    ] < spb));
+    res [i    ] = from [i    ] - spb;
+    spb = sub [i - 1] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 1] < spb));
+    res [i - 1] = from [i - 1] - spb;
+    spb = sub [i - 2] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 2] < spb));
+    res [i - 2] = from [i - 2] - spb;
+    spb = sub [i - 3] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 3] < spb));
+    res [i - 3] = from [i - 3] - spb;
+    spb = sub [i - 4] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 4] < spb));
+    res [i - 4] = from [i - 4] - spb;
+    spb = sub [i - 5] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 5] < spb));
+    res [i - 5] = from [i - 5] - spb;
+    spb = sub [i - 6] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 6] < spb));
+    res [i - 6] = from [i - 6] - spb;
+    spb = sub [i - 7] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 7] < spb));
+    res [i - 7] = from [i - 7] - spb;
+    spb = sub [i - 8] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 8] < spb));
+    res [i - 8] = from [i - 8] - spb;
+    spb = sub [i - 9] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 9] < spb));
+    res [i - 9] = from [i - 9] - spb;
+    spb = sub [i - 10] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 10] < spb));
+    res [i - 10] = from [i - 10] - spb;
+    spb = sub [i - 11] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 11] < spb));
+    res [i - 11] = from [i - 11] - spb;
+    spb = sub [i - 12] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 12] < spb));
+    res [i - 12] = from [i - 12] - spb;
+    spb = sub [i - 13] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 13] < spb));
+    res [i - 13] = from [i - 13] - spb;
+    spb = sub [i - 14] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 14] < spb));
+    res [i - 14] = from [i - 14] - spb;
+    spb = sub [i - 15] + borrow;
+    borrow = (((spb == 0) && borrow) || (from [i - 15] < spb));
+    res [i - 15] = from [i - 15] - spb;
+    spb = sub [i - 1] + borrow;
+  }
+  return borrow;
+}
+
 /* returns borrow.  res, from, and sub may be the same */
 int wp_sub (int nbits, uint64_t * res,
             const uint64_t * from, const uint64_t * sub)
 {
   int nwords = NUM_WORDS (nbits);
+  if (nwords % 16 == 0)
+    return wp_sub_unrolled (nwords, res, from, sub);
   int borrow = 0;
   int i;
   for (i = nwords - 1; i >= 0; i--) {
-    int new_borrow = ((from [i] < sub [i]) ||
-                      ((from [i] == sub [i]) && (borrow)));
-    res [i] = from [i] - sub [i] - borrow;
-    borrow = new_borrow;
+    uint64_t sub_plus_borrow = sub [i] + borrow;
+    borrow = (((sub_plus_borrow == 0) && borrow) ||
+              (from [i] < sub_plus_borrow));
+    res [i] = from [i] - sub_plus_borrow;
   }
   return borrow;
 }
@@ -479,6 +553,202 @@ void wp_multiply (int rbits, uint64_t * res,
   }
 }
 
+static const uint64_t mask32 = 0xffffffff;
+
+static void multiply_128 (uint64_t * result_high, uint64_t * result_low,
+                          uint64_t v1, uint64_t v2)
+{
+  uint64_t v1_low = v1 & mask32;
+  uint64_t v1_high = (v1 >> 32) & mask32;
+  uint64_t v2_low = v2 & mask32;
+  uint64_t v2_high = (v2 >> 32) & mask32;
+  
+  uint64_t i1 = v1_low * v2_high + v1_high * v2_low;  /* intermediate value */
+  uint64_t i_carry = (i1 < v1_high * v2_low);
+  uint64_t i1_low = ((i1 & mask32) << 32);
+  uint64_t i1_high = ((i1 >> 32) & mask32);
+  uint64_t r1 = v1_low * v2_low + i1_low;
+  int carry = (r1 < i1_low);
+  uint64_t r2 = v1_high * v2_high + i1_high + (i_carry << 32) + carry;
+/*
+printf ("%" PRIX64 " * %" PRIX64 " = %" PRIX64 "%" PRIX64 "\n",
+v1, v2, r2, r1);
+*/
+  *result_high = r2;
+  *result_low = r1;
+}
+
+/* multiply a by b64 and add the result to r, putting the overflow into rhigh.
+ * nbits is the number of bits in r and a */
+static void add_multiply_int64 (int nbits, uint64_t * rhigh, uint64_t * r,
+                                const uint64_t * a, uint64_t b64)
+{
+  int nwords = NUM_WORDS (nbits);
+  int i;
+  uint64_t high, low;
+  multiply_128 (&high, &low, a [nwords - 1], b64);
+  r [nwords - 1] += low;
+  if (r [nwords - 1] < low)  /* overflow */
+    high++;
+  for (i = nwords - 2; i >= 0; i--) {
+    uint64_t new_high;
+    multiply_128 (&new_high, &low, a [i], b64);
+    r [i] += low;
+    if (r [i] < low)  /* carry into the next higher word */
+      new_high++;
+    /* add in the high part of the result from the previous iteration */
+    r [i] += high;
+    if (r [i] < high)  /* carry into the next higher word */
+      new_high++;
+    high = new_high;
+  }
+  *rhigh = high;
+}
+
+/* subtract es <concat> sub from er <concat> res, where es is the high
+ * word of sub and er is the high word of res.
+ * only subtract if er <concat> res >= es <concat> sub */
+static void sub_conditional_extra (int nbits, uint64_t * erp, uint64_t * res,
+                                   uint64_t es, const uint64_t * sub)
+{
+  uint64_t er = *erp;  /* local copy of *erp */
+  if ((es > er) || ((es == er) && (wp_compare (nbits, sub, res) > 0))) 
+    return;
+  int borrow = wp_sub (nbits, res, res, sub);
+  (*erp) = er - es - borrow;
+}
+
+/* initialize shifted with the shifted mods, of which the 64 high words are
+ * in extra.
+ * shifted must have room for NUM_WORDS (nbits) * 64 uint64_t's
+ * extra must have room for 64 uint64_t's */
+/* at the end of this call,
+ * extra [0] <concatenated> shifted [0..numwords-1] has mod shifted 64 bits,
+ * extra [1] <concatenated> shifted [numwords..numwords*2-1]  "  "  63 bits,
+ * extra [2] <concatenated> shifted [numwords*2..numwords*3-1]"  "  62 bits,
+ * and so on */
+static void init_shifted (int nbits, uint64_t * shifted, uint64_t * extra,
+                          const uint64_t * mod)
+{
+  int nwords = NUM_WORDS (nbits);
+  int i;
+  /* put mod << 1 into &(shifted [nwords * 63]) */
+  int index = nwords * 63;
+  uint64_t * old_shift = shifted + index;
+  wp_copy (nbits, old_shift, mod);
+  int carry = (old_shift [0] >> 63);
+  wp_shift_left (nbits, old_shift);
+  extra [63] = carry;
+  for (i = 62; i >= 0; i--) {
+    /* put (extra [i-1] <concatenated> old_shift) << 1 into
+            extra [i  ] <concatenated> this_shift */
+    uint64_t * this_shift = old_shift - nwords;
+    wp_copy (nbits, this_shift, old_shift);
+    carry = (this_shift [0] >> 63);
+    wp_shift_left (nbits, this_shift);
+    extra [i] = ((extra [i + 1]) << 1) + carry;
+    old_shift = this_shift;
+  }
+}
+
+static void mod64_extra_shifted (int nbits, uint64_t extra, uint64_t * n,
+                                 const uint64_t * shifted,
+                                 const uint64_t * sub_extra,
+                                 const uint64_t * mod)
+{
+  int i;
+  int nwords = NUM_WORDS (nbits);
+  const uint64_t * this_sub = shifted;   /* what we are subtracting */
+  for (i = 0; i < 64; i++) {
+    sub_conditional_extra (nbits, &extra, n, sub_extra [i], this_sub);
+    this_sub += nwords;
+  }
+  sub_conditional_extra (nbits, &extra, n, 0, mod);
+}
+
+static void shift_left64_mod (int nbits, uint64_t * n,
+                              const uint64_t * shifted,
+                              const uint64_t * sub_extra,
+                              const uint64_t * mod)
+{
+  uint64_t high = n [0];
+  int nwords = NUM_WORDS (nbits);
+  int i;
+  for (i = 0; i + 1 < nwords; i++)
+    n [i] = n [i + 1];
+  n [nwords - 1] = 0;
+  mod64_extra_shifted (nbits, high, n, shifted, sub_extra, mod);
+}
+
+/* temp must have size NUM_WORDS (nbits) * 64, initialized by wp_exp_mod64 */
+/* mod_extra must have size 64, likewise initiailized by wp_exp_mod64 */
+static void wp_multiply_mod_temp_internal (int nbits, uint64_t * res,
+                                           const uint64_t * v1,
+                                           const uint64_t * v2,
+                                           const uint64_t * mod,
+                                           const uint64_t * temp,
+                                           const uint64_t * mod_extra)
+{
+  wp_init (nbits, res, 0);
+  int nwords = NUM_WORDS (nbits);
+  uint64_t res_high;
+  /* first loop does not need an initial shift */
+  add_multiply_int64 (nbits, &res_high, res, v1, v2 [0]);
+  mod64_extra_shifted (nbits, res_high, res, temp, mod_extra, mod);
+  int i;
+  for (i = 1; i < nwords; i++) {
+    shift_left64_mod (nbits, res, temp, mod_extra, mod);
+    add_multiply_int64 (nbits, &res_high, res, v1, v2 [i]);
+    mod64_extra_shifted (nbits, res_high, res, temp, mod_extra, mod);
+  }
+}
+
+/* same as wp_exp_mod, but temp is a temporary array used internally
+ * that must have at least 65 * nbits */
+void wp_exp_mod64 (int nbits, uint64_t * res, const uint64_t * base,
+                   const uint64_t * exp, const uint64_t * mod,
+                   uint64_t * temp)
+{
+/*
+  if (is65537 (nbits, exp)) {
+    wp_exp_mod_65537 (nbits, res, base, mod, temp);
+    return;
+  }
+*/
+/*
+printf ("wp_exp_mod64 (%s ^ ", wp_itox (nbits, base));
+printf ("%s %% ", wp_itox (nbits, exp));
+printf ("%s)\n", wp_itox (nbits, mod));
+*/
+
+  int nwords = NUM_WORDS (nbits);
+  uint64_t mod_extra [64];
+  init_shifted (nbits, temp, mod_extra, mod);
+  uint64_t * square = temp + (nwords * 64);
+  wp_init (nbits, res, 1);
+  int outer;
+  for (outer = 0; outer < nwords; outer++) {
+    uint64_t inner = ((uint64_t) 1) << 63;
+    uint64_t word = exp [outer];
+    while (inner) {
+      /* square = res * res % mod */
+      wp_multiply_mod_temp_internal (nbits, square, res, res,
+                                     mod, temp, mod_extra);
+      /* conditionally (if bit is set) res = square * base % mod
+                        otherwise, set res = square              */
+      if (inner & word)
+        wp_multiply_mod_temp_internal (nbits, res, square, base,
+                                       mod, temp, mod_extra);
+      else
+        wp_copy (nbits, res, square);
+      inner = inner >> 1;
+    }
+  }
+/*
+printf ("  => %s\n", wp_itox (nbits, res));
+*/
+}
+
 /* res cannot be the same as v1 or v2 */
 void wp_multiply_mod (int nbits, uint64_t * res,
                       const uint64_t * v1, const uint64_t * v2,
@@ -533,14 +803,35 @@ void wp_div (int nbits, uint64_t * numerator_result,
   int i;
 /* printf ("denominator %s\n", wp_itox (dbits, denominator)); */
   for (i = 0; i < dbits; i++) {
-/* printf ("numerator_result %s\n", wp_itox (nbits, numerator_result)); */
-    int carry = (numerator_result [0]) >> 63;
+    uint64_t carry = (numerator_result [0]) >> 63;
     wp_shift_left (nbits, numerator_result);
+/* printf ("bit %d, numerator_result %s\n", i,
+           wp_itox (nbits, numerator_result)); */
     if (carry || (wp_compare (dbits, numerator_result, denominator) >= 0)) {
+/* printf ("bit %d/%d, carry %" PRIx64 ", compare %d\n", i, dbits, carry,
+           wp_compare (dbits, numerator_result, denominator)); */
       wp_sub (dbits, numerator_result, numerator_result, denominator);
       numerator_result [nwords - 1] |= 1;   /* set the bit in the quotient */
     }
   }
+}
+
+/* returns 1 if n is a multiple of possible_factor, 0 otherwise */
+/* for every 32 bits of n (call it nx), computes m = (m<<32 | nx) % mod
+ * the final result, in m, is the modulo.  If it is zero, mod divides n */
+int wp_multiple_of_int (int nbits, const uint64_t * n, uint32_t mod)
+{
+  int nwords = NUM_WORDS (nbits);
+  uint64_t word = 0;
+  int i;
+  for (i = 0; i < nwords; i++) {
+    word = (word << 32) | ((n [i] >> 32) & 0xffffffff);
+    word = word % mod;   /* this should clear the top 32 bits of word */
+    word = (word << 32) | (n [i] & 0xffffffff);
+    word = word % mod;   /* this should clear the top 32 bits of word */
+  }
+  /* word has n % mod */
+  return (word == 0);
 }
 
 /* res, v1, and v2 can all be the same, as long as temp is different */
@@ -643,6 +934,35 @@ static void my_init (int nbits, uint64_t * n, uint64_t value)
   int nwords = NUM_WORDS (nbits);
   bzero (n, nbits / 8 - sizeof (uint64_t));
   n [nwords - 1] = value;
+}
+
+/* pseudo-random init */
+static void my_pr_init (int nbits, uint64_t * n, uint64_t v1, uint64_t v2,
+                        uint64_t v3, uint64_t v4)
+{
+  int nwords = NUM_WORDS (nbits);
+  int i;
+  for (i = 0; i < nwords; i++) {
+    n [i] = 0;
+    switch (i % 17) {
+    case 0: n [i] = v1 ^ v2 ^ v3 ^ v4 ^ i;
+    case 1: n [i] = v2 ^ v3 ^ v4 ^ i;
+    case 2: n [i] = v1 ^ v3 ^ v4 ^ i;
+    case 3: n [i] = v1 ^ v2 ^ v4 ^ i;
+    case 4: n [i] = v1 ^ v2 ^ v3 ^ i;
+    case 5: n [i] = v1 ^ v2 ^ i;
+    case 6: n [i] = v1 ^ v3 ^ i;
+    case 7: n [i] = v1 ^ v4 ^ i;
+    case 8: n [i] = v2 ^ v3 ^ i;
+    case 10: n [i] = v2 ^ v4 ^ i;
+    case 11: n [i] = v3 ^ v4 ^ i;
+    case 12: n [i] = v1 ^ i;
+    case 13: n [i] = v2 ^ i;
+    case 14: n [i] = v3 ^ i;
+    case 15: n [i] = v4 ^ i;
+    case 16: n [i] = v1 ^ v2 ^ v3 ^ v4;
+    }
+  }
 }
 
 static uint64_t next_i_value (uint64_t i, int inner)
@@ -952,10 +1272,10 @@ static int test_add_sub ()
           uint64_t v3 [64];
           uint64_t v4 [64];
           uint64_t v5 [64];
-          my_init (nbits, v1, i1);
-          multiple_shift_left (nbits, v1, i3);
-          my_init (nbits, v2, i2);
-          multiple_shift_left (nbits, v2, i4);
+          my_pr_init (nbits, v1, i1, i2, i3, i4);
+          /* multiple_shift_left (nbits, v1, i3); */
+          my_pr_init (nbits, v2, i2, i1, i4, i3);
+          /* multiple_shift_left (nbits, v2, i4); */
           wp_add (nbits, v3, v1, v2);
           wp_sub (nbits, v4, v3, v1);  /* v4 should be equal to v2 */
           wp_sub (nbits, v5, v3, v2);  /* v5 should be equal to v1 */
@@ -1168,15 +1488,18 @@ static int testem ()  /* test exponentiation modulo x */
           wp_init (nbits, v2, i2);
           my_init (nbits, v3, i3);
           uint64_t v4 [1];
-          uint64_t temp [1];
+          uint64_t v5 [1];
+          uint64_t temp [65];
           wp_exp_mod (nbits, v4, v1, v2, v3, temp);
-
+          wp_exp_mod64 (nbits, v5, v1, v2, v3, temp);
           char result [1000];
           snprintf (result, sizeof (result), "%016" PRIx64,
                     test_exp_mod (i1, i2, i3));
-          if (strcmp (result, wp_itox (nbits, v4)) != 0) {
-            printf ("error: %016" PRIx64 " ^ %d %% %" PRIx64 ", e %s, got %s\n",
+          if ((strcmp (result, wp_itox (nbits, v4)) != 0) ||
+              (strcmp (result, wp_itox (nbits, v5)) != 0)) {
+            printf ("error: %016" PRIx64 " ^ %d %% %" PRIx64 ", e %s, got %s ",
                     i1, i2, i3, result, wp_itox (nbits, v4));
+            printf ("%s\n", wp_itox (nbits, v5));
             test_value = 0;
             incorrect++;
           } else {
@@ -1196,9 +1519,101 @@ static int testem ()  /* test exponentiation modulo x */
     /* update i1 */
     i1 = next_i_value (i1, 0);
   }
-  printf ("test %s: %d total, %d correct, %d not correct, returning %d\n",
-          "exp_mod", total, correct, incorrect, test_value);
   print_time(total, "b^e mod m", nbits);
+  int larger_total = 0;
+  gettimeofday (&start, NULL);
+  /* now compare wp_exp_mod and wp_exp_mod64 on larger, semi-random values */
+  nbits = 512;
+  int i;
+  for (i = 0; i < 100; i++) {
+    char init [] = "123456789abcdef0123456789abcdef0"
+                   "123456789abcdef0123456789abcdef0"
+                   "123456789abcdef0123456789abcdef0"
+                   "123456789abcdef0123456789abcdef0";
+    uint64_t base [16];
+    uint64_t exp [16];
+    uint64_t mod [16];
+    wp_from_hex (nbits, base, strlen (init), init);
+    wp_add_int (nbits, base, i * 55);
+    wp_copy (nbits, exp, base);
+    exp [i % 16] = 0x0f1e2d3c4b5a6978;
+    wp_copy (nbits, mod, base);
+    wp_add_int (nbits, mod, i * 7 + 1);
+    uint64_t r1 [16];
+    uint64_t r2 [16];
+    uint64_t temp [16 * 65];
+    wp_exp_mod (nbits, r1, base, exp, mod, temp);
+    wp_exp_mod64 (nbits, r2, base, exp, mod, temp);
+    if (wp_compare (nbits, r1, r2) != 0) {
+      printf ("error (%d): %s ^ ", i, wp_itox (nbits, base));
+      printf ("%s %% ", wp_itox (nbits, exp));
+      printf ("%s gives ", wp_itox (nbits, mod));
+      printf ("%s in wp_exp_mod, but ", wp_itox (nbits, r1));
+      printf ("%s in wp_exp_mod64\n", wp_itox (nbits, r2));
+      test_value = 0;
+      incorrect++;
+    } else {
+      correct++;
+    }
+    larger_total++;
+  }
+  print_time (larger_total, "b^e mod m", nbits);
+  printf ("test %s: %d total, %d correct, %d not correct, returning %d\n",
+          "exp_mod", total + larger_total, correct, incorrect, test_value);
+  return test_value;
+}
+
+static int testmultiple ()
+{
+  get_start_time ();
+  int test_value = 1;
+  int total = 0;
+  int correct = 0;
+  int incorrect = 0;
+
+  uint64_t n_product_of_primes [64];  /* 4096 bits */
+  char * nvalue =
+    "d613727d05783d52b01d3c1c8fc8db74e51b2a4ff81b665de593ea844e3b4b0a2"
+    "03e24ede65dbecae11817b83c509e1e65ea16a44ab8734a6daea5dc1b3d76db24"
+    "f929f71781aebf5a37bb30142a6bde42c900bd222c28ae491b06d442885dcf6e3"
+    "90df8397c3d2b1197733dd02e4281eb0e85d158b495b6b80f0b8e87a274c6f09a"
+    "fdb2b1e7344c4bea2e358ffbb932983704377b8dd8c237e902bebb071fcc6ca06"
+    "8d95bcb72c05c4c457d074fe5263925bf3aa2fd7c064e400adc6de45a5dfc15fe"
+    "ed617b6bfbfebcd2fbd5d6fd629e3d100b703cbb642d7eaa2179974fe4184e627"
+    "e5364f249e6a5380c42caded41364d9c8254afad7f0cf07dffec4c20234264f29"
+    "38e2fe80681ea8f5608766b741821a372fec664a3e1d3d7967279a8a272d59014"
+    "82aea8c83702c8563b4f532582ab57e8c4b1135e9b1e7d223299aeace34efb41f"
+    "2acdbe38a3a1880e9f56e730c3639b5160fc37af11725eaeea6047462018ac124"
+    "dedaebb0b56483b123ae43503b05f6560be76d3e8da82152791e4e67c8dfc6789"
+    "8bbfec080f43314dfd16f0fef00948048c93bea70df0cce5c3a9514b477fef104"
+    "d23660ce0fdf4b6797b1cb93f1aa33f75415a77148894db49fbd977ef1f929382"
+    "e3050089d2f440ab374d7e6aa18aa5f7f7d9d885cd4895f8e7aa67ad1e240bd65"
+    "7f316cd8fc785d98e7b3e1e2a8b0b7654d0d1372fdb65185d";
+  wp_from_hex (4096, n_product_of_primes, strlen (nvalue), nvalue);
+  uint64_t i;
+  for (i = 2; i < 100000; i++) {
+    if (wp_multiple_of_int (4096, n_product_of_primes, i)) {
+      incorrect++;
+      test_value = 0;
+    } else
+      correct++;
+    total++;
+  }
+  /* n + 1 should be divisible by 2, 3, and 5 -- check to make sure */
+  wp_add_int (4096, n_product_of_primes, 1);
+  for (i = 2; i < 6; i++) {
+    if (i != 4) {
+      if (! wp_multiple_of_int (4096, n_product_of_primes, i)) {
+        incorrect++;
+        test_value = 0;
+      } else
+        correct++;
+      total++;
+    }
+  }
+  printf ("test %s: %d total, %d correct, %d not correct, returning %d\n",
+          "multiple_of", total, correct, incorrect, test_value);
+  print_time (total, "multiple_of", 4096);
   return test_value;
 }
 
@@ -1281,6 +1696,42 @@ static int time_encrypt (int nbits)
     total++;
   }
   print_time(total, "b^65537 mod m", nbits);
+  return 1;
+}
+
+static int time_em64 (int nbits)
+/* time exponentiation modulo x using wp_exp_mod64 */
+{
+/* maximum size is LARGE * 64 */
+#define LARGE	1024
+  my_assert (((1LL << nbits) <= LARGE * 64), "nbits must be 64K or less");
+  get_start_time ();
+  int total = 0;
+  static uint64_t mod [LARGE];
+  int i;
+  for (i = 0; i < NUM_WORDS (nbits); i++)
+    mod [i] = i + 0x876543210ffffedc;
+  static uint64_t base [LARGE];
+  wp_init (nbits, base, 1);
+  for (i = 0; i < NUM_WORDS (nbits); i++)
+    base [i] = 0x3fff0000ffff0000 + i;
+  static uint64_t exp [LARGE];
+  for (i = 0; i < NUM_WORDS (nbits); i++)
+    exp [i] = (((uint64_t) (i * 11) + 1) << 30) - 1;
+  int limit = 500;
+  int decr = 256;
+  while ((limit >= 13) && (decr < nbits)) {
+    limit = limit / 6;
+    decr *= 2;
+  }
+  for (i = 0; i < limit; i++) {
+    static uint64_t result [LARGE];
+    static uint64_t temp [LARGE * 65];
+    wp_exp_mod64 (nbits, result, base, exp, mod, temp);
+    wp_copy (nbits, base, result);
+    total++;
+  }
+  print_time(total, "b^e mod64 m", nbits);
   return 1;
 }
 
@@ -1492,6 +1943,30 @@ static int test_specific ()
   }
   total++;
 
+  char div_mul_sub_r_string [] = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000101010101010101020202020202020203030303030303030404040404040402FD92D3D14EC005E8C651AC6B0691528757680DC3B134F03DF3025F7C786430941A435756318D943C77CE2BC0B81309209B4F41EA99C286BED98E6AECEC17F0F467F7187C68C1C53BBA3721EC442D1CD12A1DCE19FA359E528C220B57BF7E4CAA9CA4F42F7D0CA935A086AE9511EFD678DF";
+  char div_mul_sub_newr_string [] = "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004A45D3DCDCDCDCDC8DBE18FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE600201010101010779F00101010100FC28";
+  uint64_t div_mul_sub_r [32];
+  wp_from_hex (2048, div_mul_sub_r,
+               strlen (div_mul_sub_r_string), div_mul_sub_r_string);
+  uint64_t div_mul_sub_newr [32];
+  wp_from_hex (2048, div_mul_sub_newr,
+               strlen (div_mul_sub_newr_string), div_mul_sub_newr_string);
+  uint64_t div_mul_sub_div_arg [64];
+  wp_extend (4096, div_mul_sub_div_arg, 2048, div_mul_sub_r);
+  uint64_t * div_mul_sub_q;
+  wp_div (4096, div_mul_sub_div_arg, 2048, div_mul_sub_newr,
+          &div_mul_sub_q, NULL);
+  char div_mul_sub_div_string [] = "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000375D458CB6F957F9736146BAD12AD7AC8ADFEBF7B04615CA19AAFA2A8DD64C";
+  if (strcasecmp (div_mul_sub_div_string, wp_itox (2048, div_mul_sub_q)) != 0) {
+    printf ("initial div gave %s\n", wp_itox (2048, div_mul_sub_q));
+    printf ("        expected %s\n", div_mul_sub_div_string);
+    test_value = 0;
+    incorrect++;
+  } else {
+    correct++;
+  }
+  total++;
+
   printf ("test specific: %d total, %d correct, %d not correct, returning %d\n",
           total, correct, incorrect, test_value);
   return test_value;
@@ -1501,7 +1976,8 @@ static int wp_arith_test ()
 {
   int retval = 1;
   get_start_time ();
-if (retval == 0) {
+  if (! test_specific ())
+    retval = 0;
   if (! testb ("is_zero", &wp_is_zero, &test_is_zero))
     retval = 0;
   if (! testb ("is_even", &wp_is_even, &test_is_even))
@@ -1524,11 +2000,15 @@ if (retval == 0) {
     retval = 0;
   if (! testem ())
     retval = 0;
+  if (! testmultiple ())
+    retval = 0;
   int i;
   for (i = 1024; i <= 4096; i *= 2) {
     if (! time_sh (i))
       retval = 0;
     if (! time_em (i))
+      retval = 0;
+    if (! time_em64 (i))
       retval = 0;
     if (! time_encrypt (i))
       retval = 0;
@@ -1536,9 +2016,6 @@ if (retval == 0) {
   if (! test_add_sub ())
     retval = 0;
   if (! test_mul_div ())
-    retval = 0;
-}
-  if (! test_specific ())
     retval = 0;
   if (retval)
     print_time(1, "all", 64);

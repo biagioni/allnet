@@ -167,7 +167,7 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
     if ((matches ((unsigned char *) (keys [i].address), ADDRESS_BITS,
                   hp->source, hp->src_nbits) > 0) &&
         (allnet_verify (verif, dsize - ssize, sig, ssize - 2,
-                        keys [i].pub_key, keys [i].pub_klen))) {
+                        keys [i].pub_key))) {
       *contact = strcpy_malloc (keys [i].identifier,
                                 "handle_message broadcast contact");
       *message = malloc_or_fail (text_size + 1, "handle_clear message");
@@ -234,12 +234,20 @@ static int handle_data (int sock, struct allnet_header * hp,
   printf ("got packet from contact %s\n", *contact);
 #endif /* DEBUG_PRINT */
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
+
   int app = readb32u (cdp->app_media.app);
-  int media = readb32u (cdp->app_media.media);
-  if ((app != XCHAT_ALLNET_APP_ID) || (media != ALLNET_MEDIA_TEXT_PLAIN)) {
+  if (app != XCHAT_ALLNET_APP_ID) {
 #ifdef DEBUG_PRINT
-    printf ("handle_data ignoring unknown app %08x, media type %08x\n",
-            app, media);
+    printf ("handle_data ignoring unknown app %08x\n", app);
+    print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
+  int media = readb32u (cdp->app_media.media);
+  if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
+      (media != ALLNET_MEDIA_PUBLIC_KEY)) {
+#ifdef DEBUG_PRINT
+    printf ("handle_data ignoring media type %08x\n", media);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
 #endif /* DEBUG_PRINT */
     return 0;
@@ -263,13 +271,19 @@ static int handle_data (int sock, struct allnet_header * hp,
 
   save_incoming (*contact, *kset, cdp, cleartext, msize);
 
-  *message = malloc_or_fail (msize + 1, "handle_data message");
-  memcpy (*message, cleartext, msize);
-  (*message) [msize] = '\0';   /* null-terminate the message */
+  if (media == ALLNET_MEDIA_PUBLIC_KEY) {
+    cleartext = "received a key for an additional device";
+    msize = strlen (cleartext);
+  }
+
   *desc = chat_descriptor_to_string (cdp, 0, 0);
   *verified = verif;
   if (sent != NULL)
     *sent = (readb64u (cdp->timestamp) >> 16) & 0xffffffff;
+
+  *message = malloc_or_fail (msize + 1, "handle_data message");
+  memcpy (*message, cleartext, msize);
+  (*message) [msize] = '\0';   /* null-terminate the message */
 
   /* printf ("hp->hops = %d\n", hp->hops); */
 
@@ -321,8 +335,11 @@ static int handle_sub (int sock, struct allnet_header * hp,
 static int send_key (int sock, char * contact, keyset kset, char * secret,
                      unsigned char * address, int abits, int max_hops)
 {
-  char * my_public_key;
-  int pub_ksize = get_my_pubkey (kset, &my_public_key);
+  allnet_rsa_pubkey k;
+  get_my_pubkey (kset, &k);
+  char my_public_key [ALLNET_MTU];
+  int pub_ksize = allnet_pubkey_to_raw (k, my_public_key,
+                                        sizeof (my_public_key));
   if (pub_ksize <= 0) {
     printf ("unable to send key, no public key found for contact %s (%d/%d)\n",
             contact, kset, pub_ksize);
@@ -363,7 +380,7 @@ static int handle_key (int sock, struct allnet_header * hp,
   keyset * keys;
   int nkeys = all_keys (contact, &keys);
   if (nkeys < 1) {
-    printf ("error '%s'/%d: create own key before calling handle_packet\n",
+    printf ("error '%s'/%d: create own key before calling handle_key\n",
             contact, nkeys);
     return 0;
   }
@@ -375,10 +392,9 @@ static int handle_key (int sock, struct allnet_header * hp,
   int key_index = -1;
   int i;
   for (i = 0; i < nkeys; i++) {
-    char * key;
-    int klen = get_contact_pubkey (keys [i], &key);
+    allnet_rsa_pubkey key;
     peer_bits = get_remote (keys [i], peer_addr);
-    if ((klen <= 0) &&
+    if ((get_contact_pubkey (keys [i], &key) <= 0) &&
         ((peer_bits <= 0) ||
          (matches (peer_addr, peer_bits, hp->source, hp->src_nbits) > 0))) {
 #ifdef DEBUG_PRINT
@@ -403,9 +419,11 @@ static int handle_key (int sock, struct allnet_header * hp,
   int ksize = dsize - SHA512_SIZE;
   /* check to see if it is my own key */
   for (i = 0; i < nkeys; i++) {
-    char * test_key;
-    int test_klen = get_my_pubkey (keys [i], &test_key);
-    if ((test_klen == ksize) && (memcmp (received_key, test_key, ksize) == 0)) {
+    allnet_rsa_pubkey k;
+    get_my_pubkey (keys [i], &k);
+    char test_key [ALLNET_MTU];
+    int pub_ksize = allnet_pubkey_to_raw (k, test_key, sizeof (test_key));
+    if ((pub_ksize == ksize) && (memcmp (received_key, test_key, ksize) == 0)) {
 /* it is fairly normal to get my own key back.  Ignore.
 */
       printf ("handle_key: got my own key\n");

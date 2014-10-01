@@ -22,6 +22,12 @@ typedef uint64_t rsa_int    [WP_RSA_MAX_KEY_WORDS ];
 typedef uint64_t rsa_half   [WP_RSA_HALF_KEY_WORDS];
 typedef uint64_t rsa_double [WP_RSA_MAX_KEY_WORDS * 2];
 
+#define USE_EXP_MOD64
+#ifdef USE_EXP_MOD64
+typedef uint64_t rsa_temp      [WP_RSA_MAX_KEY_WORDS  * 65];
+typedef uint64_t rsa_temp_half [WP_RSA_HALF_KEY_WORDS * 65];
+#endif /* USE_EXP_MOD64 */
+
 /* get the public key part of the key pair */
 wp_rsa_key wp_rsa_get_public_key (wp_rsa_key_pair * key)
 {
@@ -122,8 +128,15 @@ static int read_all_or_none (int fd, char * buffer, int bsize)
   return total;
 }
 
+#define PREDICTABLE_RANDOM  /* used for repeatability when debugging */
 static void init_random (char * buffer, int bsize, int pure_random)
 {
+#ifdef PREDICTABLE_RANDOM
+pure_random = 0;
+#endif /* PREDICTABLE_RANDOM */
+  time_t start_time = time (NULL);
+  if (pure_random)
+    printf ("waiting for %d purely random bytes...\n", bsize);
   char * fname = "/dev/urandom";
   if (pure_random)
     fname = "/dev/random";  /* only use really random bits */
@@ -145,7 +158,8 @@ static void init_random (char * buffer, int bsize, int pure_random)
     exit (1);
   }
   close (fd);
-/* #define PREDICTABLE_RANDOM  used for repeatability when debugging */
+  if (pure_random)
+    printf ("...done in %ld seconds\n", time (NULL) - start_time);
 #ifdef PREDICTABLE_RANDOM
   if (pure_random)
     printf ("warning: no randomness!  This is very insecure\n");
@@ -166,8 +180,13 @@ static int composite_test_fermat (int nbits, const uint64_t * potential_prime,
   wp_copy (nbits, potential_prime_minus_one, potential_prime);
   wp_sub_int (nbits, potential_prime_minus_one, 1);
   rsa_half em;
+#ifdef USE_EXP_MOD64
+  rsa_temp_half temp;
+  wp_exp_mod64 (nbits, em, a, potential_prime_minus_one, potential_prime, temp);
+#else /* USE_EXP_MOD64 */
   rsa_half temp;
   wp_exp_mod (nbits, em, a, potential_prime_minus_one, potential_prime, temp);
+#endif /* USE_EXP_MOD64 */
   rsa_half one;
   wp_init (nbits, one, 1);
   if (wp_compare (nbits, one, em) == 0)
@@ -197,8 +216,13 @@ static int composite_test_miller_rabin (int nbits,
     shift++;
   }
   rsa_half x;
+#ifdef USE_EXP_MOD64
+  rsa_temp_half temp;
+  wp_exp_mod64 (nbits, x, a, d, potential_prime, temp);
+#else /* USE_EXP_MOD64 */
   rsa_half temp;
   wp_exp_mod (nbits, x, a, d, potential_prime, temp);
+#endif /* USE_EXP_MOD64 */
   rsa_half one;
   wp_init (nbits, one, 1);
   rsa_half p_minus_one;
@@ -231,6 +255,47 @@ static void rsa_mod (int nbits, uint64_t * n, uint64_t * mod)
     wp_div (nbits * 2, result, nbits, mod, NULL, &remainder);
     wp_copy (nbits, n, remainder);
   }
+}
+
+static uint64_t bytes_to_uint64 (const char * data)
+{
+  return ((((uint64_t) (data [0] & 0xff)) << 56) |
+          (((uint64_t) (data [1] & 0xff)) << 48) |
+          (((uint64_t) (data [2] & 0xff)) << 40) |
+          (((uint64_t) (data [3] & 0xff)) << 32) |
+          (((uint64_t) (data [4] & 0xff)) << 24) |
+          (((uint64_t) (data [5] & 0xff)) << 16) |
+          (((uint64_t) (data [6] & 0xff)) <<  8) |
+          (((uint64_t) (data [7] & 0xff))      ));
+}
+
+static void uint64_to_bytes (char * result, uint64_t data)
+{
+  result [0] = (data >> 56) & 0xff;
+  result [1] = (data >> 48) & 0xff;
+  result [2] = (data >> 40) & 0xff;
+  result [3] = (data >> 32) & 0xff;
+  result [4] = (data >> 24) & 0xff;
+  result [5] = (data >> 16) & 0xff;
+  result [6] = (data >>  8) & 0xff;
+  result [7] = (data      ) & 0xff;
+}
+
+/* to and from must both have size nbits, and may be the same array */
+static void rsa_int_from_bytes (int nbits, uint64_t * to, const char * from)
+{
+  int nwords = NUM_WORDS (nbits);
+  int i;
+  for (i = 0; i < nwords; i++)
+    to [i] = bytes_to_uint64 (from + i * 8);
+}
+
+static void rsa_int_to_bytes (int nbits, char * to, uint64_t * from)
+{
+  int nwords = NUM_WORDS (nbits);
+  int i;
+  for (i = 0; i < nwords; i++)
+    uint64_to_bytes (to + i * 8, from [i]);
 }
 
 /* http://en.wikipedia.org/wiki/Primality_test#Probabilistic_tests and
@@ -269,6 +334,12 @@ static int is_prime (int nbits, const uint64_t * n, int iterations)
   }
   int i;
   for (i = 2; i < sieve_size; i++) {
+#define USE_MULTIPLE_FOR_SMALL_PRIMES
+#ifdef USE_MULTIPLE_FOR_SMALL_PRIMES
+    if ((is_set_bit (sieve, i)) &&
+        (wp_multiple_of_int (nbits, n, i)))
+      return 0;
+#else /* USE_MULTIPLE_FOR_SMALL_PRIMES */
     if (is_set_bit (sieve, i)) {
       rsa_half divisor;
       wp_init (nbits, divisor, i);
@@ -284,6 +355,7 @@ static int is_prime (int nbits, const uint64_t * n, int iterations)
       if (wp_is_zero (nbits, modulo))
         return 0;
     }
+#endif /* USE_MULTIPLE_FOR_SMALL_PRIMES */
   }
   for (i = 0; i < iterations; i++) {
     if (composite_test (nbits, n)) {
@@ -387,32 +459,84 @@ static void generate_prime (int nbits, uint64_t * bits, int init,
  */
 }
 
+#ifdef TEST_AGAINST_BN_LIBRARY
+#include <openssl/bn.h>
+#endif /* TEST_AGAINST_BN_LIBRARY */
+
+/* keep only the low nbits of the product of two nbits numbers */
+static void multiply_low_bits (int nbits, uint64_t * result,
+                               const uint64_t * n1, const uint64_t * n2)
+{
+  rsa_double product;
+  wp_multiply (nbits * 2, product, nbits, n1, n2);
+  int offset = NUM_WORDS (nbits);
+  wp_copy (nbits, result, product + offset);
+}
+
 /* 2014/09/01: from
  * https://en.wikipedia.org/wiki/Extended_Euclidean_algorithm#Modular_integers
  */
 static int inverse_mod (int nbits, const uint64_t * value,
                         const uint64_t * mod, uint64_t * result)
 {
+printf ("inverse_mod (%d, %s, ", nbits, wp_itox (nbits, value));
+printf ("%s)\n", wp_itox (nbits, mod));
   rsa_int t, newt, r, newr;
   wp_init (nbits, t, 0);
   wp_init (nbits, newt, 1);
   wp_copy (nbits, r, mod);
   wp_copy (nbits, newr, value);
   int ndouble = nbits * 2;
+#ifdef TEST_AGAINST_BN_LIBRARY
+  char tstorage [WP_RSA_MAX_KEY_BYTES];
+  rsa_int_to_bytes (nbits, tstorage, t);
+  BIGNUM * bnt = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
+  rsa_int_to_bytes (nbits, tstorage, newt);
+  BIGNUM * bnnewt = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
+  rsa_int_to_bytes (nbits, tstorage, r);
+  BIGNUM * bnr = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
+  rsa_int_to_bytes (nbits, tstorage, newr);
+  BIGNUM * bnnewr = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
+  BN_CTX * ctx = BN_CTX_new ();
+#endif /* TEST_AGAINST_BN_LIBRARY */
+rsa_int oldr;
+wp_copy (nbits, oldr, r);
+uint64_t count = 1;
   while (! wp_is_zero (nbits, newr)) {
-#ifdef DEBUG_PRINT
+/* if (wp_compare (nbits, r, newr) <= 0) */ {  printf ("%" PRId64 ": ", count);
     printf ("t %s -> ", wp_itox (nbits, t));
     printf ("%s, ", wp_itox (nbits, newt));
     printf ("r %s -> ", wp_itox (nbits, r));
     printf ("%s\n", wp_itox (nbits, newr));
+printf ("  oldr %s\n", wp_itox (nbits, oldr));
+}
+count++;
+#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
     rsa_double div_arg;
     wp_extend (ndouble, div_arg, nbits, r);
     uint64_t * qp;
     wp_div (ndouble, div_arg, nbits, newr, &qp, NULL);  /* qp = r / nrewr */
 
+    rsa_int product1;
+    multiply_low_bits (nbits, product1, qp, newt);
+    rsa_int x;
+    wp_sub (nbits, x, t, product1);
+    wp_copy (nbits, t, newt);
+    wp_copy (nbits, newt, x);
+
+    rsa_int product2;
+    multiply_low_bits (nbits, product2, qp, newr);
+    rsa_int y;
+    wp_sub (nbits, y, r, product2);
+wp_copy (nbits, oldr, r);
+    wp_copy (nbits, r, newr);
+    wp_copy (nbits, newr, y);
+
+#if 0
     rsa_double product1;
     wp_multiply (ndouble, product1, nbits, qp, newt);
+printf ("product1 %s\n", wp_itox (ndouble, product1));
     rsa_double tfull;
     wp_extend (ndouble, tfull, nbits, t);
     rsa_double x;
@@ -426,8 +550,48 @@ static int inverse_mod (int nbits, const uint64_t * value,
     wp_extend (ndouble, rfull, nbits, r);
     rsa_double y;
     wp_sub (ndouble, y, rfull, product2);
+wp_copy (nbits, oldr, r);
     wp_copy (nbits, r, newr);
     wp_shrink (nbits, newr, ndouble, y);
+#endif /* 0 */
+
+#ifdef TEST_AGAINST_BN_LIBRARY
+    BIGNUM * bnq = BN_new ();
+    BN_div (bnq, NULL, bnr, bnnewr, ctx);
+
+    BIGNUM * bnprod = BN_new ();
+    BN_mul (bnprod, bnq, bnnewt, ctx);
+    BIGNUM * bnswap = BN_dup (bnt);
+    bnt = BN_dup (bnnewt);
+    BN_sub (bnnewt, bnswap, bnprod);
+
+    BN_mul (bnprod, bnq, bnnewr, ctx);
+    bnswap = BN_dup (bnr);
+    bnr = BN_dup (bnnewr);
+    BN_sub (bnnewr, bnswap, bnprod);
+    BIGNUM * bnzero = BN_new ();
+    BN_zero (bnzero);
+    if (BN_cmp (bnr, bnzero) < 0) {
+      printf ("r is negative\n");
+      exit (1);
+    }
+    if (BN_cmp (bnnewr, bnzero) < 0) {
+      printf ("newr is negative\n");
+      exit (1);
+    }
+    rsa_int_to_bytes (nbits, tstorage, r);
+    BIGNUM * bntest = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
+    if (BN_cmp (bnr, bntest) != 0) {
+      printf ("r does not match BN r\n%s\n%s", BN_bn2hex (bnr), BN_bn2hex (bntest));
+      exit (1);
+    }
+    rsa_int_to_bytes (nbits, tstorage, newr);
+    bntest = BN_bin2bn ((unsigned char *) tstorage, nbits / 8, NULL);
+    if (BN_cmp (bnnewr, bntest) != 0) {
+      printf ("newr does not match BN newr\n%s\n%s", BN_bn2hex (bnnewr), BN_bn2hex (bntest));
+      exit (1);
+    }
+#endif /* TEST_AGAINST_BN_LIBRARY */
   }
   rsa_int one;
   wp_init (nbits, one, 1);
@@ -476,8 +640,8 @@ static int mod_is_zero (int nbits, uint64_t * a, int nhalf, uint64_t * b)
 #define E_VALUE 3                        /* < 32 bits, use e = 3 */
 #endif /* WP_RSA_MAX_KEY_BITS < 32 */
 
-int rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
-                             int security_level)
+int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
+                                int security_level)
 {
   if ((nbits > WP_RSA_MAX_KEY_BITS) || (! is_power_two (nbits))) {
     printf ("number of bits %d/0x%x should be a power of two <= %d\n",
@@ -500,10 +664,10 @@ int rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
   init_random ((char *) p_candidate, (nbits / 2) / 8, 1);
   init_random ((char *) q_candidate, (nbits / 2) / 8, 1);
   rsa_int pfull, qfull;
-  int keep_trying;
+  int do_over;
   int nhalf = nbits / 2;
   do {
-    keep_trying = 0;
+    do_over = 0;
     generate_prime (nhalf, p_candidate, 0, security_level, key->p);
     generate_prime (nhalf, q_candidate, 1, security_level, key->q);
 #ifdef DEBUG_PRINT
@@ -542,27 +706,57 @@ int rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
     if (mod_is_zero (nbits, phi, nhalf, ehalf)) {
       printf ("e %ld is a factor of phi %s, no inverse\n",
               e, wp_itox (nbits, phi));
-      keep_trying = 1;
+      do_over = 1;
     } else if (! inverse_mod (nbits, efull, phi, key->d)) {
       printf ("no inverse for e\n");
-      keep_trying = 1;
+      do_over = 1;
     }
-    char test [WP_RSA_MAX_KEY_BYTES];
-    bzero (test, sizeof (test));
-    test [nbits / 8 - 1] = 99;
-    char testc [WP_RSA_MAX_KEY_BYTES];   /* cipher */
-    char testp [WP_RSA_MAX_KEY_BYTES];   /* deciphered plaintext */
-    wp_rsa_encrypt ((wp_rsa_key *) key, test, nbits / 8, testc, nbits / 8,
-                    WP_RSA_PADDING_NONE);
-    wp_rsa_decrypt (key, testc, nbits / 8, testp, nbits / 8, WP_RSA_PADDING_NONE);
-    if (memcmp (test, testp, nbits / 8) != 0) {
-      printf ("found key that doesn't work, will try again:\n");
-      printf ("n %s = ", wp_itox (nbits, key->n));
-      printf ("p %s * ", wp_itox (nhalf, key->p));
-      printf ("q %s\n", wp_itox (nhalf, key->q));
-      keep_trying = 1;
+    if (! do_over) {
+      rsa_half pminus1;
+      rsa_half qminus1;
+      wp_copy (nhalf, pminus1, key->p);
+      wp_copy (nhalf, qminus1, key->q);
+      wp_sub_int (nhalf, pminus1, 1);
+      wp_sub_int (nhalf, qminus1, 1);
+      rsa_int dpfull;
+      rsa_int dqfull;
+      uint64_t * dp_value;
+      uint64_t * dq_value;
+      wp_copy (nbits, dpfull, key->d);
+      wp_copy (nbits, dqfull, key->d);
+      wp_div (nbits, dpfull, nhalf, pminus1, NULL, &dp_value);
+      wp_div (nbits, dqfull, nhalf, qminus1, NULL, &dq_value);
+      wp_copy (nhalf, key->dp, dp_value);
+      wp_copy (nhalf, key->dq, dq_value);
+      if (! inverse_mod (nhalf, key->q, key->p, key->qinv)) {
+        printf ("no inverse for q\n");
+        do_over = 1;
+      } else if (nbits < 256) {
+        printf ("dp %s, ", wp_itox (nhalf, key->dp));
+        printf ("dq %s, ", wp_itox (nhalf, key->dq));
+        printf ("qinv %s, ", wp_itox (nhalf, key->qinv));
+        printf ("e %lx\n", e);
+      }
     }
-    if (keep_trying) {  /* restart the search from p+1 and q+1 */
+    if (! do_over) {
+      char test [WP_RSA_MAX_KEY_BYTES];
+      bzero (test, sizeof (test));
+      test [nbits / 8 - 1] = 99;
+      char testc [WP_RSA_MAX_KEY_BYTES];   /* cipher */
+      char testp [WP_RSA_MAX_KEY_BYTES];   /* deciphered plaintext */
+      wp_rsa_encrypt ((wp_rsa_key *) key, test, nbits / 8, testc, nbits / 8,
+                      WP_RSA_PADDING_NONE);
+      wp_rsa_decrypt (key, testc, nbits / 8, testp, nbits / 8,
+                      WP_RSA_PADDING_NONE);
+      if (memcmp (test, testp, nbits / 8) != 0) {
+        printf ("found key that doesn't work, will try again:\n");
+        printf ("n %s = ", wp_itox (nbits, key->n));
+        printf ("p %s * ", wp_itox (nhalf, key->p));
+        printf ("q %s\n", wp_itox (nhalf, key->q));
+        do_over = 1;
+      }
+    }
+    if (do_over) {  /* restart the search from p+1 and q+1 */
       wp_copy (nhalf, p_candidate, key->p);
       wp_add_int (nhalf, p_candidate, 1);
       wp_copy (nhalf, q_candidate, key->q);
@@ -576,33 +770,7 @@ int rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
       printf ("d %s\n", wp_itox (nbits, key->d));
     }
     count++;
-  } while (keep_trying);
-  rsa_half pminus1;
-  rsa_half qminus1;
-  wp_copy (nhalf, pminus1, key->p);
-  wp_copy (nhalf, qminus1, key->q);
-  wp_sub_int (nhalf, pminus1, 1);
-  wp_sub_int (nhalf, qminus1, 1);
-  rsa_int dpfull;
-  rsa_int dqfull;
-  uint64_t * dp_value;
-  uint64_t * dq_value;
-  wp_copy (nbits, dpfull, key->d);
-  wp_copy (nbits, dqfull, key->d);
-  wp_div (nbits, dpfull, nhalf, pminus1, NULL, &dp_value);
-  wp_div (nbits, dqfull, nhalf, qminus1, NULL, &dq_value);
-  wp_copy (nhalf, key->dp, dp_value);
-  wp_copy (nhalf, key->dq, dq_value);
-  if (! inverse_mod (nhalf, key->q, key->p, key->qinv)) {
-    printf ("no inverse for q\n");
-    return 0;
-  }
-  if (nbits < 256) {
-    printf ("dp %s, ", wp_itox (nhalf, key->dp));
-    printf ("dq %s, ", wp_itox (nhalf, key->dq));
-    printf ("qinv %s, ", wp_itox (nhalf, key->qinv));
-    printf ("e %lx\n", e);
-  }
+  } while (do_over);
   return count;
 }
 
@@ -610,9 +778,10 @@ int rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
  * nbits should be a power of two <= WP_RSA_MAX_KEY_BITS
  * returns 1 if successful, and if so, fills in key
  * returns 0 if the number of bits > WP_RSA_MAX_KEY_BITS */
-int rsa_generate_key_pair (int nbits, wp_rsa_key_pair * key, int security_level)
+int wp_rsa_generate_key_pair (int nbits, wp_rsa_key_pair * key,
+                              int security_level)
 {
-  return rsa_generate_key_pair_e (nbits, key, E_VALUE, security_level);
+  return wp_rsa_generate_key_pair_e (nbits, key, E_VALUE, security_level);
 }
 
 /* offset 0 refers to the most significant byte */
@@ -642,47 +811,6 @@ static int get_byte (int nbits, uint64_t * dest, int offset)
   int shift = 56 - ((offset % 8) * 8);
 /* printf ("shift %d\n", shift); */
   return ((dest [word] >> shift) & 0xff);
-}
-
-static uint64_t bytes_to_uint64 (char * data)
-{
-  return ((((uint64_t) (data [0] & 0xff)) << 56) |
-          (((uint64_t) (data [1] & 0xff)) << 48) |
-          (((uint64_t) (data [2] & 0xff)) << 40) |
-          (((uint64_t) (data [3] & 0xff)) << 32) |
-          (((uint64_t) (data [4] & 0xff)) << 24) |
-          (((uint64_t) (data [5] & 0xff)) << 16) |
-          (((uint64_t) (data [6] & 0xff)) <<  8) |
-          (((uint64_t) (data [7] & 0xff))      ));
-}
-
-static void uint64_to_bytes (char * result, uint64_t data)
-{
-  result [0] = (data >> 56) & 0xff;
-  result [1] = (data >> 48) & 0xff;
-  result [2] = (data >> 40) & 0xff;
-  result [3] = (data >> 32) & 0xff;
-  result [4] = (data >> 24) & 0xff;
-  result [5] = (data >> 16) & 0xff;
-  result [6] = (data >>  8) & 0xff;
-  result [7] = (data      ) & 0xff;
-}
-
-/* to and from must both have size nbits, and may be the same array */
-static void rsa_int_from_bytes (int nbits, uint64_t * to, char * from)
-{
-  int nwords = NUM_WORDS (nbits);
-  int i;
-  for (i = 0; i < nwords; i++)
-    to [i] = bytes_to_uint64 (from + i * 8);
-}
-
-static void rsa_int_to_bytes (int nbits, char * to, uint64_t * from)
-{
-  int nwords = NUM_WORDS (nbits);
-  int i;
-  for (i = 0; i < nwords; i++)
-    uint64_to_bytes (to + i * 8, from [i]);
 }
 
 /* documented in appendix B.2.1 of RFC 3447 */
@@ -740,7 +868,7 @@ static char sha1_of_empty_string [] =
 static char * default_sha1 = sha1_of_empty_string;
 
 static int rsa_pad (int nbits, uint64_t * result, int rsize,
-                    char * data, int dsize, int padding)
+                    const char * data, int dsize, int padding)
 {
   int nbytes = nbits / 8;
   if ((nbytes > rsize) || (dsize < 0))
@@ -759,7 +887,7 @@ static int rsa_pad (int nbits, uint64_t * result, int rsize,
     /* shift the payload all the way to the right, then precede it by a
      * 1 byte, and as many 0 bytes as needed to fill */
     if (dsize >= nbytes) {
-      printf ("error: WP_RSA_PADDING_VANILLA requires at least one byte, %d %d\n",
+      printf ("error: WP_RSA_PADDING_VANILLA needs at least one byte, %d %d\n",
               dsize, nbytes);
       return 0;
     }
@@ -839,19 +967,19 @@ static int rsa_unpad (int nbits, char * result, int rsize,
   int nbytes = nbits / 8;
   int bytes_in_payload = -1;
   if (dsize != nbytes)
-    return 0;
+    return -1;
   if (padding == WP_RSA_PADDING_NONE) {
     if (rsize < dsize) {
       printf ("error: WP_RSA_PADDING_NONE requires rsize %d >= dsize %d\n",
               rsize, dsize);
-      return 0;
+      return -1;
     }
     rsa_int_to_bytes (nbits, result, data);
     return dsize;
   }
   if (padding == WP_RSA_PADDING_VANILLA) {
     if (nbytes > rsize + 1)
-      return 0;
+      return -1;
     rsa_int_to_bytes (nbits, result, data);
     int i;
     for (i = 0; i < nbytes; i++)
@@ -861,7 +989,7 @@ static int rsa_unpad (int nbits, char * result, int rsize,
       return 0;  /* empty payload */
     if (result [i] != 1) {
       printf ("result [%d] is %d\n", i, result [i] & 0xff);
-      return 0;  /* padding error */
+      return -1;  /* padding error */
     }
     int data_start = i + 1;
     bytes_in_payload = nbytes - data_start;
@@ -871,7 +999,7 @@ static int rsa_unpad (int nbits, char * result, int rsize,
   }
   if (padding == WP_RSA_PADDING_PKCS1_OAEP) { /* based on RFC 3447 sec 7.1.2 */
     if (nbytes > rsize + WP_RSA_PADDING_PKCS1_OAEP_SIZE)
-      return 0;
+      return -1;
     /* if we get a bad result, we should still do a complete check to
      * avoid giving information to someone who can observe our timings.
      * so don't return right away, just set bad_result to 1 */
@@ -945,11 +1073,12 @@ seed [8] & 0xff, seed [9] & 0xff);
       result [i] = get_byte (nbits, data, ps + i);
     memcpy (result, datab + ps, nbytes - ps);
     if (bad_result)
-      return 0;
+      return -1;
     return (nbytes - ps);
   }
   printf ("unpadding, mode %d not implemented\n", padding);
   exit (1);
+  return -1;
 }
 
 #ifdef TEST_AGAINST_BN_LIBRARY
@@ -995,8 +1124,13 @@ static void rsa_do_encrypt (wp_rsa_key * key, uint64_t * data, char * result)
   print_exp_mod (key->nbits, data, efull, key->n);
 #endif /* TEST_AGAINST_BN_LIBRARY */
   /* compute data^e mod key->n and place the result in result */
+#ifdef USE_EXP_MOD64
+  rsa_temp temp;
+  wp_exp_mod64 (key->nbits, ri, data, efull, key->n, temp);
+#else /* USE_EXP_MOD64 */
   rsa_int temp;
   wp_exp_mod (key->nbits, ri, data, efull, key->n, temp);
+#endif /* USE_EXP_MOD64 */
 #ifdef DEBUG_PRINT
   printf ("  encrypted is %s\n", wp_itox (key->nbits, ri));
 #endif /* DEBUG_PRINT */
@@ -1007,13 +1141,13 @@ static void rsa_do_encrypt (wp_rsa_key * key, uint64_t * data, char * result)
  * dsize <= key->nbits / 8 - padding_size
  * nresult >= key->nbits / 8
  * returns key->nbits / 8 if successful, and if so, fills in result
- * otherwise returns 0 */
-int wp_rsa_encrypt (wp_rsa_key * key, char * data, int dsize,
+ * otherwise returns -1 */
+int wp_rsa_encrypt (wp_rsa_key * key, const char * data, int dsize,
                     char * result, int nresult, int padding)
 {
   int kbytes = key->nbits / 8;
   if (nresult < kbytes)
-    return 0;
+    return -1;
   rsa_int padded;
   int esize = rsa_pad (key->nbits, padded, sizeof (padded),
                        data, dsize, padding);
@@ -1021,7 +1155,7 @@ int wp_rsa_encrypt (wp_rsa_key * key, char * data, int dsize,
     printf ("rsa_pad returned %d\n", esize);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
-    return 0;
+    return -1;
   }
   rsa_do_encrypt (key, padded, result);
   return kbytes;
@@ -1037,8 +1171,13 @@ static void rsa_decrypt_slow (wp_rsa_key_pair * key, uint64_t * data,
   printf ("%s mod ", wp_itox (key->nbits, key->d));
   printf ("%s = ", wp_itox (key->nbits, key->n));
 #endif /* DEBUG_PRINT */
+#ifdef USE_EXP_MOD64
+  rsa_temp temp;
+  wp_exp_mod64 (key->nbits, result, data, key->d, key->n, temp);
+#else /* USE_EXP_MOD64 */
   rsa_int temp;
   wp_exp_mod (key->nbits, result, data, key->d, key->n, temp);
+#endif /* USE_EXP_MOD64 */
 #ifdef DEBUG_PRINT
   printf ("%s\n", wp_itox (key->nbits, result));
 #endif /* DEBUG_PRINT */
@@ -1073,10 +1212,17 @@ static void rsa_decrypt_fast (wp_rsa_key_pair * key, uint64_t * data,
 
   /* compute m1 and m2 at half size */
   rsa_half m1;
+#ifdef USE_EXP_MOD64
+  rsa_temp_half temp;
+  wp_exp_mod64 (nhalf, m1, data_mod_p, key->dp, key->p, temp);
+  rsa_half m2;
+  wp_exp_mod64 (nhalf, m2, data_mod_q, key->dq, key->q, temp);
+#else /* USE_EXP_MOD64 */
   rsa_half temp;
   wp_exp_mod (nhalf, m1, data_mod_p, key->dp, key->p, temp);
   rsa_half m2;
   wp_exp_mod (nhalf, m2, data_mod_q, key->dq, key->q, temp);
+#endif /* USE_EXP_MOD64 */
 
   /* compute at half size h = if (m1 >= m2) (qinv * (m1 - m2)) % p;
                               else          (qinv * (m1 + p - m2)) % p */
@@ -1128,21 +1274,13 @@ static void rsa_choose_decrypt (wp_rsa_key_pair * key,
  * dsize == key->nbits / 8, nresult >= key->nbits / 8 - padding_size
  * returns the size of the decrypted message if successful
  *   (the size is always key->nbits / 8 for WP_RSA_PADDING_NONE),
- * otherwise returns 0 */
-int wp_rsa_decrypt (wp_rsa_key_pair * key, char * data, int dsize,
+ * otherwise returns -1 */
+int wp_rsa_decrypt (wp_rsa_key_pair * key, const char * data, int dsize,
                     char * result, int nresult, int padding)
 {
   int kbytes = key->nbits / 8;
   if ((dsize != kbytes) || (nresult < kbytes) || (kbytes * 8 != key->nbits))
-    return 0;
-  /* doesn't work, data is big_endian and key->n may not be
-  if (wp_compare (key->nbits, (uint64_t *) data, key->n) > 0) {
-    printf ("ciphertext > n\n");
-    printf ("ciphertext %s\n", wp_itox (key->nbits, (uint64_t * data)));
-    printf ("n %s\n", wp_itox (key->nbits, key->n));
-    return 0;
-  }
-  */
+    return -1;
   rsa_int rdata;
   rsa_int_from_bytes (key->nbits, rdata, data);
   rsa_int decrypted;
@@ -1160,7 +1298,7 @@ int wp_rsa_decrypt (wp_rsa_key_pair * key, char * data, int dsize,
 }
 
 /* digest must be rsa_int or have WP_RSA_MAX_KEY_WORDS */
-static void sig_digest (int nbits, char * data, int ndata,
+static void sig_digest (int nbits, const char * data, int ndata,
                         uint64_t * digest, int sig_encoding)
 {
   if (sig_encoding == WP_RSA_SIG_ENCODING_NONE) {
@@ -1206,7 +1344,7 @@ static void sig_digest (int nbits, char * data, int ndata,
 /* data and sig may be the same buffer.
  * dsize <= key->nbits / 8,  nsig >= key->nbits / 8
  * returns 1 if successful, otherwise returns 0 */
-int wp_rsa_sign (wp_rsa_key_pair * key, char * data, int dsize,
+int wp_rsa_sign (wp_rsa_key_pair * key, const char * data, int dsize,
                  char * sig, int nsig, int sig_encoding)
 {
   if ((nsig < key->nbits / 8) || (key->nbits > WP_RSA_MAX_KEY_BITS)) {
@@ -1225,8 +1363,8 @@ int wp_rsa_sign (wp_rsa_key_pair * key, char * data, int dsize,
 /* data and sig may be the same buffer.
  * dsize <= key->nbits / 8,  nsig == key->nbits / 8
  * returns 1 if successful, otherwise returns 0 */
-int wp_rsa_verify (wp_rsa_key * key, char * data, int dsize,
-                   char * sig, int nsig, int sig_encoding)
+int wp_rsa_verify (wp_rsa_key * key, const char * data, int dsize,
+                   const char * sig, int nsig, int sig_encoding)
 {
   if ((nsig != key->nbits / 8) || (key->nbits > WP_RSA_MAX_KEY_BITS))
     return 0;
@@ -1602,7 +1740,7 @@ void run_rsa_test ()
   printf ("generating %d-bit key\n", WP_RSA_MAX_KEY_BITS);
   struct timeval start;
   gettimeofday (&start, NULL);
-  int count = rsa_generate_key_pair (WP_RSA_MAX_KEY_BITS, &k, 5);
+  int count = wp_rsa_generate_key_pair (WP_RSA_MAX_KEY_BITS, &k, 5);
   printf ("generated %d-bit key in %" PRId64 "us\n", k.nbits,
           time_usec_since (&start));
   if (count != 1)

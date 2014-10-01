@@ -694,10 +694,12 @@ static void handle_packet (char * message, int msize, char * seeking,
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
   unsigned char * trace_id = trp->trace_id;
   if (memcmp (trace_id, seeking, MESSAGE_ID_SIZE) != 0) {
+#ifdef DEBUG_PRINT
     printf ("received trace_id does not match expected trace_id\n");
     print_buffer (seeking , MESSAGE_ID_SIZE, "expected trace_id", 100, 1);
     print_buffer ((char *) trace_id, MESSAGE_ID_SIZE,
                   "received trace_id", 100, 1);
+#endif /* DEBUG_PRINT */
     return;
   }
   struct timeval now;

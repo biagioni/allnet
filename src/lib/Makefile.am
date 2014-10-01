@@ -5,6 +5,7 @@ libincludes = \
 	app_util.h \
 	cipher.h \
 	config.h \
+	crypt_sel.h \
 	dcache.h \
 	keys.h \
 	log.h \
@@ -28,6 +29,7 @@ libsrc = \
 	asn1.c \
 	cipher.c \
 	config.c \
+	crypt_sel.c \
 	dcache.c \
 	keys.c \
 	log.c \
@@ -44,9 +46,9 @@ libsrc = \
 
 DEPS_LIBS = ${CRYPTO_LIBS}
 
-lib_LTLIBRARIES = liballnet-0.3.la
+lib_LTLIBRARIES = liballnet-3.1.la
 pkginclude_HEADERS = $(libincludes)
-liballnet_0_3_la_LIBADD = $(DEPS_LIBS)
-liballnet_0_3_la_CFLAGS = $(CRYPTO_CFLAGS)
-liballnet_0_3_la_SOURCES = $(libsrc) $(libincludes)
-liballnet_0_3_la_LDFLAGS = -version-info 0:3:0 $(ALLNET_LT_LDFLAGS)
+liballnet_3_1_la_LIBADD = $(DEPS_LIBS)
+liballnet_3_1_la_CFLAGS = $(CRYPTO_CFLAGS)
+liballnet_3_1_la_SOURCES = $(libsrc) $(libincludes)
+liballnet_3_1_la_LDFLAGS = -version-info 0:3:0 $(ALLNET_LT_LDFLAGS)

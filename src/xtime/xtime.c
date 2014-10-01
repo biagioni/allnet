@@ -145,7 +145,7 @@ static int time_to_buf (time_t t, char * dp, int n)
 /* returns -1 for errors, otherwise the size of the announcement */
 static int make_announcement (char * buffer, int n,
                               time_t send, time_t expiration, int hops,
-                              char * key, int ksize,
+                              allnet_rsa_prvkey key,
                               unsigned char * source, int sbits,
                               unsigned char * dest, int dbits)
 {
@@ -181,24 +181,22 @@ static int make_announcement (char * buffer, int n,
   int sig_algo = ALLNET_SIGTYPE_NONE;
   int ssize = 0;
   int dsize = time_to_buf (send, dp, TIMESTAMP_SIZE);
-  if ((key != NULL) && (ksize > 0)) {
-    char * sig;
-    ssize = allnet_sign (dp, TIMESTAMP_SIZE, key, ksize, &sig);
-    if (ssize > 0) {
-      int size = hsize + TIMESTAMP_SIZE + ssize + 2;
-      if (size > n) {
-        printf ("error, buffer size %d, wanted %d, not adding sig\n", n, size);
-        ssize = 0;
-      } else {
-        sig_algo = ALLNET_SIGTYPE_RSA_PKCS1;
-        char * sp = dp + dsize;
-        memcpy (sp, sig, ssize);
-        sp [ssize    ] = (ssize >> 8) & 0xff;
-        sp [ssize + 1] = (ssize & 0xff);
-        ssize += 2;
-      }
-      free (sig);
+  char * sig;
+  ssize = allnet_sign (dp, TIMESTAMP_SIZE, key, &sig);
+  if (ssize > 0) {
+    int size = hsize + TIMESTAMP_SIZE + ssize + 2;
+    if (size > n) {
+      printf ("error, buffer size %d, wanted %d, not adding sig\n", n, size);
+      ssize = 0;
+    } else {
+      sig_algo = ALLNET_SIGTYPE_RSA_PKCS1;
+      char * sp = dp + dsize;
+      memcpy (sp, sig, ssize);
+      sp [ssize    ] = (ssize >> 8) & 0xff;
+      sp [ssize + 1] = (ssize & 0xff);
+      ssize += 2;
     }
+    free (sig);
   }
   hp->sig_algo = sig_algo;
 
@@ -209,7 +207,7 @@ static int make_announcement (char * buffer, int n,
 }
 
 static void announce (time_t interval, int sock,
-                      int hops, char * key, int ksize,
+                      int hops, allnet_rsa_prvkey key,
                       unsigned char * source, int sbits,
                       unsigned char * dest, int dbits)
 {
@@ -227,7 +225,7 @@ static void announce (time_t interval, int sock,
                                 announce_time - ALLNET_Y2K_SECONDS_IN_UNIX,
                                 announce_time + interval -
                                   ALLNET_Y2K_SECONDS_IN_UNIX,
-                                hops, key, ksize, source, sbits, dest, dbits);
+                                hops, key, source, sbits, dest, dbits);
   if (blen <= 0) {
     printf ("unknown error: make_announcement returned %d\n", blen);
     snprintf (log_buf, LOG_SIZE,
@@ -273,9 +271,8 @@ int main (int argc, char ** argv)
     printf ("key '%s' not found\n", address);
     exit (1);
   }
-  printf ("xtime: got %d-byte public, %d-byte private key, address %02x.%02x\n",
-          key->pub_klen, key->priv_klen, key->address [0] & 0xff,
-          key->address [1] & 0xff);
+  printf ("xtime: got public + private key, address %02x.%02x\n",
+          key->address [0] & 0xff, key->address [1] & 0xff);
   
   int sock = init_xtime (argv [0]);
   pthread_t receive_thread;
@@ -285,6 +282,6 @@ int main (int argc, char ** argv)
   }
 
   while (1)
-    announce (interval, sock, hops, key->priv_key, key->priv_klen,
+    announce (interval, sock, hops, key->prv_key,
               key->address, ADDRESS_BITS, key->address, ADDRESS_BITS);
 }

@@ -896,7 +896,8 @@ void * memcpy_malloc (void * bytes, int bsize, char * desc)
  * array to hold the file contents and assigns it to content_p.
  * in case of problems, returns 0
  */
-int read_file_malloc (char * file_name, char ** content_p, int print_errors)
+int read_file_malloc (const char * file_name, char ** content_p,
+                      int print_errors)
 {
   struct stat st;
   if (stat (file_name, &st) < 0) {

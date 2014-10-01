@@ -155,10 +155,10 @@ static int is_my_contact (char * message, int msize,
     for (ink = 0; ink < nk; ink++) {
       unsigned char address [ADDRESS_SIZE];
       int na_bits = get_remote (keysets [ink], address);
-      char * key;
+      allnet_rsa_pubkey key;
       int ksize = get_contact_pubkey (keysets [ink], &key);
       if ((ksize > 0) && (matches (sender, bits, address, na_bits) > 0) &&
-          (allnet_verify (message, msize, sig, ssize, key, ksize))) {
+          (allnet_verify (message, msize, sig, ssize, key))) {
         snprintf (log_buf, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
         log_print ();
         return 1;
@@ -172,8 +172,7 @@ static int is_my_contact (char * message, int msize,
   for (ibc = 0; ibc < nbc; ibc++) {
     if ((matches (sender, bits,
                   (unsigned char *) (bc [ibc].address), ADDRESS_BITS) > 0) &&
-        (allnet_verify (message, msize, sig, ssize,
-                 bc [ibc].pub_key, bc [ibc].pub_klen))) {
+        (allnet_verify (message, msize, sig, ssize, bc [ibc].pub_key))) {
       snprintf (log_buf, LOG_SIZE, "verified from bc contact %d\n", ibc);
       log_print ();
       return 1;

@@ -11,9 +11,9 @@
 #include "wp_rsa.h"
 #include "wp_arith.h"
 
-static char * debug_data = NULL;
+static const char * debug_data = NULL;
 
-static int read_byte (char * data, int dsize, int * read_error)
+static int read_byte (const char * data, int dsize, int * read_error)
 {
   if (dsize <= 0) {
     *read_error = 1;
@@ -28,7 +28,7 @@ else printf ("returning data %02x\n", data [0] & 0xff);
 }
 
 /* only handles the definite form */
-static int read_length (char * data, int dsize, int * length)
+static int read_length (const char * data, int dsize, int * length)
 {
   if (length != NULL)
     * length = -1;
@@ -62,10 +62,12 @@ static int read_length (char * data, int dsize, int * length)
 /* returns in num_elements the number of elements in the sequence */
 /* if specific_element >= 0, returns in specific_pos the position of
  * the given element, as long as the sequence has that many elements. */
-int asn1_read_seq (char * data, int dsize, int * num_elements,
+int asn1_read_seq (const char * data, int dsize, int * num_elements,
                    int specific_element, int * specific_pos)
 {
 debug_data = data;
+  if (num_elements != NULL)
+    *num_elements = 0;
   int read_error = 0;
   int id = read_byte (data, dsize, &read_error);
   if (read_error || ((id & 0x1f) != 0x10))
@@ -81,8 +83,6 @@ debug_data = data;
     return 0;
   }
   
-  if (num_elements != NULL)
-    *num_elements = 0;
   if ((specific_element >= 0) && (specific_pos != NULL))
     * specific_pos = 0;
   int pos = 1 + length_bytes;
@@ -109,7 +109,7 @@ debug_data = data;
 }
 
 /* returns 0 for error, 1 for success */
-static int read_int (char * data, int dsize, long int * result)
+static int read_int (const char * data, int dsize, long int * result)
 {
   int re = 0;
   int id = read_byte (data, dsize, &re) & 0x1f;
@@ -137,7 +137,39 @@ static int read_int (char * data, int dsize, long int * result)
   return 1;
 }
 
-static int check_int (char * data, int dsize, int expected)
+static void print_indent (int indent)
+{
+  while (indent-- > 0)
+    printf (" ");
+}
+
+static void print_sequence (const char * data, int dsize, int indent)
+{
+  int num_elements;
+  /* get the number of elements */
+  int size = asn1_read_seq (data, dsize, &num_elements, -1, NULL);
+  print_indent (indent);
+  printf ("sequence has %d elements in %d/%d bytes\n",
+          num_elements, size, dsize);
+  if (size <= 0) {
+    print_indent (indent);
+    int length;
+    read_length (data + 1, dsize - 1, &length);
+    printf ("not a sequence, first byte %02x, length %d\n",
+            data [0] & 0xff, length);
+    return;
+  }
+  int e;
+  for (e = 0; e < num_elements; e++) {
+    int epos;
+    asn1_read_seq (data, dsize, &num_elements, e, &epos);
+    print_indent (indent);
+    printf ("element %d is at position %d\n", e, epos);
+    print_sequence (data + epos, dsize - epos, indent + 3);
+  }
+}
+
+static int check_int (const char * data, int dsize, int expected)
 {
   long int found;
   if (read_int (data, dsize, &found))
@@ -150,7 +182,7 @@ static char rsa_object_id [] =
  { 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d,
    0x01, 0x01, 0x01, 0x05, 0x00 };
 
-static int check_rsa_id (char * data, int dsize)
+static int check_rsa_id (const char * data, int dsize)
 {
   if (dsize < sizeof (rsa_object_id)) {
     printf ("check_rsa_id failed, size %d, wanted %zd\n",
@@ -165,7 +197,7 @@ static int check_rsa_id (char * data, int dsize)
 }
 
 /* returns 0 for error, 1 for success */
-static int read_key (char * data, int dsize, int nbits,
+static int read_key (const char * data, int dsize, int nbits,
                      uint64_t * result, int * bits_read)
 {
   int re = 0;
@@ -201,9 +233,11 @@ static int read_key (char * data, int dsize, int nbits,
 
 /* returns 1 if read a private key, returns 2 if read a public key,
  * and zero in case of errors (including extra bytes at the end). */
-static int wp_rsa_read_key_from_bytes (char * data, int dsize,
-                                       int * nbits, wp_rsa_key_pair * key)
+static int wp_rsa_read (const char * data, int dsize,
+                        int * nbits, wp_rsa_key_pair * key)
 {
+debug_data = data;
+int debug_dsize = dsize;
   bzero (key, sizeof (wp_rsa_key_pair));  /* set all unused keys to 0 */
   int num_elements;
   int length = asn1_read_seq (data, dsize, &num_elements, -1, NULL);
@@ -212,54 +246,60 @@ static int wp_rsa_read_key_from_bytes (char * data, int dsize,
             length, dsize);
     return 0;
   }
-  if (num_elements != 3) {
-    printf ("error: expected 3 elements in top-level sequence, got %d\n",
-            num_elements);
-    return 0;
-  }
-  int epos [9];
+  int epos [9];    /* positions of up to 9 elements in the sequence */
   int e;
-  for (e = 0; e < num_elements; e++)
-    asn1_read_seq (data, dsize, NULL, e, epos + e);
-  int re = 0;
-  int os_byte = read_byte (data + epos [2], dsize - epos [2], &re) & 0x1f;
-  if (re)
-    os_byte = -1;
-  if ((! check_int (data + epos [0], dsize - epos [0], 0)) ||
-      (! check_rsa_id (data + epos [1], dsize - epos [1])) ||
-      (os_byte != 4)) {
-    printf ("error in int, ID, or seq %x, %d\n", os_byte, re);
-    return 0;
+  if (num_elements == 3) {
+    /* determine whether this is a public key (0, n, e) or an encapsulated
+     * key preceded by the RSA ID */
+    for (e = 0; e < num_elements; e++)
+      asn1_read_seq (data, dsize, NULL, e, epos + e);
+    int re = 0;
+    /* if this is an encapsulated key, this is an octet string/os = 4 */
+    int os_byte = read_byte (data + epos [2], dsize - epos [2], &re) & 0x1f;
+    if (re)   /* error reading the byte */
+      os_byte = -1;
+    if ((check_int (data + epos [0], dsize - epos [0], 0)) &&
+        (check_rsa_id (data + epos [1], dsize - epos [1])) &&
+        (os_byte == 4)) {
+       /* encapsulated key, open the octet string to find the key integers */
+      data  += epos [2];
+      dsize -= epos [2];
+      int os_length;
+      int length_bytes = read_length (data + 1, dsize - 2, &os_length);
+      if (length_bytes <= 0) {
+        printf ("error: no octet stream length\n");
+        return 0;
+      }
+      data  += 1 + length_bytes;
+      dsize -= 1 + length_bytes;
+      int seq_length = asn1_read_seq (data, dsize, &num_elements, -1, NULL);
+      if (seq_length != dsize) {
+        printf ("error: inner sequence gives length %d, data %d bytes\n",
+                seq_length, dsize);
+        return 0;
+      }
+    }
   }
-  /* open up the octet string to find the key integers */
-  data  += epos [2];
-  dsize -= epos [2];
-  int os_length;
-  int length_bytes = read_length (data + 1, dsize - 2, &os_length);
-  if (length_bytes <= 0) {
-    printf ("error: no octet stream length\n");
-    return 0;
-  }
-  data  += 1 + length_bytes;
-  dsize -= 1 + length_bytes;
-  int seq_length = asn1_read_seq (data, dsize, &num_elements, -1, NULL);
-  if (seq_length != dsize) {
-    printf ("error: reading inner sequence gives length %d, data %d bytes\n",
-            seq_length, dsize);
-    return 0;
-  }
-  if ((num_elements != 3) &&   /* public key only: 0, n, e */
+  if ((num_elements != 2) &&   /* public key only: n, e */
+      (num_elements != 3) &&   /* public key only: 0, n, e */
       (num_elements != 4) &&   /* public + secret key: 0, n, e, d */
-      (num_elements != 9)) {   /* pub+sec key: 0, n, e, d, p, q, dp, dq, qinv */
-    printf ("error: expected 3, 4, or 9 elements in key sequence, got %d\n",
-            num_elements);
+      (num_elements != 9)) {   /* pub+sec: 0, n, e, d, p, q, dp, dq, qinv */
+    printf ("error: expected 2, 3, 4, or 9 elements in key seq, got %d %d\n",
+            num_elements, debug_dsize);
+    print_sequence (debug_data, debug_dsize, 0);
     return 0;
   }
   for (e = 0; e < num_elements; e++)
     asn1_read_seq (data, dsize, NULL, e, epos + e);
-  if (! check_int (data + epos [0], dsize - epos [0], 0))
-    return 0;
-  if (! read_key (data + epos [1], dsize - epos [1],
+  if (num_elements > 2) {
+    /* make sure the first element is a zero int, then ignore it */
+    if (! check_int (data + epos [0], dsize - epos [0], 0))
+      return 0;
+    for (e = 1; e < num_elements; e++)  /* delete that element */
+      epos [e - 1] = epos [e];
+    num_elements--;
+  }
+  if (! read_key (data + epos [0], dsize - epos [0],  /* read n */
                   WP_RSA_MAX_KEY_BITS, key->n, &(key->nbits)))
     return 0;
   while ((key->nbits % 8) != 0) 
@@ -267,22 +307,22 @@ static int wp_rsa_read_key_from_bytes (char * data, int dsize,
   if (nbits != NULL)
     *nbits = key->nbits;
   int nhalf = key->nbits / 2;
-  if (! read_int (data + epos [2], dsize - epos [2], &(key->e)))
+  if (! read_int (data + epos [1], dsize - epos [1], &(key->e)))  /* e */
     return 0;
-  printf ("read %d-bit public key\n", key->nbits);
-  if ((num_elements > 3) &&
-      (! read_key (data + epos [3], dsize - epos [3], key->nbits,
+/* printf ("read %d-bit public key\n", key->nbits); */
+  if ((num_elements > 2) &&
+      (! read_key (data + epos [2], dsize - epos [2], key->nbits,
                    key->d, NULL)))
     return 0;
-  if ((num_elements > 4) &&
-      (! (read_key (data + epos [4], dsize - epos [4], nhalf, key->p, NULL) &&
-          read_key (data + epos [5], dsize - epos [5], nhalf, key->q, NULL) &&
-          read_key (data + epos [6], dsize - epos [6], nhalf, key->dp, NULL) &&
-          read_key (data + epos [7], dsize - epos [7], nhalf, key->dq, NULL) &&
-          read_key (data + epos [8], dsize - epos [8], nhalf, key->qinv,
+  if ((num_elements > 7) &&
+      (! (read_key (data + epos [3], dsize - epos [3], nhalf, key->p, NULL) &&
+          read_key (data + epos [4], dsize - epos [4], nhalf, key->q, NULL) &&
+          read_key (data + epos [5], dsize - epos [5], nhalf, key->dp, NULL) &&
+          read_key (data + epos [6], dsize - epos [6], nhalf, key->dq, NULL) &&
+          read_key (data + epos [7], dsize - epos [7], nhalf, key->qinv,
                     NULL))))
     return 0;
-  if (num_elements > 3)
+  if (num_elements > 2)
     return 1;
   return 2;
 }
@@ -321,7 +361,7 @@ static int write_id_len (char * buffer, int bsize, int id, int seqsize, int c)
   return written;
 }
 
-static int write_int (char * buffer, int bsize, uint64_t * n, int nbits)
+static int write_int (char * buffer, int bsize, const uint64_t * n, int nbits)
 {
   int written = 0;
   int nbytes =  nbits / 8;
@@ -352,7 +392,7 @@ static int write_int (char * buffer, int bsize, uint64_t * n, int nbits)
 }
 
 static int wp_rsa_write_key_to_bytes (char * buffer, int bsize,
-                                      wp_rsa_key_pair * key)
+                                      const wp_rsa_key_pair * key)
 {
   int written = 0;
   if (! wp_is_zero (key->nbits, key->d)) {  /* has private key */
@@ -436,7 +476,7 @@ static int b64_encode_bits (int bits)
 
 /* data and result may be the same buffer -- we only write to result
  * after reading from data */
-int b64_decode (char * data, int dsize, char * result, int rsize)
+int b64_decode (const char * data, int dsize, char * result, int rsize)
 {
   int written = 0;
   int state = 0;
@@ -444,7 +484,7 @@ int b64_decode (char * data, int dsize, char * result, int rsize)
   int i;
   for (i = 0; (i < dsize) && (written < rsize); i++) {
     int v = b64_next (data [i]);
-    if (v < 64) {
+    if (v < B64_PADDING) {
       if (state == 0) {
         old_char = (v << 2);
       } else if (state == 1) {
@@ -460,10 +500,15 @@ int b64_decode (char * data, int dsize, char * result, int rsize)
         return 0;  /* programming error */
       }
       state = (state + 1) % 4;
+    } else if (v == B64_PADDING) {
+      if (state == 0)
+        printf ("b64 error: there should be no padding in state 0\n");
+      state = (state + 1) % 4;
     }
   }
+
   if (state != 0)
-    printf ("warning in b64_decode: final state %d is nonzero, %d/%d, %d/%d\n",
+    printf ("b64_decode warning: final state %d is nonzero, %d/%d, %d/%d\n",
             state, i, dsize, written, rsize);
   if (i < dsize)
     printf ("warning in b64_decode: decoded %d, but %d offered\n", i, dsize);
@@ -516,9 +561,53 @@ static int b64_encode (char * buffer, int dsize, int bsize)
   return written;
 }
 
+/* haystack need not be NULL terminated */
+static const char * find_in_string (const char * haystack, int hsize,
+                                    const char * needle)
+{
+  int nsize = strlen (needle);
+  int i;
+  for (i = 0; i + nsize <= hsize; i++)
+    if (strncmp (haystack + i, needle, nsize) == 0) 
+      return haystack + i;
+  return NULL;
+}
+
 static char wp_buffer [50000];
 
-int wp_rsa_read_key_from_file (char * fname, int * nbits, wp_rsa_key_pair * key)
+/* read the key from the given bytes, returning 1 for success or 0 for error
+ * if this is a public key, key->d will be set to zero */
+int wp_rsa_read_key_from_bytes (const char * bytes, int bsize,
+                                int * nbits, wp_rsa_key_pair * key)
+{
+  if (bsize >= sizeof (wp_buffer)) {
+    printf ("wp_rsa_read_key_from_bytes: bsize %d > max %zd\n",
+            bsize, sizeof (wp_buffer));
+    return 0;
+  }
+  const char * start = find_in_string (bytes, bsize, "-----BEGIN");
+  if (start != NULL)
+    start = find_in_string (start, bsize - (start - bytes), "\n");
+  if (start != NULL)
+    start++;  /* point to the first char after the BEGIN line */
+  const char * end   = find_in_string (bytes, bsize, "-----END");
+  while ((end != NULL) && (end > start + 3) &&  /* go back over \n or \r */
+         ((* (end - 1) == '\n') || (* (end - 1) == '\r')))
+    end--;
+  if ((start == NULL) || (end == NULL))
+    return 0;
+  int b64bytes = (end - start) + 1;
+/* if called from wp_rsa_read_key_from_file, start and wp_buffer cover the
+ * same area of memory, but start >= wp_buffer -- which is all
+ * that b64_decode needs */
+  int dbytes = b64_decode (start, b64bytes, wp_buffer, sizeof (wp_buffer));
+  if (dbytes > 0)
+    return wp_rsa_read (wp_buffer, dbytes, nbits, key);
+  return 0;
+}
+
+int wp_rsa_read_key_from_file (const char * fname, int * nbits,
+                               wp_rsa_key_pair * key)
 {
   int fd = open (fname, O_RDONLY);
   if (fd < 0) {
@@ -535,31 +624,13 @@ int wp_rsa_read_key_from_file (char * fname, int * nbits, wp_rsa_key_pair * key)
     printf ("ans1.c: file %s too large\n", fname);
     return 0;
   }
-  wp_buffer [nread] = '\0';
-#ifdef DEBUG_PRINT
   printf ("wp_rsa_read_key_from_file read %d bytes\n", nread);
+#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
-  char * start = wp_buffer;
-  char * minus = index (wp_buffer, '-');
-  if ((minus != NULL) && (strncmp (minus, "-----BEGIN", 10) == 0)) {
-    start = index (minus, '\n');
-    if (start != NULL)
-      start = start + 1;
-    else
-      start = wp_buffer;
-  }
-  char * end = strstr (wp_buffer, "-----END");
-  while ((end != NULL) && (end > start + 3) &&  /* go back over \n or \r */
-         ((* (end - 1) == '\n') || (* (end - 1) == '\r')))
-    end--;
-  int b64bytes = (end - start) + 1;
-  int dbytes = b64_decode (start, b64bytes, wp_buffer, sizeof (wp_buffer));
-  if (dbytes > 0)
-    return wp_rsa_read_key_from_bytes (wp_buffer, dbytes, nbits, key);
-  return 0;
+  return wp_rsa_read_key_from_bytes (wp_buffer, nread, nbits, key);
 }
 
-int wp_rsa_write_key_to_file (char * fname, wp_rsa_key_pair * key)
+int wp_rsa_write_key_to_file (const char * fname, const wp_rsa_key_pair * key)
 {
   int has_private = 0;
   int i;
@@ -569,7 +640,7 @@ int wp_rsa_write_key_to_file (char * fname, wp_rsa_key_pair * key)
 
   int bsize = wp_rsa_write_key_to_bytes (wp_buffer, sizeof (wp_buffer), key);
   int dbytes = b64_encode (wp_buffer, bsize, sizeof (wp_buffer));
-  int fd = open (fname, O_WRONLY | O_CREAT, 0666);
+  int fd = open (fname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
   if (fd < 0) {
     perror ("create key file");
     return 0;
@@ -601,7 +672,8 @@ int wp_rsa_write_key_to_file (char * fname, wp_rsa_key_pair * key)
 
 #ifdef UNIT_TEST
 
-void print_buffer (const char * buffer, int count)
+#ifdef SHOW_KEY_BUFFER
+static void print_buffer (const char * buffer, int count)
 {
   printf ("%d bytes\n", count);
   int i;
@@ -615,34 +687,7 @@ void print_buffer (const char * buffer, int count)
   if (count % 16 != 15)
     printf ("\n");
 }
-
-static void print_indent (int indent)
-{
-  while (indent-- > 0)
-    printf (" ");
-}
-
-#if 0
-static void print_sequence (char * data, int dsize, int indent)
-{
-  int num_elements;
-  /* get the number of elements */
-  int size = asn1_read_seq (data, dsize, &num_elements, -1, NULL);
-  printf ("sequence has %d elements in %d/%d bytes\n",
-          num_elements, size, dsize);
-  if (size <= 0) {
-    printf ("not a sequence, first byte is x%02x\n", data [0] & 0xff);
-    return;
-  }
-  int e;
-  for (e = 0; e < num_elements; e++) {
-    int epos;
-    asn1_read_seq (data, dsize, &num_elements, e, &epos);
-    printf ("element %d is at position %d\n", e, epos);
-    print_sequence (data + epos, dsize - epos, indent + 3);
-  }
-}
-#endif /* 0 */
+#endif /* SHOW_KEY_BUFFER */
 
 static void print_element (char * data, int dsize, int indent)
 {
@@ -654,9 +699,12 @@ static void print_element (char * data, int dsize, int indent)
   char id_name [1000];
   int next = -1;
   if ((! read_error) && (id_bits == 0x02))
-    read_byte (data + length_bytes + 1, dsize - length_bytes - 1, &read_error);
-  if (read_error)
+    next = read_byte (data + length_bytes + 1, dsize - length_bytes - 1,
+                      &read_error);
+  if (read_error) {
     printf ("read_error in print_element");
+    next = -1;
+  }
   switch (id_bits) {
   case 0x02:  snprintf (id_name, sizeof (id_name), "integer %d", next); break;
   case 0x04:  snprintf (id_name, sizeof (id_name), "octetString"); break;
@@ -694,12 +742,14 @@ static void print_element (char * data, int dsize, int indent)
 
 int run_asn1_test ()
 {
+  static char buffer [20000];
+  /* read a binary file, to make sure the asn stuff works */
+if (buffer [0] < buffer [1]) {
   int fd = open ("testasn1.bin", O_RDONLY);
   if (fd < 0) {
     perror ("open testasn1.bin");
     return 0;
   }
-  static char buffer [20000];
   int nread = read (fd, buffer, sizeof (buffer));
   if (nread < 0) {
     perror ("read testasn1.bin");
@@ -708,6 +758,8 @@ int run_asn1_test ()
   close (fd);
   printf ("read %d bytes\n", nread);
   print_element (buffer, nread, 0);
+}
+  /* read a file written by openssh */
   wp_rsa_key_pair key;
   int nbits;
   if (! wp_rsa_read_key_from_file ("tssl.pem", &nbits, &key)) {
@@ -727,7 +779,9 @@ int run_asn1_test ()
   }
   int w = wp_rsa_write_key_to_bytes (buffer, sizeof (buffer), &key);
   printf ("saving key to buffer takes %d bytes\n", w);
-  /* print_buffer (buffer + (sizeof (buffer) - w), w); */
+#ifdef SHOW_KEY_BUFFER
+  print_buffer (buffer + (sizeof (buffer) - w), w);
+#endif /* SHOW_KEY_BUFFER */
 
   if (wp_rsa_write_key_to_file ("tssl.asn1.pem", &key))
     printf ("successfully saved key in tssl.asn1.pem\n");

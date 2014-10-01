@@ -41,14 +41,19 @@ typedef struct {
 /* get the public key part of the key pair */
 extern wp_rsa_key wp_rsa_get_public_key (wp_rsa_key_pair * key);
 
+/* read the key from the given bytes, returning 1 for success or 0 for error
+ * if this is a public key, key->d will be set to zero */
+extern int wp_rsa_read_key_from_bytes (const char * bytes, int bsize,
+                                       int * nbits, wp_rsa_key_pair * key);
 /* read the key from the file, returning 1 for success or 0 for error
  * if this is a public key, key->d will be set to zero */
-extern int wp_rsa_read_key_from_file (char * fname, int * nbits,
+extern int wp_rsa_read_key_from_file (const char * fname, int * nbits,
                                       wp_rsa_key_pair * key);
 /* writes the key to the file, returning 1 for success or 0 for error
  * if key->d is zero, only saves the public key, otherwise saves both
  * the public and private keys */
-extern int wp_rsa_write_key_to_file (char * fname, wp_rsa_key_pair * key);
+extern int wp_rsa_write_key_to_file (const char * fname,
+                                     const wp_rsa_key_pair * key);
 
 /* uses /dev/random to generate bits of the key
  * nbits should be a power of two <= RSA_MAX_KEY_BITS
@@ -75,16 +80,16 @@ extern int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key,
  *   (for PADDING_NONE, must have ndata == key->nbits / 8)
  * nresult >= key->nbits / 8
  * returns key->nbits / 8 if successful, and if so, fills in result
- * otherwise returns 0 */
-extern int wp_rsa_encrypt (wp_rsa_key * key, char * data, int ndata,
+ * otherwise returns -1 */
+extern int wp_rsa_encrypt (wp_rsa_key * key, const char * data, int ndata,
                            char * result, int nresult, int padding);
 
 /* data and result may be the same buffer.
  * ndata == key->nbits / 8, nresult >= key->nbits / 8 - padding_size
  * returns the size of the decrypted message if successful
  *   (the size is always key->nbits / 8 - 1 for RSA_PADDING_NONE),
- * otherwise returns 0 */
-extern int wp_rsa_decrypt (wp_rsa_key_pair * key, char * data,
+ * otherwise returns -1 */
+extern int wp_rsa_decrypt (wp_rsa_key_pair * key, const char * data,
                            int dsize, char * result, int nresult,
                            int padding);
 
@@ -94,13 +99,13 @@ extern int wp_rsa_decrypt (wp_rsa_key_pair * key, char * data,
 /* data and sig may be the same buffer.
  * ndata <= key->nbits / 8,  nsig >= key->nbits / 8
  * returns 1 if successful, otherwise returns 0 */
-extern int wp_rsa_sign (wp_rsa_key_pair * key, char * data, int ndata,
+extern int wp_rsa_sign (wp_rsa_key_pair * key, const char * data, int ndata,
                         char * sig, int nsig, int sig_encoding);
 
 /* data and sig may be the same buffer.
  * ndata <= key->nbits / 8,  nsig == key->nbits / 8
  * returns 1 if successful, otherwise returns 0 */
-extern int wp_rsa_verify (wp_rsa_key * key, char * data, int ndata,
-                          char * sig, int nsig, int sig_encoding);
+extern int wp_rsa_verify (wp_rsa_key * key, const char * data, int ndata,
+                          const char * sig, int nsig, int sig_encoding);
 
 #endif /* RSA_H */

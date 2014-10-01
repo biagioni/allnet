@@ -27,7 +27,10 @@ extern char * wp_itox (int nbits, const uint64_t * n);
 extern void wp_copy (int nbits, uint64_t * dst, const uint64_t * src);
 
 extern void wp_init (int nbits, uint64_t * n, int value);
-extern void wp_from_bytes (int nbits, uint64_t * n, int dsize, char * data);
+extern void wp_from_bytes (int nbits, uint64_t * n,
+                           int dsize, const char * data);
+extern void wp_to_bytes (int nbits, const uint64_t * n,
+                         int dsize, char * data);
 
 /* only works if new_bits > old_bits */
 extern void wp_extend (int new_bits, uint64_t * new,
@@ -39,6 +42,9 @@ extern void wp_shrink (int new_bits, uint64_t * new,
 extern int wp_is_zero (int nbits, const uint64_t * n);
 extern int wp_is_even (int nbits, const uint64_t * n);
 extern int wp_compare (int nbits, const uint64_t * n1, const uint64_t * n2);
+/* returns 1 if n is a multiple of mod, 0 otherwise */
+/* temp must have nbits or more */
+extern int wp_multiple_of_int (int nbits, const uint64_t * n, uint32_t mod);
 
 /* byte position zero is the least significant.
  * returns -1 in case of error, the byte value (0..255) otherwise */
@@ -95,5 +101,10 @@ extern void wp_div (int nbits, uint64_t * numerator_result,
 extern void wp_exp_mod (int nbits, uint64_t * res, const uint64_t * base,
                         const uint64_t * exp, const uint64_t * mod,
                         uint64_t * temp);
+
+/* same, except temp should have at least nbits * 65 */
+extern void wp_exp_mod64 (int nbits, uint64_t * res, const uint64_t * base,
+                          const uint64_t * exp, const uint64_t * mod,
+                          uint64_t * temp);
 
 #endif /* WES_ARITH_H */
