@@ -13,8 +13,6 @@
 #define AES_KEY_192_BYTES	24
 #define AES_KEY_256_BYTES	32
 
-/* a persistent key should be generated using /dev/random.
- * for a session key, /dev/urandom is usually fine */
 #define WP_AES_BLOCK_SIZE	16
 
 /* for AES in counter mode, only encryption is used

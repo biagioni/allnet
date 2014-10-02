@@ -220,8 +220,10 @@ notsock_printed = pipe;
         char * name = "send_pipe_msg write";
         if (is_send)
           name = "send_pipe_msg send";
+#ifdef DEBUG_PRINT
         if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
           perror (name);
+#endif /* DEBUG_PRINT */
         snprintf (log_buf, LOG_SIZE,
                   "pipe %d, result %d, wanted %d, original errno %d\n",
                   pipe, w, blen, save_errno);
@@ -526,8 +528,8 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
         snprintf (log_buf, LOG_SIZE, "receive_bytes: pipe %d is closed\n", pipe);
         log_print ();
       } else
-        perror ("pipemsg.c receive_bytes read");
 #ifdef DEBUG_PRINT
+        perror ("pipemsg.c receive_bytes read");
 #endif /* DEBUG_PRINT */
       snprintf (log_buf, LOG_SIZE,
                 "receive_bytes: %d/%d bytes on pipe %d, expected %d/%d\n",

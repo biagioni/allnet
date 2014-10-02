@@ -17,6 +17,7 @@ libincludes = \
 	pqueue.h \
 	priority.h \
 	sha.h \
+	stream.h \
 	table.h \
 	util.h \
 	wp_aes.h \
@@ -38,6 +39,7 @@ libsrc = \
 	pqueue.c \
 	priority.c \
 	sha.c \
+	stream.c \
 	table.c \
 	util.c \
 	wp_aes.c \

@@ -1590,7 +1590,7 @@ static int testmultiple ()
     "e3050089d2f440ab374d7e6aa18aa5f7f7d9d885cd4895f8e7aa67ad1e240bd65"
     "7f316cd8fc785d98e7b3e1e2a8b0b7654d0d1372fdb65185d";
   wp_from_hex (4096, n_product_of_primes, strlen (nvalue), nvalue);
-  uint64_t i;
+  int i;
   for (i = 2; i < 100000; i++) {
     if (wp_multiple_of_int (4096, n_product_of_primes, i)) {
       incorrect++;
@@ -1791,9 +1791,9 @@ static int test_mul_div ()
             uint64_t res2_copy [64];
             uint64_t rem2 [32];
             wp_copy (nbits, res2, v3);
-            wp_add_int (nbits, res2, i5);
+            wp_add_int (nbits, res2, (int) i5);
             wp_copy (nbits, res2_copy, res2);
-            wp_init (dbits, rem2, i5);
+            wp_init (dbits, rem2, (int) i5);
             wp_div (nbits, res2, dbits, v1, NULL, NULL);
             uint64_t * q2 = res2 + 32;
             uint64_t * r2 = res2;

@@ -1074,7 +1074,7 @@ static void rsa_do_encrypt (wp_rsa_key * key, uint64_t * data, char * result)
 {
   rsa_int ri;   /* result, as an integer */
   rsa_int efull;
-  wp_init (key->nbits, efull, key->e);
+  wp_init (key->nbits, efull, (int) (key->e));
 #ifdef DEBUG_PRINT
   printf ("computing %s^", wp_itox (key->nbits, data));
   printf ("%s mod ", wp_itox (key->nbits, efull));
@@ -1686,15 +1686,15 @@ void run_rsa_test ()
       printf ("dq is %s\n", wp_itox (k.nbits / 2, k.dq));
       printf ("qinv is %s\n", wp_itox (k.nbits / 2, k.qinv));
 */
-    }
-    /* test_encrypt_decrypt (&k, WP_RSA_PADDING_VANILLA); */
+      /* test_encrypt_decrypt (&k, WP_RSA_PADDING_VANILLA); */
 #ifdef TEST_WITH_OPENSSL
-    test_with_openssl (&k, WP_RSA_PADDING_PKCS1_OAEP);
-    return;
+      test_with_openssl (&k, WP_RSA_PADDING_PKCS1_OAEP);
+      return;
 #else /* TEST_WITH_OPENSSL */
-    test_sign_verify (&k, WP_RSA_SIG_ENCODING_SHA512);
-    test_encrypt_decrypt (&k, WP_RSA_PADDING_PKCS1_OAEP);
+      test_sign_verify (&k, WP_RSA_SIG_ENCODING_SHA512);
+      test_encrypt_decrypt (&k, WP_RSA_PADDING_PKCS1_OAEP);
 #endif /* TEST_WITH_OPENSSL */
+    }
   }
   rsa_test_padding ();
   printf ("generating %d-bit key\n", WP_RSA_MAX_KEY_BITS);
