@@ -48,6 +48,7 @@ else
     AC_MSG_ERROR([OpenSSL support explicitly requested but OpenSSL could not be found])
   fi
 fi
+AM_CONDITIONAL(HAVE_OPENSSL, test "x$have_openssl" = "xyes")
 if test "x$enable_openssl" = "xyes"; then
   AC_DEFINE(HAVE_OPENSSL, 1, [Define if you have OpenSSL support])
   AC_SUBST(openssl_CFLAGS)
@@ -101,7 +102,6 @@ elif test "x$enable_network_manager" = "xyes"; then
 fi
 if test "x$enable_network_manager" = "xyes"; then
   AC_DEFINE(USE_NETWORK_MANAGER, [], [Enable NetworkManager support])
-  LDFLAGS+=" -ldbus-1"
 fi
 AM_CONDITIONAL(USE_NETWORK_MANAGER, test "x$enable_network_manager" = "xyes")
 
@@ -178,8 +178,8 @@ echo "  Prefix                 : ${prefix}"
 echo "  Compiler flags         : ${CFLAGS}"
 echo "  NetworkManager support : ${enable_network_manager}"
 echo "  Build User Interface   : ${build_gui}"
-echo "  Openssl                : ${enable_openssl}"
 if test "x$build_gui" = "xno"; then
 echo "  Install precompiled UI : ${install_precompiled_gui} (only available when Build User Interface is \"no\")"
+echo "  Openssl                : ${enable_openssl}"
 fi
 echo ""

@@ -116,4 +116,4 @@ extern allnet_rsa_prvkey allnet_rsa_generate_key (int bits);
 extern int allnet_aes_encrypt_block (char * key, char * in, char * out,
                                      allnet_aes_key ** aes_key);
 
-#endif /* ALLNET_CRYPTO_SELECTOR_H */
+#endif /* ALLNET_CRYPT_SELECTOR_H */
