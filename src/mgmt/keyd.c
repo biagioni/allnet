@@ -1,11 +1,10 @@
 /* keyd.c: standalone application to respond to key requests */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <dirent.h>
 #include <sys/types.h>
-
-#include <openssl/rsa.h>
 
 #include "lib/packet.h"
 #include "lib/media.h"

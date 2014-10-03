@@ -7,6 +7,7 @@
 #include <time.h>
 
 #include "lib/packet.h"
+#include "lib/app_util.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
@@ -16,6 +17,7 @@
 #include "lib/log.h"
 #include "chat.h"
 #include "cutil.h"
+#include "message.h"
 
 static void wait_for_ack (char * contact, char * message_ack,
                           struct timeval * start, int timeout_us)
@@ -58,9 +60,9 @@ static void wait_for_ack (char * contact, char * message_ack,
 static void send_key_message (int sock, char * contact, keyset keys,
                               char * secret, int hops, int timeout_us)
 {
-  char * contact_key;
+  allnet_rsa_pubkey contact_key;
   int contact_ksize = get_contact_pubkey (keys, &contact_key);
-  char * my_pubkey;
+  allnet_rsa_pubkey my_pubkey;
   int my_ksize = get_my_pubkey (keys, &my_pubkey);
 #ifdef DEBUG_PRINT
   printf ("send_key_message: my key %p/%d, contact key %p/%d\n",
@@ -76,7 +78,7 @@ static void send_key_message (int sock, char * contact, keyset keys,
   int length = MESSAGE_ID_SIZE + my_ksize + strlen (secret);
   char * text = malloc_or_fail (length, "send_key_message text");
   random_bytes (text, MESSAGE_ID_SIZE);
-  memcpy (text + MESSAGE_ID_SIZE, my_pubkey, my_ksize);
+  allnet_pubkey_to_raw (my_pubkey, text + MESSAGE_ID_SIZE, my_ksize);
   /* do not copy secret's terminating null byte */
   memcpy (text + MESSAGE_ID_SIZE + my_ksize, secret, strlen (secret));
   char * cipher;

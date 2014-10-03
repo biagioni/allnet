@@ -38,7 +38,7 @@ static int delta_ms (struct timeval * finish, struct timeval * start)
 }
 
 static int handle_packet (int sock, char * message, int msize,
-                          char * my_key, int ksize,
+                          allnet_rsa_prvkey my_key, int ksize,
                           char * contact, keyset keys,
                           char * secret, char * address, int nbits,
                           struct timeval * start, struct timeval * finish)
@@ -72,7 +72,7 @@ static int handle_packet (int sock, char * message, int msize,
   int csize = msize - ALLNET_SIZE(hp->transport);
 
   char * text;   /* plaintext, if all goes well */
-  int tsize = allnet_decrypt (cipher, csize, my_key, ksize, &text);
+  int tsize = allnet_decrypt (cipher, csize, my_key, &text);
   if (tsize <= 0) {
     print_buffer (cipher, csize, "unable to decrypt", 14, 1);
     return 0;
@@ -123,7 +123,7 @@ static void wait_for_key (int sock, char * secret, char * contact,
 #ifdef DEBUG_PRINT
   printf ("wait_for_key, nbits %d\n", nbits);
 #endif /* DEBUG_PRINT */
-  char * my_key;
+  allnet_rsa_prvkey my_key;
   int ksize = get_my_privkey (keys, &my_key);
   if (ksize <= 0) {
     printf ("error: unable to get my own private key\n");
