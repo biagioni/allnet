@@ -11,15 +11,6 @@
 #include "sha.h"
 #include "wp_aes.h"
 
-struct allnet_state {
-  char key [ALLNET_STREAM_KEY_SIZE];
-  char secret [ALLNET_STREAM_SECRET_SIZE];
-  int counter_size;
-  int hash_size;
-  uint64_t counter;
-  int block_offset;   /* how many bytes we are into the block */
-};
-
 /* allnet_stream_init allocates and initializes state for encrypting and
  * decrypting.  It can do so from a given key and secret, or it can
  * initialize the the key and secret for the caller.
@@ -30,31 +21,26 @@ struct allnet_state {
  * the secret is used for authentication, giving the hash, must be of size
  * ALLNET_STREAM_SECRET_SIZE, and is initialized by the caller
  * or by allnet_stream_init as for the key, depending on init_secret.
- * state will be given a pointer to malloc'd memory, NULL in case of failure
  * counter size and hash size are the number of bytes of counter and hmac
  * to be added to each outgoing packet, and checked on each incoming packet */
-void allnet_stream_init (char ** state, char * key, int init_key,
+void allnet_stream_init (struct allnet_stream_encryption_state * state,
+                         char * key, int init_key,
                          char * secret, int init_secret,
                          int counter_size, int hash_size)
 {
   if ((counter_size <= 0) || (counter_size > 8) ||
       (hash_size < 0) || (hash_size > SHA512_SIZE))
     return;
-  int size = sizeof (struct allnet_state);
-  *state = malloc_or_fail (size, "allnet_stream_init");
-  if (*state == NULL)
-    return;
   if (init_key)
     random_bytes (key, ALLNET_STREAM_KEY_SIZE);
   if (init_secret)
     random_bytes (secret, ALLNET_STREAM_SECRET_SIZE);
-  struct allnet_state * sp = (struct allnet_state *) (*state);
-  memcpy (sp->key, key, ALLNET_STREAM_KEY_SIZE);
-  memcpy (sp->secret, secret, ALLNET_STREAM_KEY_SIZE);
-  sp->counter_size = counter_size;
-  sp->hash_size = hash_size;
-  sp->counter = 1;  /* start with counter value of 1 */
-  sp->block_offset = 0;
+  memcpy (state->key, key, ALLNET_STREAM_KEY_SIZE);
+  memcpy (state->secret, secret, ALLNET_STREAM_KEY_SIZE);
+  state->counter_size = counter_size;
+  state->hash_size = hash_size;
+  state->counter = 1;  /* start with counter value of 1 */
+  state->block_offset = 0;
 }
 
 static void update_counter (char * bytes, uint64_t value)
@@ -65,7 +51,8 @@ static void update_counter (char * bytes, uint64_t value)
 }
 
 /* serves two purposes: initializing the block, or getting the next aes char */
-static int aes_next_byte (struct allnet_state * sp, char * block, int init,
+static int aes_next_byte (struct allnet_stream_encryption_state * sp,
+                          char * block, int init,
                           allnet_aes_key * aes)
 {
   if ((init) || ((sp->block_offset % WP_AES_BLOCK_SIZE) == 0)) {
@@ -93,7 +80,7 @@ static int aes_next_byte (struct allnet_state * sp, char * block, int init,
  * state must have been initialized by allnet_stream_init
  * rsize must be >= tsize + counter_size + hash_size specified for state
  * returns the encrypted size for success, 0 for failure */
-int allnet_stream_encrypt_buffer (char * state,
+int allnet_stream_encrypt_buffer (struct allnet_stream_encryption_state * sp,
                                   const char * text, int tsize,
                                   char * result, int rsize)
 {
@@ -102,7 +89,6 @@ int allnet_stream_encrypt_buffer (char * state,
             tsize);
     return 0;
   }
-  struct allnet_state * sp = (struct allnet_state *) state;
   if (tsize + sp->counter_size + sp->hash_size > rsize) {
     printf ("error: aes encryption needs %d bytes for text, ", tsize);
     printf ("%d for counter, %d for hash, ", sp->counter_size, sp->hash_size);
@@ -162,7 +148,7 @@ int allnet_stream_encrypt_buffer (char * state,
  * note: an attacker has a 256^-hash_size chance of sending a packet that
  * decrypt_buffer will consider authentic.  In such cases, decrypt_buffer
  * will return 1 but, in most cases, the decrypted text will be meaningless */
-int allnet_stream_decrypt_buffer (char * state,
+int allnet_stream_decrypt_buffer (struct allnet_stream_encryption_state * sp,
                                   const char * packet, int psize,
                                   char * text, int tsize)
 {
@@ -171,7 +157,6 @@ int allnet_stream_decrypt_buffer (char * state,
             tsize);
     return 0;
   }
-  struct allnet_state * sp = (struct allnet_state *) state;
   if (sp->counter_size + sp->hash_size >= psize) {
     printf ("aes decryption with %d-byte counter, %d-byte hash, ",
             sp->counter_size, sp->hash_size);
