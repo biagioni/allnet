@@ -32,7 +32,7 @@
 
 static int num_pipes = 0;
 
-struct pipe_info {
+struct allnet_pipe_info {
   int pipe_fd;	   /* file descriptor for input */
   int in_header;
   char header [HEADER_SIZE];
@@ -41,7 +41,7 @@ struct pipe_info {
   int bsize;       /* how many bytes do we receive before we are done? */
 };
 
-static struct pipe_info * buffers = NULL;
+static struct allnet_pipe_info * buffers = NULL;
 
 static int do_not_print = 1;
 static void print_pipes (const char * desc, int pipe)
@@ -85,8 +85,9 @@ void add_pipe (int pipe)
     return;
   }
   int total = num_pipes + 1;
-  size_t size = total * sizeof (struct pipe_info);
-  struct pipe_info * new_buffer = (struct pipe_info *) malloc (size);
+  size_t size = total * sizeof (struct allnet_pipe_info);
+  struct allnet_pipe_info * new_buffer =
+    (struct allnet_pipe_info *) malloc (size);
   if (new_buffer == NULL) {
     snprintf (log_buf, LOG_SIZE,
               "unable to allocate %zd bytes for %d slots\n", size, total);
@@ -593,7 +594,7 @@ static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
     /* if NDEBUG is set, assert will not end the program, so return -1 */
     return -1;
   }
-  struct pipe_info * bp = buffers + index;
+  struct allnet_pipe_info * bp = buffers + index;
 
   int offset = bp->filled;
   int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0);

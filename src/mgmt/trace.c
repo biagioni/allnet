@@ -17,8 +17,6 @@
 #include <string.h>
 #include <sys/time.h> /* struct timeval, gettimeofday */
 
-#include <openssl/rsa.h>
-
 #include "lib/packet.h"
 #include "lib/mgmt.h"
 #include "lib/util.h"
