@@ -1,6 +1,6 @@
 #SUBDIRS = test
 
-AM_CFLAGS = -I$(ALLNET_SRCDIR) -I$(ALLNET_SRCDIR)/xtime -g
+AM_CFLAGS = -I$(ALLNET_SRCDIR) -I$(ALLNET_SRCDIR)/xtime
 libincludes = \
     app_util.h \
     config.h \

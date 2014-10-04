@@ -1,5 +1,3 @@
-AM_CFLAGS = -g
-
 libincludes = \
 	ai.h \
 	app_util.h \
@@ -52,7 +50,7 @@ wpsrc = \
 
 DEPS_LIBS = ${openssl_LIBS}
 
-if ! HAVE_OPENSSL
+if !HAVE_OPENSSL
 libincludes += wpincludes
 libsrc += wpsrc
 endif

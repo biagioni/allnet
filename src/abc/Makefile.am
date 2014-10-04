@@ -1,4 +1,4 @@
-AM_CFLAGS = -I$(ALLNET_SRCDIR) # not used with *_CFLAGS
+AM_CFLAGS = -I$(ALLNET_SRCDIR) # not used on targets with *_CFLAGS set
 libincludes = \
 	lib/log.h \
 	lib/mgmt.h \
@@ -27,11 +27,11 @@ endif
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = $(ALLNET_BINDIR)/abc
-lib_LTLIBRARIES = liballnet-abc-3.1.la
-liballnet_abc_3_1_la_SOURCES = abc.c abc-iface.c abc-iface.h ${abcmodules} ${libincludes}
-liballnet_abc_3_1_la_CFLAGS = -DNO_MAIN_FUNCTION -I$(ALLNET_SRCDIR) ${abcmodulesinc}
-liballnet_abc_3_1_la_LDFLAGS = -version-info 3:1:0 $(ALLNET_LT_LDFLAGS) ${abcmoduleslibs}
-liballnet_abc_3_1_la_LIBADD = $(abcmodulelibs) $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
+lib_LTLIBRARIES = liballnet-abc-@ALLNET_API_VERSION@.la
+liballnet_abc_@ALLNET_API_VERSION@_la_SOURCES = abc.c abc-iface.c abc-iface.h ${abcmodules} ${libincludes}
+liballnet_abc_@ALLNET_API_VERSION@_la_CFLAGS = -DNO_MAIN_FUNCTION -I$(ALLNET_SRCDIR) ${abcmodulesinc}
+liballnet_abc_@ALLNET_API_VERSION@_la_LDFLAGS = -version-info @LDVERSION@ $(ALLNET_LT_LDFLAGS) ${abcmoduleslibs}
+liballnet_abc_@ALLNET_API_VERSION@_la_LIBADD = $(abcmodulelibs) $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 __ALLNET_BINDIR__abc_SOURCES = abc.c abc-iface.c abc-iface.h ${abcmodules} ${libincludes}
 __ALLNET_BINDIR__abc_CFLAGS = -I$(ALLNET_SRCDIR) ${abcmodulesinc}
 __ALLNET_BINDIR__abc_LDFLAGS = ${abcmoduleslibs}
