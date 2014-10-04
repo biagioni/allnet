@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "lib/app_util.h"
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
@@ -71,7 +72,7 @@ static int handle_packet (int sock, char * message, int msize,
   int csize = msize - ALLNET_SIZE(hp->transport);
 
   char * text;   /* plaintext, if all goes well */
-  int tsize = decrypt (cipher, csize, my_key, ksize, &text);
+  int tsize = allnet_decrypt (cipher, csize, my_key, ksize, &text);
   if (tsize <= 0) {
     print_buffer (cipher, csize, "unable to decrypt", 14, 1);
     return 0;
@@ -191,18 +192,25 @@ static void send_key_message (char * contact, char * secret, int hops, int sock)
   wait_for_key (sock, secret, contact, keys, address, nbits, 86400000, &start);
 }
 
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   if (argc != 4) {
     printf ("usage: %s contact-name secret-string num-hops\n", argv [0]);
+    print_usage (argc, argv, 1, 1);
     return 1;
   }
 
   int sock = connect_to_local ("xkeys", argv [0]);
   if (sock < 0)
     return 1;
-
-  /*sleep (1); when measuring time, wait until server has accepted connection */
 
   char * contact = argv [1];
   char * secret = argv [2];

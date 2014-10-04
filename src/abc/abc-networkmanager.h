@@ -6,5 +6,8 @@
 
 /** public wifi config interface ready to use */
 extern abc_wifi_config_iface abc_wifi_config_nm_wlan;
+int abc_wifi_config_nm_init (const char * iface);
+int abc_wifi_config_nm_enable_wireless (int state);
+int abc_wifi_config_nm_is_wireless_on ();
 
 #endif /* ABC_NETWORKMANAGER_H */

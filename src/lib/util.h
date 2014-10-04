@@ -33,16 +33,18 @@ extern void packet_to_string (const char * buffer, int count, char * desc,
 extern struct allnet_header *
   init_packet (char * packet, int psize,
                int message_type, int max_hops, int sig_algo,
-               char * source, int sbits, char * dest, int dbits, char * ack);
+               unsigned char * source, int sbits,
+               unsigned char * dest, int dbits, unsigned char * ack);
 
 /* malloc's (must be free'd), initializes, and returns a packet with the
-/* given data size. */
-/* If ack is not NULL, the data size parameter should NOT include the */
-/* MESSAGE_ID_SIZE bytes of the ack. */
-/* *size is set to the size to send */
+ * given data size.
+ * If ack is not NULL, the data size parameter should NOT include the
+ * MESSAGE_ID_SIZE bytes of the ack.
+ * *size is set to the size to send */
 extern struct allnet_header *
   create_packet (int data_size, int message_type, int max_hops, int sig_algo,
-                 char * source, int sbits, char * dest, int dbits, char * ack,
+                 unsigned char * source, int sbits,
+                 unsigned char * dest, int dbits, unsigned char * ack,
                  int * size);
 
 /* malloc, initialize, and return an ack message for a received packet.
@@ -50,8 +52,8 @@ extern struct allnet_header *
 /* *size is set to the size to send */
 /* if from is NULL, the source address is taken from packet->destination */
 extern struct allnet_header *
-  create_ack (struct allnet_header * packet, char * ack,
-              char * from, int nbits, int * size);
+  create_ack (struct allnet_header * packet, unsigned char * ack,
+              unsigned char * from, int nbits, int * size);
 
 /* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
  * offset (in bits) within x, nbits the number of bits to print */
@@ -116,7 +118,7 @@ extern void allnet_localtime_string (unsigned long long int allnet_seconds,
 #define ALLNET_HALF_SECOND_IN_US  (ALLNET_US_PER_S / 2)
 
 /* if t1 < t2, returns 0, otherwise returns t1 - t2 */
-extern unsigned long long delta_us (struct timeval * t1, struct timeval * t2);
+extern unsigned long long delta_us (const struct timeval * t1, const struct timeval * t2);
 
 extern void add_us (struct timeval * t, unsigned long long us);
 
@@ -128,7 +130,7 @@ extern int is_before (struct timeval * t);
 extern time_t compute_next (time_t from, time_t granularity, int immediate_ok);
 
 /* set result to a random time between start + min and start + max */
-extern void set_time_random (struct timeval * start, unsigned long long min,
+extern void set_time_random (const struct timeval * start, unsigned long long min,
                              unsigned long long max, struct timeval * result);
 
 /* if malloc is not successful, exit after printing */
@@ -143,7 +145,7 @@ extern void * memcpy_malloc (void * bytes, int bsize, char * desc);
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
  * in case of problems, returns 0, and prints the error if print_errors != 0 */
-extern int read_file_malloc (char * file_name, char ** content_p,
+extern int read_file_malloc (const char * file_name, char ** content_p,
                              int print_errors);
 
 /* fill this array with random bytes */
@@ -173,9 +175,28 @@ extern void writeb32 (char * p, unsigned long int value);
 extern void writeb48 (char * p, unsigned long long int value);
 extern void writeb64 (char * p, unsigned long long int value);
 
+/* the same functions on arrays of unsigned characters */
+extern unsigned int readb16u (const unsigned char * p);
+extern unsigned long int readb32u (const unsigned char * p);
+extern unsigned long long int readb48u (const unsigned char * p);
+extern unsigned long long int readb64u (const unsigned char * p);
+extern void writeb16u (unsigned char * p, unsigned int value);
+extern void writeb32u (unsigned char * p, unsigned long int value);
+extern void writeb48u (unsigned char * p, unsigned long long int value);
+extern void writeb64u (unsigned char * p, unsigned long long int value);
+
 /* returns 1 if the message is valid, 0 otherwise */
 extern int is_valid_message (const char * packet, int size);
 
 extern void print_gethostbyname_error (char * hostname);
+
+/* assuming option_letter is 'v', returns 1 if argv has '-v', 0 otherwise
+ * if it returns 1, removes the -v from the argv, and decrements *argcp.
+ */
+extern int get_option (char option_letter, int * argcp, char ** argv);
+
+/* set user_callable to 1 for astart and allnetx, to 0 for all others */
+extern void print_usage (int argc, char ** argv, int user_callable,
+                         int do_exit);
 
 #endif /* ALLNET_UTIL_H */

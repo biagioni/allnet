@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "mapchar.h"
 
@@ -63,7 +64,6 @@ static long long int get_next_char (char * string, char ** next)
   int count = 1;
   while ((count < 6) && ((string [count] & 0xC0) == 0x80))
     count++;
-  long long int result = 0;
   switch (count) {
   case 1:
     printf ("mapchar get_next_char error: illegal count 1\n");
@@ -141,7 +141,7 @@ static int string_in_string (char * substring, int substring_length,
     while (*string != '\0') {
       if (*substring == *string)
         return 1;
-      *string++;
+      string++;
     }
     return 0;
   }

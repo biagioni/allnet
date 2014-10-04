@@ -1,12 +1,20 @@
 /* abc-iw.c: Configure wireless card using iw-tools */
 
-#include <stdio.h>    /* perror, printf, snprintf */
-#include <stdlib.h>   /* exit */
-#include <string.h>   /* strlen */
-#include <unistd.h>   /* fork, dup2, execvp */
+#include <stdio.h>     /* perror, printf, snprintf */
+#include <stdlib.h>    /* exit */
+#include <string.h>    /* strlen */
+#include <unistd.h>    /* fork, dup2, execvp */
+#include <net/if.h>    /* IFNAMSIZ */
+#include <sys/types.h> /* pid_t */
+#include <sys/wait.h>  /* waitpid */
 
 #include "abc-wifi.h" /* abc_wifi_config_iface */
 #include "abc-iw.h"
+#ifdef USE_NETWORK_MANAGER
+#include "abc-networkmanager.h"
+
+static int nm_init = 0;
+#endif
 
 /* forward declarations */
 static int abc_wifi_config_iw_init (const char * iface);
@@ -14,6 +22,7 @@ static int abc_wifi_config_iw_is_connected ();
 static int abc_wifi_config_iw_connect ();
 static int abc_wifi_config_iw_is_wireless_on ();
 static int abc_wifi_config_iw_set_enabled (int state);
+static int abc_wifi_config_iw_cleanup ();
 
 typedef struct abc_wifi_config_iw_settings {
   const char * iface;
@@ -28,7 +37,8 @@ abc_wifi_config_iface abc_wifi_config_iw = {
   .iface_is_enabled_cb = abc_wifi_config_iw_is_wireless_on,
   .iface_set_enabled_cb = abc_wifi_config_iw_set_enabled,
   .iface_is_connected_cb = abc_wifi_config_iw_is_connected,
-  .iface_connect_cb = abc_wifi_config_iw_connect
+  .iface_connect_cb = abc_wifi_config_iw_connect,
+  .iface_cleanup_cb = abc_wifi_config_iw_cleanup
 };
 
 static abc_wifi_config_iw_settings self;
@@ -65,8 +75,8 @@ static int my_system (char * command)
       p++;
     }
     if (num_args >= sizeof (argv) / sizeof (char *)) {
-      printf ("error: reading beyond array\n");
-      argv [sizeof (argv) -1] = NULL;
+      printf ("error: reading beyond array %d\n", num_args);
+      argv [sizeof (argv) / sizeof (char *) - 1] = NULL;
     } else {
       argv [num_args] = NULL;
     }
@@ -149,6 +159,23 @@ static int if_command (const char * basic_command, const char * interface,
 
 static int abc_wifi_config_iw_init (const char * iface)
 {
+#ifdef USE_NETWORK_MANAGER
+  if (abc_wifi_config_nm_init (iface)) {
+    nm_init = abc_wifi_config_nm_is_wireless_on ();
+    if (nm_init) {
+      printf ("abc-iw: disabling NetworkManager on iface `%s'\n", iface);
+      if (abc_wifi_config_nm_enable_wireless (0)) {
+        printf ("abc-iw: NetworkManager disabled on iface `%s'\n", iface);
+      }
+    }
+    /* disabling an iface in NM sets soft RFKILL which needs to be cleared for
+     * ifconfig to work. */
+    /* TODO: this should look up the device index and only unblock that in case
+     * that the iface is not wifi or multiple wifi ifaces are present. */
+    int ret = system ("rfkill unblock wifi");
+    printf ("abc-iw: DEBUG: result of rfkill unblock: %d\n", ret);
+  }
+#endif
   self.iface = iface;
   self.is_connected = 0;
   self.is_enabled = 0;
@@ -163,6 +190,8 @@ static int abc_wifi_config_iw_is_connected ()
 /** Join allnet adhoc network */
 static int abc_wifi_config_iw_connect ()
 {
+  if (self.is_connected)
+    return 1;
 #ifdef DEBUG_PRINT
   printf ("abc: opening interface %s\n", self.iface);
 #endif /* DEBUG_PRINT */
@@ -176,14 +205,44 @@ static int abc_wifi_config_iw_connect ()
   int r = if_command ("iw dev %s set type ibss", self.iface, 240,
                       "wireless interface not available for ad-hoc mode",
                       mess);
-  if (r != 1 || !if_command ("iw dev %s ibss join allnet 2412", self.iface,
+  if (r != 1 || !if_command ("iw dev %s ibss join allnet 2412 fixed-freq", self.iface,
                       142, "allnet ad-hoc mode already set", "unknown problem"))
     return 0;
+  /* use `iw dev WLAN0 link` since we're already using iw above.
+   * An alternative way would be to use NL80211 directly
+   * as does "iw event" (see source "case NL80211_CMD_JOIN_IBSS") */
+  char * cmdfmt = "iw dev %s link";
+  char cmd[12 + IFNAMSIZ]; /* IFNAMSIZ includes \0 */
+  char tmp[16];
+  long sleep = 25;
+  long slept = 0;
+  do {
+    /* 50ms: empirically established time to connect to an _existing_ adhoc net */
+    usleep (sleep * 1000L);
+    slept += sleep;
+    if (slept < 7000L)
+      sleep *= 2;
+    if (sleep == 100)
+      sleep = 1000L;
+    snprintf (cmd, sizeof (cmd), cmdfmt, self.iface);
+    FILE * in = popen (cmd, "r");
+    if ((in == NULL) ||
+        (fgets (tmp, sizeof (tmp), in) == NULL) ||
+        (pclose (in) == -1))
+      goto connerr;
+  } while (tmp[0] == 'N' /* strncmp (tmp, "Not connected.", 14) == 0 */ && slept < 14000L);
+  if (slept >= 14000L)
+    printf ("abc-iw: timeout hit, cell still not associated\n");
+
   self.is_connected = 1;
   return 1;
+
+connerr:
+  perror ("abc-iw");
+  return 0;
 }
 
-/** Returns wlan state (1: enabled or 0: disabled) */
+/** Returns wlan state (1: enabled or 0: disabled, -1: unknown) */
 static int abc_wifi_config_iw_is_wireless_on ()
 {
   /* TODO: check if already connected to something else (busy) and return 2. */
@@ -193,19 +252,39 @@ static int abc_wifi_config_iw_is_wireless_on ()
 /** Enable or disable wlan depending on state (1 or 0) */
 static int abc_wifi_config_iw_set_enabled (int state)
 {
+  if (self.is_enabled == state)
+    return 1;
+
   /* call (sudo) ifconfig $if {up|down} */
   if (state) {
     if (if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 1;
+      /* set power save mode (if available) */
+      if_command ("iw dev %s set power_save on", self.iface, 161, "Power saving mode not supported", NULL);
       return 1;
     }
-    self.is_enabled = -1;
   } else {
+    if (self.is_connected) {
+      if_command ("iw dev %s ibss leave", self.iface,
+                          /* 161, "interface is not in ibss mode" */
+                          189, "ad-hoc network already disconnected", "unknown problem");
+      self.is_connected = 0;
+    }
+
     if (if_command ("ifconfig %s down", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 0;
       return 1;
     }
-    self.is_enabled = -1;
   }
+  self.is_enabled = -1;
   return -1;
+}
+
+static int abc_wifi_config_iw_cleanup ()
+{
+#ifdef USE_NETWORK_MANAGER
+  if (nm_init)
+    abc_wifi_config_nm_enable_wireless (1);
+#endif
+  return 1;
 }

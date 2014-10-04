@@ -17,13 +17,11 @@
 #define ALLNET_SSID_BYTE_ARRAY { 'a', 'l', 'l', 'n', 'e', 't' }
 
 /* forward declarations */
-static int abc_wifi_config_nm_init (const char * iface);
 static int abc_wifi_config_nm_is_connected ();
 static int abc_wifi_config_nm_connect ();
 static int abc_wifi_config_nm_await_connection ();
-static int abc_wifi_config_nm_is_wireless_on ();
 static int abc_wifi_config_nm_await_wireless ();
-static int abc_wifi_config_nm_enable_wireless (int state);
+static int abc_wifi_config_nm_cleanup ();
 
 
 typedef struct abc_nm_settings {
@@ -44,7 +42,8 @@ abc_wifi_config_iface abc_wifi_config_nm_wlan = {
   .iface_is_enabled_cb = abc_wifi_config_nm_is_wireless_on,
   .iface_set_enabled_cb = abc_wifi_config_nm_enable_wireless,
   .iface_is_connected_cb = abc_wifi_config_nm_is_connected,
-  .iface_connect_cb = abc_wifi_config_nm_connect
+  .iface_connect_cb = abc_wifi_config_nm_connect,
+  .iface_cleanup_cb = abc_wifi_config_nm_cleanup
 };
 
 static abc_nm_settings self;
@@ -481,7 +480,6 @@ static int get_conn_obj ()
     assert (dbus_message_iter_get_arg_type (&args) == DBUS_TYPE_ARRAY);
     DBusMessageIter arg_var;
     dbus_message_iter_recurse (&args, &arg_var);
-    int found_con = 0;
     do {
       const char * connobj;
       assert (dbus_message_iter_get_arg_type (&arg_var) == DBUS_TYPE_OBJECT_PATH);
@@ -677,7 +675,7 @@ device_is_busy_cleanup:
   return ret;
 }
 
-static int abc_wifi_config_nm_is_wireless_on ()
+int abc_wifi_config_nm_is_wireless_on ()
 {
   DBusMessage * msg;
   if (get_dbus_property (&msg, ABC_NM_DBUS_OBJ, ABC_NM_DBUS_IFACE,
@@ -699,7 +697,7 @@ static int abc_wifi_config_nm_is_wireless_on ()
   return wlan_enabled;
 }
 
-static int abc_wifi_config_nm_init (const char * iface)
+int abc_wifi_config_nm_init (const char * iface)
 {
   self.conn = NULL;
   self.iface = iface;
@@ -767,7 +765,7 @@ static int abc_wifi_config_nm_await_wireless (int state)
   return ret == state;
 }
 
-static int abc_wifi_config_nm_enable_wireless (int state)
+int abc_wifi_config_nm_enable_wireless (int state)
 {
   dbus_bool_t on = state;
   DBusMessage * msg = dbus_message_new_method_call (ABC_NM_DBUS_DEST,
@@ -788,4 +786,9 @@ static int abc_wifi_config_nm_enable_wireless (int state)
   if (!state)
     self.nm_act_conn_obj = NULL;
   return ret && abc_wifi_config_nm_await_wireless (state);
+}
+
+static int abc_wifi_config_nm_cleanup ()
+{
+  return 1;
 }

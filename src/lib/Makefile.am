@@ -1,28 +1,35 @@
-AM_CFLAGS = -Wreturn-type
-
 libincludes = \
 	ai.h \
 	app_util.h \
 	cipher.h \
 	config.h \
+	crypt_sel.h \
 	dcache.h \
 	keys.h \
 	log.h \
 	mapchar.h \
+	media.h \
 	mgmt.h \
 	packet.h \
 	pipemsg.h \
 	pqueue.h \
 	priority.h \
 	sha.h \
+	stream.h \
 	table.h \
 	util.h
+
+wpincludes = \
+	wp_aes.h \
+	wp_arith.h \
+	wp_rsa.h
 
 libsrc = \
 	ai.c \
 	app_util.c \
 	cipher.c \
 	config.c \
+	crypt_sel.c \
 	dcache.c \
 	keys.c \
 	log.c \
@@ -31,13 +38,26 @@ libsrc = \
 	pqueue.c \
 	priority.c \
 	sha.c \
+	stream.c \
 	table.c \
 	util.c
 
-DEPS_LIBS = -lcrypto
+wpsrc = \
+	asn1.c \
+	wp_aes.c \
+	wp_arith.c \
+	wp_rsa.c
 
-lib_LTLIBRARIES = liballnet-0.3.la
+DEPS_LIBS = ${openssl_LIBS}
+
+if !HAVE_OPENSSL
+libincludes += wpincludes
+libsrc += wpsrc
+endif
+
+lib_LTLIBRARIES = liballnet-@ALLNET_API_VERSION@.la
 pkginclude_HEADERS = $(libincludes)
-liballnet_0_3_la_LIBADD = $(DEPS_LIBS)
-liballnet_0_3_la_SOURCES = $(libsrc) $(libincludes)
-liballnet_0_3_la_LDFLAGS = -version-info 0:3:0 $(ALLNET_LT_LDFLAGS)
+liballnet_@ALLNET_API_VERSION@_la_LIBADD = $(DEPS_LIBS)
+liballnet_@ALLNET_API_VERSION@_la_CFLAGS = $(openssl_CFLAGS)
+liballnet_@ALLNET_API_VERSION@_la_SOURCES = $(libsrc) $(libincludes)
+liballnet_@ALLNET_API_VERSION@_la_LDFLAGS = -version-info @LDVERSION@ $(ALLNET_LT_LDFLAGS)

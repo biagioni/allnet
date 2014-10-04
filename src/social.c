@@ -8,14 +8,17 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
-#include "lib/packet.h"
 #include "social.h"
+#include "lib/packet.h"
+#include "lib/util.h"
 #include "lib/table.h"
 #include "lib/config.h"
 #include "lib/log.h"
 #include "lib/keys.h"
 #include "lib/cipher.h"
+#include "lib/priority.h"
 
 struct social_one_tier {
   int address_bytes_per_entry;
@@ -99,6 +102,11 @@ static int update_social_tier (int tier, struct social_one_tier * st,
   if (fd < 0) {
     char * path;
     int result = config_file_name ("ad", file_name, &path);
+    if (result < 0) {
+      snprintf (log_buf, LOG_SIZE, "unable to get config file name\n");
+      log_print ();
+      return 0;
+    }
     if (! printed) {
       if (fd == -1)   /* no such file */
         snprintf (log_buf, LOG_SIZE,
@@ -106,7 +114,7 @@ static int update_social_tier (int tier, struct social_one_tier * st,
       else
         snprintf (log_buf, LOG_SIZE,
                   "error reading social info file %s for ad\n", path);
-     log_print ();
+      log_print ();
     }
     printed = 1;
     free (path);
@@ -133,7 +141,8 @@ time_t update_social (struct social_info * soc, int update_seconds)
 }
 
 /* returns 1 if this message is from my contact, and 0 otherwise */
-static int is_my_contact (char * message, int msize, char * sender, int bits,
+static int is_my_contact (char * message, int msize,
+                          unsigned char * sender, int bits,
                           int algo, char * sig, int ssize)
 {
   char ** contacts;
@@ -144,12 +153,12 @@ static int is_my_contact (char * message, int msize, char * sender, int bits,
     int nk = all_keys (contacts [ic], &keysets);
     int ink;
     for (ink = 0; ink < nk; ink++) {
-      char address [ADDRESS_SIZE];
+      unsigned char address [ADDRESS_SIZE];
       int na_bits = get_remote (keysets [ink], address);
-      char * key;
+      allnet_rsa_pubkey key;
       int ksize = get_contact_pubkey (keysets [ink], &key);
       if ((ksize > 0) && (matches (sender, bits, address, na_bits) > 0) &&
-          (allnet_verify (message, msize, sig, ssize, key, ksize))) {
+          (allnet_verify (message, msize, sig, ssize, key))) {
         snprintf (log_buf, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
         log_print ();
         return 1;
@@ -161,9 +170,9 @@ static int is_my_contact (char * message, int msize, char * sender, int bits,
   int nbc = get_other_keys (&bc);
   int ibc;
   for (ibc = 0; ibc < nbc; ibc++) {
-    if ((matches (sender, bits, bc [ibc].address, ADDRESS_BITS) > 0) &&
-        (allnet_verify (message, msize, sig, ssize,
-                 bc [ibc].pub_key, bc [ibc].pub_klen))) {
+    if ((matches (sender, bits,
+                  (unsigned char *) (bc [ibc].address), ADDRESS_BITS) > 0) &&
+        (allnet_verify (message, msize, sig, ssize, bc [ibc].pub_key))) {
       snprintf (log_buf, LOG_SIZE, "verified from bc contact %d\n", ibc);
       log_print ();
       return 1;
@@ -176,21 +185,21 @@ static int is_my_contact (char * message, int msize, char * sender, int bits,
 /* checks the signature, and sets valid accordingly.
  * returns the social distance if known, and UNKNOWN_SOCIAL_TIER otherwise */
 int social_connection (struct social_info * soc, char * vmessage, int vsize,
-                       char * src, int sbits, int algo, char * sig, int ssize,
-                       int * valid)
+                       unsigned char * src, int sbits, int algo,
+                       char * sig, int ssize, int * valid)
 {
 snprintf (log_buf, LOG_SIZE, "social_connection (%d) called\n", algo);
 log_print ();
   if (algo == ALLNET_SIGTYPE_NONE)
     return UNKNOWN_SOCIAL_TIER;
   *valid = 0;
-  int checked = 0;
-  int i;
   if (is_my_contact (vmessage, vsize, src, sbits, algo, sig, ssize)) {
     *valid = 1;
     return 1;
   }
 #if 0    /* to do: keep track of public keys of f^n */
+  int checked = 0;
+  int i;
   for (i = 1; (i < MAX_SOCIAL_TIER) && (checked < soc->max_check); i++) {
     /* to do: move verification to table_find (otherwise table_find always
        returns the same result */

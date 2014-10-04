@@ -9,6 +9,7 @@
 #include "lib/mgmt.h"
 #include "social.h"
 #include "track.h"
+#include "record.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/log.h"
@@ -25,7 +26,7 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
 {
   int sig_size = 0;
   if (hp->sig_algo != ALLNET_SIGTYPE_NONE)
-    sig_size = (packet [size - 2] & 0xff) << 8 + (packet [size - 1] & 0xff);
+    sig_size = ((packet [size - 2] & 0xff) << 8) + (packet [size - 1] & 0xff);
   int valid = 0;
   int social_distance = UNKNOWN_SOCIAL_TIER;
   int rate_fraction = largest_rate ();
@@ -44,9 +45,10 @@ hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size); log_print ();
     rate_fraction = track_rate (hp->source, hp->src_nbits, size);
   else
     social_distance = UNKNOWN_SOCIAL_TIER;
+  int cacheable = ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0);
   return compute_priority (size, hp->src_nbits, hp->dst_nbits,
                            hp->hops, hp->max_hops, social_distance,
-                           rate_fraction);
+                           rate_fraction, cacheable);
 }
 
 static int process_mgmt (char * message, int msize, int is_local,
@@ -72,7 +74,8 @@ static int process_mgmt (char * message, int msize, int is_local,
   case ALLNET_MGMT_PEER_REQUEST:
   case ALLNET_MGMT_PEERS:
   case ALLNET_MGMT_DHT:
-    if (is_local) {               /* from DHT daemon */
+  case ALLNET_MGMT_ID_REQUEST:
+    if (is_local) {               /* from DHT daemon (idrq: acache or client) */
       return PROCESS_PACKET_OUT;  /* forward to the internet */
     } else {
       return PROCESS_PACKET_LOCAL;/* only forward to the DHT */
@@ -110,7 +113,6 @@ static int process_packet (char * packet, int size, int is_local,
 {
   if (! is_valid_message (packet, size))
     return PROCESS_PACKET_DROP;
-  static time_t trace_received = 0;
 
 /* skip the hop count in the hash, since it changes at each hop */
 #define HEADER_SKIP	3
@@ -127,9 +129,13 @@ static int process_packet (char * packet, int size, int is_local,
   /* should be valid */
   struct allnet_header * ah = (struct allnet_header *) packet;
 
-  /* before forwarding, increment the number of hops seen */
-  if ((! is_local) && (ah->hops < 255))   /* do not increment 255 to 0 */
-    ah->hops++;
+  /* compute a forwarding priority for non-local packets */
+  if (! is_local) {
+    *priority = packet_priority (packet, ah, size, soc);
+    /* before forwarding, increment the number of hops seen */
+    if (ah->hops < 255)   /* do not increment 255 to 0 */
+      ah->hops++;
+  }
   snprintf (log_buf, LOG_SIZE, "forwarding packet with %d hops\n", ah->hops);
   log_print ();
 
@@ -139,15 +145,17 @@ static int process_packet (char * packet, int size, int is_local,
   }
 
   /* forward out any local packet, unless the hop count has been reached */
-  if ((is_local) && (ah->hops < ah->max_hops))
-    return PROCESS_PACKET_OUT;
+  /* this allows packets with hops == max_hops to be forwarded locally */
+  if (is_local) {
+    if (ah->hops < ah->max_hops)
+      return PROCESS_PACKET_OUT;
+    else
+      return PROCESS_PACKET_DROP;  /* already forwarded by alocal */
+  }
 
   if (ah->hops >= ah->max_hops)   /* reached hop count */
   /* no matter what it is, only forward locally, i.e. to alocal */
     return PROCESS_PACKET_LOCAL;
-
-  /* compute a forwarding priority for non-local packets */
-  *priority = packet_priority (packet, ah, size, soc);
 
   /* send each of the packets, with its priority, to each of the pipes */
   return PROCESS_PACKET_ALL;
@@ -180,12 +188,11 @@ static void send_all (char * packet, int psize, int priority,
  * same number, even though the code only explicitly refers to the first
  * three and doesn't require the same number of read and write pipes
  */
-static void main_loop (int * read_pipes, int nread,
-                       int * write_pipes, int nwrite,
+static void main_loop (int npipes, int * read_pipes, int * write_pipes,
                        int update_seconds, int max_social_bytes, int max_checks)
 {
   int i;
-  for (i = 0; i < nread; i++)
+  for (i = 0; i < npipes; i++)
     add_pipe (read_pipes [i]);
 /* snprintf (log_buf, LOG_SIZE, "ad calling init_social\n"); log_print (); */
   struct social_info * soc = init_social (max_social_bytes, max_checks);
@@ -216,15 +223,17 @@ log_print ();
     switch (p) {
     case PROCESS_PACKET_ALL:
       log_packet ("sending to all", packet, psize);
-      send_all (packet, psize, priority, write_pipes, nwrite, "all");
+      send_all (packet, psize, priority, write_pipes, npipes, "all");
       break;
     case PROCESS_PACKET_OUT:
       log_packet ("sending out", packet, psize);
-      send_all (packet, psize, priority, write_pipes + 1, nwrite - 1, "out");
+/* alocal should be the first pipe, so just skip it */
+      send_all (packet, psize, priority, write_pipes + 1, npipes - 1, "out");
       break;
     /* all the rest are not forwarded, so priority does not matter */
     case PROCESS_PACKET_LOCAL:   /* send only to alocal */ 
       log_packet ("sending to alocal", packet, psize);
+/* alocal should be the first pipe, so only write to that */
       send_all (packet, psize, 0, write_pipes, 1, "local");
       break;
     case PROCESS_PACKET_DROP:    /* do not forward */
@@ -240,59 +249,89 @@ log_print ();
   }
 }
 
+/* arguments are: the number of read/write pipes, then an array of pairs of
+ * file descriptors (ints) for each pipe, from/to alocal, aip.
+ * any additional pipes will again be pairs from/to each abc.
+ */
+void ad_main (int npipes, int * rpipes, int * wpipes)
+{
+  init_log ("ad");
+  if (npipes < 2) {
+    printf ("%d pipes, at least 2 needed\n", npipes);
+    return;
+  }
+  snprintf (log_buf, LOG_SIZE, "AllNet (ad) version %d\n", ALLNET_VERSION);
+  log_print ();
+  int i;
+  for (i = 0; i < npipes; i++) {
+    snprintf (log_buf, LOG_SIZE,
+              "read_pipes [%d] = %d, write_pipes [%d] = %d\n",
+              i, rpipes [i], i, wpipes [i]);
+    log_print ();
+  }
+  main_loop (npipes, rpipes, wpipes, 30, 30000, 5);
+  snprintf (log_buf, LOG_SIZE, "ad error: main loop returned, exiting\n");
+  log_print ();
+}
+
+#ifndef NO_MAIN_FUNCTION
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 /* arguments are: the number of pipes, then pairs of read and write file
  * file descriptors (ints) for each pipe, from/to alocal, aip.
  * any additional pipes will again be pairs from/to each abc.
  */
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   init_log ("ad");
   if (argc < 2) {
     printf ("need to have at least the number of read and write pipes\n");
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   int npipes = atoi (argv [1]);
   if (npipes < 2) {
     printf ("%d pipes, at least 2 needed\n", npipes);
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   if (argc != 2 * npipes + 2) {
     printf ("%d arguments, expected 2 + %d for %d pipes\n",
             argc, 2 * npipes, npipes);
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   if (argc < 5) {
     printf ("need to have at least 2 each read and write pipes\n");
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
   snprintf (log_buf, LOG_SIZE, "AllNet (ad) version %d\n", ALLNET_VERSION);
   log_print ();
-  /* allocate both read and write pipes at once, then point write_pipes
-   * to the middle of the allocated array
-   */
-  int * read_pipes  = malloc (sizeof (int) * npipes * 2);
-  if (read_pipes == NULL) {
+  int * all_pipes  = malloc (sizeof (int) * npipes * 2);
+  if (all_pipes == NULL) {
     printf ("allocation error in ad main\n");
+    print_usage (argc, argv, 0, 1);
     return -1;
   }
-  int * write_pipes = read_pipes + npipes;
 
   int i;
   for (i = 0; i < npipes; i++) {
-    read_pipes  [i] = atoi (argv [2 + 2 * i    ]);
-    write_pipes [i] = atoi (argv [2 + 2 * i + 1]);
+    all_pipes [i         ] = atoi (argv [2 + 2 * i    ]);
+    all_pipes [npipes + i] = atoi (argv [2 + 2 * i + 1]);
   }
-  for (i = 0; i < npipes; i++) {
-    snprintf (log_buf, LOG_SIZE, "read_pipes [%d] = %d\n", i, read_pipes [i]);
+  for (i = 0; i < 2 * npipes; i++) {
+    snprintf (log_buf, LOG_SIZE, "all_pipes [%d] = %d\n", i, all_pipes [i]);
     log_print ();
   }
-  for (i = 0; i < npipes; i++) {
-    snprintf (log_buf, LOG_SIZE, "write_pipes [%d] = %d\n", i, write_pipes [i]);
-    log_print ();
-  }
-  main_loop (read_pipes, npipes, write_pipes, npipes, 30, 30000, 5);
-  snprintf (log_buf, LOG_SIZE, "ad error: main loop returned, exiting\n");
-  log_print ();
+  ad_main (npipes, all_pipes, all_pipes + npipes);
   return 1;
 }
+#endif /* NO_MAIN_FUNCTION */
 

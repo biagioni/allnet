@@ -8,6 +8,7 @@
 #include <openssl/rsa.h>
 
 #include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/pipemsg.h"
@@ -20,13 +21,15 @@
 #define CONFIG_DIR	"~/.allnet/keys"
 
 static void send_key (int sock, struct bc_key_info * key, char * return_key,
-                      int rksize, char * address, int abits, int hops)
+                      int rksize, unsigned char * address, int abits, int hops)
 {
 #ifdef DEBUG_PRINT
   printf ("send_key ((%p, %d), %p)\n", key->pub_key, key->pub_klen, return_key);
 #endif /* DEBUG_PRINT */
-  char * data = key->pub_key;
-  int dlen = key->pub_klen;
+  int dlen = allnet_rsa_pubkey_size (key->pub_key) + 1;
+  char * data = malloc_or_fail (dlen, "keyd send_key");
+  if (! allnet_pubkey_to_raw (key->pub_key, data, dlen))
+    return;
   int type = ALLNET_TYPE_CLEAR;
   int allocated = 0;
 #if 0   /* if want to support, must encrypt allnet_app_media_header */
@@ -37,7 +40,7 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
     printf ("calling encrypt (%p/%d, %d, %p, %d) ==> %p\n",
             data, dlen, key->pub_klen, return_key, rksize, &cipher);
 #endif /* DEBUG_PRINT */
-    int csize = encrypt (data, dlen, return_key, rksize, &cipher);
+    int csize = allnet_encrypt (data, dlen, return_key, rksize, &cipher);
     if (csize <= 0) {
       snprintf (log_buf, LOG_SIZE, "send_key: encryption error\n");
       log_print ();
@@ -56,8 +59,8 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   char * adp = ALLNET_DATA_START(hp, hp->transport, bytes);
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) adp;
-  writeb32 (amhp->app, 0x6b657964 /* keyd */ );
-  writeb32 (amhp->media, ALLNET_MEDIA_PUBLIC_KEY);
+  writeb32u (amhp->app, 0x6b657964 /* keyd */ );
+  writeb32u (amhp->media, ALLNET_MEDIA_PUBLIC_KEY);
   char * dp = adp + amhsize;
   memcpy (dp, data, dlen);
   if (allocated)
@@ -123,7 +126,8 @@ static void handle_packet (int sock, char * message, int msize)
   int i;
   for (i = 0; i < nkeys; i++) {
     int matching_bits =
-      matches (hp->destination, hp->dst_nbits, keys [i].address, ADDRESS_BITS);
+      matches (hp->destination, hp->dst_nbits,
+               (unsigned char *) (keys [i].address), ADDRESS_BITS);
     printf ("%02x <> %02x (%s): %d matching bits, %d needed\n",
             hp->destination [0] & 0xff, keys [i].address [0] & 0xff,
             keys [i].identifier, matching_bits, hp->dst_nbits);
@@ -142,11 +146,11 @@ hp->source [0] & 0xff, hp->src_nbits);
   }
 }
 
-int main (int argc, char ** argv)
+void keyd_main (char * pname)
 {
-  int sock = connect_to_local (argv [0], argv [0]);
+  int sock = connect_to_local (pname, pname);
   if (sock < 0)
-    return 1;
+    return;
 
   while (1) {  /* loop forever */
     int pipe;
@@ -166,4 +170,19 @@ int main (int argc, char ** argv)
   snprintf (log_buf, LOG_SIZE, "keyd infinite loop ended, exiting\n");
   log_print ();
 }
+
+#ifndef NO_MAIN_FUNCTION
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
+int main (int argc, char ** argv)
+{
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+  keyd_main (argv [0]);
+  return 0;
+}
+#endif /* NO_MAIN_FUNCTION */
 

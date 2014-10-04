@@ -1,5 +1,6 @@
 /* keys.c: manage keys on disk */
 
+
 /* keys are stored under ~/.allnet/contacts/yyyymmddhhmmss/ */
 /* each such directory has a file "name", a file "my_key", and possibly
  * a file "contact_public_key".  It is an error (and the contact is not
@@ -10,6 +11,8 @@
 /*        also some mechanism to get new private keys for a contact */
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
@@ -17,16 +20,13 @@
 #include <dirent.h>
 #include <sys/types.h>
 
-#include <openssl/bio.h>
-#include <openssl/rsa.h>
-#include <openssl/pem.h>
-#include <openssl/err.h>
+#include "crypt_sel.h"
 
 #include "packet.h"
+#include "cipher.h"
 #include "keys.h"
 #include "util.h"
 #include "log.h"
-#include "cipher.h"
 #include "config.h"
 #include "sha.h"
 #include "mapchar.h"
@@ -44,8 +44,8 @@ struct key_address {
 /* typedef int keyset;  refers to a key_info */
 struct key_info {
   char * contact_name;
-  RSA * contact_pubkey;
-  RSA * my_key;
+  allnet_rsa_pubkey contact_pubkey;
+  allnet_rsa_prvkey my_key;
   struct key_address local;
   struct key_address remote;
   char * dir_name;
@@ -108,16 +108,16 @@ static void set_kip_size (int size)
   /* free any keys from the old array that don't fit in the new array */
   for (i = size; i < num_key_infos; i++) {
     free (kip [i].contact_name);
-    RSA_free (kip [i].contact_pubkey);
-    RSA_free (kip [i].my_key);
+    allnet_rsa_free_pubkey (kip [i].contact_pubkey);
+    allnet_rsa_free_prvkey (kip [i].my_key);
     if (kip [i].dir_name != NULL)
       free (kip [i].dir_name);
   }
   /* zero out the new entries (if any) in kip */
   for (i = num_key_infos; i < size; i++) {
     new_kip [i].contact_name = NULL;
-    new_kip [i].contact_pubkey = NULL;
-    new_kip [i].my_key = NULL;
+    allnet_rsa_null_pubkey (&(new_kip [i].contact_pubkey));
+    allnet_rsa_null_prvkey (&(new_kip [i].my_key));
     new_kip [i].local.nbits = 0;
     bzero (new_kip [i].local.address, ADDRESS_SIZE);
     new_kip [i].remote.nbits = 0;
@@ -157,46 +157,6 @@ static int is_ndigits (char * path, int ndigits)
   return 1;
 }
 
-static void debug_read_public_RSA_file (char * fname, RSA * * key)
-{
-  *key = NULL;
-  char * bytes;
-  int size = read_file_malloc (fname, &bytes, 0);
-  if (size > 0) {
-    BIO * mbio = BIO_new_mem_buf (bytes, size);
-    *key = PEM_read_bio_RSAPublicKey (mbio, NULL, NULL, NULL);
-    BIO_free (mbio);
-    free (bytes);
-/*
-    mbio = BIO_new (BIO_s_mem ());
-    PEM_write_bio_RSAPublicKey (mbio, *key);
-    printf ("public key takes %zd bytes\n", BIO_ctrl_pending (mbio));
-    BIO_free (mbio);
-*/
-  }
-}
-
-static void read_RSA_file (char * fname, RSA * * key, int expect_private)
-{
-  *key = NULL;
-  char * bytes;
-  int size = read_file_malloc (fname, &bytes, 0);
-  if (size > 0) {
-    BIO * mbio = BIO_new_mem_buf (bytes, size);
-    if (expect_private)
-      *key = PEM_read_bio_RSAPrivateKey (mbio, NULL, NULL, NULL);
-    else
-      *key = PEM_read_bio_RSAPublicKey (mbio, NULL, NULL, NULL);
-    if (*key == NULL) {
-      ERR_load_crypto_strings ();
-      ERR_print_errors_fp (stdout);
-      printf ("unable to read RSA from file %s\n", fname);
-    }
-    BIO_free (mbio);
-    free (bytes);
-  }
-}
-
 static void read_address_file (char * fname, char * address, int * nbits)
 {
   bzero (address, ADDRESS_SIZE);
@@ -224,7 +184,8 @@ static void read_address_file (char * fname, char * address, int * nbits)
 
 /* returns 0 if the contact does not exist, 1 otherwise */
 static int read_key_info (char * path, char * file, char ** contact,
-                          RSA ** my_key, RSA ** contact_pubkey,
+                          allnet_rsa_prvkey * my_key,
+                          allnet_rsa_pubkey * contact_pubkey,
                           char * local, int * loc_nbits,
                           char * remote, int * rem_nbits,
                           char ** dir_name)
@@ -248,12 +209,12 @@ static int read_key_info (char * path, char * file, char ** contact,
 
   if (my_key != NULL) {
     char * name = strcat_malloc (basename, "/my_key", "my key name");
-    read_RSA_file (name, my_key, 1);
+    allnet_rsa_read_prvkey (name, my_key);
     free (name);
   }
   if (contact_pubkey != NULL) {
     char * name = strcat_malloc (basename, "/contact_pubkey", "pub name");
-    read_RSA_file (name, contact_pubkey, 0);
+    allnet_rsa_read_pubkey (name, contact_pubkey);
     free (name);
   }
   if ((local != NULL) && (loc_nbits != NULL)) {
@@ -347,6 +308,7 @@ int all_contacts (char *** contacts)
   return cp_used;
 }
 
+#if 0
 static void callback (int type, int count, void * arg)
 {
   if (type == 0)
@@ -365,6 +327,7 @@ static void callback (int type, int count, void * arg)
 static void no_feedback (int type, int count, void * arg)
 {
 }
+#endif /* 0 */
 
 static void write_file (char * fname, char * contents, int len)
 {
@@ -382,17 +345,20 @@ static void write_file (char * fname, char * contents, int len)
   close (fd);
 }
 
+#if 0
 static void write_RSA_file (char * fname, RSA * key, int write_priv)
 {
   BIO * mbio = BIO_new (BIO_s_mem ());
-  PEM_write_bio_RSAPublicKey (mbio, key);
   if (write_priv)
     PEM_write_bio_RSAPrivateKey (mbio, key, NULL, NULL, 0, NULL, NULL);
+  else
+    PEM_write_bio_RSAPublicKey (mbio, key);
   char * keystore;
   long ksize = BIO_get_mem_data (mbio, &keystore);
   write_file (fname, keystore, ksize);
   BIO_free (mbio);
 }
+#endif /* 0 */
 
 static void write_address_file (char * fname, char * address, int nbits)
 {
@@ -427,6 +393,11 @@ static void save_contact (struct key_info * k)
               t.tm_hour, t.tm_min, t.tm_sec);
  
     int dirnamesize = config_file_name ("contacts", fname, &dirname);
+    if (dirnamesize < 0) {
+      snprintf (log_buf, LOG_SIZE, "unable to get config file name");
+      log_print ();
+      return;
+    }
     k->dir_name = dirname;
   }
   create_dir (dirname);
@@ -435,14 +406,16 @@ static void save_contact (struct key_info * k)
     write_file (name_fname, k->contact_name, strlen (k->contact_name));
     free (name_fname);
   }
-  if (k->my_key != NULL) {
+  if (! allnet_rsa_prvkey_is_null (k->my_key)) {
     char * my_key_fname = strcat3_malloc (dirname, "/", "my_key", "key file");
-    write_RSA_file (my_key_fname, k->my_key, 1);
+    if (! allnet_rsa_write_prvkey (my_key_fname, k->my_key))
+      printf ("unable to write private key to file %s\n", my_key_fname);
     free (my_key_fname);
   }
-  if (k->contact_pubkey != NULL) {
+  if (! allnet_rsa_pubkey_is_null (k->contact_pubkey)) {
     char * key_fname = strcat3_malloc (dirname, "/", "contact_pubkey", "kf");
-    write_RSA_file (key_fname, k->contact_pubkey, 0);
+    if (! allnet_rsa_write_pubkey (key_fname, k->contact_pubkey))
+      printf ("unable to write public key to file %s\n", key_fname);
     free (key_fname);
   }
   if (k->local.nbits != 0) {
@@ -469,23 +442,16 @@ static int do_set_contact_pubkey (struct key_info * k,
             ksize, contact_key, ((contact_key == NULL) ? 0 : *contact_key));
     return 0;
   }
-  RSA * rsa = RSA_new ();
-  rsa->n = BN_bin2bn (contact_key + 1, ksize - 1, NULL);
-  rsa->e = NULL;
-  BN_dec2bn (&(rsa->e), RSA_E65537_STRING);
-  k->contact_pubkey = rsa;
-  return 1;
-/*
-  BIO * mbio = BIO_new_mem_buf (contact_key, ksize);
-  kip [k].contact_pubkey = PEM_read_bio_RSAPublicKey (mbio, NULL, NULL, NULL);
-  BIO_free (mbio);
-*/
+  if (allnet_get_pubkey (contact_key + 1, ksize - 1, &(k->contact_pubkey)))
+    return 1;
+  return 0;
 }
 
 int set_contact_pubkey (keyset k, char * contact_key, int contact_ksize)
 {
   init_from_file ();
-  if ((! valid_keyset (k)) || (kip [k].contact_pubkey != NULL) ||
+  if ((! valid_keyset (k)) ||
+      (! allnet_rsa_pubkey_is_null (kip [k].contact_pubkey)) ||
       (contact_key == NULL) || (contact_ksize == 0))
     return 0;
   if (do_set_contact_pubkey (kip + k, contact_key, contact_ksize) == 0)
@@ -494,7 +460,7 @@ int set_contact_pubkey (keyset k, char * contact_key, int contact_ksize)
   return 1;
 }
 
-int set_contact_local_addr (keyset k, int nbits, char * address)
+int set_contact_local_addr (keyset k, int nbits, unsigned char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
@@ -505,7 +471,7 @@ int set_contact_local_addr (keyset k, int nbits, char * address)
   return 1;
 }
 
-int set_contact_remote_addr (keyset k, int nbits, char * address)
+int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
@@ -522,26 +488,24 @@ int set_contact_remote_addr (keyset k, int nbits, char * address)
 /* if feedback is nonzero, gives feedback while creating the key */
 keyset create_contact (char * contact, int keybits, int feedback,
                        char * contact_key, int contact_ksize,
-                       char * local, int loc_nbits,
-                       char * remote, int rem_nbits)
+                       unsigned char * local, int loc_nbits,
+                       unsigned char * remote, int rem_nbits)
 {
   init_from_file ();
   if (contact_exists (contact))
     return -1;
 
-  RSA * my_key = NULL;
-  if (feedback) {
-    my_key = RSA_generate_key (keybits, RSA_E65537_VALUE, callback, NULL);
-    printf ("\n");
-  } else {
-    my_key = RSA_generate_key (keybits, RSA_E65537_VALUE, no_feedback, NULL);
+  allnet_rsa_prvkey my_key = allnet_rsa_generate_key (keybits);
+  if (allnet_rsa_prvkey_is_null (my_key)) {
+    printf ("unable to generate RSA key\n");
+    return -1;
   }
 
   struct key_info new;
   new.contact_name = strcpy_malloc (contact, "create_contact");
   new.my_key = my_key;
   /* set defaults for the remaining values, then override them later if given */
-  new.contact_pubkey = NULL;
+  allnet_rsa_null_pubkey (&(new.contact_pubkey));
   new.local.nbits = 0;
   bzero (new.local.address, ADDRESS_SIZE);
   new.remote.nbits = 0;
@@ -645,6 +609,7 @@ char * key_dir (keyset key)
   return kip [key].dir_name;
 }
 
+#if 0
 static unsigned int get_pubkey (RSA * rsa, char ** bytes,
                                 char * storage, int ssize)
 {
@@ -655,68 +620,47 @@ static unsigned int get_pubkey (RSA * rsa, char ** bytes,
   if (bytes != NULL) {
     if (size + 1 > ssize)
       return 0;
-    BN_bn2bin (rsa->n, storage + 1);
+    BN_bn2bin (rsa->n, (unsigned char *) (storage + 1));
     storage [0] = KEY_RSA4096_E65537;
     *bytes = storage;
   }
   return size + 1;
 }
+#endif /* 0 */
 
-#define KEY_STATIC_STORAGE	4099   /* up to 32Kbit key size */
 /* if successful returns the key length and sets *key to point to
  * statically allocated storage for the key (do not modify in any way)
  * if not successful, returns 0 */
-unsigned int get_contact_pubkey (keyset k, char ** key)
+unsigned int get_contact_pubkey (keyset k, allnet_rsa_pubkey * key)
 {
   init_from_file ();
   if (! valid_keyset (k))
     return 0;
-  static char storage [KEY_STATIC_STORAGE];
-  return get_pubkey (kip [k].contact_pubkey, key, storage, KEY_STATIC_STORAGE);
+  *key = kip [k].contact_pubkey;
+  return allnet_rsa_pubkey_size (*key);
 }
 
-unsigned int get_my_pubkey (keyset k, char ** key)
+unsigned int get_my_pubkey (keyset k, allnet_rsa_pubkey * key)
 {
   init_from_file ();
   if (! valid_keyset (k))
     return 0;
-  static char storage [KEY_STATIC_STORAGE];
-  return get_pubkey (kip [k].my_key, key, storage, KEY_STATIC_STORAGE);
+  *key = allnet_rsa_private_to_public (kip [k].my_key);
+  return allnet_rsa_pubkey_size (*key);
 }
 
-unsigned int get_my_privkey (keyset k, char ** key)
+unsigned int get_my_privkey (keyset k, allnet_rsa_prvkey * key)
 {
-int debug_n = 0;
-/* printf ("get_my_privkey (%d, %p)\n", k, key); */
   init_from_file ();
   if (! valid_keyset (k))
-    printf ("division by zero is %d\n", k / debug_n);
-  if (! valid_keyset (k))
     return 0;
-  if (kip [k].my_key == NULL)
-    return 0;
-  static char storage [KEY_STATIC_STORAGE * 8];
-  BIO * mbio = BIO_new (BIO_s_mem ());
-  PEM_write_bio_RSAPrivateKey (mbio, kip [k].my_key,
-                               NULL, NULL, 0, NULL, NULL);
-#ifdef DEBUG_PRINT
-  printf ("private key takes %zd bytes, %zd available\n",
-          BIO_ctrl_pending (mbio), sizeof (storage));
-#endif /* DEBUG_PRINT */
-  char * keystore;
-  long ksize = BIO_get_mem_data (mbio, &keystore);
-  if (ksize + 1 > sizeof (storage))
-    return 0;
-  memcpy (storage, keystore, ksize);
-  storage [ksize] = '\0';   /* null terminate */
-  BIO_free (mbio);
-  *key = storage;
-  return ksize;
+  *key = kip [k].my_key;
+  return allnet_rsa_prvkey_size (*key);
 }
 
 /* returns the number of bits in the address, 0 if none */
 /* address must have length at least ADDRESS_SIZE */
-unsigned int get_local (keyset k, char * address)
+unsigned int get_local (keyset k, unsigned char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
@@ -727,7 +671,7 @@ unsigned int get_local (keyset k, char * address)
   return kip [k].local.nbits;
 }
 
-unsigned int get_remote (keyset k, char * address)
+unsigned int get_remote (keyset k, unsigned char * address)
 {
   init_from_file ();
   if (! valid_keyset (k))
@@ -810,18 +754,20 @@ static int count_keys (char * path)
   return result;
 }
 
-static void rsa_to_external_pubkey (RSA * rsa, char ** key, int * klen)
+static void rsa_to_external_pubkey (allnet_rsa_pubkey rsa,
+                                    char ** key, int * klen)
 {
   /* the public key in external format */
-  int size = BN_num_bytes (rsa->n) + 1;
+  int size = allnet_rsa_pubkey_size (rsa) + 1;
   char * p = malloc_or_fail (size, "external public key");
-  BN_bn2bin (rsa->n, p + 1);
+  allnet_pubkey_to_raw (rsa, p + 1, size - 1);
   p [0] = KEY_RSA4096_E65537;
   *key = p;
   *klen = size;
 /* printf ("external, key set to %p, length %d\n", *key, *klen); */
 }
 
+#if 0
 static void rsa_to_internal_key (RSA * rsa, char ** key, int * klen)
 {
   BIO * mbio = BIO_new (BIO_s_mem ());
@@ -833,6 +779,7 @@ static void rsa_to_internal_key (RSA * rsa, char ** key, int * klen)
 /* printf ("internal, key set to %p, length %d\n", *key, *klen); */
   BIO_free (mbio);
 }
+#endif /* 0 */
 
 static void init_key_info (char * config_dir, char * file,
                            struct bc_key_info * key, char * phrase,
@@ -842,27 +789,26 @@ static void init_key_info (char * config_dir, char * file,
 
   char * mapped;
   int mlen = map_string (phrase, &mapped);
-  sha512_bytes (mapped, mlen, key->address, ADDRESS_SIZE);
+  sha512_bytes (mapped, mlen, (char *) (key->address), ADDRESS_SIZE);
   free (mapped);
 
   key->identifier = strcpy_malloc (file, "keys.c init_key_info");
 
   char * fname = strcat3_malloc (config_dir, "/", file, "init_key_info fname");
-  RSA * rsa = NULL;
-  read_RSA_file (fname, &rsa, expect_private);
+  int success = 0;
+  if (expect_private) {
+    success = allnet_rsa_read_prvkey (fname, &(key->prv_key));
+    if (success)
+      key->pub_key = allnet_rsa_private_to_public (key->prv_key);
+  } else {
+    success = allnet_rsa_read_pubkey (fname, &(key->pub_key));
+  }
   free (fname);
-  if (rsa == NULL) {
+  if (! success) {
     printf ("unable to read RSA file %s/%s\n", config_dir, file);
     return;
   }
-
-  rsa_to_external_pubkey (rsa, &(key->pub_key), &(key->pub_klen));
-  key->priv_klen = 0;
-  key->priv_key = NULL;
-  if (expect_private)
-    rsa_to_internal_key (rsa, &(key->priv_key), &(key->priv_klen));
-
-  RSA_free (rsa);
+  key->has_private = expect_private;
 }
 
 static void init_bc_from_files (char * config_dir, struct bc_key_info * keys,
@@ -1015,43 +961,39 @@ int parse_ahra (char * ahra,
   return 1;
 }
 
-static char * make_address (RSA * key, int key_bits,
+static char * make_address (allnet_rsa_pubkey key, int key_bits,
                             char * phrase, char * lang, int bitstring_bits,
                             int min_bitstrings)
 {
-  int rsa_size = RSA_size (key);
-  int max_rsa = rsa_size - 42;  /* PKCS #1 v2 requires 42 bytes */
+  int rsa_size = allnet_rsa_pubkey_size (key);
 
   char * mapped;
   int msize = map_string (phrase, &mapped);
   char hash [SHA512_SIZE];
   sha512 (mapped, msize, hash);
 
-  if (msize > max_rsa) {
-    printf ("keys.c: too many bytes %d to encrypt, max %d\n", msize, max_rsa);
+  if (msize > rsa_size) {
+    printf ("keys.c: too many bytes %d to encrypt, max %d\n", msize, rsa_size);
     exit (1);
   }
 
   /* get the bits of the ciphertext */
   char * encrypted = malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
 
-/* in general, RSA_NO_PADDING is not secure for RSA encryptions.  However,
+/* in general, no padding is not secure for RSA encryptions.  However,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
   char * padded = malloc_or_fail (rsa_size, "make_address padded");
   bzero (padded, rsa_size);
   memcpy (padded + (rsa_size - msize), mapped, msize);
-  int esize = RSA_public_encrypt (rsa_size, padded, encrypted, key,
-                                  RSA_NO_PADDING);
+  free (mapped);
+  int esize = allnet_rsa_encrypt (key, padded, rsa_size, encrypted, rsa_size,
+                                  0 /* no padding */  );
   free (padded);
   if (esize != rsa_size) {
-    ERR_load_crypto_strings ();
-    ERR_print_errors_fp (stdout);
     printf ("make_address RSA encryption failed\n");
     exit (1);
   }
-  free (mapped);
-
 
   /* assuming each bitstring is at least 1 bit long, the maximum number of
    * matching positions would be 512 */
@@ -1064,7 +1006,8 @@ static char * make_address (RSA * key, int key_bits,
     int hashpos = SHA512_BITS - ((i + 1) * bitstring_bits);
     int found = 0;  /* if no match, cannot continue the outer loop */
     for (j = 0; j <= esize * 8 - bitstring_bits; j++) {
-      if (bitstring_matches (encrypted, j, hash, hashpos, bitstring_bits)) {
+      if (bitstring_matches ((unsigned char *) encrypted, j,
+                             (unsigned char *) hash, hashpos, bitstring_bits)) {
         match_pos [nmatches++] = j;
 /*
         printf ("match %d found at encr bit %d hash bit %d, bitstring: ",
@@ -1137,21 +1080,23 @@ verify_bc_key (result, pkey, pklen, "en", 16, 0));
 static char * generate_one_key (int key_bits, char * phrase, char * lang,
                                 int bitstring_bits, int min_bitstrings)
 {
-  RSA * key = RSA_generate_key (key_bits, RSA_E65537_VALUE, no_feedback, NULL);
+  allnet_rsa_prvkey key = allnet_rsa_generate_key (key_bits);
+  allnet_rsa_pubkey pubkey = allnet_rsa_private_to_public (key);
 
-  char * aaddr = make_address (key, key_bits, phrase, lang, bitstring_bits,
+  char * aaddr = make_address (pubkey, key_bits, phrase, lang, bitstring_bits,
                                min_bitstrings);
   if (aaddr != NULL) {
     char * fname;
     if (config_file_name ("own_bc_keys", aaddr, &fname) < 0) {
       printf ("unable to save key to ~/.allnet/own_bc_keys/%s\n", aaddr);
     } else {
-      write_RSA_file (fname, key, 1);
+      if (! allnet_rsa_write_prvkey (fname, key))
+        printf ("unable to write new key to file %s\n", fname);
       free (fname);
     }
   }
 
-  RSA_free (key);
+  allnet_rsa_free_prvkey (key);
   return aaddr;
 }
 
@@ -1222,22 +1167,22 @@ void delete_lang_bits (char * ahra)
 
 /* useful, e.g. for requesting a key.  Returns the public key size. */
 /* pubkey and privkey should be free'd when done */
-int get_temporary_key (char ** pubkey, char ** privkey, int * privksize)
+int get_temporary_key (char ** pubkey, allnet_rsa_prvkey * prvkey)
 {
-  RSA * key = RSA_generate_key (4096, RSA_E65537_VALUE, no_feedback, NULL);
+  *prvkey = allnet_rsa_generate_key (4096);
+  if (allnet_rsa_prvkey_is_null (*prvkey))
+    return 0;
 
+  allnet_rsa_pubkey pub = allnet_rsa_private_to_public (*prvkey);
   int result = 0;
-  rsa_to_external_pubkey (key, pubkey, &result);
-  rsa_to_internal_key (key, privkey, privksize);
-  RSA_free (key);   /* copied into the buffers, no longer needed */
-
+  rsa_to_external_pubkey (pub, pubkey, &result);
   /* printf ("get_temporary_key returns %d, %d\n", result, *privksize); */
   return result;
 }
 
 /* verifies that a key obtained by a key exchange matches the address */
 /* the default lang and bits are used if they are not part of the address */
-unsigned int verify_bc_key (char * address, char * key, int key_bytes,
+unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
                             char * default_lang, int bitstring_bits,
                             int save_if_correct)
 {
@@ -1246,76 +1191,81 @@ unsigned int verify_bc_key (char * address, char * key, int key_bytes,
     printf ("verify_bc_key: bad key, size %d, code %d\n", key_bytes, *key);
     return 0;
   }
-  RSA * rsa = RSA_new ();
-  rsa->n = BN_bin2bn (key + 1, key_bytes - 1, NULL);
-  rsa->e = NULL;
-  BN_dec2bn (&(rsa->e), RSA_E65537_STRING);
-  int rsa_size = RSA_size (rsa);
-  int max_rsa = rsa_size - 42;  /* PKCS #1 v2 requires 42 bytes */
+  allnet_rsa_pubkey rsa;
+  if (! allnet_pubkey_from_raw (&rsa, key, key_bytes)) {
+    /* probably should be silent, but good for debugging */
+    printf ("unable to convert received bytes to public key\n");
+    return 0;
+  }
+  int rsa_size = allnet_rsa_pubkey_size (rsa);
 
   char * phrase;
   int * positions;
   int num_positions;
   char * reason;
-  if (! parse_ahra (address, &phrase, &positions, &num_positions,
+  if (! parse_ahra (ahra, &phrase, &positions, &num_positions,
                     &default_lang, &bitstring_bits, &reason)) {
     printf ("unable to parse allnet human-readable address '%s', %s\n",
-            address, reason);
+            ahra, reason);
+    allnet_rsa_free_pubkey (rsa);
     return 0;
   }
 
   char * mapped;
-  int mlen = map_string (phrase, &mapped);
+  int msize = map_string (phrase, &mapped);
   free (phrase);
   char hash [SHA512_SIZE];
-  sha512 (mapped, mlen, hash);
+  sha512 (mapped, msize, hash);
 
   /* get the bits of the ciphertext */
-  if (mlen > max_rsa)
-    mlen = max_rsa;
+  if (msize > rsa_size)
+    msize = rsa_size;
   char * encrypted = malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
-/* in general, RSA_NO_PADDING is not secure for RSA encryptions.  However,
+/* in general, no padding is not secure for RSA encryptions.  However,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
   char * padded = malloc_or_fail (rsa_size, "verify_bc_key padded");
   bzero (padded, rsa_size);
-  memcpy (padded + (rsa_size - mlen), mapped, mlen);
-  int esize = RSA_public_encrypt (rsa_size, padded, encrypted, rsa,
-                                  RSA_NO_PADDING);
+  memcpy (padded + (rsa_size - msize), mapped, msize);
+  free (mapped);
+  int esize = allnet_rsa_encrypt (rsa, padded, rsa_size, encrypted, rsa_size,
+                                  0 /* no padding */  );
   free (padded);
   if (esize != rsa_size) {
-    ERR_load_crypto_strings ();
-    ERR_print_errors_fp (stdout);
-    printf ("RSA failed to encrypt %d bytes, result %d\n", mlen, esize);
-    exit (1);
+    printf ("verify_bc_key RSA encryption failed\n");
+    allnet_rsa_free_pubkey (rsa);
+    return 0;
   }
-  free (mapped);
 
   int i;
   for (i = 0; i < num_positions; i++) {
     int hashpos = SHA512_BITS - ((i + 1) * bitstring_bits);
-    if (! bitstring_matches (encrypted, positions [i], hash, hashpos,
+    if (! bitstring_matches ((unsigned char *) encrypted, positions [i],
+                             (unsigned char *) hash, hashpos,
                              bitstring_bits)) {
 
       printf ("%d: no %d-bit match at positions %d/%d\n", i,
               bitstring_bits, positions [i], hashpos);
-      print_bitstring (encrypted, positions [i], bitstring_bits, 1);
-      print_bitstring (hash, hashpos, bitstring_bits, 1);
+      print_bitstring ((unsigned char *) encrypted, positions [i],
+                       bitstring_bits, 1);
+      print_bitstring ((unsigned char *) hash, hashpos, bitstring_bits, 1);
 
+      free (encrypted);
       free (positions);
       return 0;
     }
   }
   char * fname;
-  if (config_file_name ("other_bc_keys", address, &fname) < 0) {
-    printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", address);
+  if (config_file_name ("other_bc_keys", ahra, &fname) < 0) {
+    printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", ahra);
   } else {
-    write_RSA_file (fname, rsa, 0);
+    if (! allnet_rsa_write_pubkey (fname, rsa))
+      printf ("unable to write broadcast key to file %s\n", fname);
     free (fname);
   }
-  
+  allnet_rsa_free_pubkey (rsa);
   free (positions);
-  RSA_free (rsa);
+  free (encrypted);
   return 1;
 }
 
@@ -1334,7 +1284,7 @@ unsigned int get_own_keys (struct bc_key_info ** keys)
  * if not successful, returns 0 */
 unsigned int get_other_keys (struct bc_key_info ** keys)
 {
-  init_bc_keys (NULL);
+  init_bc_keys ();
   *keys = other_bc_keys;
   return num_other_bc_keys;
 }
@@ -1344,24 +1294,29 @@ static struct bc_key_info * find_bc_key (char * address,
 {
   int i;
   for (i = 0; i < nkeys; i++) {
-    if (verify_bc_key (address, keys [i].pub_key, keys [i].pub_klen,
-                       NULL, 0, 0))
+    char * key;
+    int klen;
+    rsa_to_external_pubkey (keys [i].pub_key, &key, &klen);
+    if (verify_bc_key (address, key, klen, NULL, 0, 0)) {
+      free (key);
       return keys + i;
+    }
+    free (key);
   }
   return NULL;
 }
 
 /* return the specified key (statically allocated, do not modify), or NULL */
-struct bc_key_info * get_own_key (char * address)
+struct bc_key_info * get_own_bc_key (char * ahra)
 {
   init_bc_keys ();
-  return find_bc_key (address, own_bc_keys, num_own_bc_keys);
+  return find_bc_key (ahra, own_bc_keys, num_own_bc_keys);
 }
 
-struct bc_key_info * get_other_key (char * address)
+struct bc_key_info * get_other_bc_key (char * ahra)
 {
   init_bc_keys ();
-  return find_bc_key (address, other_bc_keys, num_other_bc_keys);
+  return find_bc_key (ahra, other_bc_keys, num_other_bc_keys);
 }
 
 #ifdef TEST_KEYS

@@ -15,6 +15,7 @@
 #include "cutil.h"
 #include "retransmit.h"
 #include "xcommon.h"
+#include "message.h"
 
 /* returns the number of ms from now until the deadline, or 0 if the
  * deadline has passed */
@@ -39,8 +40,16 @@ static void add_time (struct timeval * time, int ms)
   time->tv_usec = time->tv_usec % 1000000;
 }
 
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   if (argc < 2) {
     printf ("usage: %s contact-name [message]\n", argv [0]);
     printf ("   or: %s -k contact-name [hops [secret]] (hops defaults to 1)\n",
@@ -106,7 +115,7 @@ int main (int argc, char ** argv)
     if ((argc > 2) && (nkeys > 0)) {
       int max_key = 0;
       for (i = 0; i < nkeys; i++) {
-        char * key;
+        allnet_rsa_prvkey key;
         int ksize = get_my_privkey (keys [i], &key);
         if (ksize > max_key)
           max_key = ksize;
@@ -126,6 +135,10 @@ int main (int argc, char ** argv)
   /*  printf ("sending %d chars: '%s'\n", printed, text); */
       seq = send_data_message (sock, contact, text, printed);
       ack_expected = 1;
+    } else if (nkeys == 0) {
+      printf ("error: no keys for contact '%s'\n", contact);
+    } else if (nkeys < 0) {
+      printf ("error: contact '%s' does not exist\n", contact);
     }
   }
 

@@ -13,6 +13,7 @@
 #include <pthread.h>
 
 #include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/pipemsg.h"
@@ -123,8 +124,8 @@ static int time_to_buf (time_t t, char * dp, int n)
     return 9;
   }
   struct allnet_app_media_header * amhp = (struct allnet_app_media_header *) dp;
-  writeb32 (amhp->app, 0x7874696d /* xtim */ );
-  writeb32 (amhp->media, ALLNET_MEDIA_TIME_TEXT_BIN);
+  writeb32u (amhp->app, 0x7874696d /* xtim */ );
+  writeb32u (amhp->media, ALLNET_MEDIA_TIME_TEXT_BIN);
   dp += sizeof (struct allnet_app_media_header);
   n -= sizeof (struct allnet_app_media_header);
 
@@ -144,9 +145,9 @@ static int time_to_buf (time_t t, char * dp, int n)
 /* returns -1 for errors, otherwise the size of the announcement */
 static int make_announcement (char * buffer, int n,
                               time_t send, time_t expiration, int hops,
-                              char * key, int ksize,
-                              char * source, int sbits,
-                              char * dest, int dbits)
+                              allnet_rsa_prvkey key,
+                              unsigned char * source, int sbits,
+                              unsigned char * dest, int dbits)
 {
   int hsize = ALLNET_SIZE (ALLNET_TRANSPORT_EXPIRATION);
   int h2size = sizeof (struct allnet_app_media_header);
@@ -180,24 +181,22 @@ static int make_announcement (char * buffer, int n,
   int sig_algo = ALLNET_SIGTYPE_NONE;
   int ssize = 0;
   int dsize = time_to_buf (send, dp, TIMESTAMP_SIZE);
-  if ((key != NULL) && (ksize > 0)) {
-    char * sig;
-    ssize = allnet_sign (dp, TIMESTAMP_SIZE, key, ksize, &sig);
-    if (ssize > 0) {
-      int size = hsize + TIMESTAMP_SIZE + ssize + 2;
-      if (size > n) {
-        printf ("error, buffer size %d, wanted %d, not adding sig\n", n, size);
-        ssize = 0;
-      } else {
-        sig_algo = ALLNET_SIGTYPE_RSA_PKCS1;
-        char * sp = dp + dsize;
-        memcpy (sp, sig, ssize);
-        sp [ssize    ] = (ssize >> 8) & 0xff;
-        sp [ssize + 1] = (ssize & 0xff);
-        ssize += 2;
-      }
-      free (sig);
+  char * sig;
+  ssize = allnet_sign (dp, TIMESTAMP_SIZE, key, &sig);
+  if (ssize > 0) {
+    int size = hsize + TIMESTAMP_SIZE + ssize + 2;
+    if (size > n) {
+      printf ("error, buffer size %d, wanted %d, not adding sig\n", n, size);
+      ssize = 0;
+    } else {
+      sig_algo = ALLNET_SIGTYPE_RSA_PKCS1;
+      char * sp = dp + dsize;
+      memcpy (sp, sig, ssize);
+      sp [ssize    ] = (ssize >> 8) & 0xff;
+      sp [ssize + 1] = (ssize & 0xff);
+      ssize += 2;
     }
+    free (sig);
   }
   hp->sig_algo = sig_algo;
 
@@ -208,8 +207,9 @@ static int make_announcement (char * buffer, int n,
 }
 
 static void announce (time_t interval, int sock,
-                      int hops, char * key, int ksize,
-                      char * source, int sbits, char * dest, int dbits)
+                      int hops, allnet_rsa_prvkey key,
+                      unsigned char * source, int sbits,
+                      unsigned char * dest, int dbits)
 {
   static int called_before = 0;
   struct timeval now;
@@ -225,7 +225,7 @@ static void announce (time_t interval, int sock,
                                 announce_time - ALLNET_Y2K_SECONDS_IN_UNIX,
                                 announce_time + interval -
                                   ALLNET_Y2K_SECONDS_IN_UNIX,
-                                hops, key, ksize, source, sbits, dest, dbits);
+                                hops, key, source, sbits, dest, dbits);
   if (blen <= 0) {
     printf ("unknown error: make_announcement returned %d\n", blen);
     snprintf (log_buf, LOG_SIZE,
@@ -245,8 +245,16 @@ static void announce (time_t interval, int sock,
   print_buffer (buffer, blen, "packet", 36, 1);
 }
 
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   int hops = 10;
   if (argc < 2) {
     printf ("%s: needs at least a signing address\n", argv [0]);
@@ -258,14 +266,13 @@ int main (int argc, char ** argv)
   int interval = 3600;
   if (argc > 3)
     interval = atoi (argv [3]);
-  struct bc_key_info * key = get_own_key (address);
+  struct bc_key_info * key = get_own_bc_key (address);
   if (key == NULL) {
     printf ("key '%s' not found\n", address);
     exit (1);
   }
-  printf ("xtime: got %d-byte public, %d-byte private key, address %02x.%02x\n",
-          key->pub_klen, key->priv_klen, key->address [0] & 0xff,
-          key->address [1] & 0xff);
+  printf ("xtime: got public + private key, address %02x.%02x\n",
+          key->address [0] & 0xff, key->address [1] & 0xff);
   
   int sock = init_xtime (argv [0]);
   pthread_t receive_thread;
@@ -275,6 +282,6 @@ int main (int argc, char ** argv)
   }
 
   while (1)
-    announce (interval, sock, hops, key->priv_key, key->priv_klen,
+    announce (interval, sock, hops, key->prv_key,
               key->address, ADDRESS_BITS, key->address, ADDRESS_BITS);
 }

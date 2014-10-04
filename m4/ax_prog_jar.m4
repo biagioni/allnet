@@ -44,6 +44,5 @@ AC_DEFUN([AX_PROG_JAR],[
 AS_IF([test "x$JAVAPREFIX" = x],
       [test "x$JAR" = x && AC_CHECK_PROGS([JAR], [jar])],
       [test "x$JAR" = x && AC_CHECK_PROGS([JAR], [jar], [], [$JAVAPREFIX/bin])])
-test "x$JAR" = x && AC_MSG_ERROR([no acceptable jar program found in \$PATH])
 AC_PROVIDE([$0])dnl
 ])

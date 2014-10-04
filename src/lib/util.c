@@ -14,7 +14,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
+#ifndef __APPLE__
 #include <netpacket/packet.h>
+#endif /* __APPLE__ */
 #include <arpa/inet.h>
 
 #include "packet.h"
@@ -22,6 +24,7 @@
 #include "log.h"
 #include "util.h"
 #include "ai.h"
+#include "sha.h"
 
 /* print up to max of the count characters in the buffer.
  * desc is printed first unless it is null
@@ -93,6 +96,7 @@ static char * mtype_to_string (int mtype)
   }
 }
 
+#if 0
 static char * mgmt_type_to_string (int mtype)
 {
   switch (mtype) {
@@ -116,6 +120,7 @@ static char * mgmt_type_to_string (int mtype)
     return "unknown management type";
   }
 }
+#endif /* 0 */
 
 /* returned buffer is statically allocated */
 static char * b2s (const char * buffer, int count)
@@ -136,12 +141,19 @@ static char * b2s (const char * buffer, int count)
   return result;
 }
 
+static char * b2su (const unsigned char * buffer, int count)
+{
+  return b2s ((const char *) buffer, count);
+}
+
 static int trace_entry_to_string (const struct allnet_mgmt_trace_entry * e,
                                   char * to, int tsize)
 {
   return snprintf (to, tsize, "%d %lld.%lld@%d %s/%d, ", e->precision,
-                   readb64 (e->seconds), readb64 (e->seconds_fraction),
-                   e->nbits, b2s (e->address, ADDRESS_SIZE), e->hops_seen);
+                   readb64 ((const char *) (e->seconds)),
+                   readb64 ((const char *) (e->seconds_fraction)),
+                   e->nbits, b2s ((const char *) (e->address), ADDRESS_SIZE),
+                   e->hops_seen);
 }
 
 static int mgmt_to_string (int mtype, const char * hp, int hsize,
@@ -158,8 +170,8 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
       const struct allnet_mgmt_beacon * amb =
         (const struct allnet_mgmt_beacon *) hp;
       r += snprintf (to + r, tsize - r, "beacon %s (%lldns)",
-                     b2s (amb->receiver_nonce, NONCE_SIZE),
-                     readb64 (amb->awake_time));
+                     b2su (amb->receiver_nonce, NONCE_SIZE),
+                     readb64 ((char *) (amb->awake_time)));
     }
     break;
   case ALLNET_MGMT_BEACON_REPLY:
@@ -170,9 +182,9 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
       const struct allnet_mgmt_beacon_reply * ambr =
         (const struct allnet_mgmt_beacon_reply *) hp;
       r += snprintf (to + r, tsize - r, "beacon reply r %s ",
-                     b2s (ambr->receiver_nonce, NONCE_SIZE));
+                     b2su (ambr->receiver_nonce, NONCE_SIZE));
       r += snprintf (to + r, tsize - r, "s %s",
-                     b2s (ambr->sender_nonce, NONCE_SIZE));
+                     b2su (ambr->sender_nonce, NONCE_SIZE));
     }
     break;
   case ALLNET_MGMT_BEACON_GRANT:
@@ -183,10 +195,10 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
       const struct allnet_mgmt_beacon_grant * ambg =
         (const struct allnet_mgmt_beacon_grant *) hp;
       r += snprintf (to + r, tsize - r, "beacon grant r %s ",
-                     b2s (ambg->receiver_nonce, NONCE_SIZE));
+                     b2su (ambg->receiver_nonce, NONCE_SIZE));
       r += snprintf (to + r, tsize - r, "s %s %lldns",
-                     b2s (ambg->sender_nonce, NONCE_SIZE),
-                     readb64 (ambg->send_time));
+                     b2su (ambg->sender_nonce, NONCE_SIZE),
+                     readb64 ((char *) (ambg->send_time)));
     }
     break;
   case ALLNET_MGMT_PEER_REQUEST:
@@ -236,7 +248,7 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
                        hsize, needed);
       } else {
         char time_string [100];
-        allnet_time_string (readb64 (dht->timestamp), time_string);
+        allnet_time_string (readb64 ((char *) (dht->timestamp)), time_string);
         r += snprintf (to + r, tsize - r, "dht %d+%d @%s ",
                        dht->num_sender, dht->num_dht_nodes, time_string);
         int i;
@@ -246,7 +258,8 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
           char * nl = index (local, '\n');
           *nl = '\0';   /* segfault if no newline */
           r += snprintf (to + r, tsize - r, "%s %s",
-                         b2s (dht->nodes [i].destination, ADDRESS_SIZE), local);
+                         b2su (dht->nodes [i].destination,
+                               ADDRESS_SIZE), local);
           if (i + 1 < dht->num_sender + dht->num_dht_nodes)
             r += snprintf (to + r, tsize - r, ", ");
         }
@@ -260,7 +273,7 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
     } else {
       const struct allnet_mgmt_trace_req * amt =
         (const struct allnet_mgmt_trace_req *) hp;
-      int ks = readb16 (amt->pubkey_size);
+      int ks = readb16 ((char *) (amt->pubkey_size));
       int needed = sizeof (struct allnet_mgmt_trace_req) + ks +
                    amt->num_entries * sizeof (struct allnet_mgmt_trace_entry);
       if (hsize < needed) {
@@ -271,8 +284,8 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         r += snprintf (to + r, tsize - r, "trace request %d %d %s ",
                        amt->num_entries, ks,
                        ((amt->intermediate_replies != 0) ? "all" : "final"));
-        r += buffer_to_string (amt->trace_id, NONCE_SIZE, "id", 6, 0,
-                               to + r, tsize - r);
+        r += buffer_to_string ((char *) (amt->trace_id), NONCE_SIZE, "id",
+                               6, 0, to + r, tsize - r);
         int i;
         for (i = 0; i < amt->num_entries; i++)
           r += trace_entry_to_string (amt->trace + i, to + r, tsize - r);
@@ -300,8 +313,8 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         r += snprintf (to + r, tsize - r, "trace reply %d %s ",
                        amt->num_entries,
                        ((amt->intermediate_reply != 0) ? "int" : "final"));
-        r += buffer_to_string (amt->trace_id, NONCE_SIZE, "id", 6, 0,
-                               to + r, tsize - r);
+        r += buffer_to_string ((char *) (amt->trace_id), NONCE_SIZE, "id",
+                               6, 0, to + r, tsize - r);
         int i;
         for (i = 0; i < amt->num_entries; i++)
           r += trace_entry_to_string (amt->trace + i, to + r, tsize - r);
@@ -339,12 +352,12 @@ void packet_to_string (const char * buffer, int bsize, char * desc,
   /* print the addresses, if any */
   if (hp->src_nbits != 0)
     off += snprintf (to + off, tsize - off, " from %s/%d",
-                     b2s (hp->source, (hp->src_nbits + 7) / 8), hp->src_nbits);
+                     b2su (hp->source, (hp->src_nbits + 7) / 8), hp->src_nbits);
   else
     off += snprintf (to + off, tsize - off, " from X");
   if (hp->dst_nbits != 0)
     off += snprintf (to + off, tsize - off, " to %s/%d",
-                     b2s (hp->destination, (hp->dst_nbits + 7) / 8),
+                     b2su (hp->destination, (hp->dst_nbits + 7) / 8),
                      hp->dst_nbits);
   else
     off += snprintf (to + off, tsize - off, " to Y");
@@ -430,7 +443,8 @@ void print_packet (const char * packet, int psize, char * desc, int print_eol)
 struct allnet_header *
   init_packet (char * packet, int psize,
                int message_type, int max_hops, int sig_algo,
-               char * source, int sbits, char * dest, int dbits, char * ack)
+               unsigned char * source, int sbits,
+               unsigned char * dest, int dbits, unsigned char * ack)
 {
   struct allnet_header * hp = (struct allnet_header *) packet;
   if (psize < ALLNET_HEADER_SIZE)
@@ -461,20 +475,21 @@ struct allnet_header *
   hp->transport = ALLNET_TRANSPORT_NONE;
   if (ack != NULL) {
     hp->transport = ALLNET_TRANSPORT_ACK_REQ;
-    sha512_bytes (ack, MESSAGE_ID_SIZE,
+    sha512_bytes ((char *) ack, MESSAGE_ID_SIZE,
                   ALLNET_MESSAGE_ID(hp, hp->transport, psize), MESSAGE_ID_SIZE);
   }
   return hp;
 }
 
 /* malloc's (must be free'd), initializes, and returns a packet with the
-/* given data size. */
-/* If ack is not NULL, the data size parameter should NOT include the */
-/* MESSAGE_ID_SIZE bytes of the ack. */
-/* *size is set to the size to send */
+ * given data size.
+ * If ack is not NULL, the data size parameter should NOT include the
+ * MESSAGE_ID_SIZE bytes of the ack.
+ * *size is set to the size to send */
 struct allnet_header *
   create_packet (int data_size, int message_type, int max_hops, int sig_algo,
-                 char * source, int sbits, char * dest, int dbits, char * ack,
+                 unsigned char * source, int sbits,
+                 unsigned char * dest, int dbits, unsigned char * ack,
                  int * size)
 {
   int alloc_size = data_size + ALLNET_HEADER_SIZE;
@@ -493,8 +508,8 @@ struct allnet_header *
 /* *size is set to the size to send */
 /* if from is NULL, the source address is taken from packet->destination */
 struct allnet_header *
-  create_ack (struct allnet_header * packet, char * ack,
-              char * from, int nbits, int * size)
+  create_ack (struct allnet_header * packet, unsigned char * ack,
+              unsigned char * from, int nbits, int * size)
 {
   *size = 0;   /* in case of early return */
   int alloc_size = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
@@ -506,8 +521,8 @@ struct allnet_header *
   }
   struct allnet_header * hp =
     init_packet (result, alloc_size, ALLNET_TYPE_ACK, packet->hops + 3,
-                 ALLNET_SIGTYPE_NONE,
-                 from, nbits, packet->source, packet->src_nbits, NULL);
+                 ALLNET_SIGTYPE_NONE, from, nbits,
+                 packet->source, packet->src_nbits, NULL);
   char * ackp = ALLNET_DATA_START(hp, hp->transport, alloc_size);
   if (alloc_size - (ackp - result) != MESSAGE_ID_SIZE) {
     printf ("coding error in create_ack!!!! %d %p %p %d %d\n",
@@ -533,7 +548,9 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
   struct sockaddr_un  * sun  = (struct sockaddr_un  *) sap;
+#ifndef __APPLE__
   struct sockaddr_ll  * sll  = (struct sockaddr_ll  *) sap;
+#endif /* __APPLE__ */
   /* char str [INET_ADDRSTRLEN]; */
   int num_initial_zeros = 0;  /* for printing ipv6 addrs */
   int n = 0;   /* offset for printing */
@@ -578,6 +595,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_un));
     break;
+#ifndef __APPLE__
   case AF_PACKET:
     n += snprintf (s + n, len - n,
                    "packet protocol%s 0x%x if %d ha %d pkt %d address (%d)",
@@ -589,6 +607,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_ll));
     break;
+#endif /* __APPLE__ */
   default:
     n += snprintf (s + n, len - n, "unknown address family %d%s",
                    sap->sa_family, proto);
@@ -610,7 +629,7 @@ void print_timestamp (char * message)
 {
   struct timeval now;
   gettimeofday (&now, NULL);
-  printf ("%s at %ld.%06ld\n", message, now.tv_sec, now.tv_usec);
+  printf ("%s at %ld.%06ld\n", message, now.tv_sec, (long) (now.tv_usec));
 }
 
 static int get_bit (const unsigned char * data, int pos)
@@ -762,7 +781,7 @@ void allnet_localtime_string (unsigned long long int allnet_seconds,
 
 /* useful time functions */
 /* if t1 < t2, returns 0, otherwise returns t1 - t2 */
-unsigned long long delta_us (struct timeval * t1, struct timeval * t2)
+unsigned long long delta_us (const struct timeval * t1, const struct timeval * t2)
 {
   if ((t1->tv_sec < t2->tv_sec) ||
       ((t1->tv_sec == t2->tv_sec) &&
@@ -812,7 +831,7 @@ time_t compute_next (time_t from, time_t granularity, int immediate_ok)
 }
 
 /* set result to a random time between start + min and start + max */
-void set_time_random (struct timeval * start, unsigned long long min,
+void set_time_random (const struct timeval * start, unsigned long long min,
                       unsigned long long max, struct timeval * result)
 {
   if (min <= max) {
@@ -877,7 +896,8 @@ void * memcpy_malloc (void * bytes, int bsize, char * desc)
  * array to hold the file contents and assigns it to content_p.
  * in case of problems, returns 0
  */
-int read_file_malloc (char * file_name, char ** content_p, int print_errors)
+int read_file_malloc (const char * file_name, char ** content_p,
+                      int print_errors)
 {
   struct stat st;
   if (stat (file_name, &st) < 0) {
@@ -1090,6 +1110,47 @@ void writeb64 (char * p, unsigned long long int value)
   p [6] = (value >>  8) & 0xff; p [7] =  value        & 0xff;
 }
 
+/* the same functions on arrays of unsigned characters */
+unsigned int readb16u (const unsigned char * p)
+{
+  return readb16 ((const char *) p);
+}
+
+unsigned long int readb32u (const unsigned char * p)
+{
+  return readb32 ((const char *) p);
+}
+
+unsigned long long int readb48u (const unsigned char * p)
+{
+  return readb48 ((const char *) p);
+}
+
+unsigned long long int readb64u (const unsigned char * p)
+{
+  return readb64 ((const char *) p);
+}
+
+void writeb16u (unsigned char * p, unsigned int value)
+{
+  writeb16 ((char *) p, value);
+}
+
+void writeb32u (unsigned char * p, unsigned long int value)
+{
+  writeb32 ((char *) p, value);
+}
+
+void writeb48u (unsigned char * p, unsigned long long int value)
+{
+  writeb48 ((char *) p, value);
+}
+
+void writeb64u (unsigned char * p, unsigned long long int value)
+{
+  writeb64 ((char *) p, value);
+}
+
 /* returns 1 if the message is valid, 0 otherwise */
 int is_valid_message (const char * packet, int size)
 {
@@ -1189,5 +1250,37 @@ void print_gethostbyname_error (char * hostname)
     break;
   }
   log_print ();
+}
+
+/* assuming option_letter is 'v', returns 1 if argv has '-v', 0 otherwise
+ * if it returns 1, removes the -v from the argv, and decrements *argcp.
+ */
+int get_option (char option_letter, int * argcp, char ** argv)
+{
+  char buf [] = "-o";  /* o for option */
+  buf [1] = option_letter;
+  int orig_argc = *argcp;
+  int i;
+  for (i = 1; i < orig_argc; i++) {
+    if (strcmp (argv [i], buf) == 0) {  /* found a match */
+      int j;
+      for (j = i; j + 1 < orig_argc; j++)
+        argv [j] = argv [j + 1];
+      *argcp = orig_argc - 1;
+      return 1;
+    }
+  }
+  return 0;
+}
+
+/* set user_callable to 1 for astart and allnetx, to 0 for all others */
+void print_usage (int argc, char ** argv, int user_callable, int do_exit)
+{
+  if (user_callable)
+    printf ("usage: %s [-v] [interface1 [interface2]]\n", argv [0]);
+  else
+    printf ("%s should only be called from astart or allnetx\n", argv [0]);
+  if (do_exit)
+    exit (1);
 }
 

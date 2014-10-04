@@ -4,6 +4,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <pthread.h>
 #include <errno.h>
@@ -14,38 +15,14 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
+#include "listen.h"
 #include "lib/packet.h"
+#include "lib/pipemsg.h"
 #include "lib/mgmt.h"
 #include "lib/util.h"
-#include "listen.h"
+#include "lib/pipemsg.h"
 #include "lib/log.h"
-
-#ifndef LISTEN_H
-/* this structure is declared in the caller and passed to every function.
- * Some of the fields should not be accessed by the caller */
-struct listen_info {
-  /* accessed by the caller as well as the code in listen.c */
-  int num_fds;           /* counter for number of file descriptors in fds */
-  int * fds;             /* array of ints for file descriptors */
-  pthread_mutex_t mutex; /* mutex for accessing fds */
-  pthread_t thread4;     /* listen thread for IPv4 */
-  pthread_t thread6;     /* listen thread for IPv6 */
-  int nodelay;           /* nodelay 1 on all local sockets, 0 on all other */
-  /* the rest of these fields are for listen.c internal use only */
-  int max_num_fds;       /* max number of elements with space in fds */
-  char * program_name;   /* e.g. alocal, aip */
-  int listen_fd4;        /* fd for listening for new connections on ipv4 */
-  int listen_fd6;        /* fd for listening for new connections on ipv6 */
-  int port;              /* TCP port number */
-  int add_remove_pipe;   /* call add_pipe and remove_pipe */
-  /* if the ip version of a peer is 0, that fd does not have a peer address */
-  struct addr_info * peers;  /* holds peer addrs, allocated max_num_fds */
-  /* for testing, make counter a char.  Normally, unsigned int */
-  unsigned char counter;  /* cycle counter for least recently used */
-  unsigned int * used;    /* array of most recent access times */
-  void (* callback) (int);
-};
-#endif /* LISTEN_H */
+#include "lib/ai.h"
 
 /* returns the fd of the new listen socket, or -1 in case of error */
 static int init_listen_socket (int version, int port, int local)
@@ -93,15 +70,15 @@ static int init_listen_socket (int version, int port, int local)
     if (version == 6) {
       perror ("bind");
       n = snprintf (log_buf, LOG_SIZE,
-                    "ipv%d unable to bind to %d/%x, probably already running\n",
-                    version, ntohs (port), ntohs (port));
+                    "ipv%d unable to bind %d/%x(%d), maybe already running\n",
+                    version, ntohs (port), ntohs (port), addr_size);
       n += snprintf (log_buf + n, LOG_SIZE - n, "bind address is ");
       n += print_sockaddr_str (ap, addr_size, 1, log_buf + n, LOG_SIZE - n);
       log_print ();
     } else {
       snprintf (log_buf, LOG_SIZE,
-                "ipv%d unable to bind to %d/%x, probably handled by ipv6\n",
-                version, ntohs (port), ntohs (port));
+                "ipv%d unable to bind to %d/%x(%d), probably handled by ipv6\n",
+                version, ntohs (port), ntohs (port), addr_size);
       log_print ();
     }
     return -1;
@@ -118,7 +95,7 @@ static int init_listen_socket (int version, int port, int local)
 }
 
 struct real_arg {
-  struct listen_info * info;
+  struct listen_info * info;   /* struct listen_info is defined in listen.h */
   int fd;  /* listen socket for opening new connections */
 };
 
@@ -144,8 +121,16 @@ static void * listen_loop (void * arg)
     int off = snprintf (log_buf, LOG_SIZE,
                         "opened connection socket fd = %d port %d from ",
                         connection, ntohs (info->port));
+/* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
+ * we want to record it as an IPv4 connection */
+    standardize_ip (ap, addr_size);
+#ifdef DEBUG_PRINT
     print_sockaddr_str (ap, addr_size, 1, log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+    snprintf (log_buf + off, LOG_SIZE - off, "\n");
+#endif /* DEBUG_PRINT */
     log_print ();
+
     int option = 1;  /* disable Nagle algorithm if nodelay */
     if ((ra->info->nodelay) &&
         (setsockopt (connection, IPPROTO_TCP, TCP_NODELAY, &option,
@@ -153,9 +138,6 @@ static void * listen_loop (void * arg)
       snprintf (log_buf, LOG_SIZE, "unable to set nodelay socket option\n");
       log_print ();
     }
-/* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
- * we want to record it as an IPv4 connection */
-    standardize_ip (ap, addr_size);
 
     struct addr_info addr;
     sockaddr_to_ai (ap, addr_size, &addr);

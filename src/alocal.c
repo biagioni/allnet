@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <pthread.h>
 #include <netdb.h>
 #include <sys/types.h>
@@ -18,10 +19,11 @@
 
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
+#include "lib/util.h"
 #include "listen.h"
 #include "lib/log.h"
 
-void main_loop (int rpipe, int wpipe, struct listen_info * info)
+static void main_loop (int rpipe, int wpipe, struct listen_info * info)
 {
   while (1) {
     int fd;
@@ -100,21 +102,15 @@ void main_loop (int rpipe, int wpipe, struct listen_info * info)
   }
 }
 
-int main (int argc, char ** argv)
+void alocal_main (int rpipe, int wpipe)
 {
   init_log ("alocal");
   snprintf (log_buf, LOG_SIZE, "in main\n");
   log_print ();
-  if (argc != 3) {
-    printf ("arguments must be a read and a write pipe\n");
-    return -1;
-  }
 /*
   printf ("in alocal, args are ");
-  printf ("'%s %s %s'\n", argv [0], argv [1], argv [2]);
+  printf ("'%d %d'\n", rpipe, wpipe);
 */
-  int rpipe = atoi (argv [1]);
-  int wpipe = atoi (argv [2]);
   /* printf ("read pipe is fd %d, write pipe is fd %d\n", rpipe, wpipe); */
   struct listen_info info;
   snprintf (log_buf, LOG_SIZE, "calling listen_init_info\n");
@@ -131,5 +127,32 @@ int main (int argc, char ** argv)
   pthread_cancel (info.thread6);
   snprintf (log_buf, LOG_SIZE, "end of alocal main thread\n");
   log_print ();
+}
+
+#ifndef NO_MAIN_FUNCTION
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
+int main (int argc, char ** argv)
+{
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
+  if (argc != 3) {
+    printf ("arguments must be a read and a write pipe\n");
+    print_usage (argc, argv, 0, 1);
+    return -1;
+  }
+/*
+  printf ("in alocal, args are ");
+  printf ("'%s %s %s'\n", argv [0], argv [1], argv [2]);
+*/
+  int rpipe = atoi (argv [1]);
+  int wpipe = atoi (argv [2]);
+  /* printf ("read pipe is fd %d, write pipe is fd %d\n", rpipe, wpipe); */
+  alocal_main (rpipe, wpipe);
   return 1;
 }
+#endif /* NO_MAIN_FUNCTION */

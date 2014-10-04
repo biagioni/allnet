@@ -183,6 +183,7 @@ static int top_destinations (void * addr_cache, int max, unsigned char * dest,
   return num_matches;
 }
 
+#if 0
 static int same_sockaddr (void * arg1, void * arg2)
 {
   struct sockaddr_in6 * a1 = (struct sockaddr_in6 *) arg1;
@@ -209,6 +210,7 @@ static int same_sockaddr (void * arg1, void * arg2)
   log_print ();
   return 0;
 }
+#endif /* 0 */
 
 static int same_sockaddr_udp (void * arg1, void * arg2)
 {
@@ -276,7 +278,11 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
     record->last_received = time (NULL);
     cache_add (cache, record);
   }
+#ifdef DEBUG_PRINT
   log_print ();
+#else /* DEBUG_PRINT */
+  log_buf [0] = '\0';
+#endif /* DEBUG_PRINT */
 }
 
 static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
@@ -286,10 +292,15 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
     addr_len = sizeof (struct sockaddr_in);
   int s = sendto (udp, message, msize, 0, sa, addr_len);
   if (s < msize) {
-    int n = snprintf (log_buf, LOG_SIZE,
+#ifdef DEBUG_PRINT
+    int n = 
+#endif /* DEBUG_PRINT */
+    snprintf (log_buf, LOG_SIZE,
                       "error sending %d (sent %d) on udp %d to ",
                       msize, s, udp);
-    n += print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
+#ifdef DEBUG_PRINT
+    print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
+#endif /* DEBUG_PRINT */
     log_error ("sendto");
   } else {
 /*
@@ -323,9 +334,13 @@ static int send_udp_addr (int udp, char * message, int msize,
             addr->ip_version);
     return 0;
   }
+#ifdef DEBUG_PRINT
   int off = snprintf (log_buf, LOG_SIZE,
                       "send_udp_addr sending %d bytes to: ", msize);
   print_sockaddr_str (sap, sizeof (sas), 0, log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+  snprintf (log_buf, LOG_SIZE, "send_udp_addr sending %d bytes\n", msize);
+#endif /* DEBUG_PRINT */
   log_print ();
 
   send_udp (udp, message, msize, sap);
@@ -382,7 +397,8 @@ static int dht_ping_match (struct allnet_header * hp, int msize,
     log_print ();
     return 0;  /* not a dht message */
   }
-  buffer_to_string (hp->destination, ADDRESS_SIZE, "dht_ping_match matching",
+  buffer_to_string ((char *) (hp->destination), ADDRESS_SIZE,
+                    "dht_ping_match matching",
                     ADDRESS_SIZE, 1, log_buf, LOG_SIZE);
   log_print ();
 
@@ -436,9 +452,6 @@ log_print ();
   int i;
 #define DHT_SENDS	4
   struct sockaddr_storage dht_storage [DHT_SENDS];
-  struct sockaddr * dht_next [DHT_SENDS];
-  for (i = 0; i < DHT_SENDS; i++)
-    dht_next [i] = ((struct sockaddr *) (&(dht_storage [i])));
   int dht_sends = routing_top_dht_matches (hp->destination, hp->dst_nbits,
                                            dht_storage, DHT_SENDS);
 #undef DHT_SENDS
@@ -510,7 +523,7 @@ static int udp_socket ()
   struct sockaddr     * ap  = (struct sockaddr     *) &address;
   /* struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap; */
   struct sockaddr_in6 * ap6 = (struct sockaddr_in6 *) ap;
-  int addr_size = sizeof (address);
+  int addr_size = sizeof (struct sockaddr_in6);
 
   memset (&address, 0, addr_size);
   ap6->sin6_family = AF_INET6;
@@ -530,13 +543,18 @@ static int udp_socket ()
 void listen_callback (int fd)
 {
   if ((cached_dht_packet != NULL) && (cached_dht_size > 0)) {
-    if (! send_pipe_message (fd, cached_dht_packet, cached_dht_size,
-                             ALLNET_PRIORITY_EPSILON))
+    if (send_pipe_message (fd, cached_dht_packet, cached_dht_size,
+                             ALLNET_PRIORITY_EPSILON)) {
+#ifdef DEBUG_PRINT
       snprintf (log_buf, LOG_SIZE, "sent cached dht to new socket %d\n", fd);
-    else
+      log_print ();
+#endif /* DEBUG_PRINT */
+    } else {
       snprintf (log_buf, LOG_SIZE,
-                "error sending cached dht to new socket %d\n", fd);
-    log_print ();
+                "error sending %d-byte cached dht to new socket %d\n",
+                cached_dht_size, fd);
+      log_print ();
+    }
   }
 }
 
@@ -552,7 +570,7 @@ void listen_callback (int fd)
 #define NUM_LISTENERS	(1 << LISTEN_BITS) * 2   /* 2 ^ LISTEN_BITS for v4/v6*/
 static int listener_fds [NUM_LISTENERS];
 
-static int connect_listener (char * address, struct listen_info * info,
+static int connect_listener (unsigned char * address, struct listen_info * info,
                              void * addr_cache, int af)
 {
   int result = -1;
@@ -573,13 +591,13 @@ static int connect_listener (char * address, struct listen_info * info,
   int k;
   for (k = 0; (k < num_dhts) && (result < 0); k++) {
     if (af == sas [k].ss_family) {
-      char * ip_addrp = NULL;
+      unsigned char * ip_addrp = NULL;
       socklen_t salen = 0;
-      int port;
+      int port = 0;
       struct sockaddr_in  * sin  = (struct sockaddr_in *) (&(sas [k]));
       struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) (&(sas [k]));
       if (af == AF_INET) {
-        ip_addrp = (char *) (&(sin->sin_addr));
+        ip_addrp = (unsigned char *) (&(sin->sin_addr));
         port = sin->sin_port;
         salen = sizeof (struct sockaddr_in);
       } else if (af == AF_INET6) {
@@ -601,7 +619,7 @@ static int connect_listener (char * address, struct listen_info * info,
         continue;
       }
       if (connect (s, (struct sockaddr *) (sin), salen) < 0) {
-        perror ("listener connect");
+        log_error ("listener connect");
         continue;
       }
       /* ai now needs to be malloc'd, to make it good even after we return */
@@ -619,8 +637,9 @@ static int connect_listener (char * address, struct listen_info * info,
       log_print ();
     }
   }
-  snprintf (log_buf, LOG_SIZE, "connect_listener (%d, %d) => %d\n",
-            (address [0] & 0xff) >> (8 - LISTEN_BITS), af, result);
+  snprintf (log_buf, LOG_SIZE, "connect_listener (%d/0x%x, %d) => %d\n",
+            (address [0] & 0xff) >> (8 - LISTEN_BITS), address [0] & 0xff,
+            af, result);
   log_print ();
   return result;
 }
@@ -635,7 +654,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
     keyset * keysets;
     int num_keysets = all_keys (contacts [i], &keysets);
     for (j = 0; j < num_keysets; j++) {
-      char address [ADDRESS_SIZE];
+      unsigned char address [ADDRESS_SIZE];
       if (get_local (keysets [j], address) >= LISTEN_BITS) {
         int index = ((address [0] & 0xff) >> (8 - LISTEN_BITS)) * 2;
 /* printf ("calling connect_listener [%d/%d] [%d/%d] [%d, %d]\n",
@@ -686,7 +705,7 @@ void send_keepalive (void * udp_cache, int fd,
   int max_size = ALLNET_MGMT_HEADER_SIZE (0xff);
   char keepalive [ALLNET_MTU];
   bzero (keepalive, max_size);
-  char address [ADDRESS_SIZE];
+  unsigned char address [ADDRESS_SIZE];
   bzero (address, sizeof (address));
   struct allnet_header * hp =
     init_packet (keepalive, sizeof (keepalive), ALLNET_TYPE_MGMT, 1,
@@ -717,9 +736,13 @@ void send_keepalive (void * udp_cache, int fd,
       cache_remove (udp_cache, udp_void_ptr);
       off = snprintf (log_buf, LOG_SIZE, "time out (%ld seconds), removed ",
                       time (NULL) - ucr->last_received);
-    }
+    } 
+#ifdef DEBUG_PRINT
     off += print_sockaddr_str (sap, sizeof (sas_copy), 0,
                                log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+    snprintf (log_buf + off, LOG_SIZE - off, "\n");
+#endif /* DEBUG_PRINT */
     log_print ();
   }
 
@@ -750,13 +773,17 @@ void send_keepalive (void * udp_cache, int fd,
 static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
                                     struct allnet_header * in_hp, int fd)
 {
-  int off = snprintf (log_buf, LOG_SIZE, "send_dht_ping_response (");
+  int off = snprintf (log_buf, LOG_SIZE, "send_dht_ping_response ");
+#ifdef DEBUG_PRINT
   print_sockaddr_str (sap, sasize, 0, log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+  snprintf (log_buf + off, LOG_SIZE - off, "\n");
+#endif /* DEBUG_PRINT */
   log_print ();
   unsigned char message [1024];
   bzero (message, sizeof (message));
   struct allnet_header * hp =
-    init_packet (message, sizeof (message), ALLNET_TYPE_MGMT, 1,
+    init_packet ((char *) message, sizeof (message), ALLNET_TYPE_MGMT, 1,
                  ALLNET_SIGTYPE_NONE, in_hp->destination, in_hp->dst_nbits,
                  in_hp->source, in_hp->src_nbits, NULL);
   struct allnet_mgmt_header * mp =
@@ -774,10 +801,10 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
   if (n > 0) {
     dht->num_sender = n;
     dht->num_dht_nodes = 0;
-    writeb64 (dht->timestamp, allnet_time ());
-    send_udp (fd, message, ALLNET_DHT_SIZE (hp->transport, n), sap);
+    writeb64u (dht->timestamp, allnet_time ());
+    send_udp (fd, (char *) message, ALLNET_DHT_SIZE (hp->transport, n), sap);
 #ifdef DEBUG_PRINT
-    packet_to_string (message, ALLNET_DHT_SIZE (hp->transport, n),
+    packet_to_string ((char *) message, ALLNET_DHT_SIZE (hp->transport, n),
                       "sent ping response", 1, log_buf, LOG_SIZE);
     int off = strlen (log_buf);
     off += snprintf (log_buf + off, LOG_SIZE - off, " to: ");
@@ -814,8 +841,8 @@ static int dht_filter_senders (struct sockaddr * sap, socklen_t sasize,
   for (i = 0; i < n_sender; i++) {
     if (((mdp->nodes [i].ip.ip_version == 4) &&
          (sap->sa_family == AF_INET) &&
-         (* ((int *) (mdp->nodes [i].ip.ip.s6_addr + 12)) ==
-          sin->sin_addr.s_addr) &&
+         (memcmp (mdp->nodes [i].ip.ip.s6_addr + 12,
+                  &(sin->sin_addr.s_addr), 4) == 0) &&
          (mdp->nodes [i].ip.port == sin->sin_port)) ||
         ((mdp->nodes [i].ip.ip_version == 6) &&
          (sap->sa_family == AF_INET6) &&
@@ -930,7 +957,7 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
     snprintf (log_buf, LOG_SIZE, "handle_mgmt DHT %d\n", sap->sa_family);
     log_print ();
 #endif /* DEBUG_PRINT */
-    if (sap->sa_family == -1)
+    if (((int) (sap->sa_family)) == -1)
       return 1;   /* discard message, don't forward any further */
     struct allnet_mgmt_dht * mdp =
       (struct allnet_mgmt_dht *)
@@ -987,9 +1014,12 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
     socklen_t sasize = sizeof (sockaddr);
     int result = receive_pipe_message_fd (1000, &message, udp, sap, &sasize,
                                           &fd, &priority);
+if ((result > 0) && (fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
+snprintf (log_buf, LOG_SIZE, "00: fd %d/%d, result %d/%d/%zd, bad afamily %d\n",
+udp, fd, result, sasize, sizeof (sockaddr), sap->sa_family); log_print (); }
     if (result < 0) {
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (log_buf, LOG_SIZE, "0: fd %d/%d, bad address family %d\n", udp, fd,
+snprintf (log_buf, LOG_SIZE, "0/%d: fd %d/%d, bad address family %d\n", result, udp, fd,
 sap->sa_family); log_print (); }
       if ((fd == rpipe) || (fd == udp)) {
         snprintf (log_buf, LOG_SIZE, "aip %s %d closed\n",
@@ -1007,11 +1037,11 @@ sap->sa_family); log_print (); }
       removed_listener = 1;
     } else if (result > 0) {
 if ((fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (log_buf, LOG_SIZE, "1: fd %d/%d, result %d, bad address family %d\n",
-udp, fd, result, sap->sa_family); log_print (); }
+snprintf (log_buf, LOG_SIZE, "1: fd %d/%d, result %d/%d, bad addr family %d\n",
+udp, fd, result, sasize, sap->sa_family); log_print (); }
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
-        /* snprintf (log_buf, LOG_SIZE, "message from ad\n");
-        log_print (); */
+        snprintf (log_buf, LOG_SIZE, "got %d-byte message from ad\n", result);
+        log_print ();
         forward_message (info->fds + 1, info->num_fds - 1, udp, udp_cache,
                          addr_cache, message, result, priority, 10);
       } else {
@@ -1026,9 +1056,13 @@ sap->sa_family); log_print (); }
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "3: fd %d/%d, bad address family %d\n", udp, fd,
 sap->sa_family); log_print (); }
+#ifdef DEBUG_PRINT
           off += snprintf (log_buf + off, LOG_SIZE - off, "/udp, saving ");
           off += print_sockaddr_str (sap, sasize, 0,
                                      log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+          off += snprintf (log_buf + off, LOG_SIZE - off, "/udp\n");
+#endif /* DEBUG_PRINT */
           log_print ();
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "4: fd %d/%d, bad address family %d\n", udp, fd,
@@ -1039,9 +1073,13 @@ sap->sa_family); log_print (); }
           if (ai != NULL)
             if (ai_to_sockaddr (ai, sap))
               sasize = sizeof (struct sockaddr_in6);
+#ifdef DEBUG_PRINT
           off += snprintf (log_buf + off, LOG_SIZE - off, ", ");
           off += print_sockaddr_str (sap, sasize, 1,
                                      log_buf + off, LOG_SIZE - off);
+#else /* DEBUG_PRINT */
+          off += snprintf (log_buf + off, LOG_SIZE - off, "\n");
+#endif /* DEBUG_PRINT */
           log_print ();
         }
         if (handle_mgmt (listener_fds, NUM_LISTENERS, fd, message,
@@ -1066,20 +1104,9 @@ sap->sa_family); log_print (); }
   }
 }
 
-int main (int argc, char ** argv)
+void aip_main (int rpipe, int wpipe, char * addr_socket_name)
 {
   init_log ("aip");
-  if (argc != 4) {
-    printf ("aip: arguments are read pipe from ad and write pipe to ad,\n");
-    printf (" and a unix domain socket for address info (argc == 4)\n");
-    printf (" but argc == %d\n", argc);
-    return -1;
-  }
-
-  int rpipe = atoi (argv [1]);  /* read pipe */
-  int wpipe = atoi (argv [2]);  /* write pipe */
-  char * addr_socket_name = argv [3];
-
   snprintf (log_buf, LOG_SIZE,
             "read pipe is fd %d, write pipe fd %d, socket %s\n",
             rpipe, wpipe, addr_socket_name);
@@ -1092,7 +1119,7 @@ int main (int argc, char ** argv)
   ra.dht_cache = cache_init (256, free);
   if (pthread_create (&addr_thread, NULL, receive_addrs, &ra) != 0) {
     perror ("pthread_create/addrs");
-    return 1;
+    return;
   }
   struct listen_info info;
   listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0, listen_callback);
@@ -1109,6 +1136,32 @@ int main (int argc, char ** argv)
             "end of aip main thread, deleting %s\n", addr_socket_name);
   log_print ();
   if (unlink (addr_socket_name) < 0)
-    perror ("unlink");
+    perror ("aip unlink addr_socket");
+}
+
+#ifndef NO_MAIN_FUNCTION
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
+int main (int argc, char ** argv)
+{
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
+  if (argc != 4) {
+    printf ("aip: arguments are read pipe from ad and write pipe to ad,\n");
+    printf (" and a unix domain socket for address info (argc == 4)\n");
+    printf (" but argc == %d\n", argc);
+    print_usage (argc, argv, 0, 1);
+    return -1;
+  }
+
+  int rpipe = atoi (argv [1]);  /* read pipe */
+  int wpipe = atoi (argv [2]);  /* write pipe */
+  char * addr_socket_name = argv [3];
+  aip_main (rpipe, wpipe, addr_socket_name);
   return 0;
 }
+#endif /* NO_MAIN_FUNCTION */

@@ -4,9 +4,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "lib/app_util.h"
 #include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/pipemsg.h"
 #include "lib/util.h"
+#include "lib/app_util.h"
 #include "lib/sha.h"
 #include "lib/log.h"
 #include "lib/priority.h"
@@ -38,8 +41,8 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   int vsize = msize - hsize;
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) verif;
-  if ((readb32 (amhp->media) != ALLNET_MEDIA_TEXT_PLAIN) &&
-      (readb32 (amhp->media) != ALLNET_MEDIA_TIME_TEXT_BIN))
+  if ((readb32u (amhp->media) != ALLNET_MEDIA_TEXT_PLAIN) &&
+      (readb32u (amhp->media) != ALLNET_MEDIA_TIME_TEXT_BIN))
     return 0;
 
   char * payload = verif + h2size;
@@ -56,14 +59,15 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
       vsize -= ssize + 2;
     }
   }
+  if (sig == NULL)  /* ignore */
+    return 0;
   char * from = "unknown sender";
   struct bc_key_info * keys;
   int nkeys = get_other_keys (&keys);
   if ((nkeys > 0) && (ssize > 0) && (sig != NULL)) {
     int i;
     for (i = 0; i < nkeys; i++) {
-      if (allnet_verify (verif, vsize, sig, ssize,
-                         keys [i].pub_key, keys [i].pub_klen))
+      if (allnet_verify (verif, vsize, sig, ssize, keys [i].pub_key))
         from = keys [i].identifier;
     }
   }
@@ -73,7 +77,7 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   *sig = '\0';  /* null-terminate the string */
   printf ("from %s: %s\n", from, payload);
   if ((psize == strlen (payload) + 9) &&
-      (readb32 (amhp->media) == ALLNET_MEDIA_TIME_TEXT_BIN)) {
+      (readb32u (amhp->media) == ALLNET_MEDIA_TIME_TEXT_BIN)) {
   /* message from time server, see how long it took */
     char * bin_time = payload + strlen (payload) + 1;
     unsigned long long int packet_time = readb64 (bin_time);
@@ -139,14 +143,24 @@ static int debug_switch (int * argc, char ** argv)
   return debug;
 }
 
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 /* optional argument: quit after n messages */
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   int sock = connect_to_local (argv [0], argv [0]);
   if (sock < 0)
     return 1;
 
   int debug = debug_switch (&argc, argv);
+  if (verbose && (! debug))
+    debug = 1;
 
   int max = 0;
   if (argc > 1)

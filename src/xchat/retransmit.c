@@ -5,6 +5,8 @@
 #include <string.h>
 #include <inttypes.h>
 
+#include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/keys.h"
@@ -66,21 +68,21 @@ static char * create_chat_control_request (char * contact, char * missing,
   /* compute number of counters in request */
   int counters_size = (num_singles + 2 * num_ranges) * COUNTER_SIZE;
   int size = sizeof (struct chat_control_request) + counters_size;
-  unsigned char * request = malloc_or_fail (size, "retransmit_request");
+  char * request = malloc_or_fail (size, "retransmit_request");
   if (request == NULL)
     return NULL;
 
   bzero (request, size);
   struct chat_control_request * ccrp = (struct chat_control_request *) request;
-  writeb32 (ccrp->app_media.app, XCHAT_ALLNET_APP_ID);
-  writeb32 (ccrp->app_media.media, ALLNET_MEDIA_DATA);
-  writeb64 (ccrp->counter, COUNTER_FLAG);
+  writeb32u (ccrp->app_media.app, XCHAT_ALLNET_APP_ID);
+  writeb32u (ccrp->app_media.media, ALLNET_MEDIA_DATA);
+  writeb64u (ccrp->counter, COUNTER_FLAG);
   ccrp->type = CHAT_CONTROL_TYPE_REQUEST;
   ccrp->num_singles = num_singles;
   ccrp->num_ranges = num_ranges;
-  writeb64 (ccrp->last_received, rcvd_sequence);
+  writeb64u (ccrp->last_received, rcvd_sequence);
   int i;
-  char * ptr = ccrp->counters;
+  unsigned char * ptr = ccrp->counters;
   for (i = 0; i < num_singles; i++) {
 #ifdef DEBUG_PRINT
     print_buffer (missing + i * COUNTER_SIZE, COUNTER_SIZE,
@@ -172,9 +174,9 @@ static uint64_t get_prev (uint64_t last,
   int i;
   for (i = 0; i < num_ranges; i++) {
     int index = 2 * i * COUNTER_SIZE;
-    uint64_t start = readb64 (ranges + index);
+    uint64_t start = readb64u (ranges + index);
     index += COUNTER_SIZE;
-    uint64_t finish = readb64 (ranges + index);
+    uint64_t finish = readb64u (ranges + index);
     if (start <= finish) {        /* a reasonable range */
       if (start <= last - 1) {    /* range may have the prev */
         uint64_t candidate = last - 1;
@@ -186,7 +188,7 @@ static uint64_t get_prev (uint64_t last,
     }
   }
   for (i = 0; i < num_singles; i++) {
-    uint64_t n = readb64 (singles + i * COUNTER_SIZE);
+    uint64_t n = readb64u (singles + i * COUNTER_SIZE);
     if ((n < last) && ((result == MAXLL) || (result < n)))
       result = n;
   }
@@ -290,8 +292,8 @@ static void resend_message (uint64_t seq, char * contact,
   bzero (message, CHAT_DESCRIPTOR_SIZE);
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
   memcpy (cdp->message_ack, message_ack, MESSAGE_ID_SIZE);
-  writeb64 (cdp->counter, seq);
-  writeb64 (cdp->timestamp, time);
+  writeb64u (cdp->counter, seq);
+  writeb64u (cdp->timestamp, time);
   memcpy (message + CHAT_DESCRIPTOR_SIZE, text, size);
   free (text);
 #ifdef DEBUG_PRINT
@@ -323,9 +325,9 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
             hp->type, CHAT_CONTROL_TYPE_REQUEST);
     return;
   }
-  if (readb32 (hp->app_media.app) != XCHAT_ALLNET_APP_ID) {
+  if (readb32u (hp->app_media.app) != XCHAT_ALLNET_APP_ID) {
     printf ("message app %08lx != %08x, not an xchat message\n",
-            readb32 (hp->app_media.app), XCHAT_ALLNET_APP_ID);
+            readb32u (hp->app_media.app), XCHAT_ALLNET_APP_ID);
     return;
   }
   int expected_size = COUNTER_SIZE * (hp->num_singles + 2 * hp->num_ranges)
@@ -366,7 +368,7 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
   int priority = top_priority;
   /* assume the more recent messages are more important, so send them first */
   /* and with slightly higher priority */
-  uint64_t last = readb64 (hp->last_received);
+  uint64_t last = readb64u (hp->last_received);
   while ((counter > last) && (send_count < max)) {
     resend_message (counter, contact, k, sock, hops, priority);
     counter--;

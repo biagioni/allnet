@@ -80,7 +80,7 @@ static void send_key_message (int sock, char * contact, keyset keys,
   /* do not copy secret's terminating null byte */
   memcpy (text + MESSAGE_ID_SIZE + my_ksize, secret, strlen (secret));
   char * cipher;
-  int csize = encrypt (text, length, contact_key, contact_ksize, &cipher);
+  int csize = allnet_encrypt (text, length, contact_key, contact_ksize, &cipher);
 
 #ifdef DEBUG_PRINT
   printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);
@@ -181,10 +181,19 @@ static void wait_for_key (int sock, char * secret, char * contact,
   }
 }
 
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   if (argc != 3) {
     printf ("usage: %s contact-name secret-string\n", argv [0]);
+    print_usage (argc, argv, 1, 1);
     return 1;
   }
 

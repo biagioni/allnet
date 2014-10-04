@@ -9,10 +9,13 @@
 #include <pthread.h>
 #include <errno.h>
 #include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "packet.h"
 #include "log.h"
 #include "util.h"
+#include "config.h"
 
 char log_buf [LOG_SIZE];    /* global */
 
@@ -24,6 +27,8 @@ char log_buf [LOG_SIZE];    /* global */
 #define PATH_MAX	4096
 #endif /* PATH_MAX */
 #endif /* PATH_MAX */
+
+extern int allnet_global_debugging;   /* defined in main */
 
 static char log_dir [PATH_MAX] = LOG_DIR;
 
@@ -128,10 +133,11 @@ void init_log (char * name)
   char * last_slash = rindex (module_name, '/');
   if (last_slash != NULL)
     module_name = last_slash + 1;
-  mkdir (log_dir, 0700);  /* if it fails because it already exists, it's OK */
+  if (! create_dir (log_dir))
+    printf ("unable to create directory %s\n", log_dir);
   time_t now = time (NULL);
-  /* only open a new log file if this is the astart module */
-  if (strcasecmp (name, "astart") == 0)
+  /* only open a new log file if this is the astart or allnet module */
+  if ((strcasecmp (name, "astart") == 0) || (strcasecmp (name, "allnet") == 0))
     file_name (now); /* create a new file */
   else /* use the latest available file, only create new if none are present */
     latest_file (now);
@@ -171,6 +177,8 @@ static void log_print_buffer (char * buffer, int blen)
   if (fcntl (fd, F_SETLKW, &lock) < 0)   /* essentially, ignore this error */
     perror ("unable to unlock log file\n");
   close (fd);
+  if (allnet_global_debugging)
+    printf ("%s", buffer);
   pthread_mutex_unlock (&mutex);
 }
 
@@ -186,7 +194,7 @@ void log_print_str (char * string)
   else
     snprintf (time_str, sizeof (time_str), "%02d/%02d %02d:%02d:%02d.%06ld",
               n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec,
-              now.tv_usec);
+              (long int) (now.tv_usec));
   int len = snprintf (buffer, sizeof (buffer), "%s %s: %s",
                       time_str, module_name, string);
   /* add a newline if it is not already at the end of the string */
@@ -204,6 +212,7 @@ void log_print ()
   bzero (log_buf, sizeof (log_buf));
 }
 
+#ifdef ADDRS_TO_STR_USED
 static int addr_to_str (int nbits, char * addr,
                         int rsize, char * result)
 {
@@ -229,6 +238,7 @@ static int addrs_to_str (int src_nbits, char * source,
   offset += addr_to_str (dst_nbits, destination, rsize, result);
   return offset;
 }
+#endif /* ADDRS_TO_STR_USED */
 
 static char * pck_str (char * packet, int plen)
 {

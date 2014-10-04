@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <time.h>
 #include <fcntl.h>
 #include <inttypes.h>
 
@@ -12,10 +13,15 @@
 #include "message.h"
 #include "cutil.h"
 #include "retransmit.h"
-#include "lib/priority.h"
+#include "lib/media.h"
 #include "lib/util.h"
+#include "lib/app_util.h"
+#include "lib/pipemsg.h"
+#include "lib/cipher.h"
+#include "lib/priority.h"
 #include "lib/log.h"
 #include "lib/sha.h"
+#include "lib/mapchar.h"
 
 /* #define DEBUG_PRINT */
 
@@ -61,7 +67,8 @@ static int is_recently_sent_ack (char * message_ack)
 }
 
 /* send an ack for the given message and message ID */
-static void send_ack (int sock, struct allnet_header * hp, char * message_ack,
+static void send_ack (int sock, struct allnet_header * hp,
+                      unsigned char * message_ack,
                       int send_resend_request, char * contact, keyset kset)
 {
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) == 0) {
@@ -132,7 +139,7 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   char * verif = data;
   int media = 0;
   if (dsize >= sizeof (struct allnet_app_media_header) + 2)
-    media = readb32 (amhp->media);
+    media = readb32u (amhp->media);
   if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
       (media != ALLNET_MEDIA_TIME_TEXT_BIN)) {
 #ifdef DEBUG_PRINT
@@ -157,10 +164,10 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   int i;
 /* print_buffer (verif, dsize - ssize, "verifying BC message", dsize, 1); */
   for (i = 0; i < nkeys; i++) {
-    if ((matches (keys [i].address, ADDRESS_BITS,
+    if ((matches ((unsigned char *) (keys [i].address), ADDRESS_BITS,
                   hp->source, hp->src_nbits) > 0) &&
         (allnet_verify (verif, dsize - ssize, sig, ssize - 2,
-                        keys [i].pub_key, keys [i].pub_klen))) {
+                        keys [i].pub_key))) {
       *contact = strcpy_malloc (keys [i].identifier,
                                 "handle_message broadcast contact");
       *message = malloc_or_fail (text_size + 1, "handle_clear message");
@@ -201,8 +208,8 @@ static int handle_data (int sock, struct allnet_header * hp,
   int verif = 0;
   char * text = NULL;
   int tsize = decrypt_verify (hp->sig_algo, data, dsize, contact, kset, &text,
-                              hp->source, hp->src_nbits, hp->destination,
-                              hp->dst_nbits, 0);
+                              (char *) (hp->source), hp->src_nbits,
+                              (char *) (hp->destination), hp->dst_nbits, 0);
   if (tsize < 0) {
     printf ("no signature to verify, but decrypted from %s\n", *contact);
     tsize = -tsize;
@@ -227,12 +234,20 @@ static int handle_data (int sock, struct allnet_header * hp,
   printf ("got packet from contact %s\n", *contact);
 #endif /* DEBUG_PRINT */
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
-  int app = readb32 (cdp->app_media.app);
-  int media = readb32 (cdp->app_media.media);
-  if ((app != XCHAT_ALLNET_APP_ID) || (media != ALLNET_MEDIA_TEXT_PLAIN)) {
+
+  int app = readb32u (cdp->app_media.app);
+  if (app != XCHAT_ALLNET_APP_ID) {
 #ifdef DEBUG_PRINT
-    printf ("handle_data ignoring unknown app %08x, media type %08x\n",
-            app, media);
+    printf ("handle_data ignoring unknown app %08x\n", app);
+    print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
+  int media = readb32u (cdp->app_media.media);
+  if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
+      (media != ALLNET_MEDIA_PUBLIC_KEY)) {
+#ifdef DEBUG_PRINT
+    printf ("handle_data ignoring media type %08x\n", media);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
 #endif /* DEBUG_PRINT */
     return 0;
@@ -240,7 +255,7 @@ static int handle_data (int sock, struct allnet_header * hp,
   char * cleartext = text + CHAT_DESCRIPTOR_SIZE;
   int msize = tsize - CHAT_DESCRIPTOR_SIZE;
 
-  long long int seq = readb64 (cdp->counter);
+  long long int seq = readb64u (cdp->counter);
   if (seq == COUNTER_FLAG) {
     do_chat_control (*contact, *kset, text, tsize, sock, hp->hops + 4);
     send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
@@ -256,13 +271,19 @@ static int handle_data (int sock, struct allnet_header * hp,
 
   save_incoming (*contact, *kset, cdp, cleartext, msize);
 
-  *message = malloc_or_fail (msize + 1, "handle_data message");
-  memcpy (*message, cleartext, msize);
-  (*message) [msize] = '\0';   /* null-terminate the message */
+  if (media == ALLNET_MEDIA_PUBLIC_KEY) {
+    cleartext = "received a key for an additional device";
+    msize = strlen (cleartext);
+  }
+
   *desc = chat_descriptor_to_string (cdp, 0, 0);
   *verified = verif;
   if (sent != NULL)
-    *sent = (readb64 (cdp->timestamp) >> 16) & 0xffffffff;
+    *sent = (readb64u (cdp->timestamp) >> 16) & 0xffffffff;
+
+  *message = malloc_or_fail (msize + 1, "handle_data message");
+  memcpy (*message, cleartext, msize);
+  (*message) [msize] = '\0';   /* null-terminate the message */
 
   /* printf ("hp->hops = %d\n", hp->hops); */
 
@@ -275,7 +296,8 @@ static int handle_data (int sock, struct allnet_header * hp,
 
 static int handle_sub (int sock, struct allnet_header * hp,
                        char * data, int dsize,
-                       char * subscription, const char * addr, int nbits)
+                       char * subscription,
+                       const unsigned char * addr, int nbits)
 {
   if ((nbits == 0) ||
       ((hp->dst_nbits == nbits) && 
@@ -287,7 +309,7 @@ static int handle_sub (int sock, struct allnet_header * hp,
       (struct allnet_app_media_header *) data;
     int media = 0;
     if (dsize >= sizeof (struct allnet_app_media_header) + 2)
-      media = readb32 (amhp->media);
+      media = readb32u (amhp->media);
     if (media != ALLNET_MEDIA_PUBLIC_KEY) {
 #ifdef DEBUG_PRINT
       printf ("handle_sub ignoring unknown media type %08x, dsize %d\n",
@@ -311,10 +333,13 @@ static int handle_sub (int sock, struct allnet_header * hp,
 }
 
 static int send_key (int sock, char * contact, keyset kset, char * secret,
-                     char * address, int abits, int max_hops)
+                     unsigned char * address, int abits, int max_hops)
 {
-  char * my_public_key;
-  int pub_ksize = get_my_pubkey (kset, &my_public_key);
+  allnet_rsa_pubkey k;
+  get_my_pubkey (kset, &k);
+  char my_public_key [ALLNET_MTU];
+  int pub_ksize = allnet_pubkey_to_raw (k, my_public_key,
+                                        sizeof (my_public_key));
   if (pub_ksize <= 0) {
     printf ("unable to send key, no public key found for contact %s (%d/%d)\n",
             contact, kset, pub_ksize);
@@ -355,22 +380,21 @@ static int handle_key (int sock, struct allnet_header * hp,
   keyset * keys;
   int nkeys = all_keys (contact, &keys);
   if (nkeys < 1) {
-    printf ("error '%s'/%d: create own key before calling handle_packet\n",
+    printf ("error '%s'/%d: create own key before calling handle_key\n",
             contact, nkeys);
     return 0;
   }
 #ifdef DEBUG_PRINT
   printf ("handle_key received key\n");
 #endif /* DEBUG_PRINT */
-  char peer_addr [ADDRESS_SIZE];
+  unsigned char peer_addr [ADDRESS_SIZE];
   int peer_bits;
   int key_index = -1;
   int i;
   for (i = 0; i < nkeys; i++) {
-    char * key;
-    int klen = get_contact_pubkey (keys [i], &key);
+    allnet_rsa_pubkey key;
     peer_bits = get_remote (keys [i], peer_addr);
-    if ((klen <= 0) &&
+    if ((get_contact_pubkey (keys [i], &key) <= 0) &&
         ((peer_bits <= 0) ||
          (matches (peer_addr, peer_bits, hp->source, hp->src_nbits) > 0))) {
 #ifdef DEBUG_PRINT
@@ -395,9 +419,11 @@ static int handle_key (int sock, struct allnet_header * hp,
   int ksize = dsize - SHA512_SIZE;
   /* check to see if it is my own key */
   for (i = 0; i < nkeys; i++) {
-    char * test_key;
-    int test_klen = get_my_pubkey (keys [i], &test_key);
-    if ((test_klen == ksize) && (memcmp (received_key, test_key, ksize) == 0)) {
+    allnet_rsa_pubkey k;
+    get_my_pubkey (keys [i], &k);
+    char test_key [ALLNET_MTU];
+    int pub_ksize = allnet_pubkey_to_raw (k, test_key, sizeof (test_key));
+    if ((pub_ksize == ksize) && (memcmp (received_key, test_key, ksize) == 0)) {
 /* it is fairly normal to get my own key back.  Ignore.
 */
       printf ("handle_key: got my own key\n");
@@ -483,7 +509,8 @@ int handle_packet (int sock, char * packet, int psize,
                    int * duplicate, int * broadcast,
                    char * kcontact, char * ksecret1, char * ksecret2,
                    int kmax_hops,
-                   char * subscription, char * addr, int nbits)
+                   char * subscription, 
+                   unsigned char * addr, int nbits)
 {
   if (! is_valid_message (packet, psize))
     return 0;
@@ -546,7 +573,6 @@ long long int send_data_message (int sock, char * peer,
     return 0;
   }
 
-  int transport = ALLNET_TRANSPORT_ACK_REQ;
   int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
   char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
   struct chat_descriptor * cp = (struct chat_descriptor *) data_with_cd;
@@ -555,7 +581,7 @@ long long int send_data_message (int sock, char * peer,
     free (data_with_cd);
     return 0;
   }
-  uint64_t seq = readb64 (cp->counter);
+  uint64_t seq = readb64u (cp->counter);
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
   /* send_to_contact initializes the message ack in data_with_cd/cp */
 #ifdef DEBUG_PRINT
@@ -610,8 +636,8 @@ void request_and_resend (int sock, char * contact, keyset kset)
 int create_contact_send_key (int sock, char * contact, char * secret1,
                              char * secret2, int hops)
 {
-  char address [ADDRESS_SIZE];
-  random_bytes (address, sizeof (address));
+  unsigned char address [ADDRESS_SIZE];
+  random_bytes ((char *) address, sizeof (address));
   int abits = 16;
   keyset kset = create_contact (contact, 4096, 1, NULL, 0,
                                 address, abits, NULL, 0);
@@ -632,16 +658,17 @@ int create_contact_send_key (int sock, char * contact, char * secret1,
   return 0;
 }
 
-static int send_key_request (int sock, char * phrase, char * addr, int * nbits)
+static int send_key_request (int sock, char * phrase,
+                             unsigned char * addr, int * nbits)
 {
   /* compute the destination address from the phrase */
-  char destination [ADDRESS_SIZE];
+  unsigned char destination [ADDRESS_SIZE];
   char * mapped;
   int mlen = map_string (phrase, &mapped);
-  sha512_bytes (mapped, mlen, destination, 1);
+  sha512_bytes (mapped, mlen, (char *) destination, 1);
   free (mapped);
 
-  random_bytes (addr, ADDRESS_SIZE);
+  random_bytes ((char *) addr, ADDRESS_SIZE);
   *nbits = 8;
   int dsize = 1;  /* nbits_fingerprint with no key */
   int psize = -1;
@@ -678,7 +705,8 @@ static int send_key_request (int sock, char * phrase, char * addr, int * nbits)
 
 /* sends out a request for a key matching the subscription.
  * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
-int subscribe_broadcast (int sock, char * ahra, char * my_addr, int * nbits)
+int subscribe_broadcast (int sock, char * ahra,
+                         unsigned char * my_addr, int * nbits)
 {
   char * phrase;
   char * reason;

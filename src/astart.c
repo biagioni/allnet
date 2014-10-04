@@ -20,6 +20,22 @@
 #include "lib/log.h"
 #include "lib/packet.h"
 
+
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
+static void set_nonblock (int fd)
+{
+  int flags = fcntl (fd, F_GETFL, 0);
+  if (flags < 0) {
+    printf ("unable to set nonblocking on fd %d (unable to get flags)\n", fd);
+    return;
+  }
+  if (fcntl (fd, F_SETFL, flags | O_NONBLOCK) < 0)
+    printf ("unable to set nonblocking on fd %d\n", fd);
+}
+
 static void init_pipes (int * pipes, int num_pipes)
 {
   int i;
@@ -31,6 +47,11 @@ static void init_pipes (int * pipes, int num_pipes)
       log_print ();
       exit (1);
     }
+    set_nonblock (pipes [i * 2]);
+    set_nonblock (pipes [i * 2 + 1]);
+    snprintf (log_buf, LOG_SIZE, "pipe [%d/%d] is read %d write %d\n",
+              i * 2, i * 2 + 1, pipes [i * 2], pipes [i * 2 + 1]);
+    log_print ();
   }
 }
 
@@ -86,10 +107,14 @@ static void my_exec0 (char * path, char * program, int fd, pid_t ad)
   pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
-    char * args [2];
+    char * args [3];
     args [0] = make_program_path (path, program);
     args [1] = NULL;
-    snprintf (log_buf, LOG_SIZE, "calling %s\n", args [0]);
+    args [2] = NULL;  /* in case we have -v */
+    if (allnet_global_debugging)
+      args [1] = "-v";
+    snprintf (log_buf, LOG_SIZE, "calling %s %s\n", args [0],
+              ((allnet_global_debugging) ? args [1] : ""));
     log_print ();
     execv (args [0], args);    /* should never return! */
     exec_error (args [0], ad, self);
@@ -118,13 +143,17 @@ static void my_exec_alocal (char * path, char * program, int * pipes, int fd,
   pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
-    char * args [4];
+    char * args [5];
     args [0] = make_program_path (path, program);
-    args [1] = itoa (pipes [0]);
-    args [2] = itoa (pipes [3]);
-    args [3] = NULL;
-    snprintf (log_buf, LOG_SIZE, "calling %s %s %s\n",
-              args [0], args [1], args [2]);
+    int i = 1;
+    if (allnet_global_debugging)
+      args [i++] = "-v";
+    args [i++] = itoa (pipes [0]);
+    args [i++] = itoa (pipes [3]);
+    args [i++] = NULL;
+    snprintf (log_buf, LOG_SIZE, "calling %s %s %s %s\n",
+              args [0], args [1], args [2],
+              ((allnet_global_debugging) ? args [3] : ""));
     log_print ();
     close (pipes [1]);
     close (pipes [2]);
@@ -150,16 +179,20 @@ static void my_exec3 (char * path, char * program, int * pipes, char * extra,
   pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
-    char * args [5];
+    char * args [6];
     args [0] = make_program_path (path, program);
-    args [1] = itoa (pipes [0]);
-    args [2] = itoa (pipes [3]);
-    args [3] = extra;
-    args [4] = NULL;
+    int i = 1;
+    if (allnet_global_debugging)
+      args [i++] = "-v";
+    args [i++] = itoa (pipes [0]);
+    args [i++] = itoa (pipes [3]);
+    args [i++] = extra;
+    args [i++] = NULL;
     close (pipes [1]);
     close (pipes [2]);
-    snprintf (log_buf, LOG_SIZE, "calling %s %s %s %s\n",
-              args [0], args [1], args [2], args [3]);
+    snprintf (log_buf, LOG_SIZE, "calling %s %s %s %s %s\n",
+              args [0], args [1], args [2], args [3],
+              ((allnet_global_debugging) ? args [4] : ""));
     log_print ();
     execv (args [0], args);
     exec_error (args [0], ad, self);
@@ -184,18 +217,25 @@ static pid_t my_exec_ad (char * path, int * pipes, int num_pipes, int fd)
     char * * args = malloc_or_fail (num_args * sizeof (char *),
                                     "astart ad args");
     args [0] = make_program_path (path, "ad");
-    args [1] = itoa (num_pipes / 2);
+    int off = 0;
+    if (allnet_global_debugging)
+      args [++off] = "-v";
+    args [1 + off] = itoa (num_pipes / 2);
     int n = snprintf (log_buf, LOG_SIZE, "calling %s %s ", args [0], args [1]);
+    if (allnet_global_debugging)
+      n += snprintf (log_buf, LOG_SIZE, "%s ", args [2]);
+    /* the first num_pipes args are set to the read/write sides of the first
+     * num_pipes */
     for (i = 0; i < num_pipes / 2; i++) {
-      args [2 + i * 2    ] = itoa (pipes [4 * i + 2]);
-      args [2 + i * 2 + 1] = itoa (pipes [4 * i + 1]);
+      args [2 + i * 2     + off] = itoa (pipes [4 * i + 2]);
+      args [2 + i * 2 + 1 + off] = itoa (pipes [4 * i + 1]);
       close (pipes [4 * i    ]);
       close (pipes [4 * i + 3]);
       n += snprintf (log_buf + n, LOG_SIZE - n,
                      "%s %s ", args [2 + i * 2], args [2 + i * 2 + 1]);
     }
     log_print ();
-    args [num_args - 1] = NULL;
+    args [num_args - 1 + off] = NULL;
     execv (args [0], args);
     exec_error (args [0], 0, self);
   } else {  /* parent, close the child pipes */
@@ -288,6 +328,10 @@ static void find_path (char * arg, char ** path, char ** program)
 
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   char * path;
   char * pname;
   find_path (argv [0], &path, &pname);

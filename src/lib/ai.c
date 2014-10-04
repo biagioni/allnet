@@ -6,6 +6,7 @@
 
 #include "packet.h"
 #include "ai.h"
+#include "util.h"
 #include "log.h"
 
 /* buffer parameter must have at least size 42 */
@@ -23,7 +24,8 @@ static int ip6_to_string (const unsigned char * ip, char * buffer)
 void print_addr_info (struct addr_info * ai)
 {
   printf ("(%d) ", ai->nbits);
-  print_buffer (ai->destination, (ai->nbits + 7) / 8, NULL, ADDRESS_SIZE, 0);
+  print_buffer ((char *) (ai->destination), (ai->nbits + 7) / 8, NULL,
+                ADDRESS_SIZE, 0);
   printf (", v %d, port %d, addr ", ai->ip.ip_version, ntohs (ai->ip.port));
   unsigned char * ap = (unsigned char *) &(ai->ip.ip);
   char ip6_buf [50];
@@ -39,8 +41,9 @@ int addr_info_to_string (struct addr_info * ai, char * buf, int bsize)
 {
   int offset = 0;
   offset += snprintf (buf, bsize, "(%d) ", ai->nbits);
-  offset += buffer_to_string (ai->destination, (ai->nbits + 7) / 8, NULL,
-                              ADDRESS_SIZE, 0, buf + offset, bsize - offset);
+  offset += buffer_to_string ((char *) (ai->destination), (ai->nbits + 7) / 8,
+                              NULL, ADDRESS_SIZE, 0,
+                              buf + offset, bsize - offset);
   offset += snprintf (buf + offset, bsize - offset,
                       ", v %d, port %d, addr ", ai->ip.ip_version,
                       ntohs (ai->ip.port));
@@ -105,9 +108,10 @@ int ia_to_sockaddr (struct internet_addr * ia, struct sockaddr * sap)
 /* if nbits > 0, dest should point to at least (nbits + 7) / 8 bytes */
 /* port must be in big-endian order (i.e. after applying htons) */
 /* returns 1 for success, 0 for failure */
-int init_addr (int af, char * addr, int port, struct internet_addr * ia)
+int init_addr (int af, unsigned char * addr, int port,
+               struct internet_addr * ia)
 {
-  char * iap = ia->ip.s6_addr;
+  unsigned char * iap = ia->ip.s6_addr;
   memset (iap, 0, sizeof (struct internet_addr));
   int size = sizeof (ia->ip.s6_addr);
   if (size != 16) {   /* sanity check -- is something very wrong? */
@@ -137,11 +141,12 @@ int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
   if ((sap->sa_family == AF_INET) &&
       (addr_size >= sizeof (struct sockaddr_in))) {
-    init_addr (AF_INET, (char *) &(sin->sin_addr), sin->sin_port, ia);
+    init_addr (AF_INET, (unsigned char *) &(sin->sin_addr), sin->sin_port, ia);
     return 1;
   } else if ((sap->sa_family == AF_INET6) &&
              (addr_size >= sizeof (struct sockaddr_in6))) {
-    init_addr (AF_INET6, (char *) &(sin6->sin6_addr), sin6->sin6_port, ia);
+    init_addr (AF_INET6, (unsigned char *) &(sin6->sin6_addr),
+               sin6->sin6_port, ia);
     return 1;
   } else {
     printf ("unable to create address info with family %d, size %d\n",
@@ -161,8 +166,8 @@ int ai_to_sockaddr (struct addr_info * ai, struct sockaddr * sap)
 /* if nbits > 0, dest should point to at least (nbits + 7) / 8 bytes */
 /* port must be in big-endian order (i.e. after applying htons) */
 /* returns 1 for success, 0 for failure */
-int init_ai (int af, char * addr, int port, int nbits, char * dest,
-             struct addr_info * ai)
+int init_ai (int af, unsigned char * addr, int port, int nbits,
+             unsigned char * dest, struct addr_info * ai)
 {
   memset ((char *) ai, 0, sizeof (struct addr_info));
   ai->nbits = nbits;

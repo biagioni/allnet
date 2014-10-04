@@ -5,35 +5,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <openssl/rsa.h>
-#include <openssl/aes.h>
-#include <openssl/err.h>
-#include <openssl/bio.h>
-#include <openssl/pem.h>
+
+#include "crypt_sel.h"
 
 #include "packet.h"
 #include "util.h"
 #include "sha.h"
+#include "log.h"
 #include "keys.h"
 #include "cipher.h"
-
-#define AES256_SIZE	(256 / 8)	/* 32 */
-/* defined in openssl/aes.h #define AES_BLOCK_SIZE	(128 / 8)	/* 16 */
 
 static void inc_ctr (char * ctr)
 {
   int i;
   int carry = 1;  /* initially add 1 */
   for (i = AES_BLOCK_SIZE - 1; i >= 0; i--) {
-    int value = ctr [i] + carry;
+    int value = (ctr [i] & 0xff) + carry;
     ctr [i] = value % 256;
     carry = value / 256;
   }
 }
 
 /* for CTR mode, encryption and decryption are identical */
-static void aes_ctr_crypt (char * key, char * ctr, char * data, int dsize,
-                           char * result)
+static void aes_ctr_crypt (char * key, char * ctr,
+                           const char * data, int dsize, char * result)
 {
 /*
   printf ("aes_ctr_crypt (AES %p/%02x%02x%02x%02x, ctr %p/%02x%02x%02x%02x, ",
@@ -43,18 +38,15 @@ static void aes_ctr_crypt (char * key, char * ctr, char * data, int dsize,
                                ctr [2] & 0xff, ctr [3] & 0xff);
   printf ("data %p, dsize = %d)\n", data, dsize);
 */
-  AES_KEY aes;
-  if (AES_set_encrypt_key (key, AES256_SIZE * 8, &aes) < 0) {
-    printf ("unable to set encryption key\n");
-    exit (1);
-  }
   char in [AES_BLOCK_SIZE];
   memcpy (in, ctr, AES_BLOCK_SIZE);
   char out [AES_BLOCK_SIZE];
+  allnet_aes_key * aes = NULL;
   int i;
   for (i = 0; i < dsize; i++) {
     if ((i % AES_BLOCK_SIZE) == 0) {   /* compute the next block */
-      AES_encrypt (in, out, &aes);
+      if (! allnet_aes_encrypt_block (key, in, out, &aes))
+        exit (1);
       inc_ctr (in);
     }
     result [i] = data [i] ^ out [i % AES_BLOCK_SIZE];
@@ -66,7 +58,8 @@ static void aes_ctr_crypt (char * key, char * ctr, char * data, int dsize,
 
 /* returns the number of encrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
-int allnet_encrypt (char * text, int tsize, char * key, int ksize, char ** res)
+int allnet_encrypt (const char * text, int tsize,
+                    allnet_rsa_pubkey key, char ** res)
 {
 #ifdef DEBUG_PRINT
   print_buffer (text, tsize, "encrypting", 16, 1);
@@ -76,21 +69,11 @@ int allnet_encrypt (char * text, int tsize, char * key, int ksize, char ** res)
   char * aes = NULL;
   char * nonce = NULL;
 
-  /* convert key into internal format */
-  if (*key != KEY_RSA4096_E65537) {
-    printf ("key with unknown format %d, unable to encrypt\n", (*key) & 0xff);
-    return 0;
-  }
-  RSA * rsa = RSA_new ();
-  rsa->n = BN_bin2bn (key + 1, ksize - 1, NULL);
-  rsa->e = NULL;
-  BN_dec2bn (&(rsa->e), RSA_E65537_STRING);
-
+  int rsa_size = allnet_rsa_pubkey_size (key);
   int rsa_encrypt_size = tsize;
-  int rsa_size = RSA_size (rsa);
   int result_size = rsa_size;
-  int max_rsa = RSA_size (rsa) - 42;  /* PKCS #1 v2 requires 42 bytes */
-  int free_text = 0;
+  int max_rsa = rsa_size - 42;  /* PKCS #1 v2 requires 42 bytes */
+  char * new_text = NULL;
   if (max_rsa < tsize) {
     /* compute an AES-256 key and a nonce.  Prepend the key and the nonce
      * to the message.  Encrypt the first max_rsa bytes (of the AES, nonce,
@@ -101,34 +84,28 @@ int allnet_encrypt (char * text, int tsize, char * key, int ksize, char ** res)
      * the first rsa_encrypt_size of the result.  The rest gets 1:1 encrypted
      * using AES */
     int input_size = tsize + AES256_SIZE + AES_BLOCK_SIZE;
-    char * new_text = malloc_or_fail (input_size, "encrypt final plaintext");
+    new_text = malloc_or_fail (input_size, "encrypt final plaintext");
     aes = new_text;
     nonce = new_text + AES256_SIZE;
-    random_bytes (new_text, AES256_SIZE + AES_BLOCK_SIZE);
+    random_bytes ((char *) new_text, AES256_SIZE + AES_BLOCK_SIZE);
     memcpy (new_text + (AES256_SIZE + AES_BLOCK_SIZE), text, tsize);
-    text = new_text;
+    text = (const char *) new_text;
     tsize = input_size;
     rsa_encrypt_size = max_rsa;
-    result_size = tsize + (RSA_size (rsa) - max_rsa);
+    result_size = tsize + (rsa_size - max_rsa);
 #ifdef DEBUG_PRINT
     printf ("result size = %d + (%d - %d) = %d\n",
-            tsize, RSA_size (rsa), max_rsa, result_size);
+            tsize, rsa_size, max_rsa, result_size);
 #endif /* DEBUG_PRINT */
-    free_text = 1;
   }
 
   char * result = malloc_or_fail (result_size, "encrypt result");
 
-  /* encrypt either the entire message, or just the first max_rsa bytes */
-  int bytes = RSA_public_encrypt (rsa_encrypt_size, text, result, rsa,
-                                  RSA_PKCS1_OAEP_PADDING);
-  RSA_free (rsa);
+  int bytes = allnet_rsa_encrypt (key, text, rsa_encrypt_size,
+                                  result, result_size, 1);
   if (bytes != rsa_size) {
-    ERR_load_crypto_strings ();
-    ERR_print_errors_fp (stdout);
     printf ("RSA failed to encrypt %d bytes, %d\n", rsa_encrypt_size, bytes);
-    print_buffer (key + 1, ksize - 1, "public key", ksize, 1);
-    if (free_text) free (text);
+    if (new_text != NULL) free (new_text);
     free (result);
     return 0;
   }
@@ -143,7 +120,7 @@ int allnet_encrypt (char * text, int tsize, char * key, int ksize, char ** res)
     aes_ctr_crypt (aes, nonce, text + rsa_encrypt_size, remaining,
                    result + bytes);
 
-  if (free_text) free (text);
+  if (new_text != NULL) free (new_text);
   *res = result;
 #ifdef DEBUG_PRINT
   print_buffer (result, result_size, "encrypted", 16, 1);
@@ -151,42 +128,47 @@ int allnet_encrypt (char * text, int tsize, char * key, int ksize, char ** res)
   return result_size;
 }
 
-
+#ifdef TEST_RSA_ENCRYPTION
 static void test_rsa_encryption (char * key, int ksize)
 {
   /* convert key into internal formats */
   BIO * mbio = BIO_new_mem_buf (key, ksize);
   RSA * pub_rsa = PEM_read_bio_RSAPublicKey (mbio, NULL, NULL, NULL);
   BIO_free (mbio);
-  char fake_key [513];
+  unsigned char fake_key [513];
   fake_key [0] = KEY_RSA4096_E65537;
   int bn_size = BN_num_bytes (pub_rsa->n);
+  if (bn_size != 512) {
+    snprintf (log_buf, LOG_SIZE, "error: key size %d\n", bn_size);
+    log_print ();
+    return;
+  }
   BN_bn2bin (pub_rsa->n, fake_key + 1);
   RSA_free (pub_rsa);
-  print_buffer (fake_key, sizeof (fake_key), "fake key", 16, 1);
+  print_buffer ((char *) fake_key, sizeof (fake_key), "fake key", 16, 1);
 
   char text [] = "hello world";
   int tsize = sizeof (text);   /* include the terminating null character */ 
   print_buffer (text, tsize, "plaintext", 16, 1);
   char * cipher;
-  int csize = encrypt (text, tsize, fake_key, sizeof (fake_key), &cipher);
+  int csize = allnet_encrypt (text, tsize, (char *) fake_key,
+                              sizeof (fake_key), &cipher);
   print_buffer (cipher, csize, "ciphertext", 16, 1);
 
   char * decrypted;
-  int dsize = decrypt (cipher, csize, key, ksize, &decrypted);
+  int dsize = allnet_decrypt (cipher, csize, key, ksize, &decrypted);
   print_buffer (decrypted, dsize, "decrypted", 16, 1);
 }
-
+#endif /* TEST_RSA_ENCRYPTION */
 
 /* returns the number of decrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
-int allnet_decrypt (char * cipher, int csize, char * key, int ksize,
-                    char ** res)
+int allnet_decrypt (const char * cipher, int csize,
+                    allnet_rsa_prvkey key, char ** res)
 {
-  if ((cipher == NULL) || (key == NULL) || (res == NULL) ||
-      (csize < 0) || (ksize <= 0)) {
-    printf ("cipher.c decrypt: %p %p %p %d %d, returning 0\n",
-            cipher, key, res, csize, ksize);
+  unsigned long long int start = allnet_time_us ();
+  if ((cipher == NULL) || (res == NULL) || (csize < 0)) {
+    printf ("cipher.c decrypt: %p %p %d, returning 0\n", cipher, res, csize);
     return 0;
   }
 #ifdef DEBUG_PRINT
@@ -194,40 +176,33 @@ int allnet_decrypt (char * cipher, int csize, char * key, int ksize,
   /* print_buffer (cipher, csize, "decrypting", 16, 1); */
   *res = NULL;
 
-  /* convert key into internal format */
-  BIO * mbio = BIO_new_mem_buf (key, ksize);
-  RSA * rsa = PEM_read_bio_RSAPrivateKey (mbio, NULL, NULL, NULL);
-  BIO_free (mbio);
-
-  if (rsa == NULL) {
+  int rsa_size = allnet_rsa_prvkey_size (key);
+  if (rsa_size <= 0) {
     printf ("unable get RSA private key, unable to decrypt\n");
     return 0;
   }
+  char * rsa_text = malloc_or_fail (rsa_size, "decrypt RSA plain");
 
-  int rsa_size = RSA_size (rsa);
-  char * rsa_text = malloc_or_fail (rsa_size, "decrypt RSA plaintext");
-  int bytes = RSA_private_decrypt (rsa_size, cipher, rsa_text, rsa,
-                                   RSA_PKCS1_OAEP_PADDING);
-  RSA_free (rsa);
+  int bytes = allnet_rsa_decrypt (key, cipher, csize, rsa_text, rsa_size, 1);
+
   if (bytes < 0) {
 #ifdef DEBUG_PRINT
-    ERR_load_crypto_strings ();
-    ERR_print_errors_fp (stdout);
     printf ("RSA failed to decrypt %d bytes, got %d, cipher size %d\n",
             rsa_size, bytes, csize);
 #endif /* DEBUG_PRINT */
     free (rsa_text);
-/*
-static int first_time = 1;
-if (first_time) {
-first_time = 0;
-test_rsa_encryption (key, ksize);
-}
-*/
+#ifdef TEST_RSA_ENCRYPTION
+    static int first_time = 1;
+    if (first_time) {
+      first_time = 0;
+      test_rsa_encryption (key, ksize);
+    }
+#endif /* TEST_RSA_ENCRYPTION */
     return 0;
   }
+
   if (csize <= rsa_size) {  /* almost done! rsa text is our plaintext */
-    *res = rsa_text;
+    *res = (char *) rsa_text;
     return bytes;
   }
   /* else: use AES to decrypt the remaining bytes */
@@ -236,7 +211,7 @@ test_rsa_encryption (key, ksize);
   char * rsa_real_text = nonce + AES_BLOCK_SIZE;
   int rsa_real_size = bytes - (AES256_SIZE + AES_BLOCK_SIZE);
   int aes_size = csize - rsa_size;
-  char * aes_cipher = cipher + rsa_size;
+  const char * aes_cipher = cipher + rsa_size;
   int rsize = rsa_real_size + aes_size;
 #ifdef DEBUG_PRINT
   printf ("decrypt: %d bytes, rsa real %d, aes %d/%d, rsize %d\n",
@@ -250,40 +225,35 @@ test_rsa_encryption (key, ksize);
 #ifdef DEBUG_PRINT
   print_buffer (result, rsize, "decrypted", 16, 1);
 #endif /* DEBUG_PRINT */
+  unsigned long long int time_delta = allnet_time_us () - start;
+  snprintf (log_buf, LOG_SIZE,
+            "successful decryption took %lld.%06lld seconds\n",
+            time_delta / 1000000, time_delta % 1000000);
+  log_print ();
   return rsize;
 }
 
 /* returns 1 if it verifies, 0 otherwise */
 int allnet_verify (char * text, int tsize, char * sig, int ssize,
-                   char * key, int ksize)
+                   allnet_rsa_pubkey key)
 {
-  if ((text == NULL) || (sig == NULL) || (key == NULL) ||
-      (tsize < 0) || (ssize <= 0) || (ksize <= 0)) {
+
+  if ((text == NULL) || (sig == NULL) || (tsize < 0) || (ssize <= 0)) {
 /* null sig or 0 ssize are not really errors, I think */
-    if ((text == NULL) || (key == NULL) || (tsize < 0) || (ksize <= 0))
-      printf ("cipher.c verify: %p %p %p %d %d %d, returning 0\n",
-              text, sig, key, tsize, ssize, ksize);
+    if ((text == NULL) || (tsize < 0))
+      printf ("cipher.c verify: %p %p %d %d, returning 0\n",
+              text, sig, tsize, ssize);
     return 0;
   }
-  /* convert key into internal format */
-  if (*key != KEY_RSA4096_E65537) {
-    printf ("key with unknown format %d, unable to verify\n", (*key) & 0xff);
-    return 0;
-  }
-  RSA * rsa = RSA_new ();
-  rsa->n = BN_bin2bn (key + 1, ksize - 1, NULL);
-  rsa->e = NULL;
-  BN_dec2bn (&(rsa->e), RSA_E65537_STRING);
-  int rsa_size = RSA_size (rsa);
+  int rsa_size = allnet_rsa_pubkey_size (key);
   if (rsa_size > ssize) {
     printf ("public key has %d-byte signature, only %d bytes given\n",
-            RSA_size (rsa), ssize);
-    RSA_free (rsa);
+            rsa_size, ssize);
     return 0;
   }
   if (ssize != rsa_size)
     printf ("notice: public key has %d-byte signature, %d bytes given\n",
-            RSA_size (rsa), ssize);
+            rsa_size, ssize);
 
   /* hash the contents, verify that the signature matches the hash */
   char hash [SHA512_SIZE];
@@ -292,8 +262,8 @@ int allnet_verify (char * text, int tsize, char * sig, int ssize,
     hsize = SHA512_SIZE;
   sha512_bytes (text, tsize, hash, hsize);
 
-  int verifies = RSA_verify (NID_md5, hash, hsize, sig, ssize, rsa);
-  RSA_free (rsa);
+  int verifies = allnet_rsa_verify (key, hash, hsize, sig, ssize);
+
 #ifdef DEBUG_PRINT
   printf ("RSA_verify returned %d\n", verifies);
 #endif /* DEBUG_PRINT */
@@ -303,21 +273,14 @@ int allnet_verify (char * text, int tsize, char * sig, int ssize,
 #undef DEBUG_PRINT
 
 /* returns the size of the signature and mallocs the signature into result */
-int allnet_sign (char * text, int tsize, char * key, int ksize, char ** result)
+int allnet_sign (char * text, int tsize, allnet_rsa_prvkey key, char ** result)
 {
-  /* convert key into internal format */
-  BIO * mbio = BIO_new_mem_buf (key, ksize);
-  RSA * rsa = PEM_read_bio_RSAPrivateKey (mbio, NULL, NULL, NULL);
-  BIO_free (mbio);
-
-  if (rsa == NULL) {
-    printf ("unable get RSA private key, unable to decrypt\n");
+  int rsa_size = allnet_rsa_prvkey_size (key);
+  if (rsa_size <= 0) {
+    printf ("unable to sign\n");
     return 0;
   }
-
-  int rsa_size = RSA_size (rsa);
   *result = malloc_or_fail (rsa_size, "signature");;
-  int siglen;
 
   /* hash the contents, sign the hash */
   char hash [SHA512_SIZE];
@@ -326,16 +289,14 @@ int allnet_sign (char * text, int tsize, char * key, int ksize, char ** result)
     hsize = SHA512_SIZE;
   sha512_bytes (text, tsize, hash, hsize);
 
-  if (! RSA_sign (NID_md5, hash, hsize, *result, &siglen, rsa)) {
-    unsigned long e = ERR_get_error ();
-    printf ("RSA signature (%d) failed %ld: %s\n", rsa_size, e,
-            ERR_error_string (e, NULL));
-    siglen = 0;
+  int success = allnet_rsa_sign (key, hash, hsize, *result, rsa_size);
+  if (! success) {
+    printf ("RSA signature failed: %d %d\n", rsa_size, hsize);
     free (*result);
     *result = NULL;
+    return 0;
   }
-  RSA_free (rsa);
-  return siglen;
+  return rsa_size;
 }
 
 /* #define DEBUG_PRINT */
@@ -355,6 +316,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
                     char * sender, int sbits, char * dest, int dbits,
                     int maxcontacts)
 {
+  unsigned long long int start = allnet_time_us ();
   *contact = NULL;
   *kset = -1;
   *text = NULL;
@@ -378,23 +340,20 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
       int do_decrypt = 1;  /* for now, try to decrypt unsigned messages */
       if (sig_algo != ALLNET_SIGTYPE_NONE) {  /* verify signature */
         do_decrypt = 0;
-        char * pub_key;
-        int pub_ksize = get_contact_pubkey (keys [j], &pub_key);
-        if ((pub_key != NULL) && (pub_ksize > 0)) {
+        allnet_rsa_pubkey pub_key;
+        if (get_contact_pubkey (keys [j], &pub_key))
           do_decrypt =
-            allnet_verify (encrypted, csize, sig, ssize - 2,
-                           pub_key, pub_ksize);
-        }
+            allnet_verify (encrypted, csize, sig, ssize - 2, pub_key);
       }
       if (do_decrypt) {
 #ifdef DEBUG_PRINT
         printf ("signature match for contact %s, key %d\n", contacts [i], j);
 #endif /* DEBUG_PRINT */
-        char * priv_key;
-        int priv_ksize = get_my_privkey (keys [j], &priv_key);
+        allnet_rsa_prvkey prv_key;
+        int priv_ksize = get_my_privkey (keys [j], &prv_key);
         int res = 0;
-        if ((priv_key != NULL) && (priv_ksize > 0))
-          res = allnet_decrypt (encrypted, csize, priv_key, priv_ksize, text);
+        if (priv_ksize > 0)
+          res = allnet_decrypt (encrypted, csize, prv_key, text);
         if (res) {
           *contact = strcpy_malloc (contacts [i], "verify contact");
           *kset = keys [j];
@@ -412,5 +371,10 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
 #ifdef DEBUG_PRINT
   printf ("unable to decrypt packet, dropping\n");
 #endif /* DEBUG_PRINT */
+  unsigned long long int time_delta = allnet_time_us () - start;
+  snprintf (log_buf, LOG_SIZE,
+            "successful decrypt/verify took %lld.%06lld seconds\n",
+            time_delta / 1000000, time_delta % 1000000);
+  log_print ();
   return 0;
 }

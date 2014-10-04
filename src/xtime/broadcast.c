@@ -14,6 +14,7 @@
 #include <pthread.h>
 
 #include "lib/packet.h"
+#include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/pipemsg.h"
@@ -49,8 +50,9 @@ static void * receive_ignore (void * arg)
 }
 
 static void broadcast (int sock, char * data, int dsize, int hops,
-                       char * key, int ksize,
-                       char * source, int sbits, char * dest, int dbits)
+                       allnet_rsa_prvkey key,
+                       unsigned char * source, int sbits,
+                       unsigned char * dest, int dbits)
 {
   static char buffer [ALLNET_MTU];
   bzero (buffer, sizeof (buffer));
@@ -59,21 +61,22 @@ static void broadcast (int sock, char * data, int dsize, int hops,
                  ALLNET_SIGTYPE_NONE, source, sbits, dest, dbits, NULL);
   int hsize = ALLNET_SIZE (hp->transport);
   int h2size = sizeof (struct allnet_app_media_header);
-  if (hsize + h2size + dsize + ksize + 2 > ALLNET_MTU) {
+  int rsa_size = allnet_rsa_prvkey_size (key);
+  if (hsize + h2size + dsize + rsa_size + 2 > ALLNET_MTU) {
     printf ("broadcast error: %d + %d + %d + %d + 2 > %d\n", 
-            hsize, h2size, dsize, ksize, ALLNET_MTU);
+            hsize, h2size, dsize, rsa_size, ALLNET_MTU);
     return;
   }
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) (buffer + hsize);
-  writeb32 (amhp->app, 0);
-  writeb32 (amhp->media, ALLNET_MEDIA_TEXT_PLAIN);
+  writeb32u (amhp->app, 0);
+  writeb32u (amhp->media, ALLNET_MEDIA_TEXT_PLAIN);
   char * dp = buffer + hsize + h2size;
   memcpy (dp, data, dsize);
   int ssize = 0;
-  if ((key != NULL) && (ksize > 0)) {
+  if (rsa_size > 0) {
     char * sig;
-    ssize = allnet_sign (dp, dsize, key, ksize, &sig);
+    ssize = allnet_sign (dp, dsize, key, &sig);
     if (ssize > 0) {
       int size = hsize + dsize + ssize + 2;
       if (size > ALLNET_MTU) {
@@ -95,8 +98,16 @@ static void broadcast (int sock, char * data, int dsize, int hops,
   send_pipe_message (sock, buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW);
 }
 
+/* global debugging variable -- if 1, expect more debugging output */
+/* set in main */
+int allnet_global_debugging = 0;
+
 int main (int argc, char ** argv)
 {
+  int verbose = get_option ('v', &argc, argv);
+  if (verbose)
+    allnet_global_debugging = verbose;
+
   int hops = 10;
   if (argc < 2) {
     printf ("%s: needs at least a signing address\n", argv [0]);
@@ -105,7 +116,7 @@ int main (int argc, char ** argv)
   char * address = argv [1];
   if (argc > 2)
     hops = atoi (argv [2]);
-  struct bc_key_info * key = get_own_key (address);
+  struct bc_key_info * key = get_own_bc_key (address);
   if (key == NULL) {
     printf ("key '%s' not found\n", address);
     exit (1);
@@ -128,8 +139,7 @@ int main (int argc, char ** argv)
     char * eol = rindex (buffer, '\n');
     if ((eol != NULL) && (strlen (buffer) == 1 + (eol - buffer)))
        *eol = '\0';
-    broadcast (sock, buffer, strlen (buffer), hops,
-               key->priv_key, key->priv_klen,
+    broadcast (sock, buffer, strlen (buffer), hops, key->prv_key,
                key->address, ADDRESS_BITS, key->address, ADDRESS_BITS);
   }
   return 0;

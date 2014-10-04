@@ -15,10 +15,10 @@ struct queue_element {
   char data [0];   /* actually, however many chars size says */
 };
 
-struct queue_element * head = NULL;
-struct queue_element * tail = NULL;
-int max_size = 0;
-int current_size = 0;
+static struct queue_element * head = NULL;
+static struct queue_element * tail = NULL;
+static int max_size = 0;
+static int current_size = 0;
 
 void queue_init (int max_bytes)
 {
@@ -74,7 +74,7 @@ int queue_total_bytes ()
 }
 
 static struct queue_element *
-  new_element (char * value, int size, int priority,
+  new_element (const char * value, int size, int priority,
                struct queue_element * prev, struct queue_element * next)
 {
   int total_size = size + sizeof (struct queue_element);
@@ -92,7 +92,7 @@ static struct queue_element *
   return result;
 }
 
-void queue_add (char * value, int size, int priority)
+void queue_add (const char * value, int size, int priority)
 {
   if (! make_room (size, priority)) {
     printf ("unable to add element of size %d, max size %d\n", size, max_size);
@@ -123,8 +123,8 @@ void queue_add (char * value, int size, int priority)
   prev->next = node->prev;
 }
 
-struct queue_element * iter_next = NULL;
-struct queue_element * iter_remove = NULL;
+static struct queue_element * iter_next = NULL;
+static struct queue_element * iter_remove = NULL;
 
 void queue_iter_start ()
 {

@@ -104,19 +104,23 @@ struct allnet_mgmt_dht {
  * The timestamp is in fixed-point format: an allnet time in the first
  * ALLNET_TIME_SIZE bytes, followed by a fraction of a second.
  * the fraction of a second is in binary, (multiplied by 2^64).
+ *
  * A precision gives the number of valid bits in the fraction, and may be 0.
+ *
+ * Preferably the precision should not be higher than the accuracy of
+ * the local system clock, but since the accuracy can be hard to
+ * estimate exactly, a default precision may be used.
  *
  * since times are sometimes accurate to powers of 10, we use precision > 64
  * to mean a decimal number <= (10^(precision-64)) is stored in the low-order
- * part of fraction, and this should be used as the fractional part.
- * if the value > (10^(precision-64)), the fraction is not valid or usable.
+ * part of fraction, and this should be used as the fractional part.  So
+ * for example a precision of 67 means 3 digits, or 1ms precision.
+ * if the fraction > (10^(precision-64)), the fraction is not valid or usable.
  *
  * The trace may optionally carry an AllNet address.  Any unused bits of
  * the address should be set to zero. */
 struct allnet_mgmt_trace_entry {
   unsigned char precision;      /* see comment */
-                                /* or n-64 digits if n > 64 */
-                                /* or -1/0xff/255 for an unused entry */
   unsigned char nbits;          /* meaningful bits of address, may be zero */
   unsigned char hops_seen;      /* may be zero */
   unsigned char pad [5];
@@ -145,7 +149,7 @@ struct allnet_mgmt_trace_req {
 
 /* if a pubkey was provided, this is the structure of the decrypted message */
 /* otherwise, this is the structure of the plaintext message */
-/* (the first byte is not encrypted, and indicates whether the rest of the
+/* (the first byte is not encrypted, and indicates whether the rest of the */
 /* message is encrypted) */
 /* the message may or may not be signed by the sender */
 /* an intermediate reply will normally have just one unsigned,
@@ -163,6 +167,15 @@ struct allnet_mgmt_trace_reply {
 
 /* keepalives have no content, only the header */
 
+/* a data request specifies one or more message/packet IDs.  The
+ * packets/messages are sent back if cached.  Any unsatisfied request
+ * is forwarded onwards. */
+struct allnet_mgmt_id_request {
+  unsigned char n [2];                /* number of packet IDs, big-endian */
+  unsigned char pad [6];              /* always send as 0s */
+  unsigned char ids [MESSAGE_ID_SIZE * 0];  /* really, MESSAGE_ID_SIZE * n */
+};
+
 /* the header that precedes each of the management messages */
 struct allnet_mgmt_header {
   /* specify the kind of management message */
@@ -175,6 +188,7 @@ struct allnet_mgmt_header {
 #define ALLNET_MGMT_TRACE_REQ		7	/* request a trace response */
 #define ALLNET_MGMT_TRACE_REPLY		8	/* response to trace req */
 #define ALLNET_MGMT_KEEPALIVE		9	/* to keep connection open */
+#define ALLNET_MGMT_ID_REQUEST		10	/* request specific IDs */
   unsigned char mgmt_type;   /* every management packet has this */
   char mpad [7];
 };
@@ -203,5 +217,10 @@ struct allnet_mgmt_header {
 	(ALLNET_MGMT_HEADER_SIZE(t) +   \
          (sizeof (struct allnet_mgmt_trace_reply)) + \
 	 (n) * sizeof (struct allnet_mgmt_trace_entry))
+
+#define ALLNET_ID_REQ_SIZE(t, n)	\
+	(ALLNET_MGMT_HEADER_SIZE(t) +   \
+         (sizeof (struct allnet_mgmt_id_request)) + \
+	 (n) * MESSAGE_ID_SIZE)
 
 #endif /* MGMT_H */

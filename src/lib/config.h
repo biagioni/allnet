@@ -21,6 +21,9 @@ extern int open_read_config (char * program, char * file, int print_errors);
 /* returns a file descriptor, or -1 in case of errors */
 extern int open_write_config (char * program, char * file, int print_errors);
 
+/* returns a file descriptor, or -1 in case of errors */
+extern int open_rw_config (char * program, char * file, int print_errors);
+
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
 extern int create_dir (char * path);
 

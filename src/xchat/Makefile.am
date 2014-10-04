@@ -1,12 +1,11 @@
-AM_CFLAGS = -Wreturn-type
-
 #SUBDIRS = test
 
-AM_CPPFLAGS = -I$(ALLNET_SRCDIR) -I$(ALLNET_SRCDIR)/xtime
+AM_CFLAGS = -I$(ALLNET_SRCDIR) -I$(ALLNET_SRCDIR)/xtime
 libincludes = \
     app_util.h \
     config.h \
     log.h \
+    media.h \
     packet.h \
     pipemsg.h \
     priority.h \
