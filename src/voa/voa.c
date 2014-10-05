@@ -116,6 +116,7 @@ static int handle_packet (const char * message, int msize) {
     msize -= 16;
     local = 1;
   }
+/* TODO: remove DEBUG: print packets
   printf ("-\n");
   int i=0;
   for (; i < sizeof(struct allnet_header); ++i)
@@ -127,6 +128,7 @@ static int handle_packet (const char * message, int msize) {
   for (; i < msize; ++i)
     printf ("%02x ", *((const unsigned char *)message+i));
   printf ("\n\n");
+*/
   printf ("got message of size %d (%lu)\n", msize, msize - sizeof (struct allnet_header) - sizeof (struct allnet_voa_header));
   if (! is_valid_message (message, msize)) {
     printf ("got invalid message of size %d\n", msize);
