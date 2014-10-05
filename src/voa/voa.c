@@ -460,8 +460,10 @@ int main (int argc, char ** argv)
   else
     my_address[nbytes-1] = 0;
 
-  if (argc > 0) {
-    dest_addr_bits = argc > 1 ? atoi (argv[2]) : strnlen (argv[0], ADDRESS_SIZE);
+  if (argc > 1) {
+    dest_addr_bits = argc > 2 ? atoi (argv[2]) : strnlen (argv[1], ADDRESS_SIZE);
+    if (dest_addr_bits > ADDRESS_BITS)
+      dest_addr_bits = ADDRESS_BITS;
     memcpy (dest_address, argv[1], dest_addr_bits);
   }
 
