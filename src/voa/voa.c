@@ -76,6 +76,7 @@ static int term = 0; /* exit main loop when set */
 
 static int dec_handle_data (const char * buf, int bufsize) {
   gchar * buffer = g_new (gchar, 1024);
+  memcpy (buffer, buf, bufsize);
   GstFlowReturn ret;
 
   printf ("read %d bytes\n", bufsize);
