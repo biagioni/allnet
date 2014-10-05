@@ -107,7 +107,7 @@ static int dec_handle_data (const char * buf, int bufsize) {
   return 1;
 }
 
-static void handle_packet (const char * message, int msize) {
+static int handle_packet (const char * message, int msize) {
   /* TODO: Temporary hack to grab local packets */
   int local = 0;
   if (msize >= 16 && memcmp ("MAGICPIE", message, 8) == 0) {
@@ -129,7 +129,7 @@ static void handle_packet (const char * message, int msize) {
   printf ("got message of size %d (%lu)\n", msize, msize - sizeof (struct allnet_header) - sizeof (struct allnet_voa_header));
   if (! is_valid_message (message, msize)) {
     printf ("got invalid message of size %d\n", msize);
-    return;
+    return 0;
   }
   const struct allnet_header * hp = (const struct allnet_header *) message;
   // TODO: check why this is wrong: int hsize = ALLNET_SIZE (hp->transport);
@@ -137,9 +137,9 @@ static void handle_packet (const char * message, int msize) {
   int hsize = sizeof (struct allnet_header);
   int voahsize = sizeof (struct allnet_voa_header);
   if (msize <= hsize + voahsize)
-    return;
+    return 0;
   if (hp->message_type != ALLNET_TYPE_DATA)
-    return;
+    return 0;
   int vsize = msize - hsize;
   struct allnet_voa_header * avhp =
     (struct allnet_voa_header *) message + hsize;
@@ -181,7 +181,7 @@ static void handle_packet (const char * message, int msize) {
   if (local) // XXX: hack
     bufsize = *((unsigned char*)avhp);
   const char * buf = ((const char *)avhp) + voahsize;
-  dec_handle_data (buf, bufsize);
+  return dec_handle_data (buf, bufsize);
 }
 
 static struct allnet_header * create_voa_packet (const unsigned char * buf, int bufsize, int * pak_size) {
@@ -282,7 +282,8 @@ static void dec_main_loop ()
       printf ("voa: pipe closed, exiting\n");
       return;
     }
-    handle_packet ((const char *)message, size);
+    if (!handle_packet ((const char *)message, size))
+      printf ("voa: error in packet\n");
     free (message);
   }
 }
