@@ -70,10 +70,6 @@ typedef struct _VOAData {
 static VOAData data;
 static int term = 0; /* exit main loop when set */
 
-// static void dec_handle_data_free_buffer (gpointer data) {
-//   g_free (data);
-// }
-
 static int dec_handle_data (const char * buf, int bufsize) {
   gchar * buffer = g_new (gchar, 1024);
   memcpy (buffer, buf, bufsize);
@@ -143,7 +139,7 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   if (hp->message_type != ALLNET_TYPE_DATA)
     return 0;
-  int vsize = msize - hsize;
+//   int vsize = msize - hsize;
   struct allnet_voa_header * avhp =
     (struct allnet_voa_header *) message + hsize;
 
