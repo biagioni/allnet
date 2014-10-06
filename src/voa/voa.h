@@ -6,6 +6,8 @@
 #define AUDIO_CAPS "audio/x-opus,media=(string)audio,clockrate=(int)48000,channels=(int)1"
 #endif /* RTP */
 
+/*  { '\0', 'V', 'O', 'A' } */
+#define ALLNET_MEDIA_APP_VOA 0x00564F41
 #define ALLNET_VOA_HMAC_SIZE 32
 #define ALLNET_VOA_COUNTER_SIZE 32
 
