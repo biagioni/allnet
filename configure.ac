@@ -178,6 +178,6 @@ echo "  NetworkManager support : ${enable_network_manager}"
 echo "  Build User Interface   : ${build_gui}"
 if test "x$build_gui" = "xno"; then
 echo "  Install precompiled UI : ${install_precompiled_gui} (only available when Build User Interface is \"no\")"
-echo "  Openssl                : ${enable_openssl}"
 fi
+echo "  Openssl                : ${enable_openssl}"
 echo ""

@@ -2,9 +2,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <dirent.h>
 #include <sys/types.h>
+#include <sys/time.h>
+#include <sys/resource.h>
+#include <sys/mman.h>
 
 #include "lib/packet.h"
 #include "lib/media.h"
@@ -145,8 +149,50 @@ hp->source [0] & 0xff, hp->src_nbits);
   }
 }
 
+static void generate_spare_keys (time_t * last_alive)
+{
+  if (setpriority (PRIO_PROCESS, 0, 15) == 0) {
+    while (1) {   /* generate up to 100 keys */
+      time_t start = time (NULL);
+      time_t finish = start + 6; /* if not generating, as if took 6 seconds */
+      if (create_spare_key (-1) < 100) {
+        create_spare_key (4096);
+        if (time (NULL) > finish)
+          finish = time (NULL);
+      }
+/* sleep 100 times longer than it took to generate, always >= 600 seconds */
+printf ("%ld: generate_spare_keys sleeping %ld seconds\n", time (NULL),
+(finish - start) * 100);
+      sleep ((finish - start) * 100);
+      if ((time (NULL) - (*last_alive)) > 100) {
+        snprintf (log_buf, LOG_SIZE, "generate_spare_keys %ld > %ld+100\n",
+                  time (NULL), *last_alive);
+        log_print ();
+        exit (0);
+      }
+    }
+  }
+}
+
+static void * create_map (int size)
+{
+  void * result = mmap (NULL, size, PROT_READ | PROT_WRITE,
+                        MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+  if (result == ((void *) -1))
+    return NULL;
+  return result;
+}
+
 void keyd_main (char * pname)
 {
+  time_t * alive_time = create_map (sizeof (time_t));
+  if (alive_time != NULL) {
+    *alive_time = time (NULL);
+    if (fork () == 0) {    /* fork a process to generate spare keys */
+      generate_spare_keys (alive_time);
+      exit (1);
+    }
+  }
   int sock = connect_to_local (pname, pname);
   if (sock < 0)
     return;
@@ -154,17 +200,19 @@ void keyd_main (char * pname)
   while (1) {  /* loop forever */
     int pipe;
     int pri;
-    char * message;
-    int found = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER,
-                                          &message, &pipe, &pri);
-    if (found <= 0) {
+    char * message;                      /* sleep for up to a minute */
+    int found = receive_pipe_message_any (60 * 1000, &message, &pipe, &pri);
+    if (found < 0) {
       snprintf (log_buf, LOG_SIZE, "keyd pipe closed, exiting\n");
       log_print ();
       exit (1);
     }
-    if (is_valid_message (message, found))
+    if ((found > 0) && (is_valid_message (message, found)))
       handle_packet (sock, message, found);
-    free (message);
+    if (found > 0)
+      free (message);
+    if (alive_time != NULL)
+      *alive_time = time (NULL);
   }
   snprintf (log_buf, LOG_SIZE, "keyd infinite loop ended, exiting\n");
   log_print ();
