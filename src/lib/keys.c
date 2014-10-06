@@ -433,6 +433,98 @@ static void save_contact (struct key_info * k)
 #endif /* DEBUG_PRINT */
 }
 
+static int count_spare_key_files ()
+{
+  char * dirname;
+  int dirnamesize = config_file_name ("own_spare_keys", "", &dirname);
+  if (dirnamesize < 0)
+    return 0;
+  DIR * dir = opendir (dirname);
+  if (dir == NULL) {
+    free (dirname);
+    return 0;
+  }
+  struct dirent * de;
+  int result = 0;
+  while ((de = readdir (dir)) != NULL) {
+  /* count it as long as it has the right length and doesn't begin with . */
+    if ((de->d_name [0] != '.') &&
+        (strlen (de->d_name) == DATE_TIME_LEN))
+      result++;
+  }
+  closedir (dir);
+  printf ("directory %s has %d spare key files\n", dirname, result);
+  free (dirname);
+  return result;
+}
+
+static int save_spare_key (allnet_rsa_prvkey key)
+{
+  if (allnet_rsa_prvkey_is_null (key))
+    return 0;
+  char now_printed [DATE_TIME_LEN + 1];
+  time_t now = time (NULL);
+  struct tm t;
+  gmtime_r (&now, &t);
+  snprintf (now_printed, sizeof (now_printed), "%04d%02d%02d%02d%02d%02d",
+            t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+            t.tm_hour, t.tm_min, t.tm_sec);
+
+  char * fname;
+  int fnamesize = config_file_name ("own_spare_keys", now_printed, &fname);
+  if (fnamesize < 0) {
+    snprintf (log_buf, LOG_SIZE, "unable to get config file name for spare");
+    log_print ();
+    return 0;
+  }
+  if (! allnet_rsa_write_prvkey (fname, key)) {
+    printf ("unable to write spare private key to file %s\n", fname);
+    free (fname);
+    return 0;
+  }
+  free (fname);
+  return 1;
+}
+
+static allnet_rsa_prvkey get_spare_key (int keybits)
+{
+  allnet_rsa_prvkey result;
+  allnet_rsa_null_prvkey (&result);
+  if (count_spare_key_files () <= 0)
+    return result;
+  char * dirname;
+  int dirnamesize = config_file_name ("own_spare_keys", "", &dirname);
+  if (dirnamesize < 0)
+    return result;
+  DIR * dir = opendir (dirname);
+  free (dirname);
+  if (dir == NULL)
+    return result;
+  struct dirent * de;
+  while ((de = readdir (dir)) != NULL) {
+  /* try to read it if it has the right length and doesn't begin with . */
+    if ((de->d_name [0] != '.') &&
+        (strlen (de->d_name) == DATE_TIME_LEN)) {
+      char * fname;
+      int fnamesize = config_file_name ("own_spare_keys", de->d_name, &fname);
+      if (fnamesize >= 0) {
+        int success = allnet_rsa_read_prvkey (fname, &result);
+        if ((success) && (allnet_rsa_prvkey_size (result) == keybits / 8)) {
+          unlink (fname);   /* remove the file, don't reuse it in the future */
+          printf ("found spare key with %d bits\n", keybits);
+          free (fname);
+          closedir (dir);
+          return result;
+        }
+        free (fname);
+      }
+    }
+  }
+  closedir (dir);
+  allnet_rsa_null_prvkey (&result);
+  return result;
+}
+
 static int do_set_contact_pubkey (struct key_info * k,
                                   char * contact_key, int ksize)
 {
@@ -482,10 +574,11 @@ int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
   return 1;
 }
 
-/* returns the keyset if successful, -1 if the contact already existed */
-/* creates a new private/public key pair, and if not NULL, also 
- * the contact public key, source and destination addresses */
-/* if feedback is nonzero, gives feedback while creating the key */
+/* returns the keyset if successful, -1 if the contact already existed
+ * creates a new private/public key pair, and if not NULL, also 
+ * the contact public key, source and destination addresses
+ * if a spare key of the requested size already exists, uses the spare key 
+ * if feedback is nonzero, gives feedback while creating the key */
 keyset create_contact (char * contact, int keybits, int feedback,
                        char * contact_key, int contact_ksize,
                        unsigned char * local, int loc_nbits,
@@ -495,7 +588,9 @@ keyset create_contact (char * contact, int keybits, int feedback,
   if (contact_exists (contact))
     return -1;
 
-  allnet_rsa_prvkey my_key = allnet_rsa_generate_key (keybits);
+  allnet_rsa_prvkey my_key = get_spare_key (keybits);
+  if (allnet_rsa_prvkey_is_null (my_key))
+    my_key = allnet_rsa_generate_key (keybits);
   if (allnet_rsa_prvkey_is_null (my_key)) {
     printf ("unable to generate RSA key\n");
     return -1;
@@ -542,6 +637,26 @@ keyset create_contact (char * contact, int keybits, int feedback,
   /* now save to disk */
   save_contact (kip + new_contact);
   return new_contact;
+}
+
+/* create a spare key of the given size, returning the number of spare keys. 
+ * if keybits < 0, returns the number of spare keys without generating
+ * any new key
+ * returns 0 in case of error 
+ * should normally only be called after calling 
+ *    setpriority (PRIO_PROCESS, 0, n), with n >= 15 */
+int create_spare_key (int keybits)
+{
+  if (keybits < 0)
+    return count_spare_key_files ();
+  allnet_rsa_prvkey spare = allnet_rsa_generate_key (keybits);
+  if (allnet_rsa_prvkey_is_null (spare)) {
+    printf ("unable to generate spare RSA key\n");
+    return 0;
+  }
+  if (save_spare_key (spare))
+    return count_spare_key_files ();
+  return 0;
 }
 
 /*************** operations on keysets and keys ********************/

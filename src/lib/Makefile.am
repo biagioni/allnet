@@ -17,9 +17,7 @@ libincludes = \
 	sha.h \
 	stream.h \
 	table.h \
-	util.h
-
-wpincludes = \
+	util.h \
 	wp_aes.h \
 	wp_arith.h \
 	wp_rsa.h
@@ -40,9 +38,7 @@ libsrc = \
 	sha.c \
 	stream.c \
 	table.c \
-	util.c
-
-wpsrc = \
+	util.c \
 	asn1.c \
 	wp_aes.c \
 	wp_arith.c \
@@ -51,8 +47,8 @@ wpsrc = \
 DEPS_LIBS = ${openssl_LIBS}
 
 if !HAVE_OPENSSL
-libincludes += wpincludes
-libsrc += wpsrc
+libincludes += ${wpincludes}
+libsrc += asn1.c wp_aes.c wp_arith.c wp_rsa.c
 endif
 
 lib_LTLIBRARIES = liballnet-@ALLNET_API_VERSION@.la
