@@ -1,4 +1,4 @@
-AM_CFLAGS = -I$(ALLNET_SRCDIR) -g
+AM_CFLAGS = -I$(ALLNET_SRCDIR)
 libincludes = \
 	lib/cipher.h \
 	lib/config.h \

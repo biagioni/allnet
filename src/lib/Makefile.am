@@ -1,5 +1,3 @@
-AM_CFLAGS = -g
-
 libincludes = \
 	ai.h \
 	app_util.h \
@@ -52,14 +50,14 @@ wpsrc = \
 
 DEPS_LIBS = ${openssl_LIBS}
 
-if ! HAVE_OPENSSL
+if !HAVE_OPENSSL
 libincludes += wpincludes
 libsrc += wpsrc
 endif
 
-lib_LTLIBRARIES = liballnet-3.1.la
+lib_LTLIBRARIES = liballnet-@ALLNET_API_VERSION@.la
 pkginclude_HEADERS = $(libincludes)
-liballnet_3_1_la_LIBADD = $(DEPS_LIBS)
-liballnet_3_1_la_CFLAGS = $(openssl_CFLAGS)
-liballnet_3_1_la_SOURCES = $(libsrc) $(libincludes)
-liballnet_3_1_la_LDFLAGS = -version-info 3:1:0 $(ALLNET_LT_LDFLAGS)
+liballnet_@ALLNET_API_VERSION@_la_LIBADD = $(DEPS_LIBS)
+liballnet_@ALLNET_API_VERSION@_la_CFLAGS = $(openssl_CFLAGS)
+liballnet_@ALLNET_API_VERSION@_la_SOURCES = $(libsrc) $(libincludes)
+liballnet_@ALLNET_API_VERSION@_la_LDFLAGS = -version-info @LDVERSION@ $(ALLNET_LT_LDFLAGS)
