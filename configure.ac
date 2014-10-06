@@ -22,11 +22,13 @@ ALLNET_API_VERSION=allnet_api_version
 ALLNET_BINDIR=\$\(top_srcdir\)/bin
 ALLNET_SRCDIR=\$\(top_srcdir\)/src
 ALLNET_LIBDIR=\$\(top_builddir\)/src/lib
+ALLNET_ABCDIR=\$\(top_builddir\)/src/abc
 LDVERSION=$(echo allnet_api_version | sed 's/\./:/g'):0
 AC_SUBST(ALLNET_API_VERSION)
 AC_SUBST(ALLNET_BINDIR)
 AC_SUBST(ALLNET_LIBDIR)
 AC_SUBST(ALLNET_SRCDIR)
+AC_SUBST(ALLNET_ABCDIR)
 AC_SUBST(LDVERSION)
 
 # Checks for libraries.

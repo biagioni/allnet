@@ -319,7 +319,7 @@ static int countlines (int fd, int maxlen)
   return result;
 }
 
-int hexvalue (int c)
+static int hexvalue (int c)
 {
   if ((c >= '0') && (c <= '9'))
     return (c - '0');
@@ -331,7 +331,7 @@ int hexvalue (int c)
   exit (1);
 }
 
-int hexbyte (int c1, int c2)
+static int hexbyte (int c1, int c2)
 {
   return (hexvalue (c1) << 4) | (hexvalue (c2));
 }

@@ -27,7 +27,7 @@
 #include "lib/log.h"
 #include "lib/dcache.h"
 
-#ifndef NO_MAIN_FUNCTION
+#ifdef TRACE_MAIN_FUNCTION
 static int get_nybble (char * string, int * offset)
 {
   char * p = string + *offset;
@@ -80,7 +80,7 @@ static int get_address (char * address, unsigned char * result, int rsize)
   }
   return bits;
 }
-#endif /* NO_MAIN_FUNCTION */
+#endif /* TRACE_MAIN_FUNCTION */
 
 static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
                               int hops, struct timeval * now,
@@ -475,7 +475,7 @@ static void main_loop (int sock, unsigned char * my_address, int nbits,
   }
 }
 
-#ifndef NO_MAIN_FUNCTION
+#ifdef TRACE_MAIN_FUNCTION
 static void send_trace (int sock, unsigned char * address, int abits,
                         char * trace_id,
                         unsigned char * my_address, int my_abits, int max_hops)
@@ -751,7 +751,7 @@ static void usage (char * pname, int daemon)
             pname);
   }
 }
-#endif /* NO_MAIN_FUNCTION */
+#endif /* TRACE_MAIN_FUNCTION */
 
 void traced_main (char * pname)
 {
@@ -773,7 +773,7 @@ void traced_main (char * pname)
   return;
 }
 
-#ifndef NO_MAIN_FUNCTION
+#ifdef TRACE_MAIN_FUNCTION
 /* global debugging variable -- if 1, expect more debugging output */
 /* set in main */
 int allnet_global_debugging = 0;
@@ -849,4 +849,4 @@ int main (int argc, char ** argv)
   }
   return 0;
 }
-#endif /* NO_MAIN_FUNCTION */
+#endif /* TRACE_MAIN_FUNCTION */

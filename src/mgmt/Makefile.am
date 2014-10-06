@@ -19,12 +19,9 @@ keydlibincludes = \
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \
-	$(ALLNET_BINDIR)/trace \
-	$(ALLNET_BINDIR)/traced \
-	$(ALLNET_BINDIR)/keyd
+	$(ALLNET_BINDIR)/trace
 __ALLNET_BINDIR__trace_SOURCES = trace.c ${libincludes} lib/ai.h
-__ALLNET_BINDIR__traced_SOURCES = trace.c ${libincludes} lib/ai.h
-__ALLNET_BINDIR__keyd_SOURCES = keyd.c ${keydlibincludes}
+__ALLNET_BINDIR__trace_CFLAGS = -DTRACE_MAIN_FUNCTION $(AM_CFLAGS)
 
 # Hooks to link traced to trace. Uncomment when not separately recompiled above.
 # install-exec-hook:

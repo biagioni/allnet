@@ -27,7 +27,7 @@ static struct hash_entry hash1 [ENTRIES_PER_TABLE];
 static struct hash_entry hash2 [ENTRIES_PER_TABLE];
 
 /* data must have at least ((bits + 7) / 8) bytes */
-int my_hash_fn (char * data, int bits)
+int allnet_record_simple_hash_fn (char * data, int bits)
 {
   /* just xor all the 32-bit words in the data, shifting as we go along.
    * if there are any odd (< 32) bits at the end, they are used
@@ -59,7 +59,7 @@ int my_hash_fn (char * data, int bits)
 static void lr_hash_fun (char * data, int bits,
                          int * hash, int * lindex, int * rindex)
 {
-  *hash = my_hash_fn (data, bits);
+  *hash = allnet_record_simple_hash_fn (data, bits);
   int left_hash  = (((*hash) >> 16) & 0xff00) | (((*hash) >> 8) & 0xff);
   *lindex = left_hash % ENTRIES_PER_TABLE;
   int right_hash = (((*hash) >>  8) & 0xff00) | ( (*hash)       & 0xff);
