@@ -129,7 +129,7 @@ static int handle_packet (const char * message, int msize) {
     printf ("%02x ", *((const unsigned char *)message+i));
   printf ("\n\n");
 */
-  printf ("got message of size %d (%lu)\n", msize, msize - sizeof (struct allnet_header) - sizeof (struct allnet_voa_header));
+  printf ("got message of size %d (%lu data)\n", msize, (unsigned int)msize - sizeof (struct allnet_header) - sizeof (struct allnet_voa_header));
   if (! is_valid_message (message, msize)) {
     printf ("got invalid message of size %d\n", msize);
     return 0;
@@ -252,7 +252,7 @@ static void enc_main_loop () {
     if (sample) {
       GstBuffer * buffer = gst_sample_get_buffer (sample);
       gsize bufsiz = gst_buffer_get_size (buffer);
-      printf ("offset: %lu, duration: %lums, size: %lu\n", buffer->offset, buffer->duration / 1000000, bufsiz);
+      printf ("offset: %lu, duration: %lums, size: %lu\n", buffer->offset, (unsigned long)buffer->duration / 1000000, (size_t)bufsiz);
       GstMapInfo info;
       if (!gst_buffer_map (buffer, &info, GST_MAP_READ))
         printf ("error mapping buffer\n");
