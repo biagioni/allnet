@@ -1,7 +1,9 @@
-/* packet.h: definition of AllNet packet headers */
+/* media.h: definition of AllNet packet header types */
 
 #ifndef MEDIA_H
 #define MEDIA_H
+
+#include "packet.h"
 
 /* common media types */
 #define ALLNET_MEDIA_TEXT_PLAIN		1	   /* UTF-8 text */
