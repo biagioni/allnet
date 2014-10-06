@@ -373,6 +373,8 @@ static int init_audio (int is_encoder)
     data.dec.rtpdepay = gst_element_factory_make ("rtpopusdepay", "rtpdepay");
 #endif /* RTP */
     data.dec.decoder = gst_element_factory_make ("opusdec", "decoder");
+    if (!data.dec.decoder)
+      fprintf (stderr, "Couldn't create opus decoder, make sure gstreamer1.0-plugins-bad is installed\n");
     data.dec.sink = gst_element_factory_make ("autoaudiosink", "sink");
     if (!data.dec.voa_source ||
 #ifdef RTP
