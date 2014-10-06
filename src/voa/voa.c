@@ -71,7 +71,7 @@ static VOAData data;
 static int term = 0; /* exit main loop when set */
 
 static int dec_handle_data (const char * buf, int bufsize) {
-  gchar * buffer = g_new (gchar, 1024);
+  gchar * buffer = g_new (gchar, bufsize);
   memcpy (buffer, buf, bufsize);
   GstFlowReturn ret;
 
