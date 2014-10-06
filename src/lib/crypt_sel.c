@@ -30,6 +30,8 @@ allnet_rsa_pubkey allnet_rsa_private_to_public (allnet_rsa_prvkey key)
 int allnet_rsa_pubkey_size (allnet_rsa_pubkey key)
 {
 #ifdef HAVE_OPENSSL
+  if (key == NULL)
+    return 0;
   return RSA_size (key);
 #else /* HAVE_OPENSSL */
   return key.nbits / 8;
@@ -39,6 +41,8 @@ int allnet_rsa_pubkey_size (allnet_rsa_pubkey key)
 int allnet_rsa_prvkey_size (allnet_rsa_prvkey key)
 {
 #ifdef HAVE_OPENSSL
+  if (key == NULL)
+    return 0;
   return RSA_size (key);
 #else /* HAVE_OPENSSL */
   return key.nbits / 8;
@@ -54,15 +58,15 @@ int allnet_get_pubkey (const char * key, int ksize, allnet_rsa_pubkey * rsa)
     printf ("unable get RSA public key\n");
     return 0;
   }
-  (*rsa)->n = BN_bin2bn ((const unsigned char *) (key + 1), ksize - 1, NULL);
+  (*rsa)->n = BN_bin2bn ((const unsigned char *) key, ksize, NULL);
   (*rsa)->e = NULL; 
   BN_dec2bn (&((*rsa)->e), "65537");
   return RSA_size (*rsa);
 #else /* HAVE_OPENSSL */
-  rsa->nbits = (ksize - 1) * 8;
-  wp_from_bytes (rsa->nbits, rsa->n, ksize - 1, key + 1);
+  rsa->nbits = ksize * 8;
+  wp_from_bytes (rsa->nbits, rsa->n, ksize, key);
   rsa->e = 65537;
-  return ksize - 1;
+  return ksize;
 #endif /* HAVE_OPENSSL */
 }
 

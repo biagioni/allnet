@@ -254,6 +254,8 @@ int allnet_verify (char * text, int tsize, char * sig, int ssize,
   if (ssize != rsa_size)
     printf ("notice: public key has %d-byte signature, %d bytes given\n",
             rsa_size, ssize);
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
 
   /* hash the contents, verify that the signature matches the hash */
   char hash [SHA512_SIZE];
@@ -341,9 +343,10 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
       if (sig_algo != ALLNET_SIGTYPE_NONE) {  /* verify signature */
         do_decrypt = 0;
         allnet_rsa_pubkey pub_key;
-        if (get_contact_pubkey (keys [j], &pub_key))
+        if (get_contact_pubkey (keys [j], &pub_key)) {
           do_decrypt =
             allnet_verify (encrypted, csize, sig, ssize - 2, pub_key);
+        }
       }
       if (do_decrypt) {
 #ifdef DEBUG_PRINT
