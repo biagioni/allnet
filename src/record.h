@@ -11,6 +11,6 @@ extern int record_packet_time (char * data, int dsize, int conn);
 extern void record_packet_clear (int conn);
 
 /* possibly useful elsewhere */
-extern int my_hash_fn (char * data, int bits);
+extern int allnet_record_simple_hash_fn (char * data, int bits);
 
 #endif /* RECORD_H */

@@ -129,7 +129,7 @@ void alocal_main (int rpipe, int wpipe)
   log_print ();
 }
 
-#ifndef NO_MAIN_FUNCTION
+#ifdef DAEMON_MAIN_FUNCTION
 /* global debugging variable -- if 1, expect more debugging output */
 /* set in main */
 int allnet_global_debugging = 0;
@@ -155,4 +155,4 @@ int main (int argc, char ** argv)
   alocal_main (rpipe, wpipe);
   return 1;
 }
-#endif /* NO_MAIN_FUNCTION */
+#endif /* DAEMON_MAIN_FUNCTION */

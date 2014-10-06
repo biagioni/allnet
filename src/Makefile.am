@@ -23,31 +23,30 @@ includes = \
 
 adlink = social.c record.c track.c
 
-LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
+LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la \
+        $(ALLNET_ABCDIR)/liballnet-abc-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \
-	$(ALLNET_BINDIR)/ad \
-	$(ALLNET_BINDIR)/alocal \
-	$(ALLNET_BINDIR)/aip \
-	$(ALLNET_BINDIR)/acache \
 	$(ALLNET_BINDIR)/astart \
-	$(ALLNET_BINDIR)/astop \
-	$(ALLNET_BINDIR)/adht \
-	$(ALLNET_BINDIR)/allnetx
+	$(ALLNET_BINDIR)/astop
 
-__ALLNET_BINDIR__ad_SOURCES = ad.c ${adlink} ${includes}
-__ALLNET_BINDIR__alocal_SOURCES = alocal.c listen.c ${includes} lib/mgmt.h
-__ALLNET_BINDIR__alocal_LDFLAGS = -lpthread
-__ALLNET_BINDIR__aip_SOURCES = aip.c listen.c routing.c ${includes} lib/mgmt.h
-__ALLNET_BINDIR__aip_LDFLAGS = -lpthread
-__ALLNET_BINDIR__adht_SOURCES = adht.c routing.c ${includes} lib/mgmt.h routing.h
-__ALLNET_BINDIR__adht_LDFLAGS = -lpthread
-__ALLNET_BINDIR__acache_SOURCES = acache.c ${includes}
-__ALLNET_BINDIR__astart_SOURCES = astart.c ${includes}
-__ALLNET_BINDIR__astop_SOURCES = astart.c ${includes}
-__ALLNET_BINDIR__allnetx_SOURCES = allnetx.c ad.c alocal.c aip.c adht.c acache.c mgmt/trace.c mgmt/keyd.c listen.c routing.c ${adlink} ${includes} lib/mgmt.h routing.h
-__ALLNET_BINDIR__allnetx_CFLAGS = -DNO_MAIN_FUNCTION
-__ALLNET_BINDIR__allnetx_LDFLAGS = -lpthread
-__ALLNET_BINDIR__allnetx_LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la abc/liballnet-abc-$(ALLNET_API_VERSION).la
+__ALLNET_BINDIR__astart_SOURCES = astart.c \
+				  ad.c \
+				  alocal.c \
+				  listen.c \
+				  aip.c \
+				  adht.c \
+				  routing.c \
+				  acache.c \
+				  hash.c \
+				  record.c \
+				  social.c \
+				  track.c \
+				  mgmt/trace.c \
+				  mgmt/keyd.c \
+				  ${includes}
+__ALLNET_BINDIR__astart_LDFLAGS = -lpthread
+__ALLNET_BINDIR__astop_SOURCES = ${__ALLNET_BINDIR__astart_SOURCES}
+__ALLNET_BINDIR__astop_LDFLAGS = -lpthread
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \

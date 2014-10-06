@@ -1139,7 +1139,7 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
     perror ("aip unlink addr_socket");
 }
 
-#ifndef NO_MAIN_FUNCTION
+#ifdef DAEMON_MAIN_FUNCTION
 /* global debugging variable -- if 1, expect more debugging output */
 /* set in main */
 int allnet_global_debugging = 0;
@@ -1164,4 +1164,4 @@ int main (int argc, char ** argv)
   aip_main (rpipe, wpipe, addr_socket_name);
   return 0;
 }
-#endif /* NO_MAIN_FUNCTION */
+#endif /* DAEMON_MAIN_FUNCTION */

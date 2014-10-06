@@ -22,14 +22,6 @@
 #include "lib/keys.h"
 #include "lib/log.h"
 
-static int init_xtime (char * arg0)
-{
-  int sock = connect_to_local ("xtime", arg0);
-  if (sock < 0)
-    exit (1);
-  return sock;
-}
-
 /* need to keep reading and emptying the socket buffer, otherwise
  * it will fill and alocal will get an error from sending to us,
  * and so close the socket. */
@@ -248,6 +240,14 @@ static void announce (time_t interval, int sock,
 /* global debugging variable -- if 1, expect more debugging output */
 /* set in main */
 int allnet_global_debugging = 0;
+
+static int init_xtime (char * arg0)
+{
+  int sock = connect_to_local ("xtime", arg0);
+  if (sock < 0)
+    exit (1);
+  return sock;
+}
 
 int main (int argc, char ** argv)
 {
