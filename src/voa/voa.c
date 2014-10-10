@@ -109,6 +109,7 @@ static int handle_packet (const char * message, int msize) {
   /* TODO: Temporary hack to grab local packets */
   int local = 0;
   if (msize >= 16 && memcmp ("MAGICPIE", message, 8) == 0) {
+    printf ("got magic pie\n");
     message += 16;
     msize -= 16;
     local = 1;
