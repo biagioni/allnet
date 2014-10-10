@@ -31,7 +31,7 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   struct allnet_header * hp = (struct allnet_header *) message;
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
   int dsize = msize - (data - message);
-  print_buffer (data, dsize, "   payload:", 20, 1);
+  print_buffer (data, dsize, "   payload:", 16, 1);
   return 0;
 }
 
