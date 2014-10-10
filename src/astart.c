@@ -46,7 +46,8 @@ static void make_root_nobody ()
   struct passwd * pwd;
   while ((pwd = getpwent ()) != NULL) {
     if (strcmp (pwd->pw_name, "nobody") == 0) {
-      setuid (pwd->pw_uid);
+      if (setuid (pwd->pw_uid) != 0)
+        perror ("setuid");
       endpwent ();
       return;
     }
@@ -172,9 +173,9 @@ static void stop_all (int signal)
     if ((signal > -1) && (signal != 2)) {
       printf ("%d: unable to stop allnet daemon, missing pid file %s\n",
               signal, fname);
-      printf ("running pkill bin/ad\n");
+      printf ("running pkill astart\n");
     }
-    execlp ("pkill", "pkill", "-f", "bin/ad", ((char *)NULL));
+    execlp ("pkill", "pkill", "-f", "astart", ((char *)NULL));
     /* execl should never return */
     printf ("unable to pkill\n");
 /*
