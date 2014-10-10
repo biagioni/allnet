@@ -30,7 +30,7 @@ static int send_key_request (int sock, char * phrase)
   int psize;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
-                   NULL, 0, destination, 8, NULL, &psize);
+                   NULL, 0, destination, 8, NULL, NULL, &psize);
   
   if (hp == NULL)
     return 0;

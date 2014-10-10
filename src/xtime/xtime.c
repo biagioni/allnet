@@ -151,7 +151,7 @@ static int make_announcement (char * buffer, int n,
   /* the signature type will be changed later when we sign the message */
   struct allnet_header * hp =
     init_packet (buffer, n, ALLNET_TYPE_CLEAR, hops, ALLNET_SIGTYPE_NONE,
-                 source, sbits, dest, dbits, NULL);
+                 source, sbits, dest, dbits, NULL, NULL);
   if (hp == NULL) {
     snprintf (log_buf, LOG_SIZE, "error: unable to create announcement\n");
     log_print ();

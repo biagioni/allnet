@@ -181,7 +181,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   struct allnet_header * hp =
     create_packet (size_needed - ALLNET_SIZE (0), ALLNET_TYPE_MGMT,
                    inhp->hops + 4, ALLNET_SIGTYPE_NONE, my_address, abits,
-                   inhp->source, inhp->src_nbits, NULL, &total);
+                   inhp->source, inhp->src_nbits, NULL, NULL, &total);
   if ((hp == NULL) || (total != size_needed)) {
     printf ("hp is %p, total is %d, size_needed %d\n", hp, total, size_needed);
     return 0;
@@ -485,7 +485,8 @@ static void send_trace (int sock, unsigned char * address, int abits,
   int allocated = 0;
   struct allnet_header * hp =
     create_packet (data_size, ALLNET_TYPE_MGMT, max_hops, ALLNET_SIGTYPE_NONE,
-                   my_address, my_abits, address, abits, NULL, &allocated);
+                   my_address, my_abits, address, abits, NULL, NULL,
+                   &allocated);
   if (allocated != total_size) {
     printf ("error in send_trace: %d %d %d\n", allocated,
             total_size, data_size);

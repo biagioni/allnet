@@ -173,7 +173,7 @@ static void send_key_message (char * contact, char * secret, int hops, int sock)
   int size;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_XCHG, hops, ALLNET_SIGTYPE_NONE,
-                   address, nbits, NULL, 0, NULL, &size);
+                   address, nbits, NULL, 0, NULL, NULL, &size);
   char * message = (char *) hp;
 
   char * data = message + ALLNET_SIZE(hp->transport);

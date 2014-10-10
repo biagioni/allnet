@@ -58,7 +58,7 @@ static void broadcast (int sock, char * data, int dsize, int hops,
   bzero (buffer, sizeof (buffer));
   struct allnet_header * hp =
     init_packet (buffer, sizeof (buffer), ALLNET_TYPE_CLEAR, hops,
-                 ALLNET_SIGTYPE_NONE, source, sbits, dest, dbits, NULL);
+                 ALLNET_SIGTYPE_NONE, source, sbits, dest, dbits, NULL, NULL);
   int hsize = ALLNET_SIZE (hp->transport);
   int h2size = sizeof (struct allnet_app_media_header);
   int rsa_size = allnet_rsa_prvkey_size (key);

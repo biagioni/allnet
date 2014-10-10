@@ -709,7 +709,7 @@ void send_keepalive (void * udp_cache, int fd,
   bzero (address, sizeof (address));
   struct allnet_header * hp =
     init_packet (keepalive, sizeof (keepalive), ALLNET_TYPE_MGMT, 1,
-                 ALLNET_SIGTYPE_NONE, address, 0, address, 0, NULL);
+                 ALLNET_SIGTYPE_NONE, address, 0, address, 0, NULL, NULL);
   struct allnet_mgmt_header * mhp =
     (struct allnet_mgmt_header *) (keepalive + ALLNET_SIZE (hp->transport));
   mhp->mgmt_type = ALLNET_MGMT_KEEPALIVE;
@@ -785,7 +785,7 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
   struct allnet_header * hp =
     init_packet ((char *) message, sizeof (message), ALLNET_TYPE_MGMT, 1,
                  ALLNET_SIGTYPE_NONE, in_hp->destination, in_hp->dst_nbits,
-                 in_hp->source, in_hp->src_nbits, NULL);
+                 in_hp->source, in_hp->src_nbits, NULL, NULL);
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   mp->mgmt_type = ALLNET_MGMT_DHT;

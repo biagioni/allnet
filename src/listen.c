@@ -262,7 +262,7 @@ static void send_peer_message (int fd, struct listen_info * info, int index)
   int psize;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-                   NULL, 0, NULL, 0, NULL, &psize);
+                   NULL, 0, NULL, 0, NULL, NULL, &psize);
   if (psize != size) {
     snprintf (log_buf, LOG_SIZE,
               "likely error: send_peer_message size %d, psize %d\n",
