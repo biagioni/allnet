@@ -92,7 +92,7 @@ static void send_key_message (int sock, char * contact, keyset keys,
   struct allnet_header * hp =
     create_packet (csize - MESSAGE_ID_SIZE, ALLNET_TYPE_DATA, hops,
                    ALLNET_SIGTYPE_NONE, my_addr, my_bits, addr, nbits,
-                   text, &psize);
+                   NULL, text, &psize);
   char * packet = (char *) hp;
 #ifdef DEBUG_PRINT
   printf ("packet size is %d bytes\n", psize);

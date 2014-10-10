@@ -95,10 +95,13 @@ struct allnet_header {
 /* used in sig_algo */
 #define ALLNET_SIGTYPE_NONE			  0
 #define ALLNET_SIGTYPE_RSA_PKCS1		  1
-#define ALLNET_SIGTYPE_secp128r1		130
-/* signature appears at the end of the message, with the number of bytes
- * in the last 2 bytes */
-struct allnet_signature {
+#define ALLNET_SIGTYPE_secp128r1		  2
+#define ALLNET_SIGTYPE_HMAC_SHA512		  3
+
+/* signature appears at the end of the message.  For variable-sized
+ * signatures, e.g. ALLNET_SIGTYPE_RSA_PKCS1, the number of bytes
+ * is sent in the two bytes following the signature */
+struct allnet_variable_signature {
   unsigned char certificate [0];
   unsigned char sig_nbytes [2];   /* number of bytes, MSB first */
 };
@@ -210,6 +213,7 @@ struct allnet_key_request {
  * forwarders.
  */
 
+#define STREAM_ID_SIZE			16	/*  16 bytes or 128 bits */
 #define MESSAGE_ID_SIZE			16	/*  16 bytes or 128 bits */
 #define MESSAGE_ID_BITS			(MESSAGE_ID_SIZE * 8)	/* 128 bits */
 #define SEQUENCE_SIZE			16	/*  16 bytes or 128 bits */
@@ -253,7 +257,7 @@ struct allnet_header_max {
   unsigned char transport; /* type of transport requests, 0 if none */
   unsigned char source      [ADDRESS_SIZE];
   unsigned char destination [ADDRESS_SIZE];
-  unsigned char stream_id   [MESSAGE_ID_SIZE]; /* if ALLNET_TRANSPORT_STREAM */
+  unsigned char stream_id   [STREAM_ID_SIZE];  /* if ALLNET_TRANSPORT_STREAM */
   unsigned char message_id  [MESSAGE_ID_SIZE]; /* if ALLNET_TRANSPORT_ACK_REQ */
   unsigned char packet_id   [MESSAGE_ID_SIZE]; /* if ALLNET_TRANSPORT_LARGE */
   unsigned char npackets    [SEQUENCE_SIZE];   /* if ALLNET_TRANSPORT_LARGE */
@@ -265,7 +269,7 @@ struct allnet_header_max {
 #define ALLNET_SIZE(t)	((ALLNET_HEADER_SIZE) + \
  ((((t) & ALLNET_TRANSPORT_ACK_REQ   ) == 0) ? 0 : (MESSAGE_ID_SIZE)) + \
  ((((t) & ALLNET_TRANSPORT_LARGE     ) == 0) ? 0 : (LARGE_HEADER_SIZE)) + \
- ((((t) & ALLNET_TRANSPORT_STREAM    ) == 0) ? 0 : (MESSAGE_ID_SIZE)) + \
+ ((((t) & ALLNET_TRANSPORT_STREAM    ) == 0) ? 0 : (STREAM_ID_SIZE)) + \
  ((((t) & ALLNET_TRANSPORT_EXPIRATION) == 0) ? 0 : (ALLNET_TIME_SIZE)))
 
 #define ALLNET_SIZE_HEADER(hp)	(ALLNET_SIZE((hp)->transport))
@@ -278,7 +282,7 @@ struct allnet_header_max {
 #define ALLNET_AFTER_STREAM_ID(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
   ((((t) & ALLNET_TRANSPORT_STREAM) == 0) ? ALLNET_HEADER_SIZE : \
-   (ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE)))
+   (ALLNET_HEADER_SIZE + STREAM_ID_SIZE)))
 
 #define ALLNET_MESSAGE_ID(hp, t, s)	\
  (((s < ALLNET_SIZE(t)) || 	\

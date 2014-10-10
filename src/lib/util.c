@@ -433,29 +433,38 @@ void print_packet (const char * packet, int psize, char * desc, int print_eol)
   printf ("%s", buffer);
 }
 
-/* buffer must be at least ALLNET_SIZE(transport) bytes long */
-/* returns a pointer to the buffer, but cast to an allnet_header */
-/* returns NULL if any of the parameters are invalid (e.g. message_type) */
-/* if sbits is zero, source may be NULL, and likewise for dbits and dest */
-/* if ack is not NULL it must refer to MESSAGE_ID_SIZE bytes, and */
-/* transport will be set to ALLNET_TRANSPORT_ACK_REQ */
-/* if ack is NULL, transport will be set to 0 */
+/* buffer must be at least ALLNET_SIZE(transport) bytes long
+ * returns a pointer to the buffer, but cast to an allnet_header
+ * returns NULL if any of the parameters are invalid (e.g. message_type)
+ * if sbits is zero, source may be NULL, and likewise for dbits and dest
+ * if stream is not NULL it must refer to STREAM_ID_SIZE bytes, and
+ * transport will include ALLNET_TRANSPORT_STREAM
+ * if ack is not NULL it must refer to MESSAGE_ID_SIZE bytes, and 
+ * transport will include ALLNET_TRANSPORT_ACK_REQ
+ * if ack and stream are both NULL, transport will be set to 0 
+ *
+ * ALLNET_TRANSPORT_LARGE packets are not supported by this call */
 struct allnet_header *
   init_packet (char * packet, int psize,
                int message_type, int max_hops, int sig_algo,
                unsigned char * source, int sbits,
-               unsigned char * dest, int dbits, unsigned char * ack)
+               unsigned char * dest, int dbits,
+               unsigned char * stream, unsigned char * ack)
 {
+  int transport = 0;
+  if (stream != NULL)
+    transport |= ALLNET_TRANSPORT_STREAM;
+  if (ack != NULL)
+    transport |= ALLNET_TRANSPORT_ACK_REQ;
   struct allnet_header * hp = (struct allnet_header *) packet;
-  if (psize < ALLNET_HEADER_SIZE)
-    return NULL;
-  if ((ack != NULL) && (psize < ALLNET_SIZE(ALLNET_TRANSPORT_ACK_REQ)))
+  if ((psize < ALLNET_HEADER_SIZE) || (psize < ALLNET_SIZE (transport)))
     return NULL;
   if ((message_type < ALLNET_TYPE_DATA) || (message_type > ALLNET_TYPE_MGMT))
     return NULL;
   if ((max_hops < 1) || (max_hops > 255))
     return NULL;
-  if ((sig_algo < ALLNET_SIGTYPE_NONE) || (sig_algo > ALLNET_SIGTYPE_secp128r1))
+  if ((sig_algo < ALLNET_SIGTYPE_NONE) ||
+      (sig_algo > ALLNET_SIGTYPE_HMAC_SHA512))
     return NULL;
   if ((sbits < 0) || (sbits > ADDRESS_BITS) ||
       (dbits < 0) || (dbits > ADDRESS_BITS))
@@ -472,9 +481,8 @@ struct allnet_header *
     memcpy (hp->source, source, (sbits + 7) / 8);
   if ((dbits > 0) && (dest != NULL))
     memcpy (hp->destination, dest, (dbits + 7) / 8);
-  hp->transport = ALLNET_TRANSPORT_NONE;
+  hp->transport = transport;
   if (ack != NULL) {
-    hp->transport = ALLNET_TRANSPORT_ACK_REQ;
     sha512_bytes ((char *) ack, MESSAGE_ID_SIZE,
                   ALLNET_MESSAGE_ID(hp, hp->transport, psize), MESSAGE_ID_SIZE);
   }
@@ -489,18 +497,22 @@ struct allnet_header *
 struct allnet_header *
   create_packet (int data_size, int message_type, int max_hops, int sig_algo,
                  unsigned char * source, int sbits,
-                 unsigned char * dest, int dbits, unsigned char * ack,
+                 unsigned char * dest, int dbits,
+                 unsigned char * stream, unsigned char * ack,
                  int * size)
 {
-  int alloc_size = data_size + ALLNET_HEADER_SIZE;
+  int transport = 0;
+  if (stream != NULL)
+    transport |= ALLNET_TRANSPORT_STREAM;
   if (ack != NULL)
-    alloc_size = ALLNET_SIZE(ALLNET_TRANSPORT_ACK_REQ)
-               + MESSAGE_ID_SIZE + data_size;
+    transport |= ALLNET_TRANSPORT_ACK_REQ;
+  int alloc_size = ALLNET_SIZE (transport) + data_size;
+  if (ack != NULL)
+    alloc_size += MESSAGE_ID_SIZE;
   char * result = malloc_or_fail (alloc_size, "util.c create_packet");
   *size = alloc_size;
   return init_packet (result, alloc_size, message_type, max_hops, sig_algo,
-                      source, sbits, dest, dbits, ack);
-  
+                      source, sbits, dest, dbits, stream, ack);
 }
 
 /* malloc, initialize, and return an ack message for a received packet.
@@ -522,7 +534,7 @@ struct allnet_header *
   struct allnet_header * hp =
     init_packet (result, alloc_size, ALLNET_TYPE_ACK, packet->hops + 3,
                  ALLNET_SIGTYPE_NONE, from, nbits,
-                 packet->source, packet->src_nbits, NULL);
+                 packet->source, packet->src_nbits, NULL, NULL);
   char * ackp = ALLNET_DATA_START(hp, hp->transport, alloc_size);
   if (alloc_size - (ackp - result) != MESSAGE_ID_SIZE) {
     printf ("coding error in create_ack!!!! %d %p %p %d %d\n",

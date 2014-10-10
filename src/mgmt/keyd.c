@@ -60,7 +60,7 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   int bytes;
   struct allnet_header * hp =
     create_packet (dlen + amhsize, type, hops, ALLNET_SIGTYPE_NONE,
-                   key->address, 16, address, abits, NULL, &bytes);
+                   key->address, 16, address, abits, NULL, NULL, &bytes);
   char * adp = ALLNET_DATA_START(hp, hp->transport, bytes);
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) adp;
@@ -188,19 +188,20 @@ static void generate_spare_keys (time_t * last_alive)
     /* generate up to 100 keys, then generate more as they are used */
     while (1) {
       time_t finish = start + sleep_time;
-      static char buffer [KEY_GEN_BYTES];
-      char * bp = NULL;
+      if (create_spare_key (-1, NULL, 0) < 100) {
+        static char buffer [KEY_GEN_BYTES];
+        char * bp = NULL;
 #ifdef DEBUG_PRINT_STATUS
-      printf ("gathering %d bytes and waiting %ld\n", KEY_GEN_BYTES, finish);
+        printf ("gathering %d bytes and waiting %ld\n", KEY_GEN_BYTES, finish);
 #endif /* DEBUG_PRINT_STATUS */
-      if (gather_random_and_wait (KEY_GEN_BYTES, buffer, finish))
-        bp = buffer;
-      start = time (NULL);
+        if (gather_random_and_wait (KEY_GEN_BYTES, buffer, finish))
+          bp = buffer;
+        start = time (NULL);
 #ifdef DEBUG_PRINT_STATUS
-      printf ("%ld: %d spare keys\n", start, create_spare_key (-1, NULL, 0));
+        printf ("%ld: %d spare keys\n", start, create_spare_key (-1, NULL, 0));
 #endif /* DEBUG_PRINT_STATUS */
-      if (create_spare_key (-1, NULL, 0) < 100)
         create_spare_key (KEY_GEN_BITS, bp, KEY_GEN_BYTES);
+      }
       sleep_time = (time (NULL) - start) * 100;
       if (sleep_time < (60 * 10))
         sleep_time = (60 * 10);

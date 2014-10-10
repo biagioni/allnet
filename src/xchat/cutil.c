@@ -185,7 +185,7 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
   int psize;
   struct allnet_header * hp =
     create_packet (csize, ALLNET_TYPE_DATA, hops, ALLNET_SIGTYPE_RSA_PKCS1,
-                   src, sbits, dst, dbits, message_ack, &psize);
+                   src, sbits, dst, dbits, NULL, message_ack, &psize);
   int hsize = ALLNET_SIZE (hp->transport);
   int msize = hsize + sendsize;
   if (psize != msize) {

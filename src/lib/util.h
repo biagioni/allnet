@@ -23,29 +23,34 @@ extern void print_packet (const char * buffer, int count, char * desc,
 extern void packet_to_string (const char * buffer, int count, char * desc,
                               int print_eol, char * to, int tsize);
 
-/* buffer must be at least ALLNET_SIZE(transport) bytes long */
-/* returns a pointer to the buffer, but cast to an allnet_header */
-/* returns NULL if any of the parameters are invalid (e.g. message_type) */
-/* if sbits is zero, source may be NULL, and likewise for dbits and dest */
-/* if ack is not NULL it must refer to MESSAGE_ID_SIZE bytes, and */
-/* transport will be set to ALLNET_TRANSPORT_ACK_REQ */
-/* if ack is NULL, transport will be set to 0 */
+/* buffer must be at least ALLNET_SIZE(transport) bytes long
+ * returns a pointer to the buffer, but cast to an allnet_header
+ * returns NULL if any of the parameters are invalid (e.g. message_type)
+ * if sbits is zero, source may be NULL, and likewise for dbits and dest
+ * if stream is not NULL it must refer to STREAM_ID_SIZE bytes, and
+ * transport will include ALLNET_TRANSPORT_STREAM
+ * if ack is not NULL it must refer to MESSAGE_ID_SIZE bytes, and
+ * transport will include ALLNET_TRANSPORT_ACK_REQ
+ * if ack and stream are both NULL, transport will be set to 0
+ *
+ * ALLNET_TRANSPORT_LARGE packets are not supported by this call */
 extern struct allnet_header *
   init_packet (char * packet, int psize,
                int message_type, int max_hops, int sig_algo,
                unsigned char * source, int sbits,
-               unsigned char * dest, int dbits, unsigned char * ack);
+               unsigned char * dest, int dbits,
+               unsigned char * stream, unsigned char * ack);
 
 /* malloc's (must be free'd), initializes, and returns a packet with the
  * given data size.
  * If ack is not NULL, the data size parameter should NOT include the
- * MESSAGE_ID_SIZE bytes of the ack.
+ * MESSAGE_ID_SIZE bytes of the message ID
  * *size is set to the size to send */
 extern struct allnet_header *
   create_packet (int data_size, int message_type, int max_hops, int sig_algo,
                  unsigned char * source, int sbits,
-                 unsigned char * dest, int dbits, unsigned char * ack,
-                 int * size);
+                 unsigned char * dest, int dbits,
+                 unsigned char * stream, unsigned char * ack, int * size);
 
 /* malloc, initialize, and return an ack message for a received packet.
  * The message_ack bytes are taken from the argument, not from the packet.*/

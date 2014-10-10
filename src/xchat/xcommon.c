@@ -30,7 +30,7 @@ static void request_cached_data (int sock, int hops)
   int size;
   struct allnet_header * hp =
     create_packet (0, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
-                   NULL, 0, NULL, 0, NULL, &size);
+                   NULL, 0, NULL, 0, NULL, NULL, &size);
   if (! send_pipe_message_free (sock, (char *) (hp), size,
                                 ALLNET_PRIORITY_LOCAL_LOW))
     printf ("unable to request cached data\n");
@@ -349,7 +349,7 @@ static int send_key (int sock, char * contact, keyset kset, char * secret,
   int size;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_XCHG, max_hops, ALLNET_SIGTYPE_NONE,
-                   address, abits, NULL, 0, NULL, &size);
+                   address, abits, NULL, 0, NULL, NULL, &size);
   char * message = (char *) hp;
 
   char * data = message + ALLNET_SIZE (hp->transport);
@@ -674,7 +674,7 @@ static int send_key_request (int sock, char * phrase,
   int psize = -1;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
-                   addr, *nbits, destination, *nbits, NULL, &psize);
+                   addr, *nbits, destination, *nbits, NULL, NULL, &psize);
   
   if (hp == NULL) {
     printf ("send_key_request: unable to create packet of size %d/%d\n",

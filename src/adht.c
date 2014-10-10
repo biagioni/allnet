@@ -176,7 +176,7 @@ static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
     create_packet (dsize - ALLNET_SIZE (0), ALLNET_TYPE_MGMT, 1,
                    ALLNET_SIGTYPE_NONE,
                    my_address, nbits, my_address, ADDRESS_BITS,
-                   NULL, &msize);
+                   NULL, NULL, &msize);
   if (msize != dsize) {
     printf ("error: created message expected size %d, actual %d\n",
             dsize, msize);
@@ -230,7 +230,7 @@ static void * send_loop (void * a)
     struct allnet_header * hp =
       init_packet (packet, sizeof (packet),
                    ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-                   dest, ADDRESS_BITS, dest, 0, NULL);
+                   dest, ADDRESS_BITS, dest, 0, NULL, NULL);
     int hsize = ALLNET_SIZE_HEADER (hp);
     struct allnet_mgmt_header * mp = 
       (struct allnet_mgmt_header *) (packet + hsize);

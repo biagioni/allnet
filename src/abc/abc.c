@@ -205,7 +205,7 @@ static void send_beacon (int awake_ms)
     (struct allnet_mgmt_beacon *) (buf + ALLNET_MGMT_HEADER_SIZE (0));
 
   init_packet (buf, size, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-               NULL, 0, NULL, 0, NULL);
+               NULL, 0, NULL, 0, NULL, NULL);
 
   mp->mgmt_type = ALLNET_MGMT_BEACON;
   random_bytes ((char *)my_beacon_rnonce, NONCE_SIZE);
@@ -231,7 +231,7 @@ static void make_beacon_reply (char * buffer, int bsize)
                sizeof (struct allnet_mgmt_beacon_reply));
   /* struct allnet_header * hp = */
   init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-               NULL, 0, NULL, 0, NULL);
+               NULL, 0, NULL, 0, NULL, NULL);
 
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
@@ -250,7 +250,7 @@ static void make_beacon_grant (char * buffer, int bsize,
   assert (bsize >= ALLNET_MGMT_HEADER_SIZE (0) +
                sizeof (struct allnet_mgmt_beacon_grant));
   init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-               NULL, 0, NULL, 0, NULL);
+               NULL, 0, NULL, 0, NULL, NULL);
 
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (0));
