@@ -328,7 +328,7 @@ static void dec_main_loop ()
       printf ("voa: pipe closed, exiting\n");
       return;
     }
-    (void) handle_packet ((const char *)message, size)
+    (void) handle_packet ((const char *)message, size);
     free (message);
   }
 }
