@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <dirent.h>
+#include <time.h>
+#include <fcntl.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -69,7 +71,9 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   if (allocated)
     free (data);
   print_buffer (dp, dlen, "key", 10, 1);
+#ifdef DEBUG_PRINT
 printf ("verification is %d\n", verify_bc_key ("testxyzzy@by_sign.that_health", dp, dlen, "en", 16, 0));
+#endif /* DEBUG_PRINT */
 
   /* send with relatively low priority */
   char * message = (char *) hp;
@@ -149,23 +153,62 @@ hp->source [0] & 0xff, hp->src_nbits);
   }
 }
 
+static int gather_random_and_wait (int bsize, char * buffer, time_t until)
+{
+  int fd = open ("/dev/random", O_RDONLY);
+  int count = 0;
+  while ((fd >= 0) && (count < bsize)) {
+    char data [1];
+    ssize_t found = read (fd, data, 1);
+    if (found == 1)
+      buffer [count++] = data [0];
+    else if (found < 0) {
+      close (fd);
+      fd = -1;
+    }
+  }
+  if (fd >= 0)
+    close (fd);
+#ifdef DEBUG_PRINT_STATUS
+printf ("at %ld: generated %d bytes, until %ld\n", time (NULL), count, until);
+#endif /* DEBUG_PRINT_STATUS */
+  while (time (NULL) < until)
+    sleep (10);
+  return ((fd >= 0) && (count == bsize));
+}
+
+#define KEY_GEN_BITS	4096
+#define KEY_GEN_BYTES	(KEY_GEN_BITS / 8)
 static void generate_spare_keys (time_t * last_alive)
 {
   if (setpriority (PRIO_PROCESS, 0, 15) == 0) {
-    while (1) {   /* generate up to 100 keys */
-      time_t start = time (NULL);
-      time_t finish = start + 6; /* if not generating, as if took 6 seconds */
-      if (create_spare_key (-1) < 100) {
-        create_spare_key (4096);
-        if (time (NULL) > finish)
-          finish = time (NULL);
-      }
-/* sleep 100 times longer than it took to generate, always >= 600 seconds */
-printf ("%ld: generate_spare_keys sleeping %ld seconds\n", time (NULL),
-(finish - start) * 100);
-      sleep ((finish - start) * 100);
-      if ((time (NULL) - (*last_alive)) > 100) {
-        snprintf (log_buf, LOG_SIZE, "generate_spare_keys %ld > %ld+100\n",
+  /* sleep 10 min, or 100 * the time to generate a key, whichever is longer */
+    time_t sleep_time = 60 * 10;  /* 10 minutes, in seconds */
+    time_t start = time (NULL);
+    /* generate up to 100 keys, then generate more as they are used */
+    while (1) {
+      time_t finish = start + sleep_time;
+      static char buffer [KEY_GEN_BYTES];
+      char * bp = NULL;
+#ifdef DEBUG_PRINT_STATUS
+      printf ("gathering %d bytes and waiting %ld\n", KEY_GEN_BYTES, finish);
+#endif /* DEBUG_PRINT_STATUS */
+      if (gather_random_and_wait (KEY_GEN_BYTES, buffer, finish))
+        bp = buffer;
+      start = time (NULL);
+#ifdef DEBUG_PRINT_STATUS
+      printf ("%ld: %d spare keys\n", start, create_spare_key (-1, NULL, 0));
+#endif /* DEBUG_PRINT_STATUS */
+      if (create_spare_key (-1, NULL, 0) < 100)
+        create_spare_key (KEY_GEN_BITS, bp, KEY_GEN_BYTES);
+      sleep_time = (time (NULL) - start) * 100;
+      if (sleep_time < (60 * 10))
+        sleep_time = (60 * 10);
+#ifdef DEBUG_PRINT_STATUS
+      printf ("%ld: sleep time %ld\n", time (NULL), sleep_time);
+#endif /* DEBUG_PRINT_STATUS */
+      if ((time (NULL) - (*last_alive)) > 100) {  /* parent process died */
+        snprintf (log_buf, LOG_SIZE, "generate_spare %ld > %ld+100, exiting\n",
                   time (NULL), *last_alive);
         log_print ();
         exit (0);

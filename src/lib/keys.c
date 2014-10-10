@@ -453,7 +453,9 @@ static int count_spare_key_files ()
       result++;
   }
   closedir (dir);
+#ifdef DEBUG_PRINT
   printf ("directory %s has %d spare key files\n", dirname, result);
+#endif /* DEBUG_PRINT */
   free (dirname);
   return result;
 }
@@ -590,7 +592,7 @@ keyset create_contact (char * contact, int keybits, int feedback,
 
   allnet_rsa_prvkey my_key = get_spare_key (keybits);
   if (allnet_rsa_prvkey_is_null (my_key))
-    my_key = allnet_rsa_generate_key (keybits);
+    my_key = allnet_rsa_generate_key (keybits, NULL, 0);
   if (allnet_rsa_prvkey_is_null (my_key)) {
     printf ("unable to generate RSA key\n");
     return -1;
@@ -639,17 +641,19 @@ keyset create_contact (char * contact, int keybits, int feedback,
   return new_contact;
 }
 
-/* create a spare key of the given size, returning the number of spare keys. 
+/* create a spare key of the given size, returning the number of spare keys.
+ * if random is not NULL and rsize >= keybits / 8, uses the bytes from
+ * random to randomize the generated key
  * if keybits < 0, returns the number of spare keys without generating
- * any new key
- * returns 0 in case of error 
- * should normally only be called after calling 
+ * any new key (and ignoring random/rsize)
+ * returns 0 in case of error
+ * should normally only be called after calling
  *    setpriority (PRIO_PROCESS, 0, n), with n >= 15 */
-int create_spare_key (int keybits)
+int create_spare_key (int keybits, char * random, int rsize)
 {
   if (keybits < 0)
     return count_spare_key_files ();
-  allnet_rsa_prvkey spare = allnet_rsa_generate_key (keybits);
+  allnet_rsa_prvkey spare = allnet_rsa_generate_key (keybits, random, rsize);
   if (allnet_rsa_prvkey_is_null (spare)) {
     printf ("unable to generate spare RSA key\n");
     return 0;
@@ -1195,7 +1199,7 @@ verify_bc_key (result, pkey, pklen, "en", 16, 0));
 static char * generate_one_key (int key_bits, char * phrase, char * lang,
                                 int bitstring_bits, int min_bitstrings)
 {
-  allnet_rsa_prvkey key = allnet_rsa_generate_key (key_bits);
+  allnet_rsa_prvkey key = allnet_rsa_generate_key (key_bits, NULL, 0);
   allnet_rsa_pubkey pubkey = allnet_rsa_private_to_public (key);
 
   char * aaddr = make_address (pubkey, key_bits, phrase, lang, bitstring_bits,
@@ -1284,7 +1288,7 @@ void delete_lang_bits (char * ahra)
 /* pubkey and privkey should be free'd when done */
 int get_temporary_key (char ** pubkey, allnet_rsa_prvkey * prvkey)
 {
-  *prvkey = allnet_rsa_generate_key (4096);
+  *prvkey = allnet_rsa_generate_key (4096, NULL, 0);
   if (allnet_rsa_prvkey_is_null (*prvkey))
     return 0;
 

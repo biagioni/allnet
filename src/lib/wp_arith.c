@@ -902,9 +902,9 @@ printf ("%s)\n", wp_itox (nbits, mod));
     uint64_t inner = ((uint64_t) 1) << 63;
     uint64_t word = exp [outer];
     while (inner) {
-      wp_multiply_mod (nbits, temp, res, res, mod);
+      wp_multiply_mod (nbits, temp, res, res, mod);  /* square res % mod */
       if (inner & word)
-        wp_multiply_mod (nbits, res, base, temp, mod);
+        wp_multiply_mod (nbits, res, base, temp, mod); /*   * base % mod */
       else
         wp_copy (nbits, res, temp);
       inner = inner >> 1;

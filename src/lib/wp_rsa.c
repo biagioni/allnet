@@ -129,8 +129,18 @@ static int read_all_or_none (int fd, char * buffer, int bsize)
 }
 
 /* #define PREDICTABLE_RANDOM   used for repeatability when debugging */
-static void init_random (char * buffer, int bsize, int pure_random)
+static void init_random (char * buffer, int bsize, int pure_random,
+                         char * rbuffer, int rsize)
 {
+  if ((rsize > 0) && (rbuffer != NULL)) {   /* note rsize may be < 0 */
+    if (rsize > bsize)  /* only need bsize bytes */
+      rsize = bsize;
+    memcpy (buffer, rbuffer, rsize);
+    if (rsize >= bsize)  /* done */
+      return;
+    bsize -= rsize;  /* still need to generate bsize - rsize bytes */
+    buffer += rsize; /* beginning at buffer + rsize */
+  }
 #ifdef PREDICTABLE_RANDOM
 pure_random = 0;
 #endif /* PREDICTABLE_RANDOM */
@@ -303,7 +313,7 @@ static void rsa_int_to_bytes (int nbits, char * to, uint64_t * from)
 static int composite_test (int nbits, const uint64_t * potential_prime)
 {
   rsa_half a;
-  init_random ((char *) a, nbits / 8, 0);
+  init_random ((char *) a, nbits / 8, 0, NULL, 0);
   /* a should have a value between 2 and potential_prime - 2); */
   rsa_half two;
   wp_init (nbits, two, 2);
@@ -599,7 +609,7 @@ static int mod_is_zero (int nbits, uint64_t * a, int nhalf, uint64_t * b)
 #endif /* WP_RSA_MAX_KEY_BITS < 32 */
 
 int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
-                                int security_level)
+                                int security_level, char * random, int rsize)
 {
   if ((nbits > WP_RSA_MAX_KEY_BITS) || (! is_power_two (nbits))) {
     printf ("number of bits %d/0x%x should be a power of two <= %d\n",
@@ -617,10 +627,11 @@ int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
    * the primes, since generating the primes may use more random bits, but
    * the true randomness of those values is not as essential as the
    * randomness of p and q */
+  int half_bytes = (nbits / 2) / 8;
   rsa_half p_candidate;
   rsa_half q_candidate;
-  init_random ((char *) p_candidate, (nbits / 2) / 8, 1);
-  init_random ((char *) q_candidate, (nbits / 2) / 8, 1);
+  init_random ((char *) p_candidate, half_bytes, 1, random, rsize);
+  init_random ((char *) q_candidate, half_bytes, 1, random, rsize - half_bytes);
   rsa_int pfull, qfull;
   int do_over;
   int nhalf = nbits / 2;
@@ -739,9 +750,10 @@ int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
  * returns 1 if successful, and if so, fills in key
  * returns 0 if the number of bits > WP_RSA_MAX_KEY_BITS */
 int wp_rsa_generate_key_pair (int nbits, wp_rsa_key_pair * key,
-                              int security_level)
+                              int security_level, char * random, int rsize)
 {
-  return wp_rsa_generate_key_pair_e (nbits, key, E_VALUE, security_level);
+  return wp_rsa_generate_key_pair_e (nbits, key, E_VALUE, security_level,
+                                     random, rsize);
 }
 
 /* offset 0 refers to the most significant byte */
@@ -886,7 +898,7 @@ static int rsa_pad (int nbits, uint64_t * result, int rsize,
     rb [data_index - 1] = 1;
     memcpy (rb + data_index, data, dsize);
     char * seed = rb + 1;   /* the seed goes in the 2nd to 11th byte of rb */
-    init_random (seed, SHA1_SIZE, 0);
+    init_random (seed, SHA1_SIZE, 0, NULL, 0);
 /*
 printf ("padding seed is %02x%02x%02x%02x%02x %02x%02x%02x%02x%02x\n",
 seed [0] & 0xff, seed [1] & 0xff, seed [2] & 0xff, seed [3] & 0xff,
@@ -1700,7 +1712,7 @@ void run_rsa_test ()
   printf ("generating %d-bit key\n", WP_RSA_MAX_KEY_BITS);
   struct timeval start;
   gettimeofday (&start, NULL);
-  int count = wp_rsa_generate_key_pair (WP_RSA_MAX_KEY_BITS, &k, 5);
+  int count = wp_rsa_generate_key_pair (WP_RSA_MAX_KEY_BITS, &k, 5, NULL, 0);
   printf ("generated %d-bit key in %" PRId64 "us\n", k.nbits,
           time_usec_since (&start));
   if (count != 1)

@@ -440,13 +440,20 @@ static void no_feedback (int type, int count, void * arg)
 {
 }
 #endif /* HAVE_OPENSSL */
-allnet_rsa_prvkey allnet_rsa_generate_key (int bits)
+/* may be slow
+ * if random is not NULL, uses rsize bytes from random
+ * to help randomize the key -- this may make it faster */
+allnet_rsa_prvkey allnet_rsa_generate_key (int bits,
+                                           char * random, int rsize)
 {
 #ifdef HAVE_OPENSSL
+  if (random != NULL)
+    RAND_seed (random, rsize);
   return RSA_generate_key (bits, RSA_E65537_VALUE, no_feedback, NULL);
 #else /* HAVE_OPENSSL */
   allnet_rsa_prvkey result;
-  if (wp_rsa_generate_key_pair_e (bits, &result, RSA_E65537_VALUE, 1))
+  if (wp_rsa_generate_key_pair_e (bits, &result, RSA_E65537_VALUE,
+                                  1, random, rsize))
     return result;
   allnet_rsa_null_prvkey (&result);
   return result;

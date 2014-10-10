@@ -36,12 +36,14 @@ extern keyset create_contact (char * contact, int keybits, int feedback,
                               unsigned char * remote, int rem_nbits);
 
 /* create a spare key of the given size, returning the number of spare keys.
+ * if random is not NULL and rsize >= keybits / 8, uses the bytes from
+ * random to randomize the generated key
  * if keybits < 0, returns the number of spare keys without generating
- * any new key
+ * any new key (and ignoring random/rsize)
  * returns 0 in case of error
  * should normally only be called after calling
  *    setpriority (PRIO_PROCESS, 0, n), with n >= 15 */
-extern int create_spare_key (int keybits);
+extern int create_spare_key (int keybits, char * random, int rsize);
 
 /*************** operations on keysets and keys ********************/
 
