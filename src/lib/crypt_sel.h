@@ -93,8 +93,11 @@ extern int allnet_rsa_verify (allnet_rsa_pubkey rsa,
                               const char * hash, int hsize,
                               const char * sig, int ssize);
 
-/* may be slow */
-extern allnet_rsa_prvkey allnet_rsa_generate_key (int bits);
+/* may be slow
+ * if random is not NULL and rsize >= bits / 8, uses bytes from random
+ * to randomize the key -- this may make it faster */
+extern allnet_rsa_prvkey allnet_rsa_generate_key (int bits,
+                                                  char * random, int rsize);
 
 /* =======================  AES section  ========================= */
 

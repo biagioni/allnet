@@ -59,12 +59,15 @@ extern int wp_rsa_write_key_to_file (const char * fname,
  * nbits should be a power of two <= RSA_MAX_KEY_BITS
  * the security level is the number of primality tests to run
  * on candidate primes -- 1 is fine for normal usage
+ * if random is not NULL and rsize > 0, up to rsize bytes from random are
+ * used in generating the key (rsize == nbits / 8 is sufficient)
  * returns 1 if successful, and if so, fills in key
  * returns 0 if the number of bits > RSA_MAX_KEY_BITS */
 extern int wp_rsa_generate_key_pair (int nbits, wp_rsa_key_pair * key,
-                                     int security);
+                                     int security, char * random, int rsize);
 extern int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key,
-                                       long int e, int security);
+                                       long int e, int security_level,
+                                       char * random, int rsize);
 
 #define WP_RSA_PADDING_NONE		0 /* repeatable, but not secure */
 #define WP_RSA_PADDING_VANILLA		1 /* repeatable, but not secure */
