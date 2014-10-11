@@ -62,6 +62,7 @@ typedef struct _EncoderData {
 
 typedef struct _VOAData {
   GstElement * pipeline;
+  GstBus * bus;
   int is_encoder;
   int allnet_socket;
   unsigned char stream_id [STREAM_ID_SIZE];
@@ -341,7 +342,6 @@ static void dec_main_loop ()
 
 static int init_audio (int is_encoder)
 {
-  GstBus * bus;
   GstMessage * msg;
   GstStateChangeReturn ret;
 
@@ -355,7 +355,7 @@ static int init_audio (int is_encoder)
   data.pipeline = gst_pipeline_new ("pipeline");
   if (!data.pipeline) {
     fprintf (stderr, "Couldn't create pipeline.\n");
-    return -1;
+    return 0;
   }
 
   /* Create the elements */
@@ -378,7 +378,7 @@ static int init_audio (int is_encoder)
 #endif /* RTP */
         !data.enc.voa_sink) {
       fprintf (stderr, "Not all elements could be created.\n");
-      return -1;
+      return 0;
     }
 
     GstCaps * rawcaps = gst_caps_from_string ("audio/x-raw,clockrate=(int)48000,channels=(int)1");
@@ -410,7 +410,7 @@ static int init_audio (int is_encoder)
             data.enc.voa_sink, NULL)) {
       fprintf (stderr, "Elements could not be linked.\n");
       gst_object_unref (data.pipeline);
-      return -1;
+      return 0;
     }
 
   } else {
@@ -432,7 +432,7 @@ static int init_audio (int is_encoder)
 #endif /* RTP */
         !data.dec.decoder || !data.dec.sink) {
       fprintf (stderr, "Not all elements could be created.\n");
-      return -1;
+      return 0;
     }
     /* Configure decoder source */
     g_object_set (data.dec.voa_source,
@@ -461,35 +461,33 @@ static int init_audio (int is_encoder)
             data.dec.decoder, data.dec.sink, NULL)) {
       fprintf (stderr, "Elements could not be linked.\n");
       gst_object_unref (data.pipeline);
-      return -1;
+      return 0;
     }
   }
   gst_caps_unref (appcaps);
 
   /* Wait until error or EOS */
-  bus = gst_element_get_bus (data.pipeline);
-  g_signal_connect (bus, "message", G_CALLBACK (cb_message), &data);
+  data.bus = gst_element_get_bus (data.pipeline);
+  g_signal_connect (data.bus, "message", G_CALLBACK (cb_message), &data);
 
   /* Start playing the pipeline */
   ret = gst_element_set_state (data.pipeline, GST_STATE_PAUSED);
   if (ret == GST_STATE_CHANGE_FAILURE) {
     fprintf (stderr, "Unable to change pipeline state.\n");
     gst_object_unref (data.pipeline);
-    return -1;
+    return 0;
   }
 
-  if (is_encoder) {
+  if (is_encoder)
     gst_element_set_state (data.pipeline, GST_STATE_PLAYING);
-    enc_main_loop ();
-  } else {
-    dec_main_loop ();
-  }
+  return 1;
+}
 
+static void cleanup_audio () {
   /* Free resources */
-  gst_object_unref (bus);
+  gst_object_unref (data.bus);
   gst_element_set_state (data.pipeline, GST_STATE_NULL);
   gst_object_unref (data.pipeline);
-  return 0;
 }
 
 int allnet_global_debugging = 0;
@@ -523,7 +521,15 @@ int main (int argc, char ** argv)
 
   int is_encoder = (strcmp (argv [0], "./voas") == 0);
   printf ("is_encoder: %d\n", is_encoder);
-  init_audio (is_encoder);
+  if (!init_audio (is_encoder))
+    return 1;
+
+  if (is_encoder)
+    enc_main_loop ();
+  else
+    dec_main_loop ();
+
+  cleanup_audio ();
   return 0;
 }
 
