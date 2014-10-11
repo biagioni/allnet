@@ -62,6 +62,7 @@ typedef struct _VOAData {
   GstElement * pipeline;
   int is_encoder;
   int allnet_socket;
+  unsigned char stream_id [STREAM_ID_SIZE];
   union {
     EncoderData enc;
     DecoderData dec;
@@ -201,11 +202,14 @@ static int handle_packet (const char * message, int msize) {
   return dec_handle_data (buf, bufsize);
 }
 
-static struct allnet_header * create_voa_packet (const unsigned char * buf, int bufsize, int * paksize) {
+static struct allnet_header * create_voa_packet (
+              const unsigned char * buf, int bufsize,
+              const unsigned char * stream_id, int * paksize)
+{
   unsigned int headersizes = sizeof (struct allnet_app_media_header) + sizeof (struct allnet_voa_header);
   struct allnet_header * pak = create_packet (bufsize + headersizes,
-         ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_NONE /*ALLNET_SIGTYPE_RSA_PKCS1/*sig algo*/,
-         NULL/*src addr*/, 0 /*src bits*/, NULL, 0 /*dst*/, NULL /*ack*/, paksize);
+         ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_HMAC_SHA512,
+         NULL/*src addr*/, 0 /*src bits*/, NULL, 0 /*dst*/, stream_id, NULL /*ack*/, paksize);
   pak->transport = ALLNET_TRANSPORT_STREAM | ALLNET_TRANSPORT_DO_NOT_CACHE;
 
   /* allnet media headers */
@@ -301,9 +305,7 @@ static void enc_main_loop () {
       if (!gst_buffer_map (buffer, &info, GST_MAP_READ))
         printf ("error mapping buffer\n");
       int pak_size;
-      struct allnet_header * pak = create_voa_packet (info.data, info.size, &pak_size);
-      // char * sid = new_msg_id ();
-      // pak->stream_id = sid;
+      struct allnet_header * pak = create_voa_packet (info.data, info.size, data.stream_id, &pak_size);
       if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT_HIGH))
         fprintf (stderr, "error sending\n");
       printf ("size: %d (%lu)\n", pak_size, info.size);
@@ -355,6 +357,7 @@ static int init_audio (int is_encoder)
 
   /* Create the elements */
   if (is_encoder) {
+    random_bytes ((char *)data.stream_id, STREAM_ID_SIZE);
     data.enc.source = gst_element_factory_make ("audiotestsrc", "source");
     //data.enc.source = gst_element_factory_make ("autoaudiosrc", "source");
     data.enc.convert = gst_element_factory_make ("audioconvert", "convert");
