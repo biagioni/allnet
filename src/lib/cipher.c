@@ -234,7 +234,7 @@ int allnet_decrypt (const char * cipher, int csize,
 }
 
 /* returns 1 if it verifies, 0 otherwise */
-int allnet_verify (char * text, int tsize, char * sig, int ssize,
+int allnet_verify (const char * text, int tsize, const char * sig, int ssize,
                    allnet_rsa_pubkey key)
 {
 

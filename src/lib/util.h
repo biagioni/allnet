@@ -37,9 +37,9 @@ extern void packet_to_string (const char * buffer, int count, char * desc,
 extern struct allnet_header *
   init_packet (char * packet, int psize,
                int message_type, int max_hops, int sig_algo,
-               unsigned char * source, int sbits,
-               unsigned char * dest, int dbits,
-               unsigned char * stream, unsigned char * ack);
+               const unsigned char * source, int sbits,
+               const unsigned char * dest, int dbits,
+               const unsigned char * stream, const unsigned char * ack);
 
 /* malloc's (must be free'd), initializes, and returns a packet with the
  * given data size.
@@ -48,9 +48,10 @@ extern struct allnet_header *
  * *size is set to the size to send */
 extern struct allnet_header *
   create_packet (int data_size, int message_type, int max_hops, int sig_algo,
-                 unsigned char * source, int sbits,
-                 unsigned char * dest, int dbits,
-                 unsigned char * stream, unsigned char * ack, int * size);
+                 const unsigned char * source, int sbits,
+                 const unsigned char * dest, int dbits,
+                 const unsigned char * stream, const unsigned char * ack,
+                 int * size);
 
 /* malloc, initialize, and return an ack message for a received packet.
  * The message_ack bytes are taken from the argument, not from the packet.*/
