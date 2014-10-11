@@ -179,7 +179,7 @@ static int handle_packet (const char * message, int msize) {
   const struct allnet_header * hp = (const struct allnet_header *) message;
   // TODO: check why this is wrong: int hsize = ALLNET_SIZE (hp->transport);
   // printf ("hsize: %d, header: %d\n", hsize, sizeof (struct allnet_header)); /* 40 vs 24 */
-  int hsize = sizeof (struct allnet_header);
+  int hsize = ALLNET_SIZE_HEADER (hp);
   int amhsize = sizeof (struct allnet_app_media_header);
   int voahsize = sizeof (struct allnet_voa_header);
   if (msize <= headersizes)
