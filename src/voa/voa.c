@@ -46,6 +46,7 @@ typedef struct _DecoderData {
 #endif /* RTP */
   GstElement * decoder;
   GstElement * sink; /* playback device */
+  int stream_id_set;
 } DecoderData;
 
 typedef struct _EncoderData {
@@ -173,6 +174,10 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   if (hp->message_type != ALLNET_TYPE_DATA)
     return 0;
+  if (data.stream_id_set && !memcmp (data.stream_id, hp->stream_id, STREAM_ID_SIZE)) {
+    printf ("discarding packet from unknown stream\n");
+    return 0;
+  }
 
   const char * payload = ((const char *)hp) + headersizes;
   check_signature (hp, payload, &msize);
@@ -402,6 +407,8 @@ static int init_audio (int is_encoder)
 
   } else {
     /* decoder */
+    bzero (data.stream_id, STREAM_ID_SIZE);
+    data.dec.stream_id_set = 0;
     data.dec.voa_source = gst_element_factory_make ("appsrc", "voa_source");
 #ifdef RTP
     data.dec.jitterbuffer = gst_element_factory_make ("rtpjitterbuffer", "jitterbuffer");
