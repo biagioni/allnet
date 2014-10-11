@@ -46,7 +46,6 @@ typedef struct _DecoderData {
 #endif /* RTP */
   GstElement * decoder;
   GstElement * sink; /* playback device */
-  int sourceid;
 } DecoderData;
 
 typedef struct _EncoderData {
@@ -404,7 +403,6 @@ static int init_audio (int is_encoder)
 
   } else {
     /* decoder */
-    data.dec.sourceid = 0;
     data.dec.voa_source = gst_element_factory_make ("appsrc", "voa_source");
 #ifdef RTP
     data.dec.jitterbuffer = gst_element_factory_make ("rtpjitterbuffer", "jitterbuffer");
