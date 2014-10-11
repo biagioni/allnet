@@ -497,6 +497,10 @@ static void cleanup_audio () {
 int allnet_global_debugging = 0;
 int main (int argc, char ** argv)
 {
+  if (argc == 2 && strcmp (argv [1], "-h") == 0) {
+    printf ("usage: %s [dest-addr [dest-bits]]\n", argv [0]);
+    return 0;
+  }
   int socket = connect_to_local (argv [0], argv [0]);
   if (socket < 0)
     return 1;
