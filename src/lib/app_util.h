@@ -3,10 +3,12 @@
 #ifndef ALLNET_APP_UTIL_H
 #define ALLNET_APP_UTIL_H
 
-/* returns the socket, or -1 in case of failure */
-/* arg0 is the first argument that main gets -- useful for finding binaries */
-/* the application MUST receive messages, even if it ignores them all.
- * otherwise, after a while (once the buffer is full) allnet
+/* returns a TCP socket used to send messages to the allnet daemon
+ * (specifically, alocal) or receive messages from alocal
+ * returns -1 in case of failure */
+ * arg0 is the first argument that main gets -- useful for finding binaries
+ * the application MUST receive messages, even if it ignores them all.
+ * otherwise, after a while (once the buffer is full) allnet/alocal
  * will close the socket. */
 extern int connect_to_local (char * program_name, char * arg0);
 
