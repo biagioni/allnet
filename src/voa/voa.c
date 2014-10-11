@@ -158,18 +158,17 @@ static int handle_packet (const char * message, int msize) {
     printf ("%02x ", *((const unsigned char *)message+i));
   printf ("\n\n");
 */
-  int headersizes = sizeof (struct allnet_header) +
-                    sizeof (struct allnet_app_media_header) +
-                    sizeof (struct allnet_voa_header);
+  int hsize = ALLNET_SIZE_HEADER (hp);
+  int amhsize = sizeof (struct allnet_app_media_header);
+  int voahsize = sizeof (struct allnet_voa_header);
+  int headersizes = hsize + amhsize + voahsize;
   printf ("got message of size %d (%d data)\n", msize, msize - headersizes);
   if (! is_valid_message (message, msize)) {
     printf ("got invalid message of size %d\n", msize);
     return 0;
   }
   const struct allnet_header * hp = (const struct allnet_header *) message;
-  int hsize = ALLNET_SIZE_HEADER (hp);
-  int amhsize = sizeof (struct allnet_app_media_header);
-  int voahsize = sizeof (struct allnet_voa_header);
+
   if (msize <= headersizes)
     return 0;
   if (hp->message_type != ALLNET_TYPE_DATA)
