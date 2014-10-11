@@ -243,7 +243,6 @@ static struct allnet_header * create_voa_packet (
 }
 
 static void cb_message (GstBus * bus, GstMessage * msg, VOAData * data) {
-
   switch (GST_MESSAGE_TYPE (msg)) {
     case GST_MESSAGE_ERROR: {
       GError * err;
