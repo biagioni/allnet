@@ -65,6 +65,10 @@ typedef struct _VOAData {
   GstBus * bus;
   int is_encoder;
   int allnet_socket;
+  char my_address [ADDRESS_SIZE];
+  char dest_address [ADDRESS_SIZE];
+  int my_addr_bits;
+  int dest_addr_bits;
   unsigned char stream_id [STREAM_ID_SIZE];
   union {
     EncoderData enc;
@@ -176,7 +180,7 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   if (hp->message_type != ALLNET_TYPE_DATA)
     return 0;
-  if (memcmp (hp->destination, my_address, hp->dst_nbits) != 0)
+  if (memcmp (hp->destination, data.my_address, hp->dst_nbits) != 0)
     return 0;
   if (data.dec.stream_id_set) {
     if (memcmp (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE) != 0) {
@@ -498,25 +502,32 @@ int main (int argc, char ** argv)
     return 1;
   data.allnet_socket = socket;
 
-  char my_address [ADDRESS_SIZE];
-  char dest_address [ADDRESS_SIZE];
-  int my_addr_bits = ADDRESS_BITS;
-  int dest_addr_bits = 0;
-  bzero (my_address, sizeof (my_address));  /* set any unused part to all zeros */
-  bzero (dest_address, sizeof (dest_address));
-  int nbytes = (my_addr_bits >> 3) + 1;
-  random_bytes (my_address, nbytes);
-  if (my_addr_bits % 8)
-    my_address[nbytes-1] &=
-      ((char)0x80) >> ((my_addr_bits % 8) - 1); /* signed shift */
+  data.my_addr_bits = ADDRESS_BITS;
+  data.dest_addr_bits = 0;
+  bzero (data.my_address, ADDRESS_SIZE);  /* set any unused part to all zeros */
+  bzero (data.dest_address, ADDRESS_SIZE);
+  int nbytes = (data.my_addr_bits >> 3) + 1;
+  random_bytes (data.my_address, nbytes);
+  if (data.my_addr_bits % 8)
+    data.my_address [nbytes-1] &=
+      ((char)0x80) >> ((data.my_addr_bits % 8) - 1); /* signed shift */
   else
-    my_address[nbytes-1] = 0;
+    data.my_address [nbytes-1] = 0;
 
   if (argc > 1) {
-    dest_addr_bits = argc > 2 ? atoi (argv[2]) : strnlen (argv[1], ADDRESS_SIZE);
-    if (dest_addr_bits > ADDRESS_BITS)
-      dest_addr_bits = ADDRESS_BITS;
-    memcpy (dest_address, argv[1], dest_addr_bits);
+    nbytes = strnlen (argv [1], ADDRESS_SIZE);
+    data.dest_addr_bits = 8 * nbytes;
+    memcpy (data.dest_address, argv [1], nbytes);
+    if (argc > 2) {
+      int b = atoi (argv [2]);
+      data.dest_addr_bits = b > ADDRESS_BITS ? ADDRESS_BITS : b;
+      nbytes = (data.dest_addr_bits >> 3) + 1;
+      if (data.my_addr_bits % 8)
+        data.dest_address [nbytes-1] &=
+          ((char)0x80) >> ((data.my_addr_bits % 8) - 1); /* signed shift */
+      else
+        data.dest_address [nbytes-1] = 0;
+    }
   }
 
   int is_encoder = (strcmp (argv [0], "./voas") == 0);
