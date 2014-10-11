@@ -482,6 +482,8 @@ struct allnet_header *
   if ((dbits > 0) && (dest != NULL))
     memcpy (hp->destination, dest, (dbits + 7) / 8);
   hp->transport = transport;
+  if (stream != NULL)
+    memcpy (ALLNET_STREAM_ID (hp, hp->transport, psize), stream, STREAM_ID_SIZE);
   if (ack != NULL) {
     sha512_bytes ((char *) ack, MESSAGE_ID_SIZE,
                   ALLNET_MESSAGE_ID(hp, hp->transport, psize), MESSAGE_ID_SIZE);
