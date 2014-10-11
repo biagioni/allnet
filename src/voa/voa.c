@@ -317,9 +317,8 @@ static void dec_main_loop ()
     int pipe;
     int priority;
     char * message;
-    int size = receive_pipe_message_fd (PIPE_MESSAGE_WAIT_FOREVER, &message,
-                                        data.allnet_socket, NULL, NULL, &pipe,
-                                        &priority);
+    int size = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
+                                        &pipe, &priority);
     if (size <= 0) {
       printf ("voa: pipe closed, exiting\n");
       return;
