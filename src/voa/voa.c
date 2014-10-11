@@ -28,6 +28,8 @@
 #include <string.h>       /* memcpy */
 
 #include "lib/app_util.h" /* connect_to_local */
+#include "lib/cipher.h"   /* allnet_verify */
+#include "lib/keys.h"     /* struct bc_key_info, get_other_keys */
 #include "lib/media.h"    /* ALLNET_MEDIA_AUDIO_OPUS */
 #include "lib/packet.h"
 #include "lib/pipemsg.h"  /* send_pipe_message */
@@ -106,6 +108,40 @@ static int dec_handle_data (const char * buf, int bufsize) {
   return 1;
 }
 
+static int check_signature (const struct allnet_header * hp, const char * payload, int * msize) {
+  int psize = *msize - (payload - ((const char *)hp));
+  int vsize = 0; // TODO: size of block to verify
+  int ssize = 0;
+  const char * sig = NULL;
+  #define SIG_LENGHT_SIZE 2
+  if ((psize > SIG_LENGHT_SIZE) && (hp->sig_algo == ALLNET_SIGTYPE_RSA_PKCS1)) {
+/* RSA_PKCS1 is the only type of signature supported for now */
+    ssize = readb16 (payload + (psize - SIG_LENGHT_SIZE));
+    if (ssize + SIG_LENGHT_SIZE < psize) {
+      sig = payload + (psize - (ssize + SIG_LENGHT_SIZE));
+      *msize -= ssize + SIG_LENGHT_SIZE;
+      vsize -= ssize + SIG_LENGHT_SIZE;
+    }
+  }
+
+  if (sig == NULL)  /* ignore */
+    return 0;
+
+  const char * from = NULL;
+  struct bc_key_info * keys;
+  int nkeys = get_other_keys (&keys);
+  if ((nkeys > 0) && (ssize > 0) && (sig != NULL)) {
+    int i;
+    for (i = 0; i < nkeys; i++) {
+      if (allnet_verify (payload, vsize, sig, ssize, keys [i].pub_key)) {
+        from = keys [i].identifier;
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+
 static int handle_packet (const char * message, int msize) {
   /* TODO: Temporary hack to grab local packets */
   int local = 0;
@@ -115,6 +151,7 @@ static int handle_packet (const char * message, int msize) {
     msize -= 16;
     local = 1;
   }
+
 /* TODO: remove DEBUG: print packets
   printf ("-\n");
   int i=0;
@@ -149,39 +186,9 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   if (hp->message_type != ALLNET_TYPE_DATA)
     return 0;
-//   int vsize = msize - hsize;
-//   const char * payload = message + hsize + voahsize;
-//   int psize = vsize - h2size;
-// 
-//   int ssize = 0;
-//   const char * sig = NULL;
-//   if ((psize > 2) && (hp->sig_algo == ALLNET_SIGTYPE_RSA_PKCS1)) {
-// /* RSA_PKCS1 is the only type of signature supported for now */
-//     ssize = readb16 (payload + (psize - 2));
-//     if (ssize + 2 < psize) {
-//       sig = payload + (psize - (ssize + 2));
-//       psize -= ssize + 2;
-//       vsize -= ssize + 2;
-//     }
-//   }
-//   if (sig == NULL)  /* ignore */
-//     return 0;
-//   char * from = "unknown sender";
-//   struct bc_key_info * keys;
-//   int nkeys = get_other_keys (&keys);
-//   if ((nkeys > 0) && (ssize > 0) && (sig != NULL)) {
-//     int i;
-//     for (i = 0; i < nkeys; i++) {
-//       if (allnet_verify (verif, vsize, sig, ssize, keys [i].pub_key))
-//         from = keys [i].identifier;
-//     }
-//   }
-//   if (strcmp (from, "unknown sender") == 0)
-//     printf ("got %d other keys, none matched %d %p\n", nkeys, ssize, sig);
-// 
-//   *sig = '\0';  /* null-terminate the string */
-//   printf ("from %s: %s\n", from, payload);
 
+  const char * payload = ((const char *)hp) + headersizes;
+  check_signature (hp, payload, &msize);
   const struct allnet_app_media_header * amhp =
     (const struct allnet_app_media_header *) ((const char *)message + hsize);
   if (readb32u ((const unsigned char *)(&amhp->app)) != ALLNET_MEDIA_APP_VOA)
