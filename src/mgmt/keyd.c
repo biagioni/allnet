@@ -153,6 +153,9 @@ hp->source [0] & 0xff, hp->src_nbits);
   }
 }
 
+/* used for debugging the generation of spare keys */
+/* #define DEBUG_PRINT_SPARES */
+
 static int gather_random_and_wait (int bsize, char * buffer, time_t until)
 {
   int fd = open ("/dev/random", O_RDONLY);
@@ -169,9 +172,9 @@ static int gather_random_and_wait (int bsize, char * buffer, time_t until)
   }
   if (fd >= 0)
     close (fd);
-#ifdef DEBUG_PRINT_STATUS
+#ifdef DEBUG_PRINT_SPARES
 printf ("at %ld: generated %d bytes, until %ld\n", time (NULL), count, until);
-#endif /* DEBUG_PRINT_STATUS */
+#endif /* DEBUG_PRINT_SPARES */
   while (time (NULL) < until)
     sleep (10);
   return ((fd >= 0) && (count == bsize));
@@ -191,23 +194,23 @@ static void generate_spare_keys (time_t * last_alive)
       if (create_spare_key (-1, NULL, 0) < 100) {
         static char buffer [KEY_GEN_BYTES];
         char * bp = NULL;
-#ifdef DEBUG_PRINT_STATUS
+#ifdef DEBUG_PRINT_SPARES
         printf ("gathering %d bytes and waiting %ld\n", KEY_GEN_BYTES, finish);
-#endif /* DEBUG_PRINT_STATUS */
+#endif /* DEBUG_PRINT_SPARES */
         if (gather_random_and_wait (KEY_GEN_BYTES, buffer, finish))
           bp = buffer;
         start = time (NULL);
-#ifdef DEBUG_PRINT_STATUS
+#ifdef DEBUG_PRINT_SPARES
         printf ("%ld: %d spare keys\n", start, create_spare_key (-1, NULL, 0));
-#endif /* DEBUG_PRINT_STATUS */
+#endif /* DEBUG_PRINT_SPARES */
         create_spare_key (KEY_GEN_BITS, bp, KEY_GEN_BYTES);
       }
       sleep_time = (time (NULL) - start) * 100;
       if (sleep_time < (60 * 10))
         sleep_time = (60 * 10);
-#ifdef DEBUG_PRINT_STATUS
+#ifdef DEBUG_PRINT_SPARES
       printf ("%ld: sleep time %ld\n", time (NULL), sleep_time);
-#endif /* DEBUG_PRINT_STATUS */
+#endif /* DEBUG_PRINT_SPARES */
       if ((time (NULL) - (*last_alive)) > 100) {  /* parent process died */
         snprintf (log_buf, LOG_SIZE, "generate_spare %ld > %ld+100, exiting\n",
                   time (NULL), *last_alive);
