@@ -13,6 +13,7 @@
 #include <openssl/err.h>
 #include <openssl/bio.h>
 #include <openssl/pem.h>
+#include <openssl/rand.h>
 
 typedef RSA *           allnet_rsa_pubkey;
 typedef RSA *           allnet_rsa_prvkey;
