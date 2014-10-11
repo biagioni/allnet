@@ -5,7 +5,7 @@
 
 /* returns a TCP socket used to send messages to the allnet daemon
  * (specifically, alocal) or receive messages from alocal
- * returns -1 in case of failure */
+ * returns -1 in case of failure
  * arg0 is the first argument that main gets -- useful for finding binaries
  * the application MUST receive messages, even if it ignores them all.
  * otherwise, after a while (once the buffer is full) allnet/alocal
