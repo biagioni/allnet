@@ -275,7 +275,7 @@ int allnet_verify (char * text, int tsize, char * sig, int ssize,
 #undef DEBUG_PRINT
 
 /* returns the size of the signature and mallocs the signature into result */
-int allnet_sign (char * text, int tsize, allnet_rsa_prvkey key, char ** result)
+int allnet_sign (const char * text, int tsize, allnet_rsa_prvkey key, char ** result)
 {
   int rsa_size = allnet_rsa_prvkey_size (key);
   if (rsa_size <= 0) {
