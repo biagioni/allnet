@@ -204,7 +204,7 @@ static struct allnet_header * create_voa_packet (
   struct allnet_header * pak = create_packet (bufsize + headersizes,
          ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_HMAC_SHA512,
          NULL/*src addr*/, 0 /*src bits*/, NULL, 0 /*dst*/, stream_id, NULL /*ack*/, paksize);
-  pak->transport = ALLNET_TRANSPORT_STREAM | ALLNET_TRANSPORT_DO_NOT_CACHE;
+  pak->transport |= ALLNET_TRANSPORT_DO_NOT_CACHE;
 
   /* allnet media headers */
   struct allnet_app_media_header * amhp =
