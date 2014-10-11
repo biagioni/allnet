@@ -175,9 +175,15 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   if (hp->message_type != ALLNET_TYPE_DATA)
     return 0;
-  if (data.stream_id_set && !memcmp (data.stream_id, hp->stream_id, STREAM_ID_SIZE)) {
-    printf ("discarding packet from unknown stream\n");
-    return 0;
+  if (data.dec.stream_id_set) {
+    if (memcmp (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE) != 0) {
+      printf ("discarding packet from unknown stream\n");
+      return 0;
+    }
+
+  } else {
+    data.dec.stream_id_set = 1;
+    memcpy (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE);
   }
 
   const char * payload = ((const char *)hp) + headersizes;
