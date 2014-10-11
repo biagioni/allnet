@@ -144,19 +144,20 @@ static int check_signature (const struct allnet_header * hp, const char * payloa
 
 static int handle_packet (const char * message, int msize) {
 /* TODO: remove DEBUG: print packets
+  const struct allnet_header * pak = (const struct allnet_header *)message;
   printf ("-\n");
   int i=0;
-  for (; i < sizeof(struct allnet_header); ++i)
-    printf ("%02x ", *((const unsigned char *)message+i));
+  for (; i < ALLNET_SIZE_HEADER(pak); ++i)
+    printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
-  for (; i-sizeof (struct allnet_header) < sizeof(struct allnet_app_media_header); ++i)
-    printf ("%02x ", *((const unsigned char *)message+i));
+  for (; i-ALLNET_SIZE_HEADER(pak) < sizeof(struct allnet_app_media_header); ++i)
+    printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
-  for (; i-sizeof (struct allnet_header)-sizeof (struct allnet_app_media_header) < sizeof(struct allnet_voa_header); ++i)
-    printf ("%02x ", *((const unsigned char *)message+i));
+  for (; i-ALLNET_SIZE_HEADER(pak)-sizeof (struct allnet_app_media_header) < sizeof(struct allnet_voa_header); ++i)
+    printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
   for (; i < msize; ++i)
-    printf ("%02x ", *((const unsigned char *)message+i));
+    printf ("%02x ", *((const unsigned char *)pak+i));
   printf ("\n\n");
 */
   int hsize = ALLNET_SIZE_HEADER (hp);
@@ -226,13 +227,13 @@ static struct allnet_header * create_voa_packet (
 /* TODO: remove DEBUG: print packets
   printf ("-\n");
   int i=0;
-  for (; i < sizeof(struct allnet_header); ++i)
+  for (; i < ALLNET_SIZE_HEADER(pak); ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
-  for (; i-sizeof (struct allnet_header) < sizeof(struct allnet_app_media_header); ++i)
+  for (; i-ALLNET_SIZE_HEADER(pak) < sizeof(struct allnet_app_media_header); ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
-  for (; i-sizeof (struct allnet_header)-sizeof (struct allnet_app_media_header) < sizeof(struct allnet_voa_header); ++i)
+  for (; i-ALLNET_SIZE_HEADER(pak)-sizeof (struct allnet_app_media_header) < sizeof(struct allnet_voa_header); ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
   for (; i < *paksize; ++i)
