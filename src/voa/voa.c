@@ -257,7 +257,7 @@ static void cb_message (GstBus * bus, GstMessage * msg, VOAData * data) {
       g_free (debug);
 
       gst_element_set_state (data->pipeline, GST_STATE_READY);
-      term = 1;
+      term = -1;
       break;
     }
     case GST_MESSAGE_EOS:
@@ -304,9 +304,14 @@ static void enc_main_loop () {
         printf ("error mapping buffer\n");
       int pak_size;
       struct allnet_header * pak = create_voa_packet (info.data, info.size, data.stream_id, &pak_size);
-      if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT_HIGH))
-        fprintf (stderr, "error sending\n");
-      printf ("size: %d (%lu)\n", pak_size, info.size);
+      if (pak) {
+        if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT_HIGH))
+          fprintf (stderr, "voa: error sending\n");
+        printf ("voa: size: %d (%lu)\n", pak_size, info.size);
+      } else {
+        fprintf (stderr, "voa: failed to create packet");
+        term = -1;
+      }
 
       gst_buffer_unmap (buffer, &info);
       gst_sample_unref (sample);
@@ -549,6 +554,8 @@ int main (int argc, char ** argv)
     dec_main_loop ();
 
   cleanup_audio ();
+  if (term != 1)
+    return term;
   return 0;
 }
 
