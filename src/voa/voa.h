@@ -8,8 +8,8 @@
 
 /*  { '\0', 'V', 'O', 'A' } */
 #define ALLNET_MEDIA_APP_VOA 0x00564F41
-#define ALLNET_VOA_HMAC_SIZE 32
-#define ALLNET_VOA_COUNTER_SIZE 32
+#define ALLNET_VOA_HMAC_SIZE 6
+#define ALLNET_VOA_COUNTER_SIZE 2
 
 enum allnet_voa_msg_type {
   ALLNET_VOA_HANDSHAKE,
