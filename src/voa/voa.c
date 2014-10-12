@@ -298,10 +298,10 @@ static void enc_main_loop () {
     if (sample) {
       GstBuffer * buffer = gst_sample_get_buffer (sample);
       gsize bufsiz = gst_buffer_get_size (buffer);
-      printf ("offset: %lu, duration: %lums, size: %lu\n", buffer->offset, (unsigned long)buffer->duration / 1000000, (size_t)bufsiz);
+      printf ("voa: offset: %lu, duration: %lums, size: %lu\n", buffer->offset, (unsigned long)buffer->duration / 1000000, (size_t)bufsiz);
       GstMapInfo info;
       if (!gst_buffer_map (buffer, &info, GST_MAP_READ))
-        printf ("error mapping buffer\n");
+        printf ("voa: error mapping buffer\n");
       int pak_size;
       struct allnet_header * pak = create_voa_packet (info.data, info.size, data.stream_id, &pak_size);
       if (pak) {
