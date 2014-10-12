@@ -504,8 +504,10 @@ int main (int argc, char ** argv)
     return 0;
   }
   int socket = connect_to_local (argv [0], argv [0]);
-  if (socket < 0)
+  if (socket < 0) {
+    fprintf (stderr, "Could not connect to AllNet\n");
     return 1;
+  }
   data.allnet_socket = socket;
 
   data.my_addr_bits = ADDRESS_BITS;
