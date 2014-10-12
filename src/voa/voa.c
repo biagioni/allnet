@@ -65,10 +65,10 @@ typedef struct _VOAData {
   GstBus * bus;
   int is_encoder;
   int allnet_socket;
-  unsigned char my_address [ADDRESS_SIZE];
-  unsigned char dest_address [ADDRESS_SIZE];
   int my_addr_bits;
   int dest_addr_bits;
+  unsigned char my_address [ADDRESS_SIZE];
+  unsigned char dest_address [ADDRESS_SIZE];
   unsigned char stream_id [STREAM_ID_SIZE];
   union {
     EncoderData enc;
