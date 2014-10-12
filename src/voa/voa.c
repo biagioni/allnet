@@ -65,8 +65,8 @@ typedef struct _VOAData {
   GstBus * bus;
   int is_encoder;
   int allnet_socket;
-  char my_address [ADDRESS_SIZE];
-  char dest_address [ADDRESS_SIZE];
+  unsigned char my_address [ADDRESS_SIZE];
+  unsigned char dest_address [ADDRESS_SIZE];
   int my_addr_bits;
   int dest_addr_bits;
   unsigned char stream_id [STREAM_ID_SIZE];
@@ -220,7 +220,9 @@ static struct allnet_header * create_voa_packet (
   unsigned int headersizes = sizeof (struct allnet_app_media_header) + sizeof (struct allnet_voa_header);
   struct allnet_header * pak = create_packet (bufsize + headersizes,
          ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_HMAC_SHA512,
-         NULL/*src addr*/, 0 /*src bits*/, NULL, 0 /*dst*/, stream_id, NULL /*ack*/, paksize);
+         data.my_address, data.my_addr_bits,
+         data.dest_address, data.dest_addr_bits,
+         stream_id, NULL /*ack*/, paksize);
   pak->transport |= ALLNET_TRANSPORT_DO_NOT_CACHE;
 
   /* allnet media headers */
@@ -511,11 +513,12 @@ int main (int argc, char ** argv)
   bzero (data.my_address, ADDRESS_SIZE);  /* set any unused part to all zeros */
   bzero (data.dest_address, ADDRESS_SIZE);
   int nbytes = (data.my_addr_bits >> 3) + 1;
-  random_bytes (data.my_address, nbytes);
+  random_bytes ((char *)data.my_address, nbytes);
   if (data.my_addr_bits % 8)
     data.my_address [nbytes-1] &=
-      ((char)0x80) >> ((data.my_addr_bits % 8) - 1); /* signed shift */
-  else
+      /* signed shift */
+      (unsigned char)(((char)0x80) >> ((data.my_addr_bits % 8) - 1));
+  else if (nbytes < ADDRESS_SIZE)
     data.my_address [nbytes-1] = 0;
 
   if (argc > 1) {
@@ -526,10 +529,11 @@ int main (int argc, char ** argv)
       int b = atoi (argv [2]);
       data.dest_addr_bits = b > ADDRESS_BITS ? ADDRESS_BITS : b;
       nbytes = (data.dest_addr_bits >> 3) + 1;
-      if (data.my_addr_bits % 8)
+      if (data.dest_addr_bits % 8)
         data.dest_address [nbytes-1] &=
-          ((char)0x80) >> ((data.my_addr_bits % 8) - 1); /* signed shift */
-      else
+          /* signed shift */
+          (unsigned char)(((char)0x80) >> ((data.dest_addr_bits % 8) - 1));
+      else if (nbytes < ADDRESS_SIZE)
         data.dest_address [nbytes-1] = 0;
     }
   }
