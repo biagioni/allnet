@@ -158,9 +158,6 @@ static int handle_packet (const char * message, int msize) {
   for (; i-ALLNET_SIZE_HEADER(pak) < sizeof(struct allnet_app_media_header); ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
-  for (; i-ALLNET_SIZE_HEADER(pak)-sizeof (struct allnet_app_media_header) < sizeof(struct allnet_voa_header); ++i)
-    printf ("%02x ", *((const unsigned char *)pak+i));
-  printf (".\n");
   for (; i < msize; ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf ("\n\n");
@@ -172,8 +169,7 @@ static int handle_packet (const char * message, int msize) {
   const struct allnet_header * hp = (const struct allnet_header *) message;
   int hsize = ALLNET_SIZE_HEADER (hp);
   int amhsize = sizeof (struct allnet_app_media_header);
-  int voahsize = sizeof (struct allnet_voa_header);
-  int headersizes = hsize + amhsize + voahsize;
+  int headersizes = hsize + amhsize;
   printf ("got message of size %d (%d data)\n", msize, msize - headersizes);
 
   if (msize <= headersizes)
@@ -204,12 +200,9 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   }
 
-  const struct allnet_voa_header * avhp =
-    (const struct allnet_voa_header *) ((const char *)amhp + amhsize);
-
   /* handle valid packet */
   int bufsize = msize - headersizes;
-  const char * buf = ((const char *)avhp) + voahsize;
+  const char * payload = ((const char *)amhp) + amhsize;
   return dec_handle_data (buf, bufsize);
 }
 
@@ -217,9 +210,10 @@ static struct allnet_header * create_voa_packet (
               const unsigned char * buf, int bufsize,
               const unsigned char * stream_id, int * paksize)
 {
-  unsigned int headersizes = sizeof (struct allnet_app_media_header) + sizeof (struct allnet_voa_header);
-  struct allnet_header * pak = create_packet (bufsize + headersizes,
-         ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_HMAC_SHA512,
+  unsigned int amhsize = sizeof (struct allnet_app_media_header);
+  unsigned int sigsize = ALLNET_VOA_COUNTER_SIZE + ALLNET_VOA_HMAC_SIZE;
+  struct allnet_header * pak = create_packet (bufsize + amhsize + sigsize,
+         ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_NONE,
          data.my_address, data.my_addr_bits,
          data.dest_address, data.dest_addr_bits,
          stream_id, NULL /*ack*/, paksize);
@@ -230,10 +224,6 @@ static struct allnet_header * create_voa_packet (
       (struct allnet_app_media_header *) ((char *)pak + ALLNET_SIZE_HEADER (pak));
   writeb32u ((unsigned char *)(&amhp->app), ALLNET_MEDIA_APP_VOA);
   writeb32u ((unsigned char *)(&amhp->media), ALLNET_MEDIA_AUDIO_OPUS);
-
-  /* allnet voa headers */
-  struct allnet_voa_header * avhp =
-      (struct allnet_voa_header *) ((char *)amhp + sizeof (struct allnet_app_media_header));
 
   /* fill data */
   memcpy ((void *)avhp + sizeof (struct allnet_voa_header), buf, bufsize);
@@ -246,9 +236,6 @@ static struct allnet_header * create_voa_packet (
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
   for (; i-ALLNET_SIZE_HEADER(pak) < sizeof(struct allnet_app_media_header); ++i)
-    printf ("%02x ", *((const unsigned char *)pak+i));
-  printf (".\n");
-  for (; i-ALLNET_SIZE_HEADER(pak)-sizeof (struct allnet_app_media_header) < sizeof(struct allnet_voa_header); ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
   for (; i < *paksize; ++i)

@@ -11,10 +11,6 @@
 #define ALLNET_VOA_HMAC_SIZE 32
 #define ALLNET_VOA_COUNTER_SIZE 32
 
-struct allnet_voa_header {
-  char msg_type;
-};
-
 enum allnet_voa_msg_type {
   ALLNET_VOA_HANDSHAKE,
   ALLNET_VOA_DATA
