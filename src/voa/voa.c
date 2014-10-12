@@ -189,8 +189,6 @@ static int handle_packet (const char * message, int msize) {
     memcpy (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE);
   }
 
-  const char * payload = ((const char *)hp) + headersizes;
-  check_signature (hp, payload, &msize);
   const struct allnet_app_media_header * amhp =
     (const struct allnet_app_media_header *) ((const char *)message + hsize);
   if (readb32u ((const unsigned char *)(&amhp->app)) != ALLNET_MEDIA_APP_VOA)
