@@ -34,6 +34,7 @@
 #include "lib/packet.h"
 #include "lib/pipemsg.h"  /* send_pipe_message */
 #include "lib/priority.h"
+#include "lib/stream.h"   /* allnet_stream_* */
 #include "lib/util.h"     /* create_packet, random_bytes */
 
 #include "voa.h"
@@ -70,6 +71,7 @@ typedef struct _VOAData {
   unsigned char my_address [ADDRESS_SIZE];
   unsigned char dest_address [ADDRESS_SIZE];
   unsigned char stream_id [STREAM_ID_SIZE];
+  struct allnet_stream_encryption_state enc_state;
   union {
     EncoderData enc;
     DecoderData dec;
@@ -199,9 +201,19 @@ static int handle_packet (const char * message, int msize) {
   }
 
   /* handle valid packet */
-  int bufsize = msize - headersizes;
+  int encbufsize = msize - headersizes;
   const char * payload = ((const char *)amhp) + amhsize;
+  int bufsize = encbufsize - ALLNET_VOA_HMAC_SIZE - ALLNET_VOA_COUNTER_SIZE;
+  char buf [bufsize];
+  if (!allnet_stream_decrypt_buffer (&data.enc_state, payload,
+                                     encbufsize, buf, sizeof (buf)))
+    return -1;
   return dec_handle_data (buf, bufsize);
+}
+
+static void stream_cipher_init (char * key, char * secret) {
+  allnet_stream_init (&data.enc_state, key, 1, secret, 1,
+      ALLNET_VOA_COUNTER_SIZE, ALLNET_VOA_HMAC_SIZE);
 }
 
 static struct allnet_header * create_voa_packet (
@@ -224,7 +236,12 @@ static struct allnet_header * create_voa_packet (
   writeb32u ((unsigned char *)(&amhp->media), ALLNET_MEDIA_AUDIO_OPUS);
 
   /* fill data */
-  memcpy ((void *)avhp + sizeof (struct allnet_voa_header), buf, bufsize);
+  char * payload = (char *)amhp + amhsize;
+  int psize = *paksize - (payload - (char *)pak);
+
+  /* encrypt and copy into packet */
+  if (!allnet_stream_encrypt_buffer (&data.enc_state, (const char *)buf, bufsize, payload, psize))
+    return NULL;
 
   /* TODO: remove */
 /* TODO: remove DEBUG: print packets
