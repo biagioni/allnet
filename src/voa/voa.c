@@ -148,6 +148,18 @@ static int check_signature (const struct allnet_header * hp, const char * payloa
   return 0;
 }
 
+static int accept_stream (const struct allnet_header * ahp,
+                          const char * payload, int msize) {
+  /* verify signature */
+  if (!check_signature (ahp, payload, msize))
+    return 0;
+
+  data.dec.stream_id_set = 1;
+  memcpy (data.stream_id, ALLNET_STREAM_ID (ahp, ahp->transport, msize), STREAM_ID_SIZE);
+  // TODO: set data.dest_address
+  return 1;
+}
+
 static int send_accept_response () {
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
   unsigned int psize = ALLNET_STREAM_KEY_SIZE;
@@ -213,6 +225,13 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   if (memcmp (hp->destination, data.my_address, hp->dst_nbits) != 0)
     return 0;
+
+  const struct allnet_app_media_header * amhp =
+    (const struct allnet_app_media_header *) ((const char *)message + hsize);
+  if (readb32u ((const unsigned char *)(&amhp->app)) != ALLNET_MEDIA_APP_VOA)
+    return 0;
+
+  const char * payload = ((const char *)amhp) + amhsize;
   if (data.dec.stream_id_set) {
     if (memcmp (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE) != 0) {
       printf ("discarding packet from unknown stream\n");
@@ -220,14 +239,11 @@ static int handle_packet (const char * message, int msize) {
     }
 
   } else {
-    data.dec.stream_id_set = 1;
-    memcpy (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE);
+    /* new stream, check if we're interested */
+    return (accept_stream (hp, payload, msize) && send_accept_response ());
   }
 
-  const struct allnet_app_media_header * amhp =
-    (const struct allnet_app_media_header *) ((const char *)message + hsize);
-  if (readb32u ((const unsigned char *)(&amhp->app)) != ALLNET_MEDIA_APP_VOA)
-    return 0;
+  /* stream packet candidate */
   if (readb32u ((const unsigned char *)(&amhp->media)) != ALLNET_MEDIA_AUDIO_OPUS) {
     printf ("voa: unsupported media type\n");
     return 0;
@@ -235,7 +251,6 @@ static int handle_packet (const char * message, int msize) {
 
   /* handle valid packet */
   int encbufsize = msize - headersizes;
-  const char * payload = ((const char *)amhp) + amhsize;
   int bufsize = encbufsize - ALLNET_VOA_HMAC_SIZE - ALLNET_VOA_COUNTER_SIZE;
   char buf [bufsize];
   if (!allnet_stream_decrypt_buffer (&data.enc_state, payload,
