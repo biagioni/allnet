@@ -82,7 +82,8 @@ static void send_key_message (int sock, char * contact, keyset keys,
   /* do not copy secret's terminating null byte */
   memcpy (text + MESSAGE_ID_SIZE + my_ksize, secret, strlen (secret));
   char * cipher;
-  int csize = allnet_encrypt (text, length, contact_key, contact_ksize, &cipher);
+  int csize = allnet_encrypt (text, length, contact_key, contact_ksize,
+                              &cipher);
 
 #ifdef DEBUG_PRINT
   printf ("encrypted %d bytes, result is %d bytes long\n", length, csize);
@@ -103,7 +104,7 @@ static void send_key_message (int sock, char * contact, keyset keys,
 
   struct timeval start;
   gettimeofday (&start, NULL);
-  if (! send_pipe_message (sock, packet, psize, ALLNET_PRIORITY_LOCAL)) {
+  if (! send_pipe_message_free (sock, packet, psize, ALLNET_PRIORITY_LOCAL)) {
     printf ("unable to send key exchange reply packet to %s\n", contact);
     return;
   }
