@@ -6,22 +6,18 @@
 #define AUDIO_CAPS "audio/x-opus,media=(string)audio,clockrate=(int)48000,channels=(int)1"
 #endif /* RTP */
 
-/*  { '\0', 'V', 'O', 'A' } */
-#define ALLNET_MEDIA_APP_VOA 0x00564F41
+/*  { 'V', 'O', 'A', '\0' } */
+#define ALLNET_MEDIA_APP_VOA 0x564F4100
+#define ALLNET_VOA_HANDSHAKE_SYN 0x564F4153
+#define ALLNET_VOA_HANDSHAKE_ACK 0x564F4141
 #define ALLNET_VOA_HMAC_SIZE 6
 #define ALLNET_VOA_COUNTER_SIZE 2
 
-enum allnet_voa_msg_type {
-  ALLNET_VOA_HANDSHAKE,
-  ALLNET_VOA_DATA
-};
-
-struct allnet_voa_header_handshake {
-  char msg_hmac[ALLNET_VOA_HMAC_SIZE];
-  char msg_counter[ALLNET_VOA_COUNTER_SIZE];
-};
-
-struct allnet_voa_header_data {
+struct allnet_voa_handshake_header {
+  char enc_key [ALLNET_STREAM_KEY_SIZE];
+  char enc_secret [ALLNET_STREAM_SECRET_SIZE];
+  char stream_id [STREAM_ID_SIZE];
+  char media_type [ALLNET_MEDIA_ID_SIZE];
 };
 
 #endif /* VOA_H */
