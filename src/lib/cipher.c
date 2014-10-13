@@ -52,7 +52,7 @@ static void aes_ctr_crypt (char * key, char * ctr,
     result [i] = data [i] ^ out [i % AES_BLOCK_SIZE];
   }
 #ifdef DEBUG_PRINT
-  printf ("AES encryption complete\n"); */
+  printf ("AES encryption complete\n");
 #endif /* DEBUG_PRINT */
 }
 
