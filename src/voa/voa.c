@@ -196,7 +196,6 @@ static int send_accept_response () {
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
   unsigned int psize = ALLNET_STREAM_KEY_SIZE;
   int bufsize = amhpsize + psize;
-  // + allnet_rsa_prvkey_size (prvkey) ?
   int pak_size;
   struct allnet_header * pak = create_packet (bufsize,
        ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_RSA_PKCS1,
@@ -228,6 +227,7 @@ static int send_accept_response () {
   }
   return 1;
 }
+
 static int handle_packet (const char * message, int msize) {
 /* TODO: remove DEBUG: print packets
   const struct allnet_header * pak = (const struct allnet_header *)message;
