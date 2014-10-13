@@ -37,25 +37,6 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
     return;
   int type = ALLNET_TYPE_CLEAR;
   int allocated = 0;
-#if 0   /* if want to support, must encrypt allnet_app_media_header */
-  if ((return_key != NULL) && (rksize > 0)) {  /* encrypt the key */
-    type = ALLNET_TYPE_DATA;
-    char * cipher;
-#ifdef DEBUG_PRINT
-    printf ("calling encrypt (%p/%d, %d, %p, %d) ==> %p\n",
-            data, dlen, key->pub_klen, return_key, rksize, &cipher);
-#endif /* DEBUG_PRINT */
-    int csize = allnet_encrypt (data, dlen, return_key, rksize, &cipher);
-    if (csize <= 0) {
-      snprintf (log_buf, LOG_SIZE, "send_key: encryption error\n");
-      log_print ();
-      return;
-    }
-    data = cipher;
-    dlen = csize;
-    allocated = 1;
-  }
-#endif /* 0 */
   int amhsize = sizeof (struct allnet_app_media_header);
   int bytes;
   struct allnet_header * hp =

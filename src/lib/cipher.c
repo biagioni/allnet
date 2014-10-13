@@ -127,39 +127,6 @@ int allnet_encrypt (const char * text, int tsize,
   return result_size;
 }
 
-#ifdef TEST_RSA_ENCRYPTION
-static void test_rsa_encryption (char * key, int ksize)
-{
-  /* convert key into internal formats */
-  BIO * mbio = BIO_new_mem_buf (key, ksize);
-  RSA * pub_rsa = PEM_read_bio_RSAPublicKey (mbio, NULL, NULL, NULL);
-  BIO_free (mbio);
-  unsigned char fake_key [513];
-  fake_key [0] = KEY_RSA4096_E65537;
-  int bn_size = BN_num_bytes (pub_rsa->n);
-  if (bn_size != 512) {
-    snprintf (log_buf, LOG_SIZE, "error: key size %d\n", bn_size);
-    log_print ();
-    return;
-  }
-  BN_bn2bin (pub_rsa->n, fake_key + 1);
-  RSA_free (pub_rsa);
-  print_buffer ((char *) fake_key, sizeof (fake_key), "fake key", 16, 1);
-
-  char text [] = "hello world";
-  int tsize = sizeof (text);   /* include the terminating null character */ 
-  print_buffer (text, tsize, "plaintext", 16, 1);
-  char * cipher;
-  int csize = allnet_encrypt (text, tsize, (char *) fake_key,
-                              sizeof (fake_key), &cipher);
-  print_buffer (cipher, csize, "ciphertext", 16, 1);
-
-  char * decrypted;
-  int dsize = allnet_decrypt (cipher, csize, key, ksize, &decrypted);
-  print_buffer (decrypted, dsize, "decrypted", 16, 1);
-}
-#endif /* TEST_RSA_ENCRYPTION */
-
 /* returns the number of decrypted bytes if successful, and 0 otherwise */
 /* if successful, *res is dynamically allocated and must be free'd */
 int allnet_decrypt (const char * cipher, int csize,
@@ -190,13 +157,6 @@ int allnet_decrypt (const char * cipher, int csize,
             rsa_size, bytes, csize);
 #endif /* DEBUG_PRINT */
     free (rsa_text);
-#ifdef TEST_RSA_ENCRYPTION
-    static int first_time = 1;
-    if (first_time) {
-      first_time = 0;
-      test_rsa_encryption (key, ksize);
-    }
-#endif /* TEST_RSA_ENCRYPTION */
     return 0;
   }
 
