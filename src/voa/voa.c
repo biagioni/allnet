@@ -425,7 +425,7 @@ static void enc_main_loop () {
       struct allnet_header * pak = create_voa_packet (info.data, info.size, data.stream_id, &pak_size);
       if (pak) {
         if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT_HIGH))
-          fprintf (stderr, "voa: error sending\n");
+          fprintf (stderr, "voa: error sending stream packet\n");
         printf ("voa: size: %d (%lu)\n", pak_size, info.size);
       } else {
         fprintf (stderr, "voa: failed to create packet");
