@@ -25,7 +25,7 @@
 #include <gst/app/gstappsrc.h>
 #include <gst/app/gstappsink.h>
 #include <stdlib.h>       /* atoi */
-#include <string.h>       /* memcpy */
+#include <string.h>       /* memcmp, memcpy */
 
 #include "lib/app_util.h" /* connect_to_local */
 #include "lib/cipher.h"   /* allnet_sign, allnet_verify */
