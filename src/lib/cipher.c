@@ -41,11 +41,10 @@ static void aes_ctr_crypt (char * key, char * ctr,
   char in [AES_BLOCK_SIZE];
   memcpy (in, ctr, AES_BLOCK_SIZE);
   char out [AES_BLOCK_SIZE];
-  allnet_aes_key * aes = NULL;
   int i;
   for (i = 0; i < dsize; i++) {
     if ((i % AES_BLOCK_SIZE) == 0) {   /* compute the next block */
-      if (! allnet_aes_encrypt_block (key, in, out, &aes))
+      if (! allnet_aes_encrypt_block (key, in, out))
         exit (1);
       inc_ctr (in);
     }

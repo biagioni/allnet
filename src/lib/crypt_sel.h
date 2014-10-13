@@ -17,7 +17,6 @@
 
 typedef RSA *           allnet_rsa_pubkey;
 typedef RSA *           allnet_rsa_prvkey;
-typedef AES_KEY         allnet_aes_key;
 
 #else /* HAVE_OPENSSL */
 
@@ -27,7 +26,6 @@ typedef AES_KEY         allnet_aes_key;
 
 typedef wp_rsa_key      allnet_rsa_pubkey;
 typedef wp_rsa_key_pair allnet_rsa_prvkey;
-typedef char *          allnet_aes_key;
 
 #endif /* HAVE_OPENSSL */
 
@@ -112,12 +110,7 @@ extern allnet_rsa_prvkey allnet_rsa_generate_key (int bits,
 
 /* key should be AES256_SIZE bytes long.
  * in and out should be AES_BLOCK_SIZE bytes long.
- * if *aes_key is NULL, the call may, depending on the implementation,
- * set *aes_key to refer to the internal version of the key.  This
- * version should, for greater efficiency, be used on subsequent calls
- * that use the same key.
  * returns 1 for success, 0 for failure */
-extern int allnet_aes_encrypt_block (char * key, char * in, char * out,
-                                     allnet_aes_key ** aes_key);
+extern int allnet_aes_encrypt_block (char * key, char * in, char * out);
 
 #endif /* ALLNET_CRYPT_SELECTOR_H */

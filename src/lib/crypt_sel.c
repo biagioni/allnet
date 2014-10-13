@@ -462,23 +462,17 @@ allnet_rsa_prvkey allnet_rsa_generate_key (int bits,
 
 /* key should be AES256_SIZE bytes long.
  * in and out should be AES_BLOCK_SIZE bytes long.
- * if *aes_key is NULL, the call may, depending on the implementation, 
- * set *aes_key to refer to the internal version of the key.  This 
- * version should, for greater efficiency, be used on subsequent calls 
- * that use the same key.
  * returns 1 for success, 0 for failure */
-int allnet_aes_encrypt_block (char * key, char * in, char * out,
-                              allnet_aes_key ** aes_key)
+int allnet_aes_encrypt_block (char * key, char * in, char * out)
 {
 #ifdef HAVE_OPENSSL
-  if (*aes_key == NULL) {
-    if (AES_set_encrypt_key ((unsigned char *) key, AES256_SIZE * 8,
-                             *aes_key) < 0) {
-      printf ("unable to set AES encryption key");
-      return 0;
-    }
+  AES_KEY aes_key;
+  if (AES_set_encrypt_key ((unsigned char *) key, AES256_SIZE * 8,
+                           &aes_key) < 0) {
+    printf ("unable to set AES encryption key");
+    return 0;
   }
-  AES_encrypt ((unsigned char *) in, (unsigned char *) out, *aes_key);
+  AES_encrypt ((unsigned char *) in, (unsigned char *) out, &aes_key);
 #else /* HAVE_OPENSSL */
   wp_aes_encrypt_block (256, key, in, out);
 #endif /* HAVE_OPENSSL */
