@@ -118,11 +118,12 @@ static int dec_handle_data (const char * buf, int bufsize) {
 
 /**
  * Get public/private key(s) for given AllNet address
- * @param addr address pointer to ADDRESS_SIZE bytes
+ * @param addr address pointer to ceil(addr_bits * 8) bytes
+ * @param addr_bits number of relevant address bits
  * @param [out] privkey ptr to allnet_rsa_privkey or NULL when not requested.
  * @param [out] pubkey ptr to to allnet_rsa_pubkey or NULL when not requested.
  */
-static void get_key_for_address (const unsigned char * addr,
+static void get_key_for_address (const unsigned char * addr, int addr_bits,
                                  allnet_rsa_prvkey * prvkey,
                                  allnet_rsa_pubkey * pubkey) {
   char ** contacts;
@@ -135,7 +136,7 @@ static void get_key_for_address (const unsigned char * addr,
     for (ink = 0; ink < nk; ink++) {
       unsigned char address [ADDRESS_SIZE];
       int na_bits = get_remote (keysets [ink], address);
-      if (matches (addr, na_bits, (const unsigned char *)address, na_bits) > 0) {
+      if (matches (addr, addr_bits, (const unsigned char *)address, na_bits) > 0) {
         if (prvkey != NULL)
           get_my_privkey (keysets [ink], prvkey);
         if (pubkey != NULL)
@@ -213,7 +214,7 @@ static int send_accept_response () {
   /* sign response (media header + stream_id) */
   void * payload = amhp + amhpsize;
   allnet_rsa_prvkey prvkey;
-  get_key_for_address ((const unsigned char *)data.dest_address, &prvkey, NULL);
+  get_key_for_address ((const unsigned char *)data.dest_address, data.dest_addr_bits, &prvkey, NULL);
   char * sig;
   int sigsize = allnet_sign ((char *)amhp, amhpsize + psize, prvkey, &sig);
   memcpy (payload + psize, sig, sigsize);
@@ -257,7 +258,7 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   if (hp->message_type != ALLNET_TYPE_DATA)
     return 0;
-  if (memcmp (hp->destination, data.my_address, hp->dst_nbits) != 0)
+  if (matches (hp->destination, hp->dst_nbits, data.my_address, data.my_addr_bits) == 0)
     return 0;
 
   const struct allnet_app_media_header * amhp =
