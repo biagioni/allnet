@@ -187,7 +187,8 @@ static int accept_stream (const struct allnet_header * ahp,
 
   data.dec.stream_id_set = 1;
   memcpy (data.stream_id, ALLNET_STREAM_ID (ahp, ahp->transport, msize), STREAM_ID_SIZE);
-  // TODO: set data.dest_address
+  memcpy (data.dest_address, ahp->source, ADDRESS_SIZE);
+  data.dest_addr_bits = ahp->src_nbits;
   return 1;
 }
 
