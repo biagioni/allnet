@@ -213,7 +213,7 @@ struct allnet_key_request {
  * forwarders.
  */
 
-#define STREAM_ID_SIZE			16	/*  16 bytes or 128 bits */
+#define STREAM_ID_SIZE			4	/*  4 bytes or 32 bits */
 #define MESSAGE_ID_SIZE			16	/*  16 bytes or 128 bits */
 #define MESSAGE_ID_BITS			(MESSAGE_ID_SIZE * 8)	/* 128 bits */
 #define SEQUENCE_SIZE			16	/*  16 bytes or 128 bits */

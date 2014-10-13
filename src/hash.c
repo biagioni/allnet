@@ -275,8 +275,6 @@ int hash_from_file (struct hash_table * hash_table,
                                          bytes_per_entry, free_bytes);
   if (bytes_used == 0)
     return 0;
-  int entries = hash_table->num_entries;
-
   while (num_lines-- > 0) {
     char line [MAX_ENTRY];
     int bytes = readline_bytes (fd, line, bytes_per_entry);

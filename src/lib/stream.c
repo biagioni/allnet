@@ -52,19 +52,16 @@ static void update_counter (char * bytes, uint64_t value)
 
 /* serves two purposes: initializing the block, or getting the next aes char */
 static int aes_next_byte (struct allnet_stream_encryption_state * sp,
-                          char * block, int init,
-                          allnet_aes_key * aes)
+                          char * block, int init)
 {
   if ((init) || ((sp->block_offset % WP_AES_BLOCK_SIZE) == 0)) {
     if (! init) {
       (sp->counter)++;
       sp->block_offset = 0;
-    } else {
-      aes = NULL;
     }
     char counter [WP_AES_BLOCK_SIZE];
     update_counter (counter, sp->counter);
-    if (! allnet_aes_encrypt_block (sp->key, counter, block, &aes)) {
+    if (! allnet_aes_encrypt_block (sp->key, counter, block)) {
       printf ("aes unknown error, unable to encrypt\n");
       return -1;
     }
@@ -99,11 +96,10 @@ int allnet_stream_encrypt_buffer (struct allnet_stream_encryption_state * sp,
   uint64_t send_counter = sp->counter * WP_AES_BLOCK_SIZE + sp->block_offset;
   /* encrypt the data */
   char crypt_block [WP_AES_BLOCK_SIZE];
-  allnet_aes_key * aes = NULL;
-  aes_next_byte (sp, crypt_block, 1, aes);   /* init crypt_block */
+  aes_next_byte (sp, crypt_block, 1);   /* init crypt_block */
   int i;
   for (i = 0; i < tsize; i++)
-    result [i] = text [i] ^ aes_next_byte (sp, crypt_block, 0, aes);
+    result [i] = text [i] ^ aes_next_byte (sp, crypt_block, 0);
   int written = tsize;
   /* write the least significant sp->counter_size bytes of the send
    * counter to the result */
@@ -207,10 +203,9 @@ int allnet_stream_decrypt_buffer (struct allnet_stream_encryption_state * sp,
   /* decrypt and return */
   int rsize = psize - (sp->counter_size + sp->hash_size);
   char crypt_block [WP_AES_BLOCK_SIZE];
-  allnet_aes_key * aes = NULL;
-  aes_next_byte (sp, crypt_block, 1, aes);   /* init crypt_block */
+  aes_next_byte (sp, crypt_block, 1);   /* init crypt_block */
   int i;
   for (i = 0; i < rsize; i++)
-    text [i] = packet [i] ^ aes_next_byte (sp, crypt_block, 0, aes);
+    text [i] = packet [i] ^ aes_next_byte (sp, crypt_block, 0);
   return rsize;
 }

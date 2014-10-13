@@ -447,9 +447,9 @@ void print_packet (const char * packet, int psize, char * desc, int print_eol)
 struct allnet_header *
   init_packet (char * packet, int psize,
                int message_type, int max_hops, int sig_algo,
-               const unsigned char * source, int sbits,
-               const unsigned char * dest, int dbits,
-               const unsigned char * stream, const unsigned char * ack)
+               unsigned char * source, int sbits,
+               unsigned char * dest, int dbits,
+               unsigned char * stream, unsigned char * ack)
 {
   int transport = 0;
   if (stream != NULL)
@@ -482,10 +482,11 @@ struct allnet_header *
   if ((dbits > 0) && (dest != NULL))
     memcpy (hp->destination, dest, (dbits + 7) / 8);
   hp->transport = transport;
-  if (stream != NULL)
-    memcpy (ALLNET_STREAM_ID (hp, hp->transport, psize), stream, STREAM_ID_SIZE);
+  char * sid = ALLNET_STREAM_ID (hp, hp->transport, psize);
+  if ((stream != NULL) && (sid != NULL))
+    memcpy (sid, stream, STREAM_ID_SIZE);
   if (ack != NULL) {
-    sha512_bytes ((const char *) ack, MESSAGE_ID_SIZE,
+    sha512_bytes ((char *) ack, MESSAGE_ID_SIZE,
                   ALLNET_MESSAGE_ID(hp, hp->transport, psize), MESSAGE_ID_SIZE);
   }
   return hp;
@@ -498,9 +499,9 @@ struct allnet_header *
  * *size is set to the size to send */
 struct allnet_header *
   create_packet (int data_size, int message_type, int max_hops, int sig_algo,
-                 const unsigned char * source, int sbits,
-                 const unsigned char * dest, int dbits,
-                 const unsigned char * stream, const unsigned char * ack,
+                 unsigned char * source, int sbits,
+                 unsigned char * dest, int dbits,
+                 unsigned char * stream, unsigned char * ack,
                  int * size)
 {
   int transport = 0;

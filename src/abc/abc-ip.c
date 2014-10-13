@@ -58,17 +58,21 @@ static int abc_ip_init (const char * interface)
 #ifndef __APPLE__  /* not sure how to do this for apple */
     if ((ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
+#ifdef TRACKING_TIME
       struct timeval start;
       gettimeofday (&start, NULL);
+#endif /* TRACKING_TIME */
       int is_up = abc_ip_is_enabled ();
       printf ("abc-ip: interface is enabled: %s (%d)\n",
                 is_up > 0 ? "yes" : "no", is_up);
       if (is_up == 0)
         abc_ip_set_enabled (1);
 
+#ifdef TRACKING_TIME
       struct timeval midtime;
       gettimeofday (&midtime, NULL);
       long long mtime = delta_us (&midtime, &start);
+#endif /* TRACKING_TIME */
       /* create the socket and initialize the address */
       abc_iface_ip.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
       abc_iface_ip.if_address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
