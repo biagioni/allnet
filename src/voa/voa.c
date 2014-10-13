@@ -710,7 +710,8 @@ int main (int argc, char ** argv)
     }
   }
 
-  int is_encoder = (strcmp (argv [0], "./voas") == 0);
+  int len = strlen (argv [0]);
+  int is_encoder = (strcmp (argv [0] + len - 4, "voas") == 0);
   printf ("is_encoder: %d\n", is_encoder);
   printf ("My address:   ");
   for (int i = 0; i < ADDRESS_SIZE; ++i)
