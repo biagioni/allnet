@@ -682,10 +682,12 @@ int main (int argc, char ** argv)
   if (!init_audio (is_encoder))
     return 1;
 
-  if (is_encoder)
-    enc_main_loop ();
-  else
+  if (is_encoder) {
+    if (send_voa_request ())
+      enc_main_loop ();
+  } else {
     dec_main_loop ();
+  }
 
   cleanup_audio ();
   if (term != 1)
