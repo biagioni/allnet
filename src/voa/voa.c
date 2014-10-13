@@ -29,6 +29,7 @@
 
 #include "lib/app_util.h" /* connect_to_local */
 #include "lib/cipher.h"   /* allnet_sign, allnet_verify */
+#include "lib/crypt_sel.h"/* allnet_rsa_prvkey, allnet_rsa_pubkey */
 #include "lib/keys.h"     /* struct bc_key_info, get_other_keys */
 #include "lib/media.h"    /* ALLNET_MEDIA_AUDIO_OPUS */
 #include "lib/packet.h"
@@ -115,6 +116,36 @@ static int dec_handle_data (const char * buf, int bufsize) {
   return 1;
 }
 
+/**
+ * Get public/private key(s) for given AllNet address
+ * @param addr address pointer to ADDRESS_SIZE bytes
+ * @param [out] privkey ptr to allnet_rsa_privkey or NULL when not requested.
+ * @param [out] pubkey ptr to to allnet_rsa_pubkey or NULL when not requested.
+ */
+static void get_key_for_address (const unsigned char * addr,
+                                 allnet_rsa_prvkey * prvkey,
+                                 allnet_rsa_pubkey * pubkey) {
+  char ** contacts;
+  int nc = all_contacts (&contacts);
+  int ic;
+  for (ic = 0; ic < nc; ic++) {
+    keyset * keysets;
+    int nk = all_keys (contacts [ic], &keysets);
+    int ink;
+    for (ink = 0; ink < nk; ink++) {
+      unsigned char address [ADDRESS_SIZE];
+      int na_bits = get_remote (keysets [ink], address);
+      if (matches (addr, na_bits, (const unsigned char *)address, na_bits) > 0) {
+        if (prvkey != NULL)
+          get_my_privkey (keysets [ink], prvkey);
+        if (pubkey != NULL)
+          get_contact_pubkey (keysets [ink], pubkey);
+        return;
+      }
+    }
+  }
+}
+
 static int check_signature (const struct allnet_header * hp, const char * payload, int msize) {
   int psize = msize - (payload - ((const char *)hp));
   int vsize = 0; // TODO: size of block to verify
@@ -181,6 +212,8 @@ static int send_accept_response () {
 
   /* sign response (media header + stream_id) */
   void * payload = amhp + amhpsize;
+  allnet_rsa_prvkey prvkey;
+  get_key_for_address ((const unsigned char *)data.dest_address, &prvkey, NULL);
   char * sig;
   int sigsize = allnet_sign ((char *)amhp, amhpsize + psize, prvkey, &sig);
   memcpy (payload + psize, sig, sigsize);
@@ -294,7 +327,9 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   /* encrypt hs header */
   char * encbuf;
   void * enc_payload = ((void *)amhp) + amhpsize;
-  allnet_rsa_pubkey * pubkey; /* crypt_sel.h */
+  allnet_rsa_prvkey prvkey;
+  allnet_rsa_pubkey pubkey;
+  get_key_for_address ((const unsigned char *)data.dest_address, &prvkey, &pubkey);
   int encbufsize = allnet_encrypt ((char *)&avhh, avhhsize, pubkey, &encbuf);
   if (encbufsize == 0) {
     free (encbuf);
