@@ -213,14 +213,19 @@ static int send_accept_response () {
 
   /* sign response (media header + stream_id) */
   void * payload = amhp + amhpsize;
-  allnet_rsa_prvkey prvkey;
+  allnet_rsa_prvkey prvkey = NULL;
   get_key_for_address ((const unsigned char *)data.dest_address, data.dest_addr_bits, &prvkey, NULL);
   char * sig;
   int sigsize = allnet_sign ((char *)amhp, amhpsize + psize, prvkey, &sig);
-  memcpy (payload + psize, sig, sigsize);
-  free (sig);
-
-  assert (ahsize + bufsize + sigsize == pak_size);
+  if (sigsize == 0) {
+    fprintf (stderr, "voa: warning could not sign outgoing message\n");
+    /* TODO: ALLNET_SIGTYPE_HMAC_SHA512 instead? */
+    ((struct allnet_header *)pak)->sig_algo = ALLNET_SIGTYPE_NONE;
+  } else {
+    memcpy (payload + psize, sig, sigsize);
+    free (sig);
+    assert (ahsize + bufsize + sigsize == pak_size);
+  }
 
   if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT)) {
     fprintf (stderr, "voa: error sending stream accept\n");
@@ -329,11 +334,13 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   /* encrypt hs header */
   char * encbuf;
   void * enc_payload = ((void *)amhp) + amhpsize;
-  allnet_rsa_prvkey prvkey;
-  allnet_rsa_pubkey pubkey;
-  get_key_for_address ((const unsigned char *)data.dest_address, &prvkey, &pubkey);
+  allnet_rsa_prvkey prvkey = NULL;
+  allnet_rsa_pubkey pubkey = NULL;
+  get_key_for_address ((const unsigned char *)data.dest_address,
+                       data.dest_addr_bits, &prvkey, &pubkey);
   int encbufsize = allnet_encrypt ((char *)&avhh, avhhsize, pubkey, &encbuf);
   if (encbufsize == 0) {
+    fprintf (stderr, "voa: error encrypting message\n");
     free (encbuf);
     return NULL;
   }
