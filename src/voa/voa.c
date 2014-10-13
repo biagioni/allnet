@@ -115,19 +115,18 @@ static int dec_handle_data (const char * buf, int bufsize) {
   return 1;
 }
 
-static int check_signature (const struct allnet_header * hp, const char * payload, int * msize) {
-  int psize = *msize - (payload - ((const char *)hp));
+static int check_signature (const struct allnet_header * hp, const char * payload, int msize) {
+  int psize = msize - (payload - ((const char *)hp));
   int vsize = 0; // TODO: size of block to verify
   int ssize = 0;
   const char * sig = NULL;
-  #define SIG_LENGHT_SIZE 2
-  if ((psize > SIG_LENGHT_SIZE) && (hp->sig_algo == ALLNET_SIGTYPE_RSA_PKCS1)) {
+  #define SIG_LENGTH_SIZE 2
+  if ((psize > SIG_LENGTH_SIZE) && (hp->sig_algo == ALLNET_SIGTYPE_RSA_PKCS1)) {
 /* RSA_PKCS1 is the only type of signature supported for now */
-    ssize = readb16 (payload + (psize - SIG_LENGHT_SIZE));
-    if (ssize + SIG_LENGHT_SIZE < psize) {
-      sig = payload + (psize - (ssize + SIG_LENGHT_SIZE));
-      *msize -= ssize + SIG_LENGHT_SIZE;
-      vsize -= ssize + SIG_LENGHT_SIZE;
+    ssize = readb16 (payload + (psize - SIG_LENGTH_SIZE));
+    if (ssize + SIG_LENGTH_SIZE < psize) {
+      sig = payload + (psize - (ssize + SIG_LENGTH_SIZE));
+      vsize -= ssize + SIG_LENGTH_SIZE;
     }
   }
 
