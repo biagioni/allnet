@@ -709,11 +709,11 @@ void wp_exp_mod64 (int nbits, uint64_t * res, const uint64_t * base,
                    const uint64_t * exp, const uint64_t * mod,
                    uint64_t * temp)
 {
-/*
   if (is65537 (nbits, exp)) {
     wp_exp_mod_65537 (nbits, res, base, mod, temp);
     return;
   }
+/*
 */
 /*
 printf ("wp_exp_mod64 (%s ^ ", wp_itox (nbits, base));
