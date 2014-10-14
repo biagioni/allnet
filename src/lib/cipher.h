@@ -25,8 +25,8 @@ extern int allnet_decrypt (const char * cipher, int csize,
                            allnet_rsa_prvkey key, char ** res);
 
 /* returns 1 if it verifies, 0 otherwise */
-extern int allnet_verify (char * text, int tsize, char * sig, int ssize,
-                          allnet_rsa_pubkey key);
+extern int allnet_verify (const char * text, int tsize, const char * sig,
+                          int ssize, allnet_rsa_pubkey key);
 
 /* returns the size of the signature and mallocs the signature into result */
 extern int allnet_sign (char * text, int tsize, allnet_rsa_prvkey key,
