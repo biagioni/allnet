@@ -29,7 +29,7 @@
 #include <string.h>       /* memcmp, memcpy */
 
 #include "lib/app_util.h" /* connect_to_local */
-#include "lib/cipher.h"   /* allnet_sign, allnet_verify */
+#include "lib/cipher.h"   /* allnet_encrypt, allnet_sign, allnet_verify */
 #include "lib/crypt_sel.h"/* allnet_rsa_prvkey, allnet_rsa_pubkey */
 #include "lib/keys.h"     /* struct bc_key_info, get_other_keys */
 #include "lib/media.h"    /* ALLNET_MEDIA_AUDIO_OPUS */
