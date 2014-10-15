@@ -325,7 +325,7 @@ static int handle_packet (const char * message, int msize, int reply_only)
   const struct allnet_header * hp = (const struct allnet_header *) message;
   int hsize = ALLNET_SIZE_HEADER (hp);
   int amhsize = sizeof (struct allnet_app_media_header);
-  int headersizes = hsize + amhsize;
+  int headersizes = hsize + (data.dec.stream_id_set ? amhsize : 0);
   printf ("got message of size %d (%d data)\n", msize, msize - headersizes);
 
   if (msize <= headersizes)
@@ -335,26 +335,32 @@ static int handle_packet (const char * message, int msize, int reply_only)
   if (matches (hp->destination, hp->dst_nbits, data.my_address, data.my_addr_bits) == 0)
     return 0;
 
-  const struct allnet_app_media_header * amhp =
-    (const struct allnet_app_media_header *) ((const char *)message + hsize);
-  if (readb32u ((const unsigned char *)(&amhp->app)) != ALLNET_MEDIA_APP_VOA)
-    return 0;
-
-  const char * payload = ((const char *)amhp) + amhsize;
-  if (data.dec.stream_id_set) {
+  const char * payload = (const char *)message + hsize;
+  /* both flags are mutually exclusive */
+  if (!reply_only && data.dec.stream_id_set) {
     if (memcmp (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE) != 0) {
       printf ("discarding packet from unknown stream\n");
       return 0;
     }
 
   } else {
-    /* new stream, check if we're interested */
-    return (accept_stream (hp, payload, msize) && send_accept_response ());
-  }
+    const struct allnet_app_media_header * amhp =
+      (const struct allnet_app_media_header *) payload;
+    if (readb32u ((const unsigned char *)(&amhp->app)) != ALLNET_MEDIA_APP_VOA)
+      return 0;
+    unsigned int hs = readb32u ((const unsigned char *)(&amhp->media));
+    payload = ((const char *)amhp) + amhsize;
+    if (reply_only) {
+      if (hs == ALLNET_VOA_HANDSHAKE_ACK)
+        return check_voa_reply (hp, payload, msize);
+      return 0;
+    }
+    if (hs != ALLNET_VOA_HANDSHAKE_SYN)
+      return 0;
 
-  /* stream packet candidate */
-  if (readb32u ((const unsigned char *)(&amhp->media)) != ALLNET_MEDIA_AUDIO_OPUS) {
-    printf ("voa: unsupported media type\n");
+    /* new stream, check if we're interested */
+    if (accept_stream (hp, payload, msize))
+      return send_accept_response ();
     return 0;
   }
 
@@ -507,23 +513,16 @@ static struct allnet_header * create_voa_stream_packet (
               const unsigned char * buf, int bufsize,
               const unsigned char * stream_id, int * paksize)
 {
-  unsigned int amhsize = sizeof (struct allnet_app_media_header);
   unsigned int sigsize = ALLNET_VOA_COUNTER_SIZE + ALLNET_VOA_HMAC_SIZE;
-  struct allnet_header * pak = create_packet (bufsize + amhsize + sigsize,
+  struct allnet_header * pak = create_packet (bufsize + sigsize,
          ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_NONE,
          data.my_address, data.my_addr_bits,
          data.dest_address, data.dest_addr_bits,
          stream_id, NULL /*ack*/, paksize);
   pak->transport |= ALLNET_TRANSPORT_DO_NOT_CACHE;
 
-  /* allnet media headers */
-  struct allnet_app_media_header * amhp =
-      (struct allnet_app_media_header *) ((char *)pak + ALLNET_SIZE_HEADER (pak));
-  writeb32u ((unsigned char *)(&amhp->app), ALLNET_MEDIA_APP_VOA);
-  writeb32u ((unsigned char *)(&amhp->media), ALLNET_MEDIA_AUDIO_OPUS);
-
   /* fill data */
-  char * payload = (char *)amhp + amhsize;
+  char * payload = (char *)pak + ALLNET_SIZE_HEADER (pak);
   int psize = *paksize - (payload - (char *)pak);
 
   /* encrypt and copy into packet */
