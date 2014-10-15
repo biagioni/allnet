@@ -67,6 +67,7 @@ typedef struct _VOAData {
   GstElement * pipeline;
   GstBus * bus;
   int is_encoder;
+  int accept_unsigned;
   int allnet_socket;
   int my_addr_bits;
   int dest_addr_bits;
@@ -680,6 +681,7 @@ int main (int argc, char ** argv)
     return 1;
   }
   data.allnet_socket = socket;
+  data.accept_unsigned = 0;
 
   data.my_addr_bits = ADDRESS_BITS;
   data.dest_addr_bits = 0;
