@@ -268,6 +268,31 @@ static int send_accept_response ()
 }
 
 /**
+ * Checks an incoming stream ACK for validity:
+ * - is it a reply to a request we sent
+ * - is the signature valid
+ * @param hp mesage beginning
+ * @param payload pointer to struct app_media_header part after header
+ * @param msize total raw message size
+ */
+static int check_voa_reply (const struct allnet_header * hp,
+                            const char * payload, int msize)
+{
+  unsigned int amhsize = sizeof (struct allnet_app_media_header);
+  if (memcmp (data.stream_id, payload + amhsize, STREAM_ID_SIZE) != 0) {
+    printf ("voa: discarding reply for unknown stream\n");
+    return 0;
+  }
+  /* verify media header + stream_id sig */
+  if (!check_signature (hp, payload, msize)) {
+    fprintf (stderr, "voa: WARNING: unsigned response\n");
+    if (!data.accept_unsigned)
+      return 0;
+  }
+  return 1;
+}
+
+/**
  * Handle any incoming packets and filter relevant ones
  * @param message pointer to struct allnet_header
  * @param msize total size of message
