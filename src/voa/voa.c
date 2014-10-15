@@ -135,7 +135,8 @@ static int dec_handle_data (const char * buf, int bufsize)
  */
 static void get_key_for_address (const unsigned char * addr, int addr_bits,
                                  allnet_rsa_prvkey * prvkey,
-                                 allnet_rsa_pubkey * pubkey) {
+                                 allnet_rsa_pubkey * pubkey)
+{
   char ** contacts;
   int nc = all_contacts (&contacts);
   int ic;
