@@ -417,6 +417,33 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
 }
 
 /**
+ * Receive and handle allnet messages in a loop until global term is set
+ * The loop only aborts on errors when reply_only is not set.
+ * @param reply_only Only listen until a stream was accepted (encoder)
+ * @return 0 on error or term,
+ *         1 on success (only when reply_only is set)
+ */
+static int voa_receive (int reply_only)
+{
+  while (!term) {
+    int pipe;
+    int priority;
+    char * message;
+    int size = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
+                                        &pipe, &priority);
+    if (size <= 0) {
+      printf ("voa: pipe closed, exiting\n");
+      return 0;
+    }
+    int ret = handle_packet ((const char *)message, size, reply_only);
+    free (message);
+    if (reply_only && ret)
+      return 1;
+  }
+  return 0;
+}
+
+/**
  * Initiate VoA handshake by sending the request
  * @return 1 on success, 0 on failure
  */
@@ -585,23 +612,6 @@ static void enc_main_loop ()
  * Caller is responsible to call cleanup_audio () when done
  * @param is_encoder initialize for encoding if set, for decoding otherwise
  */
-static void dec_main_loop ()
-{
-  while (!term) {
-    int pipe;
-    int priority;
-    char * message;
-    int size = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
-                                        &pipe, &priority);
-    if (size <= 0) {
-      printf ("voa: pipe closed, exiting\n");
-      return;
-    }
-    (void) handle_packet ((const char *)message, size);
-    free (message);
-  }
-}
-
 static int init_audio (int is_encoder)
 {
   GstMessage * msg;
@@ -817,12 +827,12 @@ int main (int argc, char ** argv)
     return 1;
 
   if (is_encoder) {
-    if (send_voa_request ())
+    if (send_voa_request () && voa_receive (1))
       enc_main_loop ();
     else
       term = -1; /* error */
   } else {
-    dec_main_loop ();
+    voa_receive (0);
   }
 
   cleanup_audio ();
