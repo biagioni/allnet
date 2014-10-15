@@ -291,6 +291,8 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   int csize = esize - ssize;  /* size of ciphertext to decrypt */
   char * sig = encrypted + csize;  /* only used if ssize != 0 */
   int i, j;
+  int count = 0;
+  int decrypt_count = 0;
   for (i = 0; ((*contact == NULL) && (i < ncontacts)); i++) {
 #ifdef DEBUG_PRINT
     printf ("to do: randomize and limit the number of contacts tried\n");
@@ -305,6 +307,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
         if (get_contact_pubkey (keys [j], &pub_key)) {
           do_decrypt =
             allnet_verify (encrypted, csize, sig, ssize - 2, pub_key);
+          count++;
         }
       }
       if (do_decrypt) {
@@ -314,11 +317,19 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
         allnet_rsa_prvkey prv_key;
         int priv_ksize = get_my_privkey (keys [j], &prv_key);
         int res = 0;
-        if (priv_ksize > 0)
+        if (priv_ksize > 0) {
           res = allnet_decrypt (encrypted, csize, prv_key, text);
+          decrypt_count++;
+        }
         if (res) {
           *contact = strcpy_malloc (contacts [i], "verify contact");
           *kset = keys [j];
+          unsigned long long int time_delta = allnet_time_us () - start;
+          snprintf (log_buf, LOG_SIZE,
+                    "%ssuccess: %d ver + %d dec took %lld.%06lld seconds\n",
+                    (sig_algo != ALLNET_SIGTYPE_NONE) ? "" : "unsigned ", count,
+                    decrypt_count, time_delta / 1000000, time_delta % 1000000);
+                    log_print ();
           if (sig_algo != ALLNET_SIGTYPE_NONE)
             return res;
           else
@@ -335,8 +346,8 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
 #endif /* DEBUG_PRINT */
   unsigned long long int time_delta = allnet_time_us () - start;
   snprintf (log_buf, LOG_SIZE,
-            "successful decrypt/verify took %lld.%06lld seconds\n",
-            time_delta / 1000000, time_delta % 1000000);
+            "%d verifications+%d decryptions took %lld.%06lld seconds\n",
+            count, decrypt_count, time_delta / 1000000, time_delta % 1000000);
   log_print ();
   return 0;
 }

@@ -139,20 +139,23 @@ hp->source [0] & 0xff, hp->src_nbits);
 
 static int gather_random_and_wait (int bsize, char * buffer, time_t until)
 {
-  int fd = open ("/dev/random", O_RDONLY);
+  int fd = -1;
   int count = 0;
-  while ((fd >= 0) && (count < bsize)) {
-    char data [1];
-    ssize_t found = read (fd, data, 1);
-    if (found == 1)
-      buffer [count++] = data [0];
-    else if (found < 0) {
-      close (fd);
-      fd = -1;
+  if (bsize > 0) {
+    fd = open ("/dev/random", O_RDONLY);
+    while ((fd >= 0) && (count < bsize)) {
+      char data [1];
+      ssize_t found = read (fd, data, 1);
+      if (found == 1)
+        buffer [count++] = data [0];
+      else if (found < 0) {
+        close (fd);
+        fd = -1;
+      }
     }
+    if (fd >= 0)
+      close (fd);
   }
-  if (fd >= 0)
-    close (fd);
 #ifdef DEBUG_PRINT_SPARES
 printf ("at %ld: generated %d bytes, until %ld\n", time (NULL), count, until);
 #endif /* DEBUG_PRINT_SPARES */
@@ -185,6 +188,9 @@ static void generate_spare_keys (time_t * last_alive)
         printf ("%ld: %d spare keys\n", start, create_spare_key (-1, NULL, 0));
 #endif /* DEBUG_PRINT_SPARES */
         create_spare_key (KEY_GEN_BITS, bp, KEY_GEN_BYTES);
+      } else {
+        if (gather_random_and_wait (0, NULL, finish))
+          printf ("generate_spare_keys: unexpected positive\n");
       }
       sleep_time = (time (NULL) - start) * 100;
       if (sleep_time < (60 * 10))
