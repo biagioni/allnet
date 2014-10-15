@@ -212,13 +212,16 @@ static int accept_stream (const struct allnet_header * hp,
                           const char * payload, int msize)
 {
   /* verify signature */
-  if (!check_signature (ahp, payload, msize))
-    return 0;
+  if (!check_signature (hp, payload, msize)) {
+    fprintf (stderr, "voa: WARNING: invalid or unsigned request\n");
+    if (!data.accept_unsigned)
+      return 0;
+  }
 
   data.dec.stream_id_set = 1;
-  memcpy (data.stream_id, ALLNET_STREAM_ID (ahp, ahp->transport, msize), STREAM_ID_SIZE);
-  memcpy (data.dest_address, ahp->source, ADDRESS_SIZE);
-  data.dest_addr_bits = ahp->src_nbits;
+  memcpy (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE);
+  memcpy (data.dest_address, hp->source, ADDRESS_SIZE);
+  data.dest_addr_bits = hp->src_nbits;
   return 1;
 }
 
