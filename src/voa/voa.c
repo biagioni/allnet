@@ -82,9 +82,17 @@ typedef struct _VOAData {
 } VOAData;
 
 static VOAData data;
-static int term = 0; /* exit main loop when set */
+/** exit main loop when set, -1 indicates an error */
+static int term = 0;
 
-static int dec_handle_data (const char * buf, int bufsize) {
+/**
+ * Inject buffers into the audio system pipeline
+ * @param buf buffer to be injected
+ * @param bufsize size of buf
+ * @return 1 on success, 0 on error
+ */
+static int dec_handle_data (const char * buf, int bufsize)
+{
   gchar * buffer = g_new (gchar, bufsize);
   memcpy (buffer, buf, bufsize);
   GstFlowReturn ret;
@@ -149,7 +157,17 @@ static void get_key_for_address (const unsigned char * addr, int addr_bits,
   }
 }
 
-static int check_signature (const struct allnet_header * hp, const char * payload, int msize) {
+/**
+ * Check if the signature on a message is valid
+ * @param hp message to check
+ * @param payload start of signed part of the message
+ * @param msize total size of message
+ * @return 1 if message signature is valid,
+ *         0 if message signature is invalid or missing
+ */
+static int check_signature (const struct allnet_header * hp,
+                            const char * payload, int msize)
+{
   int psize = msize - (payload - ((const char *)hp));
   int vsize = 0; // TODO: size of block to verify
   int ssize = 0;
@@ -182,8 +200,16 @@ static int check_signature (const struct allnet_header * hp, const char * payloa
   return 0;
 }
 
-static int accept_stream (const struct allnet_header * ahp,
-                          const char * payload, int msize) {
+/**
+ * Check whether to accept an incomming stream request (decoder)
+ * @param hp incoming message
+ * @param payload pointer to the struct app_media_header within the message
+ * @param msize total message size
+ * @return 0 if stream is to be rejected, 1 otherwise
+ */
+static int accept_stream (const struct allnet_header * hp,
+                          const char * payload, int msize)
+{
   /* verify signature */
   if (!check_signature (ahp, payload, msize))
     return 0;
@@ -195,7 +221,9 @@ static int accept_stream (const struct allnet_header * ahp,
   return 1;
 }
 
-static int send_accept_response () {
+/** Send an acceptance to a received stream request (decoder) */
+static int send_accept_response ()
+{
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
   unsigned int psize = ALLNET_STREAM_KEY_SIZE;
   int bufsize = amhpsize + psize;
@@ -221,7 +249,6 @@ static int send_accept_response () {
   int sigsize = allnet_sign ((char *)amhp, amhpsize + psize, prvkey, &sig);
   if (sigsize == 0) {
     fprintf (stderr, "voa: warning could not sign outgoing message\n");
-    /* TODO: ALLNET_SIGTYPE_HMAC_SHA512 instead? */
     ((struct allnet_header *)pak)->sig_algo = ALLNET_SIGTYPE_NONE;
   } else {
     memcpy (payload + psize, sig, sigsize);
@@ -236,7 +263,18 @@ static int send_accept_response () {
   return 1;
 }
 
-static int handle_packet (const char * message, int msize) {
+/**
+ * Handle any incoming packets and filter relevant ones
+ * @param message pointer to struct allnet_header
+ * @param msize total size of message
+ * @param reply_only only process VoA ACK messages (for encoder)
+ * @return 1 packet was handled successfully (encoder: stream was accepted),
+ *         0 packet is discarded (encoder: or not accepted)
+ *        -1 an error happened while processing an expected packet
+ *           like failure to decrypt a packet
+ */
+static int handle_packet (const char * message, int msize, int reply_only)
+{
 /* TODO: remove DEBUG: print packets
   const struct allnet_header * pak = (const struct allnet_header *)message;
   printf ("-\n");
@@ -291,21 +329,36 @@ static int handle_packet (const char * message, int msize) {
     return 0;
   }
 
-  /* handle valid packet */
+  /* valid packet: stream packet candidate */
   int encbufsize = msize - headersizes;
   int bufsize = encbufsize - ALLNET_VOA_HMAC_SIZE - ALLNET_VOA_COUNTER_SIZE;
   char buf [bufsize];
   if (!allnet_stream_decrypt_buffer (&data.enc_state, payload,
                                      encbufsize, buf, sizeof (buf)))
     return -1;
-  return dec_handle_data (buf, bufsize);
+  if (!dec_handle_data (buf, bufsize))
+    return -1;
+  return 1;
 }
 
-static void stream_cipher_init (char * key, char * secret) {
+/**
+ * Initialize the stream cipher
+ * @param key [out] pointer to ALLNET_STREAM_KEY_SIZE bytes for the stream key
+ * @param secret [out] pointer to ALLNET_STREAM_SECRET_SIZE bytes for the hmac
+ */
+static void stream_cipher_init (char * key, char * secret)
+{
   allnet_stream_init (&data.enc_state, key, 1, secret, 1,
       ALLNET_VOA_COUNTER_SIZE, ALLNET_VOA_HMAC_SIZE);
 }
 
+/**
+ * Create a VoA handshake packet
+ * @param key key that will be used to encrypt the stream packets
+ * @param secret secret that will be used to sign the stream packets
+ * @param [out] size of the returned packet
+ * @return created message
+ */
 static struct allnet_header * create_voa_hs_packet (const char * key,
                                                     const char * secret,
                                                     int * paksize)
@@ -363,7 +416,12 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   return pak;
 }
 
-static int send_voa_request () {
+/**
+ * Initiate VoA handshake by sending the request
+ * @return 1 on success, 0 on failure
+ */
+static int send_voa_request ()
+{
   char key [ALLNET_STREAM_KEY_SIZE];
   char secret [ALLNET_STREAM_SECRET_SIZE];
   stream_cipher_init (key, secret);
@@ -381,7 +439,15 @@ static int send_voa_request () {
   return 1;
 }
 
-static struct allnet_header * create_voa_packet (
+/**
+ * Creates a stream packet for an ongoing stream
+ * The returned packet must be free'd by caller.
+ * @param buf buffer to be sent (will be copied and encrypted)
+ * @param buf bufsize size of buf
+ * @param stream_id ptr to STREAM_ID_SIZE bytes
+ * @param paksize [out] size of returned packet.
+ */
+static struct allnet_header * create_voa_stream_packet (
               const unsigned char * buf, int bufsize,
               const unsigned char * stream_id, int * paksize)
 {
@@ -425,7 +491,15 @@ static struct allnet_header * create_voa_packet (
   return pak;
 }
 
-static void cb_message (GstBus * bus, GstMessage * msg, VOAData * data) {
+/**
+ * Callback on gstreamer bus events
+ * Sets global term to -1 on error, to 0 on end of stream
+ * @param bus GStreamer bus
+ * @param msg GStreamer message
+ * @param data VoA struct
+ */
+static void cb_message (GstBus * bus, GstMessage * msg, VOAData * data)
+{
   switch (GST_MESSAGE_TYPE (msg)) {
     case GST_MESSAGE_ERROR: {
       GError * err;
@@ -470,7 +544,12 @@ static void cb_message (GstBus * bus, GstMessage * msg, VOAData * data) {
   }
 }
 
-static void enc_main_loop () {
+/**
+ * Main loop for the encoder after the stream has been initialized.
+ * Terminates when global term is set. Sets term = -1 on error.
+ */
+static void enc_main_loop ()
+{
   /* poll samples (blocking) */
   GstAppSink * voa_sink = GST_APP_SINK (data.enc.voa_sink);
   while (!term && !gst_app_sink_is_eos (voa_sink)) {
@@ -483,7 +562,7 @@ static void enc_main_loop () {
       if (!gst_buffer_map (buffer, &info, GST_MAP_READ))
         printf ("voa: error mapping buffer\n");
       int pak_size;
-      struct allnet_header * pak = create_voa_packet (info.data, info.size, data.stream_id, &pak_size);
+      struct allnet_header * pak = create_voa_stream_packet (info.data, info.size, data.stream_id, &pak_size);
       if (pak) {
         if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT_HIGH))
           fprintf (stderr, "voa: error sending stream packet\n");
@@ -501,6 +580,11 @@ static void enc_main_loop () {
   }
 }
 
+/**
+ * Init the audio system.
+ * Caller is responsible to call cleanup_audio () when done
+ * @param is_encoder initialize for encoding if set, for decoding otherwise
+ */
 static void dec_main_loop ()
 {
   while (!term) {
@@ -661,7 +745,9 @@ static int init_audio (int is_encoder)
   return 1;
 }
 
-static void cleanup_audio () {
+/** Cleanup function for audio system */
+static void cleanup_audio ()
+{
   /* Free resources */
   gst_object_unref (data.bus);
   gst_element_set_state (data.pipeline, GST_STATE_NULL);
@@ -733,6 +819,8 @@ int main (int argc, char ** argv)
   if (is_encoder) {
     if (send_voa_request ())
       enc_main_loop ();
+    else
+      term = -1; /* error */
   } else {
     dec_main_loop ();
   }
