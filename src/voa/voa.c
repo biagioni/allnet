@@ -391,11 +391,13 @@ static void stream_cipher_init (char * key, char * secret)
  * Create a VoA handshake packet
  * @param key key that will be used to encrypt the stream packets
  * @param secret secret that will be used to sign the stream packets
+ * @param stream_id stream_id that will be used to identify the stream
  * @param [out] size of the returned packet
  * @return created message
  */
 static struct allnet_header * create_voa_hs_packet (const char * key,
                                                     const char * secret,
+                                                    const char * stream_id,
                                                     int * paksize)
 {
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
@@ -418,7 +420,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   struct allnet_voa_handshake_header avhh;
   memcpy (&avhh.enc_key, key, ALLNET_STREAM_KEY_SIZE);
   memcpy (&avhh.enc_secret, secret, ALLNET_STREAM_SECRET_SIZE);
-  memcpy (&avhh.stream_id, data.stream_id, STREAM_ID_SIZE);
+  memcpy (&avhh.stream_id, stream_id, STREAM_ID_SIZE);
   writeb32u ((unsigned char *)(&avhh.media_type), ALLNET_MEDIA_AUDIO_OPUS);
 
   /* encrypt hs header */
@@ -488,7 +490,8 @@ static int send_voa_request ()
   char secret [ALLNET_STREAM_SECRET_SIZE];
   stream_cipher_init (key, secret);
   int paksize;
-  struct allnet_header * pak = create_voa_hs_packet (key, secret, &paksize);
+  struct allnet_header * pak = create_voa_hs_packet (key, secret,
+      (const char *)data.stream_id, &paksize);
   if (pak == NULL) {
     fprintf (stderr, "voa: failed to create request packet");
     return 0;
