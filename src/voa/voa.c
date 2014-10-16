@@ -898,12 +898,13 @@ int main (int argc, char ** argv)
   int is_encoder = (strcmp (argv [0] + len - 4, "voas") == 0);
   printf ("is_encoder: %d\n", is_encoder);
   printf ("My address:   ");
-  for (int i = 0; i < ADDRESS_SIZE; ++i)
+  int i;
+  for (i = 0; i < ADDRESS_SIZE; ++i)
     printf ("%02x ", data.my_address [i]);
   printf (" (%d bits)\n", data.my_addr_bits);
   if (is_encoder) {
     printf ("Dest address: ");
-    for (int i = 0; i < ADDRESS_SIZE; ++i)
+    for (i = 0; i < ADDRESS_SIZE; ++i)
       printf ("%02x ", data.dest_address [i]);
     printf (" (%d bits)\n", data.dest_addr_bits);
   }
