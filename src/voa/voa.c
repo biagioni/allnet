@@ -409,7 +409,6 @@ static int handle_packet (const char * message, int msize, int reply_only)
     if (readb32u ((const unsigned char *)(&amhp->app)) != ALLNET_MEDIA_APP_VOA)
       return 0;
     unsigned int hs = readb32u ((const unsigned char *)(&amhp->media));
-    payload = ((const char *)amhp) + amhsize;
     if (reply_only) {
       if (hs == ALLNET_VOA_HANDSHAKE_ACK)
         return check_voa_reply (hp, payload, msize);
