@@ -546,7 +546,7 @@ static int send_voa_request ()
 {
   char key [ALLNET_STREAM_KEY_SIZE];
   char secret [ALLNET_STREAM_SECRET_SIZE];
-  stream_cipher_init (key, secret);
+  stream_cipher_init (key, secret, 1);
   int paksize;
   struct allnet_header * pak = create_voa_hs_packet (key, secret,
       (const char *)data.stream_id, &paksize);
