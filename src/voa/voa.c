@@ -41,6 +41,9 @@
 
 #include "voa.h"
 
+// TODO: remove
+#define DEBUG
+
 typedef struct _DecoderData {
   GstElement * voa_source; /* Voice-over-allnet source */
 #ifdef RTP
@@ -249,6 +252,13 @@ static int accept_stream (const struct allnet_header * hp,
     goto accept_cleanup;
   }
   memcpy (data.stream_id, avhhp->stream_id, STREAM_ID_SIZE);
+#ifdef DEBUG
+  printf ("stream id: ");
+  int i;
+  for (i=0; i < STREAM_ID_SIZE; ++i)
+    printf ("%02x ", data.stream_id[i]);
+  printf ("\n");
+#endif /* DEBUG */
   data.dec.stream_id_set = 1;
   stream_cipher_init ((char *)avhhp->enc_key, (char *)avhhp->enc_secret, 0);
   memcpy (data.dest_address, hp->source, ADDRESS_SIZE);
@@ -318,6 +328,12 @@ static int check_voa_reply (const struct allnet_header * hp,
   unsigned int amhsize = sizeof (struct allnet_app_media_header);
   if (memcmp (data.stream_id, payload + amhsize, STREAM_ID_SIZE) != 0) {
     printf ("voa: discarding reply for unknown stream\n");
+#ifdef DEBUG
+    int i = 0;
+    for (; i < STREAM_ID_SIZE; ++i)
+      printf ("%02x ", *((unsigned char *)payload + amhsize + i));
+    printf ("\n");
+#endif /* DEBUG */
     return 0;
   }
   /* verify media header + stream_id sig */
@@ -341,7 +357,7 @@ static int check_voa_reply (const struct allnet_header * hp,
  */
 static int handle_packet (const char * message, int msize, int reply_only)
 {
-/* TODO: remove DEBUG: print packets
+#ifdef DEBUG
   const struct allnet_header * pak = (const struct allnet_header *)message;
   printf ("-\n");
   int i=0;
@@ -351,10 +367,13 @@ static int handle_packet (const char * message, int msize, int reply_only)
   for (; i-ALLNET_SIZE_HEADER(pak) < sizeof(struct allnet_app_media_header); ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
+  for (; i < msize-514; ++i)
+    printf ("%02x ", *((const unsigned char *)pak+i));
+  printf (".\n");
   for (; i < msize; ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf ("\n\n");
-*/
+#endif /* DEBUG */
   if (! is_valid_message (message, msize)) {
     printf ("got invalid message of size %d\n", msize);
     return 0;
@@ -520,6 +539,14 @@ static int send_voa_request ()
   int paksize;
   struct allnet_header * pak = create_voa_hs_packet (key, secret,
       (const char *)data.stream_id, &paksize);
+#ifdef DEBUG
+  printf ("stream id: ");
+  int i = 0;
+  for (; i < STREAM_ID_SIZE; ++i) {
+    printf ("%02x ", data.stream_id [i]);
+  }
+  printf ("\n");
+#endif /* DEBUG */
   if (pak == NULL) {
     fprintf (stderr, "voa: failed to create request packet");
     return 0;
@@ -560,8 +587,7 @@ static struct allnet_header * create_voa_stream_packet (
   if (!allnet_stream_encrypt_buffer (&data.enc_state, (const char *)buf, bufsize, payload, psize))
     return NULL;
 
-  /* TODO: remove */
-/* TODO: remove DEBUG: print packets
+#ifdef DEBUG
   printf ("-\n");
   int i=0;
   for (; i < ALLNET_SIZE_HEADER(pak); ++i)
@@ -573,7 +599,7 @@ static struct allnet_header * create_voa_stream_packet (
   for (; i < *paksize; ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf ("\n\n");
-*/
+#endif /* DEBUG */
   return pak;
 }
 
