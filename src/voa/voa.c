@@ -159,6 +159,20 @@ static void get_key_for_address (const unsigned char * addr, int addr_bits,
 }
 
 /**
+ * Initialize the stream cipher
+ * @param key [ref] pointer to ALLNET_STREAM_KEY_SIZE bytes for the stream key
+ * @param secret [ref] pointer to ALLNET_STREAM_SECRET_SIZE bytes for the hmac
+ * @param is_encoder when 0 the stream cipher is initialized with the passed
+                     key and secret. Otherwise the initialized values are
+                     written into key and secret.
+ */
+static void stream_cipher_init (char * key, char * secret, int is_encoder)
+{
+  allnet_stream_init (&data.enc_state, key, is_encoder, secret, is_encoder,
+                      ALLNET_VOA_COUNTER_SIZE, ALLNET_VOA_HMAC_SIZE);
+}
+
+/**
  * Check if the signature on a message is valid
  * @param hp message to check
  * @param payload start of signed part of the message
@@ -374,17 +388,6 @@ static int handle_packet (const char * message, int msize, int reply_only)
   if (!dec_handle_data (buf, bufsize))
     return -1;
   return 1;
-}
-
-/**
- * Initialize the stream cipher
- * @param key [out] pointer to ALLNET_STREAM_KEY_SIZE bytes for the stream key
- * @param secret [out] pointer to ALLNET_STREAM_SECRET_SIZE bytes for the hmac
- */
-static void stream_cipher_init (char * key, char * secret)
-{
-  allnet_stream_init (&data.enc_state, key, 1, secret, 1,
-      ALLNET_VOA_COUNTER_SIZE, ALLNET_VOA_HMAC_SIZE);
 }
 
 /**
