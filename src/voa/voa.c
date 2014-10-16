@@ -217,6 +217,8 @@ static int check_signature (const struct allnet_header * hp,
 
 /**
  * Check whether to accept an incomming stream request (decoder)
+ * When accepted, sets data.stream_id, data.dest_address and initializes the
+ * stream cipher.
  * @param hp incoming message
  * @param payload pointer to the struct app_media_header within the message
  * @param msize total message size
@@ -232,11 +234,29 @@ static int accept_stream (const struct allnet_header * hp,
       return 0;
   }
 
+  /* decrypt */
+  payload += sizeof (struct allnet_app_media_header);
+  char * decbuf;
+  int bufsize = allnet_decrypt (payload, msize - (payload - (const char *)hp),
+                                prvkey, &decbuf);
+  const struct allnet_voa_handshake_header * avhhp =
+      (const struct allnet_voa_handshake_header *)decbuf;
+
+  int ret = 0;
+  unsigned long mt = readb32u ((const unsigned char *)(avhhp->media_type));
+  if (mt != ALLNET_MEDIA_AUDIO_OPUS) {
+    printf ("voa: Unsupported media type requested %lx, can't accept stream\n", mt);
+    goto accept_cleanup;
+  }
+  memcpy (data.stream_id, avhhp->stream_id, STREAM_ID_SIZE);
   data.dec.stream_id_set = 1;
-  memcpy (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE);
+  stream_cipher_init ((char *)avhhp->enc_key, (char *)avhhp->enc_secret, 0);
   memcpy (data.dest_address, hp->source, ADDRESS_SIZE);
   data.dest_addr_bits = hp->src_nbits;
-  return 1;
+  ret = 1;
+accept_cleanup:
+  free (decbuf);
+  return ret;
 }
 
 /** Send an acceptance to a received stream request (decoder) */
@@ -244,7 +264,9 @@ static int send_accept_response ()
 {
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
   unsigned int psize = ALLNET_STREAM_KEY_SIZE;
-  int bufsize = amhpsize + psize;
+  allnet_rsa_prvkey prvkey = NULL;
+  get_key_for_address ((const unsigned char *)data.dest_address, data.dest_addr_bits, &prvkey, NULL);
+  int bufsize = amhpsize + psize + allnet_rsa_prvkey_size (prvkey) + 2;
   int pak_size;
   struct allnet_header * pak = create_packet (bufsize,
        ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_RSA_PKCS1,
@@ -253,20 +275,21 @@ static int send_accept_response ()
        &pak_size);
   unsigned int ahsize = ALLNET_SIZE_HEADER (pak);
 
-  /* allnet media headers */
+  /* allnet app media headers */
   struct allnet_app_media_header * amhp =
       (struct allnet_app_media_header *) ((char *)pak + ahsize);
   writeb32u ((unsigned char *)(&amhp->app), ALLNET_MEDIA_APP_VOA);
   writeb32u ((unsigned char *)(&amhp->media), ALLNET_VOA_HANDSHAKE_ACK);
 
-  /* sign response (media header + stream_id) */
-  void * payload = amhp + amhpsize;
-  allnet_rsa_prvkey prvkey = NULL;
-  get_key_for_address ((const unsigned char *)data.dest_address, data.dest_addr_bits, &prvkey, NULL);
+  /* stream id */
+  void * payload = (char *)amhp + amhpsize;
+  memcpy (payload, data.stream_id, STREAM_ID_SIZE);
+
+  /* sign response (app media header + stream_id) */
   char * sig;
   int sigsize = allnet_sign ((char *)amhp, amhpsize + psize, prvkey, &sig);
   if (sigsize == 0) {
-    fprintf (stderr, "voa: warning could not sign outgoing message\n");
+    fprintf (stderr, "voa: WARNING could not sign outgoing acceptance response\n");
     ((struct allnet_header *)pak)->sig_algo = ALLNET_SIGTYPE_NONE;
   } else {
     memcpy (payload + psize, sig, sigsize);
