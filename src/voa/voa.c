@@ -373,9 +373,11 @@ static int handle_packet (const char * message, int msize, int reply_only)
     return 0;
 
   const char * payload = (const char *)message + hsize;
-  /* both flags are mutually exclusive */
   if (!reply_only && data.dec.stream_id_set) {
-    if (memcmp (data.stream_id, ALLNET_STREAM_ID (hp, hp->transport, msize), STREAM_ID_SIZE) != 0) {
+    char * streamp = ALLNET_STREAM_ID (hp, hp->transport, msize);
+    if (streamp == NULL)
+      return 0;
+    if (memcmp (data.stream_id, streamp, STREAM_ID_SIZE) != 0) {
       printf ("discarding packet from unknown stream\n");
       return 0;
     }
