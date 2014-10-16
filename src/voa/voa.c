@@ -203,14 +203,16 @@ static int check_signature (const struct allnet_header * hp,
   if (sig == NULL)  /* ignore */
     return 0;
 
-  const char * from = NULL;
   struct bc_key_info * keys;
   int nkeys = get_other_keys (&keys);
   if ((nkeys > 0) && (ssize > 0) && (sig != NULL)) {
     int i;
     for (i = 0; i < nkeys; i++) {
       if (allnet_verify (payload, vsize, sig, ssize, keys [i].pub_key)) {
-        from = keys [i].identifier;
+#ifdef DEBUG
+        const char * from = keys [i].identifier;
+        printf ("voa: message signed by %s\n", from);
+#ifdef /* DEBUG */
         return 1;
       }
     }
