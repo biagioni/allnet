@@ -450,7 +450,15 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
   unsigned int avhhsize = sizeof (struct allnet_voa_handshake_header);
   unsigned int headersizes = amhpsize + avhhsize;
-  struct allnet_header * pak = create_packet (headersizes,
+  allnet_rsa_prvkey prvkey = NULL;
+  allnet_rsa_pubkey pubkey = NULL;
+  get_key_for_address ((const unsigned char *)data.dest_address,
+                       data.dest_addr_bits, &prvkey, &pubkey);
+  int bufsize = headersizes;
+  if (prvkey != NULL)
+    bufsize += allnet_rsa_prvkey_size (prvkey) + 2; /* space for signature */
+  printf ("%d %d\n", headersizes, bufsize);
+  struct allnet_header * pak = create_packet (bufsize,
        ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_RSA_PKCS1,
        data.my_address, data.my_addr_bits,
        data.dest_address, data.dest_addr_bits, NULL /*stream*/, NULL /*ack*/,
@@ -473,11 +481,6 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   /* encrypt hs header */
   char * encbuf;
   void * enc_payload = ((void *)amhp) + amhpsize;
-  allnet_rsa_prvkey prvkey = NULL;
-  allnet_rsa_pubkey pubkey = NULL;
-  get_key_for_address ((const unsigned char *)data.dest_address,
-                       data.dest_addr_bits, &prvkey, &pubkey);
-  int encbufsize = allnet_encrypt ((char *)&avhh, avhhsize, pubkey, &encbuf);
   if (encbufsize == 0) {
     fprintf (stderr, "voa: error encrypting message\n");
     free (encbuf);
@@ -487,16 +490,23 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   free (encbuf);
 
   /* sign media+hs headers */
-  char * sig;
-  int sigsize = allnet_sign ((char *)amhp, amhpsize + encbufsize, prvkey, &sig);
-  if (sigsize == 0) {
-    free (sig);
-    return NULL;
+  int sigsize = 0;
+  if (prvkey != NULL) {
+    char * sig_payload = (char *)amhp;
+    int sig_psize = amhpsize + encbufsize;
+    char * sig;
+    sigsize = allnet_sign (sig_payload, sig_psize, prvkey, &sig);
+    if (sigsize != 0) {
+      memcpy (enc_payload + encbufsize, sig, sigsize);
+      free (sig);
+      assert (ahsize + sig_psize + sigsize == *paksize -2); /* last 2 bytes */
+      writeb16 (sig_payload + sig_psize + sigsize, sigsize);
+    }
   }
-  memcpy (enc_payload + encbufsize, sig, sigsize);
-  free (sig);
+  if (sigsize == 0)
+    printf ("voa: WARNING: not signing request\n");
 
-  assert (ahsize + headersizes + encbufsize + sigsize == *paksize);
+  assert (ahsize + amhpsize + encbufsize + (sigsize ? sigsize + 2 : 0) == *paksize);
   return pak;
 }
 
