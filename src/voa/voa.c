@@ -212,7 +212,7 @@ static int check_signature (const struct allnet_header * hp,
 #ifdef DEBUG
         const char * from = keys [i].identifier;
         printf ("voa: message signed by %s\n", from);
-#ifdef /* DEBUG */
+#endif /* DEBUG */
         return 1;
       }
     }
