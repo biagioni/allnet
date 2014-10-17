@@ -703,6 +703,51 @@ static void wp_multiply_mod_temp_internal (int nbits, uint64_t * res,
   }
 }
 
+static int is65537 (int nbits, const uint64_t * n)
+{
+  int nwords = NUM_WORDS (nbits);
+  int i;
+  for (i = 0; i + 1 < nwords; i++)
+    if (n [i] != 0)
+      return 0;
+  if (n [nwords - 1] != 65537)
+    return 0;
+  return 1;
+}
+
+/* res, v1, and v2 can all be the same, as long as temp is different */
+static void wp_multiply_mod_temp (int nbits, uint64_t * res,
+                                  const uint64_t * v1, const uint64_t * v2,
+                                  const uint64_t * mod, uint64_t * temp)
+{
+  wp_multiply_mod (nbits, temp, v1, v2, mod);
+  wp_copy (nbits, res, temp);
+}
+
+/* no argument should be the same pointer as any of the other arguments */
+/* temp is a temporary array used internally and must have at least nbits */
+void wp_exp_mod_65537 (int nbits, uint64_t * res, const uint64_t * base,
+                       const uint64_t * mod, uint64_t * temp)
+{
+  wp_multiply_mod_temp (nbits, res, base, base, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
+  wp_multiply_mod_temp (nbits, res, res, base, mod, temp);
+}
+
 /* same as wp_exp_mod, but temp is a temporary array used internally
  * that must have at least 65 * nbits */
 void wp_exp_mod64 (int nbits, uint64_t * res, const uint64_t * base,
@@ -832,51 +877,6 @@ int wp_multiple_of_int (int nbits, const uint64_t * n, uint32_t mod)
   }
   /* word has n % mod */
   return (word == 0);
-}
-
-/* res, v1, and v2 can all be the same, as long as temp is different */
-static void wp_multiply_mod_temp (int nbits, uint64_t * res,
-                                  const uint64_t * v1, const uint64_t * v2,
-                                  const uint64_t * mod, uint64_t * temp)
-{
-  wp_multiply_mod (nbits, temp, v1, v2, mod);
-  wp_copy (nbits, res, temp);
-}
-
-/* no argument should be the same pointer as any of the other arguments */
-/* temp is a temporary array used internally and must have at least nbits */
-void wp_exp_mod_65537 (int nbits, uint64_t * res, const uint64_t * base,
-                       const uint64_t * mod, uint64_t * temp)
-{
-  wp_multiply_mod_temp (nbits, res, base, base, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, res, mod, temp);
-  wp_multiply_mod_temp (nbits, res, res, base, mod, temp);
-}
-
-int is65537 (int nbits, const uint64_t * n)
-{
-  int nwords = NUM_WORDS (nbits);
-  int i;
-  for (i = 0; i + 1 < nwords; i++)
-    if (n [i] != 0)
-      return 0;
-  if (n [nwords - 1] != 65537)
-    return 0;
-  return 1;
 }
 
 /* no argument should be the same pointer as any of the other arguments */
