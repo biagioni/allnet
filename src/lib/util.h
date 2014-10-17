@@ -45,7 +45,12 @@ extern struct allnet_header *
  * given data size.
  * If ack is not NULL, the data size parameter should NOT include the
  * MESSAGE_ID_SIZE bytes of the message ID
- * *size is set to the size to send */
+ * *size is set to the size to send
+ * note that if sig_algo is ALLNET_SIGTYPE_RSA_PKCS1, data_size must
+ * include 2 + the size of the signature, and for ALLNET_SIGTYPE_HMAC_SHA512
+ * must include the size of the signature.  In other words, create_packet
+ * does NOT add the signature size to data_size.
+ */
 extern struct allnet_header *
   create_packet (int data_size, int message_type, int max_hops, int sig_algo,
                  const unsigned char * source, int sbits,
