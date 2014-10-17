@@ -12,8 +12,8 @@
 #include "wp_aes.h"
 
 /* allnet_stream_init allocates and initializes state for encrypting and
- * decrypting.  It can do so from a given key and secret, or it can
- * initialize the the key and secret for the caller.
+ * decrypting. It can do so from a given key and secret, or it can
+ * initialize the key and secret for the caller.
  *
  * key must have size ALLNET_STREAM_KEY_SIZE, and must be initialized by
  * the caller prior to calling allnet_stream_init (if init_key is 0) or
