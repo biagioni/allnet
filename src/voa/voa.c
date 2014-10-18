@@ -580,7 +580,7 @@ static int voa_receive (int timeout)
     char * message;
     int size = receive_pipe_message_any (timeout, &message, &pipe, &priority);
     if (size > 0) {
-      ret = handle_packet ((const char *)message, size, timeout);
+      ret = handle_packet ((const char *)message, size, timeout != PIPE_MESSAGE_WAIT_FOREVER);
       free (message);
     }
 
