@@ -926,6 +926,21 @@ static void cleanup_audio ()
   gst_object_unref (data.pipeline);
 }
 
+/**
+ * Mask (zero) out unused parts of the last byte of addr.
+ * @param addr ADDRESS_SIZE bytes of address with last unused whole bytes already zeroed out.
+ * @param nbits number of relevant address bits
+ */
+static void mask_unused_addr_bits (unsigned char * addr, int nbits)
+{
+  int nbytes = (nbits >> 3) + 1;
+  if (nbits % 8)
+    /* signed shift */
+    addr [nbytes-1] &= (unsigned char)(((char)0x80) >> ((nbits % 8) - 1));
+  else if (nbytes < ADDRESS_SIZE)
+    addr [nbytes-1] = 0;
+}
+
 int allnet_global_debugging = 0;
 int main (int argc, char ** argv)
 {
@@ -943,14 +958,10 @@ int main (int argc, char ** argv)
 
   data.my_addr_bits = ADDRESS_BITS;
   int nbytes = (data.my_addr_bits >> 3) + 1;
+  if (nbytes > ADDRESS_SIZE)
+    nbytes = ADDRESS_SIZE;
   random_bytes ((char *)data.my_address, nbytes);
-  if (data.my_addr_bits % 8)
-    data.my_address [nbytes-1] &=
-      /* signed shift */
-      (unsigned char)(((char)0x80) >> ((data.my_addr_bits % 8) - 1));
-  else if (nbytes < ADDRESS_SIZE)
-    data.my_address [nbytes-1] = 0;
-
+  mask_unused_addr_bits (data.my_address, data.my_addr_bits);
   if (argc > 1) {
     int a = 0;
     while (a < argc) {
@@ -969,19 +980,6 @@ int main (int argc, char ** argv)
           mask_unused_addr_bits (data.dest_address, data.dest_addr_bits);
         }
       }
-    nbytes = strnlen (argv [1], ADDRESS_SIZE);
-    data.dest_addr_bits = 8 * nbytes;
-    memcpy (data.dest_address, argv [1], nbytes);
-    if (argc > 2) {
-      int b = atoi (argv [2]);
-      data.dest_addr_bits = b > ADDRESS_BITS ? ADDRESS_BITS : b;
-      nbytes = (data.dest_addr_bits >> 3) + 1;
-      if (data.dest_addr_bits % 8)
-        data.dest_address [nbytes-1] &=
-          /* signed shift */
-          (unsigned char)(((char)0x80) >> ((data.dest_addr_bits % 8) - 1));
-      else if (nbytes < ADDRESS_SIZE)
-        data.dest_address [nbytes-1] = 0;
     }
   }
 
