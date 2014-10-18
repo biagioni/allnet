@@ -695,7 +695,11 @@ int num_keysets (char * contact)
 /* returns the number of keysets, and has keysets point to a statically
  * allocated array of pointers to statically allocated keysets
  * (do not modify in any way). */
+<<<<<<< HEAD
 int all_keys (const char * contact, keyset ** keysets)
+=======
+int all_keys (const char * contact, const keyset ** keysets)
+>>>>>>> lib/keys: constify keysets
 {
 #define DEFAULT_KEYSETS		10
   static int buf [DEFAULT_KEYSETS];
@@ -1463,7 +1467,7 @@ int main ()
           create_contact ("edo", 8192, 1, NULL, 0, NULL, 0, addr, 18));
   printf ("create_contact (foo) returns %d\n",
           create_contact ("foo", 8192, 1, NULL, 0, NULL, 0, addr, 18));
-  keyset * ks;
+  const keyset * ks;
   int nk = all_keys ("edo", &ks);
   char * key;
   int ksize = get_my_privkey (ks [0], &key);

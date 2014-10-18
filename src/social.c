@@ -149,7 +149,7 @@ static int is_my_contact (char * message, int msize,
   int nc = all_contacts (&contacts);
   int ic;
   for (ic = 0; ic < nc; ic++) {
-    keyset * keysets;
+    const keyset * keysets;
     int nk = all_keys (contacts [ic], &keysets);
     int ink;
     for (ink = 0; ink < nk; ink++) {

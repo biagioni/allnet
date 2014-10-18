@@ -103,7 +103,7 @@ int main (int argc, char ** argv)
       return 1;
   } else { /* send the data packet */
     int i;
-    keyset * keys;
+    const keyset * keys;
     int nkeys = all_keys (contact, &keys);
     if ((argc > 2) && (nkeys > 0)) {
       int max_key = 0;

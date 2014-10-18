@@ -725,7 +725,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
   int num_contacts = all_contacts (&contacts);
   for (i = 0; i < num_contacts; i++) {
     int j;
-    keyset * keysets;
+    const keyset * keysets;
     int num_keysets = all_keys (contacts [i], &keysets);
     for (j = 0; j < num_keysets; j++) {
       unsigned char address [ADDRESS_SIZE];

@@ -33,7 +33,7 @@
  * messages to this contact.  returns 0 if the contact cannot be found */
 uint64_t get_counter (char * contact)
 {
-  keyset * kset;
+  const keyset * kset;
   int nkeys = all_keys (contact, &kset);
   if (nkeys < 0)
     return 0;
@@ -160,7 +160,7 @@ uint64_t ack_received (char * message_ack, char ** contact, keyset * kset)
   int nc = all_contacts (&contacts);
   int c;
   for (c = 0; c < nc; c++) {
-    keyset * ksets;
+    const keyset * ksets;
     int nk = all_keys (contacts [c], &ksets);
     int k;
     for (k = 0; k < nk; k++) {
@@ -267,7 +267,7 @@ char * get_unacked (char * contact, keyset k, int * singles, int * ranges)
  * 0 otherwise */
 int is_acked (char * contact, uint64_t seq)
 {
-  keyset * kset;
+  const keyset * kset;
   int nkeys = all_keys (contact, &kset);
   if (nkeys < 0)
     return 0;

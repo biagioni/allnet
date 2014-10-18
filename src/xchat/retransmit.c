@@ -148,7 +148,7 @@ int send_retransmit_request (char * contact, keyset k, int sock,
   if (request == NULL)
     return 0;
 
-  keyset * keys;
+  const keyset * keys;
   int nkeys = all_keys (contact, &keys);
   int i;
   int result = 1;
