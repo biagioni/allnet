@@ -967,7 +967,8 @@ int main (int argc, char ** argv)
     int a = 0;
     while (a < argc) {
       if (strcmp (argv [a], "-c") == 0) {
-        data.dest_contact = argv [++a];
+        if (++a < argc)
+          data.dest_contact = argv [a];
         ++a;
 
       } else {
@@ -975,7 +976,7 @@ int main (int argc, char ** argv)
         data.dest_addr_bits = 8 * nbytes;
         memcpy (data.dest_address, argv [a], nbytes);
         ++a;
-        if (argc > a) {
+        if (a < argc) {
           int b = atoi (argv [a]);
           data.dest_addr_bits = b > ADDRESS_BITS ? ADDRESS_BITS : b;
           mask_unused_addr_bits (data.dest_address, data.dest_addr_bits);
@@ -986,6 +987,12 @@ int main (int argc, char ** argv)
 
   int len = strlen (argv [0]);
   int is_encoder = (strcmp (argv [0] + len - 4, "voas") == 0);
+
+  if (is_encoder && data.dest_contact == NULL) {
+    fprintf (stderr, "Contact required\n");
+    return 1;
+  }
+
   printf ("is_encoder: %d\n", is_encoder);
   printf ("My address:   ");
   int i;
