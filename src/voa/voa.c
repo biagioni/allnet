@@ -90,6 +90,20 @@ static VOAData data;
 static int term = 0;
 
 /**
+ * Initialize the global data struct
+ * my_address and dest_address are zeroed out
+ */
+static void init_data ()
+{
+  data.accept_unsigned = 1;
+  data.my_addr_bits = 0;
+  data.dest_addr_bits = 0;
+  /* set any unused address parts to all zeros */
+  bzero (data.my_address, ADDRESS_SIZE);
+  bzero (data.dest_address, ADDRESS_SIZE);
+}
+
+/**
  * Inject buffers into the audio system pipeline
  * @param buf buffer to be injected
  * @param bufsize size of buf
@@ -896,13 +910,10 @@ int main (int argc, char ** argv)
     fprintf (stderr, "Could not connect to AllNet\n");
     return 1;
   }
+  init_data ();
   data.allnet_socket = socket;
-  data.accept_unsigned = 0;
 
   data.my_addr_bits = ADDRESS_BITS;
-  data.dest_addr_bits = 0;
-  bzero (data.my_address, ADDRESS_SIZE);  /* set any unused part to all zeros */
-  bzero (data.dest_address, ADDRESS_SIZE);
   int nbytes = (data.my_addr_bits >> 3) + 1;
   random_bytes ((char *)data.my_address, nbytes);
   if (data.my_addr_bits % 8)
