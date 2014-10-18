@@ -784,8 +784,10 @@ static int get_repeat_option (int * argcp, char ** argv)
       if (i + 1 < orig_argc) {
         char * e;
         int count = strtol (argv [i + 1], &e, 10);
-        if (e != argv [i + 1])   /* found something */
+        if (e != argv [i + 1]) {  /* found something */
           result = count;
+          skip = 2;
+        }
       }
       int j;
       for (j = i; j + skip < orig_argc; j++)
@@ -895,6 +897,8 @@ int main (int argc, char ** argv)
     char trace_id [MESSAGE_ID_SIZE];
     unsigned char my_addr [ADDRESS_SIZE];
     int sleep = 5;
+    if (repeat != 1)
+      sleep = 1;
     int count;
     for (count = 0; (repeat == 0) || (count < repeat); count++) {
 /* printf ("%d/%d\n", count, repeat); */
