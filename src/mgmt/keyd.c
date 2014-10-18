@@ -179,7 +179,8 @@ static void generate_spare_keys (time_t * last_alive)
         static char buffer [KEY_GEN_BYTES];
         char * bp = NULL;
 #ifdef DEBUG_PRINT_SPARES
-        printf ("gathering %d bytes and waiting %ld\n", KEY_GEN_BYTES, finish);
+        printf ("gathering %d bytes and waiting %ld until %ld\n",
+                KEY_GEN_BYTES, finish - time (NULL), finish);
 #endif /* DEBUG_PRINT_SPARES */
         if (gather_random_and_wait (KEY_GEN_BYTES, buffer, finish))
           bp = buffer;
@@ -191,12 +192,14 @@ static void generate_spare_keys (time_t * last_alive)
       } else {
         if (gather_random_and_wait (0, NULL, finish))
           printf ("generate_spare_keys: unexpected positive\n");
+        start = time (NULL);
       }
       sleep_time = (time (NULL) - start) * 100;
       if (sleep_time < (60 * 10))
         sleep_time = (60 * 10);
 #ifdef DEBUG_PRINT_SPARES
-      printf ("%ld: sleep time %ld\n", time (NULL), sleep_time);
+      printf ("%ld: sleep time %ld (from %ld)\n", time (NULL), sleep_time,
+              time (NULL) - start);
 #endif /* DEBUG_PRINT_SPARES */
       if ((time (NULL) - (*last_alive)) > 100) {  /* parent process died */
         snprintf (log_buf, LOG_SIZE, "generate_spare %ld > %ld+100, exiting\n",
