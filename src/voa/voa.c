@@ -174,7 +174,7 @@ static void get_key_for_contact (const char * contact,
 
 /**
  * Get public/private key(s) for given AllNet address
- * @param addr address pointer to ceil(addr_bits * 8) bytes
+ * @param addr address pointer to ADDRESS_SIZE bytes
  * @param addr_bits number of relevant address bits
  * @param [out] privkey ptr to allnet_rsa_privkey or NULL when not requested.
  * @param [out] pubkey ptr to to allnet_rsa_pubkey or NULL when not requested.
