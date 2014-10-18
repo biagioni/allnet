@@ -29,7 +29,7 @@ extern int allnet_verify (const char * text, int tsize, const char * sig,
                           int ssize, allnet_rsa_pubkey key);
 
 /* returns the size of the signature and mallocs the signature into result */
-extern int allnet_sign (char * text, int tsize, allnet_rsa_prvkey key,
+extern int allnet_sign (const char * text, int tsize, allnet_rsa_prvkey key,
                         char ** result);
 
 /* returns the data size > 0, and malloc's and fills in the contact, if able

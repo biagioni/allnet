@@ -9,6 +9,11 @@
  * the daemon will optionally take a '-m' option, to specify tracing
    only when we match the address.
  * for the client, the specified address is the address to trace
+ * the client also takes '-m' for exact match -- do not show non-matching dests
+                         '-i' for no display of intermediate (-i implies -m)
+                         '-r' for repeat forever, '-r n' to repeat n times
+                             (watch for -r followed by the address, may
+                              interpret the address as a repeat count)
  */
 
 #include <stdio.h>
@@ -629,8 +634,8 @@ static void print_entry (struct allnet_mgmt_trace_entry * entry,
 }
 
 static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
-                                struct timeval start,
-                                struct timeval finish)
+                                struct timeval start, struct timeval finish,
+                                int match_only, int no_intermediates)
 {
   /* put the unix times into allnet format */
   start.tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
@@ -640,15 +645,21 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
     return;
   }
   if (trp->intermediate_reply == 0) {      /* final reply */
+    int first = 1;
+    if (no_intermediates)
+      first = trp->num_entries - 1;
     if (trp->num_entries > 1) {
-      printf ("trace to matching destination:\n");
+      if ((! no_intermediates) && (! match_only))
+        printf ("trace to matching destination:\n");
       int i;
-      for (i = 1; i < trp->num_entries; i++) {
+      for (i = first; i < trp->num_entries; i++) {
         printf ("         ");
         print_times (trp->trace + i, &start, &finish, 1);
         print_entry (trp->trace + i, &start, &finish, 1);
       }
     }
+  } else if ((no_intermediates) || (match_only)) {  /* skip intermediates */
+                                                    /* and not exact match */
   } else if (trp->num_entries == 2) {
     /* generally two trace entries for intermediate replies */
     printf ("forward: ");
@@ -667,7 +678,8 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
 }
 
 static void handle_packet (char * message, int msize, char * seeking,
-                           struct timeval start)
+                           struct timeval start,
+                           int match_only, int no_intermediates)
 {
 /* print_packet (message, msize, "handle_packet got", 1); */
   if (! is_valid_message (message, msize))
@@ -709,10 +721,11 @@ static void handle_packet (char * message, int msize, char * seeking,
 */
   snprintf (log_buf, LOG_SIZE, "matching trace response of size %d\n", msize);
   log_print ();
-  print_trace_result (trp, start, now);
+  print_trace_result (trp, start, now, match_only, no_intermediates);
 }
 
-static void wait_for_responses (int sock, char * trace_id, int sec)
+static void wait_for_responses (int sock, char * trace_id, int sec,
+                                int match_only, int no_intermediates)
 {
   num_arrivals = 0;   /* not received anything yet */
   unsigned long long int max_ms = sec * 1000;
@@ -732,7 +745,8 @@ static void wait_for_responses (int sock, char * trace_id, int sec)
 #endif /* DEBUG_PRINT */
       exit (1);
     }
-    handle_packet (message, found, trace_id, tv_start);
+    handle_packet (message, found, trace_id, tv_start,
+                   match_only, no_intermediates);
     if (found > 0)
       free (message);
     time_spent = allnet_time_ms () - start;
@@ -748,10 +762,43 @@ static void usage (char * pname, int daemon)
     printf ("usage: %s [-m] [<my_address_in_hex>[/<number_of_bits>]]\n", pname);
     printf ("       -m specifies tracing only when we match the address\n"); 
   } else {
-    printf ("usage: %s [<my_address_in_hex>[/<number_of_bits> [hops]]]\n",
-            pname);
+    printf ("usage: %s [-r [n]] [-m|-i] "
+            "[<my_address_in_hex>[/<number_of_bits> [hops]]]\n", pname);
+    printf ("       -r repeats forever, or n times if n is specified\n");
+    printf ("          (-r followed by the address may interpret the "
+                                         "address as a repeat count)\n");
+    printf ("       -m only reports responses from matching addresses\n");
+    printf ("       -i does not report intermediate nodes (a bit like ping)\n");
+    printf ("       -i implies -m\n");
   }
 }
+
+static int get_repeat_option (int * argcp, char ** argv)
+{
+  int orig_argc = *argcp;
+  int i;
+  for (i = 1; i < orig_argc; i++) {
+    if (strcmp (argv [i], "-r") == 0) {  /* found a match */
+      int skip = 1;
+      int result = 0;                    /* repeat forever */
+      if (i + 1 < orig_argc) {
+        char * e;
+        int count = strtol (argv [i + 1], &e, 10);
+        if (e != argv [i + 1]) {  /* found something */
+          result = count;
+          skip = 2;
+        }
+      }
+      int j;
+      for (j = i; j + skip < orig_argc; j++)
+        argv [j] = argv [j + skip];
+      *argcp = orig_argc - skip;
+      return result;
+    }
+  }
+  return 1;   /* only repeat once */
+}
+
 #endif /* TRACE_MAIN_FUNCTION */
 
 void traced_main (char * pname)
@@ -792,11 +839,17 @@ int main (int argc, char ** argv)
   if (strstr (argv [0], "traced") != NULL)  /* called as daemon */
     is_daemon = 1;
 
-  if ((argc > 2) && ((is_daemon) || (argc > 3))) {
+  if ((argc > 2) && ((is_daemon) || (argc > 6))) {
     printf ("argc %d, at most %d allowed for %s\n", argc,
             ((is_daemon) ? 2 : 3), ((is_daemon) ? "traced" : "trace"));
     usage (argv [0], is_daemon);
     return 1;
+  }
+  int no_intermediates = 0;
+  int repeat = 1;  
+  if (! is_daemon) {
+    no_intermediates = get_option ('i', &argc, argv);
+    repeat = get_repeat_option (&argc, argv);
   }
 
   unsigned char address [ADDRESS_SIZE];
@@ -843,10 +896,17 @@ int main (int argc, char ** argv)
 #endif /* DEBUG_PRINT */
     char trace_id [MESSAGE_ID_SIZE];
     unsigned char my_addr [ADDRESS_SIZE];
-    random_bytes (trace_id, sizeof (trace_id));
-    random_bytes ((char *) my_addr, sizeof (my_addr));
-    send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
-    wait_for_responses (sock, trace_id, 10);
+    int sleep = 5;
+    if (repeat != 1)
+      sleep = 1;
+    int count;
+    for (count = 0; (repeat == 0) || (count < repeat); count++) {
+/* printf ("%d/%d\n", count, repeat); */
+      random_bytes (trace_id, sizeof (trace_id));
+      random_bytes ((char *) my_addr, sizeof (my_addr));
+      send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
+      wait_for_responses (sock, trace_id, sleep, match_only, no_intermediates);
+    }
   }
   return 0;
 }
