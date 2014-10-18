@@ -394,7 +394,7 @@ static int check_voa_reply (const struct allnet_header * hp,
  * Handle any incoming packets and filter relevant ones
  * @param message pointer to struct allnet_header
  * @param msize total size of message
- * @param reply_only only process VoA ACK messages (for encoder)
+ * @param reply_only only process VoA ACK messages when reply_only != 0 (for encoder)
  * @return 1 packet was handled successfully (encoder: stream was accepted),
  *         0 packet is discarded (encoder: or not accepted)
  *        -1 an error happened while processing an expected packet
@@ -556,7 +556,6 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
 
 /**
  * Receive and handle allnet messages in a loop until global term is set
- * The loop only aborts on errors when reply_only is not set.
  * @param timeout timeout in ms. If timeout != 0, only listen until a stream was
  *                accepted or the timeout is reached (encoder)
  * @return 0 on error or term (or timeout reached when timeout is set),
