@@ -27,6 +27,7 @@
 #include <gst/app/gstappsink.h>
 #include <stdlib.h>       /* atoi */
 #include <string.h>       /* memcmp, memcpy */
+#include <sys/time.h>     /* gettimeofday */
 
 #include "lib/app_util.h" /* connect_to_local */
 #include "lib/cipher.h"   /* allnet_encrypt, allnet_sign, allnet_verify */
@@ -37,7 +38,7 @@
 #include "lib/pipemsg.h"  /* send_pipe_message */
 #include "lib/priority.h"
 #include "lib/stream.h"   /* allnet_stream_* */
-#include "lib/util.h"     /* create_packet, random_bytes */
+#include "lib/util.h"     /* create_packet, random_bytes, add_us, delta_us */
 
 #include "voa.h"
 
@@ -514,39 +515,62 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
 /**
  * Receive and handle allnet messages in a loop until global term is set
  * The loop only aborts on errors when reply_only is not set.
- * @param reply_only Only listen until a stream was accepted (encoder)
- * @return 0 on error or term,
- *         1 on success (only when reply_only is set)
+ * @param timeout timeout in ms. If timeout != 0, only listen until a stream was
+ *                accepted or the timeout is reached (encoder)
+ * @return 0 on error or term (or timeout reached when timeout is set),
+ *         1 on success (only when timeout is set)
  */
-static int voa_receive (int reply_only)
+static int voa_receive (int timeout)
 {
+  struct timeval now;
+  struct timeval timeout_end;
+  if (timeout) {
+    gettimeofday (&now, NULL);
+    timeout_end = now;
+    add_us (&timeout_end, timeout * 1000ULL);
+  } else {
+    timeout = PIPE_MESSAGE_WAIT_FOREVER;
+  }
+
+  int ret = 0;
   while (!term) {
     int pipe;
     int priority;
     char * message;
-    int size = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
-                                        &pipe, &priority);
-    if (size <= 0) {
+    int size = receive_pipe_message_any (timeout, &message, &pipe, &priority);
+    if (size > 0) {
+      ret = handle_packet ((const char *)message, size, timeout);
+      free (message);
+    }
+
+    if (timeout != PIPE_MESSAGE_WAIT_FOREVER) {
+      if (ret)
+        return 1;
+      gettimeofday (&now, NULL);
+      if ((timeout = delta_us (&timeout_end, &now) / 1000ULL) == 0)
+        return 0;
+    } else if (size <= 0) {
       printf ("voa: pipe closed, exiting\n");
       return 0;
     }
-    int ret = handle_packet ((const char *)message, size, reply_only);
-    free (message);
-    if (reply_only && ret)
-      return 1;
   }
   return 0;
 }
 
 /**
  * Initiate VoA handshake by sending the request
+ * The key and secret are chosen the first time the function is called
  * @return 1 on success, 0 on failure
  */
 static int send_voa_request ()
 {
-  char key [ALLNET_STREAM_KEY_SIZE];
-  char secret [ALLNET_STREAM_SECRET_SIZE];
-  stream_cipher_init (key, secret, 1);
+  static int init_key = 1;
+  static char key [ALLNET_STREAM_KEY_SIZE];
+  static char secret [ALLNET_STREAM_SECRET_SIZE];
+  if (init_key) {
+    stream_cipher_init (key, secret, init_key);
+    init_key = 0;
+  }
   int paksize;
   struct allnet_header * pak = create_voa_hs_packet (key, secret,
       (const char *)data.stream_id, &paksize);
@@ -924,10 +948,15 @@ int main (int argc, char ** argv)
     return 1;
 
   if (is_encoder) {
-    if (send_voa_request () && voa_receive (1))
-      enc_main_loop ();
-    else
-      term = -1; /* error */
+    int i = 0;
+    /* retry 10x every 2s */
+    do {
+      printf (".");
+      if (send_voa_request () && voa_receive (2000)) {
+        printf ("\n");
+        enc_main_loop ();
+      }
+    } while (++i < 10);
   } else {
     voa_receive (0);
   }
