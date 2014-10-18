@@ -695,11 +695,7 @@ int num_keysets (char * contact)
 /* returns the number of keysets, and has keysets point to a statically
  * allocated array of pointers to statically allocated keysets
  * (do not modify in any way). */
-<<<<<<< HEAD
-int all_keys (const char * contact, keyset ** keysets)
-=======
 int all_keys (const char * contact, const keyset ** keysets)
->>>>>>> lib/keys: constify keysets
 {
 #define DEFAULT_KEYSETS		10
   static int buf [DEFAULT_KEYSETS];
