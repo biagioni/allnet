@@ -78,6 +78,7 @@ typedef struct _VOAData {
   unsigned char my_address [ADDRESS_SIZE];
   unsigned char dest_address [ADDRESS_SIZE];
   unsigned char stream_id [STREAM_ID_SIZE];
+  const char * dest_contact;
   struct allnet_stream_encryption_state enc_state;
   union {
     EncoderData enc;
@@ -96,6 +97,7 @@ static int term = 0;
 static void init_data ()
 {
   data.accept_unsigned = 1;
+  data.dest_contact = NULL;
   data.my_addr_bits = 0;
   data.dest_addr_bits = 0;
   /* set any unused address parts to all zeros */
@@ -142,6 +144,32 @@ static int dec_handle_data (const char * buf, int bufsize)
     gst_element_set_state (data.pipeline, GST_STATE_PLAYING);
 
   return 1;
+}
+
+static void get_key_for_contact (const char * contact,
+                                 allnet_rsa_prvkey * prvkey,
+                                 allnet_rsa_pubkey * pubkey)
+{
+  /* method mostly copy-pasted from xchat/xcommon.c */
+  /* get the keys */
+  keyset * keys;
+  int nkeys = all_keys ((char *)contact, &keys);
+  if (nkeys <= 0) {
+    printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
+    return;
+  }
+
+/*
+  If there are multiple keys, we could check if one matches this address and
+  use that
+      unsigned char address [ADDRESS_SIZE];
+      int na_bits = get_remote (keysets [ink], address);
+      if (matches (addr, addr_bits, (const unsigned char *)address, na_bits) > 0)
+*/
+  if (prvkey != NULL)
+    get_my_privkey (keys [0], prvkey);
+  if (pubkey != NULL)
+    get_contact_pubkey (keys [0], pubkey);
 }
 
 /**
@@ -468,8 +496,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   unsigned int headersizes = amhpsize + avhhsize;
   allnet_rsa_prvkey prvkey = NULL;
   allnet_rsa_pubkey pubkey = NULL;
-  get_key_for_address ((const unsigned char *)data.dest_address,
-                       data.dest_addr_bits, &prvkey, &pubkey);
+  get_key_for_contact (data.dest_contact, &prvkey, &pubkey);
   int bufsize = headersizes;
   if (prvkey != NULL)
     bufsize += allnet_rsa_prvkey_size (prvkey) + 2; /* space for signature */
@@ -902,7 +929,7 @@ int allnet_global_debugging = 0;
 int main (int argc, char ** argv)
 {
   if (argc == 2 && strcmp (argv [1], "-h") == 0) {
-    printf ("usage: %s [dest-addr [dest-bits]]\n", argv [0]);
+    printf ("usage: %s [-c contact] [dest-addr [dest-bits]]\n", argv [0]);
     return 0;
   }
   int socket = connect_to_local (argv [0], argv [0]);
@@ -924,6 +951,23 @@ int main (int argc, char ** argv)
     data.my_address [nbytes-1] = 0;
 
   if (argc > 1) {
+    int a = 0;
+    while (a < argc) {
+      if (strcmp (argv [a], "-c") == 0) {
+        data.dest_contact = argv [++a];
+        ++a;
+
+      } else {
+        nbytes = strnlen (argv [a], ADDRESS_SIZE);
+        data.dest_addr_bits = 8 * nbytes;
+        memcpy (data.dest_address, argv [a], nbytes);
+        ++a;
+        if (argc > a) {
+          int b = atoi (argv [a]);
+          data.dest_addr_bits = b > ADDRESS_BITS ? ADDRESS_BITS : b;
+          mask_unused_addr_bits (data.dest_address, data.dest_addr_bits);
+        }
+      }
     nbytes = strnlen (argv [1], ADDRESS_SIZE);
     data.dest_addr_bits = 8 * nbytes;
     memcpy (data.dest_address, argv [1], nbytes);
@@ -949,6 +993,7 @@ int main (int argc, char ** argv)
     printf ("%02x ", data.my_address [i]);
   printf (" (%d bits)\n", data.my_addr_bits);
   if (is_encoder) {
+    printf ("Contact: %s\n", data.dest_contact);
     printf ("Dest address: ");
     for (i = 0; i < ADDRESS_SIZE; ++i)
       printf ("%02x ", data.dest_address [i]);
