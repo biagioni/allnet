@@ -524,6 +524,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   /* encrypt hs header */
   char * encbuf;
   void * enc_payload = ((void *)amhp) + amhpsize;
+  int encbufsize = allnet_encrypt ((void *)&avhh, avhhsize, pubkey, &encbuf);
   if (encbufsize == 0) {
     fprintf (stderr, "voa: error encrypting message\n");
     free (encbuf);
