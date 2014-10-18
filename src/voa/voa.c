@@ -648,7 +648,8 @@ static struct allnet_header * create_voa_stream_packet (
               const unsigned char * stream_id, int * paksize)
 {
   unsigned int sigsize = ALLNET_VOA_COUNTER_SIZE + ALLNET_VOA_HMAC_SIZE;
-  struct allnet_header * pak = create_packet (bufsize + sigsize,
+  int psize = bufsize + sigsize;
+  struct allnet_header * pak = create_packet (psize,
          ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_NONE,
          data.my_address, data.my_addr_bits,
          data.dest_address, data.dest_addr_bits,
@@ -657,7 +658,7 @@ static struct allnet_header * create_voa_stream_packet (
 
   /* fill data */
   char * payload = (char *)pak + ALLNET_SIZE_HEADER (pak);
-  int psize = *paksize - (payload - (char *)pak);
+  assert (psize == *paksize - (payload - (char *)pak));
 
   /* encrypt and copy into packet */
   if (!allnet_stream_encrypt_buffer (&data.enc_state, (const char *)buf, bufsize, payload, psize))
