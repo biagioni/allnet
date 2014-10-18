@@ -426,7 +426,7 @@ static int handle_packet (const char * message, int msize, int reply_only)
   const struct allnet_header * hp = (const struct allnet_header *) message;
   int hsize = ALLNET_SIZE_HEADER (hp);
   int amhsize = sizeof (struct allnet_app_media_header);
-  int headersizes = hsize + (data.dec.stream_id_set ? amhsize : 0);
+  int headersizes = hsize + (data.dec.stream_id_set ? 0 : amhsize);
   printf ("got message of size %d (%d data)\n", msize, msize - headersizes);
 
   if (msize <= headersizes)
