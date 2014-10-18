@@ -590,7 +590,8 @@ static int voa_receive (int timeout)
       gettimeofday (&now, NULL);
       if ((timeout = delta_us (&timeout_end, &now) / 1000ULL) == 0)
         return 0;
-    } else if (size <= 0) {
+    }
+    if (size < 0) {
       printf ("voa: pipe closed, exiting\n");
       return 0;
     }
