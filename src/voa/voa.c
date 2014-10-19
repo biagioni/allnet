@@ -223,8 +223,8 @@ static void stream_cipher_init (char * key, char * secret, int is_encoder)
  * @param hp message to check
  * @param payload start of signed part of the message
  * @param msize total size of message
- * @param [out] prvkey Set to private key corresponding to signature when not NULL
- *                     and verification is successful
+ * @param [in,out] prvkey Set to private key corresponding to signature when
+ *                        not NULL and verification is successful.
  * @return 1 if message signature is valid,
  *         0 if message signature is invalid or missing
  */
