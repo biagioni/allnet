@@ -412,6 +412,23 @@ static int check_voa_reply (const struct allnet_header * hp,
  */
 static int handle_packet (const char * message, int msize, int reply_only)
 {
+  if (! is_valid_message (message, msize)) {
+    printf ("got invalid message of size %d\n", msize);
+    return 0;
+  }
+  const struct allnet_header * hp = (const struct allnet_header *) message;
+  int hsize = ALLNET_SIZE_HEADER (hp);
+  int amhsize = sizeof (struct allnet_app_media_header);
+  int headersizes = hsize + (data.dec.stream_id_set ? 0 : amhsize);
+  printf ("got message of size %d (%d data)\n", msize, msize - headersizes);
+
+  if (msize <= headersizes)
+    return 0;
+  if (hp->message_type != ALLNET_TYPE_DATA)
+    return 0;
+  if (matches (hp->destination, hp->dst_nbits, data.my_address, data.my_addr_bits) == 0)
+    return 0;
+
 #ifdef DEBUG
   const struct allnet_header * pak = (const struct allnet_header *)message;
   printf ("-\n");
@@ -429,22 +446,6 @@ static int handle_packet (const char * message, int msize, int reply_only)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf ("\n\n");
 #endif /* DEBUG */
-  if (! is_valid_message (message, msize)) {
-    printf ("got invalid message of size %d\n", msize);
-    return 0;
-  }
-  const struct allnet_header * hp = (const struct allnet_header *) message;
-  int hsize = ALLNET_SIZE_HEADER (hp);
-  int amhsize = sizeof (struct allnet_app_media_header);
-  int headersizes = hsize + (data.dec.stream_id_set ? 0 : amhsize);
-  printf ("got message of size %d (%d data)\n", msize, msize - headersizes);
-
-  if (msize <= headersizes)
-    return 0;
-  if (hp->message_type != ALLNET_TYPE_DATA)
-    return 0;
-  if (matches (hp->destination, hp->dst_nbits, data.my_address, data.my_addr_bits) == 0)
-    return 0;
 
   const char * payload = (const char *)message + hsize;
   if (!reply_only && data.dec.stream_id_set) {
