@@ -286,7 +286,8 @@ static int accept_stream (const struct allnet_header * hp,
 {
   /* verify signature */
   allnet_rsa_prvkey prvkey;
-  if (!check_signature (hp, payload, msize, &prvkey)) {
+  int sigsize;
+  if (!(sigsize = check_signature (hp, payload, msize, &prvkey))) {
     fprintf (stderr, "voa: WARNING: invalid or unsigned request\n");
     if (!data.accept_unsigned)
       return 0;
@@ -294,9 +295,15 @@ static int accept_stream (const struct allnet_header * hp,
 
   /* decrypt */
   payload += sizeof (struct allnet_app_media_header);
+  int ciphersize = msize - (payload - (const char *)hp) - sigsize;
   char * decbuf;
-  int bufsize = allnet_decrypt (payload, msize - (payload - (const char *)hp),
-                                prvkey, &decbuf);
+  int bufsize = allnet_decrypt (payload, ciphersize, prvkey, &decbuf);
+  if (bufsize == 0) {
+    fprintf (stderr, "voa: couldn't decrypt request\n");
+    return 0;
+  }
+  assert (bufsize == sizeof (struct allnet_voa_handshake_header));
+
   const struct allnet_voa_handshake_header * avhhp =
       (const struct allnet_voa_handshake_header *)decbuf;
 
