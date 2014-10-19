@@ -265,7 +265,7 @@ static int check_signature (const struct allnet_header * hp,
         printf ("voa: message signed by %s\n", contacts [ic]);
         if (prvkey != NULL)
           get_my_privkey (keysets [ink], prvkey);
-        return 1;
+        return ssize + SIG_LENGTH_SIZE;
       }
     }
   }
