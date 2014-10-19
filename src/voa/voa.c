@@ -648,14 +648,6 @@ static int send_voa_request ()
   int paksize;
   struct allnet_header * pak = create_voa_hs_packet (key, secret,
       (const char *)data.stream_id, &paksize);
-#ifdef DEBUG
-  printf ("stream id: ");
-  int i = 0;
-  for (; i < STREAM_ID_SIZE; ++i) {
-    printf ("%02x ", data.stream_id [i]);
-  }
-  printf ("\n");
-#endif /* DEBUG */
   if (pak == NULL) {
     fprintf (stderr, "voa: failed to create request packet");
     return 0;
