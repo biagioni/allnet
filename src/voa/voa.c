@@ -512,6 +512,10 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   int bufsize = amhpsize;
   if (prvkey != NULL)
     bufsize += allnet_rsa_prvkey_size (prvkey) + 2; /* space for signature */
+  if (pubkey == NULL) {
+    fprintf (stderr, "voa: failed to get public key for %s\n", data.dest_contact);
+    return NULL;
+  }
 
   /* voa handshake header */
   struct allnet_voa_handshake_header avhh;
