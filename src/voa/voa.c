@@ -568,10 +568,12 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
       writeb16 (sig_payload + sig_psize + sigsize, sigsize);
     }
   }
-  if (sigsize == 0)
-    printf ("voa: WARNING: not signing request\n");
+  if (sigsize == 0) {
+    printf ("voa: ERROR: could not sign request\n");
+    return NULL;
+  }
 
-  assert (ahsize + amhpsize + encbufsize + (sigsize ? sigsize + 2 : 0) == *paksize);
+  assert (ahsize + amhpsize + encbufsize + sigsize + 2 == *paksize);
   return pak;
 }
 
