@@ -223,11 +223,14 @@ static void stream_cipher_init (char * key, char * secret, int is_encoder)
  * @param hp message to check
  * @param payload start of signed part of the message
  * @param msize total size of message
+ * @param [out] prvkey Set to private key corresponding to signature when not NULL
+ *                     and verification is successful
  * @return 1 if message signature is valid,
  *         0 if message signature is invalid or missing
  */
 static int check_signature (const struct allnet_header * hp,
-                            const char * payload, int msize)
+                            const char * payload, int msize,
+                            allnet_rsa_prvkey * prvkey)
 {
   int psize = msize - (payload - ((const char *)hp));
   int vsize = psize;
@@ -247,16 +250,21 @@ static int check_signature (const struct allnet_header * hp,
   if (sig == NULL)  /* ignore */
     return 0;
 
-  struct bc_key_info * keys;
-  int nkeys = get_other_keys (&keys);
-  if ((nkeys > 0) && (ssize > 0) && (sig != NULL)) {
-    int i;
-    for (i = 0; i < nkeys; i++) {
-      if (allnet_verify (payload, vsize, sig, ssize, keys [i].pub_key)) {
-#ifdef DEBUG
-        const char * from = keys [i].identifier;
-        printf ("voa: message signed by %s\n", from);
-#endif /* DEBUG */
+  /* ..try all contact's keys */
+  char ** contacts;
+  int nc = all_contacts (&contacts);
+  int ic;
+  for (ic = 0; ic < nc; ic++) {
+    keyset * keysets;
+    int nk = all_keys (contacts [ic], &keysets);
+    int ink;
+    for (ink = 0; ink < nk; ink++) {
+      allnet_rsa_pubkey pubkey;
+      get_contact_pubkey (keysets [ink], &pubkey);
+      if (allnet_verify (payload, vsize, sig, ssize, pubkey)) {
+        printf ("voa: message signed by %s\n", contacts [ic]);
+        if (prvkey != NULL)
+          get_my_privkey (keysets [ink], prvkey);
         return 1;
       }
     }
@@ -277,7 +285,8 @@ static int accept_stream (const struct allnet_header * hp,
                           const char * payload, int msize)
 {
   /* verify signature */
-  if (!check_signature (hp, payload, msize)) {
+  allnet_rsa_prvkey prvkey;
+  if (!check_signature (hp, payload, msize, &prvkey)) {
     fprintf (stderr, "voa: WARNING: invalid or unsigned request\n");
     if (!data.accept_unsigned)
       return 0;
@@ -383,7 +392,7 @@ static int check_voa_reply (const struct allnet_header * hp,
     return 0;
   }
   /* verify media header + stream_id sig */
-  if (!check_signature (hp, payload, msize)) {
+  if (!check_signature (hp, payload, msize, NULL)) {
     fprintf (stderr, "voa: WARNING: unsigned response\n");
     if (!data.accept_unsigned)
       return 0;
