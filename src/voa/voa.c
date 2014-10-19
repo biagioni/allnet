@@ -289,8 +289,7 @@ static int accept_stream (const struct allnet_header * hp,
   int sigsize;
   if (!(sigsize = check_signature (hp, payload, msize, &prvkey))) {
     fprintf (stderr, "voa: WARNING: invalid or unsigned request\n");
-    if (!data.accept_unsigned)
-      return 0;
+    return 0;
   }
 
   /* decrypt */
