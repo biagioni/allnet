@@ -206,8 +206,8 @@ static void get_key_for_address (const unsigned char * addr, int addr_bits,
 
 /**
  * Initialize the stream cipher
- * @param key [ref] pointer to ALLNET_STREAM_KEY_SIZE bytes for the stream key
- * @param secret [ref] pointer to ALLNET_STREAM_SECRET_SIZE bytes for the hmac
+ * @param [in,out] key ptr to ALLNET_STREAM_KEY_SIZE bytes for the stream key
+ * @param [in,out] secret ptr to ALLNET_STREAM_SECRET_SIZE bytes for the hmac
  * @param is_encoder when 0 the stream cipher is initialized with the passed
                      key and secret. Otherwise the initialized values are
                      written into key and secret.
@@ -642,7 +642,7 @@ static int send_voa_request ()
  * @param buf buffer to be sent (will be copied and encrypted)
  * @param buf bufsize size of buf
  * @param stream_id ptr to STREAM_ID_SIZE bytes
- * @param paksize [out] size of returned packet.
+ * @param [out] paksize size of returned packet.
  */
 static struct allnet_header * create_voa_stream_packet (
               const unsigned char * buf, int bufsize,
