@@ -303,6 +303,14 @@ static int accept_stream (const struct allnet_header * hp,
   }
   assert (bufsize == sizeof (struct allnet_voa_handshake_header));
 
+#ifdef DEBUG
+  int i;
+  printf ("media type: ");
+  for (i=0; i < bufsize; ++i)
+    printf ("%02x ", (unsigned char)decbuf[i]);
+  printf ("\n");
+#endif /* DEBUG */
+
   const struct allnet_voa_handshake_header * avhhp =
       (const struct allnet_voa_handshake_header *)decbuf;
 
@@ -317,7 +325,6 @@ static int accept_stream (const struct allnet_header * hp,
   memcpy (data.stream_id, avhhp->stream_id, STREAM_ID_SIZE);
 #ifdef DEBUG
   printf ("stream id: ");
-  int i;
   for (i=0; i < STREAM_ID_SIZE; ++i)
     printf ("%02x ", data.stream_id[i]);
   printf ("\n");
