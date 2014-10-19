@@ -493,14 +493,28 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
 {
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
   unsigned int avhhsize = sizeof (struct allnet_voa_handshake_header);
-  unsigned int headersizes = amhpsize + avhhsize;
   allnet_rsa_prvkey prvkey = NULL;
   allnet_rsa_pubkey pubkey = NULL;
   get_key_for_contact (data.dest_contact, &prvkey, &pubkey);
-  int bufsize = headersizes;
+  int bufsize = amhpsize;
   if (prvkey != NULL)
     bufsize += allnet_rsa_prvkey_size (prvkey) + 2; /* space for signature */
-  printf ("%d %d\n", headersizes, bufsize);
+
+  /* voa handshake header */
+  struct allnet_voa_handshake_header avhh;
+  memcpy (&avhh.enc_key, key, ALLNET_STREAM_KEY_SIZE);
+  memcpy (&avhh.enc_secret, secret, ALLNET_STREAM_SECRET_SIZE);
+  memcpy (&avhh.stream_id, stream_id, STREAM_ID_SIZE);
+  writeb32u ((unsigned char *)(&avhh.media_type), ALLNET_MEDIA_AUDIO_OPUS);
+  char * encbuf;
+  int encbufsize = allnet_encrypt ((void *)&avhh, avhhsize, pubkey, &encbuf);
+  if (encbufsize == 0) {
+    fprintf (stderr, "voa: error encrypting handshake\n");
+    return NULL;
+  }
+  bufsize += encbufsize;
+
+  /* create packet */
   struct allnet_header * pak = create_packet (bufsize,
        ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_RSA_PKCS1,
        data.my_address, data.my_addr_bits,
@@ -514,22 +528,8 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   writeb32u ((unsigned char *)(&amhp->app), ALLNET_MEDIA_APP_VOA);
   writeb32u ((unsigned char *)(&amhp->media), ALLNET_VOA_HANDSHAKE_SYN);
 
-  /* voa handshake header */
-  struct allnet_voa_handshake_header avhh;
-  memcpy (&avhh.enc_key, key, ALLNET_STREAM_KEY_SIZE);
-  memcpy (&avhh.enc_secret, secret, ALLNET_STREAM_SECRET_SIZE);
-  memcpy (&avhh.stream_id, stream_id, STREAM_ID_SIZE);
-  writeb32u ((unsigned char *)(&avhh.media_type), ALLNET_MEDIA_AUDIO_OPUS);
-
-  /* encrypt hs header */
-  char * encbuf;
+  /* copy hs header into packet */
   void * enc_payload = ((void *)amhp) + amhpsize;
-  int encbufsize = allnet_encrypt ((void *)&avhh, avhhsize, pubkey, &encbuf);
-  if (encbufsize == 0) {
-    fprintf (stderr, "voa: error encrypting message\n");
-    free (encbuf);
-    return NULL;
-  }
   memcpy (enc_payload, encbuf, encbufsize);
   free (encbuf);
 
