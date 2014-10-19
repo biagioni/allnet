@@ -306,6 +306,8 @@ static int accept_stream (const struct allnet_header * hp,
     printf ("voa: Unsupported media type requested %lx, can't accept stream\n", mt);
     goto accept_cleanup;
   }
+
+  /* accepted stream, initialize stream cipher and sender address */
   memcpy (data.stream_id, avhhp->stream_id, STREAM_ID_SIZE);
 #ifdef DEBUG
   printf ("stream id: ");
