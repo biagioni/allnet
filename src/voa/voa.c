@@ -346,7 +346,8 @@ static int send_accept_response ()
   unsigned int psize = ALLNET_STREAM_KEY_SIZE;
   allnet_rsa_prvkey prvkey = NULL;
   get_key_for_address ((const unsigned char *)data.dest_address, data.dest_addr_bits, &prvkey, NULL);
-  int bufsize = amhpsize + psize + allnet_rsa_prvkey_size (prvkey) + 2;
+  int estsigsize = allnet_rsa_prvkey_size (prvkey) + 2;
+  int bufsize = amhpsize + psize + estsigsize;
   int pak_size;
   struct allnet_header * pak = create_packet (bufsize,
        ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_RSA_PKCS1,
@@ -368,6 +369,7 @@ static int send_accept_response ()
   /* sign response (app media header + stream_id) */
   char * sig;
   int sigsize = allnet_sign ((char *)amhp, amhpsize + psize, prvkey, &sig);
+  assert (sigsize + 2 == estsigsize);
   if (sigsize == 0) {
     fprintf (stderr, "voa: WARNING could not sign outgoing acceptance response\n");
     ((struct allnet_header *)pak)->sig_algo = ALLNET_SIGTYPE_NONE;
