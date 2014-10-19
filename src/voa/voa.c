@@ -689,13 +689,13 @@ static struct allnet_header * create_voa_stream_packet (
   if (!allnet_stream_encrypt_buffer (&data.enc_state, (const char *)buf, bufsize, payload, psize))
     return NULL;
 
+/*
 #ifdef DEBUG
   printf ("-\n");
-  int i=0;
-  for (; i < ALLNET_SIZE_HEADER(pak); ++i)
+  for (i=0; i < ALLNET_SIZE_HEADER(pak); ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
-  for (; i-ALLNET_SIZE_HEADER(pak) < sizeof(struct allnet_app_media_header); ++i)
+  for (; i-ALLNET_SIZE_HEADER(pak) < bufsize; ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
   printf (".\n");
   for (; i < *paksize; ++i)
