@@ -173,38 +173,6 @@ static void get_key_for_contact (const char * contact,
 }
 
 /**
- * Get public/private key(s) for given AllNet address
- * @param addr address pointer to ADDRESS_SIZE bytes
- * @param addr_bits number of relevant address bits
- * @param [out] privkey ptr to allnet_rsa_privkey or NULL when not requested.
- * @param [out] pubkey ptr to to allnet_rsa_pubkey or NULL when not requested.
- */
-static void get_key_for_address (const unsigned char * addr, int addr_bits,
-                                 allnet_rsa_prvkey * prvkey,
-                                 allnet_rsa_pubkey * pubkey)
-{
-  char ** contacts;
-  int nc = all_contacts (&contacts);
-  int ic;
-  for (ic = 0; ic < nc; ic++) {
-    keyset * keysets;
-    int nk = all_keys (contacts [ic], &keysets);
-    int ink;
-    for (ink = 0; ink < nk; ink++) {
-      unsigned char address [ADDRESS_SIZE];
-      int na_bits = get_remote (keysets [ink], address);
-      if (matches (addr, addr_bits, (const unsigned char *)address, na_bits) > 0) {
-        if (prvkey != NULL)
-          get_my_privkey (keysets [ink], prvkey);
-        if (pubkey != NULL)
-          get_contact_pubkey (keysets [ink], pubkey);
-        return;
-      }
-    }
-  }
-}
-
-/**
  * Initialize the stream cipher
  * @param [in,out] key ptr to ALLNET_STREAM_KEY_SIZE bytes for the stream key
  * @param [in,out] secret ptr to ALLNET_STREAM_SECRET_SIZE bytes for the hmac
@@ -279,15 +247,16 @@ static int check_signature (const struct allnet_header * hp,
  * @param hp incoming message
  * @param payload pointer to the struct app_media_header within the message
  * @param msize total message size
+ * @param [out] prvkey the private key for signing the accept response
  * @return 0 if stream is to be rejected, 1 otherwise
  */
 static int accept_stream (const struct allnet_header * hp,
-                          const char * payload, int msize)
+                          const char * payload, int msize,
+                          allnet_rsa_prvkey * prvkey)
 {
   /* verify signature */
-  allnet_rsa_prvkey prvkey;
   int sigsize;
-  if (!(sigsize = check_signature (hp, payload, msize, &prvkey))) {
+  if (!(sigsize = check_signature (hp, payload, msize, prvkey))) {
     fprintf (stderr, "voa: WARNING: invalid or unsigned request\n");
     return 0;
   }
@@ -296,7 +265,7 @@ static int accept_stream (const struct allnet_header * hp,
   payload += sizeof (struct allnet_app_media_header);
   int ciphersize = msize - (payload - (const char *)hp) - sigsize;
   char * decbuf;
-  int bufsize = allnet_decrypt (payload, ciphersize, prvkey, &decbuf);
+  int bufsize = allnet_decrypt (payload, ciphersize, *prvkey, &decbuf);
   if (bufsize == 0) {
     fprintf (stderr, "voa: couldn't decrypt request\n");
     return 0;
@@ -340,12 +309,10 @@ accept_cleanup:
 }
 
 /** Send an acceptance to a received stream request (decoder) */
-static int send_accept_response ()
+static int send_accept_response (allnet_rsa_prvkey prvkey)
 {
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
   unsigned int psize = ALLNET_STREAM_KEY_SIZE;
-  allnet_rsa_prvkey prvkey = NULL;
-  get_key_for_address ((const unsigned char *)data.dest_address, data.dest_addr_bits, &prvkey, NULL);
   int estsigsize = allnet_rsa_prvkey_size (prvkey) + 2;
   int bufsize = amhpsize + psize + estsigsize;
   int pak_size;
@@ -376,7 +343,7 @@ static int send_accept_response ()
   } else {
     memcpy (payload + psize, sig, sigsize);
     free (sig);
-    assert (ahsize + bufsize + sigsize == pak_size);
+    assert (ahsize + amhpsize + psize + sigsize + 2 == pak_size);
   }
 
   if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT)) {
@@ -487,8 +454,9 @@ static int handle_packet (const char * message, int msize, int reply_only)
       return 0;
 
     /* new stream, check if we're interested */
-    if (accept_stream (hp, payload, msize))
-      return send_accept_response ();
+    allnet_rsa_prvkey prvkey;
+    if (accept_stream (hp, payload, msize, &prvkey))
+      return send_accept_response (prvkey);
     return 0;
   }
 
