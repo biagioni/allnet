@@ -16,7 +16,8 @@
 #include "lib/cipher.h"
 #include "lib/keys.h"
 
-static int handle_packet (char * message, int msize, int * rcvd, int debug)
+static int handle_packet (char * message, int msize, int * rcvd, int debug,
+                          int verify)
 {
   *rcvd = 0;
   struct timeval receive_time;
@@ -32,10 +33,19 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
   int dsize = msize - (data - message);
   print_buffer (data, dsize, "   payload:", 16, 1);
+  if (verify && (hp->message_type == ALLNET_TYPE_DATA)) {
+    char * contact;
+    char * text;
+    keyset k;
+    int tsize = decrypt_verify (hp->sig_algo, data, dsize, &contact, &k, &text,
+                                NULL, 0, NULL, 0, 0);
+    if (tsize > 0)
+      print_buffer (text, tsize, " decrypted:", 16, 1);
+  }
   return 0;
 }
 
-static void main_loop (int sock, int debug, int max)
+static void main_loop (int sock, int debug, int max, int verify)
 {
   while (1) {
     int pipe;
@@ -48,7 +58,7 @@ static void main_loop (int sock, int debug, int max)
       exit (1);
     }
     int received = 0;
-    if (handle_packet (message, found, &received, debug))
+    if (handle_packet (message, found, &received, debug, verify))
       return;
     free (message);
     if ((max > 0) && (received)) {
@@ -81,11 +91,13 @@ static int debug_switch (int * argc, char ** argv)
 int allnet_global_debugging = 0;
 
 /* optional argument: quit after n messages */
+/* option -y: see if can verify each message */
 int main (int argc, char ** argv)
 {
   int verbose = get_option ('v', &argc, argv);
   if (verbose)
     allnet_global_debugging = verbose;
+  int verify = get_option ('y', &argc, argv);
 
   int sock = connect_to_local (argv [0], argv [0]);
   if (sock < 0)
@@ -99,7 +111,7 @@ int main (int argc, char ** argv)
   if (argc > 1)
     max = atoi (argv [1]);
 
-  main_loop (sock, debug, max);
+  main_loop (sock, debug, max, verify);
   return 0;
 }
 
