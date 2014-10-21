@@ -28,7 +28,7 @@ typedef struct {
 typedef struct {
   int nbits;
   uint64_t n [WP_RSA_MAX_KEY_WORDS];
-  long int e;   			/* usually 65537 */
+  uint64_t e;   			/* usually 65537 */
   uint64_t d [WP_RSA_MAX_KEY_WORDS];
 /* used for faster implementation of decryption and signing */
   uint64_t p [WP_RSA_HALF_KEY_WORDS];
@@ -84,8 +84,8 @@ extern int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key,
  * nresult >= key->nbits / 8
  * returns key->nbits / 8 if successful, and if so, fills in result
  * otherwise returns -1 */
-extern int wp_rsa_encrypt (wp_rsa_key * key, const char * data, int ndata,
-                           char * result, int nresult, int padding);
+extern int wp_rsa_encrypt (wp_rsa_key * key, const char * data, int dsize,
+                           char * result, int rsize, int padding);
 
 /* data and result may be the same buffer.
  * ndata == key->nbits / 8, nresult >= key->nbits / 8 - padding_size
@@ -93,22 +93,27 @@ extern int wp_rsa_encrypt (wp_rsa_key * key, const char * data, int ndata,
  *   (the size is always key->nbits / 8 - 1 for RSA_PADDING_NONE),
  * otherwise returns -1 */
 extern int wp_rsa_decrypt (wp_rsa_key_pair * key, const char * data,
-                           int dsize, char * result, int nresult,
+                           int dsize, char * result, int rsize,
                            int padding);
+
+/* used if and only if /dev/random and /dev/urandom are not available
+ * buffer should contain bsize truly random bytes */
+extern void wp_rsa_randomize (char * buffer, int bsize);
 
 #define WP_RSA_SIG_ENCODING_NONE	0
 #define WP_RSA_SIG_ENCODING_SHA512	1
 
-/* data and sig may be the same buffer.
- * ndata <= key->nbits / 8,  nsig >= key->nbits / 8
+/* hash and sig may be the same buffer.
+ * hsize <= key->nbits / 8,  nsig >= key->nbits / 8
+ * if sig_encoding is WP_RSA_SIG_ENCODING_SHA512, hsize must be 64
  * returns 1 if successful, otherwise returns 0 */
-extern int wp_rsa_sign (wp_rsa_key_pair * key, const char * data, int ndata,
-                        char * sig, int nsig, int sig_encoding);
+extern int wp_rsa_sign (wp_rsa_key_pair * key, const char * hash, int hsize,
+                        char * sig, int ssize, int sig_encoding);
 
-/* data and sig may be the same buffer.
- * ndata <= key->nbits / 8,  nsig == key->nbits / 8
+/* hsize <= key->nbits / 8,  nsig == key->nbits / 8
+ * if sig_encoding is WP_RSA_SIG_ENCODING_SHA512, hsize must be 64
  * returns 1 if successful, otherwise returns 0 */
-extern int wp_rsa_verify (wp_rsa_key * key, const char * data, int ndata,
-                          const char * sig, int nsig, int sig_encoding);
+extern int wp_rsa_verify (wp_rsa_key * key, const char * hash, int hsize,
+                          const char * sig, int ssize, int sig_encoding);
 
 #endif /* RSA_H */

@@ -303,6 +303,10 @@ int allnet_rsa_encrypt (allnet_rsa_pubkey rsa, const char * data, int dsize,
 #ifdef HAVE_OPENSSL
   if (rsize < RSA_size (rsa))
     return 0;
+/*
+printf ("openssl n = %s\n", BN_bn2hex (rsa->n));
+printf ("openssl e = %s\n", BN_bn2hex (rsa->e));
+*/
   int rsa_padding = RSA_PKCS1_OAEP_PADDING;
   if (padding == 0)
     rsa_padding = RSA_NO_PADDING;
@@ -316,6 +320,10 @@ int allnet_rsa_encrypt (allnet_rsa_pubkey rsa, const char * data, int dsize,
 #else /* HAVE_OPENSSL */
   if (rsize * 8 < rsa.nbits)
     return 0;
+/*
+printf ("wp_rsa n = %s\n", wp_itox (rsa.nbits, rsa.n));
+printf ("wp_rsa e = %llx\n", rsa.e);
+*/
   int rsa_padding = WP_RSA_PADDING_PKCS1_OAEP;
   if (padding == 0)
     rsa_padding = WP_RSA_PADDING_NONE;
@@ -348,6 +356,10 @@ int allnet_rsa_decrypt (allnet_rsa_prvkey rsa, const char * data, int dsize,
     return -1;
   int bytes;
 #ifdef HAVE_OPENSSL
+/*
+printf ("openssl n = %s\n", BN_bn2hex (rsa->n));
+printf ("openssl e = %s\n", BN_bn2hex (rsa->e));
+*/
   int rsa_padding = RSA_PKCS1_OAEP_PADDING;
   if (padding == 0)
     rsa_padding = RSA_NO_PADDING;
@@ -359,6 +371,10 @@ int allnet_rsa_decrypt (allnet_rsa_prvkey rsa, const char * data, int dsize,
     bytes = -1;
   }
 #else /* HAVE_OPENSSL */
+/*
+printf ("wp_rsa n = %s\n", wp_itox (rsa.nbits, rsa.n));
+printf ("wp_rsa e = %llx\n", rsa.e);
+*/
   int rsa_padding = WP_RSA_PADDING_PKCS1_OAEP;
   if (padding == 0)
     rsa_padding = WP_RSA_PADDING_NONE;
@@ -383,6 +399,11 @@ int allnet_rsa_sign (allnet_rsa_prvkey rsa, const char * hash, int hsize,
     return 0;
 
 #ifdef HAVE_OPENSSL
+/*
+printf ("sign openssl n = %s\n", BN_bn2hex (rsa->n));
+printf ("sign openssl e = %s, hsize %d\n", BN_bn2hex (rsa->e), hsize);
+print_buffer (hash, hsize, "hash to be signed", 64, 1);
+*/
   unsigned int siglen;
   int success = RSA_sign (NID_sha512, (unsigned char *) hash, hsize,
                           (unsigned char *) sig, &siglen, rsa);
@@ -393,6 +414,11 @@ int allnet_rsa_sign (allnet_rsa_prvkey rsa, const char * hash, int hsize,
   }
   return success;
 #else /* HAVE_OPENSSL */
+/*
+printf ("sign wp_rsa n = %s\n", wp_itox (rsa.nbits, rsa.n));
+printf ("sign wp_rsa e = %llx, hsize %d\n", rsa.e, hsize);
+print_buffer (hash, hsize, "hash to be signed", 64, 1);
+*/
   return wp_rsa_sign (&rsa, hash, hsize, sig, ssize,
                       WP_RSA_SIG_ENCODING_SHA512);
 #endif /* HAVE_OPENSSL */
@@ -414,6 +440,11 @@ int allnet_rsa_verify (allnet_rsa_pubkey rsa,
     return 0;
 
 #ifdef HAVE_OPENSSL
+/*
+printf ("openssl n = %s\n", BN_bn2hex (rsa->n));
+printf ("openssl e = %s, hsize %d\n", BN_bn2hex (rsa->e), hsize);
+print_buffer (hash, hsize, "hash to be verified", 64, 1);
+*/
   int verifies = RSA_verify (NID_sha512, (unsigned char *) hash, hsize,
                              (unsigned char *) sig, ssize, rsa);
   /* for now (2014/09/23, allnet release 3.1), accept older style
@@ -430,6 +461,11 @@ int allnet_rsa_verify (allnet_rsa_pubkey rsa,
   }
   return verifies;
 #else /* HAVE_OPENSSL */
+/*
+printf ("wp_rsa n = %s\n", wp_itox (rsa.nbits, rsa.n));
+printf ("wp_rsa e = %llx, hsize %d\n", rsa.e, hsize);
+print_buffer (hash, hsize, "hash to be verified", 64, 1);
+*/
   return wp_rsa_verify (&rsa, hash, hsize, sig, ssize,
                         WP_RSA_SIG_ENCODING_SHA512);
 #endif /* HAVE_OPENSSL */
@@ -459,6 +495,21 @@ allnet_rsa_prvkey allnet_rsa_generate_key (int bits,
   return result;
 #endif /* HAVE_OPENSSL */
 }
+
+/* should be called if /dev/random is not defined, to increase the randomness
+ * of key generation and other operations, such as padding, that require 
+ * randomness 
+ * a single call with 16 bytes of randomness may be sufficient for
+ * many purposes */
+void allnet_rsa_seed_rng (char * buffer, int bsize)
+{
+#ifdef HAVE_OPENSSL
+  RAND_seed (buffer, bsize);
+#else /* HAVE_OPENSSL */
+  wp_rsa_randomize (buffer, bsize);
+#endif /* HAVE_OPENSSL */
+}
+
 
 /* key should be AES256_SIZE bytes long.
  * in and out should be AES_BLOCK_SIZE bytes long.
