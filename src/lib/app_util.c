@@ -20,6 +20,7 @@
 #include "sha.h"
 #include "priority.h"
 #include "log.h"
+#include "crypt_sel.h"
 
 static void find_path (char * arg, char ** path, char ** program)
 {
@@ -92,29 +93,69 @@ static int connect_once (int print_error)
   return -1;
 }
 
+static void read_n_bytes (int fd, char * buffer, int bsize)
+{
+  bzero (buffer, bsize);
+  int i;
+  for (i = 0; i < bsize; i++)
+    if (read (fd, buffer + i, 1) != 1)
+      perror ("unable to read /dev/random");
+  close (fd);
+}
+
+/* if cannot read /dev/random, use the system clock as a generator of bytes */
+static void weak_seed_rng (char * buffer, int bsize)
+{
+  struct timespec ts1;
+  struct timespec ts2;
+  bzero (&ts1, sizeof (ts1));
+  bzero (&ts2, sizeof (ts2));
+
+/* ts.tv_nsec should be 4 fairly random bytes, though since the top two
+ * bits are most likely 0, we may use the low-order two bits of ts.tv_sec */
+  if (clock_gettime (CLOCK_REALTIME, &ts1) == -1)
+    perror ("clock_gettime (CLOCK_REALTIME)");
+  printf ("real time is %08lx + %08lx\n", ts1.tv_sec, ts1.tv_nsec);
+
+/* boot time nanoseconds should be fairly independent of realtime, though
+ * it may be somewhat externally detectable */
+  if (clock_gettime (CLOCK_BOOTTIME, &ts2) == -1)
+    perror ("clock_gettime (CLOCK_BOOTTIME)");
+  printf ("boot time is %08lx + %08lx\n", ts2.tv_sec, ts2.tv_nsec);
+
+  char results [8]; 
+  writeb32 (results, ts1.tv_nsec);
+  writeb32 (results + 4, ts2.tv_nsec);
+
+  if (bsize <= 4) {
+    /* use low bits of ts2 to scramble high bits of ts1 */
+    results [0] ^= results [7];
+    memcpy (buffer, results, bsize);
+  } else {
+    results [0] ^= ((ts2.tv_sec & 0x3) << 30);
+    results [4] ^= ((ts1.tv_sec & 0x3) << 30);
+    sha512_bytes (results, 8, buffer, bsize);
+  }
+}
+
 /* to the extent possible, add randomness to the SSL Random Number Generator */
 /* see http://wiki.openssl.org/index.php/Random_Numbers for details */
 static void seed_rng ()
 {
+  char buffer [sizeof (unsigned int) + 8];
   int fd = open ("/dev/random", O_RDONLY | O_NONBLOCK);
-  if (fd < 0)
-    return;
-  int isize = sizeof (unsigned int);
-  char buffer [sizeof (unsigned int)];
-  int count = 0;
-  while (count < sizeof (buffer)) {
-    int n = read (fd, buffer + count, 1);
-    if (n <= 0)  /* presumably, nothing more to read from /dev/random */
-      break;
-    count++;
+  int has_dev_random = (fd >= 0);
+  if (has_dev_random) { /* don't need to seed openssl rng, only standard rng */
+    read_n_bytes (fd, buffer, sizeof (unsigned int));
+  } else {
+    weak_seed_rng (buffer, sizeof (buffer));  /* seed both */
+    /* even though the seed is weak, it is still better to seed openssl RNG */
+    allnet_rsa_seed_rng (buffer + sizeof (unsigned int), 8);
   }
-  close (fd);
-  if (count >= isize) {
-    static char state [128];
-    unsigned int seed = readb32 (buffer);
-    initstate (seed, state, sizeof (state));
-  }
-/* if (count > 0) printf ("added %d bytes to entropy pool\n", count); */
+  /* seed standard rng */
+  static char state [128];
+  unsigned int seed = readb32 (buffer);
+  initstate (seed, state, sizeof (state));
 }
 
 #ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */
