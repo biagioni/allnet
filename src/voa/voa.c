@@ -1039,6 +1039,7 @@ int main (int argc, char ** argv)
     /* retry 10x every 2s */
     do {
       printf (".");
+      fflush (stdout);
       if (send_voa_request () && voa_receive (2000)) {
         printf ("\n");
         enc_main_loop ();
