@@ -213,8 +213,13 @@ static void generate_spare_keys (time_t * last_alive)
 
 static void * create_map (int size)
 {
+#ifndef __APPLE__
   void * result = mmap (NULL, size, PROT_READ | PROT_WRITE,
                         MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+#else /* __APPLE__ */
+  void * result = mmap (NULL, size, PROT_READ | PROT_WRITE,
+                        MAP_SHARED | MAP_ANON, -1, 0);
+#endif /* __APPLE__ */
   if (result == ((void *) -1))
     return NULL;
   return result;
