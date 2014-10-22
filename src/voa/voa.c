@@ -343,7 +343,7 @@ static int send_accept_response (allnet_rsa_prvkey prvkey)
   struct allnet_voa_hs_ack_header * avhh =
       (struct allnet_voa_hs_ack_header *)((char *)amhp + amhpsize);
   memcpy (&avhh->stream_id, data.stream_id, STREAM_ID_SIZE);
-  writeb16u ((unsigned char *)&avhh->media_type, data.media_type);
+  writeb32u ((unsigned char *)&avhh->media_type, data.media_type);
 
   /* sign response (app media header + stream_id) */
   char * sig;
