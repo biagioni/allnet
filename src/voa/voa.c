@@ -377,7 +377,10 @@ static int check_voa_reply (const struct allnet_header * hp,
                             const char * payload, int msize)
 {
   unsigned int amhsize = sizeof (struct allnet_app_media_header);
-  if (memcmp (data.stream_id, payload + amhsize, STREAM_ID_SIZE) != 0) {
+  /* check for matching stream id */
+  const struct allnet_voa_hs_ack_header * avhhp =
+      (const struct allnet_voa_hs_ack_header *)(payload + amhsize);
+  if (memcmp (data.stream_id, &avhhp->stream_id, STREAM_ID_SIZE) != 0) {
     printf ("voa: discarding reply for unknown stream ");
     int i = 0;
     for (; i < STREAM_ID_SIZE; ++i)
@@ -385,6 +388,14 @@ static int check_voa_reply (const struct allnet_header * hp,
     printf ("\n");
     return 0;
   }
+  /* check for matching media type */
+  int mt = readb32u ((const unsigned char *)&avhhp->media_type);
+  if (mt != ALLNET_MEDIA_AUDIO_OPUS) {
+    printf ("voa: Unsupported media type requested, can't start streaming\n");
+    return 0;
+  }
+  data.media_type = mt;
+
   /* verify media header + stream_id sig */
   if (!check_signature (hp, payload, msize, NULL)) {
     fprintf (stderr, "voa: WARNING: unsigned response\n");
