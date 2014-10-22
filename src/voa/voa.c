@@ -185,6 +185,36 @@ static void stream_cipher_init (char * key, char * secret, int is_encoder)
 {
   allnet_stream_init (&data.enc_state, key, is_encoder, secret, is_encoder,
                       ALLNET_VOA_COUNTER_SIZE, ALLNET_VOA_HMAC_SIZE);
+/**
+ * Check if contact's signature on a message is valid
+ * @param payload start of signed part of the message
+ * @param vsize size of playload block to verify
+ * @param sig start of signature block
+ * @param ssize size of signature block
+ * @param contact name of contact to verify against.
+ * @param [in,out] prvkey Set to private key corresponding to signature when
+ *                        not NULL and verification is successful.
+ * @return 1 if message signature is valid,
+ *         0 if message signature is invalid or missing
+ */
+static int check_contact_signature (const char * payload, int vsize,
+                                    const char * sig, int ssize,
+                                    const char * contact,
+                                    allnet_rsa_prvkey * prvkey)
+{
+  keyset * keysets;
+  int nk = all_keys (contact, &keysets);
+  int ink;
+  for (ink = 0; ink < nk; ink++) {
+    allnet_rsa_pubkey pubkey;
+    get_contact_pubkey (keysets [ink], &pubkey);
+    if (allnet_verify (payload, vsize, sig, ssize, pubkey)) {
+      if (prvkey != NULL)
+        get_my_privkey (keysets [ink], prvkey);
+      return 1;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -192,6 +222,7 @@ static void stream_cipher_init (char * key, char * secret, int is_encoder)
  * @param hp message to check
  * @param payload start of signed part of the message
  * @param msize total size of message
+ * @param contact name of contact to verify against. All contacts when NULL.
  * @param [in,out] prvkey Set to private key corresponding to signature when
  *                        not NULL and verification is successful.
  * @return length of signature block, including signature length, if message
@@ -199,6 +230,7 @@ static void stream_cipher_init (char * key, char * secret, int is_encoder)
  */
 static int check_signature (const struct allnet_header * hp,
                             const char * payload, int msize,
+                            const char * contact,
                             allnet_rsa_prvkey * prvkey)
 {
   int psize = msize - (payload - ((const char *)hp));
@@ -219,24 +251,23 @@ static int check_signature (const struct allnet_header * hp,
   if (sig == NULL)  /* ignore */
     return 0;
 
-  /* ..try all contact's keys */
-  char ** contacts;
-  int nc = all_contacts (&contacts);
-  int ic;
-  for (ic = 0; ic < nc; ic++) {
-    keyset * keysets;
-    int nk = all_keys (contacts [ic], &keysets);
-    int ink;
-    for (ink = 0; ink < nk; ink++) {
-      allnet_rsa_pubkey pubkey;
-      get_contact_pubkey (keysets [ink], &pubkey);
-      if (allnet_verify (payload, vsize, sig, ssize, pubkey)) {
+  if (contact == NULL) {
+    /* ..try all contact's keys */
+    char ** contacts;
+    int nc = all_contacts (&contacts);
+    int ic;
+    for (ic = 0; ic < nc; ic++) {
+      int valid = check_contact_signature (payload, vsize, sig, ssize,
+                                           contacts [ic], prvkey);
+      if (valid) {
         printf ("voa: message signed by %s\n", contacts [ic]);
-        if (prvkey != NULL)
-          get_my_privkey (keysets [ink], prvkey);
         return ssize + SIG_LENGTH_SIZE;
       }
     }
+
+  } else {
+    if (check_contact_signature (payload, vsize, sig, ssize, contact, prvkey))
+      return ssize + SIG_LENGTH_SIZE;
   }
   return 0;
 }
@@ -257,7 +288,7 @@ static int accept_stream (const struct allnet_header * hp,
 {
   /* verify signature */
   int sigsize;
-  if (!(sigsize = check_signature (hp, payload, msize, prvkey))) {
+  if (!(sigsize = check_signature (hp, payload, msize, data.dest_contact, prvkey))) {
     fprintf (stderr, "voa: WARNING: invalid or unsigned request\n");
     return 0;
   }
@@ -397,7 +428,7 @@ static int check_voa_reply (const struct allnet_header * hp,
   data.media_type = mt;
 
   /* verify media header + stream_id sig */
-  if (!check_signature (hp, payload, msize, NULL)) {
+  if (!check_signature (hp, payload, msize, data.dest_contact, NULL)) {
     fprintf (stderr, "voa: WARNING: unsigned response\n");
     if (!data.accept_unsigned)
       return 0;
@@ -1031,8 +1062,9 @@ int main (int argc, char ** argv)
   for (i = 0; i < ADDRESS_SIZE; ++i)
     printf ("%02x ", data.my_address [i]);
   printf (" (%d bits)\n", data.my_addr_bits);
-  if (is_encoder) {
+  if (data.dest_contact)
     printf ("Contact: %s\n", data.dest_contact);
+  if (is_encoder) {
     printf ("Dest address: ");
     for (i = 0; i < ADDRESS_SIZE; ++i)
       printf ("%02x ", data.dest_address [i]);
