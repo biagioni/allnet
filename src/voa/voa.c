@@ -289,7 +289,10 @@ static int accept_stream (const struct allnet_header * hp,
   /* verify signature */
   int sigsize;
   if (!(sigsize = check_signature (hp, payload, msize, data.dest_contact, prvkey))) {
-    fprintf (stderr, "voa: WARNING: invalid or unsigned request\n");
+    if (data.dest_contact == NULL)
+      fprintf (stderr, "voa: WARNING: invalid or unsigned request\n");
+    else
+      printf ("voa: received request from unexpected party, discarding\n");
     return 0;
   }
 
