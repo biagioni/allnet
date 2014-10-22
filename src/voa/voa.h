@@ -12,11 +12,15 @@
 #define ALLNET_VOA_HANDSHAKE_ACK 0x564F4141
 #define ALLNET_VOA_HMAC_SIZE 6
 #define ALLNET_VOA_COUNTER_SIZE 2
+#define ALLNET_VOA_NUM_MEDIA_TYPE_SIZE 2
 
 struct allnet_voa_handshake_header {
   char enc_key [ALLNET_STREAM_KEY_SIZE];
   char enc_secret [ALLNET_STREAM_SECRET_SIZE];
   char stream_id [STREAM_ID_SIZE];
+  /* indicates the number n of media_type entries. Minimum 1 required.
+   * n-1 are thus following the header! Big-endian encoded */
+  char num_media_types [ALLNET_VOA_NUM_MEDIA_TYPE_SIZE];
   char media_type [ALLNET_MEDIA_ID_SIZE];
 };
 

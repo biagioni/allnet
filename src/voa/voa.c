@@ -270,7 +270,7 @@ static int accept_stream (const struct allnet_header * hp,
     fprintf (stderr, "voa: couldn't decrypt request\n");
     return 0;
   }
-  assert (bufsize == sizeof (struct allnet_voa_handshake_header));
+  assert (bufsize >= sizeof (struct allnet_voa_handshake_header));
 
 #ifdef DEBUG
   int i;
@@ -284,9 +284,24 @@ static int accept_stream (const struct allnet_header * hp,
       (const struct allnet_voa_handshake_header *)decbuf;
 
   int ret = 0;
-  unsigned long mt = readb32u ((const unsigned char *)(avhhp->media_type));
-  if (mt != ALLNET_MEDIA_AUDIO_OPUS) {
-    printf ("voa: Unsupported media type requested %lx, can't accept stream\n", mt);
+  unsigned int nmt = readb16u ((const unsigned char *)(&avhhp->num_media_types));
+  if (nmt < 1)
+    return 0;
+  int supported = 0;
+  const unsigned char * mtp;
+  for (mtp = (const unsigned char *)(&avhhp->media_type);
+       /* &array jumps by sizeof(array) */
+       (mtp < ((const unsigned char *)(&avhhp->media_type + nmt))) &&
+       (mtp < (const unsigned char *)decbuf + bufsize);
+       mtp += sizeof (avhhp->media_type)) {
+    unsigned long mt = readb32u (mtp);
+    if (mt == ALLNET_MEDIA_AUDIO_OPUS) {
+      supported = 1;
+      break;
+    }
+  }
+  if (!supported) {
+    printf ("voa: Unsupported media type requested, can't accept stream\n");
     goto accept_cleanup;
   }
 
@@ -491,8 +506,10 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
                                                     const char * stream_id,
                                                     int * paksize)
 {
+  unsigned int num_media_types = 1;
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
-  unsigned int avhhsize = sizeof (struct allnet_voa_handshake_header);
+  unsigned int avhhsize = sizeof (struct allnet_voa_handshake_header) +
+                          ((num_media_types - 1) * ALLNET_MEDIA_ID_SIZE);
   allnet_rsa_prvkey prvkey = NULL;
   allnet_rsa_pubkey pubkey = NULL;
   get_key_for_contact (data.dest_contact, &prvkey, &pubkey);
@@ -509,7 +526,8 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   memcpy (&avhh.enc_key, key, ALLNET_STREAM_KEY_SIZE);
   memcpy (&avhh.enc_secret, secret, ALLNET_STREAM_SECRET_SIZE);
   memcpy (&avhh.stream_id, stream_id, STREAM_ID_SIZE);
-  writeb32u ((unsigned char *)(&avhh.media_type), ALLNET_MEDIA_AUDIO_OPUS);
+  writeb16u ((unsigned char *)(&avhh.num_media_types), num_media_types);
+  writeb32u ((unsigned char *)(&avhh.media_type + 0), ALLNET_MEDIA_AUDIO_OPUS);
   char * encbuf;
   int encbufsize = allnet_encrypt ((void *)&avhh, avhhsize, pubkey, &encbuf);
   if (encbufsize == 0) {
