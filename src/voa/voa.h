@@ -28,4 +28,10 @@ struct allnet_voa_hs_syn_header {
   char media_type [ALLNET_MEDIA_ID_SIZE];
 };
 
+/** header used when accepting a handshake */
+struct allnet_voa_hs_ack_header {
+  char stream_id [STREAM_ID_SIZE];
+  char media_type [ALLNET_MEDIA_ID_SIZE];
+};
+
 #endif /* VOA_H */
