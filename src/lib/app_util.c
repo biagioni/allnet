@@ -100,42 +100,45 @@ static void read_n_bytes (int fd, char * buffer, int bsize)
   for (i = 0; i < bsize; i++)
     if (read (fd, buffer + i, 1) != 1)
       perror ("unable to read /dev/random");
-  close (fd);
 }
 
 /* if cannot read /dev/random, use the system clock as a generator of bytes */
 static void weak_seed_rng (char * buffer, int bsize)
 {
-  struct timespec ts1;
-  struct timespec ts2;
-  bzero (&ts1, sizeof (ts1));
-  bzero (&ts2, sizeof (ts2));
+  char results [12]; 
+  char rcopy [12]; 
+  bzero (results, sizeof (results));
 
-/* ts.tv_nsec should be 4 fairly random bytes, though since the top two
- * bits are most likely 0, we may use the low-order two bits of ts.tv_sec */
-  if (clock_gettime (CLOCK_REALTIME, &ts1) == -1)
-    perror ("clock_gettime (CLOCK_REALTIME)");
-  printf ("real time is %08lx + %08lx\n", ts1.tv_sec, ts1.tv_nsec);
+  /* the number of microseconds in the current hour or so should give
+   * 4 fairly random bytes -- actually use slightly more than an hour,
+   * specifically, the maximum possible range (approx 4294s). */
+  struct timeval tv;
+  gettimeofday (&tv, NULL);
+  /* usually overflows, and the low-order 32 bits should be random */
+  int rt = tv.tv_sec * 1000 * 1000 + tv.tv_usec;
+  writeb32 (results, rt);
 
-/* boot time nanoseconds should be fairly independent of realtime, though
- * it may be somewhat externally detectable */
-  if (clock_gettime (CLOCK_BOOTTIME, &ts2) == -1)
-    perror ("clock_gettime (CLOCK_BOOTTIME)");
-  printf ("boot time is %08lx + %08lx\n", ts2.tv_sec, ts2.tv_nsec);
-
-  char results [8]; 
-  writeb32 (results, ts1.tv_nsec);
-  writeb32 (results + 4, ts2.tv_nsec);
-
-  if (bsize <= 4) {
-    /* use low bits of ts2 to scramble high bits of ts1 */
-    results [0] ^= results [7];
-    memcpy (buffer, results, bsize);
-  } else {
-    results [0] ^= ((ts2.tv_sec & 0x3) << 30);
-    results [4] ^= ((ts1.tv_sec & 0x3) << 30);
-    sha512_bytes (results, 8, buffer, bsize);
+  /* it would be good to have additional entropy (true randomness).
+   * to get that, we loop 64 times (SHA512_size), computing the sha()
+   * of the intermediate result and doing a system call (usleep) over and
+   * over until 1000 clocks (1ms) have passed.  Since the number of clocks
+   * should vary (1000 to 1008 have been observed), each loop should add
+   * one or maybe a few bits of randomness.
+   */
+  int i;
+  int old_clock = 0;
+  for (i = 0; i < SHA512_SIZE - sizeof (results); i++) {
+    do {
+      memcpy (rcopy, results, sizeof (results));
+      sha512_bytes (rcopy, sizeof (results), results, sizeof (results));
+      usleep (1);
+    } while (old_clock + 1000 > clock ());  /* continue for 1000 clocks */
+    old_clock = clock ();
+    /* XOR the clock value into the mix */
+    writeb32 (results + 4, old_clock ^ readb32 (results + 4));
   }
+  /* combine the bits */
+  sha512_bytes (results, sizeof (results), buffer, bsize);
 }
 
 /* to the extent possible, add randomness to the SSL Random Number Generator */
@@ -147,6 +150,7 @@ static void seed_rng ()
   int has_dev_random = (fd >= 0);
   if (has_dev_random) { /* don't need to seed openssl rng, only standard rng */
     read_n_bytes (fd, buffer, sizeof (unsigned int));
+    close (fd);
   } else {
     weak_seed_rng (buffer, sizeof (buffer));  /* seed both */
     /* even though the seed is weak, it is still better to seed openssl RNG */
