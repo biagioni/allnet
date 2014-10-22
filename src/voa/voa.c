@@ -272,13 +272,6 @@ static int accept_stream (const struct allnet_header * hp,
     return 0;
   }
   assert (bufsize >= sizeof (struct allnet_voa_hs_syn_header));
-#ifdef DEBUG
-  int i;
-  printf ("media type: ");
-  for (i=0; i < bufsize; ++i)
-    printf ("%02x ", (unsigned char)decbuf[i]);
-  printf ("\n");
-#endif /* DEBUG */
 
   const struct allnet_voa_hs_syn_header * avhhp =
       (const struct allnet_voa_hs_syn_header *)decbuf;
