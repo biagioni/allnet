@@ -270,8 +270,7 @@ static int accept_stream (const struct allnet_header * hp,
     fprintf (stderr, "voa: couldn't decrypt request\n");
     return 0;
   }
-  assert (bufsize >= sizeof (struct allnet_voa_handshake_header));
-
+  assert (bufsize >= sizeof (struct allnet_voa_hs_syn_header));
 #ifdef DEBUG
   int i;
   printf ("media type: ");
@@ -280,8 +279,8 @@ static int accept_stream (const struct allnet_header * hp,
   printf ("\n");
 #endif /* DEBUG */
 
-  const struct allnet_voa_handshake_header * avhhp =
-      (const struct allnet_voa_handshake_header *)decbuf;
+  const struct allnet_voa_hs_syn_header * avhhp =
+      (const struct allnet_voa_hs_syn_header *)decbuf;
 
   int ret = 0;
   unsigned int nmt = readb16u ((const unsigned char *)(&avhhp->num_media_types));
@@ -508,7 +507,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
 {
   unsigned int num_media_types = 1;
   unsigned int amhpsize = sizeof (struct allnet_app_media_header);
-  unsigned int avhhsize = sizeof (struct allnet_voa_handshake_header) +
+  unsigned int avhhsize = sizeof (struct allnet_voa_hs_syn_header) +
                           ((num_media_types - 1) * ALLNET_MEDIA_ID_SIZE);
   allnet_rsa_prvkey prvkey = NULL;
   allnet_rsa_pubkey pubkey = NULL;
@@ -522,7 +521,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   }
 
   /* voa handshake header */
-  struct allnet_voa_handshake_header avhh;
+  struct allnet_voa_hs_syn_header avhh;
   memcpy (&avhh.enc_key, key, ALLNET_STREAM_KEY_SIZE);
   memcpy (&avhh.enc_secret, secret, ALLNET_STREAM_SECRET_SIZE);
   memcpy (&avhh.stream_id, stream_id, STREAM_ID_SIZE);

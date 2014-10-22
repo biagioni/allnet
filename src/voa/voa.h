@@ -14,7 +14,11 @@
 #define ALLNET_VOA_COUNTER_SIZE 2
 #define ALLNET_VOA_NUM_MEDIA_TYPE_SIZE 2
 
-struct allnet_voa_handshake_header {
+/**
+ * Struct used when initiating a handshake
+ * The actual data is extended beyond the header when num_media_types > 1
+ */
+struct allnet_voa_hs_syn_header {
   char enc_key [ALLNET_STREAM_KEY_SIZE];
   char enc_secret [ALLNET_STREAM_SECRET_SIZE];
   char stream_id [STREAM_ID_SIZE];
