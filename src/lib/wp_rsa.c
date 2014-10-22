@@ -1646,12 +1646,14 @@ static int test_sign_verify (wp_rsa_key_pair * key, int sig_encoding)
 {
   char text [WP_RSA_MAX_KEY_BYTES * 2] = "hello world, please sign me today!";
   int tsize = strlen (text);
+  char hash [SHA512_SIZE];
+  sha512 (text, tsize, hash);
   char sig [WP_RSA_MAX_KEY_BYTES];
   int ssize = key->nbits / 8;
 
   struct timeval start;
   gettimeofday (&start, NULL);
-  if (! wp_rsa_sign (key, text, tsize, sig, ssize, sig_encoding)) {
+  if (! wp_rsa_sign (key, hash, SHA512_SIZE, sig, ssize, sig_encoding)) {
     printf ("unable to sign\n");
     return 0;
   }
@@ -1661,7 +1663,7 @@ static int test_sign_verify (wp_rsa_key_pair * key, int sig_encoding)
     printf ("%02x.", sig [i] & 0xff);
   printf ("\n");
   wp_rsa_key pubkey = wp_rsa_get_public_key (key);
-  if (! wp_rsa_verify (&pubkey, text, tsize, sig, ssize, sig_encoding)) {
+  if (! wp_rsa_verify (&pubkey, hash, SHA512_SIZE, sig, ssize, sig_encoding)) {
     printf ("unable to verify signature\n");
     return 0;
   }
