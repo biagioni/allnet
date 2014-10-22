@@ -194,8 +194,8 @@ static void stream_cipher_init (char * key, char * secret, int is_encoder)
  * @param msize total size of message
  * @param [in,out] prvkey Set to private key corresponding to signature when
  *                        not NULL and verification is successful.
- * @return 1 if message signature is valid,
- *         0 if message signature is invalid or missing
+ * @return length of signature block, including signature length, if message
+ *         signature is valid or 0 if message signature is invalid or missing.
  */
 static int check_signature (const struct allnet_header * hp,
                             const char * payload, int msize,
