@@ -152,6 +152,7 @@ static int get_socket ()
   sin.sin_addr.s_addr = htonl (INADDR_ANY);
   if (bind (result, (struct sockaddr *) (&sin), sizeof (sin)) < 0) {
     perror ("bind");
+    printf ("unable to run xchat, maybe already running?\n");
     exit (1);
   }
   return result;
