@@ -61,7 +61,7 @@ char * * cp = NULL;
 int cp_used = 0;
 
 /* return 0 if the contact does not exist, otherwise one more than the
- * contact's intex in cp */
+ * contact's index in cp */
 static int contact_exists (char * contact)
 {
   int i;
@@ -580,15 +580,27 @@ int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
  * creates a new private/public key pair, and if not NULL, also 
  * the contact public key, source and destination addresses
  * if a spare key of the requested size already exists, uses the spare key 
- * if feedback is nonzero, gives feedback while creating the key */
+ * if feedback is nonzero, gives feedback while creating the key.
+ * If the contact was already created, but does not have the peer's
+ * info, returns as if it were a newly created contact after replacing
+ * the contents of local (as long as loc_nbits matches the original nbits) */
 keyset create_contact (char * contact, int keybits, int feedback,
                        char * contact_key, int contact_ksize,
                        unsigned char * local, int loc_nbits,
                        unsigned char * remote, int rem_nbits)
 {
   init_from_file ();
-  if (contact_exists (contact))
+  int index_plus_one = contact_exists (contact);
+  if (index_plus_one) {
+    struct key_info ki = kip [index_plus_one - 1];
+    if (allnet_rsa_pubkey_is_null (ki.contact_pubkey) &&
+        ((ki.local.nbits == 0) ||
+         (loc_nbits == ki.local.nbits))) {
+      memcpy (local, ki.local.address, ADDRESS_SIZE);
+      return index_plus_one - 1;  /* found an incomplete entry, use that */
+    }
     return -1;
+  }
 
   allnet_rsa_prvkey my_key = get_spare_key (keybits);
   if (allnet_rsa_prvkey_is_null (my_key))
