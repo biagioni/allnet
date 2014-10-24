@@ -830,26 +830,29 @@ int allnet_global_debugging = 0;
  * supporting the address on the command line seems like a useful feature */
 int main (int argc, char ** argv)
 {
+  int is_daemon = 0;
+  if (strstr (argv [0], "traced") != NULL)  /* called as daemon */
+    is_daemon = 1;
+
+  int no_intermediates = 0;
+  int repeat = 1;  
+  if (! is_daemon) {
+    /* get_repeat_option should precede any other get_option,
+     * otherwise, e.g. -r -i 0 might be turned into -r 0 */
+    repeat = get_repeat_option (&argc, argv);
+    no_intermediates = get_option ('i', &argc, argv);
+  }
+
   int verbose = get_option ('v', &argc, argv);
   if (verbose)
     allnet_global_debugging = verbose;
   int match_only = get_option ('m', &argc, argv);
-
-  int is_daemon = 0;
-  if (strstr (argv [0], "traced") != NULL)  /* called as daemon */
-    is_daemon = 1;
 
   if ((argc > 2) && ((is_daemon) || (argc > 6))) {
     printf ("argc %d, at most %d allowed for %s\n", argc,
             ((is_daemon) ? 2 : 3), ((is_daemon) ? "traced" : "trace"));
     usage (argv [0], is_daemon);
     return 1;
-  }
-  int no_intermediates = 0;
-  int repeat = 1;  
-  if (! is_daemon) {
-    no_intermediates = get_option ('i', &argc, argv);
-    repeat = get_repeat_option (&argc, argv);
   }
 
   unsigned char address [ADDRESS_SIZE];

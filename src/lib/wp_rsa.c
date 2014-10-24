@@ -17,6 +17,8 @@
 
 #include "wp_rsa.h"
 #include "wp_arith.h"
+/* for random number generation in the absence of /dev/[u]random may use AES */
+#include "wp_aes.h"
 
 typedef uint64_t rsa_int    [WP_RSA_MAX_KEY_WORDS ];
 typedef uint64_t rsa_half   [WP_RSA_HALF_KEY_WORDS];
@@ -56,6 +58,30 @@ static void clear_bit (char * a, int bitpos)
 {
   int bytepos = bitpos / 8;
   a [bytepos] &= (~ (1 << (bitpos % 8)));
+}
+
+static uint64_t bytes_to_uint64 (const char * data)
+{
+  return ((((uint64_t) (data [0] & 0xff)) << 56) |
+          (((uint64_t) (data [1] & 0xff)) << 48) |
+          (((uint64_t) (data [2] & 0xff)) << 40) |
+          (((uint64_t) (data [3] & 0xff)) << 32) |
+          (((uint64_t) (data [4] & 0xff)) << 24) |
+          (((uint64_t) (data [5] & 0xff)) << 16) |
+          (((uint64_t) (data [6] & 0xff)) <<  8) |
+          (((uint64_t) (data [7] & 0xff))      ));
+}
+
+static void uint64_to_bytes (char * result, uint64_t data)
+{
+  result [0] = (data >> 56) & 0xff;
+  result [1] = (data >> 48) & 0xff;
+  result [2] = (data >> 40) & 0xff;
+  result [3] = (data >> 32) & 0xff;
+  result [4] = (data >> 24) & 0xff;
+  result [5] = (data >> 16) & 0xff;
+  result [6] = (data >>  8) & 0xff;
+  result [7] = (data      ) & 0xff;
 }
 
 static int is_power_two (int n)
@@ -128,6 +154,22 @@ static int read_all_or_none (int fd, char * buffer, int bsize)
   return total;
 }
 
+#define RANDOM_BANK_AES_KEY_SIZE	32
+  /* random_bank may be initialized by caller */
+static char random_bank [RANDOM_BANK_AES_KEY_SIZE];
+static uint64_t random_init = 0; /* set to 1 if initialized, then incremented */
+
+/* used if and only if /dev/random and /dev/urandom are not available 
+ * buffer should contain bsize truly random bytes */
+void wp_rsa_randomize (char * buffer, int bsize)
+{
+  if (bsize >= RANDOM_BANK_AES_KEY_SIZE)
+    memcpy (random_bank, buffer, RANDOM_BANK_AES_KEY_SIZE);
+  else
+    memcpy (random_bank, buffer, bsize);
+  random_init++;  /* if it was 0, set to 1, but in any case, increment */
+}
+
 /* #define PREDICTABLE_RANDOM   used for repeatability when debugging */
 static void init_random (char * buffer, int bsize, int pure_random,
                          char * rbuffer, int rsize)
@@ -151,23 +193,41 @@ pure_random = 0;
   if (pure_random)
     fname = "/dev/random";  /* only use really random bits */
   int fd = open (fname, O_RDONLY);
-  if (fd < 0) {
+  int n = 0;
+  if (fd >= 0) {
+    n = read_all_or_none (fd, buffer, bsize);
+    close (fd);
+    if (n != bsize) {
+      if (pure_random)
+        perror ("read /dev/random");
+      else
+        perror ("read /dev/urandom");
+    }
+  } else {
     if (pure_random)
       perror ("open /dev/random");
     else
       perror ("open /dev/urandom");
-    exit (1);
+    if (random_init) {   /* use AES in counter mode with random_bank as key */
+      while (n < bsize) {
+        char in [WP_AES_BLOCK_SIZE];
+        char out [WP_AES_BLOCK_SIZE];
+        uint64_to_bytes (in, random_init++);
+        wp_aes_encrypt_block (RANDOM_BANK_AES_KEY_SIZE, random_bank, in, out);
+        int byte_count = sizeof (out);
+        if (byte_count > bsize - n)
+          byte_count = bsize - n;
+        memcpy (buffer + n, out, byte_count);
+        n += byte_count;
+      }
+    } else {
+      exit (1);
+    }
   }
-  int n = read_all_or_none (fd, buffer, bsize);
   if (n != bsize) {
-    if (pure_random)
-      perror ("read /dev/random");
-    else
-      perror ("read /dev/urandom");
     printf ("tried to read %d bytes from %s, read %d\n", bsize, fname, n);
     exit (1);
   }
-  close (fd);
   if (pure_random)
     printf ("...done in %ld seconds\n", time (NULL) - start_time);
 #ifdef PREDICTABLE_RANDOM
@@ -265,30 +325,6 @@ static void rsa_mod (int nbits, uint64_t * n, uint64_t * mod)
     wp_div (nbits * 2, result, nbits, mod, NULL, &remainder);
     wp_copy (nbits, n, remainder);
   }
-}
-
-static uint64_t bytes_to_uint64 (const char * data)
-{
-  return ((((uint64_t) (data [0] & 0xff)) << 56) |
-          (((uint64_t) (data [1] & 0xff)) << 48) |
-          (((uint64_t) (data [2] & 0xff)) << 40) |
-          (((uint64_t) (data [3] & 0xff)) << 32) |
-          (((uint64_t) (data [4] & 0xff)) << 24) |
-          (((uint64_t) (data [5] & 0xff)) << 16) |
-          (((uint64_t) (data [6] & 0xff)) <<  8) |
-          (((uint64_t) (data [7] & 0xff))      ));
-}
-
-static void uint64_to_bytes (char * result, uint64_t data)
-{
-  result [0] = (data >> 56) & 0xff;
-  result [1] = (data >> 48) & 0xff;
-  result [2] = (data >> 40) & 0xff;
-  result [3] = (data >> 32) & 0xff;
-  result [4] = (data >> 24) & 0xff;
-  result [5] = (data >> 16) & 0xff;
-  result [6] = (data >>  8) & 0xff;
-  result [7] = (data      ) & 0xff;
 }
 
 /* to and from must both have size nbits, and may be the same array */
@@ -1270,16 +1306,16 @@ int wp_rsa_decrypt (wp_rsa_key_pair * key, const char * data, int dsize,
 }
 
 /* digest must be rsa_int or have WP_RSA_MAX_KEY_WORDS */
-static void sig_digest (int nbits, const char * data, int ndata,
+static void sig_digest (int nbits, const char * hash, int hsize,
                         uint64_t * digest, int sig_encoding)
 {
   if (sig_encoding == WP_RSA_SIG_ENCODING_NONE) {
-    if (ndata != nbits / 8) {
+    if (hsize != nbits / 8) {
       printf ("error: digest needs exactly %d bytes, %d found\n",
-              nbits / 8, ndata);
+              nbits / 8, hsize);
       exit (1);  /* some error */
     }
-    rsa_int_from_bytes (nbits, digest, data);
+    rsa_int_from_bytes (nbits, digest, hash);
   } else if (sig_encoding == WP_RSA_SIG_ENCODING_SHA512) {
     static const char sha512_der_prefix [] = {
         0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01,
@@ -1304,8 +1340,8 @@ static void sig_digest (int nbits, const char * data, int ndata,
 /* copy the constant string indicating SHA512 encoding */
     memcpy (db + nbytes - t_size, sha512_der_prefix,
             sizeof (sha512_der_prefix));
-/* compute the sha hash in the last 64 bytes of the digest */
-    sha512 (data, ndata, db + nbytes - SHA512_SIZE);
+/* place the sha hash in the last 64 bytes of the digest */
+    memcpy (db + nbytes - SHA512_SIZE, hash, hsize);
     rsa_int_from_bytes (nbits, digest, db);
   } else {
     printf ("error: signature encoding %d not implemented", sig_encoding);
@@ -1313,10 +1349,11 @@ static void sig_digest (int nbits, const char * data, int ndata,
   }
 }
 
-/* data and sig may be the same buffer.
- * dsize <= key->nbits / 8,  nsig >= key->nbits / 8
+/* hash and sig may be the same buffer.
+ * hsize <= key->nbits / 8,  nsig >= key->nbits / 8
+ * if sig_encoding is WP_RSA_SIG_ENCODING_SHA512, hsize must be 64
  * returns 1 if successful, otherwise returns 0 */
-int wp_rsa_sign (wp_rsa_key_pair * key, const char * data, int dsize,
+int wp_rsa_sign (wp_rsa_key_pair * key, const char * hash, int hsize,
                  char * sig, int nsig, int sig_encoding)
 {
   if ((nsig < key->nbits / 8) || (key->nbits > WP_RSA_MAX_KEY_BITS)) {
@@ -1324,24 +1361,24 @@ int wp_rsa_sign (wp_rsa_key_pair * key, const char * data, int dsize,
             nsig, key->nbits / 8);
     return 0;
   }
-  uint64_t to_be_signed [WP_RSA_MAX_KEY_WORDS];
-  sig_digest (key->nbits, data, dsize, to_be_signed, sig_encoding);
+  rsa_int to_be_signed;
+  sig_digest (key->nbits, hash, hsize, to_be_signed, sig_encoding);
   rsa_int isig;
   rsa_choose_decrypt (key, to_be_signed, isig);
   rsa_int_to_bytes (key->nbits, sig, isig);
   return 1;
 }
 
-/* data and sig may be the same buffer.
- * dsize <= key->nbits / 8,  nsig == key->nbits / 8
+/* hsize <= key->nbits / 8,  nsig == key->nbits / 8
+ * if sig_encoding is WP_RSA_SIG_ENCODING_SHA512, hsize must be 64
  * returns 1 if successful, otherwise returns 0 */
-int wp_rsa_verify (wp_rsa_key * key, const char * data, int dsize,
+int wp_rsa_verify (wp_rsa_key * key, const char * hash, int hsize,
                    const char * sig, int nsig, int sig_encoding)
 {
   if ((nsig != key->nbits / 8) || (key->nbits > WP_RSA_MAX_KEY_BITS))
     return 0;
   rsa_int digest;
-  sig_digest (key->nbits, data, dsize, digest, sig_encoding);
+  sig_digest (key->nbits, hash, hsize, digest, sig_encoding);
   char digestb [WP_RSA_MAX_KEY_BYTES];
   rsa_int_to_bytes (key->nbits, digestb, digest);
   rsa_int encrypt;
@@ -1390,11 +1427,12 @@ static int test_openssl_sign_verify (wp_rsa_key_pair * key, RSA * openssl_key)
 
   /* sign with wp_rsa_sign, verify with openssl */
   struct timeval start;
-  gettimeofday (&start, NULL);
-  if (! wp_rsa_sign (key, text, tsize, sig, ssize, WP_RSA_SIG_ENCODING_SHA512)) {
+  if (! wp_rsa_sign (key, hash, SHA512_SIZE, sig, ssize,
+                     WP_RSA_SIG_ENCODING_SHA512)) {
     printf ("unable to sign\n");
     return 0;
   }
+  gettimeofday (&start, NULL);
   if (! RSA_verify (NID_sha512, (unsigned char *) hash, SHA512_SIZE,
                     (unsigned char *) sig, ssize, openssl_key)) {
     printf ("openssl unable to verify signature\n");
@@ -1405,14 +1443,14 @@ static int test_openssl_sign_verify (wp_rsa_key_pair * key, RSA * openssl_key)
 
   /* sign with RSA_sign, verify with wp_rsa_verify */
   bzero (sig, sizeof (sig));  /* no cheating! */
-  gettimeofday (&start, NULL);
   if (! RSA_sign (NID_sha512, (unsigned char *) hash, SHA512_SIZE,
                   (unsigned char *) sig, &ssize, openssl_key)) {
     printf ("openssl unable to sign hash\n");
     return 0;
   }
   wp_rsa_key pubkey = wp_rsa_get_public_key (key);
-  if (! wp_rsa_verify (&pubkey, text, tsize, sig, ssize,
+  gettimeofday (&start, NULL);
+  if (! wp_rsa_verify (&pubkey, hash, SHA512_SIZE, sig, ssize,
                        WP_RSA_SIG_ENCODING_SHA512)) {
     printf ("wp_rsa_verify unable to verify signature\n");
     return 0;
@@ -1608,12 +1646,14 @@ static int test_sign_verify (wp_rsa_key_pair * key, int sig_encoding)
 {
   char text [WP_RSA_MAX_KEY_BYTES * 2] = "hello world, please sign me today!";
   int tsize = strlen (text);
+  char hash [SHA512_SIZE];
+  sha512 (text, tsize, hash);
   char sig [WP_RSA_MAX_KEY_BYTES];
   int ssize = key->nbits / 8;
 
   struct timeval start;
   gettimeofday (&start, NULL);
-  if (! wp_rsa_sign (key, text, tsize, sig, ssize, sig_encoding)) {
+  if (! wp_rsa_sign (key, hash, SHA512_SIZE, sig, ssize, sig_encoding)) {
     printf ("unable to sign\n");
     return 0;
   }
@@ -1623,7 +1663,7 @@ static int test_sign_verify (wp_rsa_key_pair * key, int sig_encoding)
     printf ("%02x.", sig [i] & 0xff);
   printf ("\n");
   wp_rsa_key pubkey = wp_rsa_get_public_key (key);
-  if (! wp_rsa_verify (&pubkey, text, tsize, sig, ssize, sig_encoding)) {
+  if (! wp_rsa_verify (&pubkey, hash, SHA512_SIZE, sig, ssize, sig_encoding)) {
     printf ("unable to verify signature\n");
     return 0;
   }
@@ -1718,7 +1758,7 @@ void run_rsa_test ()
   if (count != 1)
     printf ("generate_key looped %d times\n", count);
   if (k.nbits <= 4096)
-    printf ("public key is %s/%d %ld", wp_itox (k.nbits, k.n),
+    printf ("public key is %s/%d %" PRId64, wp_itox (k.nbits, k.n),
             k.nbits, k.e);
   if (k.nbits <= 512) {
     printf (", secret is %s ", wp_itox (k.nbits, k.d));

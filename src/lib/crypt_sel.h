@@ -98,6 +98,13 @@ extern int allnet_rsa_verify (allnet_rsa_pubkey rsa,
 extern allnet_rsa_prvkey allnet_rsa_generate_key (int bits,
                                                   char * random, int rsize);
 
+/* should be called if /dev/random is not defined, to increase the randomness
+ * of key generation and other operations, such as padding, that require
+ * randomness
+ * a single call with 16 bytes of randomness may be sufficient for
+ * many purposes */
+extern void allnet_rsa_seed_rng (char * buffer, int bsize);
+
 /* =======================  AES section  ========================= */
 
 #ifndef AES256_SIZE

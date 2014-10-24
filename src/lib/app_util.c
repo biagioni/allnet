@@ -20,6 +20,7 @@
 #include "sha.h"
 #include "priority.h"
 #include "log.h"
+#include "crypt_sel.h"
 
 static void find_path (char * arg, char ** path, char ** program)
 {
@@ -92,29 +93,73 @@ static int connect_once (int print_error)
   return -1;
 }
 
+static void read_n_bytes (int fd, char * buffer, int bsize)
+{
+  bzero (buffer, bsize);
+  int i;
+  for (i = 0; i < bsize; i++)
+    if (read (fd, buffer + i, 1) != 1)
+      perror ("unable to read /dev/random");
+}
+
+/* if cannot read /dev/random, use the system clock as a generator of bytes */
+static void weak_seed_rng (char * buffer, int bsize)
+{
+  char results [12]; 
+  char rcopy [12]; 
+  bzero (results, sizeof (results));
+
+  /* the number of microseconds in the current hour or so should give
+   * 4 fairly random bytes -- actually use slightly more than an hour,
+   * specifically, the maximum possible range (approx 4294s). */
+  struct timeval tv;
+  gettimeofday (&tv, NULL);
+  /* usually overflows, and the low-order 32 bits should be random */
+  int rt = tv.tv_sec * 1000 * 1000 + tv.tv_usec;
+  writeb32 (results, rt);
+
+  /* it would be good to have additional entropy (true randomness).
+   * to get that, we loop 64 times (SHA512_size), computing the sha()
+   * of the intermediate result and doing a system call (usleep) over and
+   * over until 1000 clocks (1ms) have passed.  Since the number of clocks
+   * should vary (1000 to 1008 have been observed), each loop should add
+   * one or maybe a few bits of randomness.
+   */
+  int i;
+  int old_clock = 0;
+  for (i = 0; i < SHA512_SIZE - sizeof (results); i++) {
+    do {
+      memcpy (rcopy, results, sizeof (results));
+      sha512_bytes (rcopy, sizeof (results), results, sizeof (results));
+      usleep (1);
+    } while (old_clock + 1000 > clock ());  /* continue for 1000 clocks */
+    old_clock = clock ();
+    /* XOR the clock value into the mix */
+    writeb32 (results + 4, old_clock ^ readb32 (results + 4));
+  }
+  /* combine the bits */
+  sha512_bytes (results, sizeof (results), buffer, bsize);
+}
+
 /* to the extent possible, add randomness to the SSL Random Number Generator */
 /* see http://wiki.openssl.org/index.php/Random_Numbers for details */
 static void seed_rng ()
 {
+  char buffer [sizeof (unsigned int) + 8];
   int fd = open ("/dev/random", O_RDONLY | O_NONBLOCK);
-  if (fd < 0)
-    return;
-  int isize = sizeof (unsigned int);
-  char buffer [sizeof (unsigned int)];
-  int count = 0;
-  while (count < sizeof (buffer)) {
-    int n = read (fd, buffer + count, 1);
-    if (n <= 0)  /* presumably, nothing more to read from /dev/random */
-      break;
-    count++;
+  int has_dev_random = (fd >= 0);
+  if (has_dev_random) { /* don't need to seed openssl rng, only standard rng */
+    read_n_bytes (fd, buffer, sizeof (unsigned int));
+    close (fd);
+  } else {
+    weak_seed_rng (buffer, sizeof (buffer));  /* seed both */
+    /* even though the seed is weak, it is still better to seed openssl RNG */
+    allnet_rsa_seed_rng (buffer + sizeof (unsigned int), 8);
   }
-  close (fd);
-  if (count >= isize) {
-    static char state [128];
-    unsigned int seed = readb32 (buffer);
-    initstate (seed, state, sizeof (state));
-  }
-/* if (count > 0) printf ("added %d bytes to entropy pool\n", count); */
+  /* seed standard rng */
+  static char state [128];
+  unsigned int seed = readb32 (buffer);
+  initstate (seed, state, sizeof (state));
 }
 
 #ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */

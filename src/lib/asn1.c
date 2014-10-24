@@ -7,6 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdint.h>
 
 #include "wp_rsa.h"
 #include "wp_arith.h"
@@ -109,7 +110,7 @@ debug_data = data;
 }
 
 /* returns 0 for error, 1 for success */
-static int read_int (const char * data, int dsize, long int * result)
+static int read_int (const char * data, int dsize, uint64_t * result)
 {
   int re = 0;
   int id = read_byte (data, dsize, &re) & 0x1f;
@@ -171,7 +172,7 @@ static void print_sequence (const char * data, int dsize, int indent)
 
 static int check_int (const char * data, int dsize, int expected)
 {
-  long int found;
+  uint64_t found;
   if (read_int (data, dsize, &found))
     if (found == expected)
       return 1;
@@ -203,13 +204,13 @@ static int read_key (const char * data, int dsize, int nbits,
   int re = 0;
   int id = read_byte (data, dsize, &re) & 0x1f;
   if (re || (id != 2)) {
-    printf ("read_int error: read_error %d, id %d (wanted 2)\n", re, id);
+    printf ("read_key error: read_error %d, id %d (wanted 2)\n", re, id);
     return 0;
   }
   int length;
   int length_bytes = read_length (data + 1, dsize - 1, &length);
   if (length_bytes <= 0) {
-    printf ("read_int error: %d bytes encoding length %d (max %d)\n",
+    printf ("read_key error: %d bytes encoding length %d (max %d)\n",
             length_bytes, length, nbits / 8);
     return 0;
   }
