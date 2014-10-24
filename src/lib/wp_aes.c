@@ -426,8 +426,11 @@ static void AES(const unsigned char *M, unsigned char *C, uint32_t *w)
 void wp_aes_encrypt_block (int ksize, const char * key,
                            const char * in, char * out)
 {
-  if (ksize != 32)
-    return;
+  if (ksize != 32) {
+    printf ("error: wp_aes_encrypt_block only supports 32-byte/256-bit key\n");
+    printf ("       %d-byte key specified\n", ksize);
+    exit (1);   /* this is a serious error in the caller */
+  }
   uint32_t w[60];  /* 60 = Nb*(Nr+1)  */
   /* uint32_t state[4]; */
   KeyExpansion((const unsigned char *) key, w);

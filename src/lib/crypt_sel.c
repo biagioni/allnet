@@ -525,7 +525,7 @@ int allnet_aes_encrypt_block (char * key, char * in, char * out)
   }
   AES_encrypt ((unsigned char *) in, (unsigned char *) out, &aes_key);
 #else /* HAVE_OPENSSL */
-  wp_aes_encrypt_block (256, key, in, out);
+  wp_aes_encrypt_block (32, key, in, out);
 #endif /* HAVE_OPENSSL */
   return 1;
 }

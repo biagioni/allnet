@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <inttypes.h>
 
 #include "stream.h"
 #include "crypt_sel.h"
@@ -36,7 +37,7 @@ void allnet_stream_init (struct allnet_stream_encryption_state * state,
   if (init_secret)
     random_bytes (secret, ALLNET_STREAM_SECRET_SIZE);
   memcpy (state->key, key, ALLNET_STREAM_KEY_SIZE);
-  memcpy (state->secret, secret, ALLNET_STREAM_KEY_SIZE);
+  memcpy (state->secret, secret, ALLNET_STREAM_SECRET_SIZE);
   state->counter_size = counter_size;
   state->hash_size = hash_size;
   state->counter = 1;  /* start with counter value of 1 */
@@ -54,7 +55,7 @@ static void update_counter (char * bytes, uint64_t value)
 static int aes_next_byte (struct allnet_stream_encryption_state * sp,
                           char * block, int init)
 {
-  if ((init) || ((sp->block_offset % WP_AES_BLOCK_SIZE) == 0)) {
+  if ((init) || (((sp->block_offset + 1) % WP_AES_BLOCK_SIZE) == 0)) {
     if (! init) {
       (sp->counter)++;
       sp->block_offset = 0;
@@ -187,7 +188,7 @@ int allnet_stream_decrypt_buffer (struct allnet_stream_encryption_state * sp,
     char counter_bytes [sizeof (uint64_t)];
     bzero (counter_bytes, sizeof (counter_bytes));
     int num_bytes = sp->counter_size;
-    if (sp->counter > sizeof (uint64_t))
+    if (num_bytes > sizeof (uint64_t))
       num_bytes = sizeof (uint64_t);
     memcpy (counter_bytes + (sizeof (uint64_t) - num_bytes),
             packet + (psize - sp->hash_size - num_bytes), num_bytes);
@@ -207,5 +208,63 @@ int allnet_stream_decrypt_buffer (struct allnet_stream_encryption_state * sp,
   int i;
   for (i = 0; i < rsize; i++)
     text [i] = packet [i] ^ aes_next_byte (sp, crypt_block, 0);
-  return rsize;
+  return 1;
 }
+
+#ifdef ALLNET_STREAM_UNIT_TEST
+
+int allnet_global_debugging = 0;
+int main (int argc, char ** argv)
+{
+  struct allnet_stream_encryption_state sender;
+  struct allnet_stream_encryption_state receiver;
+  char key [ALLNET_STREAM_KEY_SIZE];
+  char secret [ALLNET_STREAM_SECRET_SIZE];
+#define COUNTER_SIZE	4
+#define HASH_SIZE	4
+
+  allnet_stream_init (&sender, key, 1, secret, 1, COUNTER_SIZE, HASH_SIZE);
+  allnet_stream_init (&receiver, key, 0, secret, 0, COUNTER_SIZE, HASH_SIZE);
+print_buffer (key, sizeof (key), "key", 35, 1);
+print_buffer (secret, sizeof (secret), "secret", 35, 1);
+
+#define DATA_SIZE	25
+  char original [DATA_SIZE];
+  char transmitted [DATA_SIZE + COUNTER_SIZE + HASH_SIZE];
+  char decoded [DATA_SIZE];
+
+  int i;
+  for (i = 0; i < DATA_SIZE; i++)
+    original [i] = i + 100;
+#define NUM_LOOPS	1000
+  for (i = 0; i < NUM_LOOPS; i++) {
+    bzero (transmitted, sizeof (transmitted));
+    bzero (decoded, sizeof (decoded));
+    int esize =
+      allnet_stream_encrypt_buffer (&sender, original, DATA_SIZE,
+                                    transmitted, sizeof (transmitted));
+    if (esize != sizeof (transmitted)) {
+      printf ("got esize %d, expected %zd, loop %d\n",
+              esize, sizeof (transmitted), i);
+      print_buffer (original, sizeof (original), "original", 35, 1);
+      print_buffer (transmitted, sizeof (transmitted), "transmitted", 35, 1);
+      exit (1);
+    }
+    if (! allnet_stream_decrypt_buffer (&receiver, transmitted, esize,
+                                        decoded, sizeof (decoded))) {
+      printf ("unable to decrypt, loop %d\n", i);
+      print_buffer (original, sizeof (original), "original", 35, 1);
+      print_buffer (transmitted, sizeof (transmitted), "transmitted", 35, 1);
+      print_buffer (decoded, sizeof (decoded), "decoded", 35, 1);
+      exit (1);
+    }
+    if (memcmp (decoded, original, DATA_SIZE) != 0) {
+      print_buffer (original, sizeof (original), "original", 35, 1);
+      print_buffer (decoded, sizeof (decoded), "decoded", 35, 1);
+      exit (1);
+    }
+  }
+  printf ("\n%d loops successful\n", NUM_LOOPS);
+  return 0;
+}
+#endif /* ALLNET_STREAM_UNIT_TEST */
