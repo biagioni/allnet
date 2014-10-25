@@ -518,17 +518,12 @@ static int handle_packet (const char * message, int msize, int reply_only)
   }
 
   /* valid packet: stream packet candidate */
-#ifdef USE_STREAM_ENCRYPTION
   int encbufsize = msize - headersizes;
   int bufsize = encbufsize - ALLNET_VOA_HMAC_SIZE - ALLNET_VOA_COUNTER_SIZE;
   char buf [bufsize];
   if (!allnet_stream_decrypt_buffer (&data.enc_state, payload,
                                      encbufsize, buf, sizeof (buf)))
     return -1;
-#else /* USE_STREAM_ENCRYPTION */
-  int bufsize = msize - headersizes;
-  const char * buf = payload;
-#endif /* USE_STREAM_ENCRYPTION */
   assert (buf[0] == 0x08); /* Narrow band 20ms VBR opus frame */
   if (!dec_handle_data (buf, bufsize))
     return -1;
@@ -706,11 +701,7 @@ static struct allnet_header * create_voa_stream_packet (
               const unsigned char * buf, int bufsize,
               const unsigned char * stream_id, int * paksize)
 {
-#ifdef USE_STREAM_ENCRYPTION
   unsigned int sigsize = ALLNET_VOA_COUNTER_SIZE + ALLNET_VOA_HMAC_SIZE;
-#else /* USE_STREAM_ENCRYPTION */
-  unsigned int sigsize = 0;
-#endif /* USE_STREAM_ENCRYPTION */
   int psize = bufsize + sigsize;
   struct allnet_header * pak = create_packet (psize,
          ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_NONE,
@@ -723,13 +714,9 @@ static struct allnet_header * create_voa_stream_packet (
   char * payload = (char *)pak + ALLNET_SIZE_HEADER (pak);
   assert (psize == *paksize - (payload - (char *)pak));
 
-#ifdef USE_STREAM_ENCRYPTION
   /* encrypt and copy into packet */
   if (!allnet_stream_encrypt_buffer (&data.enc_state, (const char *)buf, bufsize, payload, psize))
     return NULL;
-#else /* USE_STREAM_ENCRYPTION */
-  memcpy (payload, buf, bufsize);
-#endif /* USE_STREAM_ENCRYPTION */
 
 /*
 #ifdef DEBUG
