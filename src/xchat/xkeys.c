@@ -192,16 +192,9 @@ static void send_key_message (char * contact, char * secret, int hops, int sock)
   wait_for_key (sock, secret, contact, keys, address, nbits, 86400000, &start);
 }
 
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 int main (int argc, char ** argv)
 {
-  int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
-
+  log_to_output (get_option ('v', &argc, argv));
   if (argc != 4) {
     printf ("usage: %s contact-name secret-string num-hops\n", argv [0]);
     print_usage (argc, argv, 1, 1);

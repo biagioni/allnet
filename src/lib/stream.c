@@ -213,7 +213,6 @@ int allnet_stream_decrypt_buffer (struct allnet_stream_encryption_state * sp,
 
 #ifdef ALLNET_STREAM_UNIT_TEST
 
-int allnet_global_debugging = 0;
 int main (int argc, char ** argv)
 {
   struct allnet_stream_encryption_state sender;

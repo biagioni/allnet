@@ -32,10 +32,6 @@ extern void acache_main (char * pname);
 extern void traced_main (char * pname);
 extern void keyd_main (char * pname);
 
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 /* if astart is called as root, everything but abc should run as the user
  * "nobody", if such a user is defined */
 static void make_root_nobody ()
@@ -404,9 +400,7 @@ static void find_path (char * arg, char ** path, char ** program)
 
 int main (int argc, char ** argv)
 {
-  int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
+  log_to_output (get_option ('v', &argc, argv));
   int alen = strlen (argv [0]);
   char * path;
   char * pname;

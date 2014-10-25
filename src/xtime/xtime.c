@@ -237,10 +237,6 @@ static void announce (time_t interval, int sock,
   print_buffer (buffer, blen, "packet", 36, 1);
 }
 
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 static int init_xtime (char * arg0)
 {
   int sock = connect_to_local ("xtime", arg0);
@@ -251,10 +247,7 @@ static int init_xtime (char * arg0)
 
 int main (int argc, char ** argv)
 {
-  int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
-
+  log_to_output (get_option ('v', &argc, argv));
   int hops = 10;
   if (argc < 2) {
     printf ("%s: needs at least a signing address\n", argv [0]);

@@ -28,12 +28,12 @@ char log_buf [LOG_SIZE];    /* global */
 #endif /* PATH_MAX */
 #endif /* PATH_MAX */
 
-extern int allnet_global_debugging;   /* defined in main */
-
 static char log_dir [PATH_MAX] = LOG_DIR;
 
 static char * module_name = "unknown module -- have main call init_log()";
 static char log_file_name [PATH_MAX] = "";
+
+static int allnet_global_debugging = 0;
 
 static int make_string ()
 {
@@ -265,4 +265,12 @@ void log_error (char * syscall)
             syscall, strerror (errno), log_buf);
   log_print_str (local_buf);
 }
+
+/* output everything to stdout as well as the log file if on != 0.
+ * if on == 0, only output to the log file. */
+void log_to_output (int on)
+{
+  allnet_global_debugging = 0;
+}
+
 

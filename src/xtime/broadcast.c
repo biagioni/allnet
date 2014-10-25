@@ -98,16 +98,9 @@ static void broadcast (int sock, char * data, int dsize, int hops,
   send_pipe_message (sock, buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW);
 }
 
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 int main (int argc, char ** argv)
 {
-  int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
-
+  log_to_output (get_option ('v', &argc, argv));
   int hops = 10;
   if (argc < 2) {
     printf ("%s: needs at least a signing address\n", argv [0]);

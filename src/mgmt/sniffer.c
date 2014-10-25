@@ -95,8 +95,7 @@ int allnet_global_debugging = 0;
 int main (int argc, char ** argv)
 {
   int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
+  log_to_output (verbose);
   int verify = get_option ('y', &argc, argv);
 
   int sock = connect_to_local (argv [0], argv [0]);

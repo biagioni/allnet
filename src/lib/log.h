@@ -21,4 +21,8 @@ extern void log_packet (char * desc, char * packet, int plen);
    is in the buffer */
 extern void log_error (char * syscall);
 
+/* output everything to stdout as well as the log file if on != 0.
+ * if on == 0, only output to the log file. */
+extern void log_to_output (int on);
+
 #endif /* ALLNET_LOG_H */

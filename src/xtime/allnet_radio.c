@@ -143,16 +143,11 @@ static int debug_switch (int * argc, char ** argv)
   return debug;
 }
 
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 /* optional argument: quit after n messages */
 int main (int argc, char ** argv)
 {
   int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
+  log_to_output (verbose);
 
   int sock = connect_to_local (argv [0], argv [0]);
   if (sock < 0)
