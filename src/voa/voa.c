@@ -1074,6 +1074,8 @@ int main (int argc, char ** argv)
   random_bytes ((char *)data.my_address, nbytes);
   mask_unused_addr_bits (data.my_address, data.my_addr_bits);
   int nowait = 0;
+  int is_encoder = 0;
+
   if (argc > 1) {
     int a = 1;
     while (a < argc) {
@@ -1091,6 +1093,10 @@ int main (int argc, char ** argv)
         }
 
 #endif /* SIMULATE_LOSS */
+      } else if (strcmp (argv [a], "-s") == 0) {
+        /* be the sender/encoder */
+        is_encoder = 1;
+
       } else {
         nbytes = strnlen (argv [a], ADDRESS_SIZE);
         data.dest_addr_bits = 8 * nbytes;
@@ -1105,9 +1111,6 @@ int main (int argc, char ** argv)
       ++a;
     }
   }
-
-  int len = strlen (argv [0]);
-  int is_encoder = (strcmp (argv [0] + len - 4, "voas") == 0);
 
   if (is_encoder && data.dest_contact == NULL) {
     fprintf (stderr, "Contact required\n");
