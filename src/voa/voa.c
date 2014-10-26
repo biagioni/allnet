@@ -889,7 +889,6 @@ static int init_audio (int is_encoder)
 
   /* Create the elements */
   if (is_encoder) {
-    random_bytes ((char *)data.stream_id, STREAM_ID_SIZE);
     data.enc.source = gst_element_factory_make ("audiotestsrc", "source");
     //data.enc.source = gst_element_factory_make ("autoaudiosrc", "source");
     data.enc.convert = gst_element_factory_make ("audioconvert", "convert");
@@ -1106,6 +1105,7 @@ int main (int argc, char ** argv)
     return 1;
 
   if (is_encoder) {
+    random_bytes ((char *)data.stream_id, STREAM_ID_SIZE);
     int i = 0;
     /* retry 10x every 2s */
     do {
