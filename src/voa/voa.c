@@ -1093,6 +1093,10 @@ int main (int argc, char ** argv)
         }
 
 #endif /* SIMULATE_LOSS */
+      } else if (strcmp (argv [a], "-n") == 0) {
+        /* encoder: don't wait for acceptance response */
+        nowait = 1;
+
       } else if (strcmp (argv [a], "-s") == 0) {
         /* be the sender/encoder */
         is_encoder = 1;
