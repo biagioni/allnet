@@ -40,16 +40,9 @@ static void add_time (struct timeval * time, int ms)
   time->tv_usec = time->tv_usec % 1000000;
 }
 
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 int main (int argc, char ** argv)
 {
-  int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
-
+  log_to_output (get_option ('v', &argc, argv));
   if (argc < 2) {
     printf ("usage: %s contact-name [message]\n", argv [0]);
     printf ("   or: %s -k contact-name [hops [secret]] (hops defaults to 1)\n",

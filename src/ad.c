@@ -275,20 +275,13 @@ void ad_main (int npipes, int * rpipes, int * wpipes)
 }
 
 #ifdef DAEMON_MAIN_FUNCTION
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 /* arguments are: the number of pipes, then pairs of read and write file
  * file descriptors (ints) for each pipe, from/to alocal, aip.
  * any additional pipes will again be pairs from/to each abc.
  */
 int main (int argc, char ** argv)
 {
-  int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
-
+  log_to_output (get_option ('v', &argc, argv));
   init_log ("ad");
   if (argc < 2) {
     printf ("need to have at least the number of read and write pipes\n");

@@ -130,16 +130,9 @@ void alocal_main (int rpipe, int wpipe)
 }
 
 #ifdef DAEMON_MAIN_FUNCTION
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 int main (int argc, char ** argv)
 {
-  int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
-
+  log_to_output (get_option ('v', &argc, argv));
   if (argc != 3) {
     printf ("arguments must be a read and a write pipe\n");
     print_usage (argc, argv, 0, 1);

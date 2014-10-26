@@ -822,10 +822,6 @@ void traced_main (char * pname)
 }
 
 #ifdef TRACE_MAIN_FUNCTION
-/* global debugging variable -- if 1, expect more debugging output */
-/* set in main */
-int allnet_global_debugging = 0;
-
 /* parts of this duplicate some of the code in traced_main, but
  * supporting the address on the command line seems like a useful feature */
 int main (int argc, char ** argv)
@@ -843,9 +839,7 @@ int main (int argc, char ** argv)
     no_intermediates = get_option ('i', &argc, argv);
   }
 
-  int verbose = get_option ('v', &argc, argv);
-  if (verbose)
-    allnet_global_debugging = verbose;
+  log_to_output (get_option ('v', &argc, argv));
   int match_only = get_option ('m', &argc, argv);
 
   if ((argc > 2) && ((is_daemon) || (argc > 6))) {
