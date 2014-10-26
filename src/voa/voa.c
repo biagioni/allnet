@@ -1083,7 +1083,16 @@ int allnet_global_debugging = 0;
 int main (int argc, char ** argv)
 {
   if (argc == 2 && strcmp (argv [1], "-h") == 0) {
-    printf ("usage: %s [-c contact] [dest-addr [dest-bits]]\n", argv [0]);
+    printf ("usage: %s [-s [-f file] [-n]] [-c contact] [dest-addr [dest-bits]]\n"
+            "  -c ctc Encrypt stream for contact named \"ctc\".\n"
+            "  -s     Send stream. Receives streams when _not_ set.\n"
+#ifdef SIMULATE_LOSS
+            "  -l pct Simulate losing pct%% of data.\n"
+#endif /* SIMULATE_LOSS */
+            "  -n     Start sending without waiting for stream acceptance.\n"
+            "  -f uri Send pre-recorded audio instead of microphone recording.\n"
+            "         \"uri\" of type \"file:///absolute/path/to/file.ogg\"\n",
+            argv [0]);
     return 0;
   }
   int socket = connect_to_local (argv [0], argv [0]);
