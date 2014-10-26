@@ -935,6 +935,7 @@ static int init_audio (int is_encoder)
     g_object_set (data.enc.encoder, "bandwidth", 1101, /* narrowband */
                                     "bitrate", 4000,
                                     "cbr", FALSE, /* constant bit rate */
+                                    "inband-fec", TRUE, /* fwd-err correction */
                                     NULL);
 
     gst_bin_add_many (GST_BIN (data.pipeline), data.enc.source,
@@ -985,7 +986,9 @@ static int init_audio (int is_encoder)
 #ifdef RTP
     g_object_set (data.dec.jitterbuffer, "latency", 100, "do-lost", TRUE, NULL); /* opus: 20ms of data per packet */
 #endif /* RTP */
-    g_object_set (data.dec.decoder, "plc", TRUE, NULL); /* packet loss concealment */
+    g_object_set (data.dec.decoder, "plc", TRUE, /* packet loss concealment */
+                                    "use-inband-fec", TRUE, /* fwd-err correction */
+                                    NULL);
     /* play as soon as possible and continue playing after packet loss by
      * disabling sync */
     g_object_set (data.dec.sink, "sync", FALSE, NULL);
