@@ -1071,12 +1071,12 @@ int main (int argc, char ** argv)
   random_bytes ((char *)data.my_address, nbytes);
   mask_unused_addr_bits (data.my_address, data.my_addr_bits);
   if (argc > 1) {
-    int a = 0;
+    int a = 1;
     while (a < argc) {
       if (strcmp (argv [a], "-c") == 0) {
         if (++a < argc)
+          /* set remote contact */
           data.dest_contact = argv [a];
-        ++a;
 
 #ifdef SIMULATE_LOSS
       } else if (strcmp (argv [a], "-l") == 0) {
@@ -1098,6 +1098,7 @@ int main (int argc, char ** argv)
           mask_unused_addr_bits (data.dest_address, data.dest_addr_bits);
         }
       }
+      ++a;
     }
   }
 
