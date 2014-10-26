@@ -1070,6 +1070,7 @@ int main (int argc, char ** argv)
     nbytes = ADDRESS_SIZE;
   random_bytes ((char *)data.my_address, nbytes);
   mask_unused_addr_bits (data.my_address, data.my_addr_bits);
+  int nowait = 0;
   if (argc > 1) {
     int a = 1;
     while (a < argc) {
@@ -1131,15 +1132,23 @@ int main (int argc, char ** argv)
   if (is_encoder) {
     random_bytes ((char *)data.stream_id, STREAM_ID_SIZE);
     int i = 0;
-    /* retry 10x every 2s */
-    do {
-      printf (".");
-      fflush (stdout);
-      if (send_voa_request () && voa_receive (2000)) {
-        printf ("\n");
+    if (nowait) {
+      /* send stream without waiting for acceptance */
+      if (send_voa_request ())
         enc_main_loop ();
-      }
-    } while (++i < 10);
+
+    } else {
+      /* retry 10x every 2s */
+      do {
+        printf (".");
+        fflush (stdout);
+        if (send_voa_request () && voa_receive (2000)) {
+          printf ("\n");
+          enc_main_loop ();
+          break;
+        }
+      } while (++i < 10);
+    }
   } else {
     voa_receive (0);
   }
