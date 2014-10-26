@@ -43,7 +43,7 @@
 #include "voa.h"
 
 // TODO: remove
-#define DEBUG
+#define DEBUG 0
 
 typedef struct _DecoderData {
   GstElement * voa_source; /* Voice-over-allnet source */
@@ -118,7 +118,9 @@ static int dec_handle_data (const char * buf, int bufsize)
   memcpy (buffer, buf, bufsize);
   GstFlowReturn ret;
 
+#if DEBUG > 1
   printf ("read %d bytes\n", bufsize);
+#endif /* DEBUG */
   if (bufsize == 0)
     return 1;
 
@@ -140,7 +142,9 @@ static int dec_handle_data (const char * buf, int bufsize)
   }
   GstState st, pst;
   gst_element_get_state (data.pipeline, &st, &pst, 0);
+#if DEBUG > 1
   printf ("state: %d, pending: %d\n", st, pst);
+#endif /* DEBUG */
   if (st != GST_STATE_PLAYING && pst != GST_STATE_PLAYING && pst != GST_STATE_PLAYING)
     gst_element_set_state (data.pipeline, GST_STATE_PLAYING);
 
@@ -185,6 +189,18 @@ static void stream_cipher_init (char * key, char * secret, int is_encoder)
 {
   allnet_stream_init (&data.enc_state, key, is_encoder, secret, is_encoder,
                       ALLNET_VOA_COUNTER_SIZE, ALLNET_VOA_HMAC_SIZE);
+#ifdef DEBUG
+  int i;
+  printf ("stream key: ");
+  for (i = 0; i < ALLNET_STREAM_KEY_SIZE; ++i)
+    printf ("%02x ", (unsigned char) key [i]);
+  printf ("\nstream sec: ");
+  for (i = 0; i < ALLNET_STREAM_SECRET_SIZE; ++i)
+    printf ("%02x ", (unsigned char) secret [i]);
+  printf ("\n");
+#endif /* DEBUG */
+}
+
 /**
  * Check if contact's signature on a message is valid
  * @param payload start of signed part of the message
@@ -459,7 +475,9 @@ static int handle_packet (const char * message, int msize, int reply_only)
   int hsize = ALLNET_SIZE_HEADER (hp);
   int amhsize = sizeof (struct allnet_app_media_header);
   int headersizes = hsize + (data.dec.stream_id_set ? 0 : amhsize);
-  printf ("got message of size %d (%d data)\n", msize, msize - headersizes);
+#if DEBUG > 1
+  printf ("voa: got message of size %d (%d data)\n", msize, msize - headersizes);
+#endif /* DEBUG */
 
   if (msize <= headersizes)
     return 0;
@@ -468,7 +486,7 @@ static int handle_packet (const char * message, int msize, int reply_only)
   if (matches (hp->destination, hp->dst_nbits, data.my_address, data.my_addr_bits) == 0)
     return 0;
 
-#ifdef DEBUG
+#if DEBUG > 2
   const struct allnet_header * pak = (const struct allnet_header *)message;
   printf ("-\n");
   int i=0;
@@ -524,6 +542,18 @@ static int handle_packet (const char * message, int msize, int reply_only)
   if (!allnet_stream_decrypt_buffer (&data.enc_state, payload,
                                      encbufsize, buf, sizeof (buf)))
     return -1;
+#if DEBUG > 1
+  static int c=0;
+  static int s=0;
+  printf ("%d\n", c);
+  ++c;
+  s += encbufsize;
+  printf ("raw audio (%d, %d so far):\n", bufsize, s);
+  int i;
+  for (i=0; i < bufsize; ++i)
+    printf ("%02x ", *((const unsigned char *)buf+i));
+  printf (".\n");
+#endif /* DEBUG */
   assert (buf[0] == 0x08); /* Narrow band 20ms VBR opus frame */
   if (!dec_handle_data (buf, bufsize))
     return -1;
@@ -714,12 +744,19 @@ static struct allnet_header * create_voa_stream_packet (
   char * payload = (char *)pak + ALLNET_SIZE_HEADER (pak);
   assert (psize == *paksize - (payload - (char *)pak));
 
+#if DEBUG > 1
+  printf ("raw audio (%db):\n", bufsize);
+  int i=0;
+  for (; i < bufsize; ++i)
+    printf ("%02x ", *((const unsigned char *)buf+i));
+  printf (".\n");
+#endif /* DEBUG */
+
   /* encrypt and copy into packet */
   if (!allnet_stream_encrypt_buffer (&data.enc_state, (const char *)buf, bufsize, payload, psize))
     return NULL;
 
-/*
-#ifdef DEBUG
+#if DEBUG > 2
   printf ("-\n");
   for (i=0; i < ALLNET_SIZE_HEADER(pak); ++i)
     printf ("%02x ", *((const unsigned char *)pak+i));
@@ -800,7 +837,9 @@ static void enc_main_loop ()
     if (sample) {
       GstBuffer * buffer = gst_sample_get_buffer (sample);
       gsize bufsiz = gst_buffer_get_size (buffer);
+#if DEBUG > 1
       printf ("voa: offset: %lu, duration: %lums, size: %lu\n", buffer->offset, (unsigned long)buffer->duration / 1000000, (size_t)bufsiz);
+#endif /* DEBUG */
       GstMapInfo info;
       if (!gst_buffer_map (buffer, &info, GST_MAP_READ))
         printf ("voa: error mapping buffer\n");
@@ -809,7 +848,9 @@ static void enc_main_loop ()
       if (pak) {
         if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT_HIGH))
           fprintf (stderr, "voa: error sending stream packet\n");
+#if DEBUG > 1
         printf ("voa: size: %d (%lu)\n", pak_size, info.size);
+#endif /* DEBUG */
       } else {
         fprintf (stderr, "voa: failed to create packet");
         term = -1;
