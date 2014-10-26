@@ -94,6 +94,7 @@ typedef struct _VOAData {
 static VOAData data;
 /** exit main loop when set, -1 indicates an error */
 static int term = 0;
+static const char * file_input = NULL;
 
 /**
  * Initialize the global data struct
@@ -879,6 +880,21 @@ static void enc_main_loop ()
 }
 
 /**
+ * Callback for when URI input is used (-f option). This method is called when
+ * uridecodebin is ready to be linked into the pipeline.
+ * @param element The uridecode GstElement ptr
+ * @param user_data The VOAData ptr struct
+ */
+static void cb_enc_decbin_done (GstElement * element, gpointer user_data)
+{
+  VOAData * data = (VOAData *)user_data;
+  if (!gst_element_link (data->enc.source, data->enc.convert)) {
+    fprintf (stderr, "voa: ERROR: failed to link file into pipeline\n");
+    term = -1;
+  }
+}
+
+/**
  * Init the audio system.
  * Caller is responsible to call cleanup_audio () when done
  * @param is_encoder initialize for encoding if set, for decoding otherwise
@@ -903,8 +919,11 @@ static int init_audio (int is_encoder)
 
   /* Create the elements */
   if (is_encoder) {
-    data.enc.source = gst_element_factory_make ("audiotestsrc", "source");
-    //data.enc.source = gst_element_factory_make ("autoaudiosrc", "source");
+    if (file_input)
+      data.enc.source = gst_element_factory_make ("uridecodebin", "source");
+    else
+      data.enc.source = gst_element_factory_make ("audiotestsrc", "source");
+      //data.enc.source = gst_element_factory_make ("autoaudiosrc", "source");
     data.enc.convert = gst_element_factory_make ("audioconvert", "convert");
     data.enc.resample = gst_element_factory_make ("audioresample", "resample");
     data.enc.encoder = gst_element_factory_make ("opusenc", "encoder");
@@ -923,10 +942,17 @@ static int init_audio (int is_encoder)
       return 0;
     }
 
-    GstCaps * rawcaps = gst_caps_from_string ("audio/x-raw,clockrate=(int)48000,channels=(int)1");
-    GstPad * srcpad = gst_element_get_static_pad (data.enc.source, "src");
-    gst_pad_set_caps (srcpad, rawcaps);
-    gst_caps_unref (rawcaps);
+    if (file_input) {
+      g_object_set (data.enc.source, "uri", file_input, NULL);
+      g_signal_connect (data.enc.source, "no-more-pads",
+                        (GCallback) cb_enc_decbin_done, &data);
+
+    } else {
+      GstCaps * rawcaps = gst_caps_from_string ("audio/x-raw,clockrate=(int)48000,channels=(int)1");
+      GstPad * srcpad = gst_element_get_static_pad (data.enc.source, "src");
+      gst_pad_set_caps (srcpad, rawcaps);
+      gst_caps_unref (rawcaps);
+    }
 
     /* Configure encoder appsink */
     // g_object_set (data.enc.voa_sink, /*"caps", appcaps,*/ NULL);
@@ -945,7 +971,8 @@ static int init_audio (int is_encoder)
 #endif /* RTP */
            data.enc.voa_sink, NULL);
 
-    if (! gst_element_link_many (data.enc.source,
+    if ((!file_input || !gst_element_link (data.enc.source, data.enc.convert))
+        && ! gst_element_link_many (
             data.enc.convert, data.enc.resample, data.enc.encoder,
 #ifdef RTP
             data.enc.rtp,
@@ -1083,6 +1110,13 @@ int main (int argc, char ** argv)
         if (++a < argc)
           /* set remote contact */
           data.dest_contact = argv [a];
+
+      } else if (strcmp (argv [a], "-f") == 0) {
+        /* encoder: use file input instead of microphone */
+        if (++a < argc) {
+          file_input = argv [a];
+          printf ("voa: using URI %s\n", file_input);
+        }
 
 #ifdef SIMULATE_LOSS
       } else if (strcmp (argv [a], "-l") == 0) {
