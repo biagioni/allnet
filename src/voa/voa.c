@@ -44,6 +44,10 @@
 
 // TODO: remove
 #define DEBUG 0
+#define SIMULATE_LOSS
+#ifdef SIMULATE_LOSS
+static int loss_pct = 0;
+#endif /* SIMULATE_LOSS */
 
 typedef struct _DecoderData {
   GstElement * voa_source; /* Voice-over-allnet source */
@@ -846,11 +850,21 @@ static void enc_main_loop ()
       int pak_size;
       struct allnet_header * pak = create_voa_stream_packet (info.data, info.size, data.stream_id, &pak_size);
       if (pak) {
+#ifdef SIMULATE_LOSS
+        if (random () % 100 > loss_pct) {
+#endif /* SIMULATE_LOSS */
         if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT_HIGH))
           fprintf (stderr, "voa: error sending stream packet\n");
 #if DEBUG > 1
         printf ("voa: size: %d (%lu)\n", pak_size, info.size);
 #endif /* DEBUG */
+#ifdef SIMULATE_LOSS
+#if DEBUG > 1
+        } else {
+          printf ("voa: loss simulation, packet dropped\n");
+#endif /* DEBUG */
+        }
+#endif /* SIMULATE_LOSS */
       } else {
         fprintf (stderr, "voa: failed to create packet");
         term = -1;
@@ -1064,6 +1078,15 @@ int main (int argc, char ** argv)
           data.dest_contact = argv [a];
         ++a;
 
+#ifdef SIMULATE_LOSS
+      } else if (strcmp (argv [a], "-l") == 0) {
+        /* encoder: set the percentage of packets to loose */
+        if (++a < argc) {
+          loss_pct = atoi (argv [a]);
+          printf ("voa: %d%%packet loss simulation\n", loss_pct);
+        }
+
+#endif /* SIMULATE_LOSS */
       } else {
         nbytes = strnlen (argv [a], ADDRESS_SIZE);
         data.dest_addr_bits = 8 * nbytes;
