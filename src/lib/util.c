@@ -845,18 +845,56 @@ time_t compute_next (time_t from, time_t granularity, int immediate_ok)
   return from + (granularity - delta);
 }
 
+static unsigned long long int random_mod (unsigned long long int mod)
+{
+  int nbytes = 1;
+  unsigned long long int rand_max = 255;
+  while (rand_max < mod) {
+    nbytes++;
+    rand_max = rand_max * 256 + 255;  /* 0xff..ff */
+  }
+  /* if rand_max + 1 is not a multiple of mod, there will be some bias
+   * in favor of values 0..(rand_max + 1) % mod.  This corrects for the bias.
+   * ideas from
+       http://zuttobenkyou.wordpress.com/2012/10/18/generating-random-numbers-without-modulo-bias/
+   */
+  unsigned long long int rand_excess = (rand_max % mod) + 1;
+  if (rand_excess == mod)
+    rand_excess = 0;
+  /* now get the random value */
+  char rbytes [8];
+  if (nbytes > sizeof (rbytes)) {
+    printf ("unable to compute random number > 8 bytes (%d %zd)\n", nbytes,
+            sizeof (rbytes));
+    snprintf (log_buf, LOG_SIZE,
+              "unable to compute random number > 8 bytes (%d %zd)\n", nbytes,
+              sizeof (rbytes));
+    log_print ();
+    exit (1); /* long long ints greater than 8 bytes? might break many things */
+  }
+  while (1) {  /* loop until random value <= rand_max - rand_excess */
+               /* usually one loop is enough */
+    bzero (rbytes, sizeof (rbytes));
+    /* set the low order nbytes of rbytes to random values */
+    random_bytes (rbytes + (sizeof (rbytes) - nbytes), nbytes);
+    unsigned long long int result = readb64 (rbytes);
+/* printf ("got result %lld (%lld), max %lld - excess %lld = %lld\n",
+        result, result % mod, rand_max, rand_excess, rand_max - rand_excess); */
+    if (result <= rand_max - rand_excess)
+      return result % mod;
+/* printf ("...looping\n"); */
+  }
+  return 0;   /* we should never get here */
+}
+
 /* set result to a random time between start + min and start + max */
 void set_time_random (const struct timeval * start, unsigned long long min,
                       unsigned long long max, struct timeval * result)
 {
-  if (min <= max) {
-    *result = *start;
-    return;
-  }
-  unsigned long long int delta = max - min;
-  unsigned long long int r = random ();
-  unsigned long long int us = min + r % delta;
   *result = *start;
+  if (min <= max)
+    return;
+  unsigned long long int us = min + random_mod (max - min);
   add_us (result, us);
 }
 
@@ -965,6 +1003,13 @@ int read_file_malloc (const char * file_name, char ** content_p,
 /* low-grade randomness, in case the other calls don't work */
 static void computed_random_bytes (char * buffer, int bsize)
 {
+  static int initialized = 0;
+  if (! initialized) {  /* not very random, but better than nothing */
+    struct timeval now;
+    gettimeofday (&now, NULL);
+    srandom (now.tv_sec ^ now.tv_usec);
+    initialized = 1;
+  }
   int i;
   for (i = 0; i < bsize; i++)
     buffer [i] = random () % 256;
@@ -1001,7 +1046,7 @@ void random_string (char * buffer, int bsize)
     return;
   int i;
   for (i = 0; i + 1 < bsize; i++)
-    buffer [i] = 'a' + (random () % 26);
+    buffer [i] = 'a' + (random_mod (26));
   buffer [bsize - 1] = '\0';
 }
 
@@ -1015,7 +1060,7 @@ void random_permute_array (int n, int * array)
     return;
   /* now assign to each element a random selection of the other elements */
   for (i = 0; i < n; i++) {
-    int r = random () % n;
+    int r = random_mod (n);
     int swap = array [i];   /* this code works even if r == i */
     array [i] = array [r];
     array [r] = swap;
