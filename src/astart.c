@@ -398,7 +398,7 @@ static void find_path (char * arg, char ** path, char ** program)
   }
 }
 
-int main (int argc, char ** argv)
+int astart_main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
   int alen = strlen (argv [0]);
@@ -480,3 +480,12 @@ int main (int argc, char ** argv)
 #endif /* WAIT_FOR_CHILD_TERMINATION */
   return 1;
 }
+
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
+
+int main (int argc, char ** argv)
+{
+  return astart_main (argc, argv);
+}
+
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
