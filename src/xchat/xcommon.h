@@ -7,7 +7,7 @@
 #include "lib/keys.h"
 
 /* returns the socket if successful, -1 otherwise */
-extern int xchat_init ();
+extern int xchat_init (char * program_name);
 /* optional... */
 extern void xchat_end (int sock);
 
