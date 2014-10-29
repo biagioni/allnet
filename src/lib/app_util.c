@@ -49,9 +49,11 @@ static char * make_program_path (char * path, char * program)
   return result;
 }
 
+
 static void exec_allnet (char * arg)
 {
-  if (fork () == 0) {
+  if (fork () == 0) {  /* all this code is in the child process */
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
     char * path;
     char * pname;
     find_path (arg, &path, &pname);
@@ -65,6 +67,12 @@ static void exec_allnet (char * arg)
     perror ("execl");
     printf ("error: exec astart failed\n");
     exit (1);
+#else /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+    /* ios: do not look for executable, just call "astart_main" */
+    char * args [2] = { "astart", NULL };
+    extern int astart_main (int, char **);
+    astart_main (1, args);
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
   }
   sleep (2);  /* pause the caller for a couple of seconds to get allnet going */
 }
@@ -97,12 +105,18 @@ static void read_n_bytes (int fd, char * buffer, int bsize)
 {
   bzero (buffer, bsize);
   int i;
-  for (i = 0; i < bsize; i++)
-    if (read (fd, buffer + i, 1) != 1)
-      perror ("unable to read /dev/random");
+  for (i = 0; i < bsize; i++) {
+    if (read (fd, buffer + i, 1) != 1) {
+      if (errno == EAGAIN) {
+        i--;
+        usleep (50000);
+      } else
+        perror ("unable to read /dev/urandom");
+    }
+  }
 }
 
-/* if cannot read /dev/random, use the system clock as a generator of bytes */
+/* if cannot read /dev/urandom, use the system clock as a generator of bytes */
 static void weak_seed_rng (char * buffer, int bsize)
 {
   char results [12]; 
@@ -146,9 +160,9 @@ static void weak_seed_rng (char * buffer, int bsize)
 static void seed_rng ()
 {
   char buffer [sizeof (unsigned int) + 8];
-  int fd = open ("/dev/random", O_RDONLY | O_NONBLOCK);
-  int has_dev_random = (fd >= 0);
-  if (has_dev_random) { /* don't need to seed openssl rng, only standard rng */
+  int fd = open ("/dev/urandom", O_RDONLY | O_NONBLOCK);
+  int has_dev_urandom = (fd >= 0);
+  if (has_dev_urandom) { /* don't need to seed openssl rng, only standard rng */
     read_n_bytes (fd, buffer, sizeof (unsigned int));
     close (fd);
   } else {
