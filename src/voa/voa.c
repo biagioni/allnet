@@ -837,6 +837,7 @@ static void cb_message (GstBus * bus, GstMessage * msg, VOAData * data)
  */
 static void enc_main_loop ()
 {
+  gst_element_set_state (data.pipeline, GST_STATE_PLAYING);
   /* poll samples (blocking) */
   GstAppSink * voa_sink = GST_APP_SINK (data.enc.voa_sink);
   while (!term && !gst_app_sink_is_eos (voa_sink)) {
@@ -1066,8 +1067,6 @@ static int init_audio (int is_encoder)
     return 0;
   }
 
-  if (is_encoder)
-    gst_element_set_state (data.pipeline, GST_STATE_PLAYING);
   return 1;
 }
 
