@@ -960,7 +960,7 @@ static int init_audio (int is_encoder)
     /* Modify the source's properties */
     g_object_set (data.enc.encoder, "bandwidth", 1101, /* narrowband */
                                     "bitrate", 4000,
-                                    "cbr", FALSE, /* constant bit rate */
+                                    "cbr", FALSE, /* use variable bit rate */
                                     "inband-fec", TRUE, /* fwd-err correction */
                                     NULL);
 
