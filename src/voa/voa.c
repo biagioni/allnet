@@ -515,7 +515,9 @@ static int handle_packet (const char * message, int msize, int reply_only)
     if (streamp == NULL)
       return 0;
     if (memcmp (data.stream_id, streamp, STREAM_ID_SIZE) != 0) {
+#if DEBUG > 1
       printf ("discarding packet from unknown stream\n");
+#endif /* DEBUG */
       return 0;
     }
 
