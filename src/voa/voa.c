@@ -971,16 +971,30 @@ static int init_audio (int is_encoder)
 #endif /* RTP */
            data.enc.voa_sink, NULL);
 
-    if ((!file_input || !gst_element_link (data.enc.source, data.enc.convert))
-        && ! gst_element_link_many (
+    if (file_input) {
+      /* data.enc.source is linked later */
+      if (!gst_element_link_many (
             data.enc.convert, data.enc.resample, data.enc.encoder,
 #ifdef RTP
             data.enc.rtp,
 #endif /* RTP */
             data.enc.voa_sink, NULL)) {
-      fprintf (stderr, "Elements could not be linked.\n");
-      gst_object_unref (data.pipeline);
-      return 0;
+        fprintf (stderr, "Elements could not be linked.\n");
+        gst_object_unref (data.pipeline);
+        return 0;
+      }
+
+    } else {
+      if (! gst_element_link_many (data.enc.source,
+              data.enc.convert, data.enc.resample, data.enc.encoder,
+#ifdef RTP
+              data.enc.rtp,
+#endif /* RTP */
+              data.enc.voa_sink, NULL)) {
+        fprintf (stderr, "Elements could not be linked.\n");
+        gst_object_unref (data.pipeline);
+        return 0;
+      }
     }
 
   } else {
