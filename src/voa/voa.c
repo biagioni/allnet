@@ -922,8 +922,8 @@ static int init_audio (int is_encoder)
     if (file_input)
       data.enc.source = gst_element_factory_make ("uridecodebin", "source");
     else
-      data.enc.source = gst_element_factory_make ("audiotestsrc", "source");
-      //data.enc.source = gst_element_factory_make ("autoaudiosrc", "source");
+      //data.enc.source = gst_element_factory_make ("audiotestsrc", "source");
+      data.enc.source = gst_element_factory_make ("autoaudiosrc", "source");
     data.enc.convert = gst_element_factory_make ("audioconvert", "convert");
     data.enc.resample = gst_element_factory_make ("audioresample", "resample");
     data.enc.encoder = gst_element_factory_make ("opusenc", "encoder");
