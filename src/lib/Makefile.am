@@ -54,6 +54,5 @@ endif
 lib_LTLIBRARIES = liballnet-@ALLNET_API_VERSION@.la
 pkginclude_HEADERS = $(libincludes)
 liballnet_@ALLNET_API_VERSION@_la_LIBADD = $(DEPS_LIBS)
-liballnet_@ALLNET_API_VERSION@_la_CFLAGS = $(openssl_CFLAGS)
 liballnet_@ALLNET_API_VERSION@_la_SOURCES = $(libsrc) $(libincludes)
 liballnet_@ALLNET_API_VERSION@_la_LDFLAGS = -version-info @LDVERSION@ $(ALLNET_LT_LDFLAGS)
