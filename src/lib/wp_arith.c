@@ -3,11 +3,14 @@
  * loosely based on code he wrote before passing away in 2009 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <inttypes.h>
 
 #include "wp_arith.h"
+
+/* #define DEBUG_PRINT_MONT */
 
 static void my_assert (int value, char * desc)
 {
@@ -141,7 +144,7 @@ void wp_shrink (int new_bits, uint64_t * new,
       int j;
       for (j = 0; j < old_words; j++)
         printf ("%016" PRIx64 ", ", old [j]);
-      printf ("\n");
+      printf (")\n");
       my_assert (0, "wp_shrink leading zeros or ones");
     }
   }
@@ -553,10 +556,21 @@ void wp_multiply (int rbits, uint64_t * res,
   }
 }
 
+static uint64_t add128 (uint64_t * res, uint64_t v, uint64_t carry)
+{
+  res [1] += v;
+  if (res [1] < v)   /* carry into the higher digit */
+    carry++;
+  res [0] += carry;
+  if (res [0] < carry)
+    return 1;
+  return 0;
+}
+
 static const uint64_t mask32 = 0xffffffff;
 
-static void multiply_128 (uint64_t * result_high, uint64_t * result_low,
-                          uint64_t v1, uint64_t v2)
+static void multiply128 (uint64_t * result_high, uint64_t * result_low,
+                         uint64_t v1, uint64_t v2)
 {
   uint64_t v1_low = v1 & mask32;
   uint64_t v1_high = (v1 >> 32) & mask32;
@@ -586,13 +600,13 @@ static void add_multiply_int64 (int nbits, uint64_t * rhigh, uint64_t * r,
   int nwords = NUM_WORDS (nbits);
   int i;
   uint64_t high, low;
-  multiply_128 (&high, &low, a [nwords - 1], b64);
+  multiply128 (&high, &low, a [nwords - 1], b64);
   r [nwords - 1] += low;
   if (r [nwords - 1] < low)  /* overflow */
     high++;
   for (i = nwords - 2; i >= 0; i--) {
     uint64_t new_high;
-    multiply_128 (&new_high, &low, a [i], b64);
+    multiply128 (&new_high, &low, a [i], b64);
     r [i] += low;
     if (r [i] < low)  /* carry into the next higher word */
       new_high++;
@@ -911,6 +925,315 @@ printf ("%s)\n", wp_itox (nbits, mod));
     }
   }
   /* printf ("  => %s\n", wp_itox (nbits, res)); */
+}
+
+/* sources for the montgomery exponentiation:
+   http://en.wikipedia.org/wiki/Montgomery_reduction
+   http://www.nugae.com/encryption/fap4/montgomery.htm
+ */
+
+static void init_shifted_montgomery (int nbits_plus, uint64_t * shifted,
+                                     int nbits, const uint64_t * mod)
+{
+  int nwords = NUM_WORDS (nbits);
+  int nwords_plus = NUM_WORDS (nbits_plus);
+  bzero (shifted, nwords_plus * sizeof (uint64_t));
+  memcpy (shifted + 1, mod, nwords * sizeof (uint64_t));
+  size_t size = nwords_plus * sizeof (uint64_t);
+  uint64_t * prev = shifted;
+  int i;
+  for (i = 1; i < 64; i++) {
+    uint64_t * this = prev + nwords_plus;
+    memcpy (this, prev, size);
+    wp_shift_left (nbits_plus, this);
+    prev = this;
+  }
+/*
+for (i = 0; i < 64; i++)
+printf ("shifted [%d] is %s/%p\n", i,
+wp_itox (nbits_plus, shifted + nwords_plus * i), shifted + nwords_plus * i);
+*/
+}
+
+/* r is 2^nbits.  res, mod, and temp[12] are nbits */
+static void compute_r_squared (int nbits, uint64_t * res, const uint64_t * mod,
+                               uint64_t * temp1, uint64_t * temp2)
+{
+#ifdef DEBUG_PRINT_MONT
+  printf ("computing r squared, mod %s\n", wp_itox (nbits, mod));
+#endif /* DEBUG_PRINT_MONT */
+  wp_init (nbits, temp1, 0);
+  wp_sub (nbits, temp1, temp1, mod);  /* temp1 = 2^nbits - mod */
+  wp_copy (nbits, temp2, mod);
+  while (((temp2 [0] >> 63) != 1) && (wp_compare (nbits, temp1, temp2) > 0))
+    wp_shift_left (nbits, temp2);
+#ifdef DEBUG_PRINT_MONT
+  printf ("shifted temp2 is %s\n", wp_itox (nbits, temp2));
+  printf ("temp1 is %s\n", wp_itox (nbits, temp1));
+#endif /* DEBUG_PRINT_MONT */
+  /* now subtract temp2 as many times as needed to get temp1
+   * to be less than mod.  After each subtraction, shift temp2 to the right */
+  while (wp_compare (nbits, temp1, mod) >= 0) {
+    if (wp_compare (nbits, temp1, temp2) >= 0)
+      wp_sub (nbits, temp1, temp1, temp2);
+    wp_shift_right (nbits, temp2);
+#ifdef DEBUG_PRINT_MONT
+    printf ("subtracted temp1 is %s\n", wp_itox (nbits, temp1));
+    printf ("   shifted temp2 is %s\n", wp_itox (nbits, temp2));
+#endif /* DEBUG_PRINT_MONT */
+  }
+  /* now temp1 holds r modulo mod, compute r^2 modulo mod */
+  wp_multiply_mod (nbits, res, temp1, temp1, mod);
+#ifdef DEBUG_PRINT_MONT
+  printf ("r^2 is %s ", wp_itox (nbits, res));
+  printf ("modulo %s\n", wp_itox (nbits, mod));
+#endif /* DEBUG_PRINT_MONT */
+}
+
+/* res = res + a * b, where a is nwords_a and b a single uint64_t */
+/* res has one more uint64_t than a. */
+static void multiply64_add (int nwords_res, uint64_t * res,
+                            int nwords_a, const uint64_t * a, uint64_t b)
+{
+#ifdef CHECK_AGAINST_PLAIN_OLD_OPS
+  uint64_t * old = malloc (nwords_res * 8 * 8);  /* plenty of space, 5 used */
+  uint64_t * b_ext = old + nwords_res;
+  uint64_t * prod = b_ext + nwords_res;
+  uint64_t * prod_half = prod + nwords_a;  /* less significant half of prod */
+  uint64_t * prod_half_min1 = prod_half - 1;
+  uint64_t * sum = prod + nwords_res + nwords_res;  /* prod is double-sized */
+  memcpy (old, res, nwords_res * 8);
+  int nbits = nwords_a * 64;
+  wp_init (nbits, b_ext, 0);
+  b_ext [nwords_a - 1] = b;
+  wp_copy (nbits + 64, sum, res);
+  if (sum [0] != 0) printf ("sum [0] is %" PRIx64 "\n", sum [0]);
+  wp_multiply (nbits + nbits, prod, nbits, a, b_ext);
+  wp_add (nbits + 64, sum, sum, prod_half_min1);
+  /* wp_copy (nbits + 64, res, sum);  return; -- this is correct */
+#endif /* CHECK_AGAINST_PLAIN_OLD_OPS */
+        
+  my_assert ((nwords_a + 1) == nwords_res, "multiply64_add");
+  uint64_t high, low;
+  uint64_t carry = 0;
+  int i;
+  for (i = nwords_a - 1; i >= 0; i--) {
+    multiply128 (&high, &low, a [i], b);
+    carry = add128 (res + i, low, carry + high);
+  }
+  if (carry != 0) {
+    printf ("multiply64_add (%d, %s, ", nwords_res * 64,
+            wp_itox (nwords_res * 64, res));
+    printf ("%s, %" PRIx64 ")\n", wp_itox (nwords_a * 64, a), b);
+    printf ("unexpected (please check), carry is %" PRIx64 "\n", carry);
+    exit (1);
+  }
+  res [0] += carry;
+  /* ignore the most significant carry, if any */
+#ifdef DEBUG_PRINT_MONT
+  if (res [0] < carry) {  /* overflow from adding carry */
+    printf ("multiply64_add (%s (final) ", wp_itox (nwords_res * 64, res));
+    printf ("+= %s * %016" PRIx64 "), carry %" PRIx64 ", res [0] %" PRIx64 "\n",
+            wp_itox (nwords_a * 64, a), b, carry, res [0]);
+exit (1);   /* not happened yet */
+  }
+#endif /* DEBUG_PRINT_MONT */
+#ifdef CHECK_AGAINST_PLAIN_OLD_OPS
+  if (wp_compare (nbits + 64, res, sum) != 0) {
+    printf ("found error: %s != ", wp_itox (nwords_res * 64, res));
+    printf ("%s, carry %" PRIx64 "\n", wp_itox (nbits + 64, sum), carry);
+    exit (1);
+  }
+  free (old);
+#endif /* CHECK_AGAINST_PLAIN_OLD_OPS */
+}
+
+/* the shifted mod is added or not to make 0 the low word of res
+ * each unit of shifted_mod is nwords, as is res */
+static void add_multiple_to_make_low_word_zero (int nwords, uint64_t * res,
+                                                const uint64_t * shifted_mod)
+{
+#ifdef DEBUG_PRINT_MONT
+  printf ("initial result %s, %d words\n", wp_itox (nwords * 64, res), nwords);
+#endif /* DEBUG_PRINT_MONT */
+  uint64_t i = 0;
+  uint64_t carry = 0;
+  for (i = 0; i < 64; i++) {
+    if ((((uint64_t) 1) << i) & (res [nwords - 1])) {
+uint64_t copy;
+copy = res [nwords - 1];
+      /* add the i-th temp to res */
+      carry += wp_add (nwords * 64, res, res, shifted_mod + (i * nwords));
+      /* if there is a carry, should subtract mod until fits -- but cannot
+         without changing the invariant that bit i is now 0.  so instead,
+         accumulate carries, and do the mod below */
+if ((((uint64_t) 1) << i) & (res [nwords - 1])) {
+printf ("error: bit %" PRId64 " not cleared from %" PRIx64 "\n",
+        i, res [nwords - 1]);
+printf ("original %" PRIx64 " + %" PRIx64 " = %" PRIx64 "\n",
+        copy, (shifted_mod + (i * nwords)) [nwords - 1], res [nwords - 1]);
+printf ("added %s\n", wp_itox (nwords * 64, shifted_mod + (i * nwords)));
+exit (1);
+}
+      my_assert (((((uint64_t) 1) << i) & (res [nwords - 1])) == 0, "cleared");
+#ifdef DEBUG_PRINT_MONT
+      printf (" result %s\n", wp_itox (nwords * 64, res));
+#endif /* DEBUG_PRINT_MONT */
+    }
+  }
+/* here subtract until carry is zero and res < mod (mod is shifted_mod + 1) */
+  int nbits_minus = (nwords - 1) * 64;
+  while ((carry > 0) ||
+         (wp_compare (nbits_minus, res, shifted_mod + 1) >= 0))
+    carry -= wp_sub (nbits_minus, res, res, shifted_mod + 1);
+}
+
+static void shift_right_64 (int nwords, uint64_t * value)
+{
+  int i = 0;
+  for (i = nwords - 1; i > 0; i--)
+    value [i] = value [i - 1];
+  value [0] = 0;
+}
+
+/* res = a * b / 2^nbits % mod.  a, b, and mod are different from res,
+ * a, b, and mod are nbits long, res is nbits+64. shifted_mod has
+ * 64 successive locations each nbits+64 long */
+static void montgomery_step (int nbits, uint64_t * res,
+                             const uint64_t * a, const uint64_t * b,
+                             const uint64_t * shifted_mod)
+{
+  int nlong = nbits + 64;
+  wp_init (nlong, res, 0);
+  int nwords = NUM_WORDS (nbits);
+  int nwords_plus = nwords + 1;
+#ifdef DEBUG_PRINT_MONT
+  printf ("montgomery_step (%s * ", wp_itox (nbits, a));
+  printf ("%s ", wp_itox (nbits, b));
+  printf ("%% %s)\n", wp_itox (nbits, shifted_mod + 1));
+#endif /* DEBUG_PRINT_MONT */
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+  int w;
+  for (w = nwords - 1; w >= 0; w--) {
+    multiply64_add (nwords_plus, res, nwords, a, b [w]);
+#ifdef DEBUG_PRINT_MONT
+    printf ("a %s * b [%d] ", wp_itox (nwords * 64, a), w);
+    printf ("%016" PRIx64 " = %s\n", b [w], wp_itox (nwords_plus * 64, res));
+#endif /* DEBUG_PRINT_MONT */
+    add_multiple_to_make_low_word_zero (nwords_plus, res, shifted_mod);
+    my_assert ((res [nwords_plus - 1] == 0), "low word zero before shift");
+    shift_right_64 (nwords_plus, res);
+  }
+#ifdef DEBUG_PRINT_MONT
+  printf ("   ==> %s\n", wp_itox (nbits, res + 1));
+#endif /* DEBUG_PRINT_MONT */
+}
+
+#ifdef OPTIMIZATION_GIVES_NO_SPEEDUP
+/* no argument should be the same pointer as any of the other arguments */
+/* temp is a temporary array used internally and must have at least nbits */
+void wp_exp_mod_montgomery_65537 (int nbits, uint64_t * res,
+                                  const uint64_t * base,
+                                  const uint64_t * shifted_mod,
+                                  uint64_t * temp)
+{
+  montgomery_step (nbits, res,  base + 1, base + 1, shifted_mod); /*^2*/
+  montgomery_step (nbits, temp, res + 1,  res + 1,  shifted_mod); /*^4 */
+  montgomery_step (nbits, res,  temp + 1, temp + 1, shifted_mod); /*^8 */
+  montgomery_step (nbits, temp, res + 1,  res + 1,  shifted_mod); /*^16 */
+
+  montgomery_step (nbits, res,  temp + 1, temp + 1, shifted_mod); /*^32 */
+  montgomery_step (nbits, temp, res + 1,  res + 1,  shifted_mod); /*^64 */
+  montgomery_step (nbits, res,  temp + 1, temp + 1, shifted_mod); /*^128 */
+  montgomery_step (nbits, temp, res + 1,  res + 1,  shifted_mod); /*^256 */
+
+  montgomery_step (nbits, res,  temp + 1, temp + 1, shifted_mod); /*^512 */
+  montgomery_step (nbits, temp, res + 1,  res + 1,  shifted_mod); /*^1024*/
+  montgomery_step (nbits, res,  temp + 1, temp + 1, shifted_mod); /*^2048*/
+  montgomery_step (nbits, temp, res + 1,  res + 1,  shifted_mod); /*^4096*/
+
+  montgomery_step (nbits, res,  temp + 1, temp + 1, shifted_mod); /*^8192*/
+  montgomery_step (nbits, temp, res + 1,  res + 1,  shifted_mod); /*^16384*/
+  montgomery_step (nbits, res,  temp + 1, temp + 1, shifted_mod); /*^32768*/
+  montgomery_step (nbits, temp, res + 1,  res + 1,  shifted_mod); /*^65536*/
+  montgomery_step (nbits, res,  temp + 1, base + 1, shifted_mod); /*^65537*/
+}
+#endif /* OPTIMIZATION_GIVES_NO_SPEEDUP */
+
+/* largely based on http://en.wikipedia.org/wiki/Montgomery_reduction */
+/* R is 2^nbits */
+/* temp must have at least 70 * (nbits + 64) */
+void wp_exp_mod_montgomery (int nbits, uint64_t * res, const uint64_t * base,
+                            const uint64_t * exp, const uint64_t * mod,
+                            uint64_t * temp)
+{
+  if (wp_is_even (nbits, mod)) { /* mod divides R, so cannot use montgomery */
+    printf ("wp_exp_mod_montgomery warning: even modulo %s\n",
+            wp_itox (nbits, mod));
+    wp_exp_mod (nbits, res, base, exp, mod, temp);
+  }
+#ifdef DEBUG_PRINT_MONT
+  printf ("wp_exp_mod_montgomery (%d, %s ^ ", nbits, wp_itox (nbits, base));
+  printf ("%s %% ", wp_itox (nbits, exp));
+  printf ("%s)\n", wp_itox (nbits, mod));
+#endif /* DEBUG_PRINT_MONT */
+  int nwords = NUM_WORDS (nbits);
+  int nwords_plus = nwords + 1;
+  int nbits_plus = nbits + 64;
+  uint64_t * mres = temp;
+  uint64_t * mtemp = temp + nwords_plus * 1;
+  /* r_squared and one only need nwords, but simpler to have them nwords_plus */
+  uint64_t * r_squared = temp + nwords_plus * 2;
+  compute_r_squared (nbits, r_squared, mod, mres, mtemp);
+  uint64_t * one = temp + nwords_plus * 3;
+  wp_init (nbits, one, 1);
+  uint64_t * mbase = temp + nwords_plus * 4;
+  uint64_t * shifted_mod = temp + nwords_plus * 5;
+  init_shifted_montgomery (nbits_plus, shifted_mod, nbits, mod);
+  /* convert base to montgomery form by multiplying by r^2 */
+  montgomery_step (nbits, mbase, base, r_squared, shifted_mod);
+  wp_init (nbits_plus, mres, 0);
+#ifdef DEBUG_PRINT_MONT
+  printf ("base %s is ", wp_itox (nbits, base));
+  printf ("%s\n", wp_itox (nbits_plus, mbase));
+#endif /* DEBUG_PRINT_MONT */
+#ifdef OPTIMIZATION_GIVES_NO_SPEEDUP
+  if (is65537 (nbits, exp)) {
+    wp_exp_mod_montgomery_65537 (nbits, mres, mbase, shifted_mod, mtemp);
+  } else {   /* do it bit by bit, skipping any high-order zero words */
+#endif /* OPTIMIZATION_GIVES_NO_SPEEDUP */
+    int outer;
+    for (outer = 0; outer < nwords; outer++) {
+      if (! ((exp [outer] == 0) && (wp_is_zero (nbits_plus, mres)))) {
+/* done with zero high part of exp, so maybe (square and maybe multiply) */
+        uint64_t inner = ((uint64_t) 1) << 63;
+        uint64_t word = exp [outer];
+        while (inner) {
+          if (! wp_is_zero (nbits_plus, mres)) {
+            /* square res modulo mod*/
+            montgomery_step (nbits, mtemp, mres + 1, mres + 1, shifted_mod);
+            if (inner & word) /* multiply by base modulo mod */
+              montgomery_step (nbits, mres, mtemp + 1, mbase + 1, shifted_mod);
+            else
+              wp_copy (nbits_plus, mres, mtemp);
+          } else {   /* high bit not found yet, test for it now. */
+            if (inner & word)   /* res = base (montgomery form) */
+              wp_copy (nbits_plus, mres, mbase);
+          }
+          inner = inner >> 1;
+        }
+      }
+    }
+#ifdef OPTIMIZATION_GIVES_NO_SPEEDUP
+  }
+#endif /* OPTIMIZATION_GIVES_NO_SPEEDUP */
+  wp_init (nbits, one, 1);
+  montgomery_step (nbits, mtemp, mres + 1, one, shifted_mod);
+  wp_copy (nbits, res, mtemp + 1);
+#ifdef DEBUG_PRINT_MONT
+  printf ("  => %s\n", wp_itox (nbits, res));
+#endif /* DEBUG_PRINT_MONT */
 }
 
 #ifdef UNIT_TEST
@@ -1474,13 +1797,10 @@ static int testem ()  /* test exponentiation modulo x */
   uint64_t i1 = 1;
   while (i1 < max) {
     int i2 = 1;
-/* i2 is the exponent, and should not be too big for us to compute
- * using 64-bit arithmetic, so max * 2^i2max < 2^64 */
-    int i2max = 20;
-    for (i2 = 1; i2 < i2max; i2++) {
+    while (i2 < max) {
       uint64_t i3 = 1;
       while (i3 < max) {
-        if (i1 < i3) {
+        if (((i3 % 2) == 1) && (i1 < i3)) {
           uint64_t v1 [1];
           uint64_t v2 [1];
           uint64_t v3 [1];
@@ -1489,19 +1809,30 @@ static int testem ()  /* test exponentiation modulo x */
           my_init (nbits, v3, i3);
           uint64_t v4 [1];
           uint64_t v5 [1];
-          uint64_t temp [65];
+          uint64_t v6 [1];
+          uint64_t temp [140];
           wp_exp_mod (nbits, v4, v1, v2, v3, temp);
           wp_exp_mod64 (nbits, v5, v1, v2, v3, temp);
+          wp_exp_mod_montgomery (nbits, v6, v1, v2, v3, temp);
+/* i2 is the exponent, and should not be too big for us to compute
+ * using 64-bit arithmetic, so max * 2^i2max < 2^64 */
           char result [1000];
-          snprintf (result, sizeof (result), "%016" PRIx64,
-                    test_exp_mod (i1, i2, i3));
+          int i2max = 20;
+          if (i2 < i2max)
+            snprintf (result, sizeof (result), "%016" PRIx64,
+                      test_exp_mod (i1, i2, i3));
+          else  /* will always equal v4, but may not equal v5 and v6 */
+            snprintf (result, sizeof (result), "%s", wp_itox (nbits, v4));
           if ((strcmp (result, wp_itox (nbits, v4)) != 0) ||
-              (strcmp (result, wp_itox (nbits, v5)) != 0)) {
+              (strcmp (result, wp_itox (nbits, v5)) != 0) ||
+              (strcmp (result, wp_itox (nbits, v6)) != 0)) {
             printf ("error: %016" PRIx64 " ^ %d %% %" PRIx64 ", e %s, got %s ",
                     i1, i2, i3, result, wp_itox (nbits, v4));
-            printf ("%s\n", wp_itox (nbits, v5));
+            printf ("%s ", wp_itox (nbits, v5));
+            printf ("%s\n", wp_itox (nbits, v6));
             test_value = 0;
             incorrect++;
+exit (1);
           } else {
 #ifdef DEBUG_PRINT
             printf ("correct: %016" PRIx64 " ^ %d %% %" PRIx64 ", e %s, got %s\n",
@@ -1514,6 +1845,7 @@ static int testem ()  /* test exponentiation modulo x */
         /* update i3 */
         i3 = next_i_value (i3, 2);
       }
+      i2 = next_i_value (i2, 1);
       /* i2 is updated by the for loop */
     }
     /* update i1 */
@@ -1535,23 +1867,30 @@ static int testem ()  /* test exponentiation modulo x */
     uint64_t mod [16];
     wp_from_hex (nbits, base, strlen (init), init);
     wp_add_int (nbits, base, i * 55);
+    if (i % 22 == 0)
+      base [0] |= ((uint64_t) 0x1) << 63;
     wp_copy (nbits, exp, base);
     exp [i % 16] = 0x0f1e2d3c4b5a6978;
     wp_copy (nbits, mod, base);
     wp_add_int (nbits, mod, i * 7 + 1);
     uint64_t r1 [16];
     uint64_t r2 [16];
-    uint64_t temp [16 * 65];
+    uint64_t r3 [16];
+    uint64_t temp [17 * 70];
     wp_exp_mod (nbits, r1, base, exp, mod, temp);
     wp_exp_mod64 (nbits, r2, base, exp, mod, temp);
-    if (wp_compare (nbits, r1, r2) != 0) {
+    wp_exp_mod_montgomery (nbits, r3, base, exp, mod, temp);
+    if ((wp_compare (nbits, r1, r2) != 0) ||
+        (wp_compare (nbits, r2, r3) != 0)) {
       printf ("error (%d): %s ^ ", i, wp_itox (nbits, base));
       printf ("%s %% ", wp_itox (nbits, exp));
-      printf ("%s gives ", wp_itox (nbits, mod));
-      printf ("%s in wp_exp_mod, but ", wp_itox (nbits, r1));
+      printf ("%s gives:\n", wp_itox (nbits, mod));
+      printf ("%s in wp_exp_mod,\n", wp_itox (nbits, r1));
       printf ("%s in wp_exp_mod64\n", wp_itox (nbits, r2));
+      printf ("%s in wp_exp_mod_montgomery\n", wp_itox (nbits, r3));
       test_value = 0;
       incorrect++;
+exit (1);
     } else {
       correct++;
     }
@@ -1677,25 +2016,38 @@ static int time_encrypt (int nbits)
 /* maximum size is LARGE * 64 */
 #define LARGE	1024
   my_assert (((1LL << nbits) <= LARGE * 64), "nbits must be 64K or less");
-  get_start_time ();
-  int total = 0;
-  static uint64_t mod [LARGE];
-  int i;
-  for (i = 0; i < NUM_WORDS (nbits); i++)
-    mod [i] = i + 1;
-  static uint64_t base [LARGE];
-  wp_init (nbits, base, 1);
-  base [1] = 33;
-  static uint64_t exp [LARGE];
-  wp_init (nbits, exp, 65537);
-  for (i = 0; (i < 100) && ((nbits < 1024) || (i < 20)); i++) {
-    static uint64_t result [LARGE];
-    static uint64_t temp [LARGE];
-    wp_exp_mod (nbits, result, base, exp, mod, temp);
-    wp_copy (nbits, base, result);
-    total++;
+  int algorithm;
+  for (algorithm = 0; algorithm < 3; algorithm++) {
+    get_start_time ();
+    int total = 0;
+    static uint64_t mod [LARGE];
+    int i;
+    for (i = 0; i < NUM_WORDS (nbits); i++)
+      mod [i] = i + 1;
+    mod [NUM_WORDS (nbits) - 1] |= 1;   /* make sure modulo is odd */
+    static uint64_t base [LARGE];
+    wp_init (nbits, base, 1);
+    base [1] = 33;
+    static uint64_t exp [LARGE];
+    wp_init (nbits, exp, 65537);
+    for (i = 0; (i < 100) && ((nbits < 1024) || (i < 20)); i++) {
+      static uint64_t result [LARGE];
+      static uint64_t temp [(LARGE + 1) * 70];
+      switch (algorithm) {
+      case 0: wp_exp_mod (nbits, result, base, exp, mod, temp);  break;
+      case 1: wp_exp_mod64 (nbits, result, base, exp, mod, temp);  break;
+      default: wp_exp_mod_montgomery (nbits, result, base, exp, mod, temp);
+               break;
+      }
+      wp_copy (nbits, base, result);
+      total++;
+    }
+    switch (algorithm) {
+    case 0: print_time(total, "b^65537 mod m", nbits); break;
+    case 1: print_time(total, "b^65537 mod64 m", nbits); break;
+    default: print_time(total, "b^65537 mod_mont m", nbits); break;
+    }
   }
-  print_time(total, "b^65537 mod m", nbits);
   return 1;
 }
 
@@ -1732,6 +2084,42 @@ static int time_em64 (int nbits)
     total++;
   }
   print_time(total, "b^e mod64 m", nbits);
+  return 1;
+}
+
+static int time_em_mont (int nbits)
+/* time exponentiation modulo x using wp_exp_mod_montgomery */
+{
+/* maximum size is LARGE * 64 */
+#define LARGE	1024
+  my_assert (((1LL << nbits) <= LARGE * 64), "nbits must be 64K or less");
+  get_start_time ();
+  int total = 0;
+  static uint64_t mod [LARGE];
+  int i;
+  for (i = 0; i < NUM_WORDS (nbits); i++)
+    mod [i] = i + 0x876543210ffffedc;
+  static uint64_t base [LARGE];
+  wp_init (nbits, base, 1);
+  for (i = 0; i < NUM_WORDS (nbits); i++)
+    base [i] = 0x3fff0000ffff0000 + i;
+  static uint64_t exp [LARGE];
+  for (i = 0; i < NUM_WORDS (nbits); i++)
+    exp [i] = (((uint64_t) (i * 11) + 1) << 30) - 1;
+  int limit = 500;
+  int decr = 256;
+  while ((limit >= 13) && (decr < nbits)) {
+    limit = limit / 6;
+    decr *= 2;
+  }
+  for (i = 0; i < limit; i++) {
+    static uint64_t result [LARGE];
+    static uint64_t temp [LARGE * 70];
+    wp_exp_mod_montgomery (nbits, result, base, exp, mod, temp);
+    wp_copy (nbits, base, result);
+    total++;
+  }
+  print_time(total, "b^e mod m mont", nbits);
   return 1;
 }
 
@@ -1967,6 +2355,41 @@ static int test_specific ()
   }
   total++;
 
+  int outer;
+  for (outer = 1; outer < 3; outer++) {
+    int nbits = outer * 64;
+    int mont;
+    for (mont = 2; mont < 1000; mont = mont * 2 + 1) {
+      uint64_t montgomery_base [3];
+      wp_init (nbits, montgomery_base, mont);
+      uint64_t montgomery_exp [3];
+      wp_init (nbits, montgomery_exp, 2 /* 1234 * mont * nbits */ );
+      uint64_t montgomery_mod [3] = { 0x1234567809abcdef,
+                                      0x1234567809abcdef, 0x1234567809abcdef};
+      uint64_t montgomery_res [3];
+      uint64_t montgomery_temp [70 * 4];
+      wp_exp_mod_montgomery (nbits, montgomery_res, montgomery_base,
+                             montgomery_exp, montgomery_mod, montgomery_temp);
+      uint64_t regular_res [3];
+      wp_exp_mod (nbits, regular_res, montgomery_base,
+                  montgomery_exp, montgomery_mod, montgomery_temp);
+#ifdef DEBUG_PRINT
+      printf ("%s ^ ", wp_itox (nbits, montgomery_base));
+      printf ("%s %% ", wp_itox (nbits, montgomery_exp));
+      printf ("%s == ", wp_itox (nbits, montgomery_mod));
+      printf ("%s =? ", wp_itox (nbits, regular_res));
+      printf ("%s\n"  , wp_itox (nbits, montgomery_res));
+#endif /* DEBUG_PRINT */
+      if (wp_compare (nbits, regular_res, montgomery_res) != 0) {
+        test_value = 0;
+        incorrect++;
+  exit (1);
+      } else {
+        correct++;
+      }
+      total++;
+    }
+  }
   printf ("test specific: %d total, %d correct, %d not correct, returning %d\n",
           total, correct, incorrect, test_value);
   return test_value;
@@ -1976,8 +2399,6 @@ static int wp_arith_test ()
 {
   int retval = 1;
   get_start_time ();
-  if (! test_specific ())
-    retval = 0;
   if (! testb ("is_zero", &wp_is_zero, &test_is_zero))
     retval = 0;
   if (! testb ("is_even", &wp_is_even, &test_is_even))
@@ -2002,6 +2423,8 @@ static int wp_arith_test ()
     retval = 0;
   if (! testmultiple ())
     retval = 0;
+  if (! test_specific ())
+    retval = 0;
   int i;
   for (i = 1024; i <= 4096; i *= 2) {
     if (! time_sh (i))
@@ -2010,6 +2433,8 @@ static int wp_arith_test ()
       retval = 0;
     if (! time_em64 (i))
       retval = 0;
+    if (! time_em_mont (i))
+      retval = 0;
     if (! time_encrypt (i))
       retval = 0;
   }
@@ -2017,8 +2442,11 @@ static int wp_arith_test ()
     retval = 0;
   if (! test_mul_div ())
     retval = 0;
-  if (retval)
-    print_time(1, "all", 64);
+  if (retval) {
+    print_time (1, "all", 64);
+  } else {
+    printf ("some test(s) failed\n");
+  }
   return retval;
 }
 

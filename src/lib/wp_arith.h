@@ -107,4 +107,9 @@ extern void wp_exp_mod64 (int nbits, uint64_t * res, const uint64_t * base,
                           const uint64_t * exp, const uint64_t * mod,
                           uint64_t * temp);
 
+/* same, except temp should have at least (nbits + 64) * 70 */
+extern void wp_exp_mod_montgomery (int nbits, uint64_t * res,
+                                   const uint64_t * base, const uint64_t * exp,
+                                   const uint64_t * mod, uint64_t * temp);
+
 #endif /* WES_ARITH_H */

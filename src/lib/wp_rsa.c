@@ -24,7 +24,14 @@ typedef uint64_t rsa_int    [WP_RSA_MAX_KEY_WORDS ];
 typedef uint64_t rsa_half   [WP_RSA_HALF_KEY_WORDS];
 typedef uint64_t rsa_double [WP_RSA_MAX_KEY_WORDS * 2];
 
-#define USE_EXP_MOD64
+/* #define USE_EXP_MOD64 */
+#define USE_EXP_MOD_MONTGOMERY
+
+#ifdef USE_EXP_MOD_MONTGOMERY
+typedef uint64_t rsa_temp      [(WP_RSA_MAX_KEY_WORDS  + 1) * 70];
+typedef uint64_t rsa_temp_half [(WP_RSA_HALF_KEY_WORDS + 1) * 70];
+#endif /* USE_EXP_MOD_MONTGOMERY */
+
 #ifdef USE_EXP_MOD64
 typedef uint64_t rsa_temp      [WP_RSA_MAX_KEY_WORDS  * 65];
 typedef uint64_t rsa_temp_half [WP_RSA_HALF_KEY_WORDS * 65];
@@ -250,6 +257,11 @@ static int composite_test_fermat (int nbits, const uint64_t * potential_prime,
   wp_copy (nbits, potential_prime_minus_one, potential_prime);
   wp_sub_int (nbits, potential_prime_minus_one, 1);
   rsa_half em;
+#ifdef USE_EXP_MOD_MONTGOMERY
+  rsa_temp_half temp;
+  wp_exp_mod_montgomery (nbits, em, a, potential_prime_minus_one,
+                         potential_prime, temp);
+#else /* USE_EXP_MOD_MONTGOMERY */
 #ifdef USE_EXP_MOD64
   rsa_temp_half temp;
   wp_exp_mod64 (nbits, em, a, potential_prime_minus_one, potential_prime, temp);
@@ -257,6 +269,7 @@ static int composite_test_fermat (int nbits, const uint64_t * potential_prime,
   rsa_half temp;
   wp_exp_mod (nbits, em, a, potential_prime_minus_one, potential_prime, temp);
 #endif /* USE_EXP_MOD64 */
+#endif /* USE_EXP_MOD_MONTGOMERY */
   rsa_half one;
   wp_init (nbits, one, 1);
   if (wp_compare (nbits, one, em) == 0)
@@ -286,6 +299,10 @@ static int composite_test_miller_rabin (int nbits,
     shift++;
   }
   rsa_half x;
+#ifdef USE_EXP_MOD_MONTGOMERY
+  rsa_temp_half temp;
+  wp_exp_mod_montgomery (nbits, x, a, d, potential_prime, temp);
+#else /* USE_EXP_MOD_MONTGOMERY */
 #ifdef USE_EXP_MOD64
   rsa_temp_half temp;
   wp_exp_mod64 (nbits, x, a, d, potential_prime, temp);
@@ -293,6 +310,7 @@ static int composite_test_miller_rabin (int nbits,
   rsa_half temp;
   wp_exp_mod (nbits, x, a, d, potential_prime, temp);
 #endif /* USE_EXP_MOD64 */
+#endif /* USE_EXP_MOD_MONTGOMERY */
   rsa_half one;
   wp_init (nbits, one, 1);
   rsa_half p_minus_one;
@@ -1132,6 +1150,10 @@ static void rsa_do_encrypt (wp_rsa_key * key, uint64_t * data, char * result)
   print_exp_mod (key->nbits, data, efull, key->n);
 #endif /* TEST_AGAINST_BN_LIBRARY */
   /* compute data^e mod key->n and place the result in result */
+#ifdef USE_EXP_MOD_MONTGOMERY
+  rsa_temp temp;
+  wp_exp_mod_montgomery (key->nbits, ri, data, efull, key->n, temp);
+#else /* USE_EXP_MOD_MONTGOMERY */
 #ifdef USE_EXP_MOD64
   rsa_temp temp;
   wp_exp_mod64 (key->nbits, ri, data, efull, key->n, temp);
@@ -1139,6 +1161,7 @@ static void rsa_do_encrypt (wp_rsa_key * key, uint64_t * data, char * result)
   rsa_int temp;
   wp_exp_mod (key->nbits, ri, data, efull, key->n, temp);
 #endif /* USE_EXP_MOD64 */
+#endif /* USE_EXP_MOD_MONTGOMERY */
 #ifdef DEBUG_PRINT
   printf ("  encrypted is %s\n", wp_itox (key->nbits, ri));
 #endif /* DEBUG_PRINT */
@@ -1179,6 +1202,10 @@ static void rsa_decrypt_slow (wp_rsa_key_pair * key, uint64_t * data,
   printf ("%s mod ", wp_itox (key->nbits, key->d));
   printf ("%s = ", wp_itox (key->nbits, key->n));
 #endif /* DEBUG_PRINT */
+#ifdef USE_EXP_MOD_MONTGOMERY
+  rsa_temp temp;
+  wp_exp_mod_montgomery (key->nbits, result, data, key->d, key->n, temp);
+#else /* USE_EXP_MOD_MONTGOMERY */
 #ifdef USE_EXP_MOD64
   rsa_temp temp;
   wp_exp_mod64 (key->nbits, result, data, key->d, key->n, temp);
@@ -1186,6 +1213,7 @@ static void rsa_decrypt_slow (wp_rsa_key_pair * key, uint64_t * data,
   rsa_int temp;
   wp_exp_mod (key->nbits, result, data, key->d, key->n, temp);
 #endif /* USE_EXP_MOD64 */
+#endif /* USE_EXP_MOD_MONTGOMERY */
 #ifdef DEBUG_PRINT
   printf ("%s\n", wp_itox (key->nbits, result));
 #endif /* DEBUG_PRINT */
@@ -1220,6 +1248,12 @@ static void rsa_decrypt_fast (wp_rsa_key_pair * key, uint64_t * data,
 
   /* compute m1 and m2 at half size */
   rsa_half m1;
+#ifdef USE_EXP_MOD_MONTGOMERY
+  rsa_temp_half temp;
+  wp_exp_mod_montgomery (nhalf, m1, data_mod_p, key->dp, key->p, temp);
+  rsa_half m2;
+  wp_exp_mod_montgomery (nhalf, m2, data_mod_q, key->dq, key->q, temp);
+#else /* USE_EXP_MOD_MONTGOMERY */
 #ifdef USE_EXP_MOD64
   rsa_temp_half temp;
   wp_exp_mod64 (nhalf, m1, data_mod_p, key->dp, key->p, temp);
@@ -1231,6 +1265,7 @@ static void rsa_decrypt_fast (wp_rsa_key_pair * key, uint64_t * data,
   rsa_half m2;
   wp_exp_mod (nhalf, m2, data_mod_q, key->dq, key->q, temp);
 #endif /* USE_EXP_MOD64 */
+#endif /* USE_EXP_MOD_MONTGOMERY */
 
   /* compute at half size h = if (m1 >= m2) (qinv * (m1 - m2)) % p;
                               else          (qinv * (m1 + p - m2)) % p */
