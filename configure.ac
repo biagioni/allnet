@@ -32,7 +32,24 @@ AC_SUBST(ALLNET_ABCDIR)
 AC_SUBST(LDVERSION)
 
 # Checks for libraries.
-PKG_CHECK_MODULES(gstreamer, [gstreamer-1.0, gstreamer-app-1.0])
+AC_ARG_ENABLE([voa],
+            [AS_HELP_STRING([--disable-voa],
+            [Disable Voice-over-AllNet])],
+            [use_voa=no],
+            [use_voa=yes])
+if test "x$use_voa" != "xno"; then
+    PKG_CHECK_MODULES(gstreamer, [gstreamer-1.0, gstreamer-app-1.0], have_gstreamer=yes, have_gstreamer=no)
+    if test "x$have_gstreamer" != "xyes"; then
+        if test "x$use_voa" = "xyes"; then
+            AC_MSG_ERROR([Voice-over-AllNet support explicitly requested but GStreamer could not be found])
+        else
+            AC_MSG_WARN([Disabling Voice-over-AllNet due to missing GStreamer headers])
+        fi
+    else
+        enable_voa=yes
+    fi
+fi
+AM_CONDITIONAL(USE_VOICE_OVER_ALLNET, test "x$enable_voa" = "xyes")
 
 # openssl check taken from
 # http://cgit.sukimashita.com/libimobiledevice.git/tree/configure.ac
@@ -181,4 +198,5 @@ if test "x$build_gui" = "xno"; then
 echo "  Install precompiled UI : ${install_precompiled_gui} (only available when Build User Interface is \"no\")"
 fi
 echo "  Openssl                : ${enable_openssl}"
+echo "  Voice-over-AllNet      : ${enable_voa}"
 echo ""
