@@ -570,6 +570,10 @@ static int handle_packet (const char * message, int msize, int reply_only)
     printf ("%02x ", *((const unsigned char *)buf+i));
   printf (".\n");
 #endif /* DEBUG */
+  if (strcmp (buf, ALLNET_VOA_EOS_BUF) == 0) {
+    term = 1;
+    return 1;
+  }
 #ifdef DEBUG
   if (buf[0] != 0x08) /* Narrow band 20ms mono VBR opus frame */
     printf ("voa: unexpected frame header %02x\n", (unsigned char)buf[0]);
@@ -891,6 +895,16 @@ static void enc_main_loop ()
     } else {
       printf ("NULL sample\n");
     }
+  }
+  unsigned char eosbuf[] = ALLNET_VOA_EOS_BUF;
+  int pak_size;
+  struct allnet_header * pak = create_voa_stream_packet (eosbuf, sizeof (eosbuf), data.stream_id, &pak_size);
+  if (!pak) {
+    fprintf (stderr, "voa: failed to create EOS packet\n");
+    term = -1;
+  } else if (!send_pipe_message (data.allnet_socket, (const char *)pak,
+                                 pak_size, ALLNET_PRIORITY_DEFAULT_HIGH)) {
+    fprintf (stderr, "voa: error sending EOS packet\n");
   }
 }
 
