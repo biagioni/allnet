@@ -75,6 +75,7 @@ typedef struct _EncoderData {
 typedef struct _VOAData {
   GstElement * pipeline;
   GstBus * bus;
+  int max_hops;
   int is_encoder;
   int accept_unsigned;
   int allnet_socket;
@@ -108,6 +109,7 @@ static void term_handler (int sig) {
  */
 static void init_data ()
 {
+  data.max_hops = 3;
   data.accept_unsigned = 1;
   data.dest_contact = NULL;
   data.my_addr_bits = 0;
@@ -388,7 +390,7 @@ static int send_accept_response (allnet_rsa_prvkey prvkey)
   int bufsize = amhpsize + avhhsize + estsigsize;
   int pak_size;
   struct allnet_header * pak = create_packet (bufsize,
-       ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_RSA_PKCS1,
+       ALLNET_TYPE_DATA, data.max_hops, ALLNET_SIGTYPE_RSA_PKCS1,
        data.my_address, data.my_addr_bits,
        data.dest_address, data.dest_addr_bits, NULL /*stream*/, NULL /*ack*/,
        &pak_size);
@@ -628,7 +630,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
 
   /* create packet */
   struct allnet_header * pak = create_packet (bufsize,
-       ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_RSA_PKCS1,
+       ALLNET_TYPE_DATA, data.max_hops, ALLNET_SIGTYPE_RSA_PKCS1,
        data.my_address, data.my_addr_bits,
        data.dest_address, data.dest_addr_bits, NULL /*stream*/, NULL /*ack*/,
        paksize);
@@ -757,7 +759,7 @@ static struct allnet_header * create_voa_stream_packet (
   unsigned int sigsize = ALLNET_VOA_COUNTER_SIZE + ALLNET_VOA_HMAC_SIZE;
   int psize = bufsize + sigsize;
   struct allnet_header * pak = create_packet (psize,
-         ALLNET_TYPE_DATA, 3 /*max hops*/, ALLNET_SIGTYPE_NONE,
+         ALLNET_TYPE_DATA, data.max_hops, ALLNET_SIGTYPE_NONE,
          data.my_address, data.my_addr_bits,
          data.dest_address, data.dest_addr_bits,
          stream_id, NULL /*ack*/, paksize);
