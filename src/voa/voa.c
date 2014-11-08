@@ -882,7 +882,7 @@ static void enc_main_loop ()
         }
 #endif /* SIMULATE_LOSS */
       } else {
-        fprintf (stderr, "voa: failed to create packet");
+        fprintf (stderr, "voa: failed to create packet\n");
         term = -1;
       }
 
