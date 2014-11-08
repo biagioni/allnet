@@ -664,7 +664,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
     }
   }
   if (sigsize == 0) {
-    printf ("voa: ERROR: could not sign request\n");
+    fprintf (stderr, "voa: ERROR: could not sign request\n");
     return NULL;
   }
 
