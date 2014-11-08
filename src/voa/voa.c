@@ -25,6 +25,7 @@
 #include <gst/gst.h>
 #include <gst/app/gstappsrc.h>
 #include <gst/app/gstappsink.h>
+#include <signal.h>       /* sigaction, sig_atomic_t */
 #include <stdlib.h>       /* atoi */
 #include <string.h>       /* memcmp, memcpy */
 #include <sys/time.h>     /* gettimeofday */
@@ -93,8 +94,13 @@ typedef struct _VOAData {
 
 static VOAData data;
 /** exit main loop when set, -1 indicates an error */
-static int term = 0;
+static volatile sig_atomic_t term = 0;
 static const char * file_input = NULL;
+
+/** Handler invoked on signal interrupts */
+static void term_handler (int sig) {
+  term = 1;
+}
 
 /**
  * Initialize the global data struct
@@ -462,10 +468,13 @@ static int check_voa_reply (const struct allnet_header * hp,
 
 /**
  * Handle any incoming packets and filter relevant ones
+ * Sets term=1 when an EOS packet is received
  * @param message pointer to struct allnet_header
  * @param msize total size of message
  * @param reply_only only process VoA ACK messages when reply_only != 0 (for encoder)
- * @return 1 packet was handled successfully (encoder: stream was accepted),
+ * @return 1 packet was handled successfully
+ *           encoder: stream was accepted,
+ *           decoder: audio packet or EOS received
  *         0 packet is discarded (encoder: or not accepted)
  *        -1 an error happened while processing an expected packet
  *           like failure to decrypt a packet
@@ -1196,6 +1205,13 @@ int main (int argc, char ** argv)
       printf ("%02x ", data.dest_address [i]);
     printf (" (%d bits)\n", data.dest_addr_bits);
   }
+
+  struct sigaction sa;
+  sa.sa_handler = term_handler;
+  sa.sa_flags = 0;
+  sigemptyset (&sa.sa_mask);
+  sigaction (SIGINT, &sa, NULL);
+  sigaction (SIGTERM, &sa, NULL);
 
   if (!init_audio (is_encoder))
     return 1;
