@@ -223,23 +223,28 @@ static void stream_cipher_init (char * key, char * secret, int is_encoder)
  * @param contact name of contact to verify against.
  * @param [in,out] prvkey Set to private key corresponding to signature when
  *                        not NULL and verification is successful.
+ * @param [in,out] pubkey Set to public key corresponding to signature when
+ *                        not NULL and verification is successful.
  * @return 1 if message signature is valid,
  *         0 if message signature is invalid or missing
  */
 static int check_contact_signature (const char * payload, int vsize,
                                     const char * sig, int ssize,
                                     const char * contact,
-                                    allnet_rsa_prvkey * prvkey)
+                                    allnet_rsa_prvkey * prvkey,
+                                    allnet_rsa_pubkey * pubkey)
 {
   keyset * keysets;
   int nk = all_keys (contact, &keysets);
   int ink;
   for (ink = 0; ink < nk; ink++) {
-    allnet_rsa_pubkey pubkey;
-    get_contact_pubkey (keysets [ink], &pubkey);
-    if (allnet_verify (payload, vsize, sig, ssize, pubkey)) {
+    allnet_rsa_pubkey ckey;
+    get_contact_pubkey (keysets [ink], &ckey);
+    if (allnet_verify (payload, vsize, sig, ssize, ckey)) {
       if (prvkey != NULL)
         get_my_privkey (keysets [ink], prvkey);
+      if (pubkey != NULL)
+        *pubkey = ckey;
       return 1;
     }
   }
@@ -254,13 +259,16 @@ static int check_contact_signature (const char * payload, int vsize,
  * @param contact name of contact to verify against. All contacts when NULL.
  * @param [in,out] prvkey Set to private key corresponding to signature when
  *                        not NULL and verification is successful.
+ * @param [in,out] pubkey Set to public key corresponding to signature when
+ *                        not NULL and verification is successful.
  * @return length of signature block, including signature length, if message
  *         signature is valid or 0 if message signature is invalid or missing.
  */
 static int check_signature (const struct allnet_header * hp,
                             const char * payload, int msize,
                             const char * contact,
-                            allnet_rsa_prvkey * prvkey)
+                            allnet_rsa_prvkey * prvkey,
+                            allnet_rsa_prvkey * pubkey)
 {
   int psize = msize - (payload - ((const char *)hp));
   int vsize = psize;
@@ -287,7 +295,7 @@ static int check_signature (const struct allnet_header * hp,
     int ic;
     for (ic = 0; ic < nc; ic++) {
       int valid = check_contact_signature (payload, vsize, sig, ssize,
-                                           contacts [ic], prvkey);
+                                           contacts [ic], prvkey, pubkey);
       if (valid) {
         printf ("voa: message signed by %s\n", contacts [ic]);
         return ssize + SIG_LENGTH_SIZE;
@@ -295,7 +303,8 @@ static int check_signature (const struct allnet_header * hp,
     }
 
   } else {
-    if (check_contact_signature (payload, vsize, sig, ssize, contact, prvkey))
+    if (check_contact_signature (payload, vsize, sig, ssize, contact, prvkey,
+                                 pubkey))
       return ssize + SIG_LENGTH_SIZE;
   }
   return 0;
