@@ -444,11 +444,13 @@ static int check_voa_reply (const struct allnet_header * hp,
   const struct allnet_voa_hs_ack_header * avhhp =
       (const struct allnet_voa_hs_ack_header *)(payload + amhsize);
   if (memcmp (data.stream_id, &avhhp->stream_id, STREAM_ID_SIZE) != 0) {
+#ifdef DEBUG
     printf ("voa: discarding reply for unknown stream ");
     int i = 0;
     for (; i < STREAM_ID_SIZE; ++i)
       printf ("%02x ", *((unsigned char *)payload + amhsize + i));
     printf ("\n");
+#endif /* DEBUG */
     return 0;
   }
   /* check for matching media type */
