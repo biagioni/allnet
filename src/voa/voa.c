@@ -571,7 +571,7 @@ static int handle_packet (const char * message, int msize, int reply_only)
   printf (".\n");
 #endif /* DEBUG */
 #ifdef DEBUG
-  if (buf[0] != 0x08) /* Narrow band 20ms VBR opus frame */
+  if (buf[0] != 0x08) /* Narrow band 20ms mono VBR opus frame */
     printf ("voa: unexpected frame header %02x\n", (unsigned char)buf[0]);
 #endif /* DEBUG */
   if (!dec_handle_data (buf, bufsize))
