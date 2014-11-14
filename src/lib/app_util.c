@@ -8,9 +8,11 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <ifaddrs.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 
@@ -50,6 +52,51 @@ static char * make_program_path (char * path, char * program)
   return result;
 }
 
+static int is_bc_interface (struct ifaddrs *interface)
+{
+  return (((interface->ifa_flags & IFF_LOOPBACK) == 0) &&
+          ((interface->ifa_flags & IFF_BROADCAST) != 0));
+}
+
+static int in_array (char * name, char ** names, int count)
+{
+  int i;
+  for (i = 0; i < count; i++)
+    if (strcmp (name, names [i]) == 0)
+      return 1;
+  return 0;
+}
+
+static char * * get_bc_interfaces (char * pname)
+{
+  struct ifaddrs * ap;
+  if (getifaddrs (&ap) != 0) {
+    perror ("getifaddrs");
+    ap = NULL;    /* same as no interfaces */
+  }
+  int count = 1;   /* at least the pname */
+  struct ifaddrs * next = ap;
+  while (next != NULL) {
+    if (is_bc_interface (next))
+      count++;
+    next = next->ifa_next;
+  }
+  char * * result = malloc ((count + 1) * sizeof (char *));
+  result [0] = pname;
+  next = ap;
+  int index = 1;
+  while (next != NULL) {
+    if ((is_bc_interface (next)) &&
+        (! in_array (next->ifa_name, result, index)))
+      result [index++] = next->ifa_name;
+    next = next->ifa_next;
+  }
+  result [index++] = NULL;
+  /* cannot free since we are pointing into the struct.
+     it's actually OK because exec will free it after copying the args
+  freeifaddrs (ap);  */
+  return result;
+}
 
 static void exec_allnet (char * arg)
 {
@@ -64,9 +111,26 @@ static void exec_allnet (char * arg)
       printf ("unable to start AllNet daemon\n");
       exit (1);   /* only exits the child */
     }
-    execl (astart, astart, "wlan0", (char *) NULL);
-    perror ("execl");
-    printf ("error: exec astart failed\n");
+/*    if (geteuid () == 0) { */
+      char * * args = get_bc_interfaces (astart);
+printf ("calling %s:\n", astart);
+int i;
+for (i = 0; args [i] != NULL; i++)
+printf (" %s", args [i]);
+printf ("\n");
+      execv (astart, args);
+      perror ("execv");
+      printf ("error: exec astart [interfaces] failed\nastart");
+      int a;
+      for (a = 0; args [a] != NULL; a++)
+        printf (" %s", args [a]);
+      printf ("\n");
+/*    } else {
+printf ("calling %s %s\n", astart, astart);
+      execl (astart, astart, (char *) NULL);
+      perror ("execl/no-wlan0");
+      printf ("error: exec astart failed\n");
+    } */
     exit (1);
 #else /* __IPHONE_OS_VERSION_MIN_REQUIRED */
     /* ios: do not look for executable, just call "astart_main" */
@@ -204,7 +268,7 @@ int connect_to_local (char * program_name, char * arg0)
   seed_rng ();
   int sock = connect_once (0);
   if (sock < 0) {
-    printf ("%s/%s unable to connect to alocal, starting allnet\n",
+    printf ("%s(%s) unable to connect to alocal, starting allnet\n",
             program_name, arg0);
     exec_allnet (arg0);
     sleep (1);

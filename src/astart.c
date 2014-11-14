@@ -32,18 +32,28 @@ extern void acache_main (char * pname);
 extern void traced_main (char * pname);
 extern void keyd_main (char * pname);
 
-/* if astart is called as root, everything but abc should run as the user
- * "nobody", if such a user is defined */
+/* if astart is called as root, everything but abc should run as the calling
+ * user, if any, else user "nobody", if such a user is defined */
 static void make_root_nobody ()
 {
+printf ("uids %d %d\n", getuid (), geteuid ());
   if (geteuid () != 0)
     return;   /* not root, nothing to do */
+  int real_uid = getuid ();
+  if (real_uid != geteuid ()) {
+    if (setuid (real_uid) == 0) {
+      printf ("set uids %d %d\n", getuid (), geteuid ());
+      return;
+    }
+    perror ("setuid/real");   /* and try to become nobody */
+  }
   setpwent ();
   struct passwd * pwd;
   while ((pwd = getpwent ()) != NULL) {
     if (strcmp (pwd->pw_name, "nobody") == 0) {
       if (setuid (pwd->pw_uid) != 0)
-        perror ("setuid");
+        perror ("setuid/nobody");
+      printf ("set uids %d %d\n", getuid (), geteuid ());
       endpwent ();
       return;
     }
