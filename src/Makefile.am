@@ -1,4 +1,4 @@
-SUBDIRS = lib abc ahra mgmt xchat xtime xchat_ui
+SUBDIRS = lib abc ahra mgmt voa xchat xtime xchat_ui
 AUTOMAKE_OPTIONS = subdir-objects
 
 libincludes = \

@@ -19,6 +19,7 @@
 #define ALLNET_MEDIA_AUDIO_BASIC	0x20000002 /* mu-law 8KHz audio */
 #define ALLNET_MEDIA_AUDIO_MP4		0x20000003 /* MP4 audio */
 #define ALLNET_MEDIA_AUDIO_OGG_VORBIS	0x20000004 /* Ogg Vorbis audio */
+#define ALLNET_MEDIA_AUDIO_OPUS   0x20000005 /* Opus audio */
 
 #define ALLNET_MEDIA_IMAGE_RAW_TIFF	0x30000001 /* TIFF/EP raw image */
 #define ALLNET_MEDIA_IMAGE_RAW_EXIF	0x30000002 /* Exif/TIFF raw image */
