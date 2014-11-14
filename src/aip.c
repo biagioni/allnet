@@ -618,7 +618,11 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         perror ("listener socket");
         continue;
       }
+time_t start_time = time (NULL);
       if (connect (s, (struct sockaddr *) (sin), salen) < 0) {
+        snprintf (log_buf, LOG_SIZE, "unable to connect to %s %d in %ld sec\n",
+                  inet_ntoa (sin->sin_addr), ntohs (sin->sin_port),
+                  time (NULL) - start_time);
         log_error ("listener connect");
         continue;
       }
