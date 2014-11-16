@@ -22,11 +22,7 @@
 extern void ad_main (int npipes, int * rpipes, int * wpipes);
 extern void alocal_main (int pipe1, int pipe2);
 extern void aip_main (int pipe1, int pipe2, char * fname);
-extern void abc_main (int pipe1, int pipe2, const char * fname,
-                        const char * iface_type, const char * iface_type_args);
-static void abc_main_wrapper (int pipe1, int pipe2, char * fname, char * iface_type) {
-  abc_main (pipe1, pipe2, fname, iface_type, NULL);
-}
+extern void abc_main (int pipe1, int pipe2, const char * ifopts);
 extern void adht_main (char * pname);
 extern void acache_main (char * pname);
 extern void traced_main (char * pname);
@@ -336,25 +332,24 @@ static void my_call_aip (char * argv, int alen, char * program,
 }
 
 static void my_call_abc (char * argv, int alen, char * program,
-                         void (*run_function) (int, int, char *, char *),
-                         int rpipe, int wpipe, char * extra, char * extra2,
+                         int rpipe, int wpipe, char * ifopts,
                          int fd, pid_t ad)
 {
   pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
     replace_command (argv, alen, program);
-    snprintf (log_buf, LOG_SIZE, "calling %s %d %d %s %s\n",
-              program, rpipe, wpipe, extra, extra2);
+    snprintf (log_buf, LOG_SIZE, "calling %s %d %d %s\n",
+              program, rpipe, wpipe, ifopts);
     log_print ();
-    run_function (rpipe, wpipe, extra, extra2);
+    abc_main (rpipe, wpipe, ifopts);
     child_return (program, ad, self);
   } else {  /* parent, close the child pipes */
     print_pid (fd, child);
     close (rpipe);
     close (wpipe);
-    snprintf (log_buf, LOG_SIZE, "parent called %s %d %d %s %s, closed %d %d\n",
-              program, rpipe, wpipe, extra, extra2, rpipe, wpipe);
+    snprintf (log_buf, LOG_SIZE, "parent called %s %d %d %s, closed %d %d\n",
+              program, rpipe, wpipe, ifopts, rpipe, wpipe);
     log_print ();
   }
 }
@@ -472,9 +467,8 @@ int astart_main (int argc, char ** argv)
     snprintf (log_buf, LOG_SIZE, "starting abc [%d/%d] %s\n",
               i, num_interfaces, argv [i + 1]);
     log_print ();
-    my_call_abc (argv [0], alen, "abc", abc_main_wrapper,
-                 rpipes [i + 2], wpipes [i + 2],
-                 argv [i + 1], NULL, pid_fd, ad_pid);
+    my_call_abc (argv [0], alen, "abc", rpipes [i + 2], wpipes [i + 2],
+                 argv [i + 1], pid_fd, ad_pid);
   }
   make_root_nobody ();  /* if we were root, become nobody */
   my_call1 (argv [0], alen, "adht", adht_main, pid_fd, ad_pid);

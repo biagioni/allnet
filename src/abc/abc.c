@@ -112,6 +112,7 @@ static abc_iface * iface_types[] = {
   &abc_iface_ip,
   &abc_iface_wifi
 };
+
 /* must match length and order of iface_types[] */
 static const char * iface_type_strings[] = {
   "ip",
@@ -661,20 +662,36 @@ iface_cleanup:
   iface->iface_cleanup_cb ();
 }
 
-void abc_main (int rpipe, int wpipe, const char * interface,
-                const char * iface_type, const char * iface_type_args)
+void abc_main (int rpipe, int wpipe, char * ifopts)
 {
   init_log ("abc");
   queue_init (16 * 1024 * 1024);  /* 16MBi */
 
-  if (iface_type != NULL) {
+  const char * interface = ifopts;
+  const char * iface_type = NULL;
+  char * args = ifopts;
+  while (*args != '\0' && *args != '/') ++args;
+  if (*args == '/') {
+    *args = '\0';
+    iface_type = ++args;
+    const char * iface_type_args = NULL;
+    while (*args != '\0' && *args != ',') ++args;
+    if (*args == ',') {
+      *args = '\0';
+      iface_type_args = ++args;
+    }
+
     int i;
-    for (i = 0; i < sizeof (iface_types); ++i) {
+    for (i = 0; i < sizeof (iface_types) / sizeof (abc_iface *); ++i) {
       if (strcmp (iface_type_strings[i], iface_type) == 0) {
         iface = iface_types[i];
         iface->iface_type_args = iface_type_args;
         break;
       }
+    }
+    if (iface == NULL) {
+      snprintf (log_buf, LOG_SIZE, "No interface driver `%s' found. Using default\n", iface_type);
+      log_print ();
     }
   }
   if (iface == NULL)
@@ -707,10 +724,7 @@ int main (int argc, char ** argv)
   }
   int rpipe = atoi (argv [1]);  /* read pipe */
   int wpipe = atoi (argv [2]);  /* write pipe */
-  const char * interface = argv [3];
-  const char * iface_type = (argc > 3 ? argv [4] : NULL);
-  const char * iface_type_args = (argc > 4 ? argv [5] : NULL);
-  abc_main (rpipe, wpipe, interface, iface_type, iface_type_args);
+  abc_main (rpipe, wpipe, argv [3]);
   return 1;
 }
 #endif /* DAEMON_MAIN_FUNCTION */
