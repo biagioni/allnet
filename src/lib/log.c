@@ -270,7 +270,6 @@ void log_error (char * syscall)
  * if on == 0, only output to the log file. */
 void log_to_output (int on)
 {
-  allnet_global_debugging = 0;
+  allnet_global_debugging = on;
 }
-
 
