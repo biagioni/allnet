@@ -342,6 +342,9 @@ static int handle_beacon (const char * message, int msize,
     /* TODO: only reply if we have something to send */
     if (beacon_state == BEACON_REPLY_SENT /* && is_before (*beacon_deadline) // is implied */)
       return 1;
+    /* only reply if we have something to send */
+    if (queue_total_bytes () == 0)
+      return 1;
     const struct allnet_mgmt_beacon * mbp = (const struct allnet_mgmt_beacon *) beaconp;
 
     /* compute when to send the reply */
