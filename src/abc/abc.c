@@ -290,6 +290,7 @@ static void send_pending (enum abc_send_type type, int size, char * message)
       char * my_message = NULL;
       int nsize;
       int priority;
+      queue_iter_start ();
       while ((queue_iter_next (&my_message, &nsize, &priority)) &&
              (total_sent + nsize <= size)) {
         if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
