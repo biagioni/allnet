@@ -24,6 +24,7 @@ static int abc_ip_cleanup ();
 
 abc_iface abc_iface_ip = {
   .iface_type = ABC_IFACE_TYPE_IP,
+  .iface_is_managed = 0,
   .iface_type_args = NULL,
   .iface_sockfd = -1,
   .if_address = {},

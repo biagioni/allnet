@@ -265,6 +265,23 @@ static void make_beacon_grant (char * buffer, int bsize,
   writeb64u (mbgp->send_time, send_time_ns);
 }
 
+/** Send pending messages */
+static void unmanaged_send_pending ()
+{
+  int total_sent = 0;
+  char * my_message = NULL;
+  int nsize;
+  int priority;
+  queue_iter_start ();
+  while (queue_iter_next (&my_message, &nsize, &priority)) {
+    if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
+        BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
+      perror ("sendto for type 2");
+    queue_iter_remove ();
+    total_sent += nsize;
+  }
+}
+
 /**
  * Send pending message and update pending beacon state
  * @param type if type is ABC_SEND_TYPE_REPLY, sends the message
@@ -482,6 +499,25 @@ static void handle_ad_message (const char * message, int msize, int priority)
   remove_acks (message, message + msize);
 }
 
+static void unmanaged_handle_network_message (const char * message, int msize, int ad_pipe)
+{
+  /* check for high-priority message */
+  struct allnet_header * hp = (struct allnet_header *) message;
+  int cacheable = ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0);
+  /*
+  int msgpriority = compute_priority (msize, hp->src_nbits, hp->dst_nbits,
+                                      hp->hops, hp->max_hops,
+                                      UNKNOWN_SOCIAL_TIER, 1, cacheable);
+  if (msgpriority >= ALLNET_PRIORITY_DEFAULT_HIGH)
+    received_high_priority = 1;
+  */
+
+  /* send the message to ad */
+  send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
+  /* remove any messages that this message acks */
+  remove_acks (message, message + msize);
+}
+
 static void handle_network_message (const char * message, int msize, int ad_pipe,
                                     struct timeval ** beacon_deadline,
                                     struct timeval * time_buffer,
@@ -531,6 +567,29 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
   }
 }
 
+/* handle incoming packets until time t */
+static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
+{
+  struct timeval time_buffer;   /* beacon_deadline sometimes points here */
+  while (is_before (t) && !term) {
+    char * message;
+    int fd;
+    int priority;
+    int msize = receive_until (t, &message, &fd, &priority, 0);
+    static char send_message [ALLNET_MTU];
+    if ((msize > 0) && (is_valid_message (message, msize))) {
+      if (fd == rpipe)
+        handle_ad_message (message, msize, priority);
+      else
+        unmanaged_handle_network_message (message, msize, wpipe);
+      free (message);
+      unmanaged_send_pending ();
+
+    } else {
+      usleep (10 * 1000); /* 10ms */
+    }
+  }
+}
 /* handle incoming packets until time t.  Do not send before quiet_end */
 static void handle_until (struct timeval * t, struct timeval * quiet_end,
                           int rpipe, int wpipe)
@@ -603,6 +662,17 @@ static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
           bstart->tv_sec, bstart->tv_usec, bfinish->tv_sec, bfinish->tv_usec);
 }
 
+/* do one basic 5s unmanaged cycle */
+static void unmanaged_one_cycle (const char * interface, int rpipe, int wpipe)
+{
+  struct timeval start, finish;
+  gettimeofday (&start, NULL);
+  finish.tv_sec = compute_next (start.tv_sec, BASIC_CYCLE_SEC, 0);
+  finish.tv_usec = 0;
+
+  unmanaged_handle_until (&finish, rpipe, wpipe);
+}
+
 /* do one basic 5s cycle */
 static void one_cycle (const char * interface, int rpipe, int wpipe,
                        struct timeval * quiet_end)
@@ -658,9 +728,13 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
     goto iface_cleanup;
   }
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
-  bzero (zero_nonce, NONCE_SIZE);
+  if (iface->iface_is_managed)
+    bzero (zero_nonce, NONCE_SIZE);
   while (!term)
-    one_cycle (interface, rpipe, wpipe, &quiet_end);
+    if (iface->iface_is_managed)
+      one_cycle (interface, rpipe, wpipe, &quiet_end);
+    else
+      unmanaged_one_cycle (interface, rpipe, wpipe);
 
 iface_cleanup:
   iface->iface_cleanup_cb ();
