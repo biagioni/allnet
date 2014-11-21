@@ -62,7 +62,7 @@ int cp_used = 0;
 
 /* return 0 if the contact does not exist, otherwise one more than the
  * contact's index in cp */
-static int contact_exists (char * contact)
+static int contact_exists (const char * contact)
 {
   int i;
   for (i = 0; i < cp_used; i++) {
@@ -695,7 +695,7 @@ int num_keysets (char * contact)
 /* returns the number of keysets, and has keysets point to a statically
  * allocated array of pointers to statically allocated keysets
  * (do not modify in any way). */
-int all_keys (char * contact, keyset ** keysets)
+int all_keys (const char * contact, keyset ** keysets)
 {
 #define DEFAULT_KEYSETS		10
   static int buf [DEFAULT_KEYSETS];
