@@ -636,7 +636,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
                           ((num_media_types - 1) * ALLNET_MEDIA_ID_SIZE);
   allnet_rsa_prvkey prvkey;
   allnet_rsa_null_prvkey (&prvkey);
-  allnet_rsa_pubkey pubkey = NULL;
+  allnet_rsa_pubkey pubkey;
   allnet_rsa_null_pubkey (&pubkey);
   get_key_for_contact (data.dest_contact, &prvkey, &pubkey);
   int bufsize = 0;
@@ -690,7 +690,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
 
   /* sign encrypted payload */
   int sigsize = 0;
-  if (prvkey != NULL) {
+  if (! allnet_rsa_prvkey_is_null (prvkey)) {
     char * sig;
     sigsize = allnet_sign ((const char *)payload, encbufsize, prvkey, &sig);
     if (sigsize != 0) {
