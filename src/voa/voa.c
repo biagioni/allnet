@@ -266,7 +266,7 @@ static int check_signature (const struct allnet_header * hp,
                             const char * payload, int msize,
                             const char * contact,
                             allnet_rsa_prvkey * prvkey,
-                            allnet_rsa_prvkey * pubkey)
+                            allnet_rsa_pubkey * pubkey)
 {
   int psize = msize - (payload - ((const char *)hp));
   int vsize = psize;
@@ -545,7 +545,7 @@ static int handle_packet (const char * message, int msize, int reply_only)
   } else {
     /* verify signature */
     allnet_rsa_prvkey prvkey;
-    allnet_rsa_prvkey pubkey;
+    allnet_rsa_pubkey pubkey;
     int sigsize;
     if (!(sigsize = check_signature (hp, payload, msize, data.dest_contact,
                                      &prvkey, &pubkey))) {
@@ -634,14 +634,17 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   unsigned int amhsize = sizeof (struct allnet_app_media_header);
   unsigned int avhhsize = sizeof (struct allnet_voa_hs_syn_header) +
                           ((num_media_types - 1) * ALLNET_MEDIA_ID_SIZE);
-  allnet_rsa_prvkey prvkey = NULL;
+  allnet_rsa_prvkey prvkey;
+  allnet_rsa_null_prvkey (&prvkey);
   allnet_rsa_pubkey pubkey = NULL;
+  allnet_rsa_null_pubkey (&pubkey);
   get_key_for_contact (data.dest_contact, &prvkey, &pubkey);
   int bufsize = 0;
-  if (prvkey != NULL)
+  if (! allnet_rsa_prvkey_is_null (prvkey))
     bufsize += allnet_rsa_prvkey_size (prvkey) + 2; /* space for signature */
-  if (pubkey == NULL) {
-    fprintf (stderr, "voa: failed to get public key for %s\n", data.dest_contact);
+  if (! allnet_rsa_pubkey_is_null (pubkey)) {
+    fprintf (stderr, "voa: failed to get public key for %s\n",
+             data.dest_contact);
     return NULL;
   }
 
@@ -898,7 +901,10 @@ static void enc_main_loop ()
     GstSample * sample = gst_app_sink_pull_sample (voa_sink);
     if (sample) {
       GstBuffer * buffer = gst_sample_get_buffer (sample);
-      gsize bufsiz = gst_buffer_get_size (buffer);
+#if DEBUG > 1
+      gsize bufsiz =   /* bufsiz only used for debug printing */
+#endif /* DEBUG */
+                     gst_buffer_get_size (buffer);
 #if DEBUG > 1
       printf ("voa: offset: %lu, duration: %lums, size: %lu\n", buffer->offset, (unsigned long)buffer->duration / 1000000, (size_t)bufsiz);
 #endif /* DEBUG */
