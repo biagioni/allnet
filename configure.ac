@@ -35,44 +35,46 @@ AC_SUBST(LDVERSION)
 AC_ARG_ENABLE([voa],
             [AS_HELP_STRING([--disable-voa],
             [Disable Voice-over-AllNet])],
-            [use_voa=no],
-            [use_voa=yes])
+            [use_voa=$enableval],
+            [use_voa=maybe])
 if test "x$use_voa" != "xno"; then
     PKG_CHECK_MODULES(gstreamer, [gstreamer-1.0, gstreamer-app-1.0], have_gstreamer=yes, have_gstreamer=no)
     if test "x$have_gstreamer" != "xyes"; then
-        if test "x$use_voa" = "xyes"; then
-            AC_MSG_ERROR([Voice-over-AllNet support explicitly requested but GStreamer could not be found])
-        else
-            AC_MSG_WARN([Disabling Voice-over-AllNet due to missing GStreamer headers])
+        if test "x$use_voa" == "xyes"; then
+            AC_MSG_ERROR([Voice-over-AllNet explicitly requested but GStreamer could not be found])
         fi
+        AC_MSG_RESULT([Disabling Voice-over-AllNet due to missing GStreamer headers])
+        enable_voa=no
     else
         enable_voa=yes
     fi
+else
+    enable_voa=no
 fi
 AM_CONDITIONAL(USE_VOICE_OVER_ALLNET, test "x$enable_voa" = "xyes")
 
-# openssl check taken from
+# openssl check adapted from
 # http://cgit.sukimashita.com/libimobiledevice.git/tree/configure.ac
 AC_ARG_ENABLE([openssl],
             [AS_HELP_STRING([--disable-openssl],
             [Do not look for OpenSSL])],
-            [use_openssl=no],
-            [use_openssl=yes])
-pkg_req_openssl="openssl >= 1.0"
-PKG_CHECK_MODULES(openssl, $pkg_req_openssl, have_openssl=yes, have_openssl=no)
-if test "x$have_openssl" = "xyes"; then
-  if test "x$use_openssl" != "xyes"; then
-    enable_openssl=no
-    echo "*** Note: OpenSSL support explicitly disabled ***"
-  else
-    enable_openssl=yes
-  fi
+            [use_openssl=$enableval],
+            [use_openssl=maybe])
+if test "x$use_openssl" != "xno"; then
+    PKG_CHECK_MODULES(openssl, [openssl >= 1.0], [have_openssl=yes], [have_openssl=no])
+    if test "x$have_openssl" != "xyes"; then
+        if test "x$use_openssl" == "xyes"; then
+            AC_MSG_ERROR([OpenSSL support explicitly requested but OpenSSL could not be found])
+        fi
+        AC_MSG_RESULT([OpenSSL not found, Disabling OpenSSL])
+        enable_openssl=no
+    else
+        enable_openssl=yes
+    fi
 else
-  if test "x$use_openssl" == "xyes" -a "x$have_openssl" != "xyes"; then
-    AC_MSG_ERROR([OpenSSL support explicitly requested but OpenSSL could not be found])
-  fi
+    enable_openssl=no
 fi
-AM_CONDITIONAL(HAVE_OPENSSL, test "x$have_openssl" = "xyes")
+AM_CONDITIONAL(HAVE_OPENSSL, test "x$enable_openssl" = "xyes")
 if test "x$enable_openssl" = "xyes"; then
   AC_DEFINE(HAVE_OPENSSL, 1, [Define if you have OpenSSL support])
   AC_SUBST(openssl_CFLAGS)
