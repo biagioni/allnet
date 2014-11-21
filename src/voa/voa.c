@@ -968,7 +968,6 @@ static void cb_enc_decbin_done (GstElement * element, gpointer user_data)
  */
 static int init_audio (int is_encoder)
 {
-  GstMessage * msg;
   GstStateChangeReturn ret;
 
   /* Initialize GStreamer */
