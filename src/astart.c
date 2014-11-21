@@ -32,7 +32,6 @@ extern void keyd_main (char * pname);
  * user, if any, else user "nobody", if such a user is defined */
 static void make_root_nobody ()
 {
-printf ("uids %d %d\n", getuid (), geteuid ());
   if (geteuid () != 0)
     return;   /* not root, nothing to do */
   int real_uid = getuid ();
@@ -177,7 +176,7 @@ static void stop_all (int signal)
               signal, fname);
       printf ("running pkill astart\n");
     }
-    execlp ("pkill", "pkill", "-f", "astart", ((char *)NULL));
+    execlp ("pkill", "pkill", "astart", ((char *)NULL));
     /* execl should never return */
     printf ("unable to pkill\n");
 /*
