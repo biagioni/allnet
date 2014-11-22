@@ -772,7 +772,7 @@ static int send_voa_request ()
   struct allnet_header * pak = create_voa_hs_packet (key, secret,
       (const char *)data.stream_id, &paksize);
   if (pak == NULL) {
-    fprintf (stderr, "voa: failed to create request packet");
+    fprintf (stderr, "voa: failed to create request packet\n");
     return 0;
   }
   if (!send_pipe_message (data.allnet_socket, (const char *)pak, paksize,
