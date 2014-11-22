@@ -1,31 +1,48 @@
-/* abc.c: get allnet messages from ad, broadcast them to one interface */
-/*        get allnet messages from the interface, forward them to ad */
-/* abc stands for (A)llNet (B)road(C)ast */
-/* single-threaded, uses select to check the pipe from ad and the interface */
-/* must be run with supervisory privileges */
-/* arguments are:
-  - the fd number of the pipe from ad
-  - the fd number of the pipe to ad
-  - the interface name
+/* abc.c: get allnet messages from ad, broadcast them to one interface
+ *        get allnet messages from the interface, forward them to ad
+ * abc stands for (A)llNet (B)road(C)ast
+ *
+ * single-threaded, uses select to check the pipe from ad and the interface
+ * may have to be run with supervisory/root privileges depending on the chosen
+ * interface driver
+ * arguments are:
+ * - the fd number of the pipe from ad
+ * - the fd number of the pipe to ad
+ * - the interface name and optionally interface driver and driver options
+ *  e.g. eth0/ip, wlan0/wifi, or wlan0/wifi,nm
+ *  Available drivers are ip and wifi, ip being the default.
+ *    ip    can only be used on interfaces that are already connected to an IP
+ *          network.
+ *    wifi  Sets up or connects to the adhoc network "allnet" running on
+ *          channel 1.
+ *          iw: When no further parameters are given the "iw" driver is
+ *          used which uses the iw command to attach and detach the interface.
+ *          When NetworkManager support is enabled at compile time, it is used
+ *          to disable NetworkManager on given interface before using iw.
+ *          iw requires root privileges.
+ *          nm: With the "nm" driver, NetworkManager is used to connect the
+ *          interface to the "allnet" adhoc network. This driver does not
+ *          require root privileges but is much slower (ca. 20s to connect.)
  */
-/* config file "abc" "interface-name" (e.g. ~/.allnet/abc/wlan0)
+
+/* TODO: config file "abc" "interface-name" (e.g. ~/.allnet/abc/wlan0)
  * gives the maximum fraction of time the interface should be turned
  * on for allnet ad-hoc traffic.
  * if not found, the maximum fraction is 1 percent, i.e. 0.01
  * this fraction only applies to messages with priority <= 0.5.
- *
- * there is a 5s basic cycle and two modes:
+ */
+
+/*
+ * For managed interfaces (wifi interface driver) there is a 5s basic cycle and
+ * two modes:
  * - sending data I care about (priority greater than 0.5)
  * - energy saving mode
- *
  * In either mode, I send a beacon at a random point in time during
  * each cycle, then listen (for fraction * basic cycle time) for senders
  * to contact me.
- *
  * When sending high priority data, I keep the iface on, and forward
  * all the data I can (within their time limit) to anyone who sends
  * me a beacon.
- *
  * I leave send mode as soon as I no longer have high priority data to send.
  *
  * In energy saving mode, the iface is turned on right before sending the
@@ -36,8 +53,6 @@
  * the iface is turned on for two full cycles, and during that time we
  * behave as if we had high priority data to send.
  *
- * packets are removed from the queue after being forwarded for at least
- * two basic cycles.
  */
 
 #include <assert.h>
@@ -60,7 +75,7 @@
 #include "lib/pipemsg.h"      /* receive_pipe_message_fd, receive_pipe_message_any */
 #include "lib/priority.h"     /* ALLNET_PRIORITY_FRIENDS_LOW */
 #include "lib/util.h"         /* delta_us */
-#include "lib/pqueue.h"       /* queue_max_priority */
+#include "lib/pqueue.h"       /* queue_* */
 #include "lib/sha.h"          /* sha512_bytes */
 
 
@@ -76,22 +91,23 @@
 /** exit flag set by TERM signal. Set by term_handler. */
 static volatile sig_atomic_t term = 0;
 
+/* Managed interface drivers limit the rate. TODO: move into interface */
 static unsigned long long int bits_per_s = 1000 * 1000;  /* 1Mb/s default */
 
-/* The state machine has two modes, high priority (keep interface on,
- * and send whenever possible) and low priority (turn on interface only
- * about 1% of the time to send or receive packets */
-static int high_priority = 0;   /* start out in low priority mode */
+/* with managed interface drivers, the state machine has two modes, high
+ * priority (keep interface on, and send whenever possible) and low priority
+ * (turn on interface only about 1% of the time to send or receive packets).
+ * Start out in low-priority mode. */
+static int high_priority = 0;
 
-/* when we receive high priority packets, we want to stay in high
- * priority mode one more cycle, in case there are any more packets to
- * receive */
+/* when we receive high priority packets, we want to stay in high priority mode
+ * one more cycle, in case there are any more packets to receive */
 static int received_high_priority = 0;
 
 /* cycles we skipped because of interface activation delay.
  * This is also the number of cycles we leave the interface on
- * in low priority mode to compensate for the delay */
-static unsigned if_cycles_skiped = 0;
+ * in low priority mode to compensate for the activation delay */
+static unsigned int if_cycles_skiped = 0;
 
 enum abc_send_type {
     ABC_SEND_TYPE_NONE = 0,  /* nothing to send */
@@ -283,8 +299,8 @@ static void unmanaged_send_pending ()
 }
 
 /**
- * Send pending message and update pending beacon state
- * @param type if type is ABC_SEND_TYPE_REPLY, sends the message
+ * Send pending message (and update pending beacon state on beacon messages)
+ * @param type if type is ABC_SEND_TYPE_REPLY, sends the beacon message
  *    if type is ABC_SEND_TYPE_QUEUE, sends the specified number of bytes from
  *    the queue, ignoring message.
  * @param size size of message
