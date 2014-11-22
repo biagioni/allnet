@@ -53,6 +53,9 @@
  * the iface is turned on for two full cycles, and during that time we
  * behave as if we had high priority data to send.
  *
+ * packets are resent in exponential backoff fashion (every 2^i'th cycle).
+ * Packets are dropped when acked or after the maximal backoff threshold is
+ * reached at 2^8 == 256.
  */
 
 #include <assert.h>
@@ -87,6 +90,13 @@
 #define	BEACON_MS		(BASIC_CYCLE_SEC * 1000 / 100)
 /* maximum amount of time to wait for a beacon grant */
 #define BEACON_MAX_COMPLETION_US	250000    /* 0.25s */
+
+/* drop packets from queue after reaching 8 resends with the last interval
+ * being 2^8 == 256 cycles. */
+#define MAX_BACKOFF_THRESHOLD 8
+
+/** Cycle counter. Used for exponential backoff when resending messages. */
+static unsigned long cycle = 0ul;
 
 /** exit flag set by TERM signal. Set by term_handler. */
 static volatile sig_atomic_t term = 0;
@@ -284,17 +294,18 @@ static void make_beacon_grant (char * buffer, int bsize,
 /** Send pending messages */
 static void unmanaged_send_pending ()
 {
-  int total_sent = 0;
   char * my_message = NULL;
   int nsize;
   int priority;
+  int backoff;
   queue_iter_start ();
-  while (queue_iter_next (&my_message, &nsize, &priority)) {
+  while (queue_iter_next (&my_message, &nsize, &priority, &backoff)) {
+    if (cycle % (1 << backoff) != 0)
+      continue;
     if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
         BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
       perror ("sendto for type 2");
-    queue_iter_remove ();
-    total_sent += nsize;
+    queue_iter_inc_backoff ();
   }
 }
 
@@ -303,6 +314,8 @@ static void unmanaged_send_pending ()
  * @param type if type is ABC_SEND_TYPE_REPLY, sends the beacon message
  *    if type is ABC_SEND_TYPE_QUEUE, sends the specified number of bytes from
  *    the queue, ignoring message.
+ *    Exponential backoff is used to resend messages only every 2^i'th cycle.
+ *    Messages are removed from the queue when the set threshold is crossed.
  * @param size size of message
  */
 static void send_pending (enum abc_send_type type, int size, char * message)
@@ -323,13 +336,17 @@ static void send_pending (enum abc_send_type type, int size, char * message)
       char * my_message = NULL;
       int nsize;
       int priority;
+      int backoff;
       queue_iter_start ();
-      while ((queue_iter_next (&my_message, &nsize, &priority)) &&
+      while ((queue_iter_next (&my_message, &nsize, &priority, &backoff)) &&
              (total_sent + nsize <= size)) {
+        if (cycle % (1 << backoff) != 0)
+          continue;
         if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
             BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
           perror ("sendto for type 2");
         total_sent += nsize;
+        queue_iter_inc_backoff ();
       }
       break;
     }
@@ -482,8 +499,9 @@ static void remove_acked (const char * ack)
   char * element = NULL;
   int size;
   int priority;
+  int backoff;
   queue_iter_start ();
-  while (queue_iter_next (&element, &size, &priority)) {
+  while (queue_iter_next (&element, &size, &priority, &backoff)) {
     if (size > ALLNET_HEADER_SIZE) {
       struct allnet_header * hp = (struct allnet_header *) element;
       char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, size);
@@ -746,11 +764,13 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
   if (iface->iface_is_managed)
     bzero (zero_nonce, NONCE_SIZE);
-  while (!term)
+  while (!term) {
     if (iface->iface_is_managed)
       one_cycle (interface, rpipe, wpipe, &quiet_end);
     else
       unmanaged_one_cycle (interface, rpipe, wpipe);
+    ++cycle;
+  }
 
 iface_cleanup:
   iface->iface_cleanup_cb ();
@@ -759,7 +779,7 @@ iface_cleanup:
 void abc_main (int rpipe, int wpipe, char * ifopts)
 {
   init_log ("abc");
-  queue_init (16 * 1024 * 1024);  /* 16MBi */
+  queue_init (16 * 1024 * 1024, MAX_BACKOFF_THRESHOLD);  /* 16MBi */
 
   const char * interface = ifopts;
   const char * iface_type = NULL;
