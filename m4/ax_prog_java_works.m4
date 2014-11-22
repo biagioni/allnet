@@ -92,7 +92,7 @@ if test x$ac_cv_prog_uudecode_base64 != xyes; then
         rm -f Test.class
         AC_MSG_WARN([I have to compile Test.class from scratch])
         if test x$ac_cv_prog_javac_works = xno; then
-                AC_MSG_ERROR([Cannot compile java source. $JAVAC does not work properly])
+                AC_MSG_WARN([Cannot compile java source. $JAVAC does not work properly])
         fi
         if test x$ac_cv_prog_javac_works = x; then
                 AX_PROG_JAVAC
@@ -117,15 +117,20 @@ if test x$ac_cv_prog_uudecode_base64 != xyes; then
         else
           echo "configure: failed program was:" >&AS_MESSAGE_LOG_FD
           cat $JAVA_TEST >&AS_MESSAGE_LOG_FD
-          AC_MSG_ERROR(The Java compiler $JAVAC failed (see config.log, check the CLASSPATH?))
+          AC_MSG_WARN(The Java compiler $JAVAC failed (see config.log, check the CLASSPATH?))
+          AC_MSG_WARN(assuming $JAVA works)
+          ac_cv_prog_java_works=yes
+          ac_cv_prog_java_works_assumption=yes
         fi
 fi
 if AC_TRY_COMMAND($JAVA -classpath . $JAVAFLAGS $TEST) >/dev/null 2>&1; then
   ac_cv_prog_java_works=yes
 else
-  echo "configure: failed program was:" >&AS_MESSAGE_LOG_FD
-  cat $JAVA_TEST >&AS_MESSAGE_LOG_FD
-  AC_MSG_ERROR(The Java VM $JAVA failed (see config.log, check the CLASSPATH?))
+  if test x$ac_cv_prog_java_works_assumption != xyes; then
+    echo "configure: failed program was:" >&AS_MESSAGE_LOG_FD
+    cat $JAVA_TEST >&AS_MESSAGE_LOG_FD
+    AC_MSG_ERROR(The Java VM $JAVA failed (see config.log, check the CLASSPATH?))
+  fi
 fi
 rm -fr $JAVA_TEST $CLASS_TEST Test.uue
 ])
