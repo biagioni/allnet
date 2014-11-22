@@ -535,17 +535,7 @@ static void handle_ad_message (const char * message, int msize, int priority)
 
 static void unmanaged_handle_network_message (const char * message, int msize, int ad_pipe)
 {
-  /* check for high-priority message */
   struct allnet_header * hp = (struct allnet_header *) message;
-  int cacheable = ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0);
-  /*
-  int msgpriority = compute_priority (msize, hp->src_nbits, hp->dst_nbits,
-                                      hp->hops, hp->max_hops,
-                                      UNKNOWN_SOCIAL_TIER, 1, cacheable);
-  if (msgpriority >= ALLNET_PRIORITY_DEFAULT_HIGH)
-    received_high_priority = 1;
-  */
-
   /* send the message to ad */
   send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
   /* remove any messages that this message acks */
