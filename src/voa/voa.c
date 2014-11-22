@@ -1286,7 +1286,9 @@ int main (int argc, char ** argv)
       do {
         printf (".");
         fflush (stdout);
-        if (send_voa_request () && voa_receive (2000)) {
+        if (!send_voa_request ())
+          break;
+        if (voa_receive (2000)) {
           printf ("\n");
           enc_main_loop ();
           break;
