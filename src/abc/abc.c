@@ -539,7 +539,11 @@ static void remove_acks (const char * message, const char * end)
 
 static void handle_ad_message (const char * message, int msize, int priority)
 {
-  queue_add (message, msize, priority);
+  if (!queue_add (message, msize, priority)) {
+    snprintf (log_buf, LOG_SIZE,
+              "abc: queue full, unable to add new message of size %d\n", msize);
+    log_print ();
+  }
   remove_acks (message, message + msize);
 }
 
