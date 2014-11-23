@@ -4,12 +4,17 @@
 
 #ifndef __APPLE__
 #include <netpacket/packet.h>  /* struct sockaddr_ll */
-typedef struct sockaddr_ll sockaddr_t;
-#else /* __APPLE__ */
-#include <sys/socket.h>        /* struct sockaddr */
-#include <netinet/ip.h>        /* struct sockaddr_in */
-typedef struct sockaddr_in sockaddr_t;
 #endif /* __APPLE__ */
+#include <sys/socket.h>        /* struct sockaddr, socklen_t */
+#include <netinet/ip.h>        /* struct sockaddr_in */
+
+typedef union {
+  struct sockaddr sa;
+#ifndef __APPLE__
+  struct sockaddr_ll ll;
+#endif /* __APPLE__ */
+  struct sockaddr_in in;
+} sockaddr_t;
 
 #define BC_ADDR(ifaceptr) ((const struct sockaddr *)&(ifaceptr)->bc_address)
 
@@ -29,6 +34,7 @@ typedef struct abc_iface {
   int iface_sockfd; /* the socket filedescriptor used with this iface */
   sockaddr_t if_address; /* the address of the interface */
   sockaddr_t bc_address; /* broacast address of the interface */
+  socklen_t sockaddr_size; /* the size of the sockaddr_* inside sockaddr_t */
   /**
    * Callback to initialize the interface.
    * The callback must initialize all paramteres except interface

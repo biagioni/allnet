@@ -240,11 +240,11 @@ static void send_beacon (int awake_ms)
   writeb64u (mbp->awake_time,
              ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
   if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT, BC_ADDR (iface),
-      sizeof (sockaddr_t)) < size) {
+      iface->sockaddr_size) < size) {
     int e = errno;
     /* retry, first packet is sometimes dropped */
     if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT, BC_ADDR (iface),
-        sizeof (sockaddr_t)) < size) {
+        iface->sockaddr_size) < size) {
       perror ("beacon sendto (2nd try)");
       if (errno != e)
         printf ("...different error on 2nd try, first was %d\n", e);
@@ -303,8 +303,8 @@ static void unmanaged_send_pending ()
     if (cycle % (1 << backoff) != 0)
       continue;
     if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
-        BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
-      perror ("sendto for type 2");
+        BC_ADDR (iface), iface->sockaddr_size) < nsize)
+      perror ("abc: sendto");
     queue_iter_inc_backoff ();
   }
 }
@@ -323,8 +323,8 @@ static void send_pending (enum abc_send_type type, int size, char * message)
   switch (type) {
     case ABC_SEND_TYPE_REPLY:
       if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
-          BC_ADDR (iface), sizeof (sockaddr_t)) < size)
-        perror ("sendto for type 1");
+          BC_ADDR (iface), iface->sockaddr_size) < size)
+        perror ("abc: sendto (reply)");
       else
         beacon_state = pending_beacon_state;
       pending_beacon_state = BEACON_NONE;
@@ -343,8 +343,8 @@ static void send_pending (enum abc_send_type type, int size, char * message)
         if (cycle % (1 << backoff) != 0)
           continue;
         if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
-            BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
-          perror ("sendto for type 2");
+            BC_ADDR (iface), iface->sockaddr_size) < nsize)
+          perror ("abc: sendto (queue)");
         total_sent += nsize;
         queue_iter_inc_backoff ();
       }

@@ -48,6 +48,7 @@ abc_iface abc_iface_wifi = {
   .iface_sockfd = -1,
   .if_address = {},
   .bc_address = {},
+  .sockaddr_size = sizeof (struct sockaddr_ll),
   .init_iface_cb = abc_wifi_init,
   .iface_on_off_ms = 150, /* default value, updated on runtime */
   .iface_is_enabled_cb = abc_wifi_is_enabled,
@@ -136,19 +137,19 @@ static int abc_wifi_init (const char * interface)
       }
       /* create the socket and initialize the address */
       abc_iface_wifi.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
-      abc_iface_wifi.if_address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
-      if (bind (abc_iface_wifi.iface_sockfd, (const struct sockaddr *) &abc_iface_wifi.if_address, sizeof (sockaddr_t)) == -1)
+      abc_iface_wifi.if_address.sa = *(ifa_loop->ifa_addr);
+      if (bind (abc_iface_wifi.iface_sockfd, &abc_iface_wifi.if_address.sa, sizeof (struct sockaddr_ll)) == -1)
         printf ("abc-wifi: error binding interface, continuing without..\n");
       if (ifa_loop->ifa_flags & IFF_BROADCAST)
-        abc_iface_wifi.bc_address = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
+        abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_broadaddr);
       else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
-        abc_iface_wifi.bc_address = *((struct sockaddr_ll *) (ifa_loop->ifa_dstaddr));
+        abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_dstaddr);
       else
-        abc_iface_set_default_broadcast_address (&abc_iface_wifi.bc_address);
-      abc_iface_wifi.bc_address.sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
-      abc_iface_wifi.bc_address.sll_ifindex = abc_iface_wifi.if_address.sll_ifindex;
-      abc_iface_print_sll_addr (&abc_iface_wifi.if_address, "interface address");
-      abc_iface_print_sll_addr (&abc_iface_wifi.bc_address, "broadcast address");
+        abc_iface_set_default_sll_broadcast_address (&abc_iface_wifi.bc_address.ll);
+      abc_iface_wifi.bc_address.ll.sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
+      abc_iface_wifi.bc_address.ll.sll_ifindex = abc_iface_wifi.if_address.ll.sll_ifindex;
+      abc_iface_print_sll_addr (&abc_iface_wifi.if_address.ll, "interface address");
+      abc_iface_print_sll_addr (&abc_iface_wifi.bc_address.ll, "broadcast address");
       freeifaddrs (ifa);
       return 1;
     }
