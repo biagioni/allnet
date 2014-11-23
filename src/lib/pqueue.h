@@ -3,7 +3,7 @@
 #ifndef ALLNET_PQUEUE_H
 #define ALLNET_PQUEUE_H
 
-extern void queue_init (int max_bytes);
+extern void queue_init (int max_bytes, int max_backoff_threshold);
 
 /* return the highest priority of any item in the queue */
 extern int queue_max_priority ();
@@ -20,11 +20,17 @@ extern void queue_add (const char * queue_element, int size, int priority);
 extern void queue_iter_start ();
 
 /* Fills in *queue_element with a reference to the next object, *next_size
- * with its length, and *priority with its priority, and returns 1.
+ * with its length, *priority with its priority, *backoff with the current
+ * backoff value and returns 1.
  *
  * if the iteration has reached the end, or for any other error, returns 0. */
 extern int queue_iter_next (char * * queue_element, int * next_size,
-                            int * priority);
+                            int * priority, int * backoff);
+
+/* Increment backoff counter for current element and return 1.
+ * The message is removed when the threshold is crossed and 0 is returned
+ */
+extern int queue_iter_inc_backoff ();
 
 /* call at most once after a successful call to queue_iter_next */
 extern void queue_iter_remove ();

@@ -43,6 +43,7 @@ static int abc_wifi_cleanup ();
 
 abc_iface abc_iface_wifi = {
   .iface_type = ABC_IFACE_TYPE_WIFI,
+  .iface_is_managed = 1,
   .iface_type_args = NULL,
   .iface_sockfd = -1,
   .if_address = {},

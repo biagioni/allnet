@@ -1,31 +1,48 @@
-/* abc.c: get allnet messages from ad, broadcast them to one interface */
-/*        get allnet messages from the interface, forward them to ad */
-/* abc stands for (A)llNet (B)road(C)ast */
-/* single-threaded, uses select to check the pipe from ad and the interface */
-/* must be run with supervisory privileges */
-/* arguments are:
-  - the fd number of the pipe from ad
-  - the fd number of the pipe to ad
-  - the interface name
+/* abc.c: get allnet messages from ad, broadcast them to one interface
+ *        get allnet messages from the interface, forward them to ad
+ * abc stands for (A)llNet (B)road(C)ast
+ *
+ * single-threaded, uses select to check the pipe from ad and the interface
+ * may have to be run with supervisory/root privileges depending on the chosen
+ * interface driver
+ * arguments are:
+ * - the fd number of the pipe from ad
+ * - the fd number of the pipe to ad
+ * - the interface name and optionally interface driver and driver options
+ *  e.g. eth0/ip, wlan0/wifi, or wlan0/wifi,nm
+ *  Available drivers are ip and wifi, ip being the default.
+ *    ip    can only be used on interfaces that are already connected to an IP
+ *          network.
+ *    wifi  Sets up or connects to the adhoc network "allnet" running on
+ *          channel 1.
+ *          iw: When no further parameters are given the "iw" driver is
+ *          used which uses the iw command to attach and detach the interface.
+ *          When NetworkManager support is enabled at compile time, it is used
+ *          to disable NetworkManager on given interface before using iw.
+ *          iw requires root privileges.
+ *          nm: With the "nm" driver, NetworkManager is used to connect the
+ *          interface to the "allnet" adhoc network. This driver does not
+ *          require root privileges but is much slower (ca. 20s to connect.)
  */
-/* config file "abc" "interface-name" (e.g. ~/.allnet/abc/wlan0)
+
+/* TODO: config file "abc" "interface-name" (e.g. ~/.allnet/abc/wlan0)
  * gives the maximum fraction of time the interface should be turned
  * on for allnet ad-hoc traffic.
  * if not found, the maximum fraction is 1 percent, i.e. 0.01
  * this fraction only applies to messages with priority <= 0.5.
- *
- * there is a 5s basic cycle and two modes:
+ */
+
+/*
+ * For managed interfaces (wifi interface driver) there is a 5s basic cycle and
+ * two modes:
  * - sending data I care about (priority greater than 0.5)
  * - energy saving mode
- *
  * In either mode, I send a beacon at a random point in time during
  * each cycle, then listen (for fraction * basic cycle time) for senders
  * to contact me.
- *
  * When sending high priority data, I keep the iface on, and forward
  * all the data I can (within their time limit) to anyone who sends
  * me a beacon.
- *
  * I leave send mode as soon as I no longer have high priority data to send.
  *
  * In energy saving mode, the iface is turned on right before sending the
@@ -36,8 +53,9 @@
  * the iface is turned on for two full cycles, and during that time we
  * behave as if we had high priority data to send.
  *
- * packets are removed from the queue after being forwarded for at least
- * two basic cycles.
+ * packets are resent in exponential backoff fashion (every 2^i'th cycle).
+ * Packets are dropped when acked or after the maximal backoff threshold is
+ * reached at 2^8 == 256.
  */
 
 #include <assert.h>
@@ -60,7 +78,7 @@
 #include "lib/pipemsg.h"      /* receive_pipe_message_fd, receive_pipe_message_any */
 #include "lib/priority.h"     /* ALLNET_PRIORITY_FRIENDS_LOW */
 #include "lib/util.h"         /* delta_us */
-#include "lib/pqueue.h"       /* queue_max_priority */
+#include "lib/pqueue.h"       /* queue_* */
 #include "lib/sha.h"          /* sha512_bytes */
 
 
@@ -73,25 +91,33 @@
 /* maximum amount of time to wait for a beacon grant */
 #define BEACON_MAX_COMPLETION_US	250000    /* 0.25s */
 
+/* drop packets from queue after reaching 8 resends with the last interval
+ * being 2^8 == 256 cycles. */
+#define MAX_BACKOFF_THRESHOLD 8
+
+/** Cycle counter. Used for exponential backoff when resending messages. */
+static unsigned long cycle = 0ul;
+
 /** exit flag set by TERM signal. Set by term_handler. */
 static volatile sig_atomic_t term = 0;
 
+/* Managed interface drivers limit the rate. TODO: move into interface */
 static unsigned long long int bits_per_s = 1000 * 1000;  /* 1Mb/s default */
 
-/* The state machine has two modes, high priority (keep interface on,
- * and send whenever possible) and low priority (turn on interface only
- * about 1% of the time to send or receive packets */
-static int high_priority = 0;   /* start out in low priority mode */
+/* with managed interface drivers, the state machine has two modes, high
+ * priority (keep interface on, and send whenever possible) and low priority
+ * (turn on interface only about 1% of the time to send or receive packets).
+ * Start out in low-priority mode. */
+static int high_priority = 0;
 
-/* when we receive high priority packets, we want to stay in high
- * priority mode one more cycle, in case there are any more packets to
- * receive */
+/* when we receive high priority packets, we want to stay in high priority mode
+ * one more cycle, in case there are any more packets to receive */
 static int received_high_priority = 0;
 
 /* cycles we skipped because of interface activation delay.
  * This is also the number of cycles we leave the interface on
- * in low priority mode to compensate for the delay */
-static unsigned if_cycles_skiped = 0;
+ * in low priority mode to compensate for the activation delay */
+static unsigned int if_cycles_skiped = 0;
 
 enum abc_send_type {
     ABC_SEND_TYPE_NONE = 0,  /* nothing to send */
@@ -265,11 +291,31 @@ static void make_beacon_grant (char * buffer, int bsize,
   writeb64u (mbgp->send_time, send_time_ns);
 }
 
+/** Send pending messages */
+static void unmanaged_send_pending ()
+{
+  char * my_message = NULL;
+  int nsize;
+  int priority;
+  int backoff;
+  queue_iter_start ();
+  while (queue_iter_next (&my_message, &nsize, &priority, &backoff)) {
+    if (cycle % (1 << backoff) != 0)
+      continue;
+    if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
+        BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
+      perror ("sendto for type 2");
+    queue_iter_inc_backoff ();
+  }
+}
+
 /**
- * Send pending message and update pending beacon state
- * @param type if type is ABC_SEND_TYPE_REPLY, sends the message
+ * Send pending message (and update pending beacon state on beacon messages)
+ * @param type if type is ABC_SEND_TYPE_REPLY, sends the beacon message
  *    if type is ABC_SEND_TYPE_QUEUE, sends the specified number of bytes from
  *    the queue, ignoring message.
+ *    Exponential backoff is used to resend messages only every 2^i'th cycle.
+ *    Messages are removed from the queue when the set threshold is crossed.
  * @param size size of message
  */
 static void send_pending (enum abc_send_type type, int size, char * message)
@@ -290,13 +336,17 @@ static void send_pending (enum abc_send_type type, int size, char * message)
       char * my_message = NULL;
       int nsize;
       int priority;
+      int backoff;
       queue_iter_start ();
-      while ((queue_iter_next (&my_message, &nsize, &priority)) &&
+      while ((queue_iter_next (&my_message, &nsize, &priority, &backoff)) &&
              (total_sent + nsize <= size)) {
+        if (cycle % (1 << backoff) != 0)
+          continue;
         if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
             BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
           perror ("sendto for type 2");
         total_sent += nsize;
+        queue_iter_inc_backoff ();
       }
       break;
     }
@@ -449,8 +499,9 @@ static void remove_acked (const char * ack)
   char * element = NULL;
   int size;
   int priority;
+  int backoff;
   queue_iter_start ();
-  while (queue_iter_next (&element, &size, &priority)) {
+  while (queue_iter_next (&element, &size, &priority, &backoff)) {
     if (size > ALLNET_HEADER_SIZE) {
       struct allnet_header * hp = (struct allnet_header *) element;
       char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, size);
@@ -479,6 +530,15 @@ static void remove_acks (const char * message, const char * end)
 static void handle_ad_message (const char * message, int msize, int priority)
 {
   queue_add (message, msize, priority);
+  remove_acks (message, message + msize);
+}
+
+static void unmanaged_handle_network_message (const char * message, int msize, int ad_pipe)
+{
+  struct allnet_header * hp = (struct allnet_header *) message;
+  /* send the message to ad */
+  send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
+  /* remove any messages that this message acks */
   remove_acks (message, message + msize);
 }
 
@@ -531,6 +591,29 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
   }
 }
 
+/* handle incoming packets until time t */
+static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
+{
+  struct timeval time_buffer;   /* beacon_deadline sometimes points here */
+  while (is_before (t) && !term) {
+    char * message;
+    int fd;
+    int priority;
+    int msize = receive_until (t, &message, &fd, &priority, 0);
+    static char send_message [ALLNET_MTU];
+    if ((msize > 0) && (is_valid_message (message, msize))) {
+      if (fd == rpipe)
+        handle_ad_message (message, msize, priority);
+      else
+        unmanaged_handle_network_message (message, msize, wpipe);
+      free (message);
+      unmanaged_send_pending ();
+
+    } else {
+      usleep (10 * 1000); /* 10ms */
+    }
+  }
+}
 /* handle incoming packets until time t.  Do not send before quiet_end */
 static void handle_until (struct timeval * t, struct timeval * quiet_end,
                           int rpipe, int wpipe)
@@ -603,6 +686,17 @@ static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
           bstart->tv_sec, bstart->tv_usec, bfinish->tv_sec, bfinish->tv_usec);
 }
 
+/* do one basic 5s unmanaged cycle */
+static void unmanaged_one_cycle (const char * interface, int rpipe, int wpipe)
+{
+  struct timeval start, finish;
+  gettimeofday (&start, NULL);
+  finish.tv_sec = compute_next (start.tv_sec, BASIC_CYCLE_SEC, 0);
+  finish.tv_usec = 0;
+
+  unmanaged_handle_until (&finish, rpipe, wpipe);
+}
+
 /* do one basic 5s cycle */
 static void one_cycle (const char * interface, int rpipe, int wpipe,
                        struct timeval * quiet_end)
@@ -658,9 +752,15 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
     goto iface_cleanup;
   }
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
-  bzero (zero_nonce, NONCE_SIZE);
-  while (!term)
-    one_cycle (interface, rpipe, wpipe, &quiet_end);
+  if (iface->iface_is_managed)
+    bzero (zero_nonce, NONCE_SIZE);
+  while (!term) {
+    if (iface->iface_is_managed)
+      one_cycle (interface, rpipe, wpipe, &quiet_end);
+    else
+      unmanaged_one_cycle (interface, rpipe, wpipe);
+    ++cycle;
+  }
 
 iface_cleanup:
   iface->iface_cleanup_cb ();
@@ -669,7 +769,7 @@ iface_cleanup:
 void abc_main (int rpipe, int wpipe, char * ifopts)
 {
   init_log ("abc");
-  queue_init (16 * 1024 * 1024);  /* 16MBi */
+  queue_init (16 * 1024 * 1024, MAX_BACKOFF_THRESHOLD);  /* 16MBi */
 
   const char * interface = ifopts;
   const char * iface_type = NULL;

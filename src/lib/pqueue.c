@@ -11,6 +11,7 @@ struct queue_element {
   struct queue_element * next;  /* null at the end of the linked list */
   struct queue_element * prev;  /* null at the head of the linked list */
   int priority;
+  int backoff;
   int size;
   char data [0];   /* actually, however many chars size says */
 };
@@ -18,13 +19,15 @@ struct queue_element {
 static struct queue_element * head = NULL;
 static struct queue_element * tail = NULL;
 static int max_size = 0;
+static int max_backoff = 0;
 static int current_size = 0;
 
-void queue_init (int max_bytes)
+void queue_init (int max_bytes, int max_backoff_threshold)
 {
   head = NULL;
   tail = NULL;
   max_size = max_bytes;
+  max_backoff = max_backoff_threshold;
   current_size = 0;
 }
 
@@ -87,6 +90,7 @@ static struct queue_element *
   result->prev = prev;
   result->next = next;
   result->priority = priority;
+  result->backoff = 0;
   result->size = size;
   memcpy (result->data, value, size);
   return result;
@@ -133,10 +137,12 @@ void queue_iter_start ()
 }
 
 /* Fills in *queue_element with a reference to the next object, *next_size
- * with its length, and *priority with its priority, and returns 1.
+ * with its length, *priority with its priority, *backoff with the current
+ * backoff value and returns 1.
  *
  * if the iteration has reached the end, or for any other error, returns 0. */
-int queue_iter_next (char * * queue_element, int * next_size, int * priority)
+int queue_iter_next (char * * queue_element, int * next_size, int * priority,
+                     int * backoff)
 {
   iter_remove = NULL;     /* in case we fail, make sure we cannot remove */
   if (iter_next == NULL)
@@ -144,8 +150,24 @@ int queue_iter_next (char * * queue_element, int * next_size, int * priority)
   *queue_element = iter_next->data;
   *next_size = iter_next->size;
   *priority = iter_next->priority;
+  *backoff = iter_next->backoff;
   iter_remove = iter_next;
   iter_next = iter_next->next;
+  return 1;
+}
+
+/* Increment backoff counter for current element and return 1.
+ * The message is removed when the threshold is crossed and 0 is returned
+ */
+int queue_iter_inc_backoff ()
+{
+  if (iter_remove == NULL)
+    return 0; /* item doesn't exist */
+  ++iter_remove->backoff;
+  if (iter_remove->backoff > max_backoff && max_backoff > 0) {
+    queue_iter_remove ();
+    return 0;
+  }
   return 1;
 }
 
