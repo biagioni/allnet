@@ -33,7 +33,8 @@ abc_iface abc_iface_ip = {
   .iface_on_off_ms = 0, /* assume always on iface */
   .iface_is_enabled_cb = abc_ip_is_enabled,
   .iface_set_enabled_cb = abc_ip_set_enabled,
-  .iface_cleanup_cb = abc_ip_cleanup
+  .iface_cleanup_cb = abc_ip_cleanup,
+  .priv = NULL
 };
 
 static int abc_ip_is_enabled ()

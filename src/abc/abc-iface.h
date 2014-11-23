@@ -61,6 +61,8 @@ typedef struct abc_iface {
    * @return 1 on success, 0 on failure.
    */
   int (* iface_cleanup_cb) ();
+  /** Pointer to private additional data */
+  void * priv;
 } abc_iface;
 
 

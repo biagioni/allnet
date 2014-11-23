@@ -52,7 +52,8 @@ abc_iface abc_iface_wifi = {
   .iface_on_off_ms = 150, /* default value, updated on runtime */
   .iface_is_enabled_cb = abc_wifi_is_enabled,
   .iface_set_enabled_cb = abc_wifi_set_enabled,
-  .iface_cleanup_cb = abc_wifi_cleanup
+  .iface_cleanup_cb = abc_wifi_cleanup,
+  .priv = NULL
 };
 
 static abc_wifi_config_iface * wifi_config_types[] = {
