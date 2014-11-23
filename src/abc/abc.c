@@ -55,7 +55,10 @@
  * the iface is turned on for two full cycles, and during that time we
  * behave as if we had high priority data to send.
  *
- * packets are resent in exponential backoff fashion (every 2^i'th cycle).
+ * Packets are resent in exponential backoff fashion (every 2^i'th cycle).
+ * The cycle counter is incremented in every cycle where data is sent:
+ *   In managed mode, only in cycles when a beacon grant was received.
+ *   In unamanged mode, the cycle counter is incremented every basic (5s) cycle.
  * Packets are dropped when acked or after the maximal backoff threshold is
  * reached at 2^8 == 256.
  */
@@ -358,6 +361,7 @@ static void send_pending (enum abc_send_type type, int size, char * message)
         total_sent += nsize;
         queue_iter_inc_backoff ();
       }
+      ++cycle; /* increment cycle after sending data */
       break;
     }
 
@@ -710,6 +714,8 @@ static void unmanaged_one_cycle (const char * interface, int rpipe, int wpipe)
   finish.tv_usec = 0;
 
   unmanaged_handle_until (&finish, rpipe, wpipe);
+  unmanaged_send_pending (0); /* resend queued data if needed */
+  ++cycle;
 }
 
 /* do one basic 5s cycle */
@@ -774,7 +780,6 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
       one_cycle (interface, rpipe, wpipe, &quiet_end);
     else
       unmanaged_one_cycle (interface, rpipe, wpipe);
-    ++cycle;
   }
 
 iface_cleanup:
