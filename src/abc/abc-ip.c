@@ -21,6 +21,9 @@ static int abc_ip_is_enabled ();
 static int abc_ip_set_enabled (int state);
 static int abc_ip_cleanup ();
 
+struct abc_iface_ip_priv {
+  struct ifaddrs * ifa;
+} abc_iface_ip_priv;
 
 abc_iface abc_iface_ip = {
   .iface_type = ABC_IFACE_TYPE_IP,
@@ -39,7 +42,7 @@ abc_iface abc_iface_ip = {
 
 static int abc_ip_is_enabled ()
 {
-  return 1;
+  return ((struct abc_iface_ip_priv *)abc_iface_ip.priv)->ifa->ifa_flags & IFF_UP;
 }
 
 static int abc_ip_set_enabled (int state)
@@ -50,6 +53,7 @@ static int abc_ip_set_enabled (int state)
 /* returns 0 if the interface is not found, 1 otherwise */
 static int abc_ip_init (const char * interface)
 {
+  abc_iface_ip.priv = &abc_iface_ip_priv;
   struct ifaddrs * ifa;
   if (getifaddrs (&ifa) != 0) {
     perror ("getifaddrs");
@@ -60,6 +64,7 @@ static int abc_ip_init (const char * interface)
 #ifndef __APPLE__  /* not sure how to do this for apple */
     if ((ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
+      ((struct abc_iface_ip_priv *)abc_iface_ip.priv)->ifa = ifa_loop;
 #ifdef TRACKING_TIME
       struct timeval start;
       gettimeofday (&start, NULL);
