@@ -1,4 +1,4 @@
-/* pqueue.h: priority queue for broadcasting over the local area network */
+/* pqueue.h: priority queue for broadcasting over the local area network (not thread safe) */
 
 #ifndef ALLNET_PQUEUE_H
 #define ALLNET_PQUEUE_H

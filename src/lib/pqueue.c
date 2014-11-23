@@ -1,4 +1,4 @@
-/* pqueue.c: priority queue for broadcasting over the local area network */
+/* pqueue.c: priority queue for broadcasting over the local area network (not thread safe) */
 
 #include <stdio.h>
 #include <stdlib.h>
