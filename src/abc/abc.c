@@ -308,10 +308,12 @@ static void unmanaged_send_pending (int new_only)
     /* new (unsent) messages have a backoff value of 0 */
     if ((new_only && backoff) || (!new_only && cycle % (1 << backoff) != 0))
       continue;
-    if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
-        BC_ADDR (iface), iface->sockaddr_size) < nsize)
+    if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
+        BC_ADDR (iface), iface->sockaddr_size) < nsize) {
       perror ("abc: sendto");
-    queue_iter_inc_backoff ();
+      continue;
+    }
+      queue_iter_inc_backoff ();
   }
 }
 
@@ -339,18 +341,20 @@ static void send_pending (enum abc_send_type type, int size, char * message)
     case ABC_SEND_TYPE_QUEUE:
     {
       int total_sent = 0;
-      char * my_message = NULL;
+      char * message = NULL;
       int nsize;
       int priority;
       int backoff;
       queue_iter_start ();
-      while ((queue_iter_next (&my_message, &nsize, &priority, &backoff)) &&
+      while ((queue_iter_next (&message, &nsize, &priority, &backoff)) &&
              (total_sent + nsize <= size)) {
         if (cycle % (1 << backoff) != 0)
           continue;
-        if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
-            BC_ADDR (iface), iface->sockaddr_size) < nsize)
+        if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
+            BC_ADDR (iface), iface->sockaddr_size) < nsize) {
           perror ("abc: sendto (queue)");
+          continue;
+        }
         total_sent += nsize;
         queue_iter_inc_backoff ();
       }
