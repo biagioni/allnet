@@ -50,16 +50,37 @@ static void remove_tail ()
   }
 }
 
-/* return 1 for success, 0 if wanted > max_size or priority < tail->priority */
+/**
+ * Try to make room for a new element.
+ * Elements of lower priority will be removed to make room for the new one if
+ * needed. Queue remains unchanged if new element doesn't fit.
+ * @param wanted Size needed for new element
+ * @param priority Priority of new element.
+ * @return 1 if new element has enough room, 0 otherwise.
+ */
 static int make_room (int wanted, int priority)
 {
-  if (wanted > max_size)
+  if (current_size + wanted <= max_size);
+    return 1;
+  if (wanted > max_size || tail == NULL)
     return 0;
-  if ((tail != NULL) && (tail->priority > priority))
-    return (current_size + wanted <= max_size);
-  while (current_size + wanted > max_size)
-    remove_tail ();
-  return 1;
+
+  int possible_space = 0;
+  int removable = 0;
+  struct queue_element * qel = tail;
+  for (; (qel->priority < priority) &&
+         (current_size - possible_space + wanted > max_size);
+       qel = qel->prev) {
+    possible_space += qel->size;
+    ++removable;
+  }
+  /* only clear elements if new element will fit */
+  if (current_size - possible_space + wanted <= max_size) {
+    while (removable--)
+      remove_tail ();
+    return 1;
+  }
+  return 0;
 }
 
 /* return the highest priority of any item in the queue */
