@@ -47,7 +47,7 @@ static int abc_ip_is_enabled ()
 
 static int abc_ip_set_enabled (int state)
 {
-  return 1;
+  return 0;
 }
 
 /* returns 0 if the interface is not found, 1 otherwise */
