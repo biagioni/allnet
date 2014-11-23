@@ -69,10 +69,7 @@ static int abc_ip_init (const char * interface)
       struct timeval start;
       gettimeofday (&start, NULL);
 #endif /* TRACKING_TIME */
-      int is_up = abc_ip_is_enabled ();
-      printf ("abc-ip: interface is enabled: %s (%d)\n",
-                is_up > 0 ? "yes" : "no", is_up);
-      if (is_up == 0)
+      if (abc_ip_is_enabled () == 0)
         abc_ip_set_enabled (1);
 
 #ifdef TRACKING_TIME
