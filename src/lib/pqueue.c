@@ -61,7 +61,7 @@ static void remove_tail ()
  */
 static int make_room (int wanted, int priority)
 {
-  if (current_size + wanted <= max_size);
+  if (current_size + wanted <= max_size)
     return 1;
   if (wanted > max_size || tail == NULL)
     return 0;
