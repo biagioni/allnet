@@ -4,15 +4,15 @@
  *
  * single-threaded, uses select to check the pipe from ad and the interface
  * may have to be run with supervisory/root privileges depending on the chosen
- * interface driver
+ * interface driver (wifi requires root)
  * arguments are:
  * - the fd number of the pipe from ad
  * - the fd number of the pipe to ad
  * - the interface name and optionally interface driver and driver options
  *  e.g. eth0/ip, wlan0/wifi, or wlan0/wifi,nm
  *  Available drivers are ip and wifi, ip being the default.
- *    ip    can only be used on interfaces that are already connected to an IP
- *          network.
+ *    ip    does not require root but can only be used on interfaces that are
+ *          already connected to an IP network.
  *    wifi  Sets up or connects to the adhoc network "allnet" running on
  *          channel 1.
  *          iw: When no further parameters are given the "iw" driver is
@@ -22,7 +22,9 @@
  *          iw requires root privileges.
  *          nm: With the "nm" driver, NetworkManager is used to connect the
  *          interface to the "allnet" adhoc network. This driver does not
- *          require root privileges but is much slower (ca. 20s to connect.)
+ *          require root privileges for managing the interface but is much
+ *          slower (ca. 20s to connect.)
+ *          TODO: nm still requires root because of the raw socket (AF_PACKET)
  */
 
 /* TODO: config file "abc" "interface-name" (e.g. ~/.allnet/abc/wlan0)
