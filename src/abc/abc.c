@@ -61,6 +61,7 @@
  *   In unamanged mode, the cycle counter is incremented every basic (5s) cycle.
  * Packets are dropped when acked or after the maximal backoff threshold is
  * reached at 2^8 == 256.
+ * Packets with DO_NOT_CACHE flag are only sent once.
  */
 
 #include <assert.h>
@@ -316,6 +317,10 @@ static void unmanaged_send_pending (int new_only)
       perror ("abc: sendto");
       continue;
     }
+    struct allnet_header * hp = (struct allnet_header *) message;
+    if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE)
+      queue_iter_remove ();
+    else
       queue_iter_inc_backoff ();
   }
 }
@@ -359,7 +364,12 @@ static void send_pending (enum abc_send_type type, int size, char * message)
           continue;
         }
         total_sent += nsize;
-        queue_iter_inc_backoff ();
+
+        struct allnet_header * hp = (struct allnet_header *) message;
+        if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE)
+          queue_iter_remove ();
+        else
+          queue_iter_inc_backoff ();
       }
       ++cycle; /* increment cycle after sending data */
       break;
