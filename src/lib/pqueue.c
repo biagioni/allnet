@@ -122,9 +122,9 @@ static struct queue_element *
  * Add new element to priority queue
  * If needed, items with lower priority will be removed to make room for the new
  * element. The queue remains unchanged if not enough room can be found.
- * @param value Element to add
- * @param size Size of element to add
- * @param priority Priority of new element
+ * @param value Element to add. The element is copied into the queue.
+ * @param size Size of element to add.
+ * @param priority Priority of new element.
  * @return 1 on success, 0 on failure (not enough space)
  */
 int queue_add (const char * value, int size, int priority)
@@ -186,8 +186,11 @@ int queue_iter_next (char * * queue_element, int * next_size, int * priority,
   return 1;
 }
 
-/* Increment backoff counter for current element and return 1.
- * The message is removed when the threshold is crossed and 0 is returned
+/**
+ * Increment backoff counter for current element. The message is removed when
+ * the threshold is crossed.
+ * Must only be called after a successful call to queue_iter_next ().
+ * @return 1 if counter has been incremented, 0 if element has been removed.
  */
 int queue_iter_inc_backoff ()
 {
@@ -201,6 +204,10 @@ int queue_iter_inc_backoff ()
   return 1;
 }
 
+/**
+ * Remove current element from queue and free internal resources.
+ * Must be called at most once after a successful call to queue_iter_next ().
+ */
 void queue_iter_remove ()
 {
   if (iter_remove == NULL) {
@@ -220,10 +227,11 @@ void queue_iter_remove ()
 }
 
 #ifdef TEST_PRIORITY_QUEUE
+#include <assert.h>
 static void queue_print_one (struct queue_element * node)
 {
-  printf ("(%p<-%p->%p): %d, %d [%02x %02x]\n", node->prev, node, node->next,
-          node->size, node->priority,
+  printf ("(%p<-%p->%p): %d, %d, %d [%02x %02x]\n", node->prev, node, node->next,
+          node->size, node->priority, node->backoff,
            node->data [0] & 0xff, node->data [1] & 0xff);
 }
 
@@ -243,7 +251,7 @@ static void queue_print (char * desc)
 
 int main (int argc, char ** argv)
 {
-  queue_init (100);
+  queue_init (100, 0);
   queue_print ("after init");
   queue_add ("foo", 3, 7);
   queue_print ("after adding foo, priority 7");
@@ -253,7 +261,7 @@ int main (int argc, char ** argv)
   queue_add (buffer, 96, 37);
   queue_print ("after adding buffer, priority 37");
 
-  queue_init (100);
+  queue_init (100, 0);
   queue_print ("\nafter second init");
   queue_add ("foo", 3, 77);
   queue_print ("after adding foo, priority 77");
@@ -262,7 +270,7 @@ int main (int argc, char ** argv)
   queue_add (buffer, 96, 37);
   queue_print ("after adding buffer, priority 37");
 
-  queue_init (100);
+  queue_init (100, 0);
   queue_print ("\nafter third init");
   queue_add ("foo", 3, 77);
   queue_print ("after adding foo, priority 77");
@@ -270,5 +278,50 @@ int main (int argc, char ** argv)
   queue_print ("after adding bar, priority 37");
   queue_add (buffer, 96, 7);
   queue_print ("after adding buffer, priority 7");
+
+  /* backoff test */
+  queue_init (100, 2);
+  queue_print ("\nafter fourth init");
+  queue_add ("foo", 3, 77);
+  char * m;
+  int s, p, b;
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ());
+  queue_print ("after adding foo and incrementing once, priority 77");
+  assert (queue_iter_inc_backoff ());
+  assert (!queue_iter_inc_backoff ());
+  queue_print ("after incrementing foo, priority 77 over backoff");
+  queue_add ("foo", 3, 77);
+  queue_print ("after adding foo, priority 77");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ()); /* foo == 1 */
+  queue_add ("bar", 3, 77);
+  queue_print ("after inc'foo and adding bar, priority 77");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ()); /* foo == 2 */
+  queue_add ("baz", 3, 77);
+  queue_print ("after inc'foo adding baz, priority 77");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (!queue_iter_inc_backoff ()); /* foo == 3 -> delete */
+  queue_print ("after incrementing foo over backoff");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ()); /* baz == 1 */
+  assert (queue_iter_inc_backoff ()); /* baz == 2 */
+  queue_print ("after incrementing baz to backoff");
+  assert (!queue_iter_inc_backoff ()); /* baz == 3 -> delete */
+  queue_print ("after incrementing baz over backoff");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ()); /* bar == 1 */
+  assert (queue_iter_inc_backoff ()); /* bar == 2 */
+  assert (!queue_iter_inc_backoff ()); /* bar == 3 -> delete */
+  queue_iter_start ();
+  assert (!queue_iter_next (&m, &s, &p, &b));
 }
 #endif /* TEST_PRIORITY_QUEUE */

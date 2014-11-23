@@ -15,9 +15,9 @@ extern int queue_total_bytes ();
  * Add new element to priority queue
  * If needed, items with lower priority will be removed to make room for the new
  * element. The queue remains unchanged if not enough room can be found.
- * @param value Element to add
- * @param size Size of element to add
- * @param priority Priority of new element
+ * @param value Element to add. The element is copied into the queue.
+ * @param size Size of element to add.
+ * @param priority Priority of new element.
  * @return 1 on success, 0 on failure (not enough space)
  */
 extern int queue_add (const char * queue_element, int size, int priority);
@@ -36,12 +36,18 @@ extern void queue_iter_start ();
 extern int queue_iter_next (char * * queue_element, int * next_size,
                             int * priority, int * backoff);
 
-/* Increment backoff counter for current element and return 1.
- * The message is removed when the threshold is crossed and 0 is returned
+/**
+ * Increment backoff counter for current element. The message is removed when
+ * the threshold is crossed.
+ * Must only be called after a successful call to queue_iter_next ().
+ * @return 1 if counter has been incremented, 0 if element has been removed.
  */
 extern int queue_iter_inc_backoff ();
 
-/* call at most once after a successful call to queue_iter_next */
+/**
+ * Remove current element from queue and free internal resources.
+ * Must be called at most once after a successful call to queue_iter_next ().
+ */
 extern void queue_iter_remove ();
 
 #endif /* ALLNET_PQUEUE_H */
