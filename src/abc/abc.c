@@ -293,16 +293,20 @@ static void make_beacon_grant (char * buffer, int bsize,
   writeb64u (mbgp->send_time, send_time_ns);
 }
 
-/** Send pending messages */
-static void unmanaged_send_pending ()
+/**
+ * Send pending messages
+ * @param new_only When set, sends only new (unsent) messages
+ */
+static void unmanaged_send_pending (int new_only)
 {
-  char * my_message = NULL;
+  char * message = NULL;
   int nsize;
   int priority;
   int backoff;
   queue_iter_start ();
-  while (queue_iter_next (&my_message, &nsize, &priority, &backoff)) {
-    if (cycle % (1 << backoff) != 0)
+  while (queue_iter_next (&message, &nsize, &priority, &backoff)) {
+    /* new (unsent) messages have a backoff value of 0 */
+    if ((new_only && backoff) || (!new_only && cycle % (1 << backoff) != 0))
       continue;
     if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
         BC_ADDR (iface), iface->sockaddr_size) < nsize)
@@ -604,12 +608,13 @@ static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
     int msize = receive_until (t, &message, &fd, &priority, 0);
     static char send_message [ALLNET_MTU];
     if ((msize > 0) && (is_valid_message (message, msize))) {
-      if (fd == rpipe)
+      if (fd == rpipe) {
         handle_ad_message (message, msize, priority);
-      else
+        unmanaged_send_pending (1);
+      } else {
         unmanaged_handle_network_message (message, msize, wpipe);
+      }
       free (message);
-      unmanaged_send_pending ();
 
     } else {
       usleep (10 * 1000); /* 10ms */
