@@ -31,6 +31,7 @@ void queue_init (int max_bytes, int max_backoff_threshold)
   current_size = 0;
 }
 
+/** Remove the last element (if any) from the queue */
 static void remove_tail ()
 {
   if (tail == NULL)
@@ -104,7 +105,7 @@ static struct queue_element *
   int total_size = size + sizeof (struct queue_element);
   struct queue_element * result = malloc (total_size);
   if (result == NULL) {
-    printf ("unable to malloc %d bytes for %d content, aborting\n",
+    printf ("pqueue: Unable to malloc %d bytes for %d content, aborting\n",
             total_size, size);
     exit (1);
   }
