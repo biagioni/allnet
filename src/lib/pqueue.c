@@ -118,12 +118,19 @@ static struct queue_element *
   return result;
 }
 
-void queue_add (const char * value, int size, int priority)
+/**
+ * Add new element to priority queue
+ * If needed, items with lower priority will be removed to make room for the new
+ * element. The queue remains unchanged if not enough room can be found.
+ * @param value Element to add
+ * @param size Size of element to add
+ * @param priority Priority of new element
+ * @return 1 on success, 0 on failure (not enough space)
+ */
+int queue_add (const char * value, int size, int priority)
 {
-  if (! make_room (size, priority)) {
-    printf ("unable to add element of size %d, max size %d\n", size, max_size);
-    return;
-  }
+  if (! make_room (size, priority))
+    return 0;
   current_size += size;
   if ((head == NULL) || (head->priority < priority)) {
     struct queue_element * new =
@@ -133,7 +140,7 @@ void queue_add (const char * value, int size, int priority)
     head = new;
     if (tail == NULL)
       tail = new;
-    return;
+    return 1;
   }
   struct queue_element * node = head;
   while ((node != NULL) && (node->priority >= priority))
@@ -141,12 +148,13 @@ void queue_add (const char * value, int size, int priority)
   if (node == NULL) {  /* add at the tail */
     tail->next = new_element (value, size, priority, tail, NULL);
     tail = tail->next;
-    return;
+    return 1;
   }
   /* found a node whose priority < the new priority, so add before it */
   struct queue_element * prev = node->prev;
   node->prev = new_element (value, size, priority, prev, node);
   prev->next = node->prev;
+  return 1;
 }
 
 static struct queue_element * iter_next = NULL;

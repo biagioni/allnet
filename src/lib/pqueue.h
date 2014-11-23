@@ -11,7 +11,16 @@ extern int queue_max_priority ();
 /* return how many bytes are in the queue */
 extern int queue_total_bytes ();
 
-extern void queue_add (const char * queue_element, int size, int priority);
+/**
+ * Add new element to priority queue
+ * If needed, items with lower priority will be removed to make room for the new
+ * element. The queue remains unchanged if not enough room can be found.
+ * @param value Element to add
+ * @param size Size of element to add
+ * @param priority Priority of new element
+ * @return 1 on success, 0 on failure (not enough space)
+ */
+extern int queue_add (const char * queue_element, int size, int priority);
 
 /* to visit all the elements of the queue, call queue_iter_start(),
  * then repeatedly call queue_iter_next until it returns 0
