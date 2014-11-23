@@ -7,7 +7,7 @@
 #ifndef __APPLE__
 #include <netpacket/packet.h>  /* struct sockaddr_ll */
 
-void abc_iface_set_default_broadcast_address (struct sockaddr_ll * bc)
+void abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc)
 {
   bc->sll_family = AF_PACKET;
   bc->sll_protocol = ALLNET_WIFI_PROTOCOL;

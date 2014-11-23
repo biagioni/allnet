@@ -65,7 +65,7 @@ typedef struct abc_iface {
 
 
 #ifndef __APPLE__  /* not sure what replaces the sll addresses for apple */
-void abc_iface_set_default_broadcast_address (struct sockaddr_ll * bc);
+void abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc);
 void abc_iface_print_sll_addr (struct sockaddr_ll * a, char * desc);
 #endif /* __APPLE__ */
 
