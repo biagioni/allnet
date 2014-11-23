@@ -1,6 +1,6 @@
 #ifndef ABC_IFACE_H
 #define ABC_IFACE_H
-/* abc-iface.h: Bradcast abc messages onto a wireless interface */
+/* abc-iface.h: Interface used by abc for broadcasting messages on a network */
 
 #ifndef __APPLE__
 #include <netpacket/packet.h>  /* struct sockaddr_ll */
