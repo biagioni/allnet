@@ -642,7 +642,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
   int bufsize = 0;
   if (! allnet_rsa_prvkey_is_null (prvkey))
     bufsize += allnet_rsa_prvkey_size (prvkey) + 2; /* space for signature */
-  if (! allnet_rsa_pubkey_is_null (pubkey)) {
+  if (allnet_rsa_pubkey_is_null (pubkey)) {
     fprintf (stderr, "voa: failed to get public key for %s\n",
              data.dest_contact);
     return NULL;
