@@ -210,7 +210,7 @@ static int receive_until (struct timeval * t, char ** message,
     msize = receive_pipe_message_fd (timeout_ms, message, iface->iface_sockfd,
                                      sap, &al, from_fd, priority);
     if (msize > 0 && al > 0 && !iface->accept_sender_cb (sap)) {
-      free (message);
+      free (*message);
       return 0;
     }
   }
