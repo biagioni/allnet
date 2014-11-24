@@ -22,6 +22,7 @@ static int abc_ip_init (const char * interface);
 static int abc_ip_is_enabled ();
 static int abc_ip_set_enabled (int state);
 static int abc_ip_cleanup ();
+static int abc_ip_accept_sender (const struct sockaddr *);
 
 struct abc_iface_ip_priv {
   struct ifaddrs * ifa;
@@ -40,6 +41,7 @@ abc_iface abc_iface_ip = {
   .iface_is_enabled_cb = abc_ip_is_enabled,
   .iface_set_enabled_cb = abc_ip_set_enabled,
   .iface_cleanup_cb = abc_ip_cleanup,
+  .accept_sender_cb = abc_ip_accept_sender,
   .priv = NULL
 };
 
@@ -113,4 +115,18 @@ static int abc_ip_init (const char * interface)
 
 static int abc_ip_cleanup () {
   return 1;
+}
+
+/**
+ * Accept a sender if it's not coming from our own address
+ * @param sender struct sockaddr_in * of the sender
+ * @return 0 if we are the sender, 1 otherwise
+ */
+static int abc_ip_accept_sender (const struct sockaddr * sender)
+{
+  const struct sockaddr_in * sai = (const struct sockaddr_in *)sender;
+  struct abc_iface_ip_priv * priv =
+      (struct abc_iface_ip_priv *) abc_iface_ip.priv;
+  struct sockaddr_in * own = (struct sockaddr_in *)priv->ifa->ifa_addr;
+  return (own->sin_addr.s_addr != sai->sin_addr.s_addr);
 }

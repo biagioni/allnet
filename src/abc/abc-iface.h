@@ -18,6 +18,9 @@ typedef union {
 
 #define BC_ADDR(ifaceptr) ((const struct sockaddr *)&(ifaceptr)->bc_address)
 
+/** Accept every sender */
+int abc_iface_accept_sender (const struct sockaddr * sender);
+
 /** enum of all compile-time supported abc iface modules */
 typedef enum abc_iface_type {
   ABC_IFACE_TYPE_IP,
@@ -67,6 +70,11 @@ typedef struct abc_iface {
    * @return 1 on success, 0 on failure.
    */
   int (* iface_cleanup_cb) ();
+  /**
+   * Callback to check if a message from a given sender is to be accepted.
+   * @return 1 if message should be accepted, 0 if it should be rejected.
+   */
+  int (* accept_sender_cb) (const struct sockaddr *);
   /** Pointer to private additional data */
   void * priv;
 } abc_iface;

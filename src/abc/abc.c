@@ -199,7 +199,6 @@ static int receive_until (struct timeval * t, char ** message,
   unsigned long long int us_to_wait = delta_us (t, &now);  /* 0 or more */
   int timeout_ms = us_to_wait / 1000LL;
 
-  /* we don't actually care what address the packet was received from */
   struct sockaddr_storage recv_addr;
   struct sockaddr * sap = (struct sockaddr *) (&recv_addr);
   socklen_t al = sizeof (recv_addr);
@@ -210,6 +209,10 @@ static int receive_until (struct timeval * t, char ** message,
   } else {
     msize = receive_pipe_message_fd (timeout_ms, message, iface->iface_sockfd,
                                      sap, &al, from_fd, priority);
+    if (msize > 0 && al > 0 && !iface->accept_sender_cb (sap)) {
+      free (message);
+      return 0;
+    }
   }
   return msize;  /* -1 (error), zero (timeout) or positive, the value is correct */
 }
