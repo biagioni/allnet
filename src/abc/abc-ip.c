@@ -83,7 +83,7 @@ static int abc_ip_init (const char * interface)
       long long mtime = delta_us (&midtime, &start);
 #endif /* TRACKING_TIME */
       /* create the socket and initialize the address */
-      abc_iface_ip.iface_sockfd = socket (AF_INET, SOCK_DGRAM, 0);
+      abc_iface_ip.iface_sockfd = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
       int flag = 1;
       setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BROADCAST, &flag, sizeof (flag));
       abc_iface_ip.if_address.sa = *(ifa_loop->ifa_addr);
