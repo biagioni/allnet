@@ -98,7 +98,7 @@ static int abc_ip_init (const char * interface)
       if (ifa_loop->ifa_flags & IFF_BROADCAST) {
         abc_iface_ip.bc_address.sa = *(ifa_loop->ifa_broadaddr);
       } else {
-        abc_iface_ip.bc_address.in.sin_addr.s_addr = inet_addr ("255.255.255.255");
+        abc_iface_ip.bc_address.in.sin_addr.s_addr = htonl (INADDR_BROADCAST);
         printf ("abc-ip: set default broadcast address on %s\n", interface);
       }
       abc_iface_ip.bc_address.in.sin_family = AF_INET;
