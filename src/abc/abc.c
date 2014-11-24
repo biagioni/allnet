@@ -608,14 +608,18 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
     int from_fd;
     int priority;
     int msize = receive_until (quiet_end, &message, &from_fd, &priority, 0);
-    if (msize > 0 && is_valid_message (message, msize)) {
-      if (from_fd == rpipe)
-        handle_ad_message (message, msize, priority);
-      else
-        handle_network_message (message, msize, wpipe,
-                                NULL, NULL, NULL, NULL, NULL, NULL, 1);
+    if (msize > 0) {
+      if (is_valid_message (message, msize)) {
+        if (from_fd == rpipe)
+          handle_ad_message (message, msize, priority);
+        else
+          handle_network_message (message, msize, wpipe,
+                                  NULL, NULL, NULL, NULL, NULL, NULL, 1);
+        check_priority_mode ();
+      } else {
+        usleep (10 * 1000); /* 10ms */
+      }
       free (message);
-      check_priority_mode ();
     } else {
       usleep (10 * 1000); /* 10ms */
     }
@@ -632,12 +636,16 @@ static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
     int priority;
     int msize = receive_until (t, &message, &fd, &priority, 0);
     static char send_message [ALLNET_MTU];
-    if ((msize > 0) && (is_valid_message (message, msize))) {
-      if (fd == rpipe) {
-        handle_ad_message (message, msize, priority);
-        unmanaged_send_pending (1);
+    if (msize > 0) {
+      if (is_valid_message (message, msize)) {
+        if (fd == rpipe) {
+          handle_ad_message (message, msize, priority);
+          unmanaged_send_pending (1);
+        } else {
+          unmanaged_handle_network_message (message, msize, wpipe);
+        }
       } else {
-        unmanaged_handle_network_message (message, msize, wpipe);
+        usleep (10 * 1000); /* 10ms */
       }
       free (message);
 
