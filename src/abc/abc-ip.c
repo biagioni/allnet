@@ -53,7 +53,11 @@ static int abc_ip_set_enabled (int state)
   return 0;
 }
 
-/* returns 0 if the interface is not found, 1 otherwise */
+/**
+ * Init abc ip interface and UDP socket
+ * @param interface Interface string of iface to init
+ * @return 1 on success, 0 otherwise
+ */
 static int abc_ip_init (const char * interface)
 {
   abc_iface_ip.priv = &abc_iface_ip_priv;
@@ -83,9 +87,12 @@ static int abc_ip_init (const char * interface)
       int flag = 1;
       setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BROADCAST, &flag, sizeof (flag));
       abc_iface_ip.if_address.sa = *(ifa_loop->ifa_addr);
+      abc_iface_ip.if_address.in.sin_addr.s_addr = htonl (INADDR_ANY);
       abc_iface_ip.if_address.in.sin_port = htons (ALLNET_ABC_IP_PORT);
-      if (bind (abc_iface_ip.iface_sockfd, &abc_iface_ip.if_address.sa, sizeof (struct sockaddr_in)) == -1)
-        printf ("abc-ip: error binding interface %s, continuing without..\n", interface);
+      if (bind (abc_iface_ip.iface_sockfd, &abc_iface_ip.if_address.sa, sizeof (struct sockaddr_in)) == -1) {
+        perror ("abc-ip: error binding interface");
+        return 0;
+      }
       if (ifa_loop->ifa_flags & IFF_BROADCAST) {
         abc_iface_ip.bc_address.sa = *(ifa_loop->ifa_broadaddr);
       } else {
