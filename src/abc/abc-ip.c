@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>           /* close */
 #include <ifaddrs.h>
 #include <net/if.h>           /* ifa_flags */
 #include <netinet/in.h>       /* struct sockaddr_in */
@@ -65,9 +66,10 @@ static int abc_ip_init (const char * interface)
   abc_iface_ip.priv = &abc_iface_ip_priv;
   struct ifaddrs * ifa;
   if (getifaddrs (&ifa) != 0) {
-    perror ("getifaddrs");
+    perror ("abc-ip: getifaddrs");
     return 0;
   }
+  int ret = 0;
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
     if ((ifa_loop->ifa_addr->sa_family == AF_INET) &&
@@ -86,15 +88,23 @@ static int abc_ip_init (const char * interface)
 #endif /* TRACKING_TIME */
       /* create the socket and initialize the address */
       abc_iface_ip.iface_sockfd = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+      if (abc_iface_ip.iface_sockfd == -1) {
+        perror ("abc-wifi: error creating socket");
+        goto abc_ip_init_cleanup;
+      }
       int flag = 1;
-      setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BROADCAST, &flag, sizeof (flag));
+      if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BROADCAST,
+                      &flag, sizeof (flag)) != 0)
+        perror ("abc-ip: error setting broadcast flag");
       abc_iface_ip.if_address.in.sin_family = AF_INET;
       abc_iface_ip.if_address.in.sin_addr = ((const struct sockaddr_in *)ifa_loop->ifa_addr)->sin_addr;
       abc_iface_ip.if_address.in.sin_port = htons (ALLNET_ABC_IP_PORT);
       memset (&abc_iface_ip.if_address.in.sin_zero, 0, sizeof (abc_iface_ip.if_address.in.sin_zero));
-      if (bind (abc_iface_ip.iface_sockfd, &abc_iface_ip.if_address.sa, sizeof (struct sockaddr_in)) == -1) {
+      if (bind (abc_iface_ip.iface_sockfd, &abc_iface_ip.if_address.sa, sizeof (abc_iface_ip.if_address.sa)) == -1) {
         perror ("abc-ip: error binding interface");
-        return 0;
+        close (abc_iface_ip.iface_sockfd);
+        abc_iface_ip.iface_sockfd = -1;
+        goto abc_ip_init_cleanup;
       }
       if (ifa_loop->ifa_flags & IFF_BROADCAST) {
         abc_iface_ip.bc_address.sa = *(ifa_loop->ifa_broadaddr);
@@ -105,16 +115,24 @@ static int abc_ip_init (const char * interface)
       abc_iface_ip.bc_address.in.sin_family = AF_INET;
       abc_iface_ip.bc_address.in.sin_port = htons (ALLNET_ABC_IP_PORT);
       memset (&abc_iface_ip.bc_address.in.sin_zero, 0, sizeof (abc_iface_ip.bc_address.in.sin_zero));
-      freeifaddrs (ifa);
-      return 1;
+      ret = 1;
+      goto abc_ip_init_cleanup;
     }
     ifa_loop = ifa_loop->ifa_next;
   }
+abc_ip_init_cleanup:
   freeifaddrs (ifa);
-  return 0;  /* interface not found */
+  return ret;
 }
 
 static int abc_ip_cleanup () {
+  if (abc_iface_ip.iface_sockfd != -1) {
+    if (close (abc_iface_ip.iface_sockfd) != 0) {
+      perror ("abc-ip: error closing socket");
+      return 0;
+    }
+    abc_iface_ip.iface_sockfd = -1;
+  }
   return 1;
 }
 

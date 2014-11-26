@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>           /* close */
 #include <ifaddrs.h>
 #include <net/if.h>           /* ifa_flags */
 #include <sys/socket.h>       /* struct sockaddr */
@@ -104,9 +105,10 @@ static int abc_wifi_init (const char * interface)
 
   struct ifaddrs * ifa;
   if (getifaddrs (&ifa) != 0) {
-    perror ("getifaddrs");
+    perror ("abc-wifi: getifaddrs");
     return 0;
   }
+  int ret = 0;
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
 #ifndef __APPLE__  /* not sure how to do this for apple */
@@ -139,8 +141,12 @@ static int abc_wifi_init (const char * interface)
       /* create the socket and initialize the address */
       abc_iface_wifi.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
       abc_iface_wifi.if_address.sa = *(ifa_loop->ifa_addr);
+      if (abc_iface_wifi.iface_sockfd == -1) {
+        perror ("abc-wifi: error creating socket");
+        goto abc_wifi_init_cleanup;
+      }
       if (bind (abc_iface_wifi.iface_sockfd, &abc_iface_wifi.if_address.sa, sizeof (struct sockaddr_ll)) == -1)
-        printf ("abc-wifi: error binding interface, continuing without..\n");
+        perror ("abc-wifi: error binding interface (continuing without)");
       if (ifa_loop->ifa_flags & IFF_BROADCAST)
         abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_broadaddr);
       else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
@@ -151,16 +157,23 @@ static int abc_wifi_init (const char * interface)
       abc_iface_wifi.bc_address.ll.sll_ifindex = abc_iface_wifi.if_address.ll.sll_ifindex;
       abc_iface_print_sll_addr (&abc_iface_wifi.if_address.ll, "interface address");
       abc_iface_print_sll_addr (&abc_iface_wifi.bc_address.ll, "broadcast address");
-      freeifaddrs (ifa);
-      return 1;
+      ret = 1;
+      goto abc_wifi_init_cleanup;
     }
 #endif /* __APPLE__ */
     ifa_loop = ifa_loop->ifa_next;
   }
+abc_wifi_init_cleanup:
   freeifaddrs (ifa);
-  return 0;  /* interface not found */
+  return ret;
 }
 
 static int abc_wifi_cleanup () {
+  if (abc_iface_wifi.iface_sockfd != -1) {
+    if (close (abc_iface_wifi.iface_sockfd) != 0)
+      perror ("abc-wifi: error closing socket");
+    else
+      abc_iface_wifi.iface_sockfd = -1;
+  }
   return wifi_config_iface->iface_cleanup_cb ();
 }
