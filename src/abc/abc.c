@@ -644,8 +644,6 @@ static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
         } else {
           unmanaged_handle_network_message (message, msize, wpipe);
         }
-      } else {
-        usleep (10 * 1000); /* 10ms */
       }
       free (message);
 
