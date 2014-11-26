@@ -100,7 +100,7 @@ static int abc_ip_init (const char * interface)
                       interface, strlen (interface)) != 0)
         perror ("abc-ip: error binding to device");
       abc_iface_ip.if_address.in.sin_family = AF_INET;
-      abc_iface_ip.if_address.in.sin_addr = ((const struct sockaddr_in *)ifa_loop->ifa_addr)->sin_addr;
+      abc_iface_ip.if_address.in.sin_addr.s_addr = htonl (INADDR_ANY);
       abc_iface_ip.if_address.in.sin_port = htons (ALLNET_ABC_IP_PORT);
       memset (&abc_iface_ip.if_address.in.sin_zero, 0, sizeof (abc_iface_ip.if_address.in.sin_zero));
       if (bind (abc_iface_ip.iface_sockfd, &abc_iface_ip.if_address.sa, sizeof (abc_iface_ip.if_address.sa)) == -1) {
