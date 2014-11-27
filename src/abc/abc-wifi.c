@@ -47,6 +47,7 @@ abc_iface abc_iface_wifi = {
   .iface_is_managed = 1,
   .iface_type_args = NULL,
   .iface_sockfd = -1,
+  .if_family = AF_PACKET,
   .if_address = {},
   .bc_address = {},
   .sockaddr_size = sizeof (struct sockaddr_ll),

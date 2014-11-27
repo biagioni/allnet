@@ -34,6 +34,7 @@ abc_iface abc_iface_ip = {
   .iface_is_managed = 0,
   .iface_type_args = NULL,
   .iface_sockfd = -1,
+  .if_family = AF_INET,
   .if_address = {},
   .bc_address = {},
   .sockaddr_size = sizeof (struct sockaddr_in),

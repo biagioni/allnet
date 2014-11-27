@@ -35,6 +35,7 @@ typedef struct abc_iface {
   const char * iface_type_args;
 
   int iface_sockfd; /* the socket filedescriptor used with this iface */
+  sa_family_t if_family; /* the address family of if_address and bc_address */
   sockaddr_t if_address; /* the address of the interface */
   sockaddr_t bc_address; /* broacast address of the interface */
   socklen_t sockaddr_size; /* the size of the sockaddr_* inside sockaddr_t */
