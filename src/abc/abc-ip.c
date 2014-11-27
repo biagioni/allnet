@@ -89,7 +89,7 @@ static int abc_ip_init (const char * interface)
       /* create the socket and initialize the address */
       abc_iface_ip.iface_sockfd = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
       if (abc_iface_ip.iface_sockfd == -1) {
-        perror ("abc-wifi: error creating socket");
+        perror ("abc-ip: error creating socket");
         goto abc_ip_init_cleanup;
       }
       int flag = 1;
