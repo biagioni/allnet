@@ -3,7 +3,27 @@
 #ifndef ALLNET_PQUEUE_H
 #define ALLNET_PQUEUE_H
 
-extern void queue_init (int max_bytes, int max_backoff_threshold);
+#include "priority.h"   /* ALLNET_PRIORITY_MAX */
+
+/**
+ * Backoff value for lowest possible priority element.
+ * Used for dropping element after # queue_iter_inc_backoff () * calls
+ */
+#define ALLNET_PQUEUE_MIN_BACKOFF 2
+/**
+ * Backoff value for highest possible priority element.
+ * Used for dropping element after # queue_iter_inc_backoff () * calls
+ */
+#define ALLNET_PQUEUE_MAX_BACKOFF 18
+
+/** Get backoff threshold based on AllNet priority. */
+#define ALLNET_PQUEUE_BACKOFF_THRESHOLD(p) ((int) ( \
+          ALLNET_PQUEUE_MIN_BACKOFF + \
+          ((long)(p) \
+           * (ALLNET_PQUEUE_MAX_BACKOFF - ALLNET_PQUEUE_MIN_BACKOFF) \
+           / ALLNET_PRIORITY_MAX)))
+
+extern void queue_init (int max_bytes);
 
 /* return the highest priority of any item in the queue */
 extern int queue_max_priority ();

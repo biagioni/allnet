@@ -19,15 +19,13 @@ struct queue_element {
 static struct queue_element * head = NULL;
 static struct queue_element * tail = NULL;
 static int max_size = 0;
-static int max_backoff = 0;
 static int current_size = 0;
 
-void queue_init (int max_bytes, int max_backoff_threshold)
+void queue_init (int max_bytes)
 {
   head = NULL;
   tail = NULL;
   max_size = max_bytes;
-  max_backoff = max_backoff_threshold;
   current_size = 0;
 }
 
@@ -197,7 +195,8 @@ int queue_iter_inc_backoff ()
   if (iter_remove == NULL)
     return 0; /* item doesn't exist */
   ++iter_remove->backoff;
-  if (iter_remove->backoff > max_backoff && max_backoff > 0) {
+  long p = iter_remove->priority;
+  if (iter_remove->backoff > ALLNET_PQUEUE_BACKOFF_THRESHOLD (p)) {
     queue_iter_remove ();
     return 0;
   }
@@ -227,6 +226,7 @@ void queue_iter_remove ()
 }
 
 #ifdef TEST_PRIORITY_QUEUE
+#define ALLNET_PQUEUE_MAX_BACKOFF 2
 #include <assert.h>
 static void queue_print_one (struct queue_element * node)
 {
@@ -251,7 +251,7 @@ static void queue_print (char * desc)
 
 int main (int argc, char ** argv)
 {
-  queue_init (100, 0);
+  queue_init (100);
   queue_print ("after init");
   queue_add ("foo", 3, 7);
   queue_print ("after adding foo, priority 7");
@@ -261,7 +261,7 @@ int main (int argc, char ** argv)
   queue_add (buffer, 96, 37);
   queue_print ("after adding buffer, priority 37");
 
-  queue_init (100, 0);
+  queue_init (100);
   queue_print ("\nafter second init");
   queue_add ("foo", 3, 77);
   queue_print ("after adding foo, priority 77");
@@ -270,7 +270,7 @@ int main (int argc, char ** argv)
   queue_add (buffer, 96, 37);
   queue_print ("after adding buffer, priority 37");
 
-  queue_init (100, 0);
+  queue_init (100);
   queue_print ("\nafter third init");
   queue_add ("foo", 3, 77);
   queue_print ("after adding foo, priority 77");
@@ -280,7 +280,7 @@ int main (int argc, char ** argv)
   queue_print ("after adding buffer, priority 7");
 
   /* backoff test */
-  queue_init (100, 2);
+  queue_init (100);
   queue_print ("\nafter fourth init");
   queue_add ("foo", 3, 77);
   char * m;

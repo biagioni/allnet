@@ -97,10 +97,6 @@
 /* maximum amount of time to wait for a beacon grant */
 #define BEACON_MAX_COMPLETION_US	250000    /* 0.25s */
 
-/* drop packets from queue after reaching 8 resends with the last interval
- * being 2^8 == 256 cycles. */
-#define MAX_BACKOFF_THRESHOLD 8
-
 /** Cycle counter. Used for exponential backoff when resending messages. */
 static unsigned long cycle = 0ul;
 
@@ -808,7 +804,7 @@ iface_cleanup:
 void abc_main (int rpipe, int wpipe, char * ifopts)
 {
   init_log ("abc");
-  queue_init (16 * 1024 * 1024, MAX_BACKOFF_THRESHOLD);  /* 16MBi */
+  queue_init (16 * 1024 * 1024);  /* 16MBi */
 
   const char * interface = ifopts;
   const char * iface_type = NULL;
