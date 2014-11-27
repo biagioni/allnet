@@ -26,7 +26,6 @@ static int abc_ip_cleanup ();
 static int abc_ip_accept_sender (const struct sockaddr *);
 
 struct abc_iface_ip_priv {
-  struct ifaddrs * ifa;
 } abc_iface_ip_priv;
 
 abc_iface abc_iface_ip = {
@@ -49,7 +48,7 @@ abc_iface abc_iface_ip = {
 
 static int abc_ip_is_enabled ()
 {
-  return ((struct abc_iface_ip_priv *)abc_iface_ip.priv)->ifa->ifa_flags & IFF_UP;
+  return 1;
 }
 
 static int abc_ip_set_enabled (int state)
@@ -75,7 +74,11 @@ static int abc_ip_init (const char * interface)
   while (ifa_loop != NULL) {
     if ((ifa_loop->ifa_addr->sa_family == AF_INET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
-      ((struct abc_iface_ip_priv *)abc_iface_ip.priv)->ifa = ifa_loop;
+      if (!(ifa_loop->ifa_flags & IFF_UP)) {
+        fprintf (stderr, "abc-ip: interface is down\n");
+        goto abc_ip_init_cleanup;
+      }
+      abc_iface_ip.if_address.in = *((struct sockaddr_in *)ifa_loop->ifa_addr);
 #ifdef TRACKING_TIME
       struct timeval start;
       gettimeofday (&start, NULL);
@@ -100,11 +103,12 @@ static int abc_ip_init (const char * interface)
       if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BINDTODEVICE,
                       interface, strlen (interface)) != 0)
         perror ("abc-ip: error binding to device");
-      abc_iface_ip.if_address.in.sin_family = AF_INET;
-      abc_iface_ip.if_address.in.sin_addr.s_addr = htonl (INADDR_ANY);
-      abc_iface_ip.if_address.in.sin_port = htons (ALLNET_ABC_IP_PORT);
-      memset (&abc_iface_ip.if_address.in.sin_zero, 0, sizeof (abc_iface_ip.if_address.in.sin_zero));
-      if (bind (abc_iface_ip.iface_sockfd, &abc_iface_ip.if_address.sa, sizeof (abc_iface_ip.if_address.sa)) == -1) {
+      struct sockaddr_in sa;
+      sa.sin_family = AF_INET;
+      sa.sin_addr.s_addr = htonl (INADDR_ANY);
+      sa.sin_port = htons (ALLNET_ABC_IP_PORT);
+      memset (&sa.sin_zero, 0, sizeof (sa.sin_zero));
+      if (bind (abc_iface_ip.iface_sockfd, (struct sockaddr *)&sa, sizeof (sa)) == -1) {
         perror ("abc-ip: error binding interface");
         close (abc_iface_ip.iface_sockfd);
         abc_iface_ip.iface_sockfd = -1;
@@ -148,8 +152,6 @@ static int abc_ip_cleanup () {
 static int abc_ip_accept_sender (const struct sockaddr * sender)
 {
   const struct sockaddr_in * sai = (const struct sockaddr_in *)sender;
-  struct abc_iface_ip_priv * priv =
-      (struct abc_iface_ip_priv *) abc_iface_ip.priv;
-  struct sockaddr_in * own = (struct sockaddr_in *)priv->ifa->ifa_addr;
+  struct sockaddr_in * own = (struct sockaddr_in *)&abc_iface_ip.if_address;
   return (own->sin_addr.s_addr != sai->sin_addr.s_addr);
 }
