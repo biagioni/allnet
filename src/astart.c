@@ -176,7 +176,7 @@ static void stop_all (int signal)
               signal, fname);
       printf ("running pkill astart\n");
     }
-    execlp ("pkill", "pkill", "astart", ((char *)NULL));
+    execlp ("pkill", "pkill", "-9", "astart", ((char *)NULL));
     /* execl should never return */
     printf ("unable to pkill\n");
 /*
