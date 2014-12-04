@@ -80,7 +80,8 @@ debug_data = data;
 /*printf ("sequence length is %d (%d)\n", length, dsize - 1 - length_bytes); */
   int seq_len = 1 + length_bytes + length;  /* number of bytes in sequence */
   if (seq_len > dsize) {
-    printf ("input error: overall seq length %d out of %d\n", seq_len, dsize);
+    printf ("input error: seq length %d (1 + %d + %d) out of %d\n",
+            seq_len, length_bytes, length, dsize);
     return 0;
   }
   
@@ -553,10 +554,19 @@ static int b64_encode (char * buffer, int dsize, int bsize)
       wline = 0;
     }
   }
-  for ( ; (i % 3) != 0; i++) {
-    buffer [written++] = '=';
+  switch (i % 3) {
+    case 1:                   
+      buffer [written++] = b64_encode_bits ((from [i - 1] & 0x3) << 4);
+      buffer [written++] = '='; /* add 2 = signs */;
+      buffer [written++] = '=';
+      break;
+    case 2:
+      buffer [written++] = b64_encode_bits ((from [i - 1] & 0xf) << 2);
+      buffer [written++] = '=';  /* add 1 = sign */;
+    default:  /* do nothing for i % 3 == 0 */
+      break;
   }
-  if (wline != 0)
+  if (wline != 0)     /* write a final newline */
     buffer [written++] = '\n';
   buffer [written] = '\0';  /* do not count the null character, so no '++' */
   return written;
@@ -741,30 +751,66 @@ static void print_element (char * data, int dsize, int indent)
   }
 }
 
+static int testb64_encode ()
+{
+  int i;
+  char buffer [164];
+  int offset = 100;
+  for (i = 0; i < sizeof (buffer) - offset; i++) {
+    int j;
+    for (j = sizeof (buffer) - i; j < sizeof (buffer); j++)
+      buffer [j] = j + i;
+    int encoded = b64_encode (buffer, i, sizeof (buffer));
+    /* printf ("buffer encoding of %d bytes takes %d bytes: %s\n", i, encoded,
+            buffer); */
+    int decoded = b64_decode (buffer, encoded, buffer, sizeof (buffer));
+    if (decoded != i) {
+      printf ("error: encoded %d bytes via %d bytes, decoded %d bytes\n",
+              i, encoded, decoded);
+    }
+    for (j = sizeof (buffer) - i; j < sizeof (buffer); j++) {
+      if ((buffer [j - (sizeof (buffer) - i)] & 0xff) != ((j + i) & 0xff)) {
+        printf ("error: byte %zd of %d should be %02x but is %02x\n",
+                j - (sizeof (buffer) - i), decoded, (j + i) & 0xff,
+                buffer [j - (sizeof (buffer) - i)] & 0xff);
+      }
+    }
+  }
+}
+
 int run_asn1_test ()
 {
+  testb64_encode ();
   static char buffer [20000];
   /* read a binary file, to make sure the asn stuff works */
-if (buffer [0] < buffer [1]) {
   int fd = open ("testasn1.bin", O_RDONLY);
-  if (fd < 0) {
-    perror ("open testasn1.bin");
-    return 0;
+  if (fd >= 0) {
+    int nread = read (fd, buffer, sizeof (buffer));
+    if (nread < 0) {
+      perror ("read testasn1.bin");
+      return 0;
+    }
+    close (fd);
+    printf ("read %d bytes\n", nread);
+    print_element (buffer, nread, 0);
   }
-  int nread = read (fd, buffer, sizeof (buffer));
-  if (nread < 0) {
-    perror ("read testasn1.bin");
-    return 0;
-  }
-  close (fd);
-  printf ("read %d bytes\n", nread);
-  print_element (buffer, nread, 0);
-}
   /* read a file written by openssh */
   wp_rsa_key_pair key;
   int nbits;
   if (! wp_rsa_read_key_from_file ("tssl.pem", &nbits, &key)) {
-    printf ("unable to read key from file tssl.pem\n");
+    printf ("unable to read key from file tssl.pem, creating fake key\n");
+    nbits = 4096;
+    key.nbits = nbits;
+    wp_init (nbits, key.n, 1);
+    key.e = 2;
+    wp_init (nbits, key.d, 3);
+    wp_init (nbits / 2, key.p, 4);
+    wp_init (nbits / 2, key.q, 5);
+    wp_init (nbits / 2, key.dp, 6);
+    wp_init (nbits / 2, key.dq, 7);
+    wp_init (nbits / 2, key.qinv, 8);
+    key.n [0] = key.d [0] = key.p [0] = key.q [0] = key.dp [0] =
+      key.dq [0] = key.qinv [0] = ((uint64_t) 1) << 63;
   } else {
     printf ("from tssl.pem read %d(%d)-bit key\n", nbits, key.nbits);
 /*
