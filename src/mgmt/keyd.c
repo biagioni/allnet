@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
-#include <sys/mman.h>
 
 #include "lib/packet.h"
 #include "lib/media.h"
@@ -144,6 +143,9 @@ static int gather_random_and_wait (int bsize, char * buffer, time_t until)
   if (bsize > 0) {
     fd = open ("/dev/random", O_RDONLY);
     while ((fd >= 0) && (count < bsize)) {
+#ifdef DEBUG_PRINT_SPARES
+      printf ("graw, count %d, bsize %d\n", count, bsize);
+#endif /* DEBUG_PRINT_SPARES */
       char data [1];
       ssize_t found = read (fd, data, 1);
       if (found == 1)
@@ -157,16 +159,26 @@ static int gather_random_and_wait (int bsize, char * buffer, time_t until)
       close (fd);
   }
 #ifdef DEBUG_PRINT_SPARES
-printf ("at %ld: generated %d bytes, until %ld\n", time (NULL), count, until);
+  printf ("at %ld: generated %d bytes, until %ld\n", time (NULL), count, until);
 #endif /* DEBUG_PRINT_SPARES */
-  while (time (NULL) < until)
-    sleep (10);
+  while (time (NULL) < until) {
+#ifdef DEBUG_PRINT_SPARES
+    printf ("graw, time %ld, until %ld\n", time (NULL), until);
+#endif /* DEBUG_PRINT_SPARES */
+    if (sleep (10)) {  /* interrupted */
+#ifdef DEBUG_PRINT_SPARES
+      printf ("graw killed\n");
+#endif /* DEBUG_PRINT_SPARES */
+      exit (1);
+    }
+  }
   return ((fd >= 0) && (count == bsize));
 }
 
 #define KEY_GEN_BITS	4096
 #define KEY_GEN_BYTES	(KEY_GEN_BITS / 8)
-static void generate_spare_keys (time_t * last_alive)
+/* run from astart as a separate process */
+void keyd_generate (char * pname)
 {
   if (setpriority (PRIO_PROCESS, 0, 15) == 0) {
   /* sleep 10 min, or 100 * the time to generate a key, whichever is longer */
@@ -201,40 +213,12 @@ static void generate_spare_keys (time_t * last_alive)
       printf ("%ld: sleep time %ld (from %ld)\n", time (NULL), sleep_time,
               time (NULL) - start);
 #endif /* DEBUG_PRINT_SPARES */
-      if ((time (NULL) - (*last_alive)) > 100) {  /* parent process died */
-        snprintf (log_buf, LOG_SIZE, "generate_spare %ld > %ld+100, exiting\n",
-                  time (NULL), *last_alive);
-        log_print ();
-        exit (0);
-      }
     }
   }
-}
-
-static void * create_map (int size)
-{
-#ifndef __APPLE__
-  void * result = mmap (NULL, size, PROT_READ | PROT_WRITE,
-                        MAP_SHARED | MAP_ANONYMOUS, -1, 0);
-#else /* __APPLE__ */
-  void * result = mmap (NULL, size, PROT_READ | PROT_WRITE,
-                        MAP_SHARED | MAP_ANON, -1, 0);
-#endif /* __APPLE__ */
-  if (result == ((void *) -1))
-    return NULL;
-  return result;
 }
 
 void keyd_main (char * pname)
 {
-  time_t * alive_time = create_map (sizeof (time_t));
-  if (alive_time != NULL) {
-    *alive_time = time (NULL);
-    if (fork () == 0) {    /* fork a process to generate spare keys */
-      generate_spare_keys (alive_time);
-      exit (1);
-    }
-  }
   int sock = connect_to_local (pname, pname);
   if (sock < 0)
     return;
@@ -253,8 +237,6 @@ void keyd_main (char * pname)
       handle_packet (sock, message, found);
     if (found > 0)
       free (message);
-    if (alive_time != NULL)
-      *alive_time = time (NULL);
   }
   snprintf (log_buf, LOG_SIZE, "keyd infinite loop ended, exiting\n");
   log_print ();

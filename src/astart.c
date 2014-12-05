@@ -27,6 +27,9 @@ extern void adht_main (char * pname);
 extern void acache_main (char * pname);
 extern void traced_main (char * pname);
 extern void keyd_main (char * pname);
+extern void keyd_generate (char * pname);
+
+static const char * daemon_name = "astart";
 
 /* if astart is called as root, everything but abc should run as the calling
  * user, if any, else user "nobody", if such a user is defined */
@@ -166,63 +169,62 @@ static int read_pid (int fd)
 
 #define AIP_UNIX_SOCKET		"/tmp/allnet-addrs"
 
-static void stop_all (int signal)
+static void stop_all_on_signal (int signal)
 {
   char * fname = pid_file_name ();
   int fd = open (fname, O_RDONLY, 0);
-  if (fd < 0) {
-    if ((signal > -1) && (signal != 2)) {
-      printf ("%d: unable to stop allnet daemon, missing pid file %s\n",
-              signal, fname);
-      printf ("running pkill astart\n");
-    }
-    execlp ("pkill", "pkill", "-9", "astart", ((char *)NULL));
-    /* execl should never return */
-    printf ("unable to pkill\n");
-/*
-    if (geteuid () == 0)
-      printf ("if it is running, perhaps it was started as a user process\n");
-    else
-      printf ("if it is running, perhaps it was started as a root process\n");
-*/
-    return;
+  if (fd >= 0) {   /* kill all the pids in the file (except ourselves) */
+#define MAX_STOP_PROCS	1000
+    static pid_t pids [MAX_STOP_PROCS];
+    pid_t pid;
+    int count = 0;
+    while ((count < MAX_STOP_PROCS) && ((pid = read_pid (fd)) > 0))
+      pids [count++] = pid;
+    close (fd);
+    unlink (fname);  /* deleting the pid file signals that others
+                      * need not kill other processes */
+    while (count-- > 0)
+      if (getpid () != pids [count])   /* do not kill myself */
+        kill (pids [count], SIGINT);
+    unlink (AIP_UNIX_SOCKET);          /* aip may do this too */
   }
-  if (signal > -1)
-    printf ("stopping allnet daemon\n");
-  int pid;
-  while ((pid = read_pid (fd)) > 0)
-    kill (pid, SIGINT);
-  close (fd);
-  unlink (fname);
-  unlink (AIP_UNIX_SOCKET);
 }
+
+static void stop_all ()
+{
+  char * fname = pid_file_name ();
+  if (access (fname, F_OK) == 0) {          /* PID file found */
+    stop_all_on_signal (SIGINT);
+  } else {                                  /* no PID file, just pkill */
+    printf ("%s unable to stop allnet daemon, no pid file %s, %s\n",
+            daemon_name, fname, "running pkill astart");
+    /* send a sigint to all astart processes */
+    execlp ("pkill", "pkill", "astart", ((char *)NULL));
+    /* execlp should never return */
+    perror ("execlp");
+    printf ("unable to pkill\n");
+  }
+}
+
 /* the following should be all the signals that could terminate a process */
 /* list taken from signal(7) */
 /* commented-out signals gave compiler errors */
 static int terminating_signals [] =
-  { SIGHUP, SIGINT, SIGQUIT, SIGILL, SIGABRT, SIGFPE, /* SIGKILL, */
-    SIGSEGV, SIGPIPE, SIGALRM, SIGTERM, SIGUSR1, SIGUSR2,
-    SIGBUS, 
-#ifndef __APPLE__
-    SIGPOLL,
-#endif /* __APPLE__ */
-    SIGPROF, SIGSYS, SIGTRAP, SIGVTALRM,
+  { SIGINT, SIGQUIT, SIGILL, SIGABRT, SIGFPE, /* SIGKILL, */
+    SIGSEGV, SIGPIPE, SIGBUS, SIGTERM,
+    SIGSYS, SIGTRAP,
     SIGXCPU, SIGXFSZ,
     SIGIOT, /* SIGEMT, */ SIGIO
-#ifndef __APPLE__
-    , SIGSTKFLT, SIGPWR,
-    /* SIGINFO, SIGLOST, */ SIGUNUSED
-#endif /* __APPLE__ */
   };
 
 static void setup_signal_handler (int set)
 {
   struct sigaction sa;
-  if (set)
-    sa.sa_handler = stop_all; /* terminate other processes when we are killed */
+  if (set) /* terminate other processes when we are killed */
+    sa.sa_handler = stop_all_on_signal;
   else
     sa.sa_handler = SIG_DFL;  /* whatever the default is */
-  sigfillset (&(sa.sa_mask)); /* block all signals */
+  sigfillset (&(sa.sa_mask)); /* block all signals while sighandler running */
   sa.sa_flags = SA_NOCLDSTOP | SA_NOCLDWAIT | SA_RESTART;
   int i;
   for (i = 0; i < sizeof (terminating_signals) / sizeof (int); i++) {
@@ -238,6 +240,7 @@ static void setup_signal_handler (int set)
 static void child_return (char * executable, pid_t ad, pid_t parent)
 {
   printf ("%s completed\n", executable);
+/*
   static char buf [100000];
   char * pwd = getcwd (buf, sizeof (buf));
   printf ("current directory is %s\n", pwd);
@@ -246,6 +249,7 @@ static void child_return (char * executable, pid_t ad, pid_t parent)
   if (parent > 0)
     kill (parent, SIGTERM);
   stop_all (-1);
+*/
   exit (1);
 }
 
@@ -259,6 +263,7 @@ static void my_call1 (char * argv, int alen, char * program,
     replace_command (argv, alen, program);
     snprintf (log_buf, LOG_SIZE, "calling %s\n", program);
     log_print ();
+    daemon_name = program;
     run_function (argv);
     child_return (program, ad, self);
   } else {  /* parent, not much to do */
@@ -291,6 +296,7 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
     replace_command (argv, alen, program);
     snprintf (log_buf, LOG_SIZE, "calling %s (%d %d)\n", program, rpipe, wpipe);
     log_print ();
+    daemon_name = "alocal";
     /* close the pipes we don't use in the child */
     alocal_main (rpipe, wpipe);
     child_return (program, ad, self);
@@ -318,6 +324,7 @@ static void my_call_aip (char * argv, int alen, char * program,
     snprintf (log_buf, LOG_SIZE, "calling %s %d %d %s\n",
               program, rpipe, wpipe, extra);
     log_print ();
+    daemon_name = "aip";
     run_function (rpipe, wpipe, extra);
     child_return (program, ad, self);
   } else {  /* parent, close the child pipes */
@@ -341,6 +348,7 @@ static void my_call_abc (char * argv, int alen, char * program,
     snprintf (log_buf, LOG_SIZE, "calling %s %d %d %s\n",
               program, rpipe, wpipe, ifopts);
     log_print ();
+    daemon_name = "abc";
     abc_main (rpipe, wpipe, ifopts);
     child_return (program, ad, self);
   } else {  /* parent, close the child pipes */
@@ -365,6 +373,7 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
     replace_command (argv, alen, program);
     snprintf (log_buf, LOG_SIZE, "calling %s\n", program);
     log_print ();
+    daemon_name = "ad";
     /* close the pipes we don't use in the child */
     /* and compress the rest to the start of the respective arrays */
     for (i = 0; i < num_pipes / 2; i++) {
@@ -410,6 +419,7 @@ int astart_main (int argc, char ** argv)
   char * pname;
   find_path (argv [0], &path, &pname);
   if (strstr (pname, "stop") != NULL) {
+    daemon_name = "astop";
     stop_all (0);   /* just stop */
     return 0;
   }
@@ -418,7 +428,6 @@ int astart_main (int argc, char ** argv)
   init_log ("astart");  /* only do logging in astart, not in astop */
   snprintf (log_buf, LOG_SIZE, "astart called with %d arguments\n", argc);
   log_print ();
-  setup_signal_handler (1);
 
   /* two pipes from ad to alocal and back, plus */
   /* two pipes from ad to aip and back */
@@ -470,10 +479,16 @@ int astart_main (int argc, char ** argv)
                  argv [i + 1], pid_fd, ad_pid);
   }
   make_root_nobody ();  /* if we were root, become nobody */
+  /* ad, alocal, aip, and the abc's don't need signal handlers -- if any
+   * of them goes down, the pipes are closed and everyone else goes down too
+   * but if the other daemons go down, they should explicitly shut
+   * down all the processes listed in the pid file */
+  setup_signal_handler (1);
   my_call1 (argv [0], alen, "adht", adht_main, pid_fd, ad_pid);
   my_call1 (argv [0], alen, "acache", acache_main, pid_fd, ad_pid);
   my_call1 (argv [0], alen, "traced", traced_main, pid_fd, ad_pid);
   my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd, ad_pid);
+  my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd, ad_pid);
 
 #ifdef WAIT_FOR_CHILD_TERMINATION
   int status;
