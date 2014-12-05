@@ -612,9 +612,6 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
           handle_network_message (message, msize, wpipe,
                                   NULL, NULL, NULL, NULL, NULL, NULL, 1);
         check_priority_mode ();
-      } else {
-        usleep (10 * 1000); /* 10ms */
-      }
       free (message);
     } else {
       usleep (10 * 1000); /* 10ms */
