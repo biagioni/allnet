@@ -141,7 +141,7 @@ static int abc_wifi_init (const char * interface)
       }
       /* create the socket and initialize the address */
       abc_iface_wifi.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
-      abc_iface_wifi.if_address.sa = *(ifa_loop->ifa_addr);
+      abc_iface_wifi.if_address.ll = *((struct sockaddr_ll *)ifa_loop->ifa_addr);
       if (abc_iface_wifi.iface_sockfd == -1) {
         perror ("abc-wifi: error creating socket");
         goto abc_wifi_init_cleanup;
