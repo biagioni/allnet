@@ -4,15 +4,15 @@
  *
  * single-threaded, uses select to check the pipe from ad and the interface
  * may have to be run with supervisory/root privileges depending on the chosen
- * interface driver
+ * interface driver (wifi requires root)
  * arguments are:
  * - the fd number of the pipe from ad
  * - the fd number of the pipe to ad
  * - the interface name and optionally interface driver and driver options
  *  e.g. eth0/ip, wlan0/wifi, or wlan0/wifi,nm
  *  Available drivers are ip and wifi, ip being the default.
- *    ip    can only be used on interfaces that are already connected to an IP
- *          network.
+ *    ip    does not require root but can only be used on interfaces that are
+ *          already connected to an IP network.
  *    wifi  Sets up or connects to the adhoc network "allnet" running on
  *          channel 1.
  *          iw: When no further parameters are given the "iw" driver is
@@ -22,7 +22,9 @@
  *          iw requires root privileges.
  *          nm: With the "nm" driver, NetworkManager is used to connect the
  *          interface to the "allnet" adhoc network. This driver does not
- *          require root privileges but is much slower (ca. 20s to connect.)
+ *          require root privileges for managing the interface but is much
+ *          slower (ca. 20s to connect.)
+ *          TODO: nm still requires root because of the raw socket (AF_PACKET)
  */
 
 /* TODO: config file "abc" "interface-name" (e.g. ~/.allnet/abc/wlan0)
@@ -53,9 +55,13 @@
  * the iface is turned on for two full cycles, and during that time we
  * behave as if we had high priority data to send.
  *
- * packets are resent in exponential backoff fashion (every 2^i'th cycle).
+ * Packets are resent in exponential backoff fashion (every 2^i'th cycle).
+ * The cycle counter is incremented in every cycle where data is sent:
+ *   In managed mode, only in cycles when a beacon grant was received.
+ *   In unamanged mode, the cycle counter is incremented every basic (5s) cycle.
  * Packets are dropped when acked or after the maximal backoff threshold is
  * reached at 2^8 == 256.
+ * Packets with DO_NOT_CACHE flag are only sent once.
  */
 
 #include <assert.h>
@@ -90,10 +96,6 @@
 #define	BEACON_MS		(BASIC_CYCLE_SEC * 1000 / 100)
 /* maximum amount of time to wait for a beacon grant */
 #define BEACON_MAX_COMPLETION_US	250000    /* 0.25s */
-
-/* drop packets from queue after reaching 8 resends with the last interval
- * being 2^8 == 256 cycles. */
-#define MAX_BACKOFF_THRESHOLD 8
 
 /** Cycle counter. Used for exponential backoff when resending messages. */
 static unsigned long cycle = 0ul;
@@ -193,7 +195,6 @@ static int receive_until (struct timeval * t, char ** message,
   unsigned long long int us_to_wait = delta_us (t, &now);  /* 0 or more */
   int timeout_ms = us_to_wait / 1000LL;
 
-  /* we don't actually care what address the packet was received from */
   struct sockaddr_storage recv_addr;
   struct sockaddr * sap = (struct sockaddr *) (&recv_addr);
   socklen_t al = sizeof (recv_addr);
@@ -204,6 +205,10 @@ static int receive_until (struct timeval * t, char ** message,
   } else {
     msize = receive_pipe_message_fd (timeout_ms, message, iface->iface_sockfd,
                                      sap, &al, from_fd, priority);
+    if (msize > 0 && al > 0 && !iface->accept_sender_cb (sap)) {
+      free (*message);
+      return 0;
+    }
   }
   return msize;  /* -1 (error), zero (timeout) or positive, the value is correct */
 }
@@ -240,11 +245,11 @@ static void send_beacon (int awake_ms)
   writeb64u (mbp->awake_time,
              ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
   if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT, BC_ADDR (iface),
-      sizeof (sockaddr_t)) < size) {
+      iface->sockaddr_size) < size) {
     int e = errno;
     /* retry, first packet is sometimes dropped */
     if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT, BC_ADDR (iface),
-        sizeof (sockaddr_t)) < size) {
+        iface->sockaddr_size) < size) {
       perror ("beacon sendto (2nd try)");
       if (errno != e)
         printf ("...different error on 2nd try, first was %d\n", e);
@@ -291,21 +296,31 @@ static void make_beacon_grant (char * buffer, int bsize,
   writeb64u (mbgp->send_time, send_time_ns);
 }
 
-/** Send pending messages */
-static void unmanaged_send_pending ()
+/**
+ * Send pending messages
+ * @param new_only When set, sends only new (unsent) messages
+ */
+static void unmanaged_send_pending (int new_only)
 {
-  char * my_message = NULL;
+  char * message = NULL;
   int nsize;
   int priority;
   int backoff;
   queue_iter_start ();
-  while (queue_iter_next (&my_message, &nsize, &priority, &backoff)) {
-    if (cycle % (1 << backoff) != 0)
+  while (queue_iter_next (&message, &nsize, &priority, &backoff)) {
+    /* new (unsent) messages have a backoff value of 0 */
+    if ((new_only && backoff) || (!new_only && cycle % (1 << backoff) != 0))
       continue;
-    if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
-        BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
-      perror ("sendto for type 2");
-    queue_iter_inc_backoff ();
+    if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
+        BC_ADDR (iface), iface->sockaddr_size) < nsize) {
+      perror ("abc: sendto");
+      continue;
+    }
+    struct allnet_header * hp = (struct allnet_header *) message;
+    if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE)
+      queue_iter_remove ();
+    else
+      queue_iter_inc_backoff ();
   }
 }
 
@@ -323,8 +338,8 @@ static void send_pending (enum abc_send_type type, int size, char * message)
   switch (type) {
     case ABC_SEND_TYPE_REPLY:
       if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
-          BC_ADDR (iface), sizeof (sockaddr_t)) < size)
-        perror ("sendto for type 1");
+          BC_ADDR (iface), iface->sockaddr_size) < size)
+        perror ("abc: sendto (reply)");
       else
         beacon_state = pending_beacon_state;
       pending_beacon_state = BEACON_NONE;
@@ -333,21 +348,29 @@ static void send_pending (enum abc_send_type type, int size, char * message)
     case ABC_SEND_TYPE_QUEUE:
     {
       int total_sent = 0;
-      char * my_message = NULL;
+      char * message = NULL;
       int nsize;
       int priority;
       int backoff;
       queue_iter_start ();
-      while ((queue_iter_next (&my_message, &nsize, &priority, &backoff)) &&
+      while ((queue_iter_next (&message, &nsize, &priority, &backoff)) &&
              (total_sent + nsize <= size)) {
         if (cycle % (1 << backoff) != 0)
           continue;
-        if (sendto (iface->iface_sockfd, my_message, nsize, MSG_DONTWAIT,
-            BC_ADDR (iface), sizeof (sockaddr_t)) < nsize)
-          perror ("sendto for type 2");
+        if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
+            BC_ADDR (iface), iface->sockaddr_size) < nsize) {
+          perror ("abc: sendto (queue)");
+          continue;
+        }
         total_sent += nsize;
-        queue_iter_inc_backoff ();
+
+        struct allnet_header * hp = (struct allnet_header *) message;
+        if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE)
+          queue_iter_remove ();
+        else
+          queue_iter_inc_backoff ();
       }
+      ++cycle; /* increment cycle after sending data */
       break;
     }
 
@@ -529,7 +552,11 @@ static void remove_acks (const char * message, const char * end)
 
 static void handle_ad_message (const char * message, int msize, int priority)
 {
-  queue_add (message, msize, priority);
+  if (!queue_add (message, msize, priority)) {
+    snprintf (log_buf, LOG_SIZE,
+              "abc: queue full, unable to add new message of size %d\n", msize);
+    log_print ();
+  }
   remove_acks (message, message + msize);
 }
 
@@ -577,14 +604,18 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
     int from_fd;
     int priority;
     int msize = receive_until (quiet_end, &message, &from_fd, &priority, 0);
-    if (msize > 0 && is_valid_message (message, msize)) {
-      if (from_fd == rpipe)
-        handle_ad_message (message, msize, priority);
-      else
-        handle_network_message (message, msize, wpipe,
-                                NULL, NULL, NULL, NULL, NULL, NULL, 1);
+    if (msize > 0) {
+      if (is_valid_message (message, msize)) {
+        if (from_fd == rpipe)
+          handle_ad_message (message, msize, priority);
+        else
+          handle_network_message (message, msize, wpipe,
+                                  NULL, NULL, NULL, NULL, NULL, NULL, 1);
+        check_priority_mode ();
+      } else {
+        usleep (10 * 1000); /* 10ms */
+      }
       free (message);
-      check_priority_mode ();
     } else {
       usleep (10 * 1000); /* 10ms */
     }
@@ -601,13 +632,16 @@ static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
     int priority;
     int msize = receive_until (t, &message, &fd, &priority, 0);
     static char send_message [ALLNET_MTU];
-    if ((msize > 0) && (is_valid_message (message, msize))) {
-      if (fd == rpipe)
-        handle_ad_message (message, msize, priority);
-      else
-        unmanaged_handle_network_message (message, msize, wpipe);
+    if (msize > 0) {
+      if (is_valid_message (message, msize)) {
+        if (fd == rpipe) {
+          handle_ad_message (message, msize, priority);
+          unmanaged_send_pending (1);
+        } else {
+          unmanaged_handle_network_message (message, msize, wpipe);
+        }
+      }
       free (message);
-      unmanaged_send_pending ();
 
     } else {
       usleep (10 * 1000); /* 10ms */
@@ -695,6 +729,8 @@ static void unmanaged_one_cycle (const char * interface, int rpipe, int wpipe)
   finish.tv_usec = 0;
 
   unmanaged_handle_until (&finish, rpipe, wpipe);
+  unmanaged_send_pending (0); /* resend queued data if needed */
+  ++cycle;
 }
 
 /* do one basic 5s cycle */
@@ -759,7 +795,6 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
       one_cycle (interface, rpipe, wpipe, &quiet_end);
     else
       unmanaged_one_cycle (interface, rpipe, wpipe);
-    ++cycle;
   }
 
 iface_cleanup:
@@ -769,7 +804,7 @@ iface_cleanup:
 void abc_main (int rpipe, int wpipe, char * ifopts)
 {
   init_log ("abc");
-  queue_init (16 * 1024 * 1024, MAX_BACKOFF_THRESHOLD);  /* 16MBi */
+  queue_init (16 * 1024 * 1024);  /* 16MBi */
 
   const char * interface = ifopts;
   const char * iface_type = NULL;

@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>           /* close */
 #include <ifaddrs.h>
 #include <net/if.h>           /* ifa_flags */
 #include <sys/socket.h>       /* struct sockaddr */
@@ -46,13 +47,17 @@ abc_iface abc_iface_wifi = {
   .iface_is_managed = 1,
   .iface_type_args = NULL,
   .iface_sockfd = -1,
+  .if_family = AF_PACKET,
   .if_address = {},
   .bc_address = {},
+  .sockaddr_size = sizeof (struct sockaddr_ll),
   .init_iface_cb = abc_wifi_init,
   .iface_on_off_ms = 150, /* default value, updated on runtime */
   .iface_is_enabled_cb = abc_wifi_is_enabled,
   .iface_set_enabled_cb = abc_wifi_set_enabled,
-  .iface_cleanup_cb = abc_wifi_cleanup
+  .iface_cleanup_cb = abc_wifi_cleanup,
+  .accept_sender_cb = abc_iface_accept_sender,
+  .priv = NULL
 };
 
 static abc_wifi_config_iface * wifi_config_types[] = {
@@ -101,9 +106,10 @@ static int abc_wifi_init (const char * interface)
 
   struct ifaddrs * ifa;
   if (getifaddrs (&ifa) != 0) {
-    perror ("getifaddrs");
+    perror ("abc-wifi: getifaddrs");
     return 0;
   }
+  int ret = 0;
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
 #ifndef __APPLE__  /* not sure how to do this for apple */
@@ -135,29 +141,40 @@ static int abc_wifi_init (const char * interface)
       }
       /* create the socket and initialize the address */
       abc_iface_wifi.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
-      abc_iface_wifi.if_address = *((struct sockaddr_ll *) (ifa_loop->ifa_addr));
-      if (bind (abc_iface_wifi.iface_sockfd, (const struct sockaddr *) &abc_iface_wifi.if_address, sizeof (sockaddr_t)) == -1)
-        printf ("abc-wifi: error binding interface, continuing without..\n");
+      abc_iface_wifi.if_address.sa = *(ifa_loop->ifa_addr);
+      if (abc_iface_wifi.iface_sockfd == -1) {
+        perror ("abc-wifi: error creating socket");
+        goto abc_wifi_init_cleanup;
+      }
+      if (bind (abc_iface_wifi.iface_sockfd, &abc_iface_wifi.if_address.sa, sizeof (struct sockaddr_ll)) == -1)
+        perror ("abc-wifi: error binding interface (continuing without)");
       if (ifa_loop->ifa_flags & IFF_BROADCAST)
-        abc_iface_wifi.bc_address = *((struct sockaddr_ll *) (ifa_loop->ifa_broadaddr));
+        abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_broadaddr);
       else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
-        abc_iface_wifi.bc_address = *((struct sockaddr_ll *) (ifa_loop->ifa_dstaddr));
+        abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_dstaddr);
       else
-        abc_iface_set_default_broadcast_address (&abc_iface_wifi.bc_address);
-      abc_iface_wifi.bc_address.sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
-      abc_iface_wifi.bc_address.sll_ifindex = abc_iface_wifi.if_address.sll_ifindex;
-      abc_iface_print_sll_addr (&abc_iface_wifi.if_address, "interface address");
-      abc_iface_print_sll_addr (&abc_iface_wifi.bc_address, "broadcast address");
-      freeifaddrs (ifa);
-      return 1;
+        abc_iface_set_default_sll_broadcast_address (&abc_iface_wifi.bc_address.ll);
+      abc_iface_wifi.bc_address.ll.sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
+      abc_iface_wifi.bc_address.ll.sll_ifindex = abc_iface_wifi.if_address.ll.sll_ifindex;
+      abc_iface_print_sll_addr (&abc_iface_wifi.if_address.ll, "interface address");
+      abc_iface_print_sll_addr (&abc_iface_wifi.bc_address.ll, "broadcast address");
+      ret = 1;
+      goto abc_wifi_init_cleanup;
     }
 #endif /* __APPLE__ */
     ifa_loop = ifa_loop->ifa_next;
   }
+abc_wifi_init_cleanup:
   freeifaddrs (ifa);
-  return 0;  /* interface not found */
+  return ret;
 }
 
 static int abc_wifi_cleanup () {
+  if (abc_iface_wifi.iface_sockfd != -1) {
+    if (close (abc_iface_wifi.iface_sockfd) != 0)
+      perror ("abc-wifi: error closing socket");
+    else
+      abc_iface_wifi.iface_sockfd = -1;
+  }
   return wifi_config_iface->iface_cleanup_cb ();
 }

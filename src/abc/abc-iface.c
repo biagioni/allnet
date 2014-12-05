@@ -4,10 +4,13 @@
 #include "abc-iface.h"
 #include "lib/packet.h" /* ALLNET_WIFI_PROTOCOL */
 
+/** Accept every sender */
+int abc_iface_accept_sender (const struct sockaddr * sender) { return 1; }
+
 #ifndef __APPLE__
 #include <netpacket/packet.h>  /* struct sockaddr_ll */
 
-void abc_iface_set_default_broadcast_address (struct sockaddr_ll * bc)
+void abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc)
 {
   bc->sll_family = AF_PACKET;
   bc->sll_protocol = ALLNET_WIFI_PROTOCOL;

@@ -1,4 +1,4 @@
-/* pqueue.c: priority queue for broadcasting over the local area network */
+/* pqueue.c: priority queue for broadcasting over the local area network (not thread safe) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,18 +19,17 @@ struct queue_element {
 static struct queue_element * head = NULL;
 static struct queue_element * tail = NULL;
 static int max_size = 0;
-static int max_backoff = 0;
 static int current_size = 0;
 
-void queue_init (int max_bytes, int max_backoff_threshold)
+void queue_init (int max_bytes)
 {
   head = NULL;
   tail = NULL;
   max_size = max_bytes;
-  max_backoff = max_backoff_threshold;
   current_size = 0;
 }
 
+/** Remove the last element (if any) from the queue */
 static void remove_tail ()
 {
   if (tail == NULL)
@@ -50,16 +49,37 @@ static void remove_tail ()
   }
 }
 
-/* return 1 for success, 0 if wanted > max_size or priority < tail->priority */
+/**
+ * Try to make room for a new element.
+ * Elements of lower priority will be removed to make room for the new one if
+ * needed. Queue remains unchanged if new element doesn't fit.
+ * @param wanted Size needed for new element
+ * @param priority Priority of new element.
+ * @return 1 if new element has enough room, 0 otherwise.
+ */
 static int make_room (int wanted, int priority)
 {
-  if (wanted > max_size)
+  if (current_size + wanted <= max_size)
+    return 1;
+  if (wanted > max_size || tail == NULL)
     return 0;
-  if ((tail != NULL) && (tail->priority > priority))
-    return (current_size + wanted <= max_size);
-  while (current_size + wanted > max_size)
-    remove_tail ();
-  return 1;
+
+  int possible_space = 0;
+  int removable = 0;
+  struct queue_element * qel = tail;
+  for (; (qel->priority < priority) &&
+         (current_size - possible_space + wanted > max_size);
+       qel = qel->prev) {
+    possible_space += qel->size;
+    ++removable;
+  }
+  /* only clear elements if new element will fit */
+  if (current_size - possible_space + wanted <= max_size) {
+    while (removable--)
+      remove_tail ();
+    return 1;
+  }
+  return 0;
 }
 
 /* return the highest priority of any item in the queue */
@@ -83,7 +103,7 @@ static struct queue_element *
   int total_size = size + sizeof (struct queue_element);
   struct queue_element * result = malloc (total_size);
   if (result == NULL) {
-    printf ("unable to malloc %d bytes for %d content, aborting\n",
+    printf ("pqueue: Unable to malloc %d bytes for %d content, aborting\n",
             total_size, size);
     exit (1);
   }
@@ -96,12 +116,19 @@ static struct queue_element *
   return result;
 }
 
-void queue_add (const char * value, int size, int priority)
+/**
+ * Add new element to priority queue
+ * If needed, items with lower priority will be removed to make room for the new
+ * element. The queue remains unchanged if not enough room can be found.
+ * @param value Element to add. The element is copied into the queue.
+ * @param size Size of element to add.
+ * @param priority Priority of new element.
+ * @return 1 on success, 0 on failure (not enough space)
+ */
+int queue_add (const char * value, int size, int priority)
 {
-  if (! make_room (size, priority)) {
-    printf ("unable to add element of size %d, max size %d\n", size, max_size);
-    return;
-  }
+  if (! make_room (size, priority))
+    return 0;
   current_size += size;
   if ((head == NULL) || (head->priority < priority)) {
     struct queue_element * new =
@@ -111,7 +138,7 @@ void queue_add (const char * value, int size, int priority)
     head = new;
     if (tail == NULL)
       tail = new;
-    return;
+    return 1;
   }
   struct queue_element * node = head;
   while ((node != NULL) && (node->priority >= priority))
@@ -119,12 +146,13 @@ void queue_add (const char * value, int size, int priority)
   if (node == NULL) {  /* add at the tail */
     tail->next = new_element (value, size, priority, tail, NULL);
     tail = tail->next;
-    return;
+    return 1;
   }
   /* found a node whose priority < the new priority, so add before it */
   struct queue_element * prev = node->prev;
   node->prev = new_element (value, size, priority, prev, node);
   prev->next = node->prev;
+  return 1;
 }
 
 static struct queue_element * iter_next = NULL;
@@ -156,21 +184,29 @@ int queue_iter_next (char * * queue_element, int * next_size, int * priority,
   return 1;
 }
 
-/* Increment backoff counter for current element and return 1.
- * The message is removed when the threshold is crossed and 0 is returned
+/**
+ * Increment backoff counter for current element. The message is removed when
+ * the threshold is crossed.
+ * Must only be called after a successful call to queue_iter_next ().
+ * @return 1 if counter has been incremented, 0 if element has been removed.
  */
 int queue_iter_inc_backoff ()
 {
   if (iter_remove == NULL)
     return 0; /* item doesn't exist */
   ++iter_remove->backoff;
-  if (iter_remove->backoff > max_backoff && max_backoff > 0) {
+  long p = iter_remove->priority;
+  if (iter_remove->backoff > ALLNET_PQUEUE_BACKOFF_THRESHOLD (p)) {
     queue_iter_remove ();
     return 0;
   }
   return 1;
 }
 
+/**
+ * Remove current element from queue and free internal resources.
+ * Must be called at most once after a successful call to queue_iter_next ().
+ */
 void queue_iter_remove ()
 {
   if (iter_remove == NULL) {
@@ -190,10 +226,12 @@ void queue_iter_remove ()
 }
 
 #ifdef TEST_PRIORITY_QUEUE
+#define ALLNET_PQUEUE_MAX_BACKOFF 2
+#include <assert.h>
 static void queue_print_one (struct queue_element * node)
 {
-  printf ("(%p<-%p->%p): %d, %d [%02x %02x]\n", node->prev, node, node->next,
-          node->size, node->priority,
+  printf ("(%p<-%p->%p): %d, %d, %d [%02x %02x]\n", node->prev, node, node->next,
+          node->size, node->priority, node->backoff,
            node->data [0] & 0xff, node->data [1] & 0xff);
 }
 
@@ -240,5 +278,50 @@ int main (int argc, char ** argv)
   queue_print ("after adding bar, priority 37");
   queue_add (buffer, 96, 7);
   queue_print ("after adding buffer, priority 7");
+
+  /* backoff test */
+  queue_init (100);
+  queue_print ("\nafter fourth init");
+  queue_add ("foo", 3, 77);
+  char * m;
+  int s, p, b;
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ());
+  queue_print ("after adding foo and incrementing once, priority 77");
+  assert (queue_iter_inc_backoff ());
+  assert (!queue_iter_inc_backoff ());
+  queue_print ("after incrementing foo, priority 77 over backoff");
+  queue_add ("foo", 3, 77);
+  queue_print ("after adding foo, priority 77");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ()); /* foo == 1 */
+  queue_add ("bar", 3, 77);
+  queue_print ("after inc'foo and adding bar, priority 77");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ()); /* foo == 2 */
+  queue_add ("baz", 3, 77);
+  queue_print ("after inc'foo adding baz, priority 77");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (!queue_iter_inc_backoff ()); /* foo == 3 -> delete */
+  queue_print ("after incrementing foo over backoff");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ()); /* baz == 1 */
+  assert (queue_iter_inc_backoff ()); /* baz == 2 */
+  queue_print ("after incrementing baz to backoff");
+  assert (!queue_iter_inc_backoff ()); /* baz == 3 -> delete */
+  queue_print ("after incrementing baz over backoff");
+  queue_iter_start ();
+  assert (queue_iter_next (&m, &s, &p, &b));
+  assert (queue_iter_inc_backoff ()); /* bar == 1 */
+  assert (queue_iter_inc_backoff ()); /* bar == 2 */
+  assert (!queue_iter_inc_backoff ()); /* bar == 3 -> delete */
+  queue_iter_start ();
+  assert (!queue_iter_next (&m, &s, &p, &b));
 }
 #endif /* TEST_PRIORITY_QUEUE */
