@@ -177,15 +177,17 @@ static void stop_all_on_signal (int signal)
 #define MAX_STOP_PROCS	1000
     static pid_t pids [MAX_STOP_PROCS];
     pid_t pid;
+    pid_t my_pid = getpid ();
     int count = 0;
     while ((count < MAX_STOP_PROCS) && ((pid = read_pid (fd)) > 0))
-      pids [count++] = pid;
+      if (pid != my_pid)       /* do not kill myself */
+        pids [count++] = pid;
     close (fd);
-    unlink (fname);  /* deleting the pid file signals that others
-                      * need not kill other processes */
+    /* deleting the pid file keeps others from doing what we are doing */
+    unlink (fname);
+    /* now stop all the other processes */
     while (count-- > 0)
-      if (getpid () != pids [count])   /* do not kill myself */
-        kill (pids [count], SIGINT);
+      kill (pids [count], SIGINT);
     unlink (AIP_UNIX_SOCKET);          /* aip may do this too */
   }
 }
@@ -240,16 +242,7 @@ static void setup_signal_handler (int set)
 static void child_return (char * executable, pid_t ad, pid_t parent)
 {
   printf ("%s completed\n", executable);
-/*
-  static char buf [100000];
-  char * pwd = getcwd (buf, sizeof (buf));
-  printf ("current directory is %s\n", pwd);
-  if (ad > 0)
-    kill (ad, SIGTERM);
-  if (parent > 0)
-    kill (parent, SIGTERM);
-  stop_all (-1);
-*/
+  stop_all_on_signal (0);   /* stop other AllNet processes if necessary */
   exit (1);
 }
 
@@ -349,6 +342,7 @@ static void my_call_abc (char * argv, int alen, char * program,
               program, rpipe, wpipe, ifopts);
     log_print ();
     daemon_name = "abc";
+    setup_signal_handler (0);  /* abc has its own signal handler */
     abc_main (rpipe, wpipe, ifopts);
     child_return (program, ad, self);
   } else {  /* parent, close the child pipes */
@@ -420,7 +414,7 @@ int astart_main (int argc, char ** argv)
   find_path (argv [0], &path, &pname);
   if (strstr (pname, "stop") != NULL) {
     daemon_name = "astop";
-    stop_all (0);   /* just stop */
+    stop_all ();   /* just stop */
     return 0;
   }
   /* printf ("astart path is %s\n", path); */
