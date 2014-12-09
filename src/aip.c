@@ -565,7 +565,10 @@ void listen_callback (int fd)
  * so if all these addresses are in, e.g. 3 of the parts, we only listen
  * to at most 2 nodes in each of these parts.  Also note that multiple
  * parts may be assigned to the same DHT node -- if so, we only open a
- * single listen connection to that node. */
+ * single listen connection to that node.
+ *
+ * current code in make_listeners and connect_thread only works if
+ * listen_bits <= 8 */
 #define LISTEN_BITS	5
 #define NUM_LISTENERS	(1 << LISTEN_BITS) * 2   /* 2 ^ LISTEN_BITS for v4/v6*/
 static int listener_fds [NUM_LISTENERS];
@@ -581,7 +584,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
 #ifdef DEBUG_PRINT
   int i;
   for (i = 0; i < num_dhts; i++) {
-    printf ("routing_top_dht_matches [%d]: ", i);
+    printf ("routing_top_dht_matches [%d/%d]: ", i, num_dhts);
     print_sockaddr ((struct sockaddr *) (sas + i),
                     sizeof (struct sockaddr_storage), -1);
     printf ("\n");
@@ -624,8 +627,9 @@ time_t start_time = time (NULL);
                   inet_ntoa (sin->sin_addr), ntohs (sin->sin_port),
                   time (NULL) - start_time);
         log_error ("listener connect");
-        continue;
+        continue;   /* return to the top of the loop */
       }
+      /* success! */
       /* ai now needs to be malloc'd, to make it good even after we return */
       int size = sizeof (struct addr_info);
       struct addr_info * ai = malloc_or_fail (size, "connect_listener");
@@ -648,9 +652,75 @@ time_t start_time = time (NULL);
   return result;
 }
 
+struct connect_thread_arg {
+  unsigned char address [ADDRESS_SIZE];
+  struct listen_info * info;
+  void * addr_cache;
+  int af;
+  int listener_index;
+};
+
+static void * connect_thread (void * a)
+{
+  struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
+  sleep_time_random_us (30 * 1000);   /* sleep up to 30ms */
+  listener_fds [arg->listener_index] = 
+    connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);
+  free (a);  /* the caller doesn't do it, so we should */
+  return NULL;
+}
+
+static void create_connect_thread (struct listen_info * info, void * addr_cache,
+                                   int af, int listener_index)
+{
+  struct connect_thread_arg * arg =
+    malloc_or_fail (sizeof (struct connect_thread_arg), "connect_thread");
+  bzero (arg, sizeof (struct connect_thread_arg));
+  arg->address [0] = (listener_index / 2) << (8 - LISTEN_BITS);
+  /* printf ("index %02x, new address %02x\n", listener_index,
+          arg->address [0] & 0xff); */
+  arg->info = info;
+  arg->addr_cache = addr_cache;
+  arg->af = af;
+  arg->listener_index = listener_index;
+  pthread_t thread;
+  if (pthread_create (&thread, NULL, &connect_thread, (void *) arg))
+    log_error ("pthread_create");
+}
+
+/* Connect can block for several seconds, so spawn a thread for
+   each listener.  Listeners are selected to correspond to at least
+   one of our local addresses. */
 static void make_listeners (struct listen_info * info, void * addr_cache)
 {
   int i;
+  int connect_to_index [NUM_LISTENERS];
+  for (i = 0; i < NUM_LISTENERS; i++)
+    connect_to_index [i] = 0;  /* set to 1 if we should connect */
+  char ** contacts;
+  int num_contacts = all_contacts (&contacts);
+  for (i = 0; i < num_contacts; i++) {
+    int j;
+    keyset * keysets;
+    int num_keysets = all_keys (contacts [i], &keysets);
+    for (j = 0; j < num_keysets; j++) {
+      unsigned char address [ADDRESS_SIZE];
+      if (get_local (keysets [j], address) >= LISTEN_BITS) {
+        int index = ((address [0] & 0xff) >> (8 - LISTEN_BITS)) * 2;
+/* printf ("original address %02x, index %02x\n", address [0] & 0xff, index); */
+        connect_to_index [index] = 1;
+        connect_to_index [index + 1] = 1;
+      }
+    }
+  }
+  for (i = 0; i < NUM_LISTENERS; i += 2) {
+    if (connect_to_index [i])
+      create_connect_thread (info, addr_cache, AF_INET, i);
+    if (connect_to_index [i + 1])
+      create_connect_thread (info, addr_cache, AF_INET6, i + 1);
+  }
+
+#if 0
   char ** contacts;
   int num_contacts = all_contacts (&contacts);
   for (i = 0; i < num_contacts; i++) {
@@ -674,6 +744,7 @@ i, num_contacts, j, num_keysets, index, index + 1); */
       }
     }
   }
+#endif /* 0 */
 }
 
 static void remove_listener (int fd, struct listen_info * info,
@@ -998,7 +1069,8 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
   time_t last_listen = 0;
   time_t last_keepalive = 0;
   while (1) {
-    if ((time (NULL) - last_listen > 3600) || /* once an hour try to update */
+    if ((last_listen == 0) ||                 /* if never updated */
+        (time (NULL) - last_listen > 3600) || /* once an hour try to update */
         /* or once a minute if we've recently removed an fd */
         ((removed_listener) && (time (NULL) - last_listen > 60))) {
 /* printf ("making listeners\n"); */

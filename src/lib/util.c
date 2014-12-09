@@ -796,7 +796,8 @@ void allnet_localtime_string (unsigned long long int allnet_seconds,
 
 /* useful time functions */
 /* if t1 < t2, returns 0, otherwise returns t1 - t2 */
-unsigned long long delta_us (const struct timeval * t1, const struct timeval * t2)
+unsigned long long delta_us (const struct timeval * t1,
+                             const struct timeval * t2)
 {
   if ((t1->tv_sec < t2->tv_sec) ||
       ((t1->tv_sec == t2->tv_sec) &&
@@ -896,6 +897,12 @@ void set_time_random (const struct timeval * start, unsigned long long min,
     return;
   unsigned long long int us = min + random_mod (max - min);
   add_us (result, us);
+}
+
+/* sleep between 0 and us microseconds */
+void sleep_time_random_us (unsigned long long us)
+{
+  usleep (random_mod (us));
 }
 
 /* if malloc is not successful, exit after printing */

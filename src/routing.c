@@ -344,8 +344,10 @@ static void load_peers (int only_if_newer)
     }
 }
 
-static void init_default_dns ()
+/* run as a thread since getaddrinfo can be extremely slow (10's of seconds) */
+static void * init_default_dns (void * arg)
 {
+  int * initialized = (int *) arg;
   char service [10];
   snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
   int i;
@@ -393,15 +395,30 @@ static void init_default_dns ()
     printf ("\n");
   }
 #endif /* DEBUG_PRINT */
+  *initialized = 1;
+  snprintf (log_buf, LOG_SIZE, "init_default_dns is complete\n");
+  log_print ();
+  return NULL;
 }
 
+/* always called with lock held */
 static int init_peers (int always)
 {
   static int initialized = 0;
   int result = 1 - initialized;  /* return 1 if this is the first call */
   if ((! initialized) || (always)) {
     load_peers (0);
-    init_default_dns ();
+    int i;
+    for (i = 0; i < NUM_DEFAULTS; i++) {
+      ip4_defaults [i].ss_family = 0;
+      ip6_defaults [i].ss_family = 0;
+    }
+    pthread_t thread;
+    static int dns_init = 0;
+    if (dns_init == 0) {
+      dns_init = -1;   /* initialization in progress */
+      pthread_create (&thread, NULL, init_default_dns, (void *) (&dns_init));
+    }
   } else {
     load_peers (1);
   }

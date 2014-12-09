@@ -141,8 +141,11 @@ extern int is_before (struct timeval * t);
 extern time_t compute_next (time_t from, time_t granularity, int immediate_ok);
 
 /* set result to a random time between start + min and start + max */
-extern void set_time_random (const struct timeval * start, unsigned long long min,
+extern void set_time_random (const struct timeval * start,
+                             unsigned long long min,
                              unsigned long long max, struct timeval * result);
+/* sleep between 0 and us microseconds */
+extern void sleep_time_random_us (unsigned long long us);
 
 /* if malloc is not successful, exit after printing */
 extern void * malloc_or_fail (int bytes, char * desc);
