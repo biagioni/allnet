@@ -473,7 +473,8 @@ static int next_available (int extra, int timeout)
   log_print ();
 #endif /* DEBUG_PRINT */
   if (s < 0) {
-    perror ("next_available/select");
+    if (! do_not_print)
+      perror ("next_available/select");
     print_pipes ("current", max_pipe);
     snprintf (log_buf, LOG_SIZE, "some error in select, aborting\n");
     log_print ();

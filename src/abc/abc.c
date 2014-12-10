@@ -101,7 +101,7 @@
 static unsigned long cycle = 0ul;
 
 /** exit flag set by TERM signal. Set by term_handler. */
-static volatile sig_atomic_t term = 0;
+static volatile sig_atomic_t terminate = 0;
 
 /* Managed interface drivers limit the rate. TODO: move into interface */
 static unsigned long long int bits_per_s = 1000 * 1000;  /* 1Mb/s default */
@@ -149,7 +149,7 @@ static const char * iface_type_strings[] = {
 static abc_iface * iface = NULL; /* used interface ptr */
 
 static void term_handler (int sig) {
-  term = 1;
+  terminate = 1;
 }
 
 static void clear_nonces (int mine, int other)
@@ -172,21 +172,10 @@ static void check_priority_mode ()
                    queue_max_priority () >= ALLNET_PRIORITY_FRIENDS_LOW);
 }
 
-#ifdef WAIT_UNTIL_USED
-static void wait_until (struct timeval * t)
-{
-  do {
-    struct timeval now;
-    gettimeofday (&now, NULL);
-    unsigned long long int wait = delta_us (t, &now);
-    usleep (wait);
-  } while (is_before (t));
-}
-#endif /* WAIT_UNTIL_USED */
-
 /* returns -1 in case of error, 0 for timeout, and message size otherwise */
 /* may return earlier than t if a packet is received or there is an error */
-/* if ad_only is set, receives only from ad, otherwise from both ad and abc interface */
+/* if ad_only is set, receives only from ad, otherwise from both ad and
+ * abc interface (but ad_only is always zero) */
 static int receive_until (struct timeval * t, char ** message,
                           int * from_fd, int * priority, int ad_only)
 {
@@ -199,16 +188,26 @@ static int receive_until (struct timeval * t, char ** message,
   struct sockaddr * sap = (struct sockaddr *) (&recv_addr);
   socklen_t al = sizeof (recv_addr);
 
+#ifdef DEBUG_PRINT
+  unsigned long long start = allnet_time_ms ();
+#endif /* DEBUG_PRINT */
   int msize;
   if (ad_only) {
     msize = receive_pipe_message_any (timeout_ms, message, from_fd, priority);
   } else {
     msize = receive_pipe_message_fd (timeout_ms, message, iface->iface_sockfd,
                                      sap, &al, from_fd, priority);
+#ifdef DEBUG_PRINT
+    unsigned long long finish = allnet_time_ms ();
+    printf ("receive_pipe_message_fd %d (%d) on fd %d, ", msize, al, *from_fd);
+    printf ("after time %lld/%d ms\n", finish - start, timeout_ms);
+#endif /* DEBUG_PRINT */
     if (msize > 0 && al > 0 && !iface->accept_sender_cb (sap)) {
       free (*message);
       return 0;
     }
+    if (msize < 0)
+      terminate = 1;
   }
   return msize;  /* -1 (error), zero (timeout) or positive, the value is correct */
 }
@@ -560,20 +559,30 @@ static void handle_ad_message (const char * message, int msize, int priority)
   remove_acks (message, message + msize);
 }
 
-static void unmanaged_handle_network_message (const char * message, int msize, int ad_pipe)
+static void unmanaged_handle_network_message (const char * message,
+                                              int msize, int ad_pipe)
 {
-  struct allnet_header * hp = (struct allnet_header *) message;
+  /* struct allnet_header * hp = (struct allnet_header *) message; */
   /* send the message to ad */
-  send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
+  int sent = send_pipe_message (ad_pipe, message, msize,
+                                ALLNET_PRIORITY_EPSILON);
+  /* if (sent <= 0) { */
+    snprintf (log_buf, LOG_SIZE, "u sent to ad %d bytes, message %d bytes\n",
+              sent, msize);
+    log_print ();
+  /*  terminate = 1;
+  } */
   /* remove any messages that this message acks */
   remove_acks (message, message + msize);
 }
 
-static void handle_network_message (const char * message, int msize, int ad_pipe,
+static void handle_network_message (const char * message, int msize,
+                                    int ad_pipe,
                                     struct timeval ** beacon_deadline,
                                     struct timeval * time_buffer,
                                     struct timeval * quiet_end,
-                                    enum abc_send_type * send_type, int * send_size,
+                                    enum abc_send_type * send_type,
+                                    int * send_size,
                                     char * send_message, int quiet)
 {
   if (! handle_beacon (message, msize, beacon_deadline, time_buffer,
@@ -588,7 +597,14 @@ static void handle_network_message (const char * message, int msize, int ad_pipe
       received_high_priority = 1;
 
     /* send the message to ad */
-    send_pipe_message (ad_pipe, message, msize, ALLNET_PRIORITY_EPSILON);
+    int sent = send_pipe_message (ad_pipe, message, msize,
+                                  ALLNET_PRIORITY_EPSILON);
+    /* if (sent <= 0) { */
+      snprintf (log_buf, LOG_SIZE, "sent to ad %d bytes, message %d bytes\n",
+                sent, msize);
+      log_print ();
+   /*   terminate = 1;
+    } */
     /* remove any messages that this message acks */
     remove_acks (message, message + msize);
   }
@@ -599,13 +615,14 @@ static void handle_network_message (const char * message, int msize, int ad_pipe
 static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
 {
   check_priority_mode ();
-  while (is_before (quiet_end) && !term) {
+  while (is_before (quiet_end) && !terminate) {
     char * message;
     int from_fd;
     int priority;
     int msize = receive_until (quiet_end, &message, &from_fd, &priority, 0);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
+printf ("%d-byte message from %d (ad is %d)\n", msize, from_fd, rpipe);
         if (from_fd == rpipe)
           handle_ad_message (message, msize, priority);
         else
@@ -613,6 +630,7 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
                                   NULL, NULL, NULL, NULL, NULL, NULL, 1);
         check_priority_mode ();
       }
+else { printf ("invalid message from %d (ad is %d)\n", from_fd, rpipe); }
       free (message);
     } else {
       usleep (10 * 1000); /* 10ms */
@@ -623,13 +641,11 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
 /* handle incoming packets until time t */
 static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
 {
-  struct timeval time_buffer;   /* beacon_deadline sometimes points here */
-  while (is_before (t) && !term) {
+  while (is_before (t) && !terminate) {
     char * message;
     int fd;
     int priority;
     int msize = receive_until (t, &message, &fd, &priority, 0);
-    static char send_message [ALLNET_MTU];
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
         if (fd == rpipe) {
@@ -640,7 +656,6 @@ static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
         }
       }
       free (message);
-
     } else {
       usleep (10 * 1000); /* 10ms */
     }
@@ -653,7 +668,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
   check_priority_mode ();
   struct timeval * beacon_deadline = NULL;
   struct timeval time_buffer;   /* beacon_deadline sometimes points here */
-  while (is_before (t) && !term) {
+  while (is_before (t) && !terminate) {
     char * message;
     int fd;
     int priority;
@@ -688,7 +703,8 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
 #ifdef DEBUG_PRINT
       struct timeval now;
       gettimeofday (&now, NULL);
-      printf ("abc: missed beacon-grant by %lldms\n", delta_us (&now, beacon_deadline) / 1000);
+      printf ("abc: missed beacon-grant by %lldms\n",
+              delta_us (&now, beacon_deadline) / 1000);
 #endif /* DEBUG_PRINT */
       beacon_state = BEACON_NONE;
       beacon_deadline = NULL;
@@ -701,7 +717,8 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
  * and bfinish to beacon_ms ms later
  * parameters are in ms, computation is in us (sec/1,000,000) */
 static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
-                             const struct timeval * start, const struct timeval * finish,
+                             const struct timeval * start,
+                             const struct timeval * finish,
                              int beacon_ms)
 {
   unsigned long long int interval_us = delta_us (finish, start);
@@ -785,10 +802,13 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
     log_print ();
     goto iface_cleanup;
   }
+  snprintf (log_buf, LOG_SIZE,
+            "interface '%s' on fd %d\n", interface, iface->iface_sockfd);
+  log_print ();
   add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
   if (iface->iface_is_managed)
     bzero (zero_nonce, NONCE_SIZE);
-  while (!term) {
+  while (!terminate) {
     if (iface->iface_is_managed)
       one_cycle (interface, rpipe, wpipe, &quiet_end);
     else
@@ -807,7 +827,8 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
   const char * interface = ifopts;
   const char * iface_type = NULL;
   char * args = ifopts;
-  while (*args != '\0' && *args != '/') ++args;
+  while (*args != '\0' && *args != '/')
+    ++args;
   if (*args == '/') {
     *args = '\0';
     iface_type = ++args;
@@ -820,23 +841,23 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
 
     int i;
     for (i = 0; i < sizeof (iface_types) / sizeof (abc_iface *); ++i) {
-      if (strcmp (iface_type_strings[i], iface_type) == 0) {
-        iface = iface_types[i];
+      if (strcmp (iface_type_strings [i], iface_type) == 0) {
+        iface = iface_types [i];
         iface->iface_type_args = iface_type_args;
         break;
       }
     }
     if (iface == NULL) {
-      snprintf (log_buf, LOG_SIZE, "No interface driver `%s' found. Using default\n", iface_type);
+      snprintf (log_buf, LOG_SIZE,
+                "No interface driver `%s' found. Using default\n", iface_type);
       log_print ();
     }
   }
   if (iface == NULL)
-    iface = iface_types[0];
+    iface = iface_types [0];
 
-  snprintf (log_buf, LOG_SIZE,
-            "read pipe is fd %d, write pipe fd %d, interface is '%s'\n",
-            rpipe, wpipe, interface);
+  snprintf (log_buf, LOG_SIZE, "read pipe is fd %d, write pipe fd %d\n",
+            rpipe, wpipe);
   log_print ();
   struct sigaction sa;
   sa.sa_handler = term_handler;

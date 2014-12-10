@@ -123,16 +123,18 @@ static void latest_file (time_t seconds)
 
 void init_log (char * name)
 {
-  char * home = getenv ("HOME");
-  if (home != NULL)
-    snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
-  if (geteuid () == 0)  /* root user, keep the log in /var/log/allnet/ */
-    snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
-
   module_name = name;
   char * last_slash = rindex (module_name, '/');
   if (last_slash != NULL)
     module_name = last_slash + 1;
+
+  snprintf (log_dir, sizeof (log_dir), "/tmp/.allnet-log/");
+  char * home = getenv ("HOME");
+  if (home != NULL)
+    snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
+  else if (geteuid () == 0)  /* root user, keep the log in /var/log/allnet/ */
+    snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
+
   if (! create_dir (log_dir))
     printf ("unable to create directory %s\n", log_dir);
   time_t now = time (NULL);

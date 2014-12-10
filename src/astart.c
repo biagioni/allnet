@@ -1,6 +1,10 @@
-/* allnet.c: start all the processes used by the allnet daemon */
-/* takes as argument the interface(s) on which to start
- * sending and receiving broadcast packets */
+/* astart.c: start all the processes used by the allnet daemon */
+/* takes as arguments:
+   - the interface(s) on which to start sending and receiving broadcast packets
+   - "none", which means to not broadcast on local interfaces
+   if no arguments are given, automatically figures out what local
+   interfaces it can use and uses those.
+ */
 /* in the future this may be automated or from config file */
 /* (since the config file should tell us the bandwidth on each interface) */
 
@@ -11,9 +15,10 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <pwd.h>
+#include <ifaddrs.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <netinet/in.h>
+#include <net/if.h>      /* IFF_LOOPBACK, etc */
 
 #include "lib/util.h"
 #include "lib/log.h"
@@ -31,32 +36,53 @@ extern void keyd_generate (char * pname);
 
 static const char * daemon_name = "astart";
 
-/* if astart is called as root, everything but abc should run as the calling
- * user, if any, else user "nobody", if such a user is defined */
-static void make_root_nobody ()
+static void stop_all ();
+/* if astart is called as root, abc should run as root, and everything
+ * else should be run as the calling user, if any, and otherwise,
+ * user "allnet" (if it exists) or user "nobody" otherwise */
+/* running as root can be done in several ways:
+ *    sudo astart
+ *    sudo chown root:root astart astop; sudo chmod u+s astart astop; ./astart
+ * in the first case, both user IDs will be 0 (root).  In the second
+ * case, only the effective user ID (euid) will be 0 */
+#define ROOT_USER_ID	0
+static void make_root_other (int verbose)
 {
-  if (geteuid () != 0)
-    return;   /* not root, nothing to do */
+  if (geteuid () != ROOT_USER_ID)
+    return;   /* not root, nothing to do, and cannot change uids anyway */
   int real_uid = getuid ();
-  if (real_uid != geteuid ()) {
+  if (real_uid != geteuid ()) {   /* setuid executable, chmod u+s */
     if (setuid (real_uid) == 0) {
-      printf ("set uids %d %d\n", getuid (), geteuid ());
+      if (verbose) printf ("set uids %d %d\n", getuid (), geteuid ());
       return;
     }
-    perror ("setuid/real");   /* and try to become nobody */
+    perror ("setuid/real");   /* and still try to become someone else */
   }
+/* try to find out who we might be, and otherwise, try to find root */
+/* note: there is a secure_getenv, but it only really matters for setuid
+ * programs, which are handled above -- see "man getenv" on a linux system */
+  char * home = getenv ("HOME");
+  pid_t caller = -1;
+  pid_t other = -1;
   setpwent ();
   struct passwd * pwd;
   while ((pwd = getpwent ()) != NULL) {
-    if (strcmp (pwd->pw_name, "nobody") == 0) {
-      if (setuid (pwd->pw_uid) != 0)
-        perror ("setuid/nobody");
-      printf ("set uids %d %d\n", getuid (), geteuid ());
-      endpwent ();
-      return;
-    }
+    if (strcmp (pwd->pw_name, "allnet") == 0)
+      other = pwd->pw_uid;
+    else if ((other < 0) && (strcmp (pwd->pw_name, "nobody") == 0))
+      other = pwd->pw_uid;
+    else if ((home != NULL) && (strcmp (pwd->pw_dir, home) == 0))
+      caller = pwd->pw_uid;
   }
   endpwent ();
+  if (caller != -1)
+    other = caller;
+  if ((other < 0) || (setuid (other) != 0)) {
+    perror ("setuid/other");
+    printf ("error: unable to change uid to other %d or %s\n", other, home);
+    stop_all ();
+  }
+  if (verbose) printf ("set uids to %d %d\n", getuid (), geteuid ());
 }
 
 static void set_nonblock (int fd)
@@ -136,10 +162,11 @@ static void replace_command (char * old, int olen, char * new)
 
 static char * pid_file_name ()
 {
+/*
   int is_root = (geteuid () == 0);
   if (is_root)
     return "/var/run/allnet-pids";
-  else
+  else */
     return "/tmp/allnet-pids";
 }
 
@@ -179,17 +206,24 @@ static void stop_all_on_signal (int signal)
     pid_t pid;
     pid_t my_pid = getpid ();
     int count = 0;
-    while ((count < MAX_STOP_PROCS) && ((pid = read_pid (fd)) > 0))
+    while ((count < MAX_STOP_PROCS) && ((pid = read_pid (fd)) > 0)) {
       if (pid != my_pid)       /* do not kill myself */
         pids [count++] = pid;
+    }
     close (fd);
     /* deleting the pid file keeps others from doing what we are doing */
     unlink (fname);
     /* now stop all the other processes */
-    while (count-- > 0)
-      kill (pids [count], SIGINT);
+    int i;
+    for (i = count - 1; i >= 0; i--) {
+      kill (pids [i], SIGINT);
+    }
     unlink (AIP_UNIX_SOCKET);          /* aip may do this too */
+    sleep (1);   /* now kill any processes that haven't died yet */
+    for (i = count - 1; i >= 0; i--)
+      kill (pids [i], SIGKILL);
   }
+  exit (0);      /* finally, suicide */
 }
 
 static void stop_all ()
@@ -198,8 +232,8 @@ static void stop_all ()
   if (access (fname, F_OK) == 0) {          /* PID file found */
     stop_all_on_signal (SIGINT);
   } else {                                  /* no PID file, just pkill */
-    printf ("%s unable to stop allnet daemon, no pid file %s, %s\n",
-            daemon_name, fname, "running pkill astart");
+    printf ("%s: cannot stop allnet (no pid file %s), running pkill astart\n",
+            daemon_name, fname);
     /* send a sigint to all astart processes */
     execlp ("pkill", "pkill", "astart", ((char *)NULL));
     /* execlp should never return */
@@ -239,18 +273,17 @@ static void setup_signal_handler (int set)
   }
 }
 
-static void child_return (char * executable, pid_t ad, pid_t parent)
+static void child_return (char * executable)
 {
-  printf ("%s completed\n", executable);
+  snprintf (log_buf, LOG_SIZE, "%s completed\n", executable);
+  log_print ();
   stop_all_on_signal (0);   /* stop other AllNet processes if necessary */
   exit (1);
 }
 
 static void my_call1 (char * argv, int alen, char * program,
-                      void (*run_function) (char *),
-                      int fd, pid_t ad)
+                      void (*run_function) (char *), int fd)
 {
-  pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
     replace_command (argv, alen, program);
@@ -258,7 +291,7 @@ static void my_call1 (char * argv, int alen, char * program,
     log_print ();
     daemon_name = program;
     run_function (argv);
-    child_return (program, ad, self);
+    child_return (program);
   } else {  /* parent, not much to do */
     print_pid (fd, child);
     snprintf (log_buf, LOG_SIZE, "parent called %s\n", program);
@@ -278,21 +311,17 @@ static int connect_to_local ()
   return success;
 }
 
-static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
-                            int fd, pid_t ad)
+static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe, int fd)
 {
   char * program = "alocal";
-  pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
-    make_root_nobody ();  /* if we were root, become nobody */
     replace_command (argv, alen, program);
     snprintf (log_buf, LOG_SIZE, "calling %s (%d %d)\n", program, rpipe, wpipe);
     log_print ();
     daemon_name = "alocal";
-    /* close the pipes we don't use in the child */
     alocal_main (rpipe, wpipe);
-    child_return (program, ad, self);
+    child_return (program);
   } else {  /* parent, close the child pipes */
     close (rpipe);
     close (wpipe);
@@ -306,20 +335,17 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
 }
 
 static void my_call_aip (char * argv, int alen, char * program,
-                         void (*run_function) (int, int, char *),
-                         int rpipe, int wpipe, char * extra, int fd, pid_t ad)
+                         int rpipe, int wpipe, char * extra, int fd)
 {
-  pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
-    make_root_nobody ();  /* if we were root, become nobody */
     replace_command (argv, alen, program);
     snprintf (log_buf, LOG_SIZE, "calling %s %d %d %s\n",
               program, rpipe, wpipe, extra);
     log_print ();
     daemon_name = "aip";
-    run_function (rpipe, wpipe, extra);
-    child_return (program, ad, self);
+    aip_main (rpipe, wpipe, extra);
+    child_return (program);
   } else {  /* parent, close the child pipes */
     close (rpipe);
     close (wpipe);
@@ -331,27 +357,31 @@ static void my_call_aip (char * argv, int alen, char * program,
 }
 
 static void my_call_abc (char * argv, int alen, char * program,
-                         int rpipe, int wpipe, char * ifopts,
-                         int fd, pid_t ad)
+                         int rpipe, int wpipe, int ppipe1, int ppipe2,
+                         char * ifopts, pid_t * pid)
 {
-  pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
     replace_command (argv, alen, program);
-    snprintf (log_buf, LOG_SIZE, "calling %s %d %d %s\n",
-              program, rpipe, wpipe, ifopts);
-    log_print ();
+    /* printf ("calling %s %d %d %s\n", program, rpipe, wpipe, ifopts); */
     daemon_name = "abc";
     setup_signal_handler (0);  /* abc has its own signal handler */
+    usleep (10 * 1000);        /* wait for parent to create log file */
+    /* close the pipes used by the parent -- my_call_ad will close them
+     * again, which is no big deal */
+    close (ppipe1);
+    close (ppipe2);
     abc_main (rpipe, wpipe, ifopts);
-    child_return (program, ad, self);
+    child_return (program);
   } else {  /* parent, close the child pipes */
-    print_pid (fd, child);
+    *pid = child;
+    /* print_pid (fd, child); */
     close (rpipe);
     close (wpipe);
+/*
     snprintf (log_buf, LOG_SIZE, "parent called %s %d %d %s, closed %d %d\n",
               program, rpipe, wpipe, ifopts, rpipe, wpipe);
-    log_print ();
+    log_print (); */
   }
 }
 
@@ -359,10 +389,8 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
                          int * wpipes, int fd)
 {
   int i;
-  pid_t self = getpid ();
   pid_t child = fork ();
   if (child == 0) {
-    make_root_nobody ();  /* if we were root, become nobody */
     char * program = "ad";
     replace_command (argv, alen, program);
     snprintf (log_buf, LOG_SIZE, "calling %s\n", program);
@@ -376,20 +404,81 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
       rpipes [i] = rpipes [2 * i + 1];
       wpipes [i] = wpipes [2 * i    ];  /* may be the same */
     }
-/*  for (i = 0; i < num_pipes / 2; i++)
-      printf ("pipes [%d] = %d/%d\n", i, rpipes [i], wpipes [i]); */
+/*  printf ("calling ad (%d, read", num_pipes / 2);
+    for (i = 0; i < num_pipes / 2; i++)
+      printf (" %d", rpipes [i]);
+    printf (", write");
+    for (i = 0; i < num_pipes / 2; i++)
+      printf (" %d", wpipes [i]);
+    printf (")\n"); */
     ad_main (num_pipes / 2, rpipes, wpipes);
-    child_return (program, 0, self);
+    child_return (program);
   } else {  /* parent, close the child pipes */
     print_pid (fd, child);
     for (i = 0; i < num_pipes / 2; i++) {
       close (rpipes [2 * i + 1]);
       close (wpipes [2 * i    ]);
-      rpipes [i] = rpipes [2 * i    ];  /* may be the same */
+      rpipes [i] = rpipes [2 * i    ];  /* the same if i is 0 */
       wpipes [i] = wpipes [2 * i + 1];
     }
   }
   return child;
+}
+
+static int is_bc_interface (struct ifaddrs * interface)
+{
+  return (((interface->ifa_flags & IFF_LOOPBACK) == 0) &&
+          ((interface->ifa_flags & IFF_UP) != 0) &&
+          ((interface->ifa_flags & IFF_BROADCAST) != 0));
+}
+
+static int in_interface_array (char * name, char ** interfaces, int count)
+{
+  int i;
+  for (i = 0; i < count; i++)
+    /* only check that the first |name| characters are the same */
+    if (strncmp (name, interfaces [i], strlen (name)) == 0)
+      return 1;
+  return 0;
+}
+
+static int default_interfaces (char * * * interfaces_p)
+{
+  *interfaces_p = NULL;
+  struct ifaddrs * ap;
+  if (getifaddrs (&ap) != 0) {
+    perror ("getifaddrs");
+    return 0;
+  }
+  int count = 0;
+  int length = 0;
+  struct ifaddrs * next = ap;
+  while (next != NULL) {
+    if (is_bc_interface (next)) {
+      count++;
+      length += strlen (next->ifa_name) + 4; /* add /ip and the null char */
+    }
+    next = next->ifa_next;
+  }
+  int size = count * sizeof (char *) + length;
+  *interfaces_p = malloc_or_fail (size, "get_bc_interfaces");
+  char * * interfaces = *interfaces_p;
+  /* copy the names/ip to the malloc'd space after the pointers */
+  char * write_to = ((char *) (interfaces + count));
+  next = ap;
+  int index = 0;
+  while (next != NULL) {
+    if ((is_bc_interface (next)) &&
+        (! in_interface_array (next->ifa_name, interfaces, index))) {
+      interfaces [index++] = write_to;
+      strcpy (write_to, next->ifa_name);
+      strcat (write_to, "/ip");
+      write_to += strlen (write_to) + 1;
+    }
+    next = next->ifa_next;
+  }
+  freeifaddrs (ap);
+  return index;
 }
 
 static void find_path (char * arg, char ** path, char ** program)
@@ -419,32 +508,42 @@ int astart_main (int argc, char ** argv)
   }
   /* printf ("astart path is %s\n", path); */
 
-  init_log ("astart");  /* only do logging in astart, not in astop */
-  snprintf (log_buf, LOG_SIZE, "astart called with %d arguments\n", argc);
-  log_print ();
-
   /* two pipes from ad to alocal and back, plus */
   /* two pipes from ad to aip and back */
 #define NUM_FIXED_PIPES		4
   /* two pipes from ad to each abc and back */
 #define NUM_INTERFACE_PIPES	2 
+  char ** interfaces = NULL;
+  int i;
   int num_interfaces = argc - 1;
+  if ((argc > 1) && (strcmp (argv [1], "none") == 0))
+    num_interfaces = 1;
+  else if (argc == 1)
+    num_interfaces = default_interfaces (&interfaces);
   int num_pipes = NUM_FIXED_PIPES + NUM_INTERFACE_PIPES * num_interfaces;
   /* note: two file descriptors (ints) per pipe */
   int * pipes = malloc_or_fail (num_pipes * 2 * sizeof (int), "astart pipes");
   init_pipes (pipes, num_pipes);
   int * rpipes = pipes;
   int * wpipes = pipes + num_pipes;
+  pid_t * abc_pids =
+    malloc_or_fail (num_interfaces * sizeof (pid_t), "abc pids");
 
-  int pid_fd = open (pid_file_name (),
-                     O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0600);
-  if (pid_fd < 0) {
-    perror ("open");
-    snprintf (log_buf, LOG_SIZE, "unable to write pids to %s\n",
-              pid_file_name ());
-    log_print ();
-    return 1;
+  /* in case we are root, start abc first, then become non-root, and
+   * only after we become non-root start the other daemons */
+  for (i = 0; i < num_interfaces; i++) {
+    char * interface;
+    if (interfaces != NULL)
+      interface = interfaces [i];
+    else
+      interface = argv [i + 1];
+    printf ("calling abc %s\n", interface);
+    my_call_abc (argv [0], alen, "abc", rpipes [2 * i + 4], wpipes [2 * i + 5],
+                 rpipes [2 * i + 5], wpipes [2 * i + 4],
+                 interface, abc_pids + i);
   }
+  make_root_other (0); /* if we were root, become the caller or allnet/nobody */
+
 #ifdef PRODUCTION_CODE
   if (! verbose) {
     /* to go into the background, close all standard file descriptors.
@@ -455,34 +554,42 @@ int astart_main (int argc, char ** argv)
   }
 #endif /* PRODUCTION_CODE */
 
+  int pid_fd = open (pid_file_name (),
+                     O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0644);
+  if (pid_fd < 0) {
+    perror ("open");
+    snprintf (log_buf, LOG_SIZE, "unable to write pids to %s\n",
+              pid_file_name ());
+    log_print ();
+    stop_all ();
+  }
+  for (i = 0; i < num_interfaces; i++)
+    print_pid (pid_fd, abc_pids [i]);
+
+  init_log ("astart");  /* now we can do logging */
+  snprintf (log_buf, LOG_SIZE, "astart called with %d arguments\n", argc);
+  log_print ();
+
   /* start ad */
-  pid_t ad_pid = my_call_ad (argv [0], alen, num_pipes, rpipes, wpipes, pid_fd);
+  my_call_ad (argv [0], alen, num_pipes, rpipes, wpipes, pid_fd);
   /* my_call_ad closed half the pipes and put them in the front of the arrays */
   num_pipes = num_pipes / 2;
 
   /* start all the other programs */
-  my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd, ad_pid);
-  my_call_aip (argv [0], alen, "aip", aip_main, rpipes [1], wpipes [1],
-               AIP_UNIX_SOCKET, pid_fd, ad_pid);
-  int i;
-  for (i = 0; i < num_interfaces; i++) {
-    snprintf (log_buf, LOG_SIZE, "starting abc [%d/%d] %s\n",
-              i, num_interfaces, argv [i + 1]);
-    log_print ();
-    my_call_abc (argv [0], alen, "abc", rpipes [i + 2], wpipes [i + 2],
-                 argv [i + 1], pid_fd, ad_pid);
-  }
-  make_root_nobody ();  /* if we were root, become nobody */
+  my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd);
+  my_call_aip (argv [0], alen, "aip", rpipes [1], wpipes [1],
+               AIP_UNIX_SOCKET, pid_fd);
+
   /* ad, alocal, aip, and the abc's don't need signal handlers -- if any
    * of them goes down, the pipes are closed and everyone else goes down too
    * but if the other daemons go down, they should explicitly shut
    * down all the processes listed in the pid file */
   setup_signal_handler (1);
-  my_call1 (argv [0], alen, "adht", adht_main, pid_fd, ad_pid);
-  my_call1 (argv [0], alen, "acache", acache_main, pid_fd, ad_pid);
-  my_call1 (argv [0], alen, "traced", traced_main, pid_fd, ad_pid);
-  my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd, ad_pid);
-  my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd, ad_pid);
+  my_call1 (argv [0], alen, "adht", adht_main, pid_fd);
+  my_call1 (argv [0], alen, "acache", acache_main, pid_fd);
+  my_call1 (argv [0], alen, "traced", traced_main, pid_fd);
+  my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd);
+  my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd);
 
 #ifdef WAIT_FOR_CHILD_TERMINATION
   int status;

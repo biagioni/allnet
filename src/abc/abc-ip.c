@@ -13,6 +13,7 @@
 
 #include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */
 #include "lib/util.h"         /* delta_us */
+#include "lib/log.h"          /* log_error, log_print, log_buf, LOG_SIZE */
 
 #include "abc-iface.h"        /* sockaddr_t */
 
@@ -99,10 +100,15 @@ static int abc_ip_init (const char * interface)
       int flag = 1;
       if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BROADCAST,
                       &flag, sizeof (flag)) != 0)
-        perror ("abc-ip: error setting broadcast flag");
+        log_error ("abc-ip: error setting broadcast flag");
+      /* we bind to the device to only send to and receive from that device.
+       * SO_BINDTODEVICE is reserved for the superuser (for no obvious reason),
+       * so it will fail otherwise.  However, the only consequence is that
+       * we might receive from multiple interfaces and send to multiple
+       * interfaces, which is not a problem!!! */
       if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BINDTODEVICE,
                       interface, strlen (interface)) != 0)
-        perror ("abc-ip: error binding to device");
+        log_error ("abc-ip: error binding to device");
       struct sockaddr_in sa;
       sa.sin_family = AF_INET;
       sa.sin_addr.s_addr = htonl (INADDR_ANY);
