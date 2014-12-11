@@ -150,6 +150,8 @@ static abc_iface * iface = NULL; /* used interface ptr */
 
 static void term_handler (int sig) {
   terminate = 1;
+  snprintf (log_buf, LOG_SIZE, "terminating on signal %d\n", sig);
+  log_print ();
 }
 
 static void clear_nonces (int mine, int other)
@@ -174,10 +176,10 @@ static void check_priority_mode ()
 
 /* returns -1 in case of error, 0 for timeout, and message size otherwise */
 /* may return earlier than t if a packet is received or there is an error */
-/* if ad_only is set, receives only from ad, otherwise from both ad and
- * abc interface (but ad_only is always zero) */
+/* if the interface is off, receives only from ad, otherwise from both ad and
+ * the abc interface  */
 static int receive_until (struct timeval * t, char ** message,
-                          int * from_fd, int * priority, int ad_only)
+                          int * from_fd, int * priority)
 {
   struct timeval now;
   gettimeofday (&now, NULL);
@@ -190,24 +192,34 @@ static int receive_until (struct timeval * t, char ** message,
 
 #ifdef DEBUG_PRINT
   unsigned long long start = allnet_time_ms ();
+  char * call = "error, no call!!!";
 #endif /* DEBUG_PRINT */
   int msize;
-  if (ad_only) {
-    msize = receive_pipe_message_any (timeout_ms, message, from_fd, priority);
-  } else {
+  if (iface->iface_is_enabled_cb ()) {   /* read from ad and interface */
+#ifdef DEBUG_PRINT
+    call = "receive_pipe_message_fd";
+#endif /* DEBUG_PRINT */
     msize = receive_pipe_message_fd (timeout_ms, message, iface->iface_sockfd,
                                      sap, &al, from_fd, priority);
+  } else {                               /* only read from ad */
 #ifdef DEBUG_PRINT
-    unsigned long long finish = allnet_time_ms ();
-    printf ("receive_pipe_message_fd %d (%d) on fd %d, ", msize, al, *from_fd);
-    printf ("after time %lld/%d ms\n", finish - start, timeout_ms);
+    call = "receive_pipe_message_any";
 #endif /* DEBUG_PRINT */
+    msize = receive_pipe_message_any (timeout_ms, message, from_fd, priority);
     if (msize > 0 && al > 0 && !iface->accept_sender_cb (sap)) {
       free (*message);
       return 0;
     }
-    if (msize < 0)
-      terminate = 1;
+  }
+#ifdef DEBUG_PRINT
+  unsigned long long finish = allnet_time_ms ();
+  printf ("%s %d (%d) on fd %d, ", call, msize, al, *from_fd);
+  printf ("after time %lld/%d ms\n", finish - start, timeout_ms);
+#endif /* DEBUG_PRINT */
+  if (msize < 0) {
+    terminate = 1;
+    snprintf (log_buf, LOG_SIZE, "receive_until msize %d\n", msize);
+    log_print ();
   }
   return msize;  /* -1 (error), zero (timeout) or positive, the value is correct */
 }
@@ -566,12 +578,12 @@ static void unmanaged_handle_network_message (const char * message,
   /* send the message to ad */
   int sent = send_pipe_message (ad_pipe, message, msize,
                                 ALLNET_PRIORITY_EPSILON);
-  /* if (sent <= 0) { */
+  if (sent <= 0) {
     snprintf (log_buf, LOG_SIZE, "u sent to ad %d bytes, message %d bytes\n",
               sent, msize);
     log_print ();
-  /*  terminate = 1;
-  } */
+    terminate = 1;
+  }
   /* remove any messages that this message acks */
   remove_acks (message, message + msize);
 }
@@ -599,12 +611,12 @@ static void handle_network_message (const char * message, int msize,
     /* send the message to ad */
     int sent = send_pipe_message (ad_pipe, message, msize,
                                   ALLNET_PRIORITY_EPSILON);
-    /* if (sent <= 0) { */
+    if (sent <= 0) {
       snprintf (log_buf, LOG_SIZE, "sent to ad %d bytes, message %d bytes\n",
                 sent, msize);
       log_print ();
-   /*   terminate = 1;
-    } */
+      terminate = 1;
+    }
     /* remove any messages that this message acks */
     remove_acks (message, message + msize);
   }
@@ -619,7 +631,7 @@ static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
     char * message;
     int from_fd;
     int priority;
-    int msize = receive_until (quiet_end, &message, &from_fd, &priority, 0);
+    int msize = receive_until (quiet_end, &message, &from_fd, &priority);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
 printf ("%d-byte message from %d (ad is %d)\n", msize, from_fd, rpipe);
@@ -645,7 +657,7 @@ static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
     char * message;
     int fd;
     int priority;
-    int msize = receive_until (t, &message, &fd, &priority, 0);
+    int msize = receive_until (t, &message, &fd, &priority);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
         if (fd == rpipe) {
@@ -675,7 +687,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     struct timeval * deadline = t;
     if ((beacon_deadline != NULL) && (delta_us (t, beacon_deadline) > 0))
       deadline = beacon_deadline;
-    int msize = receive_until (deadline, &message, &fd, &priority, 0);
+    int msize = receive_until (deadline, &message, &fd, &priority);
     enum abc_send_type send_type = ABC_SEND_TYPE_NONE;
     int send_size = 0;
     static char send_message [ALLNET_MTU];
