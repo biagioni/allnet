@@ -247,19 +247,24 @@ notsock_printed = pipe;
   return result;
 }
 
-static int send_header_data (int pipe, const char * message, int mlen, int priority)
+static int send_header_data (int pipe, const char * message, int mlen,
+                             int priority)
 {
-  char stack_packet [HEADER_SIZE + ALLNET_MTU];
-  char * packet = stack_packet;
+  char packet [HEADER_SIZE + ALLNET_MTU];
   if (mlen > ALLNET_MTU) {
-/* I think this should never happen.   If it does, print it to log and screen */
+/* I think this should never happen.  If it does, print it to log and screen */
     snprintf (log_buf, LOG_SIZE,
               "send_header_data warning: mlen %d > ALLNET_MTU %d\n",
               mlen, ALLNET_MTU);
     printf ("%s", log_buf);
     log_print ();
-/* and malloc the packet (free'd below) */
-    packet = malloc (HEADER_SIZE + mlen);
+    buffer_to_string (message, mlen, "message is", 64, 1, log_buf, LOG_SIZE);
+    printf ("%s", log_buf);
+    log_print ();
+    packet_to_string (message, mlen, NULL, 1, log_buf, LOG_SIZE);
+    printf ("%s", log_buf);
+    log_print ();
+    return 0; /* and return as an error */
   }
 /* send_pipe_message_orig is simpler, but sometimes stalls for ~35ms-40ms
  * on the second send, so it is faster if we only call write once */
@@ -272,8 +277,6 @@ static int send_header_data (int pipe, const char * message, int mlen, int prior
   write_big_endian32 (header + MAGIC_SIZE + 4, mlen);
   memcpy (header + HEADER_SIZE, message, mlen);
 
-  if (packet != stack_packet)
-    return send_buffer (pipe, packet, HEADER_SIZE + mlen, 1);
   return send_buffer (pipe, packet, HEADER_SIZE + mlen, 0);
 }
 
