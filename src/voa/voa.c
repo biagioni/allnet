@@ -168,7 +168,7 @@ static void get_key_for_contact (const char * contact,
 {
   /* method mostly copy-pasted from xchat/xcommon.c */
   /* get the keys */
-  keyset * keys;
+  const keyset * keys;
   int nkeys = all_keys ((char *)contact, &keys);
   if (nkeys <= 0) {
     printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
@@ -232,7 +232,7 @@ static int check_contact_signature (const char * payload, int vsize,
                                     allnet_rsa_prvkey * prvkey,
                                     allnet_rsa_pubkey * pubkey)
 {
-  keyset * keysets;
+  const keyset * keysets;
   int nk = all_keys (contact, &keysets);
   int ink;
   for (ink = 0; ink < nk; ink++) {
