@@ -26,8 +26,10 @@ public class ConversationData {
     Message[] emptyResult = new Message[0];
     java.nio.file.Path chatDir = getContactChatDir(contact);
     if (chatDir == null) {
-      System.out.println("ConversationData.getLatest() unable to find contact "
-                         + contact);
+// no need to print -- this can happen if users exchanged keys
+// but have not exchanged any messages.
+//    System.out.println("ConversationData.getLatest() unable to find contact "
+//                       + contact);
       return emptyResult;
     }
     java.util.Vector<java.nio.file.Path> paths =
