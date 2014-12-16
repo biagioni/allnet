@@ -297,7 +297,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
 #ifdef DEBUG_PRINT
     printf ("to do: randomize and limit the number of contacts tried\n");
 #endif /* DEBUG_PRINT */
-    keyset * keys;
+    const keyset * keys;
     int nkeys = all_keys (contacts [i], &keys);
     for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
       int do_decrypt = 1;  /* for now, try to decrypt unsigned messages */

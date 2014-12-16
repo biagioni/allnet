@@ -377,7 +377,7 @@ static int handle_key (int sock, struct allnet_header * hp,
     return 0;
   if (hp->hops > max_hops)
     return 0;
-  keyset * keys;
+  const keyset * keys;
   int nkeys = all_keys (contact, &keys);
   if (nkeys < 1) {
     printf ("error '%s'/%d: create own key before calling handle_key\n",

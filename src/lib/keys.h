@@ -57,7 +57,7 @@ extern int num_keysets (char * contact);
  * allocated array of pointers to statically allocated keysets
  * (do not modify in any way). */
 /* returns -1 if the contact does not exist */
-extern int all_keys (const char * contact, keyset ** keysets);
+extern int all_keys (const char * contact, const keyset ** keysets);
 
 /* returns a pointer to a statically allocated (do not modify in any way).
  * name for the directory corresponding to this key. */
