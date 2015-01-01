@@ -1,9 +1,9 @@
 /* astart.c: start all the processes used by the allnet daemon */
 /* takes as arguments:
    - the interface(s) on which to start sending and receiving broadcast packets
-   - "none", which means to not broadcast on local interfaces
-   if no arguments are given, automatically figures out what local
-   interfaces it can use and uses those.
+   - "defaults" (or any string beginning with "def"), which means to
+     broadcast on all local interfaces
+   - no arguments, which means to not broadcast on local interfaces
  */
 /* in the future this may be automated or from config file */
 /* (since the config file should tell us the bandwidth on each interface) */
@@ -216,6 +216,9 @@ static void stop_all_on_signal (int signal)
     /* now stop all the other processes */
     int i;
     for (i = count - 1; i >= 0; i--) {
+#ifdef DEBUG_PRINT
+      printf ("%d killing %d\n", getpid (), pids [i]);
+#endif /* DEBUG_PRINT */
       kill (pids [i], SIGINT);
     }
     unlink (AIP_UNIX_SOCKET);          /* aip may do this too */
@@ -425,8 +428,45 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
   return child;
 }
 
+static void debug_print_flags (char * name, int flags)
+{
+  int i;
+static int nprinted = 0;
+static char * printed [100];
+for (i = 0; i < nprinted; i++)
+  if (strcmp (printed [i], name) == 0)
+    return;
+printed [nprinted++] = name;
+  printf ("interface %s has flags %x:", name, flags);
+  for (i = 1; i <= flags; i *= 2) {
+    if (i & flags) {
+      switch (i) {
+      case IFF_UP: printf (" IFF_UP"); break;
+      case IFF_BROADCAST: printf (" IFF_BROADCAST"); break;
+      case IFF_DEBUG: printf (" IFF_DEBUG"); break;
+      case IFF_LOOPBACK: printf (" IFF_LOOPBACK"); break;
+      case IFF_POINTOPOINT: printf (" IFF_POINTOPOINT"); break;
+      case IFF_RUNNING: printf (" IFF_RUNNING"); break;
+      case IFF_NOARP: printf (" IFF_NOARP"); break;
+      case IFF_PROMISC: printf (" IFF_PROMISC"); break;
+      case IFF_NOTRAILERS: printf (" IFF_NOTRAILERS"); break;
+      case IFF_ALLMULTI: printf (" IFF_ALLMULTI"); break;
+      case IFF_MASTER: printf (" IFF_MASTER"); break;
+      case IFF_SLAVE: printf (" IFF_SLAVE"); break;
+      case IFF_MULTICAST: printf (" IFF_MULTICAST"); break;
+      case IFF_PORTSEL: printf (" IFF_PORTSEL"); break;
+      case IFF_AUTOMEDIA: printf (" IFF_AUTOMEDIA"); break;
+      case IFF_DYNAMIC: printf (" IFF_DYNAMIC"); break;
+      default:       printf (" %x", i);
+      }
+    }
+  }
+  printf ("\n");
+}
+
 static int is_bc_interface (struct ifaddrs * interface)
 {
+  debug_print_flags (interface->ifa_name, interface->ifa_flags);
   return (((interface->ifa_flags & IFF_LOOPBACK) == 0) &&
           ((interface->ifa_flags & IFF_UP) != 0) &&
           ((interface->ifa_flags & IFF_BROADCAST) != 0));
@@ -516,10 +556,10 @@ int astart_main (int argc, char ** argv)
   char ** interfaces = NULL;
   int i;
   int num_interfaces = argc - 1;
-  if ((argc > 1) && (strcmp (argv [1], "none") == 0))
-    num_interfaces = 1;
-  else if (argc == 1)
+  if ((argc > 1) && (strncmp (argv [1], "def", 3) == 0))
     num_interfaces = default_interfaces (&interfaces);
+  else if (argc == 1)
+    num_interfaces = 0;
   int num_pipes = NUM_FIXED_PIPES + NUM_INTERFACE_PIPES * num_interfaces;
   /* note: two file descriptors (ints) per pipe */
   int * pipes = malloc_or_fail (num_pipes * 2 * sizeof (int), "astart pipes");

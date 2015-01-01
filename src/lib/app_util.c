@@ -132,7 +132,7 @@ static void exec_allnet (char * arg)
     printf ("calling ");
     int i;
     for (i = 0; args [i] != NULL; i++)
-    printf (" %s", args [i]);
+      printf (" %s", args [i]);
     printf ("\n");
 #endif /* DEBUG_PRINT */
     execv (astart, args);
@@ -169,13 +169,13 @@ static void exec_allnet (char * arg)
       printf ("unable to start AllNet daemon %s\n", astart);
       exit (1);   /* only exits the child */
     }
-    char * args [2] = { astart, NULL };
-#ifdef DEBUG_PRINT
+    char * args [] = { astart, "default", NULL };
     printf ("calling ");
     int i;
     for (i = 0; args [i] != NULL; i++)
     printf (" %s", args [i]);
     printf ("\n");
+#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
     execv (astart, args);
     perror ("execv");
