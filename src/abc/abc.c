@@ -313,6 +313,12 @@ static void make_beacon_grant (char * buffer, int bsize,
  */
 static void unmanaged_send_pending (int new_only)
 {
+  if (! (iface->iface_is_enabled_cb ())) {
+#ifdef DEBUG_PRINT
+    printf ("unmanaged_send_pending called, but interface is down\n");
+#endif /* DEBUG_PRINT */
+    return;
+  }
   char * message = NULL;
   int nsize;
   int priority;
@@ -346,6 +352,12 @@ static void unmanaged_send_pending (int new_only)
  */
 static void send_pending (enum abc_send_type type, int size, char * message)
 {
+  if (! (iface->iface_is_enabled_cb ())) {
+#ifdef DEBUG_PRINT
+    printf ("send_pending called, but interface is down\n");
+#endif /* DEBUG_PRINT */
+    return;
+  }
   switch (type) {
     case ABC_SEND_TYPE_REPLY:
       if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
