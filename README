@@ -37,7 +37,7 @@ you can also set specific CFLAGS with:
 
 Before doing any of this, you may need to install libtool and autoconf.
 On debian/ubuntu and derived systems this requires:
-        sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev
+  sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev pkg-config
 On other systems, use the native package manager to install these packages.
 
 additional packages you may need to install:
