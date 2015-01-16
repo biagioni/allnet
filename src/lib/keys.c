@@ -891,7 +891,9 @@ static void rsa_to_external_pubkey (allnet_rsa_pubkey rsa,
   /* the public key in external format */
   int size = allnet_rsa_pubkey_size (rsa) + 1;
   char * p = malloc_or_fail (size, "external public key");
-  allnet_pubkey_to_raw (rsa, p + 1, size - 1);
+  int res = allnet_pubkey_to_raw (rsa, p, size);
+  if (res != size)
+    printf ("allnet_pubkey_to_raw should give %d, gave %d\n", size - 1, res);
   p [0] = KEY_RSA4096_E65537;
   *key = p;
   *klen = size;
@@ -1352,7 +1354,7 @@ unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
   if (msize > rsa_size)
     msize = rsa_size;
   char * encrypted = malloc_or_fail (rsa_size, "keys.c: encrypted phrase");
-/* in general, no padding is not secure for RSA encryptions.  However,
+/* in general, padding is required for RSA encryptions.  However,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
   char * padded = malloc_or_fail (rsa_size, "verify_bc_key padded");
@@ -1363,7 +1365,7 @@ unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
                                   0 /* no padding */  );
   free (padded);
   if (esize != rsa_size) {
-    printf ("verify_bc_key RSA encryption failed\n");
+    printf ("verify_bc_key RSA encryption failed: %d %d\n", esize, rsa_size);
     allnet_rsa_free_pubkey (rsa);
     return 0;
   }
@@ -1375,7 +1377,7 @@ unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
                              (unsigned char *) hash, hashpos,
                              bitstring_bits)) {
 
-      printf ("%d: no %d-bit match at positions %d/%d\n", i,
+      printf ("%s %d: no %d-bit match at positions %d/%d\n", ahra, i,
               bitstring_bits, positions [i], hashpos);
       print_bitstring ((unsigned char *) encrypted, positions [i],
                        bitstring_bits, 1);
@@ -1428,11 +1430,13 @@ static struct bc_key_info * find_bc_key (char * address,
     char * key;
     int klen;
     rsa_to_external_pubkey (keys [i].pub_key, &key, &klen);
-    if (verify_bc_key (address, key, klen, NULL, 0, 0)) {
-      free (key);
-      return keys + i;
-    }
+    int num_bits;
+    int success = 0;
+    if (parse_ahra (address, NULL, NULL, NULL, NULL, &num_bits, NULL))
+      success = verify_bc_key (address, key, klen, NULL, num_bits, 0);
     free (key);
+    if (success)
+      return keys + i;
   }
   return NULL;
 }

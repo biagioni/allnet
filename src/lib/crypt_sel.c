@@ -306,6 +306,7 @@ int allnet_rsa_encrypt (allnet_rsa_pubkey rsa, const char * data, int dsize,
 /*
 printf ("openssl n = %s\n", BN_bn2hex (rsa->n));
 printf ("openssl e = %s\n", BN_bn2hex (rsa->e));
+print_buffer (data, dsize, "openssl data", 1000, 1);
 */
   int rsa_padding = RSA_PKCS1_OAEP_PADDING;
   if (padding == 0)
