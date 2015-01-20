@@ -506,10 +506,18 @@ class UIController implements ControllerInterface, UIAPI {
         }
     }
 
-    private void updateConversationPanel(String contact, ConversationPanel panel) {
-        String line1 = " conversation with " + contact;
-        if (clientData.isBroadcast(contact))
-            line1 = " broadcast from " + contact;
+    private void updateConversationPanel(String contact,
+                                         ConversationPanel panel) {
+        String line1 = "conversation with " + contact;
+        if (clientData.isBroadcast(contact)) {
+            int pos = contact.indexOf("@");
+            if (pos > 0) {   // put spaces around @ so will wrap lines
+                String id = contact.substring(0, pos);
+                String security = contact.substring(pos + 1);
+                contact = id + " @ " + security;
+            }
+            line1 = "broadcast from " + contact;
+        }
         int m = clientData.getNumContactsWithNewMsgs();
         String line2;
         if (m == 0) {

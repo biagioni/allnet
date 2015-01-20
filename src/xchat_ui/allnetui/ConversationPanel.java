@@ -49,7 +49,7 @@ class ConversationPanel extends JPanel {
         topLabel.setLineBorder(Color.BLACK, 1, false);
 
         // make the button panel
-        JPanel buttonPanel = makeButtonPanel();
+        JPanel buttonPanel = makeButtonPanel(topLabel);
 
         // make the panel to hold the messages
         messagePanel = makeMessagePanel(background);
@@ -83,7 +83,11 @@ class ConversationPanel extends JPanel {
         gbc.gridy = 0;
         gbc.gridheight = 1;
         gbc.gridwidth = 3;
-        add(topLabel, gbc);
+        add(buttonPanel, gbc);
+        gbc.gridx = 0;
+//        gbc.gridy++;
+//        gbc.gridwidth = 3;
+//        add(topLabel, gbc);
         gbc.gridy++;
         gbc.weighty = 1.0;
         gbc.anchor = GridBagConstraints.PAGE_START;
@@ -98,10 +102,10 @@ class ConversationPanel extends JPanel {
         gbc.gridx = 2;
         gbc.weightx = 0.0;
         add(send, gbc);
-        gbc.gridy++;
-        gbc.gridwidth = 3;
-        gbc.gridx = 0;
-        add(buttonPanel, gbc);
+//        gbc.gridy++;
+//        gbc.gridwidth = 3;
+//        gbc.gridx = 0;
+//        add(buttonPanel, gbc);
     }
 
     public String getContactName() {
@@ -122,21 +126,21 @@ class ConversationPanel extends JPanel {
 
     void setListener(ActionListener listener) {
         close.addActionListener(listener);
-        exchangeKeys.addActionListener(listener);
-        goToContacts.addActionListener(listener);
+//        exchangeKeys.addActionListener(listener);
+//        goToContacts.addActionListener(listener);
         send.addActionListener(listener);
         // send event when return key is entered
         msgField.addActionListener(listener);
     }
 
-    private JPanel makeButtonPanel() {
-        close = makeButton("Close", CLOSE_COMMAND);
-        exchangeKeys = makeButton("Exchange Keys", EXCHANGE_KEYS_COMMAND);
-        goToContacts = makeButton("Contacts", CONTACTS_COMMAND);
+    private JPanel makeButtonPanel(HtmlLabel label) {
+        close = makeButton("x", CLOSE_COMMAND);
+//        exchangeKeys = makeButton("Exchange Keys", EXCHANGE_KEYS_COMMAND);
+//        goToContacts = makeButton("Contacts", CONTACTS_COMMAND);
         Insets insets = new Insets(2, 8, 2, 8);
         close.setMargin(insets);
-        exchangeKeys.setMargin(insets);
-        goToContacts.setMargin(insets);
+//        exchangeKeys.setMargin(insets);
+//        goToContacts.setMargin(insets);
         JPanel panel = new JPanel();
         panel.setBackground(background);
         panel.setLayout(new BoxLayout(panel, BoxLayout.X_AXIS));
@@ -146,7 +150,9 @@ class ConversationPanel extends JPanel {
         panel.add(Box.createHorizontalGlue());
         panel.add(close);
         panel.add(Box.createHorizontalGlue());
-        panel.add(goToContacts);
+        panel.add(label);
+//        panel.add(Box.createHorizontalGlue());
+//        panel.add(goToContacts);
         // panel.add(Box.createHorizontalGlue());
         // panel.setBorder(new LineBorder(Color.BLACK, 1));
         return (panel);
@@ -155,6 +161,7 @@ class ConversationPanel extends JPanel {
     private JButton makeButton(String text, String command) {
         JButton button = new JButton(text);
         button.setActionCommand(commandPrefix + ":" + command);
+        button.setForeground(java.awt.Color.RED);
         return (button);
     }
 
