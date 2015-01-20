@@ -574,7 +574,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
   struct sockaddr_un  * sun  = (struct sockaddr_un  *) sap;
-#ifndef ALLNET_NETPACKET_SUPPORT
+#ifdef ALLNET_NETPACKET_SUPPORT
   struct sockaddr_ll  * sll  = (struct sockaddr_ll  *) sap;
 #endif /* ALLNET_NETPACKET_SUPPORT */
   /* char str [INET_ADDRSTRLEN]; */
@@ -621,7 +621,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_un));
     break;
-#ifndef ALLNET_NETPACKET_SUPPORT
+#ifdef ALLNET_NETPACKET_SUPPORT
   case AF_PACKET:
     n += snprintf (s + n, len - n,
                    "packet protocol%s 0x%x if %d ha %d pkt %d address (%d)",
