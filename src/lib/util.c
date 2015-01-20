@@ -14,9 +14,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <netinet/in.h>
-#ifndef __APPLE__
-#include <netpacket/packet.h>
-#endif /* __APPLE__ */
 #include <arpa/inet.h>
 
 #include "packet.h"
@@ -25,6 +22,20 @@
 #include "util.h"
 #include "ai.h"
 #include "sha.h"
+
+#ifndef __APPLE__
+#ifndef __CYGWIN__
+#ifndef _WIN32
+#ifndef _WIN64
+#define ALLNET_NETPACKET_SUPPORT
+#endif /* _WIN64 */
+#endif /* _WIN32 */
+#endif /* __CYGWIN__ */
+#endif /* __APPLE__ */
+
+#ifdef ALLNET_NETPACKET_SUPPORT
+#include <netpacket/packet.h>
+#endif /* ALLNET_NETPACKET_SUPPORT */
 
 /* print up to max of the count characters in the buffer.
  * desc is printed first unless it is null
@@ -563,9 +574,9 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
   struct sockaddr_un  * sun  = (struct sockaddr_un  *) sap;
-#ifndef __APPLE__
+#ifndef ALLNET_NETPACKET_SUPPORT
   struct sockaddr_ll  * sll  = (struct sockaddr_ll  *) sap;
-#endif /* __APPLE__ */
+#endif /* ALLNET_NETPACKET_SUPPORT */
   /* char str [INET_ADDRSTRLEN]; */
   int num_initial_zeros = 0;  /* for printing ipv6 addrs */
   int n = 0;   /* offset for printing */
@@ -610,7 +621,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_un));
     break;
-#ifndef __APPLE__
+#ifndef ALLNET_NETPACKET_SUPPORT
   case AF_PACKET:
     n += snprintf (s + n, len - n,
                    "packet protocol%s 0x%x if %d ha %d pkt %d address (%d)",
@@ -622,7 +633,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
       n += snprintf (s + n, len - n, " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_ll));
     break;
-#endif /* __APPLE__ */
+#endif /* ALLNET_NETPACKET_SUPPORT */
   default:
     n += snprintf (s + n, len - n, "unknown address family %d%s",
                    sap->sa_family, proto);
