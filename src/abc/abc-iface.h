@@ -2,17 +2,28 @@
 #define ABC_IFACE_H
 /* abc-iface.h: Interface used by abc for broadcasting messages on a network */
 
-#ifndef __APPLE__
-#include <netpacket/packet.h>  /* struct sockaddr_ll */
-#endif /* __APPLE__ */
 #include <sys/socket.h>        /* struct sockaddr, socklen_t */
 #include <netinet/ip.h>        /* struct sockaddr_in */
 
+#ifndef __APPLE__
+#ifndef __CYGWIN__
+#ifndef _WIN32
+#ifndef _WIN64
+#define ALLNET_NETPACKET_SUPPORT
+#endif /* _WIN64 */
+#endif /* _WIN32 */
+#endif /* __CYGWIN__ */
+#endif /* __APPLE__ */
+
+#ifdef ALLNET_NETPACKET_SUPPORT
+#include <netpacket/packet.h>  /* struct sockaddr_ll */
+#endif /* ALLNET_NETPACKET_SUPPORT */
+
 typedef union {
   struct sockaddr sa;
-#ifndef __APPLE__
+#ifdef ALLNET_NETPACKET_SUPPORT
   struct sockaddr_ll ll;
-#endif /* __APPLE__ */
+#endif /* ALLNET_NETPACKET_SUPPORT */
   struct sockaddr_in in;
 } sockaddr_t;
 
@@ -81,9 +92,11 @@ typedef struct abc_iface {
 } abc_iface;
 
 
-#ifndef __APPLE__  /* not sure what replaces the sll addresses for apple */
+#ifdef ALLNET_NETPACKET_SUPPORT
 void abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc);
 void abc_iface_print_sll_addr (struct sockaddr_ll * a, char * desc);
-#endif /* __APPLE__ */
+#else /* ALLNET_NETPACKET_SUPPORT */
+/* not sure what replaces the sll addresses for systems that don't have them */
+#endif /* ALLNET_NETPACKET_SUPPORT */
 
 #endif /* ABC_IFACE_H */

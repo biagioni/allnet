@@ -7,7 +7,7 @@
 /** Accept every sender */
 int abc_iface_accept_sender (const struct sockaddr * sender) { return 1; }
 
-#ifndef __APPLE__
+#ifdef ALLNET_NETPACKET_SUPPORT
 #include <netpacket/packet.h>  /* struct sockaddr_ll */
 
 void abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc)
@@ -43,5 +43,5 @@ void abc_iface_print_sll_addr (struct sockaddr_ll * a, char * desc)
   if (desc != NULL)
     printf ("\n");
 }
-#endif /* __APPLE__ */
+#endif /* ALLNET_NETPACKET_SUPPORT */
 

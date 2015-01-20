@@ -112,7 +112,8 @@ static int abc_wifi_init (const char * interface)
   int ret = 0;
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
-#ifndef __APPLE__  /* not sure how to do this for apple */
+#ifdef ALLNET_NETPACKET_SUPPORT
+ /* not sure how to do this for systems that don't support netpackets */
     if ((ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       struct timeval start;
@@ -161,7 +162,7 @@ static int abc_wifi_init (const char * interface)
       ret = 1;
       goto abc_wifi_init_cleanup;
     }
-#endif /* __APPLE__ */
+#endif /* ALLNET_NETPACKET_SUPPORT */
     ifa_loop = ifa_loop->ifa_next;
   }
 abc_wifi_init_cleanup:
