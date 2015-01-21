@@ -396,8 +396,13 @@ static int write_int (char * buffer, int bsize, const uint64_t * n, int nbits)
 static int wp_rsa_write_key_to_bytes (char * buffer, int bsize,
                                       const wp_rsa_key_pair * key)
 {
+  int write_zero = 0;
+#ifdef ENCAPSULATE_KEY
+  write_zero = 1;
+#endif /* ENCAPSULATE_KEY */
   int written = 0;
   if (! wp_is_zero (key->nbits, key->d)) {  /* has private key */
+    write_zero = 1;
     if ((! wp_is_zero (key->nbits / 2, key->p)) &&
         (! wp_is_zero (key->nbits / 2, key->q)) &&
         (! wp_is_zero (key->nbits / 2, key->dp)) &&
@@ -416,12 +421,14 @@ static int wp_rsa_write_key_to_bytes (char * buffer, int bsize,
   wp_init (64, &elong, key->e);
   written += write_int (buffer, bsize - written, &elong, 64);
   written += write_int (buffer, bsize - written, key->n, key->nbits);
-  /* write zero */
-  uint64_t zero;
-  wp_init (64, &zero, 0);
-  written += write_int (buffer, bsize - written, &zero, 64);
+  if (write_zero) {    /* write zero if encapsulated or has private key */
+    uint64_t zero;
+    wp_init (64, &zero, 0);
+    written += write_int (buffer, bsize - written, &zero, 64);
+  }
   /* write the header for the sequence of ints */
   written += write_id_len (buffer, bsize - written, 0x10, written, 1);
+#ifdef ENCAPSULATE_KEY
   /* write the header for the octet string */
   written += write_id_len (buffer, bsize - written, 0x04, written, 0);
   /* write the object ID identifying RSA */
@@ -434,6 +441,7 @@ static int wp_rsa_write_key_to_bytes (char * buffer, int bsize,
   written += write_int (buffer, bsize - written, &zero, 64);
   /* write the header for the overall sequence */
   written += write_id_len (buffer, bsize - written, 0x10, written, 1);
+#endif /* ENCAPSULATE_KEY */
   return written;
 }
 
@@ -623,6 +631,7 @@ int wp_rsa_read_key_from_file (const char * fname, int * nbits,
   int fd = open (fname, O_RDONLY);
   if (fd < 0) {
     perror ("open key file");
+    printf ("wp_rsa_read_key_from_file unable to open file %s\n", fname);
     return 0;
   }
   int nread = read (fd, wp_buffer, sizeof (wp_buffer));
