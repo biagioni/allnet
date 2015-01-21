@@ -124,7 +124,7 @@ static void exec_allnet (char * arg)
     char * astart = make_program_path (path, "astart");
     if (access (astart, X_OK) != 0) {
       perror ("access, unable to find astart executable");
-      printf ("unable to start AllNet daemon %s\n", astart);
+      printf ("unable to start AllNet daemon %s from %s\n", astart, arg);
       exit (1);   /* only exits the child */
     }
     char * * args = get_bc_interfaces (astart);

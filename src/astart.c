@@ -276,16 +276,18 @@ static void setup_signal_handler (int set)
   }
 }
 
-static void child_return (char * executable)
+static void child_return (char * executable, pid_t parent)
 {
   snprintf (log_buf, LOG_SIZE, "%s completed\n", executable);
   log_print ();
+  /* kill the parent first, to avoid starting new processes */
+  kill (parent, SIGINT);
   stop_all_on_signal (0);   /* stop other AllNet processes if necessary */
   exit (1);
 }
 
 static void my_call1 (char * argv, int alen, char * program,
-                      void (*run_function) (char *), int fd)
+                      void (*run_function) (char *), int fd, pid_t parent)
 {
   pid_t child = fork ();
   if (child == 0) {
@@ -294,7 +296,7 @@ static void my_call1 (char * argv, int alen, char * program,
     log_print ();
     daemon_name = program;
     run_function (argv);
-    child_return (program);
+    child_return (program, parent);
   } else {  /* parent, not much to do */
     print_pid (fd, child);
     snprintf (log_buf, LOG_SIZE, "parent called %s\n", program);
@@ -314,7 +316,8 @@ static int connect_to_local ()
   return success;
 }
 
-static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe, int fd)
+static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe, int fd,
+                            pid_t parent)
 {
   char * program = "alocal";
   pid_t child = fork ();
@@ -324,7 +327,7 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe, int fd)
     log_print ();
     daemon_name = "alocal";
     alocal_main (rpipe, wpipe);
-    child_return (program);
+    child_return (program, parent);
   } else {  /* parent, close the child pipes */
     close (rpipe);
     close (wpipe);
@@ -332,13 +335,15 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe, int fd)
     snprintf (log_buf, LOG_SIZE, "parent called %s %d %d, closed %d %d\n",
               program, rpipe, wpipe, rpipe, wpipe);
     log_print ();
-    while (! connect_to_local())
+    do {
       usleep (10 * 1000);
+    } while (! connect_to_local());
   }
 }
 
 static void my_call_aip (char * argv, int alen, char * program,
-                         int rpipe, int wpipe, char * extra, int fd)
+                         int rpipe, int wpipe, char * extra, int fd,
+                         pid_t parent)
 {
   pid_t child = fork ();
   if (child == 0) {
@@ -348,7 +353,7 @@ static void my_call_aip (char * argv, int alen, char * program,
     log_print ();
     daemon_name = "aip";
     aip_main (rpipe, wpipe, extra);
-    child_return (program);
+    child_return (program, parent);
   } else {  /* parent, close the child pipes */
     close (rpipe);
     close (wpipe);
@@ -361,7 +366,7 @@ static void my_call_aip (char * argv, int alen, char * program,
 
 static void my_call_abc (char * argv, int alen, char * program,
                          int rpipe, int wpipe, int ppipe1, int ppipe2,
-                         char * ifopts, pid_t * pid)
+                         char * ifopts, pid_t * pid, pid_t parent)
 {
   pid_t child = fork ();
   if (child == 0) {
@@ -375,7 +380,7 @@ static void my_call_abc (char * argv, int alen, char * program,
     close (ppipe1);
     close (ppipe2);
     abc_main (rpipe, wpipe, ifopts);
-    child_return (program);
+    child_return (program, parent);
   } else {  /* parent, close the child pipes */
     *pid = child;
     /* print_pid (fd, child); */
@@ -389,7 +394,7 @@ static void my_call_abc (char * argv, int alen, char * program,
 }
 
 static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
-                         int * wpipes, int fd)
+                         int * wpipes, int fd, pid_t parent)
 {
   int i;
   pid_t child = fork ();
@@ -415,7 +420,7 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
       printf (" %d", wpipes [i]);
     printf (")\n"); */
     ad_main (num_pipes / 2, rpipes, wpipes);
-    child_return (program);
+    child_return (program, parent);
   } else {  /* parent, close the child pipes */
     print_pid (fd, child);
     for (i = 0; i < num_pipes / 2; i++) {
@@ -482,6 +487,20 @@ static int in_interface_array (char * name, char ** interfaces, int count)
   return 0;
 }
 
+static char * interface_extra (struct ifaddrs * next)
+{
+  if (next->ifa_addr->sa_family == AF_INET) /* || when add ipv6 to abc-ip.c
+      (next->ifa_addr->sa_family == AF_INET6)) */
+    return "ip";
+  if (strncmp (next->ifa_name, "wlan", 4) == 0) {
+    if (geteuid () == 0)
+      return "wifi";
+    else
+      return "wifi,nm";
+  }
+  return "";
+}
+
 static int default_interfaces (char * * * interfaces_p)
 {
   *interfaces_p = NULL;
@@ -495,24 +514,29 @@ static int default_interfaces (char * * * interfaces_p)
   struct ifaddrs * next = ap;
   while (next != NULL) {
     if (is_bc_interface (next)) {
-      count++;
-      length += strlen (next->ifa_name) + 4; /* add /ip and the null char */
+      int extra = strlen (interface_extra (next));
+      if (extra != 0) {
+        count++; /* and add interface/extra and the null char */
+        length += strlen (next->ifa_name) + 1 + extra + 1;
+      }
     }
     next = next->ifa_next;
   }
   int size = count * sizeof (char *) + length;
   *interfaces_p = malloc_or_fail (size, "get_bc_interfaces");
   char * * interfaces = *interfaces_p;
-  /* copy the names/ip to the malloc'd space after the pointers */
+  /* copy the names/extra to the malloc'd space after the pointers */
   char * write_to = ((char *) (interfaces + count));
   next = ap;
   int index = 0;
   while (next != NULL) {
-    if ((is_bc_interface (next)) &&
-        (! in_interface_array (next->ifa_name, interfaces, index))) {
+    if ((! in_interface_array (next->ifa_name, interfaces, index)) &&
+        (is_bc_interface (next)) &&
+        (strlen (interface_extra (next)) != 0)) {
       interfaces [index++] = write_to;
       strcpy (write_to, next->ifa_name);
-      strcat (write_to, "/ip");
+      strcat (write_to, "/");
+      strcat (write_to, interface_extra (next));
       write_to += strlen (write_to) + 1;
     }
     next = next->ifa_next;
@@ -547,6 +571,7 @@ int astart_main (int argc, char ** argv)
     return 0;
   }
   /* printf ("astart path is %s\n", path); */
+  pid_t astart_pid = getpid ();
 
   /* two pipes from ad to alocal and back, plus */
   /* two pipes from ad to aip and back */
@@ -580,7 +605,7 @@ int astart_main (int argc, char ** argv)
     printf ("calling abc %s\n", interface);
     my_call_abc (argv [0], alen, "abc", rpipes [2 * i + 4], wpipes [2 * i + 5],
                  rpipes [2 * i + 5], wpipes [2 * i + 4],
-                 interface, abc_pids + i);
+                 interface, abc_pids + i, astart_pid);
   }
   make_root_other (0); /* if we were root, become the caller or allnet/nobody */
 
@@ -611,25 +636,25 @@ int astart_main (int argc, char ** argv)
   log_print ();
 
   /* start ad */
-  my_call_ad (argv [0], alen, num_pipes, rpipes, wpipes, pid_fd);
+  my_call_ad (argv [0], alen, num_pipes, rpipes, wpipes, pid_fd, astart_pid);
   /* my_call_ad closed half the pipes and put them in the front of the arrays */
   num_pipes = num_pipes / 2;
 
   /* start all the other programs */
-  my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd);
+  my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd, astart_pid);
   my_call_aip (argv [0], alen, "aip", rpipes [1], wpipes [1],
-               AIP_UNIX_SOCKET, pid_fd);
+               AIP_UNIX_SOCKET, pid_fd, astart_pid);
 
   /* ad, alocal, aip, and the abc's don't need signal handlers -- if any
    * of them goes down, the pipes are closed and everyone else goes down too
    * but if the other daemons go down, they should explicitly shut
    * down all the processes listed in the pid file */
   setup_signal_handler (1);
-  my_call1 (argv [0], alen, "adht", adht_main, pid_fd);
-  my_call1 (argv [0], alen, "acache", acache_main, pid_fd);
-  my_call1 (argv [0], alen, "traced", traced_main, pid_fd);
-  my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd);
-  my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd);
+  my_call1 (argv [0], alen, "adht", adht_main, pid_fd, astart_pid);
+  my_call1 (argv [0], alen, "acache", acache_main, pid_fd, astart_pid);
+  my_call1 (argv [0], alen, "traced", traced_main, pid_fd, astart_pid);
+  my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd, astart_pid);
+  my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd, astart_pid);
 
 #ifdef WAIT_FOR_CHILD_TERMINATION
   int status;
