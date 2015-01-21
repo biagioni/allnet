@@ -148,16 +148,25 @@ int compute_sieve (int limit, char * sieve,
   return count;
 }
 
-static int read_all_or_none (int fd, char * buffer, int bsize)
+static int read_all_or_none (char * fname, char * buffer, int bsize)
 {
+  int fd = open (fname, O_RDONLY);
+  if (fd < 0) {
+    if (strcmp (fname, "/dev/random"))
+      perror ("open /dev/random");
+    else
+      perror ("open /dev/urandom");
+    return 0;
+  }
   int n;
   int total = 0;
   do {
-    n= read (fd, buffer + total, bsize - total);
+    n = read (fd, buffer + total, bsize - total);
     if (n < 0)
       return -1;
     total += n;
   } while (total < bsize);
+  close (fd);
   return total;
 }
 
@@ -177,6 +186,33 @@ void wp_rsa_randomize (char * buffer, int bsize)
   random_init++;  /* if it was 0, set to 1, but in any case, increment */
 }
 
+/* pure_random is 1 for /dev/random, 0 for /dev/urandom */
+/* returns 1 for success, 0 for failure */
+static int read_n_random_bytes (char * buffer, int bsize, int pure_random)
+{
+  int offset = 0;
+  if (pure_random) {
+/* man 4 random suggests reading at most 32 bytes from /dev/random,
+ * which gives 256 truly random bits.  The rest we read from /dev/urandom.
+ * This gives much faster key generation in case of limited sources
+ * of randomness, hopefully without loss of security */
+    if (bsize > 32)
+      offset = 32;
+    else
+      offset = bsize;
+    printf ("waiting for %d purely random bytes...\n", offset);
+    if (! read_all_or_none ("/dev/random", buffer, offset))
+      return 0;
+    if (offset >= bsize)
+      return 1;
+  }
+/* if pure_random, we read all but the first 32 bytes from /dev/urandom.
+ * otherwise, offset is zero and we read all of the bytes from /dev/urandom */
+  if (! read_all_or_none ("/dev/urandom", buffer + offset, bsize - offset))
+    return 0;
+  return 1;
+}
+
 /* #define PREDICTABLE_RANDOM   used for repeatability when debugging */
 static void init_random (char * buffer, int bsize, int pure_random,
                          char * rbuffer, int rsize)
@@ -194,28 +230,10 @@ static void init_random (char * buffer, int bsize, int pure_random,
 pure_random = 0;
 #endif /* PREDICTABLE_RANDOM */
   time_t start_time = time (NULL);
-  if (pure_random)
-    printf ("waiting for %d purely random bytes...\n", bsize);
-  char * fname = "/dev/urandom";
-  if (pure_random)
-    fname = "/dev/random";  /* only use really random bits */
-  int fd = open (fname, O_RDONLY);
-  int n = 0;
-  if (fd >= 0) {
-    n = read_all_or_none (fd, buffer, bsize);
-    close (fd);
-    if (n != bsize) {
-      if (pure_random)
-        perror ("read /dev/random");
-      else
-        perror ("read /dev/urandom");
-    }
-  } else {
-    if (pure_random)
-      perror ("open /dev/random");
-    else
-      perror ("open /dev/urandom");
+  if (! read_n_random_bytes (buffer, bsize, pure_random)) {
     if (random_init) {   /* use AES in counter mode with random_bank as key */
+      printf ("warning: less randomness available, key may be less secure\n");
+      int n = 0;
       while (n < bsize) {
         char in [WP_AES_BLOCK_SIZE];
         char out [WP_AES_BLOCK_SIZE];
@@ -231,15 +249,10 @@ pure_random = 0;
       exit (1);
     }
   }
-  if (n != bsize) {
-    printf ("tried to read %d bytes from %s, read %d\n", bsize, fname, n);
-    exit (1);
-  }
   if (pure_random)
     printf ("...done in %ld seconds\n", time (NULL) - start_time);
 #ifdef PREDICTABLE_RANDOM
-  if (pure_random)
-    printf ("warning: no randomness!  This is very insecure\n");
+  printf ("warning: non-random key is very insecure, use only for debugging\n");
   /* debugging */
   static int call_count = 1;
   int i;
