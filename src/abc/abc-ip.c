@@ -100,14 +100,17 @@ static int abc_ip_init (const char * interface)
       if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BROADCAST,
                       &flag, sizeof (flag)) != 0)
         log_error ("abc-ip: error setting broadcast flag");
+#ifdef SO_BINDTODEVICE
       /* we bind to the device to only send to and receive from that device.
        * SO_BINDTODEVICE is reserved for the superuser (for no obvious reason),
        * so it will fail otherwise.  However, the only consequence is that
        * we might receive from multiple interfaces and send to multiple
-       * interfaces, which is not a problem!!! */
+       * interfaces, which is not a problem!!!
+       * some systems do not define SO_BINDTODEVICE, hence the ifdef */
       if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BINDTODEVICE,
                       interface, strlen (interface)) != 0)
         log_error ("abc-ip: error binding to device");
+#endif /* SO_BINDTODEVICE */
       struct sockaddr_in sa;
       sa.sin_family = AF_INET;
       sa.sin_addr.s_addr = htonl (INADDR_ANY);
