@@ -7,7 +7,6 @@
 #include <ifaddrs.h>
 #include <net/if.h>           /* ifa_flags */
 #include <netinet/in.h>       /* struct sockaddr_in */
-#include <netpacket/packet.h>
 #include <sys/socket.h>       /* struct sockaddr */
 #include <sys/time.h>         /* gettimeofday */
 
