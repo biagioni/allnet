@@ -1,4 +1,4 @@
-/* abc-ip.c: Bradcast abc messages onto a generic ip interface */
+/* abc-ip.c: Broadcast abc messages onto a generic ip interface */
 
 #include <stdio.h>
 #include <stdlib.h>

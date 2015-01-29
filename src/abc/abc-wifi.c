@@ -1,9 +1,11 @@
-/* abc-iw.c: Bradcast abc messages onto a wireless interface
+/* abc-wifi.c: Broadcast abc messages onto a wireless interface
  *
  * to do: If the interface is on and connected to a wireless LAN, I never
  * enter send mode.  Instead, I use energy saving mode to receive once
  * every basic cycle, and transmit once every 200 cycles.
  */
+
+#ifdef ALLNET_NETPACKET_SUPPORT  /* not sure how to do this without netpacket */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -112,16 +114,14 @@ static int abc_wifi_init (const char * interface)
   int ret = 0;
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
-#ifdef ALLNET_NETPACKET_SUPPORT
- /* not sure how to do this for systems that don't support netpackets */
     if ((ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       struct timeval start;
       gettimeofday (&start, NULL);
       int is_up = wifi_config_iface->iface_is_enabled_cb ();
       int in_use = (is_up == 2);
-      printf ("abc-wifi: interface is enabled: %s (%d)\n",
-        in_use ? "yes, but busy" : (is_up > 0 ? "yes" : "no"), is_up);
+      printf ("abc-wifi: interface %s is enabled: %s (%d)\n", interface,
+              in_use ? "yes, but busy" : (is_up > 0 ? "yes" : "no"), is_up);
       if (is_up == 0)
         wifi_config_iface->iface_set_enabled_cb (1);
 
@@ -162,10 +162,9 @@ static int abc_wifi_init (const char * interface)
       ret = 1;
       goto abc_wifi_init_cleanup;
     }
-#endif /* ALLNET_NETPACKET_SUPPORT */
     ifa_loop = ifa_loop->ifa_next;
   }
-abc_wifi_init_cleanup:
+  abc_wifi_init_cleanup:
   freeifaddrs (ifa);
   return ret;
 }
@@ -179,3 +178,4 @@ static int abc_wifi_cleanup () {
   }
   return wifi_config_iface->iface_cleanup_cb ();
 }
+#endif /* ALLNET_NETPACKET_SUPPORT */
