@@ -137,8 +137,10 @@ static unsigned char zero_nonce [NONCE_SIZE];
 
 /** array of broadcast interface types (wifi, ethernet, ...) */
 static abc_iface * iface_types[] = {
-  &abc_iface_ip,
-  &abc_iface_wifi
+  &abc_iface_ip
+#ifdef ALLNET_NETPACKET_SUPPORT
+  , &abc_iface_wifi
+#endif /* ALLNET_NETPACKET_SUPPORT */
 };
 
 /* must match length and order of iface_types[] */
