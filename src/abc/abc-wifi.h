@@ -23,7 +23,9 @@ typedef struct abc_wifi_config_iface {
   int (* iface_cleanup_cb) ();
 } abc_wifi_config_iface;
 
+#ifdef ALLNET_NETPACKET_SUPPORT
 /** ready to use abc interface */
 extern abc_iface abc_iface_wifi;
+#endif /* ALLNET_NETPACKET_SUPPORT */
 
 #endif /* ABC_WIFI_H */

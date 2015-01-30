@@ -5,8 +5,6 @@
  * every basic cycle, and transmit once every 200 cycles.
  */
 
-#ifdef ALLNET_NETPACKET_SUPPORT  /* not sure how to do this without netpacket */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +18,8 @@
 #include "lib/util.h"         /* delta_us */
 
 #include "abc-iface.h"        /* sockaddr_t, abc_iface_* */
+
+#ifdef ALLNET_NETPACKET_SUPPORT  /* not sure how to do this without netpacket */
 
 #define NUM_WIFI_CONFIG_IFACES 1
 #ifdef USE_NETWORK_MANAGER
