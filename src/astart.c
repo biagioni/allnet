@@ -253,7 +253,7 @@ static int terminating_signals [] =
     SIGSEGV, SIGPIPE, SIGBUS, SIGTERM,
     SIGSYS, SIGTRAP,
     SIGXCPU, SIGXFSZ,
-    SIGIOT, /* SIGEMT, */ SIGIO
+    /* SIGIOT, SIGEMT, */ SIGIO
   };
 
 static void setup_signal_handler (int set)
@@ -264,7 +264,7 @@ static void setup_signal_handler (int set)
   else
     sa.sa_handler = SIG_DFL;  /* whatever the default is */
   sigfillset (&(sa.sa_mask)); /* block all signals while sighandler running */
-  sa.sa_flags = SA_NOCLDSTOP | SA_NOCLDWAIT | SA_RESTART;
+  sa.sa_flags = SA_NOCLDSTOP | SA_RESTART;
   int i;
   for (i = 0; i < sizeof (terminating_signals) / sizeof (int); i++) {
     if (sigaction (terminating_signals [i], &sa, NULL) != 0) {
@@ -436,32 +436,47 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
 static void debug_print_flags (char * name, int flags)
 {
   int i;
-static int nprinted = 0;
-static char * printed [100];
-for (i = 0; i < nprinted; i++)
-  if (strcmp (printed [i], name) == 0)
-    return;
-printed [nprinted++] = name;
+  /* only print once */
+  static int nprinted = 0;
+  static char * printed [100];
+  for (i = 0; i < nprinted; i++)
+    if (strcmp (printed [i], name) == 0)  /* already printed, ignore */
+      return;
+  printed [nprinted++] = name;  /* save for future reference */
   printf ("interface %s has flags %x:", name, flags);
   for (i = 1; i <= flags; i *= 2) {
     if (i & flags) {
       switch (i) {
       case IFF_UP: printf (" IFF_UP"); break;
       case IFF_BROADCAST: printf (" IFF_BROADCAST"); break;
+#ifdef IFF_DEBUG
       case IFF_DEBUG: printf (" IFF_DEBUG"); break;
+#endif /* IFF_DEBUG */
       case IFF_LOOPBACK: printf (" IFF_LOOPBACK"); break;
       case IFF_POINTOPOINT: printf (" IFF_POINTOPOINT"); break;
       case IFF_RUNNING: printf (" IFF_RUNNING"); break;
       case IFF_NOARP: printf (" IFF_NOARP"); break;
       case IFF_PROMISC: printf (" IFF_PROMISC"); break;
       case IFF_NOTRAILERS: printf (" IFF_NOTRAILERS"); break;
+#ifdef IFF_ALLMULTI
       case IFF_ALLMULTI: printf (" IFF_ALLMULTI"); break;
+#endif /* IFF_ALLMULTI */
+#ifdef IFF_MASTER
       case IFF_MASTER: printf (" IFF_MASTER"); break;
+#endif /* IFF_MASTER */
+#ifdef IFF_SLAVE
       case IFF_SLAVE: printf (" IFF_SLAVE"); break;
+#endif /* IFF_SLAVE */
       case IFF_MULTICAST: printf (" IFF_MULTICAST"); break;
+#ifdef IFF_PORTSEL
       case IFF_PORTSEL: printf (" IFF_PORTSEL"); break;
+#endif /* IFF_PORTSEL */
+#ifdef IFF_AUTOMEDIA
       case IFF_AUTOMEDIA: printf (" IFF_AUTOMEDIA"); break;
+#endif /* IFF_AUTOMEDIA */
+#ifdef IFF_DYNAMIC
       case IFF_DYNAMIC: printf (" IFF_DYNAMIC"); break;
+#endif /* IFF_DYNAMIC */
       default:       printf (" %x", i);
       }
     }
