@@ -1,0 +1,68 @@
+#!/bin/sh -e
+#
+# allnet, used to run the allnet daemon
+# started by root, run as user allnet
+### BEGIN INIT INFO
+# Provides:          allnet
+# Required-Start:    $local_fs $network
+# Required-Stop:     $local_fs $network
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: start the allnet daemon 
+# Description: run the allnet daemon as user "nobody"
+### END INIT INFO
+
+case "$1" in
+  status)
+    ps auxwww | egrep 'aip |ad |acache|alocal |abc |trace|xtime|keyd' | fgrep -v egrep
+    exit 0
+  ;;
+
+  *)
+    ;;
+esac
+
+N=/etc/init.d/allnet
+# X=/var/run/allnet/astart 
+# S=/var/run/allnet/astop 
+# D=/home/esb/src/allnet/v2
+# D=/home/esb/src/allnet/v3/bin
+A=/home/allnet
+# R=/var/run/allnet
+# L=/var/log/allnet
+
+[ -d $A ] || echo $N":" allnet source directory not found
+[ -d $A ] || exit
+
+cd $A
+
+case "$1" in
+  stop)
+    su allnet -c /home/esb/src/allnet/v3/bin/astop
+    pkill -u allnet xtime
+    exit 0
+  ;;
+  start)
+    su allnet -c /home/esb/src/allnet/v3/bin/astart &
+# enable this if you want to run xtime
+#     su allnet -c /home/allnet/bin/xtime-command &
+    exit 0
+  ;;
+  restart)
+    su allnet -c /home/esb/src/allnet/v3/bin/astop
+    pkill -u allnet xtime
+    su allnet -c /home/esb/src/allnet/v3/bin/astart &
+# enable this if you want to run xtime
+#     su allnet -c /home/allnet/bin/xtime-command &
+    exit 0
+  ;;
+
+  *)
+    ;;
+esac
+
+exit 0
+
+
+
+
