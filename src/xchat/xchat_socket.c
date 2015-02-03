@@ -229,6 +229,8 @@ static pid_t exec_java_ui (char * arg)
 /* printf ("calling %s %s %s %s\n", args [0], args [1], args [2], args [3]); */
     execv (args [0], args);    /* should never return! */
     perror ("execv returned");
+    printf ("execv error calling %s %s %s %s\n", args [0], args [1],
+            args [2], args [3]);
     exit (1);
     return 0;  /* should never return */
   } else {
