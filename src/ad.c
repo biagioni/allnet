@@ -94,6 +94,8 @@ static int process_mgmt (char * message, int msize, int is_local,
       *priority = ALLNET_PRIORITY_TRACE;  /* give it very low priority */
       return PROCESS_PACKET_ALL;          /* forward locally and out */
     } else {
+      if (hp->max_hops == 0)
+        return PROCESS_PACKET_DROP;       /* only for us, do not forward */
       return PROCESS_PACKET_OUT;          /* local packet, forward out */
     }
   default:
@@ -136,7 +138,8 @@ static int process_packet (char * packet, int size, int is_local,
     if (ah->hops < 255)   /* do not increment 255 to 0 */
       ah->hops++;
   }
-  snprintf (log_buf, LOG_SIZE, "forwarding packet with %d hops\n", ah->hops);
+  snprintf (log_buf, LOG_SIZE, "forwarding %s packet with %d/%d hops\n",
+            (is_local ? "local" : "received"), ah->hops, ah->max_hops);
   log_print ();
 
   if (ah->message_type == ALLNET_TYPE_MGMT) {     /* AllNet management */
