@@ -94,7 +94,8 @@ static int abc_wifi_init (const char * interface)
   if (abc_iface_wifi.iface_type_args != NULL) {
     int i;
     for (i = 0; i < sizeof (wifi_config_types); ++i) {
-      if (strcmp (abc_wifi_config_type_strings[i], abc_iface_wifi.iface_type_args) == 0) {
+      if (strcmp (abc_wifi_config_type_strings[i],
+                  abc_iface_wifi.iface_type_args) == 0) {
         wifi_config_iface = wifi_config_types[i];
         break;
       }
@@ -141,24 +142,34 @@ static int abc_wifi_init (const char * interface)
         abc_iface_wifi.iface_on_off_ms = time;
       }
       /* create the socket and initialize the address */
-      abc_iface_wifi.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM, ALLNET_WIFI_PROTOCOL);
-      abc_iface_wifi.if_address.ll = *((struct sockaddr_ll *)ifa_loop->ifa_addr);
+      abc_iface_wifi.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM,
+                                            ALLNET_WIFI_PROTOCOL);
+      abc_iface_wifi.if_address.ll =
+        *((struct sockaddr_ll *)ifa_loop->ifa_addr);
       if (abc_iface_wifi.iface_sockfd == -1) {
         perror ("abc-wifi: error creating socket");
         goto abc_wifi_init_cleanup;
       }
-      if (bind (abc_iface_wifi.iface_sockfd, &abc_iface_wifi.if_address.sa, sizeof (struct sockaddr_ll)) == -1)
+      if (bind (abc_iface_wifi.iface_sockfd, &abc_iface_wifi.if_address.sa,
+                sizeof (struct sockaddr_ll)) == -1) {
         perror ("abc-wifi: error binding interface (continuing without)");
+        printf ("error binding interface %s\n", interface);
+      }
       if (ifa_loop->ifa_flags & IFF_BROADCAST)
         abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_broadaddr);
       else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
         abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_dstaddr);
       else
-        abc_iface_set_default_sll_broadcast_address (&abc_iface_wifi.bc_address.ll);
-      abc_iface_wifi.bc_address.ll.sll_protocol = ALLNET_WIFI_PROTOCOL;  /* otherwise not set */
-      abc_iface_wifi.bc_address.ll.sll_ifindex = abc_iface_wifi.if_address.ll.sll_ifindex;
-      abc_iface_print_sll_addr (&abc_iface_wifi.if_address.ll, "interface address");
-      abc_iface_print_sll_addr (&abc_iface_wifi.bc_address.ll, "broadcast address");
+        abc_iface_set_default_sll_broadcast_address (
+          &abc_iface_wifi.bc_address.ll);
+      /* must set sll_protocol, otherwise it is not set */
+      abc_iface_wifi.bc_address.ll.sll_protocol = ALLNET_WIFI_PROTOCOL;
+      abc_iface_wifi.bc_address.ll.sll_ifindex =
+        abc_iface_wifi.if_address.ll.sll_ifindex;
+      abc_iface_print_sll_addr (&abc_iface_wifi.if_address.ll,
+                                "interface address");
+      abc_iface_print_sll_addr (&abc_iface_wifi.bc_address.ll,
+                                "broadcast address");
       ret = 1;
       goto abc_wifi_init_cleanup;
     }

@@ -116,8 +116,10 @@ static int abc_ip_init (const char * interface)
       sa.sin_addr.s_addr = htonl (INADDR_ANY);
       sa.sin_port = htons (ALLNET_ABC_IP_PORT);
       memset (&sa.sin_zero, 0, sizeof (sa.sin_zero));
-      if (bind (abc_iface_ip.iface_sockfd, (struct sockaddr *)&sa, sizeof (sa)) == -1) {
+      if (bind (abc_iface_ip.iface_sockfd,
+                (struct sockaddr *)&sa, sizeof (sa)) == -1) {
         perror ("abc-ip: error binding interface");
+        printf ("error binding interface %s\n", interface);
         close (abc_iface_ip.iface_sockfd);
         abc_iface_ip.iface_sockfd = -1;
         goto abc_ip_init_cleanup;
