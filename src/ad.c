@@ -116,10 +116,10 @@ static int process_packet (char * packet, int size, int is_local,
 
 /* skip the hop count in the hash, since it changes at each hop */
 #define HEADER_SKIP	3
-  /* have we received this packet in the last minute?  if so, drop it */
   int time = record_packet_time (packet + HEADER_SKIP, size - HEADER_SKIP, 0);
 #undef HEADER_SKIP
-  if ((time > 0) && (time < 60)) {
+  if ((! is_local) && (time > 0)) {
+   /* we have received this packet before, so drop it */
     snprintf (log_buf, LOG_SIZE, 
               "packet received in the last %d seconds, dropping\n", time);
     log_print ();
