@@ -276,14 +276,16 @@ static void setup_signal_handler (int set)
   }
 }
 
-static void child_return (char * executable, pid_t parent)
+static void child_return (char * executable, pid_t parent, int stop_allnet)
 {
   snprintf (log_buf, LOG_SIZE, "%s completed\n", executable);
   log_print ();
-  /* kill the parent first, to avoid starting new processes */
-  kill (parent, SIGINT);
-  stop_all_on_signal (0);   /* stop other AllNet processes if necessary */
-  exit (1);
+  if (stop_allnet) {
+    /* kill the parent first, to avoid starting new processes */
+    kill (parent, SIGINT);
+    stop_all_on_signal (0);   /* stop other AllNet processes if necessary */
+  }
+  exit (1);  /* at any rate, stop this process */
 }
 
 static void my_call1 (char * argv, int alen, char * program,
@@ -296,7 +298,7 @@ static void my_call1 (char * argv, int alen, char * program,
     log_print ();
     daemon_name = program;
     run_function (argv);
-    child_return (program, parent);
+    child_return (program, parent, 1);
   } else {  /* parent, not much to do */
     print_pid (fd, child);
     snprintf (log_buf, LOG_SIZE, "parent called %s\n", program);
@@ -327,7 +329,7 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe, int fd,
     log_print ();
     daemon_name = "alocal";
     alocal_main (rpipe, wpipe);
-    child_return (program, parent);
+    child_return (program, parent, 1);
   } else {  /* parent, close the child pipes */
     close (rpipe);
     close (wpipe);
@@ -353,7 +355,7 @@ static void my_call_aip (char * argv, int alen, char * program,
     log_print ();
     daemon_name = "aip";
     aip_main (rpipe, wpipe, extra);
-    child_return (program, parent);
+    child_return (program, parent, 1);
   } else {  /* parent, close the child pipes */
     close (rpipe);
     close (wpipe);
@@ -380,7 +382,7 @@ static void my_call_abc (char * argv, int alen, char * program,
     close (ppipe1);
     close (ppipe2);
     abc_main (rpipe, wpipe, ifopts);
-    child_return (program, parent);
+    child_return (program, parent, 0);
   } else {  /* parent, close the child pipes */
     *pid = child;
     /* print_pid (fd, child); */
@@ -420,7 +422,7 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
       printf (" %d", wpipes [i]);
     printf (")\n"); */
     ad_main (num_pipes / 2, rpipes, wpipes);
-    child_return (program, parent);
+    child_return (program, parent, 1);
   } else {  /* parent, close the child pipes */
     print_pid (fd, child);
     for (i = 0; i < num_pipes / 2; i++) {
