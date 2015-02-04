@@ -191,6 +191,8 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
     printf ("hp is %p, total is %d, size_needed %d\n", hp, total, size_needed);
     return 0;
   }
+  if (inhp->hops == 0) /* local, no need to send reply outwards */
+    hp->max_hops = 0;
   *result = (char *) hp;
 
   struct allnet_mgmt_header * mp =
