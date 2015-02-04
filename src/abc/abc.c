@@ -332,7 +332,8 @@ static void unmanaged_send_pending (int new_only)
       continue;
     if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
         BC_ADDR (iface), iface->sockaddr_size) < nsize) {
-      perror ("abc: sendto");
+      if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
+        perror ("abc: sendto");
       continue;
     }
     struct allnet_header * hp = (struct allnet_header *) message;
