@@ -206,7 +206,8 @@ static char * make_program_path (char * path, char * program)
 static char * find_java ()
 {
   char * candidates [] = { "/usr/bin/java", "C:\\winnt\\system32\\java",
-                           "C:\\windows\\system\\java" };
+                           "C:\\windows\\system\\java",
+                           "C:\\windows\\system32\\java" };
   int i;
   for (i = 0; i < sizeof (candidates) / sizeof (char *); i++) {
     /* printf ("trying %s\n", candidates [i]); */
