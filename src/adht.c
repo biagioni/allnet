@@ -87,9 +87,13 @@ int init_own_routing_entries (struct addr_info * entry, int max,
       struct sockaddr_in * sinp = (struct sockaddr_in *) (next->ifa_addr);
       int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
       int next_byte = ((char *) (&(sinp->sin_addr.s_addr))) [1] & 0xff;
+      int then_byte = ((char *) (&(sinp->sin_addr.s_addr))) [2] & 0xff;
+      int last_byte = ((char *) (&(sinp->sin_addr.s_addr))) [3] & 0xff;
       if ((high_byte != 10) &&  /* anything beginning with 10 is private */
           ((high_byte != 172) || ((next_byte & 0xf0) != 16)) &&
-          ((high_byte != 192) || (next_byte != 168))) {
+          ((high_byte != 192) || (next_byte != 168)) &&
+          ((high_byte | next_byte | then_byte | last_byte) != 0) &&
+          ((high_byte & next_byte & then_byte & last_byte) != 0xff)) {
         if (entry != NULL) {
 /* the address is already zeroed.  Assign the IP address to the last four
  * bytes (entry->ip.ip.s6_addr + 12), and 0xff to the immediately preceding
