@@ -86,10 +86,10 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
        (receive_time.tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX) - packet_time;
     if (delta >= 0)
       printf ("received after %lld.%06ld seconds\n", delta,
-              receive_time.tv_usec);
+              (long) (receive_time.tv_usec));
     else
       printf ("clock skew detected (%lld.%06ld seconds before)\n",
-              delta, receive_time.tv_usec);
+              delta, (long) (receive_time.tv_usec));
     *rcvd = 1;
   } else {
     if (debug)

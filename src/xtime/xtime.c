@@ -233,7 +233,7 @@ static void announce (time_t interval, int sock,
 
   struct timeval tv;
   gettimeofday (&tv, NULL);
-  printf ("sent at %ld.%06ld: ", tv.tv_sec, tv.tv_usec);
+  printf ("sent at %ld.%06ld: ", tv.tv_sec, (long) (tv.tv_usec));
   print_buffer (buffer, blen, "packet", 36, 1);
 }
 
