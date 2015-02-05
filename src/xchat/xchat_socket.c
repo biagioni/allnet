@@ -203,6 +203,20 @@ static char * make_program_path (char * path, char * program)
   return result;
 }
 
+static char * find_java ()
+{
+  char * candidates [] = { "/usr/bin/java", "C:\\winnt\\system32\\java",
+                           "C:\\windows\\system\\java" };
+  int i;
+  for (i = 0; i < sizeof (candidates) / sizeof (char *); i++) {
+    /* printf ("trying %s\n", candidates [i]); */
+    if (access (candidates [i], X_OK) == 0)
+      return candidates [i];
+  }
+  printf ("no java runtime found, unable to run xchat\n");
+  return NULL;
+}
+
 static pid_t exec_java_ui (char * arg)
 {
   char * path;
@@ -221,16 +235,19 @@ static pid_t exec_java_ui (char * arg)
   }
   if (pid == 0) {   /* child process */
     char * args [5];
-    args [0] = "/usr/bin/java";
-    args [1] = "-jar";
-    args [2] = jarfile;
-    args [3] = "nodebug";
-    args [4] = NULL;
+    args [0] = find_java ();
+    if (args [0] != NULL) {
+      args [1] = "-jar";
+      args [2] = jarfile;
+      args [3] = "nodebug";
+      args [4] = NULL;
 /* printf ("calling %s %s %s %s\n", args [0], args [1], args [2], args [3]); */
-    execv (args [0], args);    /* should never return! */
-    perror ("execv returned");
-    printf ("execv error calling %s %s %s %s\n", args [0], args [1],
-            args [2], args [3]);
+      execv (args [0], args);    /* should never return! */
+      perror ("execv returned");
+      printf ("execv error calling %s %s %s %s\n", args [0], args [1],
+              args [2], args [3]);
+    }
+    kill (getppid (), SIGKILL);  /* kill the parent process too */
     exit (1);
     return 0;  /* should never return */
   } else {
