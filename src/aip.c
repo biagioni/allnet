@@ -4,7 +4,9 @@
 /* main thread uses select to check the pipe from ad and the sockets */
 /* secondary threads:
  * - listen and open TCP connections
+#ifdef ALLNET_ADDRS
  * - listen on the unix socket for allnet-destination-address to IP mappings
+#endif ALLNET_ADDRS
  */
 /* arguments are:
   - the fd number of the pipe from ad
@@ -50,6 +52,7 @@ struct udp_cache_record {
 /* UDPv4 messages are limited to less than 2^16 bytes */
 #define MAX_RECEIVE_BUFFER	ALLNET_MAX_UDP_SIZE
 
+#ifdef ALLNET_ADDRS
 static int init_unix_socket (char * addr_socket_name)
 {
   int addr_socket = socket (AF_UNIX, SOCK_DGRAM, 0);
@@ -70,6 +73,7 @@ static int init_unix_socket (char * addr_socket_name)
   }
   return addr_socket;
 }
+#endif /* ALLNET_ADDRS */
 
 struct receive_arg {
   char * socket_name;
@@ -77,6 +81,7 @@ struct receive_arg {
   void * dht_cache;
 };
 
+#ifdef ALLNET_ADDRS
 #define max(a, b)	(((a) > (b)) ? (a) : (b))
 
 static void * receive_addrs (void * arg)
@@ -120,6 +125,7 @@ static void * receive_addrs (void * arg)
     }
   }
 }
+#endif /* ALLNET_ADDRS */
 
 struct match_arg {
   /* arguments */
@@ -280,7 +286,7 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
   }
 #ifdef DEBUG_PRINT
   log_print ();
-#else /* DEBUG_PRINT */
+#else /* ! DEBUG_PRINT */
   log_buf [0] = '\0';
 #endif /* DEBUG_PRINT */
 }
@@ -292,15 +298,10 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
     addr_len = sizeof (struct sockaddr_in);
   int s = sendto (udp, message, msize, 0, sa, addr_len);
   if (s < msize) {
-#ifdef DEBUG_PRINT
-    int n = 
-#endif /* DEBUG_PRINT */
-    snprintf (log_buf, LOG_SIZE,
+    int n = snprintf (log_buf, LOG_SIZE,
                       "error sending %d (sent %d) on udp %d to ",
                       msize, s, udp);
-#ifdef DEBUG_PRINT
     print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
-#endif /* DEBUG_PRINT */
     log_error ("sendto");
   } else {
 /*
@@ -1188,15 +1189,17 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
             rpipe, wpipe, addr_socket_name);
   log_print ();
 
-  pthread_t addr_thread;
   struct receive_arg ra;
   ra.socket_name = addr_socket_name;
   ra.rp_cache = cache_init (128, free);
   ra.dht_cache = cache_init (256, free);
+#ifdef ALLNET_ADDRS
+  pthread_t addr_thread;
   if (pthread_create (&addr_thread, NULL, receive_addrs, &ra) != 0) {
     perror ("pthread_create/addrs");
     return;
   }
+#endif /* ALLNET_ADDRS */
   struct listen_info info;
   listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0, listen_callback);
 
