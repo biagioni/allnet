@@ -196,7 +196,9 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
     }
 #endif /* DEBUG_PRINT */
   }
+#ifdef DEBUG_PRINT
   printf ("unable to verify bc message\n");
+#endif /* DEBUG_PRINT */
   return 0;   /* did not match */
 }
 
