@@ -161,8 +161,8 @@ static void log_print_buffer (char * buffer, int blen)
   lock.l_start = 0;
   lock.l_len = blen;
   if (fcntl (fd, F_SETLKW, &lock) < 0) {
-    perror ("unable to lock log file\n");
-    printf ("%s", buffer);
+    perror ("unable to lock log file");
+    printf ("(%d) %s", blen, buffer);
     close (fd);
     pthread_mutex_unlock (&mutex);
     return;
