@@ -39,7 +39,7 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
     social_distance =
        social_connection (soc, verify, vsize, hp->source, hp->src_nbits,
                           hp->sig_algo, sig, sig_size, &valid);
-  } else {
+  } else if (sig_size > 0) {
     snprintf (log_buf, LOG_SIZE,
               "invalid sigsize: %d, %d + %d + 2 = %d <? %d\n",
               hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size);
@@ -175,14 +175,16 @@ static int process_packet (char * packet, int size, int is_local,
 static void send_all (char * packet, int psize, int priority,
                       int * write_pipes, int nwrite, char * desc)
 {
+  int i;
+#ifdef LOG_PACKETS
   int n = snprintf (log_buf, LOG_SIZE,
                     "send_all (%s) sending %d bytes priority %d to %d pipes: ",
                     desc, psize, priority, nwrite);
-  int i;
   for (i = 0; i < nwrite; i++)
     n += snprintf (log_buf + n, LOG_SIZE - n, "%d%s", write_pipes [i],
                    (((i + 1) < nwrite) ? ", " : "\n"));
   log_print ();
+#endif /* LOG_PACKETS */
   for (i = 0; i < nwrite; i++) {
     if (! send_pipe_message (write_pipes [i], packet, psize, priority)) {
       snprintf (log_buf, LOG_SIZE, "write_pipes [%d] = %d is no longer valid\n",

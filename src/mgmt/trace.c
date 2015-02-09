@@ -150,9 +150,11 @@ static int add_my_entry (char * in, int insize, struct allnet_header * inhp,
                  (sizeof (struct allnet_mgmt_trace_entry) * n);
     memcpy (key, inkey, k);
   }
+#ifdef LOG_PACKETS
   packet_to_string (*result, needed, "add_my_entry packet copy", 1,
                     log_buf, LOG_SIZE);
   log_print ();
+#endif /* LOG_PACKETS */
   return needed;
 }
 
@@ -223,8 +225,10 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
                  (sizeof (struct allnet_mgmt_trace_entry) * intrp->num_entries);
     print_buffer (key, ksize, "key", 15, 1);
   }
+#ifdef LOG_PACKETS
   packet_to_string (*result, total, "my reply: ", 1, log_buf, LOG_SIZE);
   log_print ();
+#endif /* LOG_PACKETS */
   return size_needed;
 }
 
@@ -360,9 +364,11 @@ static void respond_to_trace (int sock, char * message, int msize,
 
   /* found a valid trace request */
   if (cache_get_match (cache, same_trace_id, trp->trace_id) != NULL) {
+#ifdef LOG_PACKETS
     buffer_to_string ((char *) (trp->trace_id), MESSAGE_ID_SIZE,
                       "duplicate trace_id", 5, 1, log_buf, LOG_SIZE);
     log_print ();
+#endif /* LOG_PACKETS */
     return;     /* duplicate */
   }
   /* else new trace, save it in the cache so we only forward it once */
@@ -405,12 +411,14 @@ static void respond_to_trace (int sock, char * message, int msize,
   char * new_msg;
   int n = add_my_entry (message, msize, hp, mp, trp, &timestamp,
                         my_address, abits, &new_msg);
+#ifdef LOG_PACKETS
   if (n > 0) {
     int off = snprintf (log_buf, LOG_SIZE,
                         "forwarding trace req %d <- %d ", n, msize);
     packet_to_string (new_msg, n, NULL, 1, log_buf + off, LOG_SIZE - off);
     log_print ();
   }
+#endif /* LOG_PACKETS */
 
   char * response = NULL;
   int rsize = 0;
