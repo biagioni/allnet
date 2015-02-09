@@ -31,7 +31,7 @@ class ConversationPanel extends JPanel {
     private boolean scrollToBottom;
     private JTextField msgField;
     // the buttons
-    private JButton close, exchangeKeys, goToContacts, send;
+    private JButton /* close, exchangeKeys, goToContacts,*/ send;
     // the command prefix will identify which instance of the Class is sending the event
     private String commandPrefix;
     // default colors to use
@@ -112,6 +112,17 @@ class ConversationPanel extends JPanel {
         return contactName;
     }
 
+    // this provides the title on the conversation tab
+    public String getTitle() {
+        int idx = contactName.indexOf("@");
+        if (idx < 1) {
+            return contactName;
+        }
+        else {
+            return (contactName.substring(0, idx));
+        }
+    }
+
     public String getMsgToSend() {
         String msg = msgField.getText();
         msgField.setText("");
@@ -125,7 +136,7 @@ class ConversationPanel extends JPanel {
     }
 
     void setListener(ActionListener listener) {
-        close.addActionListener(listener);
+//        close.addActionListener(listener);
 //        exchangeKeys.addActionListener(listener);
 //        goToContacts.addActionListener(listener);
         send.addActionListener(listener);
@@ -134,11 +145,12 @@ class ConversationPanel extends JPanel {
     }
 
     private JPanel makeButtonPanel(HtmlLabel label) {
-        close = makeButton("x", CLOSE_COMMAND);
+//        close = makeButton("x", CLOSE_COMMAND);
+//        close.setForeground(java.awt.Color.RED);
 //        exchangeKeys = makeButton("Exchange Keys", EXCHANGE_KEYS_COMMAND);
 //        goToContacts = makeButton("Contacts", CONTACTS_COMMAND);
-        Insets insets = new Insets(2, 8, 2, 8);
-        close.setMargin(insets);
+//        Insets insets = new Insets(2, 8, 2, 8);
+//        close.setMargin(insets);
 //        exchangeKeys.setMargin(insets);
 //        goToContacts.setMargin(insets);
         JPanel panel = new JPanel();
@@ -147,9 +159,9 @@ class ConversationPanel extends JPanel {
         // panel.add(Box.createHorizontalGlue());
 // exchanging keys is now done through "New Contact"
 //        panel.add(exchangeKeys);
-        panel.add(Box.createHorizontalGlue());
-        panel.add(close);
-        panel.add(Box.createHorizontalGlue());
+//        panel.add(Box.createHorizontalGlue());
+//        panel.add(close);
+//        panel.add(Box.createHorizontalGlue());
         panel.add(label);
 //        panel.add(Box.createHorizontalGlue());
 //        panel.add(goToContacts);
@@ -161,7 +173,6 @@ class ConversationPanel extends JPanel {
     private JButton makeButton(String text, String command) {
         JButton button = new JButton(text);
         button.setActionCommand(commandPrefix + ":" + command);
-        button.setForeground(java.awt.Color.RED);
         return (button);
     }
 

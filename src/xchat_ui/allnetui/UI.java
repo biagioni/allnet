@@ -19,6 +19,9 @@ class UI extends ApplicationFrame {
     public static boolean debug = true;
     private static String[] debugContactNames = new String[]{"Alice", "Bob", "Charlie", "Dan", "Eve", "Frank"};
     private static final String myContactName = "self";
+    // IDs for fixed panels
+    public static final String CONTACTS_PANEL_ID = "CONTACTS_PANEL_ID";
+    public static final String NEW_CONTACT_PANEL_ID = "NEW_CONTACT_PANEL_ID";
     //
     // private static boolean debug = false;
     static final String TITLE = "Allnet Java UI";
@@ -65,13 +68,14 @@ class UI extends ApplicationFrame {
                 public void run() {
                     ClientData clientData = new ClientData();
                     UIController controller = new UIController(clientData);
-                    
+
                     ConversationPanel.setDefaultColors(bgndColor, otherColor, broadcastBackgroundColor);
                     ContactsPanel contactsPanel = new ContactsPanel(" contacts<br>panel ", bgndColor, otherColor, broadcastContactColor);
                     NewContactPanel newContactPanel = new NewContactPanel(" exchange a key with a new contact<br>&nbsp;", bgndColor, otherColor);
                     MyTabbedPane uiTabs = new MyTabbedPane();
-                    uiTabs.add("Contacts", contactsPanel);
-                    uiTabs.add("New Contact", newContactPanel);
+                    uiTabs.addTab(NEW_CONTACT_PANEL_ID, "New Contact", newContactPanel);
+                    uiTabs.addTab(CONTACTS_PANEL_ID, "Contacts", contactsPanel);
+                    uiTabs.setSelected(contactsPanel);
                     // controller needs a references to the panels in the ui
                     // and also to register to listen for events from those panels
                     controller.setContactsPanel(contactsPanel);
@@ -82,7 +86,7 @@ class UI extends ApplicationFrame {
                     // tell controller when the selected tab changes
                     uiTabs.setListener(controller);
 
-                    UI ui = new UI(TITLE, uiTabs.putInPanel(), controller, true);
+                    UI ui = new UI(TITLE, uiTabs, controller, true);
                     ui.setMyLocation("center");
                     ui.setVisible(true);
 
@@ -92,13 +96,15 @@ class UI extends ApplicationFrame {
                         for (String contactName : debugContactNames) {
                             controller.contactCreated(contactName);
                         }
-                    } else {
+                    }
+                    else {
                         for (String contactName : AllNetContacts.get()) {
                             controller.contactCreated(contactName);
                             controller.savedMessages(ConversationData.get(contactName, 100));
                         }
-                        for (String contactName : AllNetContacts.getBroadcast())
+                        for (String contactName : AllNetContacts.getBroadcast()) {
                             controller.broadcastContactCreated(contactName);
+                        }
                     }
                     XchatSocket s = new XchatSocket(controller);
                     s.start();

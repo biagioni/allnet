@@ -27,7 +27,7 @@ class UIController implements ControllerInterface, UIAPI {
 
     // for formatting message times
     private static SimpleDateFormat formatter =
-//          new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss z");
+            //          new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss z");
             new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss");
     //
     // reference to the swing Frame in which the ui is running 
@@ -67,26 +67,28 @@ class UIController implements ControllerInterface, UIAPI {
         };
         // schedule it in the event disp thread, but don't wait for it to execute
         SwingUtilities.invokeLater(r);
-    } 
+    }
 
     // initialization should call this method at startup with older messages
+    @Override
     public void savedMessages(final Message[] messages) {
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
-                for (Message message: messages) {
-                    if (message.sentNotReceived)
+                for (Message message : messages) {
+                    if (message.sentNotReceived) {
                         displaySentMessage(message);
-                    else
+                    }
+                    else {
                         processReceivedMessage(message);
+                    }
                 }
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
         SwingUtilities.invokeLater(r);
-    } 
-
+    }
 
     // the application should call this method after a message has been successfully sent
     @Override
@@ -107,7 +109,7 @@ class UIController implements ControllerInterface, UIAPI {
     // the application should call this method to tell the UI about a new contact
     @Override
     public void contactCreated(final String contactName,
-                               final boolean isBroadcast) {
+            final boolean isBroadcast) {
         Runnable r = new Runnable() {
 
             @Override
@@ -122,12 +124,12 @@ class UIController implements ControllerInterface, UIAPI {
 
     @Override
     public void contactCreated(final String contactName) {
-        contactCreated (contactName, false);
+        contactCreated(contactName, false);
     }
 
     @Override
     public void broadcastContactCreated(final String contactName) {
-        contactCreated (contactName, true);
+        contactCreated(contactName, true);
     }
 
     // the application should call this method to tell the UI to remove a contact
@@ -159,7 +161,6 @@ class UIController implements ControllerInterface, UIAPI {
 //        // schedule it in the event disp thread, but don't wait for it to execute
 //        SwingUtilities.invokeLater(r);
 //    }
-
     //-----------------------------------------
     //
     //  end of public API methods
@@ -262,14 +263,13 @@ class UIController implements ControllerInterface, UIAPI {
         // and finally, update the info at the top of the panel
         updateContactsPanelStatus();
     }
-    
+
 //    private void updateContactsPanel(String contactName, boolean broadcast) {
 //        updateContactsPanel(contactName, broadcast);
 //    }
 //    private void updateContactsPanelBC(String contact) {
 //        updateContactsPanel(contact, true);
 //    }
-
     // give method package access so that it can be called at startup
     void updateContactsPanelStatus() {
         int n = clientData.getNumContacts();
@@ -296,36 +296,38 @@ class UIController implements ControllerInterface, UIAPI {
         return (sb.toString());
     }
 
-    private void processTabEvent(String tabTitle) {
+    private void processTabEvent(String contactName) {
         // make sure we're talking about the tab just selected (not the deselected one)
-        if (myTabbedPane.getSelectedIndex() != myTabbedPane.indexOfTab(tabTitle)) {
+        if (!contactName.equals(myTabbedPane.getSelectedID())) {
             return;
         }
         // assume the conversation tab name is the same as the respective contact 
-        if (!clientData.contactExists(tabTitle)) {
+        if (!clientData.contactExists(contactName)) {
             // not a conversation tab; no action to take
             return;
         }
         // it's a conversation tab. 
-        Conversation conv = clientData.getConversation(tabTitle);
+        Conversation conv = clientData.getConversation(contactName);
         if (conv == null) {
-            throw new RuntimeException("no Conversation Object for contact: " + tabTitle);
+            throw new RuntimeException("no Conversation Object for contact: " + contactName);
         }
         conv.setReadAll();
-        updateContactsPanel(tabTitle, clientData.isBroadcast(tabTitle));
+        updateContactsPanel(contactName, clientData.isBroadcast(contactName));
         updateConversationPanels();
     }
 
     private void processContactsEvent(String contactName) {
-        ConversationPanel cp;
-        int i = myTabbedPane.indexOfTab(contactName);
-        if (i == -1) {
+        // see if there is a tab open for this conversation
+        ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(contactName);
+        if (cp == null) {
             // no such tab, so make the conversation panel
             // (the contact's name is also the command prefix)
-            if (! clientData.isBroadcast(contactName))
+            if (!clientData.isBroadcast(contactName)) {
                 cp = new ConversationPanel("conversation with " + contactName, contactName, contactName);
-            else
+            }
+            else {
                 cp = new ConversationPanel("broadcast from " + contactName, contactName, contactName);
+            }
             cp.setName(contactName);
             cp.setListener(this);
             // display the conversation on the new panel
@@ -336,12 +338,13 @@ class UIController implements ControllerInterface, UIAPI {
                 msg = it.next();
                 cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
             }
-            myTabbedPane.add(cp, 0);
-            myTabbedPane.setSelectedComponent(cp);
+            myTabbedPane.addTabWithClose(contactName, cp.getTitle(), cp, ConversationPanel.CLOSE_COMMAND);
+            myTabbedPane.setSelected(cp);
         }
         else {
             // already exists, so select it
-            myTabbedPane.setSelectedIndex(i);
+            // myTabbedPane.setSelectedIndex(i);
+            myTabbedPane.setSelected(contactName);
         }
         // it's a conversation tab, so update the contacts panel
         updateContactsPanel(contactName, clientData.isBroadcast(contactName));
@@ -357,70 +360,77 @@ class UIController implements ControllerInterface, UIAPI {
             String contact = newContactPanel.getInputName();
             int button = newContactPanel.getSelectedButton();
             switch (button) {
-            case -1:
-                System.out.println("UIController.java: new contact " + contact +
-                                   ", no button selected");
-                break;
-            case 0:
-                System.out.println("new 1-hop contact " + contact + ", " +
-                                   newContactPanel.getVariableInput());
-                if (XchatSocket.sendKeyRequest
-                     (contact, newContactPanel.getMySecretShort(),
-                      newContactPanel.getVariableInput(), 1)) {
-                    System.out.println("sent direct wireless key request");
-                    newContactPanel.setMySecret();
-                } else
-                    System.out.println("unable to send direct key request");
-                break;
-            case 1:
-                System.out.println("new ahra contact " + contact + ", " +
-                                   newContactPanel.getVariableInput());
-                String ahra = newContactPanel.getVariableInput();
-                if ((ahra == null) || (ahra.indexOf ('@') < 0))
-                    ahra = contact;
-                if ((ahra == null) || (ahra.indexOf ('@') < 0))
-                    System.out.println("new ahra contact " + contact +
-                                       " must contain '@' sign");
-                else if (XchatSocket.sendSubscription (ahra))
-                    System.out.println("sent ahra subscription");
-                else
-                    System.out.println("unable to send ahra subscription");
-                break;
-            case 2:
-                System.out.println("new common contact for " + contact + " is "
-                                   + newContactPanel.getVariableInput());
-                System.out.println("  (not implemented)");
-                break;
-            case 3:
-                System.out.println("new authenticated contact " + contact +
-                                   ", secret " +
-                                   newContactPanel.getVariableInput() + "/" +
-                                   newContactPanel.getMySecretLong());
-                if (XchatSocket.sendKeyRequest
-                     (contact, newContactPanel.getMySecretLong(),
-                      newContactPanel.getVariableInput(), 6)) {
-                    System.out.println("sent key request with 6 hops");
-                    newContactPanel.setMySecret();
-                } else
-                    System.out.println("unable to send key request");
-                break;
-            case 4:
-                System.out.println("new unauthenticated contact " + contact +
-                                   ", secret " +
-                                   newContactPanel.getVariableInput() + "/" +
-                                   newContactPanel.getMySecretLong());
-                if (XchatSocket.sendKeyRequest
-                     (contact, newContactPanel.getMySecretLong(),
-                      newContactPanel.getVariableInput(), 6)) {
-                    System.out.println("sent ukey request with 6 hops");
-                    newContactPanel.setMySecret();
-                } else
-                    System.out.println("unable to send ukey request");
-                break;
-            default:
-                System.out.println("UIController.java: unknown button " +
-                                   button + " for contact " + contact);
-                break;
+                case -1:
+                    System.out.println("UIController.java: new contact " + contact
+                            + ", no button selected");
+                    break;
+                case 0:
+                    System.out.println("new 1-hop contact " + contact + ", "
+                            + newContactPanel.getVariableInput());
+                    if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretShort(),
+                            newContactPanel.getVariableInput(), 1)) {
+                        System.out.println("sent direct wireless key request");
+                        newContactPanel.setMySecret();
+                    }
+                    else {
+                        System.out.println("unable to send direct key request");
+                    }
+                    break;
+                case 1:
+                    System.out.println("new ahra contact " + contact + ", "
+                            + newContactPanel.getVariableInput());
+                    String ahra = newContactPanel.getVariableInput();
+                    if ((ahra == null) || (ahra.indexOf('@') < 0)) {
+                        ahra = contact;
+                    }
+                    if ((ahra == null) || (ahra.indexOf('@') < 0)) {
+                        System.out.println("new ahra contact " + contact
+                                + " must contain '@' sign");
+                    }
+                    else if (XchatSocket.sendSubscription(ahra)) {
+                        System.out.println("sent ahra subscription");
+                    }
+                    else {
+                        System.out.println("unable to send ahra subscription");
+                    }
+                    break;
+                case 2:
+                    System.out.println("new common contact for " + contact + " is "
+                            + newContactPanel.getVariableInput());
+                    System.out.println("  (not implemented)");
+                    break;
+                case 3:
+                    System.out.println("new authenticated contact " + contact
+                            + ", secret "
+                            + newContactPanel.getVariableInput() + "/"
+                            + newContactPanel.getMySecretLong());
+                    if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretLong(),
+                            newContactPanel.getVariableInput(), 6)) {
+                        System.out.println("sent key request with 6 hops");
+                        newContactPanel.setMySecret();
+                    }
+                    else {
+                        System.out.println("unable to send key request");
+                    }
+                    break;
+                case 4:
+                    System.out.println("new unauthenticated contact " + contact
+                            + ", secret "
+                            + newContactPanel.getVariableInput() + "/"
+                            + newContactPanel.getMySecretLong());
+                    if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretLong(),
+                            newContactPanel.getVariableInput(), 6)) {
+                        System.out.println("sent ukey request with 6 hops");
+                        newContactPanel.setMySecret();
+                    }
+                    else {
+                        System.out.println("unable to send ukey request");
+                    }
+                    break;
+                default:
+                    System.out.println("UIController.java: unknown button "
+                            + button + " for contact " + contact);
+                    break;
             }
         }
     }
@@ -441,7 +451,7 @@ class UIController implements ControllerInterface, UIAPI {
                 String peer = cp.getContactName();
                 long sentTime = XchatSocket.sendToPeer(peer, msgText);
                 if (sentTime > 0) {
-                  messageSent(peer, sentTime, msgText);
+                    messageSent(peer, sentTime, msgText);
 //                  System.out.println("UIController.java: sent to " + peer +
 //                                     ": " + msgText);
                 }
@@ -454,11 +464,11 @@ class UIController implements ControllerInterface, UIAPI {
                 break;
             case ConversationPanel.CLOSE_COMMAND:
                 myTabbedPane.removeTab(contactName);
-                myTabbedPane.selectTab("Contacts");
+                myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
                 break;
             case ConversationPanel.CONTACTS_COMMAND:
                 System.out.println("UIController.java: contacts");
-                myTabbedPane.selectTab("Contacts");
+                myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
 
         }
     }
@@ -474,13 +484,16 @@ class UIController implements ControllerInterface, UIAPI {
         Conversation conv = clientData.getConversation(msg.from);
         conv.add(msg);
         // see if there is a tab open for this conversation
-        int idx = myTabbedPane.indexOfTab(msg.from);
-        if (idx != -1) {
+        ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(msg.from);
+
+        if (cp != null) {
+            // int idx = myTabbedPane.indexOfTab(msg.from);
+            // if (idx != -1) {
             // add the message to it
-            ConversationPanel cp = (ConversationPanel) myTabbedPane.getComponentAt(idx);
+            // ConversationPanel cp = (ConversationPanel) myTabbedPane.getComponentAt(idx);
             cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
             // if the tab is currently selected, then mark message as read
-            String selectedName = myTabbedPane.getCurrentTab();
+            String selectedName = myTabbedPane.getSelectedID();
             if (selectedName.equals(msg.from)) {
                 msg.setRead();
             }
@@ -507,7 +520,7 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     private void updateConversationPanel(String contact,
-                                         ConversationPanel panel) {
+            ConversationPanel panel) {
         String line1 = "conversation with " + contact;
         if (clientData.isBroadcast(contact)) {
             int pos = contact.indexOf("@");
@@ -608,10 +621,13 @@ class UIController implements ControllerInterface, UIAPI {
         Conversation conv = clientData.getConversation(msg.to);
         conv.add(msg);
         // see if there is a tab open for this conversation
-        int idx = myTabbedPane.indexOfTab(msg.to);
-        if (idx != -1) {
+        ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(msg.to);
+        if (cp != null) {
+
+//        int idx = myTabbedPane.indexOfTab(msg.to);
+//        if (idx != -1) {
             // add the message to it
-            ConversationPanel cp = (ConversationPanel) myTabbedPane.getComponentAt(idx);
+//            ConversationPanel cp = (ConversationPanel) myTabbedPane.getComponentAt(idx);
             cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
             // mark the message as read, even though this is not checked at present
             msg.setRead();
