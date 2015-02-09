@@ -51,7 +51,7 @@ void wp_copy (int nbits, uint64_t * dst, const uint64_t * src)
 void wp_init (int nbits, uint64_t * n, int value)
 {
   if (value < 0) {
-    printf ("wp_init error: %d < 0\n", value);
+    printf ("wp_init error: %d (0x%x) < 0\n", value, value);
     my_assert (0, "value >= 0 in wp_init");
   }
   int nwords = NUM_WORDS (nbits);
