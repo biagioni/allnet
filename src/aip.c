@@ -1228,8 +1228,10 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
   snprintf (log_buf, LOG_SIZE,
             "end of aip main thread, deleting %s\n", addr_socket_name);
   log_print ();
+#ifdef ALLNET_ADDRS
   if (unlink (addr_socket_name) < 0)
     perror ("aip unlink addr_socket");
+#endif /* ALLNET_ADDRS */
 }
 
 #ifdef DAEMON_MAIN_FUNCTION
