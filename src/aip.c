@@ -823,7 +823,9 @@ void send_keepalive (void * udp_cache, int fd,
 #else /* DEBUG_PRINT */
     snprintf (log_buf + off, LOG_SIZE - off, "\n");
 #endif /* DEBUG_PRINT */
+#ifdef LOG_PACKETS
     log_print ();
+#endif /* LOG_PACKETS */
   }
 
   if (num_listeners > 0) {
@@ -844,9 +846,11 @@ void send_keepalive (void * udp_cache, int fd,
         }
       }
     }
+#ifdef LOG_PACKETS
     snprintf (log_buf, LOG_SIZE,
               "aip sent %d-byte keepalive to %d listeners\n", size, sent);
     log_print ();
+#endif /* LOG_PACKETS */
   }
 }
 

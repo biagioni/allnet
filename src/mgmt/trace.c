@@ -341,11 +341,13 @@ static void respond_to_trace (int sock, char * message, int msize,
   struct allnet_mgmt_trace_req * trp =
     (struct allnet_mgmt_trace_req *)
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
+#ifdef LOG_PACKETS
   int off = snprintf (log_buf, LOG_SIZE,
                       "respond_to_trace got %d byte trace request, %d %d: ",
                       msize, match_only, forward_only);
   packet_to_string (message, msize, NULL, 1, log_buf + off, LOG_SIZE - off);
   log_print ();
+#endif /* LOG_PACKETS */
   int num_entries = (trp->num_entries & 0xff);
   int k = readb16u (trp->pubkey_size);
 /* snprintf (log_buf, LOG_SIZE, "packet has %d entries %d key, size %d/%zd\n",
