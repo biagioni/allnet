@@ -431,8 +431,10 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
                              void * addr_cache, char * message, int msize,
                              int priority, int max_send)
 {
-snprintf (log_buf, LOG_SIZE, "forward_message %d fds\n", num_fds);
-log_print ();
+#ifdef LOG_PACKETS
+  snprintf (log_buf, LOG_SIZE, "forward_message %d fds\n", num_fds);
+  log_print ();
+#endif /* LOG_PACKETS */
   if (! is_valid_message (message, msize))
     return;
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -507,9 +509,11 @@ log_print ();
     }
     free (random_selection);
   }
+#ifdef LOG_PACKETS
   snprintf (log_buf, LOG_SIZE, "forwarded to %d TCP and %d UDP\n",
             sent_fds, sent_udps);
   log_print ();
+#endif /* LOG_PACKETS */
 }
 
 static int udp_socket ()
@@ -1117,8 +1121,10 @@ if ((fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "1: fd %d/%d, result %d/%d, bad addr family %d\n",
 udp, fd, result, sasize, sap->sa_family); log_print (); }
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
+#ifdef LOG_PACKETS
         snprintf (log_buf, LOG_SIZE, "got %d-byte message from ad\n", result);
         log_print ();
+#endif /* LOG_PACKETS */
         forward_message (info->fds + 1, info->num_fds - 1, udp, udp_cache,
                          addr_cache, message, result, priority, 10);
       } else {
@@ -1140,7 +1146,9 @@ sap->sa_family); log_print (); }
 #else /* DEBUG_PRINT */
           off += snprintf (log_buf + off, LOG_SIZE - off, "/udp\n");
 #endif /* DEBUG_PRINT */
+#ifdef LOG_PACKETS
           log_print ();
+#endif /* LOG_PACKETS */
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "4: fd %d/%d, bad address family %d\n", udp, fd,
 sap->sa_family); log_print (); }
@@ -1157,7 +1165,9 @@ sap->sa_family); log_print (); }
 #else /* DEBUG_PRINT */
           off += snprintf (log_buf + off, LOG_SIZE - off, "\n");
 #endif /* DEBUG_PRINT */
+#ifdef LOG_PACKETS
           log_print ();
+#endif /* LOG_PACKETS || DEBUG_PRINT */
         }
         if (handle_mgmt (listener_fds, NUM_LISTENERS, fd, message,
                          &result, udp, sap, sasize)) {

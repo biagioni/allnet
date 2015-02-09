@@ -32,8 +32,6 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
   int social_distance = UNKNOWN_SOCIAL_TIER;
   int rate_fraction = largest_rate ();
   int hsize = ALLNET_SIZE (hp->transport);
-snprintf (log_buf, LOG_SIZE, "packet_priority (%d, %d + %d + 2 = %d <? %d)\n",
-hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size); log_print ();
   if ((sig_size > 0) && (hsize + sig_size + 2 < size)) {
     char * verify = packet + hsize; 
     int vsize = size - (hsize + sig_size + 2);
@@ -41,6 +39,11 @@ hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size); log_print ();
     social_distance =
        social_connection (soc, verify, vsize, hp->source, hp->src_nbits,
                           hp->sig_algo, sig, sig_size, &valid);
+  } else {
+    snprintf (log_buf, LOG_SIZE,
+              "invalid sigsize: %d, %d + %d + 2 = %d <? %d\n",
+              hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size);
+    log_print ();
   }
   if (valid)
     rate_fraction = track_rate (hp->source, hp->src_nbits, size);
@@ -123,9 +126,11 @@ static int process_packet (char * packet, int size, int is_local,
 #undef HEADER_SKIP
   if ((! is_local) && (time > 0)) {
    /* we have received this packet before, so drop it */
+#ifdef LOG_PACKETS
     snprintf (log_buf, LOG_SIZE, 
               "packet received in the last %d seconds, dropping\n", time);
     log_print ();
+#endif /* LOG_PACKETS */
     return PROCESS_PACKET_DROP;     /* duplicate, ignore */
   }
 
@@ -139,9 +144,11 @@ static int process_packet (char * packet, int size, int is_local,
     if (ah->hops < 255)   /* do not increment 255 to 0 */
       ah->hops++;
   }
+#ifdef LOG_PACKETS
   snprintf (log_buf, LOG_SIZE, "forwarding %s packet with %d/%d hops\n",
             (is_local ? "local" : "received"), ah->hops, ah->max_hops);
   log_print ();
+#endif /* LOG_PACKETS */
 
   if (ah->message_type == ALLNET_TYPE_MGMT) {     /* AllNet management */
     int r = process_mgmt (packet, size, is_local, priority, soc);
@@ -212,8 +219,10 @@ static void main_loop (int npipes, int * read_pipes, int * write_pipes,
     int priority = ALLNET_PRIORITY_EPSILON;
     int psize = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER,
                                           &packet, &from_pipe, &priority);
-snprintf (log_buf, LOG_SIZE, "ad received %d, fd %d\n", psize, from_pipe);
-log_print ();
+#ifdef LOG_PACKETS
+    snprintf (log_buf, LOG_SIZE, "ad received %d, fd %d\n", psize, from_pipe);
+    log_print ();
+#endif /* LOG_PACKETS */
     if (psize <= 0) { /* for now exit */
       snprintf (log_buf, LOG_SIZE,
                 "error: received %d from receive_pipe_message_any, pipe %d",
@@ -245,22 +254,30 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
     int p = process_packet (packet, psize, is_local, soc, &priority);
     switch (p) {
     case PROCESS_PACKET_ALL:
+#ifdef LOG_PACKETS
       log_packet ("sending to all", packet, psize);
+#endif /* LOG_PACKETS */
       send_all (packet, psize, priority, write_pipes, npipes, "all");
       break;
     case PROCESS_PACKET_OUT:
+#ifdef LOG_PACKETS
       log_packet ("sending out", packet, psize);
+#endif /* LOG_PACKETS */
 /* alocal should be the first pipe, so just skip it */
       send_all (packet, psize, priority, write_pipes + 1, npipes - 1, "out");
       break;
     /* all the rest are not forwarded, so priority does not matter */
     case PROCESS_PACKET_LOCAL:   /* send only to alocal */ 
+#ifdef LOG_PACKETS
       log_packet ("sending to alocal", packet, psize);
+#endif /* LOG_PACKETS */
 /* alocal should be the first pipe, so only write to that */
       send_all (packet, psize, 0, write_pipes, 1, "local");
       break;
     case PROCESS_PACKET_DROP:    /* do not forward */
+#ifdef LOG_PACKETS
       log_packet ("dropping packet", packet, psize);
+#endif /* LOG_PACKETS */
       /* do nothing */
       break;
     }

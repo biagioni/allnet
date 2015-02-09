@@ -69,9 +69,11 @@ static void release_entry (struct dcache * cache, int index)
   cache->f (cache->entries [index].data);   /* release the data */
   cache->busy = 0;
   cache->entries [index].data = NULL;
+#ifdef DEBUG_PRINT
   snprintf (log_buf, LOG_SIZE, "released entry %d of %d (max %d)\n",
             index, cache->num_entries, cache->max_entries);
   log_print ();
+#endif /* DEBUG_PRINT */
 }
 
 void cache_close (void * cp)
@@ -273,8 +275,10 @@ void cache_add (void * cp, void * data)
   log_print (); */
   if (index == cache->max_entries) {
     index--;
+#ifdef DEBUG_PRINT
     snprintf (log_buf, LOG_SIZE, "calling release_entry (%d)\n", index);
     log_print ();
+#endif /* DEBUG_PRINT */
     release_entry (cache, index);   /* release it as needed */
   } else {    /* new entry, no need to release */
     cache->num_entries = cache->num_entries + 1;

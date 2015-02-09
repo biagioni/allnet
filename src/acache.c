@@ -1430,10 +1430,15 @@ static void main_loop (int sock)
       break;
     } else if ((result >= ALLNET_HEADER_SIZE) &&
                (result >= ALLNET_SIZE (hp->transport))) {
-if (priority == 0) {
-snprintf (log_buf, LOG_SIZE, "error: received message with priority %d, %d hops\n", priority, hp->hops); log_print ();
-priority = ALLNET_PRIORITY_EPSILON;
-}
+      if (priority == 0) {
+#ifdef LOG_PACKETS
+        snprintf (log_buf, LOG_SIZE,
+                  "received message with priority %d, %d hops\n", priority,
+                  hp->hops);
+        log_print ();
+#endif /* LOG_PACKETS */
+        priority = ALLNET_PRIORITY_EPSILON;
+      }
       /* valid message from ad: save, respond, or ignore */
       if (hp->message_type == ALLNET_TYPE_DATA_REQ) { /* respond */
         if (respond_to_request (msg_fd, max_msg_size, message, result, sock))
@@ -1464,10 +1469,14 @@ priority = ALLNET_PRIORITY_EPSILON;
                     hp->message_type, result, priority);
         }
       }
+#ifdef LOG_PACKETS
       log_print ();
+#endif /* LOG_PACKETS */
     } else {
+#ifdef LOG_PACKETS
       snprintf (log_buf, LOG_SIZE, "ignoring packet of size %d\n", result);
       log_print ();
+#endif /* LOG_PACKETS */
     }
     if (mfree)
       free (message);

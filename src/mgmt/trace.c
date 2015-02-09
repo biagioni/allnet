@@ -452,7 +452,9 @@ static void respond_to_trace (int sock, char * message, int msize,
   else
     snprintf (log_buf, LOG_SIZE, "sent trace request+reply of sizes %d+%d\n",
               n, rsize);
+#ifdef LOG_PACKETS
   log_print ();
+#endif /* LOG_PACKETS */
 }
 
 static void main_loop (int sock, unsigned char * my_address, int nbits,

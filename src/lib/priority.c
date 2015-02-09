@@ -101,7 +101,7 @@ int compute_priority (int size, int sbits, int dbits,
     else
       result += result / 10;
   }
-if (result <= 0) debug = 1;
+if ((result <= 0) && (hops_max < 15)) debug = 1;
   if (debug)
     printf ("compute_priority (%d, %d, %d, %d, %d, %d, %d, %d)\n",
             size, sbits, dbits, hops_already,

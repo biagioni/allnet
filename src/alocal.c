@@ -37,15 +37,13 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info)
  * If this value is changed, should change the corresponding value in
  * app_util.c */
     int result = receive_pipe_message_any (50, &message, &fd, &priority);
-#define DEBUG_PRINT
-#ifdef DEBUG_PRINT
+#ifdef LOG_PACKETS
     if (result != 0) {
       snprintf (log_buf, LOG_SIZE, "receive_pipe_message_any returns %d\n",
                 result);
       log_print ();
     }
-#endif /* DEBUG_PRINT */
-#undef DEBUG_PRINT
+#endif /* LOG_PACKETS */
     if (result < 0) {
       if (fd == rpipe) {
         snprintf (log_buf, LOG_SIZE, "ad pipe %d closed\n", rpipe);
@@ -58,10 +56,12 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info)
       listen_remove_fd (info, fd);
       close (fd);       /* remove from kernel */
     } else if (result > 0) {
+#ifdef LOG_PACKETS
       snprintf (log_buf, LOG_SIZE,
                 "got %d bytes from %s (fd %d, priority %d)\n", result,
                 (fd == rpipe) ? "ad" : "client", fd, priority);
       log_print ();
+#endif /* LOG_PACKETS */
       int i;
       pthread_mutex_lock (&(info->mutex));
       if (fd != rpipe)
