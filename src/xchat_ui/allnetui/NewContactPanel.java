@@ -58,7 +58,7 @@ class NewContactPanel extends JPanel {
         topLabel.setBackground(foreground);
         topLabel.setLineBorder(Color.BLACK, 1, false);
         //
-        JLabel enterLabel = new JLabel(" enter contact name:  ");
+        JLabel enterLabel = new JLabel("contact name or AllNet address:  ");
         enterLabel.setOpaque(true);
         enterLabel.setBackground(Color.WHITE);
         enterLabel.setBorder(new LineBorder(Color.BLACK, 1, false));
@@ -192,7 +192,8 @@ class NewContactPanel extends JPanel {
                  "give contact your long secret<br>" +
                  "or enter their long secret below",
             "you know your contact's AllNet address:<br>" +
-                 "enter the address above, as the contact name",
+                 "(or want to subscribe to a broadcast)<br>" +
+                 "enter the address above",
 //            "you are both contacts of:<br>" +
 //                 "enter the name below<br>" +
 //                 "(not yet available)",
@@ -251,7 +252,7 @@ class NewContactPanel extends JPanel {
         variableInput = getTextField();
         variableInput.setBorder(new LineBorder(Color.BLACK, 1));
         JLabel instruction0 =
-            new HtmlLabel("enter your contact's secret or address:");
+            new HtmlLabel("enter your contact's secret:");
         JLabel instruction1 = new HtmlLabel("or tell your contact:");
         // do the layout
         panel.setLayout(new GridBagLayout());
