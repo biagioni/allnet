@@ -169,6 +169,9 @@ class NewContactPanel extends JPanel {
         return (field);
     }
 
+    final int unimplemented_offset = 1;  // for "both contacts of"
+    final int num_choices = 4 - unimplemented_offset;
+
     private void makeSelectionPanel() {
         JPanel panel = new JPanel();
         // if we are using a L&F, then we can't change the button color, which is nuts.
@@ -178,28 +181,24 @@ class NewContactPanel extends JPanel {
         panel.setBorder(new LineBorder(Color.BLACK, 1));
         // make components
         group = new ButtonGroup();
-        buttons = new JRadioButton[5];
-        JLabel[] labels = new JLabel[5];
+        buttons = new JRadioButton[num_choices];
+        JLabel[] labels = new JLabel[num_choices];
         String[] labelText = new String[]{
             "new contact has a wireless device<br>" +
-                 "  close enough to be in range:<br>" +
+                 "less than 10m (30ft) away:<br>" +
                  "give contact your short secret<br>" +
                  "or enter their short secret below",
+            "new contact is at a distance:<br>" +
+                 "give contact your long secret<br>" +
+                 "or enter their long secret below",
             "you know your contact's AllNet address:<br>" +
                  "enter the address above, as the contact name",
-            "you are both contacts of:<br>" +
-                 "enter the name below",
-            "you are in contact over telephone<br>" +
-                 "  or other authenticated method:<br>" +
-                 "give contact your long secret<br>" +
-                 "or enter their long secret below",
-            "you are in contact over email<br>" +
-                 "  or other not authenticated method:<br>" +
-                 "give contact your long secret<br>" +
-                 "or enter their long secret below",
+//            "you are both contacts of:<br>" +
+//                 "enter the name below<br>" +
+//                 "(not yet available)",
         };
-        for (int i = 0; i < 5; i++) {
-            if (i < 4)
+        for (int i = 0; i < num_choices; i++) {
+            if (i != 1)
                 buttons[i] = new JRadioButton();
             else
                 buttons[i] = new JRadioButton("", true);
@@ -222,7 +221,7 @@ class NewContactPanel extends JPanel {
         gbc.gridy = 0;
         gbc.gridheight = 1;
         gbc.gridwidth = 1;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 4 - unimplemented_offset; i++) {
             gbc.gridx = 0;
             panel.add(buttons[i], gbc);
             gbc.gridx = 1;

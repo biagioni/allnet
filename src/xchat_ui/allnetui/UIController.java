@@ -377,6 +377,20 @@ class UIController implements ControllerInterface, UIAPI {
                     }
                     break;
                 case 1:
+                    System.out.println("new long-distance contact " + contact
+                            + ", secret "
+                            + newContactPanel.getVariableInput() + "/"
+                            + newContactPanel.getMySecretLong());
+                    if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretLong(),
+                            newContactPanel.getVariableInput(), 6)) {
+                        System.out.println("sent key request with 6 hops");
+                        newContactPanel.setMySecret();
+                    }
+                    else {
+                        System.out.println("unable to send key request");
+                    }
+                    break;
+                case 2:
                     System.out.println("new ahra contact " + contact + ", "
                             + newContactPanel.getVariableInput());
                     String ahra = newContactPanel.getVariableInput();
@@ -394,39 +408,11 @@ class UIController implements ControllerInterface, UIAPI {
                         System.out.println("unable to send ahra subscription");
                     }
                     break;
-                case 2:
-                    System.out.println("new common contact for " + contact + " is "
-                            + newContactPanel.getVariableInput());
-                    System.out.println("  (not implemented)");
-                    break;
-                case 3:
-                    System.out.println("new authenticated contact " + contact
-                            + ", secret "
-                            + newContactPanel.getVariableInput() + "/"
-                            + newContactPanel.getMySecretLong());
-                    if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretLong(),
-                            newContactPanel.getVariableInput(), 6)) {
-                        System.out.println("sent key request with 6 hops");
-                        newContactPanel.setMySecret();
-                    }
-                    else {
-                        System.out.println("unable to send key request");
-                    }
-                    break;
-                case 4:
-                    System.out.println("new unauthenticated contact " + contact
-                            + ", secret "
-                            + newContactPanel.getVariableInput() + "/"
-                            + newContactPanel.getMySecretLong());
-                    if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretLong(),
-                            newContactPanel.getVariableInput(), 6)) {
-                        System.out.println("sent ukey request with 6 hops");
-                        newContactPanel.setMySecret();
-                    }
-                    else {
-                        System.out.println("unable to send ukey request");
-                    }
-                    break;
+//                case 3:
+//                    System.out.println("new common contact for " + contact + " is "
+//                            + newContactPanel.getVariableInput());
+//                    System.out.println("  (not implemented)");
+//                    break;
                 default:
                     System.out.println("UIController.java: unknown button "
                             + button + " for contact " + contact);
