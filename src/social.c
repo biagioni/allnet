@@ -20,19 +20,34 @@
 #include "lib/cipher.h"
 #include "lib/priority.h"
 
+/* keep track of people up to distance 3, friends of friends of friends */
+#ifndef MAX_SOCIAL_TIER   /* usually defined in priority.h */
+#define MAX_SOCIAL_TIER		3
+#endif /* MAX_SOCIAL_TIER */
+
 struct social_one_tier {
   int address_bytes_per_entry;
   /* the IDs and public keys of the contacts, in a table */
   struct table connections;
 };
 
-static void print_social_tier (int tier, struct social_one_tier * soc)
+static void print_social_tier (int tier, struct social_one_tier * soc,
+                               int only_if_modified)
 {
-  snprintf (log_buf, LOG_SIZE,
-            "social tier %d: %d contacts, %d slots, total size %d\n", tier,
-            soc->connections.num_entries, soc->connections.num_slots,
-            soc->connections.storage_size);
-  log_print ();
+  static int already_printed [MAX_SOCIAL_TIER] [3 /* contacts, slots, size */];
+  if ((! only_if_modified) || (tier >= 6) ||
+      (already_printed [tier] [0] != soc->connections.num_entries) ||
+      (already_printed [tier] [1] != soc->connections.num_slots) ||
+      (already_printed [tier] [2] != soc->connections.storage_size)) {
+    snprintf (log_buf, LOG_SIZE,
+              "social tier %d: %d contacts, %d slots, total size %d\n", tier,
+              soc->connections.num_entries, soc->connections.num_slots,
+              soc->connections.storage_size);
+    log_print ();
+    already_printed [tier] [0] = soc->connections.num_entries;
+    already_printed [tier] [1] = soc->connections.num_slots;
+    already_printed [tier] [2] = soc->connections.storage_size;
+  }
 /*
   snprintf (log_buf, LOG_SIZE,
             "  %d entries with %d user bytes give %d bytes, total %d bytes\n",
@@ -45,10 +60,6 @@ static void print_social_tier (int tier, struct social_one_tier * soc)
                        soc->connections.num_data_bytes);
  */
 }
-
-/* keep track of people up to distance 3, friends of friends of friends
- define MAX_SOCIAL_TIER		3
-*/
 
 struct social_info {
   struct social_one_tier info [MAX_SOCIAL_TIER];
@@ -86,9 +97,10 @@ struct social_info * init_social (int max_bytes, int max_check)
 static int update_social_tier (int tier, struct social_one_tier * st,
                                int free_bytes)
 {
-  if (tier > 99) {
+  if ((tier > MAX_SOCIAL_TIER) || (tier > 99)) {
     snprintf (log_buf, LOG_SIZE,
-              "error, using social tier %d, maximum tier is 99\n", tier);
+              "error, using social tier %d, maximum tier is %d/99\n",
+              tier, MAX_SOCIAL_TIER);
     log_print ();
     if (st->connections.storage != NULL)
       free (st->connections.storage);
@@ -131,12 +143,14 @@ static int update_social_tier (int tier, struct social_one_tier * st,
 
 time_t update_social (struct social_info * soc, int update_seconds)
 {
+  static int only_print_if_new = 0;
   int free_bytes = soc->max_bytes;
   int i;
   for (i = 1; i < MAX_SOCIAL_TIER; i++) {  /* skip social level 0 */
     free_bytes -= update_social_tier (i, soc->info + i, free_bytes);
-    print_social_tier (i, soc->info + i);
+    print_social_tier (i, soc->info + i, only_print_if_new);
   }
+  only_print_if_new = 1;
   return (time (NULL) + update_seconds);
 }
 
