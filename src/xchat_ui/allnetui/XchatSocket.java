@@ -19,6 +19,11 @@ public class XchatSocket extends Thread {
   static final int xchatSocketPort = 0xa11c;  // ALLnet Chat port
   static final int allnetMTU = 12288;
 
+  static final int codeDataMessage = 0;
+  static final int codeBroadcastMessage = 1;
+  static final int codeNewContact = 2;
+  static final int codeAhra = 3;
+
   private static DatagramSocket initSocket() {
     try {
       return new DatagramSocket ();
@@ -149,7 +154,7 @@ public class XchatSocket extends Thread {
     int code = data [10];
     IntRef nextIndex = new IntRef();
     String peer = bString (data, 11, dlen, nextIndex);
-    if ((code == 0) || (code == 1)) {
+    if ((code == codeDataMessage) || (code == codeBroadcastMessage)) {
       String message = bString (data, nextIndex.value, dlen, nextIndex);
       // System.out.println ("message '" + message + "' from " + peer);
       boolean broadcastReceived = (code == 1);
@@ -158,10 +163,10 @@ public class XchatSocket extends Thread {
       else
         time *= 1000;  // convert seconds to milliseconds
       api.messageReceived (peer, time, message, broadcastReceived);
-    } else if (code == 2) {
+    } else if (code == codeNewContact) {
       System.out.println ("new key from " + peer);
       api.contactCreated(peer);
-    } else if (code == 3) {
+    } else if (code == codeAhra) {
       System.out.println ("subscription complete from " + peer);
       api.contactCreated(peer, true);
     } else {
@@ -179,9 +184,9 @@ public class XchatSocket extends Thread {
     time.value = System.currentTimeMillis();
     w48(buf, 4, time.value / 1000);
     if (bc)
-      buf [10] = 1;
+      buf [10] = codeBroadcastMessage;
     else
-      buf [10] = 0;
+      buf [10] = codeDataMessage;
     int newIndex = wString (buf, 11, peer);
     wString (buf, newIndex, text);
     return packet;
@@ -197,7 +202,7 @@ public class XchatSocket extends Thread {
       new DatagramPacket (buf, size, local, xchatSocketPort);
     w32(buf, 0, size);
     w48(buf, 4, hops);
-    buf [10] = 2;
+    buf [10] = codeNewContact;
     int newIndex = wString(buf, 11, peer);
     newIndex = wString(buf, newIndex, s1);
     if ((s2 != null) && (s2.length() > 0))
@@ -212,7 +217,7 @@ public class XchatSocket extends Thread {
       new DatagramPacket (buf, size, local, xchatSocketPort);
     w32(buf, 0, size);
     w48(buf, 4, 0);
-    buf [10] = 3;
+    buf [10] = codeAhra;
     wString(buf, 11, ahra);
     return packet;
   }

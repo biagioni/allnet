@@ -28,14 +28,27 @@
  *   in the os's local epoch
  * code is 1 byte,
  * - code value 0 identifies a data message: the peer name and the
- *   message are null-terminated
- * - code value 1 identifies a broadcast message: the peer name and the
- *   message are null-terminated
- * - code value 2 identifies a new contact, stored in the peer name.  In
+ *   message are null-terminated */
+#define	CODE_DATA_MESSAGE	0
+/* - code value 1 identifies a broadcast message: the peer name and the
+ *   message are null-terminated */
+#define	CODE_BROADCAST_MESSAGE	1
+/* - code value 2 identifies a new contact, stored in the peer name.  In
  *   messages received by xchat_socket, this is followed by one or two
- *   null-terminated secret strings.
- * - code value 3 identifies an ahra, stored in the peer name, to which
- *   we want to subscribe or have subscribed
+ *   null-terminated secret strings. */
+#define	CODE_NEW_CONTACT	2
+/* - code value 3 identifies an ahra, stored in the peer name, to which
+ *   we want to subscribe or have subscribed */
+#define	CODE_AHRA		3
+/* protocol: s (server) = xchat_socket, c (client) = ui
+ * data:        s -> c: message received from peer
+ *              c -> s: message sent to peer
+ * broadcast:   s -> c: broadcast received
+ *              c -> s: currently not supported (should be: send broadcast)
+ * new contact: s -> c: send own key
+ *              c -> s: received key from peer
+ * ahra:        s -> c: confirm subscription
+ *              c -> s: subscribe to ahra
  */
 
 static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
@@ -103,7 +116,8 @@ static int recv_message (int sock, int * code, time_t * time,
   sent_time = readb48 (buf + 4);
   *time = sent_time;
   *code = buf [10] & 0xff;
-  if ((*code != 0) && (*code != 2) && (*code != 3)) {
+  if ((*code != CODE_DATA_MESSAGE) && (*code != CODE_NEW_CONTACT) &&
+      (*code != CODE_AHRA)) {
     printf ("error: received code %d but only 0, 2, and 3 supported\n", *code);
     return 0;
   }
@@ -126,13 +140,14 @@ static int recv_message (int sock, int * code, time_t * time,
   else
     message [0] = '\0';
   extra [0] = '\0';
-  if (((*code) == 2) && (n > (mlen + (msg - buf)))) {   /* second secret */
+  if (((*code) == CODE_NEW_CONTACT) && (n > (mlen + (msg - buf)))) {
+    /* message carries two secrets, read the second secret */
     char * secret = msg + mlen + 1;
     int elen = strlen (secret);
     if ((elen < ALLNET_MTU) && (elen + (secret - buf) < n))
       strcpy (extra, secret);
   }
-  if ((*code) == 3)
+  if ((*code) == CODE_AHRA)
     mlen = strlen (peer);
 /* printf ("recv_message %d, time %ld, peer '%s', message '%s', extra '%s'\n",
 *code, *time, peer, message, extra); */
@@ -382,9 +397,9 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
                                 key_secret2, num_hops,
                                 subscription, saddr, sbits);
       if ((mlen > 0) && (verified)) {
-        int mtype = 0; /* data */
+        int mtype = CODE_DATA_MESSAGE; /* data */
         if (broadcast) {
-          mtype = 1;  /* broadcast */
+          mtype = CODE_BROADCAST_MESSAGE;  /* broadcast */
         }
         if (broadcast || (! duplicate))
           send_message (forwarding_socket,
@@ -406,7 +421,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         mtime = time (NULL);
         send_message (forwarding_socket,
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                       2, mtime, key_contact, "");
+                       CODE_NEW_CONTACT, mtime, key_contact, "");
         key_contact = NULL;
         key_secret = NULL;
         key_secret2 = NULL;
@@ -415,7 +430,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         if (subscription != NULL) {
           send_message (forwarding_socket,
                         (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                         3, 0, subscription, "");
+                         CODE_AHRA, 0, subscription, "");
           subscription = NULL;
         }
       }
