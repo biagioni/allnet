@@ -1,13 +1,13 @@
-package utils;
+package utils.tabbedpane;
 
-import java.awt.BorderLayout;
-import java.awt.Component;
-import java.awt.Insets;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.net.URL;
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
+import utils.BijectiveList;
 
 /**
  * A JPanel containing a JTabbedPane.  Receives its own change events and 
@@ -26,18 +26,18 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
     private String commandPrefix = "MyTabbedPane";
     // map id's to JPanels (tabs) and vice-versa
     private BijectiveList<String, Component> idToPanel;
-    // private BasicTabbedPaneUI tpui;
-
+    // images for the tab close buttons
+    private Image buttonImg, buttonPressedImg, buttonOverImg;
+    
     public MyTabbedPane() {
         tabbedPane = new JTabbedPane();
         tabbedPane.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
         tabbedPane.addChangeListener(this);
-        // tpui = new BasicTabbedPaneUI();
-        // tabbedPane.setUI(tpui);
         setLayout(new BorderLayout());
         add(tabbedPane, BorderLayout.CENTER);
         listener = null;
         idToPanel = new BijectiveList<>();
+        loadImages();
     }
 
     public void addTab(String id, String title, JPanel panel) {
@@ -54,9 +54,11 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
         tabLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         tabLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         //
-        JButton tabButton = new TabButton(this, id, closeCommand);
-        tabButton.setMargin(new Insets(2,2,2,0));
-        tabButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        SimpleButton tabButton = new SimpleButton(16, 16, buttonImg, buttonPressedImg, buttonOverImg);
+        tabButton.setListener(listener, id, closeCommand);
+        // JButton tabButton = new TabButton(this, id, closeCommand);
+        // tabButton.setMargin(new Insets(2,2,2,0));
+        // tabButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         //
         JPanel tabPanel = new JPanel();
         tabPanel.setOpaque(false);
@@ -130,5 +132,24 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
     public Component getTabContent(String id) {
         return (idToPanel.getValueFor(id));
     }
-
+    
+    // load all the images that we will need
+    private void loadImages() {
+        MediaTracker mt = new MediaTracker(this);
+        Toolkit toolkit = Toolkit.getDefaultToolkit();
+        // get the first-used images first
+        buttonImg = toolkit.getImage(getClass().getResource("button.png"));
+        buttonPressedImg = toolkit.getImage(getClass().getResource("pressed.png"));
+        buttonOverImg = toolkit.getImage(getClass().getResource("mouseOver.png"));
+        mt.addImage(buttonImg, 0);
+        mt.addImage(buttonOverImg, 0);
+        mt.addImage(buttonPressedImg, 0);
+        // now wait till they're all loaded, or 4 sec max
+        try {
+            mt.waitForAll(4000);
+        }
+        catch (Exception e) {
+            System.out.println(e);
+        }
+    }
 }

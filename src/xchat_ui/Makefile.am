@@ -9,11 +9,11 @@ if PRECOMP_GUI
 endif
 if ENABLE_GUI
 	$(JAVAC) */*.java
-	$(JAR) cfe $(ALLNETUI_TARGET) allnetui.UI allnetui/*.class tabs/*.class utils/*.class
+	$(JAR) cfe $(ALLNETUI_TARGET) allnetui.UI allnetui/*.class utils/*.class utils/tabbedpane/*.class
 endif
 
 clean-local:
-	rm -f */*.class
+	rm -f */*.class */*/*.class
 	rm -f $(ALLNETUI_TARGET)
 
 install-exec-local:

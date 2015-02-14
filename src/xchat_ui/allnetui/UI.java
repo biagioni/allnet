@@ -8,7 +8,7 @@ import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 import utils.ApplicationFrame;
 import utils.ControllerInterface;
-import utils.MyTabbedPane;
+import utils.tabbedpane.MyTabbedPane;
 
 /**
  *

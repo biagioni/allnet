@@ -185,7 +185,7 @@ class NewContactPanel extends JPanel {
         JLabel[] labels = new JLabel[num_choices];
         String[] labelText = new String[]{
             "new contact has a wireless device<br>" +
-                 "less than 10m (30ft) away:<br>" +
+                 "within 10m (30ft):<br>" +
                  "give contact your short secret<br>" +
                  "or enter their short secret below",
             "new contact is at a distance:<br>" +

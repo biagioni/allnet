@@ -9,7 +9,7 @@ import java.util.Iterator;
 import javax.swing.SwingUtilities;
 import utils.ApplicationFrame;
 import utils.ControllerInterface;
-import utils.MyTabbedPane;
+import utils.tabbedpane.MyTabbedPane;
 
 /**
  * The C of MVC.  Receives and processes UI and application events.  The idea
