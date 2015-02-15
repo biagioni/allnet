@@ -13,6 +13,9 @@ import java.net.*;
 
 public class XchatSocket extends Thread {
 
+  // set to true to debug communications with xchat_socket.c
+  static final boolean debug = false;
+
   static final DatagramSocket socket = initSocket();
   static final InetAddress local = InetAddress.getLoopbackAddress();
   UIAPI api = null;
@@ -23,6 +26,7 @@ public class XchatSocket extends Thread {
   static final int codeBroadcastMessage = 1;
   static final int codeNewContact = 2;
   static final int codeAhra = 3;
+  static final int codeAck = 4;
 
   private static DatagramSocket initSocket() {
     try {
@@ -133,6 +137,23 @@ public class XchatSocket extends Thread {
     return endIndex + 1;   // return the next index after the null byte
   }
 
+  private static void debugPacket (boolean sent, byte [] data, int dlen,
+                                   int code, String peer) {
+    if (! debug)
+      return;
+    if (sent)
+      System.out.print ("sending ");
+    else
+      System.out.print ("got ");
+    System.out.println (dlen + " bytes, packet code " + code +
+                        ", peer " + peer);
+  }
+
+  private static void debugOutgoing (DatagramPacket packet, int code,
+                                     String peer) {
+    debugPacket (true, packet.getData (), packet.getLength (), code, peer);
+  }
+
   /* Decode a message (if possible), and call the corresponding API function.
    * messages have a length, time, code, peer name, and text
    *   length (4 bytes, big-endian order) includes everything.
@@ -154,6 +175,7 @@ public class XchatSocket extends Thread {
     int code = data [10];
     IntRef nextIndex = new IntRef();
     String peer = bString (data, 11, dlen, nextIndex);
+    debugPacket (false, data, dlen, code, peer);
     if ((code == codeDataMessage) || (code == codeBroadcastMessage)) {
       String message = bString (data, nextIndex.value, dlen, nextIndex);
       // System.out.println ("message '" + message + "' from " + peer);
@@ -225,6 +247,7 @@ public class XchatSocket extends Thread {
   public static long sendToPeer(String peer, String text) {
     LongRef time = new LongRef();
     DatagramPacket packet = makeMessagePacket(peer, text, time, false);
+    debugOutgoing (packet, codeDataMessage, peer);
     try {
       socket.send (packet);
     } catch (java.io.IOException e) {
@@ -237,6 +260,7 @@ public class XchatSocket extends Thread {
   public static boolean sendKeyRequest(String peer, String s1, String s2,
                                        int hops) {
     DatagramPacket packet = makeKeyPacket(peer, s1, s2, hops);
+    debugOutgoing (packet, codeNewContact, peer);
     try {
       socket.send (packet);
     } catch (java.io.IOException e) {
@@ -248,6 +272,7 @@ public class XchatSocket extends Thread {
 
   public static boolean sendSubscription(String peer) {
     DatagramPacket packet = makeSubPacket(peer);
+    debugOutgoing (packet, codeAhra, peer);
     try {
       socket.send (packet);
     } catch (java.io.IOException e) {

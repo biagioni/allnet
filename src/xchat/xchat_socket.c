@@ -40,6 +40,9 @@
 /* - code value 3 identifies an ahra, stored in the peer name, to which
  *   we want to subscribe or have subscribed */
 #define	CODE_AHRA		3
+/* - code value 4 identifies an ack.  peer and time identify the message */
+#define CODE_ACK                4
+
 /* protocol: s (server) = xchat_socket, c (client) = ui
  * data:        s -> c: message received from peer
  *              c -> s: message sent to peer
@@ -49,6 +52,7 @@
  *              c -> s: received key from peer
  * ahra:        s -> c: confirm subscription
  *              c -> s: subscribe to ahra
+ * ack:         s -> c: inbound ack received from peer
  */
 
 static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
