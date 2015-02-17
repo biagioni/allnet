@@ -3,7 +3,6 @@ package utils.tabbedpane;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.net.URL;
 import javax.swing.*;
 import javax.swing.event.ChangeEvent;
 import javax.swing.event.ChangeListener;
@@ -28,7 +27,7 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
     private BijectiveList<String, Component> idToPanel;
     // images for the tab close buttons
     private Image buttonImg, buttonPressedImg, buttonOverImg;
-    
+
     public MyTabbedPane() {
         tabbedPane = new JTabbedPane();
         tabbedPane.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
@@ -41,13 +40,30 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
     }
 
     public void addTab(String id, String title, JPanel panel) {
-        panel.setName(title);
-        tabbedPane.add(panel, 0);
-        idToPanel.put(id, panel);
+        addTab(0, id, title, panel);
+    }
+    
+    public void addTabRight(String id, String title, JPanel panel) {
+        addTab(tabbedPane.getTabCount(), id, title, panel);
     }
 
+    private void addTab(int idx, String id, String title, JPanel panel) {
+        panel.setName(title);
+        tabbedPane.add(panel, idx);
+        idToPanel.put(id, panel);
+    }
+    
     public void addTabWithClose(String id, String title, JPanel panel, String closeCommand) {
-        addTab(id, title, panel);
+        addTabWithClose(0, id, title, panel,closeCommand);
+    }
+    
+    public void addTabWithCloseRight(String id, String title, JPanel panel, String closeCommand) {
+        addTabWithClose(tabbedPane.getTabCount(), id, title, panel,closeCommand);
+    }
+    
+
+    private void addTabWithClose(int idx, String id, String title, JPanel panel, String closeCommand) {
+        addTab(idx, id, title, panel);
         //
         JLabel tabLabel = new JLabel(title);
         tabLabel.setOpaque(false);
@@ -56,9 +72,6 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
         //
         SimpleButton tabButton = new SimpleButton(16, 16, buttonImg, buttonPressedImg, buttonOverImg);
         tabButton.setListener(listener, id, closeCommand);
-        // JButton tabButton = new TabButton(this, id, closeCommand);
-        // tabButton.setMargin(new Insets(2,2,2,0));
-        // tabButton.setAlignmentX(Component.CENTER_ALIGNMENT);
         //
         JPanel tabPanel = new JPanel();
         tabPanel.setOpaque(false);
@@ -67,9 +80,9 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
         tabPanel.add(Box.createHorizontalStrut(4));
         tabPanel.add(tabButton);
         // tabPanel.setBorder(BorderFactory.createLineBorder(Color.BLACK));
-        tabbedPane.setTabComponentAt(0, tabPanel);
-    }    
-    
+        tabbedPane.setTabComponentAt(idx, tabPanel);
+    }
+
     public void removeTab(String id) {
         Component panel = idToPanel.getValueFor(id);
         if (panel != null) {
@@ -132,7 +145,7 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
     public Component getTabContent(String id) {
         return (idToPanel.getValueFor(id));
     }
-    
+
     // load all the images that we will need
     private void loadImages() {
         MediaTracker mt = new MediaTracker(this);

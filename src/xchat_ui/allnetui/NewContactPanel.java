@@ -252,8 +252,10 @@ class NewContactPanel extends JPanel {
         variableInput = getTextField();
         variableInput.setBorder(new LineBorder(Color.BLACK, 1));
         JLabel instruction0 =
-            new HtmlLabel("enter your contact's secret:");
-        JLabel instruction1 = new HtmlLabel("or tell your contact:");
+            new HtmlLabel("enter your contact's secret and press <b>go</b>,");
+        JLabel instruction1 = new HtmlLabel("or just press <b>go</b> and " +
+                                            "your secret will be shown on " +
+                                            "the next panel:");
         // do the layout
         panel.setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
@@ -271,10 +273,10 @@ class NewContactPanel extends JPanel {
         panel.add(variableInput, gbc);
         gbc.gridy++;
         panel.add(instruction1, gbc);
-        gbc.gridy++;
-        panel.add(mySecretShort, gbc);
-        gbc.gridy++;
-        panel.add(mySecretLong, gbc);
+//        gbc.gridy++;
+//        panel.add(mySecretShort, gbc);
+//        gbc.gridy++;
+//        panel.add(mySecretLong, gbc);
         keyPanel = panel;
     }
 }

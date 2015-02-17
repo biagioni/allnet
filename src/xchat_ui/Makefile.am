@@ -8,7 +8,7 @@ if PRECOMP_GUI
 	cp precompiled/$(ALLNETUI_JAR) $(ALLNETUI_TARGET)
 endif
 if ENABLE_GUI
-	$(JAVAC) */*.java
+	$(JAVAC) */*.java */*/*.java
 	$(JAR) cfe $(ALLNETUI_TARGET) allnetui.UI allnetui/*.class utils/*.class utils/tabbedpane/*.class utils/tabbedpane/*.png
 endif
 

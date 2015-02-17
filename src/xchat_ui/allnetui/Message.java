@@ -4,7 +4,7 @@ package allnetui;
  *
  * @author Henry
  */
-class Message implements java.lang.Comparable<Message> {
+public class Message implements java.lang.Comparable<Message> {
 
     static final String SELF = "self";
     // the contact name of the sender

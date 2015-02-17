@@ -1,5 +1,6 @@
 package allnetui;
 
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.event.ActionEvent;
 import java.text.SimpleDateFormat;
@@ -110,12 +111,19 @@ class UIController implements ControllerInterface, UIAPI {
     @Override
     public void contactCreated(final String contactName,
             final boolean isBroadcast) {
+        // so we can access the controller from inside the run method
+        // final UIController uic = this;
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
                 clientData.createContact(contactName, isBroadcast);
                 updateContactsPanel(contactName, isBroadcast);
+                // uic.createKeyExchangePanel(contactName, new String[]{" DEBUG"}, null);
+                KeyExchangePanel kep = getKeyExchangePanel(contactName);
+                if (kep != null) {
+                    showKeyExchangeSuccess(kep, contactName);
+                }
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
@@ -229,9 +237,30 @@ class UIController implements ControllerInterface, UIAPI {
             // from the tabbed pane
             processTabEvent(actionCommand[1]);
         }
+        else if (actionCommand[0].startsWith(UI.KEY_EXCHANGE_PANEL_ID)) {
+            // from the tabbed pane
+            processKeyExchangePanelEvent(actionCommand);
+        }
         else {
             // must be from a conversation panel
             processConversationPanelEvent(actionCommand);
+        }
+    }
+
+    private void processKeyExchangePanelEvent(String[] actionCommand) {
+        switch (actionCommand[1]) {
+            case KeyExchangePanel.CLOSE_COMMAND:
+                myTabbedPane.removeTab(actionCommand[0]);
+                myTabbedPane.setSelected(UI.KEY_EXCHANGE_PANEL_ID);
+                break;
+            case KeyExchangePanel.CANCEL_COMMAND:
+                myTabbedPane.removeTab(actionCommand[0]);
+                myTabbedPane.setSelected(UI.KEY_EXCHANGE_PANEL_ID);
+                break;
+            case KeyExchangePanel.RESEND_KEY_COMMAND:
+                KeyExchangePanel kep = (KeyExchangePanel) myTabbedPane.getTabContent(actionCommand[0]);
+                kep.setText(1, " Resend Key button pressed !!!");
+                break;
         }
     }
 
@@ -323,10 +352,10 @@ class UIController implements ControllerInterface, UIAPI {
             // no such tab, so make the conversation panel
             // (the contact's name is also the command prefix)
             if (!clientData.isBroadcast(contactName)) {
-                cp = new ConversationPanel("conversation with " + contactName, contactName, contactName);
+                cp = new ConversationPanel(" conversation with " + contactName, contactName, contactName);
             }
             else {
-                cp = new ConversationPanel("broadcast from " + contactName, contactName, contactName);
+                cp = new ConversationPanel(" broadcast from " + contactName, contactName, contactName);
             }
             cp.setName(contactName);
             cp.setListener(this);
@@ -352,6 +381,29 @@ class UIController implements ControllerInterface, UIAPI {
         updateConversationPanels();
     }
 
+    private String [] makeMiddlePanel (boolean useLongSecret) {
+        String secret = newContactPanel.getMySecretShort();
+        int minLength = 6;
+        if (useLongSecret) {
+            secret = newContactPanel.getMySecretLong();
+            minLength = 14;
+        }
+        String entered = newContactPanel.getVariableInput();
+        if (entered.length() >= minLength) {
+            return new String[]{
+                " Shared secret:",
+                " " + secret,
+                " or: ",
+                " " + newContactPanel.getVariableInput()
+            };
+        } else {
+            return new String[]{
+                " Shared secret:",
+                " " + secret
+            };
+        }
+    }
+
     private void processNewContactEvent(String command) {
         // here we can use newContactPanel's getter methods to grab
         // the user's input and send it to the application
@@ -366,7 +418,18 @@ class UIController implements ControllerInterface, UIAPI {
                     break;
                 case 0:
                     System.out.println("new 1-hop contact " + contact + ", "
-                            + newContactPanel.getVariableInput());
+                            + ", secret "
+                            + newContactPanel.getVariableInput() + "/"
+                            + newContactPanel.getMySecretShort());
+                    // now put up a key exchange panel
+                    String[] middlePanelMsg = makeMiddlePanel (false);
+                    String[] bottomPanelMsg = new String[]{
+                        " Key exchange in progress",
+                        " Sent your key",
+                        " Waiting for key from " + contact
+                    };
+                    createKeyExchangePanel(contact, middlePanelMsg,
+                                           bottomPanelMsg);
                     if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretShort(),
                             newContactPanel.getVariableInput(), 1)) {
                         System.out.println("sent direct wireless key request");
@@ -381,6 +444,16 @@ class UIController implements ControllerInterface, UIAPI {
                             + ", secret "
                             + newContactPanel.getVariableInput() + "/"
                             + newContactPanel.getMySecretLong());
+                    // now put up a key exchange panel
+                    middlePanelMsg = makeMiddlePanel (true);
+                    bottomPanelMsg = new String[]{
+                        " Key exchange in progress",
+                        " Sent your key",
+                        " Waiting for key from " + contact
+                    };
+                    createKeyExchangePanel(contact, middlePanelMsg,
+                                           bottomPanelMsg);
+                    //
                     if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretLong(),
                             newContactPanel.getVariableInput(), 6)) {
                         System.out.println("sent key request with 6 hops");
@@ -507,7 +580,7 @@ class UIController implements ControllerInterface, UIAPI {
 
     private void updateConversationPanel(String contact,
             ConversationPanel panel) {
-        String line1 = "conversation with " + contact;
+        String line1 = " conversation with " + contact;
         if (clientData.isBroadcast(contact)) {
             int pos = contact.indexOf("@");
             if (pos > 0) {   // put spaces around @ so will wrap lines
@@ -618,6 +691,32 @@ class UIController implements ControllerInterface, UIAPI {
             // mark the message as read, even though this is not checked at present
             msg.setRead();
         }
+    }
+
+    private void showKeyExchangeSuccess(KeyExchangePanel kep, String contactName) {
+        // for debug
+        // if (contactName.equals("Bob"))
+        //    return;
+
+        kep.setText(0, " Got key from " + contactName);
+        kep.hideLabel(1);
+        kep.setText(2, " Key Received Successfully!");
+        kep.setColor(2, Color.GREEN.darker());
+    }
+
+    private KeyExchangePanel getKeyExchangePanel(String contactName) {
+        String id = UI.KEY_EXCHANGE_PANEL_ID + "_" + contactName;
+        KeyExchangePanel kep = (KeyExchangePanel) myTabbedPane.getTabContent(id);
+        return (kep);
+    }
+
+    private void createKeyExchangePanel(String contactName, String[] middlePanelText, String[] bottomPanelText) {
+        KeyExchangePanel keyExchangePanel = new KeyExchangePanel(contactName, new int[]{2, 5, 4});
+        keyExchangePanel.setText(1, middlePanelText);
+        keyExchangePanel.setText(2, bottomPanelText);
+        keyExchangePanel.setListener(this);
+        myTabbedPane.addTabWithCloseRight(keyExchangePanel.getCommandPrefix(),
+                "key exchange", keyExchangePanel, KeyExchangePanel.CLOSE_COMMAND);
     }
 
     // ---------------------------

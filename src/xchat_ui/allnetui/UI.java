@@ -22,6 +22,7 @@ class UI extends ApplicationFrame {
     // IDs for fixed panels
     public static final String CONTACTS_PANEL_ID = "CONTACTS_PANEL_ID";
     public static final String NEW_CONTACT_PANEL_ID = "NEW_CONTACT_PANEL_ID";
+    public static final String KEY_EXCHANGE_PANEL_ID = "KEY_EXCHANGE_PANEL_ID";
     //
     // private static boolean debug = false;
     static final String TITLE = "Allnet Java UI";
@@ -39,6 +40,23 @@ class UI extends ApplicationFrame {
         super(title, appPanel, controller, resizeOkay);
     }
 
+    public static Color getBgndColor() {
+        return bgndColor;
+    }
+
+    public static Color getBroadcastBackgroundColor() {
+        return broadcastBackgroundColor;
+    }
+
+    public static Color getBroadcastContactColor() {
+        return broadcastContactColor;
+    }
+
+    public static Color getOtherColor() {
+        return otherColor;
+    }
+
+    
     // application entry point, call with contact name if desired, otherwise defaults to henry
     public static void main(String... args) {
         if (args != null) {
@@ -75,7 +93,7 @@ class UI extends ApplicationFrame {
                     MyTabbedPane uiTabs = new MyTabbedPane();
                     uiTabs.addTab(NEW_CONTACT_PANEL_ID, "New Contact", newContactPanel);
                     uiTabs.addTab(CONTACTS_PANEL_ID, "Contacts", contactsPanel);
-                    uiTabs.setSelected(contactsPanel);
+                    uiTabs.setSelected(contactsPanel);                    
                     // controller needs a references to the panels in the ui
                     // and also to register to listen for events from those panels
                     controller.setContactsPanel(contactsPanel);
