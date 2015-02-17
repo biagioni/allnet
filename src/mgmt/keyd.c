@@ -115,9 +115,11 @@ static void handle_packet (int sock, char * message, int msize)
     int matching_bits =
       matches (hp->destination, hp->dst_nbits,
                (unsigned char *) (keys [i].address), ADDRESS_BITS);
+#ifdef DEBUG_PRINT
     printf ("%02x <> %02x (%s): %d matching bits, %d needed\n",
             hp->destination [0] & 0xff, keys [i].address [0] & 0xff,
             keys [i].identifier, matching_bits, hp->dst_nbits);
+#endif /* DEBUG_PRINT */
     snprintf (log_buf, LOG_SIZE, "%02x <> %02x: %d matching bits, %d needed\n",
               hp->destination [0] & 0xff,
               keys [i].address [0] & 0xff, matching_bits, hp->dst_nbits);
@@ -125,7 +127,7 @@ static void handle_packet (int sock, char * message, int msize)
     if (matching_bits >= hp->dst_nbits) {  /* send the key */
 #ifdef DEBUG_PRINT
       printf ("sending key %d, kp %p, %d bytes to %x/%d\n", i, kp, ksize,
-hp->source [0] & 0xff, hp->src_nbits);
+              hp->source [0] & 0xff, hp->src_nbits);
 #endif /* DEBUG_PRINT */
       send_key (sock, keys + i, kp, ksize,
                 hp->source, hp->src_nbits, hp->hops + 4);
