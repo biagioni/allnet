@@ -435,6 +435,12 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
   return child;
 }
 
+#ifdef DEBUG_PRINT
+/* typical output when wlan1 is enabled but eth1 is not:
+    interface lo has flags 10049: IFF_UP IFF_LOOPBACK IFF_RUNNING 10000
+    interface eth1 has flags 1003: IFF_UP IFF_BROADCAST IFF_MULTICAST
+    interface wlan1 has flags 11043: IFF_UP IFF_BROADCAST IFF_RUNNING IFF_MULTICAST 10000
+*/
 static void debug_print_flags (char * name, int flags)
 {
   int i;
@@ -485,10 +491,13 @@ static void debug_print_flags (char * name, int flags)
   }
   printf ("\n");
 }
+#endif /* DEBUG_PRINT */
 
 static int is_bc_interface (struct ifaddrs * interface)
 {
+#ifdef DEBUG_PRINT
   debug_print_flags (interface->ifa_name, interface->ifa_flags);
+#endif /* DEBUG_PRINT */
   return (((interface->ifa_flags & IFF_LOOPBACK) == 0) &&
           ((interface->ifa_flags & IFF_UP) != 0) &&
           ((interface->ifa_flags & IFF_BROADCAST) != 0));
@@ -529,34 +538,40 @@ static int default_interfaces (char * * * interfaces_p)
   int count = 0;
   int length = 0;
   struct ifaddrs * next = ap;
+  /* compute the buffer size needed to store all interface information */
   while (next != NULL) {
     if (is_bc_interface (next)) {
-      int extra = strlen (interface_extra (next));
-      if (extra != 0) {
+      int extra_len = strlen (interface_extra (next));
+      if (extra_len != 0) {
         count++; /* and add interface/extra and the null char */
-        length += strlen (next->ifa_name) + 1 + extra + 1;
+        length += strlen (next->ifa_name) + 1 + extra_len + 1;
       }
     }
     next = next->ifa_next;
   }
   int size = count * sizeof (char *) + length;
-  *interfaces_p = malloc_or_fail (size, "get_bc_interfaces");
+  *interfaces_p = malloc_or_fail (size, "default_interfaces");
   char * * interfaces = *interfaces_p;
   /* copy the names/extra to the malloc'd space after the pointers */
   char * write_to = ((char *) (interfaces + count));
-  next = ap;
   int index = 0;
-  while (next != NULL) {
-    if ((! in_interface_array (next->ifa_name, interfaces, index)) &&
-        (is_bc_interface (next)) &&
-        (strlen (interface_extra (next)) != 0)) {
-      interfaces [index++] = write_to;
-      strcpy (write_to, next->ifa_name);
-      strcat (write_to, "/");
-      strcat (write_to, interface_extra (next));
-      write_to += strlen (write_to) + 1;
+  int accept_non_ip;  /* favor /ip over /wifi, so on first pass only take ip */
+  for (accept_non_ip = 0; accept_non_ip < 2; accept_non_ip++) {
+    next = ap;
+    while (next != NULL) {
+      char * extra = interface_extra (next);
+      if ((! in_interface_array (next->ifa_name, interfaces, index)) &&
+          (is_bc_interface (next)) &&
+          (strlen (extra) != 0) &&
+          ((accept_non_ip) || (strcmp (extra, "ip") == 0))) {
+        interfaces [index++] = write_to;
+        strcpy (write_to, next->ifa_name);
+        strcat (write_to, "/");
+        strcat (write_to, interface_extra (next));
+        write_to += strlen (write_to) + 1;
+      }
+      next = next->ifa_next;
     }
-    next = next->ifa_next;
   }
   freeifaddrs (ap);
   return index;
