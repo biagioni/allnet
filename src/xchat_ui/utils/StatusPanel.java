@@ -17,6 +17,7 @@ public class StatusPanel extends JPanel {
     private static final long serialVersionUID = 1L;
     private String commandPrefix;
     private JButton[] buttons;
+    private String [] buttonNames;
     private HtmlLabel[] labels;
     private int[] labelHeights;
     private Color[] labelColors;
@@ -49,8 +50,10 @@ public class StatusPanel extends JPanel {
         // space the buttons reasonably
         buttonPanel.add(Box.createHorizontalGlue());
         buttons = new JButton[buttonsAndCommands.length / 2];
+        buttonNames = new String [buttons.length];
         for (int i = 0; i < buttons.length; i++) {
             buttons[i] = new JButton(buttonsAndCommands[2 * i]);
+            buttonNames[i] = buttonsAndCommands[2 * i];
             buttons[i].setActionCommand(commandPrefix + ":" + buttonsAndCommands[2 * i + 1]);
             buttonPanel.add(buttons[i]);
             buttonPanel.add(Box.createHorizontalGlue());
@@ -109,13 +112,12 @@ public class StatusPanel extends JPanel {
     }
     
     public void clearText(int idx) {
-        setText(idx, makeBlankLines(labelHeights[idx]));
+        setText(idx);
     }
     
     public void setText(int idx, String... input) {
         if (input == null) {
-            clearText(idx);
-            return;
+            input = new String []{};
         }
         String[] lines = new String[labelHeights[idx]];
         for (int i = 0; i < lines.length; i++) {
@@ -132,6 +134,15 @@ public class StatusPanel extends JPanel {
     public void setColor(int idx, Color color) {
         labels[idx].setBackground(color);
         labelColors[idx] = color;
+    }
+    
+    public JButton getButton(String name) {
+        for (int i=0; i<buttons.length; i++) {
+            if (buttons[i].getText().equals(name)) {
+                return(buttons[i]);
+            }
+        }
+        return(null);
     }
         
     private String[] makeBlankLines(int n) {
