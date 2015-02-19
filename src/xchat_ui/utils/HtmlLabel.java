@@ -43,8 +43,24 @@ public class HtmlLabel extends JLabel {
         }
         setText(sb.toString());
     }
-    
-    
+
+    // undo the html processing
+    public final String getPlainText() {
+        String result = getText();
+        result = result.replace("&nbsp;", " ");
+        result = result.replace("<br>", "\n");
+        result = result.replace("<html>", "");
+        return result;
+    }
+
+    // undo the html processing
+    public final String [] getPlainTextLines() {
+        String text = getText();
+        text = text.replace("&nbsp;", " ");
+        text = text.replace("<html>", "");
+        return text.split("<br>");
+    }
+
     public void setLineBorder (Color c, int width, boolean round) {
         Border border = BorderFactory.createLineBorder(c, width, round);
         setBorder(border);

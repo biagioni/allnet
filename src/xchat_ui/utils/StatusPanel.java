@@ -130,6 +130,14 @@ public class StatusPanel extends JPanel {
         }
         labels[idx].setText(lines);
     }
+
+    public String getText (int idx) {
+        return labels[idx].getPlainText();
+    }
+    
+    public String [] getTextLines (int idx) {
+        return labels[idx].getPlainTextLines();
+    }
     
     public void setColor(int idx, Color color) {
         labels[idx].setBackground(color);
