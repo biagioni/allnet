@@ -15,11 +15,11 @@
 #include "record.h"
 #include "lib/log.h"
 
-#define ENTRIES_PER_TABLE		1024
+#define ENTRIES_PER_TABLE		(64 * 1024)
 
 struct hash_entry {
-  int hash;
   time_t last_seen;
+  int hash;
   int connection;
 };
 
