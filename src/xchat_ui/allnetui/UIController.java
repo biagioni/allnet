@@ -259,17 +259,18 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     private void resendKey(KeyExchangePanel kep) {
-        int hops;
+        int hops = HOPS_LOCAL;
         switch (kep.getButtonState()) {
             case 0:
-                hops = HOPS_LOCAL;
-                kep.setText(1, " Resend Key button pressed !!!", "",
-                        " Shared secret:", " " + kep.getSecret());
-                break;
             case 1:
-                hops = HOPS_REMOTE;
+                int min = MIN_LENGTH_SHORT;
+                if (kep.getButtonState() == 1) {
+                    hops = HOPS_REMOTE;
+                    min = MIN_LENGTH_LONG;
+                }
                 String variableInput = kep.getVariableInput();
-                if ((variableInput == null) || (variableInput.isEmpty())) {
+                if ((variableInput == null) || (variableInput.isEmpty()) ||
+                    (variableInput.length() < min)) {
                     kep.setText(1, " Resend Key button pressed !!!", "",
                             " Shared secret:", " " + kep.getSecret());
                 }
@@ -282,7 +283,8 @@ class UIController implements ControllerInterface, UIAPI {
             default:
                 return;
         }
-        if (XchatSocket.sendKeyRequest(kep.getContactName(), kep.getSecret(), kep.getVariableInput(), hops)) {
+        if (XchatSocket.sendKeyRequest(kep.getContactName(), kep.getSecret(),
+                                       kep.getVariableInput(), hops)) {
             System.out.println("resent key request");
         }
     }
