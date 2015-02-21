@@ -25,6 +25,12 @@ import utils.tabbedpane.MyTabbedPane;
  */
 class UIController implements ControllerInterface, UIAPI {
 
+    // min lengths for shared secrets
+    public final int MIN_LENGTH_SHORT = 6;
+    public final int MIN_LENGTH_LONG = 14;
+    // number of hops
+    public final int HOPS_LOCAL = 1;
+    public final int HOPS_REMOTE = 6;
     // for formatting message times
     private static SimpleDateFormat formatter =
             //          new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss z");
@@ -253,44 +259,31 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     private void resendKey(KeyExchangePanel kep) {
-// get the contact and the secrets from the text displayed in the window.
-// this is kind of backwards -- really they should be saved somewhere
-        String contact = getContactFromWindow(kep);
-        String [] secretsText = kep.getTextLines(1);
-        String secret1 = null;
-        String secret2 = null;
-        for (String s: secretsText) {
-            s = s.replaceAll("^\\s*", "");
-            s = s.replaceAll("\\s*$", "");
-            if ((s.length() > 0) &&
-                (! (s.contains("!"))) &&
-                (! (s.contains(":")))) {
-                if (secret1 == null)
-                    secret1 = s;
-                else if (secret2 == null)
-                    secret2 = s;
-                else
-                    System.out.println ("secrets " + secret1 +  ", " + 
-                                        secret2 + ", found " + s);
-            }
+        int hops;
+        switch (kep.getButtonState()) {
+            case 0:
+                hops = HOPS_LOCAL;
+                kep.setText(1, " Resend Key button pressed !!!", "",
+                        " Shared secret:", " " + kep.getSecret());
+                break;
+            case 1:
+                hops = HOPS_REMOTE;
+                String variableInput = kep.getVariableInput();
+                if ((variableInput == null) || (variableInput.isEmpty())) {
+                    kep.setText(1, " Resend Key button pressed !!!", "",
+                            " Shared secret:", " " + kep.getSecret());
+                }
+                else {
+                    kep.setText(1, " Resend Key button pressed !!!", "",
+                            " Shared secret:", " " + kep.getSecret(), " or:",
+                            " " + variableInput, " ");
+                }
+                break;
+            default:
+                return;
         }
-        int hops = 1;
-        if ((secret1 != null) && (secret1.length() >= 14))
-            hops = 6;
-        if (XchatSocket.sendKeyRequest(contact, secret1, secret2, hops))
+        if (XchatSocket.sendKeyRequest(kep.getContactName(), kep.getSecret(), kep.getVariableInput(), hops)) {
             System.out.println("resent key request");
-        if (secret2 == null) {
-//          System.out.println ("resend key, contact '" + contact + 
-//                              "', secret " + secret1);
-            kep.setText(1, " Resend Key button pressed !!!", "",
-                        " Shared secret:", " " + secret1);
-        } else {
-//          System.out.println ("resend key, contact '" + contact + 
-//                              "', secrets " + secret1 +
-//                              " and " + secret2);
-            kep.setText(1, " Resend Key button pressed !!!", "",
-                        " Shared secret:", " " + secret1, " or:",
-                        " " + secret2, " ");
         }
     }
 
@@ -427,15 +420,14 @@ class UIController implements ControllerInterface, UIAPI {
         updateConversationPanels();
     }
 
-    private String[] makeMiddlePanel(boolean useLongSecret) {
+    private String[] makeMiddlePanel(boolean useLongSecret, String variableInput) {
         String secret = newContactPanel.getMySecretShort();
-        int minLength = 6;
+        int minLength = MIN_LENGTH_SHORT;
         if (useLongSecret) {
             secret = newContactPanel.getMySecretLong();
-            minLength = 14;
+            minLength = MIN_LENGTH_LONG;
         }
-        String entered = newContactPanel.getVariableInput();
-        if (entered.length() >= minLength) {
+        if (variableInput.length() >= minLength) {
             return new String[]{
                         " Shared secret:",
                         " " + secret,
@@ -454,38 +446,45 @@ class UIController implements ControllerInterface, UIAPI {
     private void processNewContactEvent(String command) {
         // here we can use newContactPanel's getter methods to grab
         // the user's input and send it to the application
-//        System.out.println("UIController.java: pNCE " + command);
+        // System.out.println("UIController.java: pNCE " + command);
         KeyExchangePanel kep;
         if (command.equals("go")) {
             String contact = newContactPanel.getInputName();
             int button = newContactPanel.getSelectedButton();
+            String variableInput = newContactPanel.getVariableInput();
+            if (variableInput == null)
+                variableInput = "";
+            String secret;
             switch (button) {
                 case -1:
                     System.out.println("UIController.java: new contact " + contact
                             + ", no button selected");
                     break;
                 case 0:
-
+                    secret = newContactPanel.getMySecretShort();
+                    if (variableInput.length() < MIN_LENGTH_SHORT) {
+                        variableInput = "";
+                    }
                     System.out.println("new 1-hop contact " + contact + ", "
-                            + ", secret "
-                            + newContactPanel.getVariableInput() + "/"
-                            + newContactPanel.getMySecretShort());
+                            + ", secret " + variableInput + "/" + secret);
                     // create the key exchange panel if it doesn't already exist
                     kep = getKeyExchangePanel(contact);
                     if (kep == null) {
                         // now put up a key exchange panel
-                        String[] middlePanelMsg = makeMiddlePanel(false);
+                        String[] middlePanelMsg = makeMiddlePanel(false, variableInput);
                         String[] bottomPanelMsg = new String[]{
                             " Key exchange in progress",
                             " Sent your key",
                             " Waiting for key from " + contact
                         };
-                        createKeyExchangePanel(contact, middlePanelMsg,
+                        kep = createKeyExchangePanel(contact, middlePanelMsg,
                                 bottomPanelMsg, true);
+                        kep.setButtonState(button);
+                        kep.setSecret(secret);
+                        kep.setVariableInput(variableInput);
                     }
                     if (XchatSocket.sendKeyRequest(contact,
-                            newContactPanel.getMySecretShort(),
-                            newContactPanel.getVariableInput(), 1)) {
+                            secret, variableInput, HOPS_LOCAL)) {
                         System.out.println("sent direct wireless key request");
                         newContactPanel.setMySecret();
                     }
@@ -494,25 +493,32 @@ class UIController implements ControllerInterface, UIAPI {
                     }
                     break;
                 case 1:
+                    secret = newContactPanel.getMySecretLong();
+                    if (variableInput.length() < MIN_LENGTH_LONG) {
+                        variableInput = "";
+                    }
                     System.out.println("new long-distance contact " + contact
-                            + ", secret "
-                            + newContactPanel.getVariableInput() + "/"
-                            + newContactPanel.getMySecretLong());
+                            + ", secret " + variableInput + "/" + secret);
                     kep = getKeyExchangePanel(contact);
                     if (kep == null) {
                         // now put up a key exchange panel
-                        String[] middlePanelMsg = makeMiddlePanel(true);
+                        String[] middlePanelMsg =
+                            makeMiddlePanel(true, variableInput);
                         String[] bottomPanelMsg = new String[]{
                             " Key exchange in progress",
                             " Sent your key",
                             " Waiting for key from " + contact
                         };
-                        createKeyExchangePanel(contact, middlePanelMsg,
+                        kep = createKeyExchangePanel(contact, middlePanelMsg,
                                 bottomPanelMsg, true);
+                        kep.setButtonState(button);
+                        kep.setSecret(secret);
+                        kep.setVariableInput(variableInput);
                     }
                     //
-                    if (XchatSocket.sendKeyRequest(contact, newContactPanel.getMySecretLong(),
-                            newContactPanel.getVariableInput(), 6)) {
+                    if (XchatSocket.sendKeyRequest(contact,
+                            newContactPanel.getMySecretLong(),
+                            newContactPanel.getVariableInput(), HOPS_REMOTE)) {
                         System.out.println("sent key request with 6 hops");
                         newContactPanel.setMySecret();
                     }
@@ -755,7 +761,7 @@ class UIController implements ControllerInterface, UIAPI {
         return (kep);
     }
 
-    private void createKeyExchangePanel(String contactName, String[] middlePanelText, String[] bottomPanelText, boolean selectIt) {
+    private KeyExchangePanel createKeyExchangePanel(String contactName, String[] middlePanelText, String[] bottomPanelText, boolean selectIt) {
         KeyExchangePanel keyExchangePanel = new KeyExchangePanel(contactName, new int[]{2, 6, 4});
         keyExchangePanel.setText(1, middlePanelText);
         keyExchangePanel.setText(2, bottomPanelText);
@@ -765,6 +771,7 @@ class UIController implements ControllerInterface, UIAPI {
         if (selectIt) {
             myTabbedPane.setSelected(keyExchangePanel);
         }
+        return (keyExchangePanel);
     }
 
     // ---------------------------
