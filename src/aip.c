@@ -116,8 +116,10 @@ static void * receive_addrs (void * arg)
         cache_add (ra->rp_cache, ai); /* if already in cache, records usage */
       else if (ai->type == ALLNET_ADDR_INFO_TYPE_DHT)
         cache_add (ra->dht_cache, ai); /* if already in cache, records usage */
-      else
+      else {
         printf ("ai type %d, expected 1 or 2\n", ai->type);
+        free (buffer);
+      }
     } else {
       printf ("expected %zd bytes, got %d\n", sizeof (struct addr_info),
               bytes);
