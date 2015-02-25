@@ -1,6 +1,8 @@
+
 package allnetui;
 
 import java.awt.Color;
+import java.util.Arrays;
 import utils.StatusPanel;
 
 /**
@@ -22,7 +24,7 @@ public class KeyExchangePanel extends StatusPanel {
     private int buttonState;
 
     public KeyExchangePanel(String contactName, int[] labelHeights) {
-        super(labelHeights, UI.getBgndColor(), UI.getOtherColor(), UI.KEY_EXCHANGE_PANEL_ID + "_" + contactName,
+        super(labelHeights, getBooleans(labelHeights.length), UI.getBgndColor(), UI.getOtherColor(), UI.KEY_EXCHANGE_PANEL_ID + "_" + contactName,
                 new String[]{"resend your key", RESEND_KEY_COMMAND, CANCEL_BUTTON_NAME, CANCEL_COMMAND});
         this.contactName = contactName;
         setColor(1, Color.WHITE);
@@ -30,6 +32,14 @@ public class KeyExchangePanel extends StatusPanel {
         setText(0, " exchanging keys with " + contactName);
     }
 
+    // returns an array of booleans, all true except first
+    private static boolean [] getBooleans(int n) {
+        boolean temp [] = new boolean[n];
+        Arrays.fill(temp, true);
+        temp[0] = false;
+        return(temp);
+    }
+    
     public int getButtonState() {
         return buttonState;
     }
