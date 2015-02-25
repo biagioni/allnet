@@ -322,8 +322,6 @@ printf ("unable to open .allnet/adht/my_id\n");
       printf ("~/.allnet/adht/my_id begins with '-', not saving\n");
     } else {   /* line >= 30 bytes long, beginning with "8 bytes: " */
       read_buffer (line + 9, strlen (line + 9), my_address, ADDRESS_SIZE);
-printf ("read my address from ~/.allnet/adht/my_id file, %d\n", save_my_own_address);
-print_buffer (my_address, ADDRESS_SIZE, "address", ADDRESS_SIZE, 1);
     }
     close (fd);
   }
