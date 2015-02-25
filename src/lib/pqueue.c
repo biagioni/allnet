@@ -61,17 +61,17 @@ static int make_room (int wanted, int priority)
 {
   if (current_size + wanted <= max_size)
     return 1;
-  if (wanted > max_size || tail == NULL)
+  if ((wanted > max_size) || (tail == NULL))
     return 0;
 
   int possible_space = 0;
   int removable = 0;
   struct queue_element * qel = tail;
-  for (; (qel->priority < priority) &&
-         (current_size - possible_space + wanted > max_size);
-       qel = qel->prev) {
+  while ((qel != NULL) && (qel->priority < priority) &&
+         (current_size - possible_space + wanted > max_size)) {
     possible_space += qel->size;
     ++removable;
+    qel = qel->prev;
   }
   /* only clear elements if new element will fit */
   if (current_size - possible_space + wanted <= max_size) {
