@@ -49,6 +49,10 @@ struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
  * new address on every invocation (and perhaps more frequently?) */
 static int save_my_own_address = 1;
 
+/* what to save when calling save_peers.  Could be either or both */
+#define SAVE_ID		1
+#define SAVE_PEERS	2
+
 void print_dht (int to_log)
 {
   int npeers = 0;
@@ -140,32 +144,37 @@ static int entry_to_file (int fd, struct addr_info * entry, int index)
   return 0;
 }
 
-static void save_peers ()
+/* save_id_peers_or_both is 1 for id, 2 for peers, 3 for both */
+static void save_peers (int save_id_peers)
 {
 #ifdef DEBUG_PRINT
-  printf ("save_peers (%d):\n", save_address);
+  printf ("save_peers (%d):\n", save_id_peers);
   print_dht (0);
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
-  int fd = open_write_config ("adht", "peers", 1);
-  if (fd < 0)
-    return;
-  char line [300];  /* write my address first */
-  buffer_to_string (my_address, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 1,
-                    line, sizeof (line));
-  if (! save_my_own_address)
-    strcpy (line, "------\n");
-  if (write (fd, line, strlen (line)) != strlen (line))
-    perror ("save_peers write");  /* report, but continue */
-  int i;
-  int cpeer = 0;
-  int cping = 0;
-  for (i = 0; i < MAX_PEERS; i++)
-    cpeer += entry_to_file (fd, &(peers [i].ai), i);
-  for (i = 0; i < MAX_PINGS; i++)
-    cping += entry_to_file (fd, &(pings [i].ai), -1);
-  close (fd);
-  peers_file_time = time (NULL);  /* no need to re-read in load_peers (1) */
+  if ((save_my_own_address) && (save_id_peers & SAVE_ID)) {
+    int fd = open_write_config ("adht", "my_id", 1);
+    if (fd >= 0) {
+      char line [300];  /* write my address first */
+      buffer_to_string (my_address, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 1,
+                        line, sizeof (line));
+      if (write (fd, line, strlen (line)) != strlen (line))
+        perror ("save_peers write");  /* report, but continue */
+      close (fd);
+    }
+  }
+  if (save_id_peers & SAVE_PEERS) {
+    int fd = open_write_config ("adht", "peers", 1);
+    int i;
+    int cpeer = 0;
+    int cping = 0;
+    for (i = 0; i < MAX_PEERS; i++)
+      cpeer += entry_to_file (fd, &(peers [i].ai), i);
+    for (i = 0; i < MAX_PINGS; i++)
+      cping += entry_to_file (fd, &(pings [i].ai), -1);
+    close (fd);
+    peers_file_time = time (NULL);  /* no need to re-read in load_peers (1) */
+  }
 #ifdef DEBUG_PRINT
   printf ("saved %d peers and %d pings, time is %ld\n",
           cpeer, cping, peers_file_time);
@@ -282,7 +291,7 @@ static void init_defaults ()
   buffer_to_string (my_address, ADDRESS_SIZE, "new random address",
                     ADDRESS_SIZE, 1, log_buf, LOG_SIZE);
   log_print ();
-  save_peers ();
+  save_peers (SAVE_ID);
 }
 
 static void load_peers (int only_if_newer)
@@ -295,26 +304,32 @@ static void load_peers (int only_if_newer)
   bzero ((char *) (peers), sizeof (peers));
   bzero ((char *) (pings), sizeof (pings));
   bzero (my_address, sizeof (my_address));
-  int fd = open_read_config ("adht", "peers", 1);
-  if (fd < 0) {
-    init_defaults ();
-    return;
-  }
   char line [1000];
-  if ((! read_line (fd, line, sizeof (line))) ||
-      (strlen (line) < 30) ||
-      ((line [0] != '-') && (strncmp (line, "8 bytes: ", 9) != 0))) {
-    close (fd);
-    printf ("unable to read my address from peers file\n");
+  int fd = open_read_config ("adht", "my_id", 1);
+  if (fd < 0) {
+printf ("unable to open .allnet/adht/my_id\n");
     init_defaults ();
-    return;
+  } else {
+    if ((! read_line (fd, line, sizeof (line))) ||
+        (strlen (line) <= 0) ||
+        ((line [0] != '-') &&
+         ((strlen (line) < 30) || (strncmp (line, "8 bytes: ", 9) != 0)))) {
+      printf ("unable to read ~/.allnet/adht/my_id file\n");
+      init_defaults ();
+    } else if (line [0] == '-') {
+      save_my_own_address = 0;
+      random_bytes (my_address, ADDRESS_SIZE);
+      printf ("~/.allnet/adht/my_id begins with '-', not saving\n");
+    } else {   /* line >= 30 bytes long, beginning with "8 bytes: " */
+      read_buffer (line + 9, strlen (line + 9), my_address, ADDRESS_SIZE);
+printf ("read my address from ~/.allnet/adht/my_id file, %d\n", save_my_own_address);
+print_buffer (my_address, ADDRESS_SIZE, "address", ADDRESS_SIZE, 1);
+    }
+    close (fd);
   }
-  if (line [0] == '-')
-    save_my_own_address = 0;
-  if (save_my_own_address)
-    read_buffer (line + 9, strlen (line + 9), my_address, ADDRESS_SIZE);
-  else   /* use a different address each time we are called */
-    random_bytes (my_address, ADDRESS_SIZE);
+  fd = open_read_config ("adht", "peers", 1);
+  if (fd < 0)
+    return;
   int ping_index = 0;
   while (read_line (fd, line, sizeof (line))) {
     if (strncmp (line, "p: ", 3) != 0) {
@@ -670,7 +685,7 @@ int routing_add_dht (struct addr_info * addr)
       delete_ping (addr);
   }
   if (result >= 0)
-    save_peers ();
+    save_peers (SAVE_PEERS);
   pthread_mutex_unlock (&mutex);
   return result;
 }
@@ -770,7 +785,7 @@ void routing_expire_dht ()
     peers [i].refreshed = 0;
   }
   if (changed)
-    save_peers ();
+    save_peers (SAVE_PEERS);
   pthread_mutex_unlock (&mutex);
 #ifdef DEBUG_PRINT
   printf ("routing_expire_dht () finished\n");
@@ -841,7 +856,7 @@ int routing_add_ping (struct addr_info * addr)
   init_peers (0);
   int result = routing_add_ping_locked (addr);
   if (result >= 0)
-    save_peers ();
+    save_peers (SAVE_PEERS);
   pthread_mutex_unlock (&mutex);
   return result;
 }

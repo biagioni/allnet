@@ -237,11 +237,11 @@ static void get_my_addr (unsigned char * my_addr, int my_addr_size)
 {
   /* init to a random value, in case there is no address in the file */
   random_bytes ((char *) my_addr, my_addr_size);
-  int fd = open_read_config ("adht", "peers", 1);
+  int fd = open_read_config ("adht", "my_id", 1);
   int count = 0;
   while (fd < 0) {  /* wait for adht to create the file */
     sleep (1);
-    fd = open_read_config ("adht", "peers", 1);
+    fd = open_read_config ("adht", "my_id", 1);
     if (count++ > 10) {
       printf ("error: traced still waiting for adht peer file creation\n");
       snprintf (log_buf, LOG_SIZE,
