@@ -21,6 +21,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/time.h> /* struct timeval, gettimeofday */
+#include <signal.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #include "lib/packet.h"
 #include "lib/mgmt.h"
@@ -586,6 +589,43 @@ print_bitstring (arrivals [i].value.address, 0, abits, 1);
   return -1;
 }
 
+static int sent_count = 0;
+static int received_count = 0;
+static int64_t min_rtt = -1;  /* in units of microseconds */
+static int64_t max_rtt = -1;
+static int64_t sum_rtt = 0;  /* sum_rtt / received_count is the mean rtt */
+
+/* print summaries.  Also, signal handler in case we are stopped */
+static void print_summary (int signal)
+{
+  if (sent_count > 0) {
+    if (received_count > 0) {
+      int64_t mean_rtt = sum_rtt / ((int64_t) received_count);
+      printf ("sent %d packets, received %d, ", sent_count, received_count);
+      printf ("rtt min/mean/max is %" PRId64 ".%03d/", min_rtt / 1000,
+              (int) (min_rtt % 1000));
+      printf ("%" PRId64 ".%03d/", mean_rtt / 1000, (int) (mean_rtt % 1000));
+      printf ("%" PRId64 ".%03d\n", max_rtt / 1000, (int) (max_rtt % 1000));
+    } else {  /* received_count is 0 */
+      printf ("sent %d packets, received 0\n", sent_count);
+    }
+  } /* else nothing sent, print nothing */
+  if ((signal == SIGHUP) || (signal == SIGINT) || (signal == SIGKILL)) {
+    /* printf ("exiting on signal %d\n", signal); */
+    exit (1);
+  }
+}
+
+static void record_rtt (unsigned long long us)
+{
+  if ((min_rtt < 0) || (us < min_rtt))
+    min_rtt = us;
+  if ((max_rtt < 0) || (max_rtt < us))
+    max_rtt = us;
+  sum_rtt += us;
+  received_count++;
+}
+
 static void print_times (struct allnet_mgmt_trace_entry * entry,
                          struct timeval * start, struct timeval * now,
                          int save_to_intermediate)
@@ -649,8 +689,9 @@ static void print_entry (struct allnet_mgmt_trace_entry * entry,
 
 static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                                 struct timeval start, struct timeval finish,
-                                int match_only, int no_intermediates)
+                                int seq, int match_only, int no_intermediates)
 {
+  unsigned long long us = delta_us (&finish, &start);
   /* put the unix times into allnet format */
   start.tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
   finish.tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
@@ -659,6 +700,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
     return;
   }
   if (trp->intermediate_reply == 0) {      /* final reply */
+    record_rtt (us);
     int first = 1;
     if (no_intermediates)
       first = trp->num_entries - 1;
@@ -667,6 +709,10 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
         printf ("trace to matching destination:\n");
       int i;
       for (i = first; i < trp->num_entries; i++) {
+        if (i + 1 == trp->num_entries)
+          printf ("%4d: ", seq);
+        else
+          printf ("      ");
         printf ("         ");
         print_times (trp->trace + i, &start, &finish, 1);
         print_entry (trp->trace + i, &start, &finish, 1);
@@ -692,7 +738,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
 }
 
 static void handle_packet (char * message, int msize, char * seeking,
-                           struct timeval start,
+                           struct timeval start, int seq,
                            int match_only, int no_intermediates)
 {
 /* print_packet (message, msize, "handle_packet got", 1); */
@@ -735,10 +781,10 @@ static void handle_packet (char * message, int msize, char * seeking,
 */
   snprintf (log_buf, LOG_SIZE, "matching trace response of size %d\n", msize);
   log_print ();
-  print_trace_result (trp, start, now, match_only, no_intermediates);
+  print_trace_result (trp, start, now, seq, match_only, no_intermediates);
 }
 
-static void wait_for_responses (int sock, char * trace_id, int sec,
+static void wait_for_responses (int sock, char * trace_id, int sec, int seq,
                                 int match_only, int no_intermediates)
 {
   num_arrivals = 0;   /* not received anything yet */
@@ -759,7 +805,7 @@ static void wait_for_responses (int sock, char * trace_id, int sec,
 #endif /* DEBUG_PRINT */
       exit (1);
     }
-    handle_packet (message, found, trace_id, tv_start,
+    handle_packet (message, found, trace_id, tv_start, seq,
                    match_only, no_intermediates);
     if (found > 0)
       free (message);
@@ -895,6 +941,12 @@ int main (int argc, char ** argv)
     printf ("trace error: main loop returned\n");
     return 1;
   } else {                                    /* called as client */
+    struct sigaction siga;
+    siga.sa_handler = &print_summary;
+    sigemptyset (&(siga.sa_mask));
+    siga.sa_flags = 0;
+    if (sigaction (SIGINT, &siga, NULL) != 0)
+      perror ("sigaction");  /* not fatal */
     int nhops = 10;
     if (argc > 2) {   /* number of hops is specified on the command line */
       int n = atoi (argv [2]);
@@ -916,8 +968,11 @@ int main (int argc, char ** argv)
       random_bytes (trace_id, sizeof (trace_id));
       random_bytes ((char *) my_addr, sizeof (my_addr));
       send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
-      wait_for_responses (sock, trace_id, sleep, match_only, no_intermediates);
+      sent_count++;
+      wait_for_responses (sock, trace_id, sleep, count,
+                          match_only, no_intermediates);
     }
+    print_summary (0);
   }
   return 0;
 }
