@@ -299,6 +299,13 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
   if (sa->sa_family == AF_INET)
     addr_len = sizeof (struct sockaddr_in);
   int s = sendto (udp, message, msize, 0, sa, addr_len);
+#ifdef LOG_PACKETS
+  snprintf (log_buf, LOG_SIZE, "send_udp sent %d/%d bytes to ", s, msize);
+  int debug_len = strlen (log_buf);
+  print_sockaddr_str (sa, addr_len, 0, log_buf + debug_len,
+                      LOG_SIZE - debug_len);
+  log_print ();
+#endif /* LOG_PACKETS */
   if (s < msize) {
     int n = snprintf (log_buf, LOG_SIZE,
                       "error sending %d (sent %d) on udp %d to ",
@@ -499,9 +506,11 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
                     fds [index], i);
           log_print ();
         }
+#ifdef LOG_PACKETS
         snprintf (log_buf, LOG_SIZE, "aip sent %d bytes to TCP socket %d\n",
                   msize, fds [index]);
         log_print ();
+#endif /* LOG_PACKETS */
         sent_fds++;
       } else {
         struct udp_cache_record * ucr = ucrs [index - num_fds];
@@ -1101,7 +1110,7 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
     socklen_t sasize = sizeof (sockaddr);
     int result = receive_pipe_message_fd (1000, &message, udp, sap, &sasize,
                                           &fd, &priority);
-if ((result > 0) && (fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
+if ((result > 0) && (fd == udp) && (sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "00: fd %d/%d, result %d/%d/%zd, bad afamily %d\n",
 udp, fd, result, sasize, sizeof (sockaddr), sap->sa_family); log_print (); }
     if (result < 0) {
@@ -1140,11 +1149,11 @@ udp, fd, result, sasize, sap->sa_family); log_print (); }
         if (fd == udp) {
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "2: fd %d/%d, bad address family %d\n", udp, fd,
-sap->sa_family); log_print (); }
+sap->sa_family); log_print (); off = 0; }
           standardize_ip (sap, sasize);
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "3: fd %d/%d, bad address family %d\n", udp, fd,
-sap->sa_family); log_print (); }
+sap->sa_family); log_print (); off = 0; }
 #ifdef DEBUG_PRINT
           off += snprintf (log_buf + off, LOG_SIZE - off, "/udp, saving ");
           off += print_sockaddr_str (sap, sasize, 0,
@@ -1152,12 +1161,10 @@ sap->sa_family); log_print (); }
 #else /* DEBUG_PRINT */
           off += snprintf (log_buf + off, LOG_SIZE - off, "/udp\n");
 #endif /* DEBUG_PRINT */
-#ifdef LOG_PACKETS
           log_print ();
-#endif /* LOG_PACKETS */
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "4: fd %d/%d, bad address family %d\n", udp, fd,
-sap->sa_family); log_print (); }
+sap->sa_family); log_print (); off = 0; }
           add_sockaddr_to_cache (udp_cache, sap, sasize);
         } else {
           struct addr_info * ai = listen_fd_addr (info, fd);
@@ -1171,9 +1178,7 @@ sap->sa_family); log_print (); }
 #else /* DEBUG_PRINT */
           off += snprintf (log_buf + off, LOG_SIZE - off, "\n");
 #endif /* DEBUG_PRINT */
-#ifdef LOG_PACKETS
           log_print ();
-#endif /* LOG_PACKETS || DEBUG_PRINT */
         }
         if (handle_mgmt (listener_fds, NUM_LISTENERS, fd, message,
                          &result, udp, sap, sasize)) {

@@ -731,6 +731,11 @@ static int receive_dgram (int fd, char ** message,
       return -1;
     return 0;   /* EAGAIN or EWOULDBLOCK, no message ready at this time */
   }
+  if ((sa->sa_family != AF_INET) && (sa->sa_family != AF_INET6)) { /* strange */
+    snprintf (log_buf, LOG_SIZE, "receive_dgram got %d bytes, family %d\n",
+              result, sa->sa_family);
+    log_print ();
+  }
   return result;
 }
 
@@ -768,7 +773,9 @@ int receive_pipe_message_fd (int timeout, char ** message, int fd,
         r = receive_pipe_message_poll (pipe, message, priority);
 /* if (r < 0) printf ("receive_pipe_message_poll returned %d\n", r); */
         if ((sa != NULL) && (salen != NULL) && (*salen > 0))
+{
           bzero (sa, *salen);
+sa->sa_family = -1; /* debug */ }
         if (salen != NULL)
           *salen = 0;
       } else {         /* UDP or raw socket */
