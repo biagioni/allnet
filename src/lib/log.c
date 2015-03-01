@@ -187,7 +187,7 @@ static void log_print_buffer (char * buffer, int blen)
 void log_print_str (char * string)
 {
   char time_str [100];
-  static char buffer [LOG_SIZE + LOG_SIZE];
+  char buffer [LOG_SIZE + LOG_SIZE];
   struct timeval now;
   gettimeofday (&now, NULL);
   struct tm n;
