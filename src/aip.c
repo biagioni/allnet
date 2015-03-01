@@ -43,6 +43,13 @@
 #include "lib/log.h"
 #include "lib/keys.h"
 
+/* temporary, for debugging on windows */
+#if defined(_WIN32) || defined(_WIN64)
+#ifndef LOG_PACKETS
+#define LOG_PACKETS
+#endif /* LOG_PACKETS */
+#endif /* _WIN32 || _WIN64 */
+
 struct udp_cache_record {
   struct sockaddr_storage sas;
   socklen_t salen;
@@ -296,28 +303,25 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
 static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
 {
   socklen_t addr_len = sizeof (struct sockaddr_in6);
-  if (sa->sa_family == AF_INET)
+  if (sa->sa_family == AF_INET) {
     addr_len = sizeof (struct sockaddr_in);
+    /* 2015/02/28: might this be necessary on some systems? */
+    struct sockaddr_in * sinp = (struct sockaddr_in *) sa;
+    bzero (sinp->sin_zero, sizeof (sinp->sin_zero));
+  }
   int s = sendto (udp, message, msize, 0, sa, addr_len);
-#ifdef LOG_PACKETS
-  snprintf (log_buf, LOG_SIZE, "send_udp sent %d/%d bytes to ", s, msize);
-  int debug_len = strlen (log_buf);
-  print_sockaddr_str (sa, addr_len, 0, log_buf + debug_len,
-                      LOG_SIZE - debug_len);
-  log_print ();
-#endif /* LOG_PACKETS */
-  if (s < msize) {
+  if (s != msize) {
     int n = snprintf (log_buf, LOG_SIZE,
                       "error sending %d (sent %d) on udp %d to ",
                       msize, s, udp);
     print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
     log_error ("sendto");
   } else {
-/*
-    int n = snprintf (log_buf, LOG_SIZE, "sent %d bytes to ", msize);
+#ifdef LOG_PACKETS
+    int n = snprintf (log_buf, LOG_SIZE, "send_udp sent %d bytes to ", msize);
     n += print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
     log_print ();
-*/
+#endif /* LOG_PACKETS */
   }
 }
 
