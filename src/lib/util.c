@@ -989,8 +989,8 @@ int read_file_malloc (const char * file_name, char ** content_p,
   char * result = malloc (st.st_size);
   if (result == NULL) {
     if (print_errors)
-      printf ("unable to allocate %zd bytes for contents of file %s\n",
-              st.st_size, file_name);
+      printf ("unable to allocate %lld bytes for contents of file %s\n",
+              (long long) st.st_size, file_name);
     return 0;
   }
   int fd = open (file_name, O_RDONLY);
@@ -1006,8 +1006,8 @@ int read_file_malloc (const char * file_name, char ** content_p,
   if (n != st.st_size) {
     if (print_errors) {
       perror ("read");
-      printf ("unable to read %zd bytes from %s, got %d\n",
-              st.st_size, file_name, n);
+      printf ("unable to read %lld bytes from %s, got %d\n",
+              (long long) st.st_size, file_name, n);
     }
     free (result);
     close (fd);
