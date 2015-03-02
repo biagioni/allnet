@@ -500,7 +500,7 @@ print_dht (0); */
           (addr_closer (dest, nbits, (unsigned char *) my_address,
                         ai->destination))) {
         struct sockaddr * sap = (struct sockaddr *) (& (result [peer]));
-        if (ai_to_sockaddr (ai, sap))
+        if (ai_to_sockaddr (ai, sap, NULL))
           peer++;   /* a valid translation */
       }
     }

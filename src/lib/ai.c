@@ -84,19 +84,27 @@ int ia_to_string (const struct internet_addr * ia, char * buf, int bsize)
 
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
-int ia_to_sockaddr (struct internet_addr * ia, struct sockaddr * sap)
+/* if salen is not NULL, it is given the appropriate length (0 for failure) */
+int ia_to_sockaddr (struct internet_addr * ia,
+                    struct sockaddr * sap, socklen_t * salen)
 {
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
+  if (salen != NULL)
+    *salen = 0;  /* for addresses other than IPv4 and IPv6 */
 
   if (ia->ip_version == 6) {
     sin6->sin6_family = AF_INET6;
     memcpy (&(sin6->sin6_addr), &(ia->ip), 16);
     sin6->sin6_port = ia->port;
+    if (salen != NULL)
+      *salen = sizeof (struct sockaddr_in6);
   } else if (ia->ip_version == 4) {
     sin->sin_family = AF_INET;
     memcpy (&(sin->sin_addr), ((char *) (&(ia->ip))) + 12, 4);
     sin->sin_port = ia->port;
+    if (salen != NULL)
+      *salen = sizeof (struct sockaddr_in);
   } else {   /* not found */
     printf ("coding error: addr_info has version %d\n", ia->ip_version);
     return 0;
@@ -157,9 +165,11 @@ int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
 
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
-int ai_to_sockaddr (struct addr_info * ai, struct sockaddr * sap)
+/* if salen is not NULL, it is given the appropriate length (0 for failure) */
+int ai_to_sockaddr (struct addr_info * ai,
+                    struct sockaddr * sap, socklen_t * salen)
 {
-  return ia_to_sockaddr (&(ai->ip), sap);
+  return ia_to_sockaddr (&(ai->ip), sap, salen);
 }
 
 /* addr must point to 4 bytes if af is AF_INET, 16 bytes for AF_INET6 */

@@ -187,7 +187,7 @@ static int top_destinations (void * addr_cache, int max, unsigned char * dest,
   for (i = 0; i < num_matches; i++) {
 /* print_addr_info ((struct addr_info *) (matches [i])); */
     if (! ai_to_sockaddr (((struct addr_info *) (matches [i])),
-                          (struct sockaddr *) (new + i))) {
+                          (struct sockaddr *) (new + i), NULL)) {
       printf ("coding error: match %d of %d could not be made a sockaddr\n",
               i, num_matches); 
       exit (1);
@@ -310,6 +310,9 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
   buffer_to_string ((char *) sa, addr_len, "send_udp sending to address",
                     LOG_SIZE / 4, 1, log_buf, LOG_SIZE);
   log_print ();
+  snprintf (log_buf, LOG_SIZE, "sendto (%d, %p, %d, 0, %p, %d)\n",
+            udp, message, msize, sa, (int) addr_len);
+  log_print ();
   int s = sendto (udp, message, msize, 0, sa, addr_len);
   if (s != msize) {
     int n = snprintf (log_buf, LOG_SIZE,
@@ -333,7 +336,7 @@ static int send_udp_addr (int udp, char * message, int msize,
   struct sockaddr_storage sas;
   bzero (&sas, sizeof (sas));
   struct sockaddr     * sap  = (struct sockaddr     *) (&sas);
-  if (! ia_to_sockaddr (addr, sap)) {
+  if (! ia_to_sockaddr (addr, sap, NULL)) {
     snprintf (log_buf, LOG_SIZE,
               "send_udp_addr unable to convert ia to sockaddr (%d)\n",
               addr->ip_version);
@@ -593,7 +596,6 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
   struct sockaddr_storage sas [MAX_DHT];
   int num_dhts = routing_top_dht_matches (address, LISTEN_BITS, sas, MAX_DHT);
 #undef MAX_DHT
-#ifdef DEBUG_PRINT
   int i;
   for (i = 0; i < num_dhts; i++) {
     printf ("routing_top_dht_matches [%d/%d]: ", i, num_dhts);
@@ -601,43 +603,32 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
                     sizeof (struct sockaddr_storage), -1);
     printf ("\n");
   }
+#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
 
   int k;
   for (k = 0; (k < num_dhts) && (result < 0); k++) {
     if (af == sas [k].ss_family) {
-      unsigned char * ip_addrp = NULL;
       socklen_t salen = 0;
-      int port = 0;
-      struct sockaddr_in  * sin  = (struct sockaddr_in *) (&(sas [k]));
-      struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) (&(sas [k]));
-      if (af == AF_INET) {
-        ip_addrp = (unsigned char *) (&(sin->sin_addr));
-        port = sin->sin_port;
+      if (af == AF_INET)
         salen = sizeof (struct sockaddr_in);
-      } else if (af == AF_INET6) {
-        ip_addrp = sin6->sin6_addr.s6_addr; 
-        port = sin6->sin6_port;
+      else if (af == AF_INET6)
         salen = sizeof (struct sockaddr_in6);
-      }
-      if (ip_addrp == NULL)
-        continue;
       struct addr_info local_ai;
-      init_ai (af, ip_addrp, port, LISTEN_BITS, address, &local_ai);
-      if (already_listening (&local_ai, info)) {
+      if (! sockaddr_to_ai ((struct sockaddr *) (sas + i), salen, &local_ai))
         continue;
-      }
+      if (already_listening (&local_ai, info))
+        continue;
 
       int s = socket (af, SOCK_STREAM, 0);
       if (s < 0) {
         perror ("listener socket");
         continue;
       }
-time_t start_time = time (NULL);
-      if (connect (s, (struct sockaddr *) (sin), salen) < 0) {
-        snprintf (log_buf, LOG_SIZE, "unable to connect to %s %d in %ld sec\n",
-                  inet_ntoa (sin->sin_addr), ntohs (sin->sin_port),
-                  time (NULL) - start_time);
+      struct sockaddr * sap = (struct sockaddr *) (sas + k);
+      if (connect (s, sap, salen) < 0) {
+        int n = snprintf (log_buf, LOG_SIZE, "unable to connect to ");
+        print_sockaddr_str (sap, salen, 1, log_buf + n, LOG_SIZE - n);
         log_error ("listener connect");
         continue;   /* return to the top of the loop */
       }
@@ -1025,10 +1016,11 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
       struct internet_addr * ia = mpp->peers + index;
       struct sockaddr_storage sas;
       struct sockaddr * sap2 = (struct sockaddr *) (&sas);
-      if (ia_to_sockaddr (ia, sap2)) {
+      socklen_t salen;
+      if (ia_to_sockaddr (ia, sap2, &salen)) {
         int af = (ia->ip_version == 4) ? AF_INET : AF_INET6;
         int new_sock = socket (af, SOCK_STREAM, 0);
-        if (connect (new_sock, sap2, sizeof (sas)) < 0) {
+        if (connect (new_sock, sap2, salen) < 0) {
           close (listeners [listener_index]);
           listeners [listener_index] = new_sock;
           return 1;
@@ -1162,11 +1154,10 @@ if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "4: fd %d/%d, bad address family %d\n", udp, fd,
 sap->sa_family); log_print (); off = 0; }
           add_sockaddr_to_cache (udp_cache, sap, sasize);
-        } else {
+        } else {   /* received on TCP, not UDP */
           struct addr_info * ai = listen_fd_addr (info, fd);
           if (ai != NULL)
-            if (ai_to_sockaddr (ai, sap))
-              sasize = sizeof (struct sockaddr_in6);
+            ai_to_sockaddr (ai, sap, &sasize);
 #ifdef DEBUG_PRINT
           off += snprintf (log_buf + off, LOG_SIZE - off, ", ");
           off += print_sockaddr_str (sap, sasize, 1,

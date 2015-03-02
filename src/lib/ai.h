@@ -13,7 +13,9 @@ extern int addr_info_to_string (struct addr_info * ai, char * buf, int bsize);
 
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
-extern int ai_to_sockaddr (struct addr_info * ai, struct sockaddr * sap);
+/* if salen is not NULL, it is given the appropriate length (0 for failure) */
+extern int ai_to_sockaddr (struct addr_info * ai,
+                           struct sockaddr * sap, socklen_t * salen);
 
 extern int sockaddr_to_ai (struct sockaddr * sap, int addr_size,
                            struct addr_info * ai);
@@ -26,7 +28,9 @@ extern int ia_to_string (const struct internet_addr * ia,
 
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
-extern int ia_to_sockaddr (struct internet_addr * ia, struct sockaddr * sap);
+/* if salen is not NULL, it is given the appropriate length (0 for failure) */
+extern int ia_to_sockaddr (struct internet_addr * ia,
+                           struct sockaddr * sap, socklen_t * salen);
 
 extern int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
                            struct internet_addr * ia);
