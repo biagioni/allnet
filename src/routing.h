@@ -3,6 +3,9 @@
 #ifndef ROUTING_H
 #define ROUTING_H
 
+/* limit sizes of dht packets */
+#define ADHT_MAX_PACKET_SIZE	1024
+
 /* fills in addr (of size at least ADDRESS_SIZE) with my address */
 extern void routing_my_address (unsigned char * addr);
 

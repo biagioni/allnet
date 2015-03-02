@@ -224,7 +224,7 @@ static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
 static void * send_loop (void * a)
 {
   int sock = *((int *) a);
-  char packet [1024 /* ALLNET_MTU */ ];
+  char packet [ADHT_MAX_PACKET_SIZE];
   unsigned char dest [ADDRESS_SIZE];
   routing_my_address (dest);
   int expire_count = 0;    /* when it reaches 10, expire old entries */

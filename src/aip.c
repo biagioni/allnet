@@ -331,7 +331,7 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
 
 /* returns 1 for success, 0 for failure */
 static int send_udp_addr (int udp, char * message, int msize,
-                           struct internet_addr * addr)
+                          struct internet_addr * addr)
 {
   struct sockaddr_storage sas;
   bzero (&sas, sizeof (sas));
@@ -862,7 +862,7 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
   snprintf (log_buf + off, LOG_SIZE - off, "\n");
 #endif /* DEBUG_PRINT */
   log_print ();
-  unsigned char message [1024];
+  unsigned char message [ADHT_MAX_PACKET_SIZE];
   bzero (message, sizeof (message));
   struct allnet_header * hp =
     init_packet ((char *) message, sizeof (message), ALLNET_TYPE_MGMT, 1,
@@ -884,6 +884,13 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
     dht->num_sender = n;
     dht->num_dht_nodes = 0;
     writeb64u (dht->timestamp, allnet_time ());
+    if (ALLNET_DHT_SIZE (hp->transport, n) > ADHT_MAX_PACKET_SIZE) {
+      snprintf (log_buf, LOG_SIZE, "error: dht_size %ld (%02x, %d) > %d\n",
+                ALLNET_DHT_SIZE (hp->transport, n), hp->transport, n,
+                ADHT_MAX_PACKET_SIZE);
+      log_print ();
+      return;
+    }
     send_udp (fd, (char *) message, ALLNET_DHT_SIZE (hp->transport, n), sap);
 #ifdef DEBUG_PRINT
     packet_to_string ((char *) message, ALLNET_DHT_SIZE (hp->transport, n),
