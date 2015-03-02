@@ -302,13 +302,14 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
 
 static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
 {
-  socklen_t addr_len = sizeof (struct sockaddr_in6);
-  if (sa->sa_family == AF_INET) {
+  socklen_t addr_len = sizeof (struct sockaddr_storage);
+  if (sa->sa_family == AF_INET)
     addr_len = sizeof (struct sockaddr_in);
-    /* 2015/02/28: might this be necessary on some systems? */
-    struct sockaddr_in * sinp = (struct sockaddr_in *) sa;
-    bzero (sinp->sin_zero, sizeof (sinp->sin_zero));
-  }
+  else
+    addr_len = sizeof (struct sockaddr_in6);
+  buffer_to_string ((char *) sa, addr_len, "send_udp sending to address",
+                    LOG_SIZE / 4, 1, log_buf, LOG_SIZE);
+  log_print ();
   int s = sendto (udp, message, msize, 0, sa, addr_len);
   if (s != msize) {
     int n = snprintf (log_buf, LOG_SIZE,
@@ -332,26 +333,17 @@ static int send_udp_addr (int udp, char * message, int msize,
   struct sockaddr_storage sas;
   bzero (&sas, sizeof (sas));
   struct sockaddr     * sap  = (struct sockaddr     *) (&sas);
-  struct sockaddr_in  * si4p = (struct sockaddr_in  *) (&sas);
-  struct sockaddr_in6 * si6p = (struct sockaddr_in6 *) (&sas);
-  if (addr->ip_version == 4) {
-    si4p->sin_family = AF_INET;
-    si4p->sin_port = addr->port;
-    memcpy ((char *) (&(si4p->sin_addr.s_addr)), (addr->ip.s6_addr + 12), 4);
-  } else if (addr->ip_version == 6) {
-    si6p->sin6_family = AF_INET6;
-    si6p->sin6_port = addr->port;
-    memcpy (si6p->sin6_addr.s6_addr, addr->ip.s6_addr,
-            sizeof (si6p->sin6_addr.s6_addr));
-  } else {
-    printf ("error in send_udp_addr: unknown IP version %d\n",
-            addr->ip_version);
+  if (! ia_to_sockaddr (addr, sap)) {
+    snprintf (log_buf, LOG_SIZE,
+              "send_udp_addr unable to convert ia to sockaddr (%d)\n",
+              addr->ip_version);
+    log_print ();
     return 0;
   }
-#ifdef DEBUG_PRINT
   int off = snprintf (log_buf, LOG_SIZE,
                       "send_udp_addr sending %d bytes to: ", msize);
   print_sockaddr_str (sap, sizeof (sas), 0, log_buf + off, LOG_SIZE - off);
+#ifdef DEBUG_PRINT
 #else /* DEBUG_PRINT */
   snprintf (log_buf, LOG_SIZE, "send_udp_addr sending %d bytes\n", msize);
 #endif /* DEBUG_PRINT */
