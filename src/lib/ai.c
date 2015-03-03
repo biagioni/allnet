@@ -157,8 +157,10 @@ int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
                sin6->sin6_port, ia);
     return 1;
   } else {
-    printf ("unable to create address info with family %d, size %d\n",
-            sap->sa_family, addr_size);
+    snprintf (log_buf, LOG_SIZE,
+              "error: unable to create address info with family %d, size %d\n",
+              sap->sa_family, addr_size);
+    log_print ();
     return 0;
   }
 }
