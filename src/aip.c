@@ -314,10 +314,11 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
             udp, message, msize, sa, (int) addr_len);
   log_print ();
   int s = sendto (udp, message, msize, 0, sa, addr_len);
+  int saved_errno = errno;
   if (s != msize) {
     int n = snprintf (log_buf, LOG_SIZE,
-                      "error sending %d (sent %d) on udp %d to ",
-                      msize, s, udp);
+                      "error sending %d (sent %d, error %d) on udp %d to ",
+                      msize, s, saved_errno, udp);
     print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
     log_error ("sendto");
   } else {
@@ -534,6 +535,15 @@ static int udp_socket ()
     log_error ("main loop socket");
     exit (1);
   }
+  /* enable dual-stack IPv6 and IPv4 for systems that don't enable it
+     by default */
+  int v6only_flag = 0;   /* disable v6 only */
+  if (setsockopt (udp, IPPROTO_IPV6, IPV6_V6ONLY,
+                  &v6only_flag, sizeof (v6only_flag)) != 0) {
+    snprintf (log_buf, LOG_SIZE, "unable to setsockopt on UDP socket, exiting");
+    log_error ("setsockopt");
+    exit (1);
+  }
   struct sockaddr_storage address;
   struct sockaddr     * ap  = (struct sockaddr     *) &address;
   /* struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap; */
@@ -596,6 +606,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
   struct sockaddr_storage sas [MAX_DHT];
   int num_dhts = routing_top_dht_matches (address, LISTEN_BITS, sas, MAX_DHT);
 #undef MAX_DHT
+#ifdef DEBUG_PRINT
   int i;
   for (i = 0; i < num_dhts; i++) {
     printf ("routing_top_dht_matches [%d/%d]: ", i, num_dhts);
@@ -603,7 +614,6 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
                     sizeof (struct sockaddr_storage), -1);
     printf ("\n");
   }
-#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
 
   int k;
@@ -615,7 +625,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       else if (af == AF_INET6)
         salen = sizeof (struct sockaddr_in6);
       struct addr_info local_ai;
-      if (! sockaddr_to_ai ((struct sockaddr *) (sas + i), salen, &local_ai))
+      if (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, &local_ai))
         continue;
       if (already_listening (&local_ai, info))
         continue;
@@ -885,8 +895,8 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
     dht->num_dht_nodes = 0;
     writeb64u (dht->timestamp, allnet_time ());
     if (ALLNET_DHT_SIZE (hp->transport, n) > ADHT_MAX_PACKET_SIZE) {
-      snprintf (log_buf, LOG_SIZE, "error: dht_size %ld (%02x, %d) > %d\n",
-                ALLNET_DHT_SIZE (hp->transport, n), hp->transport, n,
+      snprintf (log_buf, LOG_SIZE, "error: dht_size %d (%02x, %d) > %d\n",
+                (int) (ALLNET_DHT_SIZE (hp->transport, n)), hp->transport, n,
                 ADHT_MAX_PACKET_SIZE);
       log_print ();
       return;
