@@ -11,9 +11,8 @@
  * for the client, the specified address is the address to trace
  * the client also takes '-m' for exact match -- do not show non-matching dests
                          '-i' for no display of intermediate (-i implies -m)
-                         '-r' for repeat forever, '-r n' to repeat n times
-                             (watch for -r followed by the address, may
-                              interpret the address as a repeat count)
+                         '-f' for repeat forever,
+                         '-r n' to repeat n times
  */
 
 #include <stdio.h>
@@ -819,17 +818,18 @@ static void wait_for_responses (int sock, char * trace_id, int sec, int seq,
 static void usage (char * pname, int daemon)
 {
   if (daemon) {
-    printf ("usage: %s [-m] [<my_address_in_hex>[/<number_of_bits>]]\n", pname);
+    printf ("usage: %s [-m] [-v] [<my_address_in_hex>[/<number_of_bits>]]\n",
+            pname);
     printf ("       -m specifies tracing only when we match the address\n"); 
+    printf ("       -v for verbose\n");
   } else {
-    printf ("usage: %s [-r [n]] [-m|-i] "
+    printf ("usage: %s [-v] [-f|-r n] [-m] [-i] %s\n",
             "[<my_address_in_hex>[/<number_of_bits> [hops]]]\n", pname);
-    printf ("       -r repeats forever, or n times if n is specified\n");
-    printf ("          (-r followed by the address may interpret the "
-                                         "address as a repeat count)\n");
+    printf ("       -f repeats forever, or -r n repeats n times\n");
     printf ("       -m only reports responses from matching addresses\n");
     printf ("       -i does not report intermediate nodes (a bit like ping)\n");
     printf ("       -i implies -m\n");
+    printf ("       -v for verbose\n");
   }
 }
 
@@ -890,21 +890,34 @@ int main (int argc, char ** argv)
   if (strstr (argv [0], "traced") != NULL)  /* called as daemon */
     is_daemon = 1;
 
+  /* even if using gnu getopt, behave in a standard manner */
+  setenv ("POSIXLY_CORRECT", "", 0);
   int no_intermediates = 0;
   int repeat = 1;  
-  if (! is_daemon) {
-    /* get_repeat_option should precede any other get_option,
-     * otherwise, e.g. -r -i 0 might be turned into -r 0 */
-    repeat = get_repeat_option (&argc, argv);
-    no_intermediates = get_option ('i', &argc, argv);
+  int match_only = 0;
+  int verbose = 0;
+  int opt;
+  char * opt_string = "mivfr:";
+  if (is_daemon)
+    opt_string = "mv";
+  while ((opt = getopt (argc, argv, opt_string)) != -1) {
+    switch (opt) {
+    case 'm': match_only = 1; break;
+    case 'i': no_intermediates = 1; match_only = 1; break;
+    case 'v': verbose = 1; break;
+    case 'f': repeat = 0; break;
+    case 'r': repeat = atoi (optarg); break;
+    default:
+      usage (argv [0], is_daemon);
+      exit (1);
+    }
   }
-
-  log_to_output (get_option ('v', &argc, argv));
-  int match_only = get_option ('m', &argc, argv);
-
-  if ((argc > 2) && ((is_daemon) || (argc > 6))) {
-    printf ("argc %d, at most %d allowed for %s\n", argc,
-            ((is_daemon) ? 2 : 3), ((is_daemon) ? "traced" : "trace"));
+  log_to_output (verbose);
+  
+  /* daemon may have one non-option argument, user program up to two */
+  if ((argc > optind + 1) && ((is_daemon) || (argc > optind + 2))) {
+    printf ("argc %d, optind %d, at most %d allowed for %s\n", argc, optind,
+            ((is_daemon) ? 1 : 2), argv [0]);
     usage (argv [0], is_daemon);
     return 1;
   }
@@ -916,12 +929,12 @@ int main (int argc, char ** argv)
     get_my_addr (address, sizeof (address));
     abits = 16;
   }
-  if (argc > 1) {   /* use the address specified on the command line */
+  if (argc > optind) {   /* use the address specified on the command line */
     bzero (address, sizeof (address));  /* set unused part to all zeros */
-    abits = get_address (argv [1], address, sizeof (address));
+    abits = get_address (argv [optind], address, sizeof (address));
     if (abits <= 0) {
-      printf ("argc %d, invalid number of bits specified, should be > 0\n",
-              argc);
+      printf ("argc %d/%d/%s, invalid number of bits, should be > 0\n",
+              argc, optind, argv [optind]);
       usage (argv [0], is_daemon);
       return 1;
     }
@@ -948,8 +961,8 @@ int main (int argc, char ** argv)
     if (sigaction (SIGINT, &siga, NULL) != 0)
       perror ("sigaction");  /* not fatal */
     int nhops = 10;
-    if (argc > 2) {   /* number of hops is specified on the command line */
-      int n = atoi (argv [2]);
+    if (argc > optind + 1) {   /* number of hops from the command line */
+      int n = atoi (argv [optind + 1]);
       if (n > 0)
         nhops = n;
     }
