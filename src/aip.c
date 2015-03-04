@@ -43,10 +43,10 @@
 #include "lib/log.h"
 #include "lib/keys.h"
 
-#if defined(_WIN32) || defined(_WIN64)
-#ifndef WINDOWS
-#define WINDOWS
-#endif /* WINDOWS */
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+#ifndef CONVERT_IPV4_TO_IPV6
+#define CONVERT_IPV4_TO_IPV6 /* IPv6 UDP socket requires IPv4-mapped address */
+#endif /* CONVERT_IPV4_TO_IPV6 */
 /* temporary, for debugging on windows enable LOG_PACKETS */
 #ifndef LOG_PACKETS
 #define LOG_PACKETS
@@ -310,7 +310,7 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
     addr_len = sizeof (struct sockaddr_in);
   else
     addr_len = sizeof (struct sockaddr_in6);
-#ifdef WINDOWS
+#ifdef CONVERT_IPV4_TO_IPV6
   if (sa->sa_family == AF_INET) {
 /* IPv4 addresses represented as IPv6 addresses are preceded by xffff */
     struct sockaddr_in6 sin6;
@@ -327,7 +327,7 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
 /* copy the now IPv6 address back into the sockaddr_storage that sa points to */
     memcpy (sa, &(sin6), addr_len);
   }
-#endif /* WINDOWS */
+#endif /* CONVERT_IPV4_TO_IPV6 */
   buffer_to_string ((char *) sa, addr_len, "send_udp sending to address",
                     LOG_SIZE / 4, 1, log_buf, LOG_SIZE);
   log_print ();
