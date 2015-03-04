@@ -312,16 +312,16 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
     addr_len = sizeof (struct sockaddr_in6);
 #ifdef WINDOWS
   if (sa->sa_family == AF_INET) {
-/* IPv4 addresses have to be represented as IPv6 addresses preceded by xffff */
+/* IPv4 addresses represented as IPv6 addresses are preceded by xffff */
     struct sockaddr_in6 sin6;
-    struct sockaddr_in * sinp = (struct sockaddr_in *) sa;
     addr_len = sizeof (sin6);
     /* clear the parts of the address that we don't set */
     memset (&sin6, 0, addr_len);
     sin6.sin6_family = AF_INET6;
-    char * ap = sin6.sin6_addr.s6_addr;  /* the IPv6 address goes here */
+    unsigned char * ap = sin6.sin6_addr.s6_addr;  /* IPv6 address goes here */
     ap [10] = 0xff;
     ap [11] = 0xff;
+    struct sockaddr_in * sinp = (struct sockaddr_in *) sa;
     memcpy (ap + 12, &(sinp->sin_addr), 4);
     sin6.sin6_port = sinp->sin_port;
 /* copy the now IPv6 address back into the sockaddr_storage that sa points to */
