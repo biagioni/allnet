@@ -779,7 +779,7 @@ unsigned long long allnet_time_ms ()  /* milliseconds since Y2K */
 void allnet_time_string (unsigned long long int allnet_seconds, char * result)
 {
   /* in case of errors */
-  snprintf (result, 30, "bad time %lld\n", allnet_seconds);
+  snprintf (result, ALLNET_TIME_STRING_SIZE, "bad time %lld\n", allnet_seconds);
 
   time_t unix_seconds = allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX;
   struct tm detail_time;
@@ -794,15 +794,15 @@ void allnet_localtime_string (unsigned long long int allnet_seconds,
                               char * result)
 {
   /* in case of errors */
-  snprintf (result, 30, "bad time %lld\n", allnet_seconds);
+  snprintf (result, ALLNET_TIME_STRING_SIZE, "bad time %lld\n", allnet_seconds);
 
   time_t unix_seconds = allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX;
   struct tm * detail_time = localtime (&unix_seconds);  /* sets tzname */
   if (detail_time == NULL)
     return;
   asctime_r (detail_time, result);
-  if (result [25] == '\0')
-    snprintf (result + 25, 5, " %s", tzname [0]);
+  if (result [24] == '\n')
+    snprintf (result + 24, 5, " %s", tzname [0]);
 }
 
 /* useful time functions */
