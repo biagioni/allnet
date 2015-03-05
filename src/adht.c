@@ -17,6 +17,9 @@
  * an empty DHT message is just a ping to confirm the address works
  * DHT messages are sent once a day, and DHT table entries expire after
  *   10 days
+ * (2015 note: after learning that the average IPv6 address lives for
+ *  a day or less, changed this to send messages once every 3 minutes,
+ *  and expire after 30 minutes)
  * this program maintains a persistent table of known DHT nodes (up
  *   to 4 per address bit), and a table of nodes to ping.
  * the local DHT identifier is maintained or generated here
@@ -50,7 +53,8 @@
 
 #ifndef DEBUG_SPEED
 
-#define ADHT_INTERVAL	86400 /* 24 * 60 * 60 seconds == 1 day */
+/* #define ADHT_INTERVAL	86400 */ /* 24 * 60 * 60 seconds == 1 day */
+#define ADHT_INTERVAL	180    /* 3 min -- IPv6 addresses expire every day */
 #define EXPIRATION_MULT	10 /* wait 10 intervals to expire a route */
 
 #else /* DEBUG_SPEED */
