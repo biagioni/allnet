@@ -488,6 +488,10 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
   int dht_sends = routing_top_dht_matches (hp->destination, hp->dst_nbits,
                                            dht_storage, DHT_SENDS);
 #undef DHT_SENDS
+#ifdef LOG_PACKETS
+  snprintf (log_buf, LOG_SIZE, "routing_top_dht_matches: %d\n", dht_sends);
+  log_print ();
+#endif /* LOG_PACKETS */
   for (i = 0; i < dht_sends; i++)
     send_udp (udp, message, msize, ((struct sockaddr *) (&(dht_storage [i]))));
 
@@ -627,7 +631,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
   struct sockaddr_storage sas [MAX_DHT];
   int num_dhts = routing_top_dht_matches (address, LISTEN_BITS, sas, MAX_DHT);
 #undef MAX_DHT
-#ifdef DEBUG_PRINT
+#ifdef LOG_PACKETS
   int i;
   for (i = 0; i < num_dhts; i++) {
     printf ("routing_top_dht_matches [%d/%d]: ", i, num_dhts);
@@ -635,7 +639,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
                     sizeof (struct sockaddr_storage), -1);
     printf ("\n");
   }
-#endif /* DEBUG_PRINT */
+#endif /* LOG_PACKETS */
 
   int k;
   for (k = 0; (k < num_dhts) && (result < 0); k++) {
