@@ -634,10 +634,12 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
 #ifdef LOG_PACKETS
   int i;
   for (i = 0; i < num_dhts; i++) {
-    printf ("routing_top_dht_matches [%d/%d]: ", i, num_dhts);
-    print_sockaddr ((struct sockaddr *) (sas + i),
-                    sizeof (struct sockaddr_storage), -1);
-    printf ("\n");
+    int off = snprintf (log_buf, LOG_SIZE, "routing_top_dht_matches [%d/%d]: ",
+                        i, num_dhts);
+    print_sockaddr_str ((struct sockaddr *) (sas + i),
+                        sizeof (struct sockaddr_storage), -1,
+                        log_buf + off, LOG_SIZE - off);
+    log_print ();
   }
 #endif /* LOG_PACKETS */
 
