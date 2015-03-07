@@ -47,10 +47,6 @@
 #ifndef CONVERT_IPV4_TO_IPV6
 #define CONVERT_IPV4_TO_IPV6 /* IPv6 UDP socket requires IPv4-mapped address */
 #endif /* CONVERT_IPV4_TO_IPV6 */
-/* temporary, for debugging on windows enable LOG_PACKETS */
-#ifndef LOG_PACKETS
-#define LOG_PACKETS
-#endif /* LOG_PACKETS */
 #endif /* _WIN32 || _WIN64 */
 
 struct udp_cache_record {
