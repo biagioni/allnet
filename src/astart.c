@@ -499,7 +499,7 @@ static int is_bc_interface (struct ifaddrs * interface)
   debug_print_flags (interface->ifa_name, interface->ifa_flags);
 #endif /* DEBUG_PRINT */
   return (((interface->ifa_flags & IFF_LOOPBACK) == 0) &&
-          ((interface->ifa_flags & IFF_UP) != 0) &&
+/*          ((interface->ifa_flags & IFF_UP) != 0) && */
           ((interface->ifa_flags & IFF_BROADCAST) != 0));
 }
 

@@ -119,7 +119,7 @@ static int received_high_priority = 0;
 /* cycles we skipped because of interface activation delay.
  * This is also the number of cycles we leave the interface on
  * in low priority mode to compensate for the activation delay */
-static unsigned int if_cycles_skiped = 0;
+static unsigned int if_cycles_skipped = 0;
 
 enum abc_send_type {
     ABC_SEND_TYPE_NONE = 0,  /* nothing to send */
@@ -171,9 +171,8 @@ static void clear_nonces (int mine, int other)
 /** Sets the high priority variable */
 static void check_priority_mode ()
 {
-  high_priority = received_high_priority ||
-                  (!high_priority &&
-                   queue_max_priority () >= ALLNET_PRIORITY_FRIENDS_LOW);
+  high_priority = (received_high_priority ||
+                   (queue_max_priority () >= ALLNET_PRIORITY_FRIENDS_LOW));
 }
 
 /* returns -1 in case of error, 0 for timeout, and message size otherwise */
@@ -758,10 +757,12 @@ static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
     set_time_random (start, 0LL, interval_us - at_end_us, bstart);
   *bfinish = *bstart;
   add_us (bfinish, beacon_us);
+#ifdef DEBUG_PRINT
   printf ("b_int (%ld.%06ld, %ld.%06ld + %d) => %ld.%06ld, %ld.%06ld\n",
           start->tv_sec, start->tv_usec, finish->tv_sec, finish->tv_usec,
           beacon_ms,
           bstart->tv_sec, bstart->tv_usec, bfinish->tv_sec, bfinish->tv_usec);
+#endif /* DEBUG_PRINT */
 }
 
 /* do one basic 5s unmanaged cycle */
@@ -782,15 +783,25 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
                        struct timeval * quiet_end)
 {
   struct timeval if_off, if_on, start, finish, beacon_time, beacon_stop;
-  if (if_cycles_skiped-- == 0) {
+  if (if_cycles_skipped-- == 0) {
     gettimeofday (&if_off, NULL);
     /* enabling the iface might take some time causing us to miss a cycle */
     iface->iface_set_enabled_cb (1);
     gettimeofday (&if_on, NULL);
 
-    unsigned long long dms = delta_us (&if_on, &if_off) / 1000LLU;
-    if_cycles_skiped = dms / (1000 * BASIC_CYCLE_SEC);
-    printf ("took %llums, skipped %d cycle(s)\n", dms, if_cycles_skiped);
+    unsigned long long dus = delta_us (&if_on, &if_off);
+    unsigned long long dms = dus / 1000LLU;
+    if_cycles_skipped = dms / (1000 * BASIC_CYCLE_SEC);
+#if defined(LOG_PACKETS) || defined(DEBUG_PRINT)
+    snprintf (log_buf, LOG_SIZE,
+              "took %lluus, skipped %d cycle(s), priority %d\n",
+              dus, if_cycles_skipped, high_priority);
+    log_print ();
+#endif /* LOG_PACKETS */
+#ifdef DEBUG_PRINT
+    printf ("took %lluus, skipped %d cycle(s), priority %d\n",
+            dus, if_cycles_skipped, high_priority);
+#endif /* DEBUG_PRINT */
   }
 
   gettimeofday (&start, NULL);
@@ -808,7 +819,8 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
   /* clear_nonces (1, 0);  -- if we stay on, denying beacon replies is
    * not really helpful.  If we are off, we will get no beacon replies
    * anyway, so it doesn't matter */
-  if (! high_priority && if_cycles_skiped == 0) /* skipped cycle compensation */
+  if ((! high_priority) &&
+      (if_cycles_skipped == 0)) /* skipped cycle compensation */
     iface->iface_set_enabled_cb (0);
   handle_until (&finish, quiet_end, rpipe, wpipe);
   received_high_priority = 0;

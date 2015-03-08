@@ -16,6 +16,7 @@
 
 #include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */
 #include "lib/util.h"         /* delta_us */
+#include "lib/log.h"         /* delta_us */
 
 #include "abc-iface.h"        /* sockaddr_t, abc_iface_* */
 
@@ -79,13 +80,36 @@ static int abc_wifi_is_enabled ()
 
 static int abc_wifi_set_enabled (int state)
 {
-  printf ("abc-wifi: %s wifi\n", state ? "enable" : "disable");
+#ifdef DEBUG_PRINT
+  char * pstate = state ? "enable" : "disable";
+  snprintf (log_buf, LOG_SIZE, "abc-wifi: %s wifi\n", pstate);
+  log_print ();
+  printf ("abc-wifi: %s wifi\n", pstate);
+#endif /* DEBUG_PRINT */
   int ret = wifi_config_iface->iface_set_enabled_cb (state);
   if (ret == 1 && state) {
+#ifdef DEBUG_PRINT
+    snprintf (log_buf, LOG_SIZE, "abc-wifi: connecting\n");
+    log_print ();
     printf ("abc-wifi: connecting\n");
+#endif /* DEBUG_PRINT */
     return wifi_config_iface->iface_connect_cb ();
   }
   return ret;
+}
+
+/* even though the parameters are declared as sockaddrs, the actual
+ * length to copy depends on from->sa_family.  Only a few families supported */
+static void copy_addr (struct sockaddr * to, struct sockaddr * from)
+{
+  socklen_t len = 0;
+  switch (from->sa_family) {
+  case AF_INET: len = sizeof (struct sockaddr_in); break;
+  case AF_INET6: len = sizeof (struct sockaddr_in6); break;
+  case AF_PACKET: len = sizeof (struct sockaddr_ll); break;
+  default: printf ("abc-wifi: address family %d\n", from->sa_family); return;
+  }
+  memcpy (to, from, len);
 }
 
 /* returns 0 if the interface is not found, 1 otherwise */
@@ -121,8 +145,14 @@ static int abc_wifi_init (const char * interface)
       gettimeofday (&start, NULL);
       int is_up = wifi_config_iface->iface_is_enabled_cb ();
       int in_use = (is_up == 2);
+      snprintf (log_buf, LOG_SIZE,
+                "abc-wifi: interface %s is enabled: %s (%d)\n", interface,
+                in_use ? "yes, but busy" : (is_up > 0 ? "yes" : "no"), is_up);
+      log_print ();
+#ifdef DEBUG_PRINT
       printf ("abc-wifi: interface %s is enabled: %s (%d)\n", interface,
               in_use ? "yes, but busy" : (is_up > 0 ? "yes" : "no"), is_up);
+#endif /* DEBUG_PRINT */
       if (is_up == 0)
         wifi_config_iface->iface_set_enabled_cb (1);
 
@@ -135,10 +165,17 @@ static int abc_wifi_init (const char * interface)
         struct timeval finish;
         gettimeofday (&finish, NULL);
         long long time = delta_us (&finish, &start);
-        printf ("abc: %s is wireless, %lld.%03lld ms to turn on+connect\n",
+#ifdef DEBUG_PRINT
+        printf ("abc: %s is wireless, %lld.%03lld ms to turn on+connect ",
                 interface, time / 1000LL, time % 1000LL);
-        printf ("  (%lld.%03lld ms to turn on)\n",
+        printf ("(%lld.%03lld ms to turn on)\n",
                 mtime / 1000LL, mtime % 1000LL);
+#endif /* DEBUG_PRINT */
+        snprintf (log_buf, LOG_SIZE,
+                  "%s: %lld.%03lld ms on, %lld.%03lld ms on+connect",
+                  interface, mtime / 1000LL, mtime % 1000LL,
+                  time / 1000LL, time % 1000LL);
+        log_print ();
         abc_iface_wifi.iface_on_off_ms = time;
       }
       /* create the socket and initialize the address */
@@ -156,20 +193,20 @@ static int abc_wifi_init (const char * interface)
         printf ("error binding interface %s\n", interface);
       }
       if (ifa_loop->ifa_flags & IFF_BROADCAST)
-        abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_broadaddr);
+        copy_addr (&(abc_iface_wifi.bc_address.sa), ifa_loop->ifa_broadaddr);
       else if (ifa_loop->ifa_flags & IFF_POINTOPOINT)
-        abc_iface_wifi.bc_address.sa = *(ifa_loop->ifa_dstaddr);
+        copy_addr (&(abc_iface_wifi.bc_address.sa), ifa_loop->ifa_dstaddr);
       else
         abc_iface_set_default_sll_broadcast_address (
-          &abc_iface_wifi.bc_address.ll);
+          &(abc_iface_wifi.bc_address.ll));
       /* must set sll_protocol, otherwise it is not set */
       abc_iface_wifi.bc_address.ll.sll_protocol = ALLNET_WIFI_PROTOCOL;
       abc_iface_wifi.bc_address.ll.sll_ifindex =
         abc_iface_wifi.if_address.ll.sll_ifindex;
       abc_iface_print_sll_addr (&abc_iface_wifi.if_address.ll,
-                                "interface address");
+                                "interface address", 0);
       abc_iface_print_sll_addr (&abc_iface_wifi.bc_address.ll,
-                                "broadcast address");
+                                "broadcast address", 0);
       ret = 1;
       goto abc_wifi_init_cleanup;
     }

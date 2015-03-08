@@ -8,6 +8,7 @@
 #include <sys/types.h> /* pid_t */
 #include <sys/wait.h>  /* waitpid */
 
+#include "lib/log.h"
 #include "abc-wifi.h" /* abc_wifi_config_iface */
 #include "abc-iw.h"
 #ifdef USE_NETWORK_MANAGER
@@ -52,7 +53,9 @@ static int my_system (char * command)
   pid_t pid = fork ();
   if (pid < 0) {
     perror ("fork");
-    printf ("error forking for command '%s'\n", command);
+    snprintf (log_buf, LOG_SIZE, "error forking command '%s'\n", command);
+    log_print ();
+    printf ("error forking command '%s'\n", command);
     return -1;
   }
   if (pid == 0) {   /* child */
@@ -75,7 +78,8 @@ static int my_system (char * command)
       p++;
     }
     if (num_args >= sizeof (argv) / sizeof (char *)) {
-      printf ("error: reading beyond array %d\n", num_args);
+      snprintf (log_buf, LOG_SIZE, "error: reading beyond argv %d\n", num_args);
+      log_print ();
       argv [sizeof (argv) / sizeof (char *) - 1] = NULL;
     } else {
       argv [num_args] = NULL;
@@ -89,7 +93,13 @@ static int my_system (char * command)
     }
     printf ("\n");
 */
+#ifdef DEBUG_PRINT
     dup2 (1, 2);   /* make stderr be a copy of stdout */
+#else /* DEBUG_PRINT */
+    close (0);  /* close stdin */
+    close (1);  /* close stdout */
+    close (2);  /* close stderr */
+#endif /* DEBUG_PRINT */
     execvp (argv [0], argv);
     perror ("execvp");
     exit (1);
@@ -124,8 +134,11 @@ static int if_command (const char * basic_command, const char * interface,
   int size = strlen (basic_command) + strlen (interface) + 1;
   char * command = malloc (size);
   if (command == NULL) {
-    fprintf (stderr, "abc-iw: unable to allocate %d bytes for command:\n", size);
-    fprintf (stderr, basic_command, interface);
+    int n = snprintf (log_buf, LOG_SIZE,
+                      "abc-iw: unable to allocate %d bytes for command:\n",
+                      size);
+    snprintf (log_buf + n, LOG_SIZE - n, basic_command, interface);
+    log_print ();
     return 0;
   }
   snprintf (command, size, basic_command, interface);
@@ -134,19 +147,39 @@ static int if_command (const char * basic_command, const char * interface,
 #ifdef DEBUG_PRINT
   max_print_success = 4;
 #endif /* DEBUG_PRINT */
-  if ((sys_result != 0) || (printed_success++ < max_print_success))
-    printf ("abc: result of calling '%s' was %d\n", command, sys_result);
+  if ((sys_result == 0) && (printed_success++ < max_print_success))
+    printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
   if (sys_result != 0) {
-    if (sys_result != -1)
-      printf ("abc: program exit status for %s was %d\n",
-              command, sys_result);
+    if (sys_result != -1) {
+      snprintf (log_buf, LOG_SIZE,
+                "abc-iw: program exit status for %s was %d\n",
+                command, sys_result);
+      log_print ();
+#ifdef DEBUG_PRINT
+      printf ("abc-iw: program exit status for %s was %d, ws %d\n", command,
+              sys_result, wireless_status);
+#endif /* DEBUG_PRINT */
+    }
     if (sys_result != wireless_status) {
       if (fail_other != NULL)
-        fprintf (stderr, "abc-iw: call to '%s' failed, %s\n", command, fail_other);
+        snprintf (log_buf, LOG_SIZE,
+                  "abc-iw: call to '%s' failed, %s\n", command, fail_other);
       else
-        fprintf (stderr, "abc-iw: call to '%s' failed\n", command);
+        snprintf (log_buf, LOG_SIZE,
+                  "abc-iw: call to '%s' failed\n", command);
+      log_print ();
+      if (fail_other == NULL)
+        printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
+      else if (strlen (fail_other) > 0)
+        printf ("%s\n", fail_other);
     } else {
-      fprintf (stderr, "abc-iw: call to '%s' failed, %s\n", command, fail_wireless);
+      snprintf (log_buf, LOG_SIZE,
+                "abc-iw: call to '%s' failed, %s\n", command, fail_wireless);
+      log_print ();
+      if (fail_wireless == NULL)
+        printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
+      else if (strlen (fail_wireless) > 0)
+        printf ("%s\n", fail_wireless);
       free (command);
       return 2;
     }
@@ -163,17 +196,27 @@ static int abc_wifi_config_iw_init (const char * iface)
   if (abc_wifi_config_nm_init (iface)) {
     nm_init = abc_wifi_config_nm_is_wireless_on ();
     if (nm_init) {
+      snprintf (log_buf, LOG_SIZE,
+                "abc-iw: disabling NetworkManager on iface `%s'\n", iface);
+      log_print ();
       printf ("abc-iw: disabling NetworkManager on iface `%s'\n", iface);
       if (abc_wifi_config_nm_enable_wireless (0)) {
-        printf ("abc-iw: NetworkManager disabled on iface `%s'\n", iface);
+        snprintf (log_buf, LOG_SIZE,
+                  "abc-iw: NetworkManager disabled on iface `%s'\n", iface);
+        log_print ();
       }
     }
     /* disabling an iface in NM sets soft RFKILL which needs to be cleared for
      * ifconfig to work. */
-    /* TODO: this should look up the device index and only unblock that in case
-     * that the iface is not wifi or multiple wifi ifaces are present. */
-    int ret = system ("rfkill unblock wifi");
+    /* TODO: this should look up the device index and only unblock that
+     * in case the iface is not wifi or multiple wifi ifaces are present. */
+    char command [] = "rfkill unblock wifi";
+#ifdef DEBUG_PRINT
+    int ret = my_system (command);
     printf ("abc-iw: DEBUG: result of rfkill unblock: %d\n", ret);
+#else /* DEBUG_PRINT */
+    my_system (command);
+#endif /* DEBUG_PRINT */
   }
 #endif
   self.iface = iface;
@@ -193,7 +236,8 @@ static int abc_wifi_config_iw_connect ()
   if (self.is_connected)
     return 1;
 #ifdef DEBUG_PRINT
-  printf ("abc: opening interface %s\n", self.iface);
+  snprintf (log_buf, LOG_SIZE, "abc: opening interface %s\n", self.iface);
+  log_print ();
 #endif /* DEBUG_PRINT */
 /* need to execute the commands:
       sudo iw dev $if set type ibss
@@ -205,34 +249,50 @@ static int abc_wifi_config_iw_connect ()
   int r = if_command ("iw dev %s set type ibss", self.iface, 240,
                       "wireless interface not available for ad-hoc mode",
                       mess);
-  if (r != 1 || !if_command ("iw dev %s ibss join allnet 2412 fixed-freq", self.iface,
-                      142, "allnet ad-hoc mode already set", "unknown problem"))
+  if (r != 1)
+    return 0;
+/* giving a specific BSSID (60:a4:4c:e8:bc:9c) speeds up the time to turn on
+ * the interface from over 5s to less than 1/2s, because the driver no longer
+ * scans to see if somebody else is already offering this ssid on a different
+ * bssdid.  The BSSID is the MAC address of an existing Ethernet card,
+ * so should not be in use by anyone else in the world. */
+  if (! if_command
+          ("iw dev %s ibss join allnet 2412 fixed-freq 60:a4:4c:e8:bc:9c",
+           self.iface, 142, "allnet ad-hoc mode already set",
+           "unknown problem"))
     return 0;
   /* use `iw dev WLAN0 link` since we're already using iw above.
    * An alternative way would be to use NL80211 directly
    * as does "iw event" (see source "case NL80211_CMD_JOIN_IBSS") */
   char * cmdfmt = "iw dev %s link";
-  char cmd[12 + IFNAMSIZ]; /* IFNAMSIZ includes \0 */
-  char tmp[16];
-  long sleep = 25;
-  long slept = 0;
+  char cmd [12 + IFNAMSIZ]; /* IFNAMSIZ includes \0 */
+  char command_result [16];
+  long sleep = 25;  /* in ms */
+  long slept = 0;   /* in ms */
   do {
-    /* 50ms: empirically established time to connect to an _existing_ adhoc net */
+/* 50ms: empirically established time to connect to an _existing_ adhoc net */
     usleep (sleep * 1000L);
     slept += sleep;
-    if (slept < 7000L)
+    if (sleep < 800)
       sleep *= 2;
-    if (sleep == 100)
-      sleep = 1000L;
     snprintf (cmd, sizeof (cmd), cmdfmt, self.iface);
     FILE * in = popen (cmd, "r");
     if ((in == NULL) ||
-        (fgets (tmp, sizeof (tmp), in) == NULL) ||
+        (fgets (command_result, sizeof (command_result) - 1, in) == NULL) ||
         (pclose (in) == -1))
       goto connerr;
-  } while (tmp[0] == 'N' /* strncmp (tmp, "Not connected.", 14) == 0 */ && slept < 14000L);
-  if (slept >= 14000L)
-    printf ("abc-iw: timeout hit, cell still not associated\n");
+    command_result [sizeof (command_result) - 1] = '\0';
+#ifdef DEBUG_PRINT
+    printf ("result of %s is '%s'\n", cmd, command_result);
+#endif /* DEBUG_PRINT */
+  } while ((strncmp (command_result, "Not connected.", 14) == 0) &&
+           (slept < 14000L));
+  if (slept >= 14000L) {
+    snprintf (log_buf, LOG_SIZE,
+              "abc-iw: timeout hit, cell still not associated\n");
+    log_print ();
+    return 0;
+  }
 
   self.is_connected = 1;
   return 1;
@@ -259,8 +319,11 @@ static int abc_wifi_config_iw_set_enabled (int state)
   if (state) {
     if (if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
       self.is_enabled = 1;
+      static char * message = "power saving mode not supported";
       /* set power save mode (if available) */
-      if_command ("iw dev %s set power_save on", self.iface, 161, "Power saving mode not supported", NULL);
+      if_command ("iw dev %s set power_save on", self.iface, 161,
+                  message, NULL);
+      message = "";   /* print message only once */
       return 1;
     }
   } else {

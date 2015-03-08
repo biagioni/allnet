@@ -187,9 +187,9 @@ static int get_device_path ()
 static int setup_connection ()
 {
   DBusMessage * msg = init_dbus_method_call (ABC_NM_DBUS_DEST,
-                                              ABC_NM_DBUS_OBJ "/Settings",
-                                              ABC_NM_DBUS_IFACE ".Settings",
-                                              "AddConnection");
+                                             ABC_NM_DBUS_OBJ "/Settings",
+                                             ABC_NM_DBUS_IFACE ".Settings",
+                                             "AddConnection");
   if (msg == NULL)
     return 0;
 
@@ -224,7 +224,7 @@ static int setup_connection ()
   const char * wlan = "802-11-wireless",
              * wlan_keys[] = { "ssid", "mode", "band", "channel" },
              * wlan_vals[] = { NULL,   "adhoc", "bg" };
-  /* when chaning the ssid, make sure to adapt the number of
+  /* when changing the ssid, make sure to adapt the number of
    * dbus_message_iter_append_basic calls below
    */
   const unsigned char ssid[] = ALLNET_SSID_BYTE_ARRAY;
@@ -768,10 +768,9 @@ static int abc_wifi_config_nm_await_wireless (int state)
 int abc_wifi_config_nm_enable_wireless (int state)
 {
   dbus_bool_t on = state;
-  DBusMessage * msg = dbus_message_new_method_call (ABC_NM_DBUS_DEST,
-                                  ABC_NM_DBUS_OBJ,
-                                  "org.freedesktop.DBus.Properties",
-                                  "Set");
+  DBusMessage * msg =
+    dbus_message_new_method_call (ABC_NM_DBUS_DEST, ABC_NM_DBUS_OBJ,
+                                  "org.freedesktop.DBus.Properties", "Set");
   if (msg == NULL)
     return -1;
 

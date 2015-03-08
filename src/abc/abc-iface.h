@@ -25,6 +25,8 @@ typedef union {
   struct sockaddr_ll ll;
 #endif /* ALLNET_NETPACKET_SUPPORT */
   struct sockaddr_in in;
+  struct sockaddr_in6 in6;
+  struct sockaddr_storage sas;  /* this is the max size ever needed */
 } sockaddr_t;
 
 #define BC_ADDR(ifaceptr) ((const struct sockaddr *)&(ifaceptr)->bc_address)
@@ -93,8 +95,13 @@ typedef struct abc_iface {
 
 
 #ifdef ALLNET_NETPACKET_SUPPORT
-void abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc);
-void abc_iface_print_sll_addr (struct sockaddr_ll * a, char * desc);
+extern void
+  abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc);
+/* mode 0: print to screen and log ifdef DEBUG_PRINT, to log only otherwise
+ * mode & 1 (i.e. 1, 3): print to log
+ * mode & 2 (i.e. 2, 3): print to screen */
+extern void
+  abc_iface_print_sll_addr (struct sockaddr_ll * a, char * desc, int mode);
 #else /* ALLNET_NETPACKET_SUPPORT */
 /* not sure what replaces the sll addresses for systems that don't have them */
 #endif /* ALLNET_NETPACKET_SUPPORT */
