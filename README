@@ -64,7 +64,40 @@ Should you wish to stop the allnet daemon, run
    bin/astop
 
 If the allnet daemon is not running when an allnet user program is
-started, the allnet user program will automatically call bin/astart.
+started, the allnet user program will automatically call "bin/astart default".
+The default parameter tells astart to use ad-hoc wireless if possible,
+as described in the next section.
+
+    ================ ad-hoc wireless ================
+
+Using the wireless in ad-hoc mode requires special privileges.  Giving
+AllNet these privileges is optional -- if you are constantly connected
+to the Internet, you do not need to do this.  But if you wish to connect
+to devices near you, you will need to do ONE of the following:
+
+   sudo bin/astart default
+(sudo): runs allnet as the root user.  You probably will have to enter your
+password.  To stop allnet, you will need "sudo bin/astop".
+
+   sudo chown root bin/astart ; sudo chmod u+s bin/astart 
+(setuid): this only needs to be done once (you probably will have to
+enter your password), and will run AllNet as the root user until you undo
+it by removing bin/astart and running "make" again.
+
+"bin/astart default" and "bin/astop" will now work even without "sudo".
+
+   sudo setcap CAP_NET_RAW+eip bin/astart
+(capability): is only available on Linux, and makes AllNet work with
+Network Manager (and you will probably need to enter your password).
+"bin/astart default" and "bin/astop" will now work even without "sudo".
+
+With this capability, AllNet does not run as the superuser, which is
+slightly more secure (in the other two cases, AllNet runs the interface
+code with superuser privileges).  To disable this capability, remove
+bin/astart and run "make" again.
+
+If your system doesn't have sudo, you will need to figure out how to
+run "bin/astart default" with enough privileges.
 
     ================ allnet user programs ================
 
