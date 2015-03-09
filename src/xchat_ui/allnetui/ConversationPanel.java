@@ -8,6 +8,7 @@ import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.LineBorder;
 import utils.HtmlLabel;
+import utils.RoundedBorder;
 
 /**
  *
@@ -23,6 +24,12 @@ class ConversationPanel extends JPanel {
     public static final String CLOSE_COMMAND = "CLOSE";
     public static final String CONTACTS_COMMAND = "CONTACTS";
     public static final String EXCHANGE_KEYS_COMMAND = "EXCHANGE_KEYS";
+    //
+    // message bubble border params
+    private int borderWidth = 1;
+    private int borderRadius = 10;
+    private int borderInset = 8;
+    private Color borderColor = Color.BLACK;
     //
     private String contactName;
     private JPanel messagePanel;
@@ -223,9 +230,10 @@ class ConversationPanel extends JPanel {
             }
             panel.add(label);
         }
-        Border compound = BorderFactory.createCompoundBorder(new LineBorder(Color.BLACK, 1, true), new LineBorder(color, 2, true));
+        // Border compound = BorderFactory.createCompoundBorder(new LineBorder(Color.BLACK, 1, true), new LineBorder(color, 2, true));
         // panel.setBorder(new LineBorder(Color.BLACK, 1, true));
-        panel.setBorder(compound);
+        // panel.setBorder(compound);
+        panel.setBorder(new RoundedBorder(borderColor, borderWidth, borderRadius, borderInset));
         return (panel);
     }
 

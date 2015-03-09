@@ -19,6 +19,12 @@ public class KeyExchangePanel extends StatusPanel {
     public static final String RESEND_KEY_COMMAND = "RESEND_KEY";
     // name of the cancel button
     private static final String CANCEL_BUTTON_NAME = "cancel";
+    //
+    // border params for the labels in the panel
+    private int borderWidth = 1; // 4;
+    private int borderRadius = 10;
+    private int borderInset = 8;
+    //
     // hold data from NewContactPanel, set when this KeyExchangePanel is created
     private String variableInput, secret, contactName;
     private int buttonState;
@@ -30,6 +36,7 @@ public class KeyExchangePanel extends StatusPanel {
         setColor(1, Color.WHITE);
         setColor(2, Color.PINK);
         setText(0, " exchanging keys with " + contactName);
+        setBorderParams(borderWidth, borderRadius, borderInset);
     }
 
     // returns an array of booleans, all true except first

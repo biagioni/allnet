@@ -1,4 +1,3 @@
-
 package utils;
 
 import java.awt.Color;
@@ -8,8 +7,6 @@ import java.awt.Insets;
 import java.awt.event.ActionListener;
 import java.util.Arrays;
 import javax.swing.*;
-import javax.swing.border.Border;
-import javax.swing.border.LineBorder;
 
 /**
  *
@@ -27,6 +24,10 @@ public class StatusPanel extends JPanel {
     private boolean[] labelVisible;
     private boolean[] roundedBorders;
     private Color background;
+    // rounded border params, initialized to default values
+    private int borderWidth = 1;
+    private int borderRadius = 10;
+    private int borderInset = 8;
 
     public StatusPanel(int[] labelHeights, Color background, Color foreground,
             String commandPrefix, String... buttonsAndCommands) {
@@ -54,7 +55,8 @@ public class StatusPanel extends JPanel {
             labels[i] = new HtmlLabel(makeBlankLines(labelHeights[i]));
             labels[i].setOpaque(true);
             labels[i].setBackground(labelColors[i]);
-            labels[i].setBorder(BorderFactory.createLineBorder(Color.BLACK, 1, roundedBorders[i]));
+            setBorder(i, Color.BLACK);
+            // labels[i].setBorder(BorderFactory.createLineBorder(Color.BLACK, 1, roundedBorders[i]));
         }
         setBackground(background);
         // make the buttons and panel to hold them
@@ -94,6 +96,16 @@ public class StatusPanel extends JPanel {
         add(buttonPanel, gbc);
     }
 
+    public void setBorderParams(int borderWidth, int borderRadius, int borderInset) {
+        this.borderWidth = borderWidth;
+        this.borderRadius = borderRadius;
+        this.borderInset = borderInset;
+        // and redo the borders
+        for (int i = 0; i < labels.length; i++) {
+            setBorder(i, Color.BLACK);
+        }
+    }
+
     // like the name says
     public void setTopLabelText(String... lines) {
         setText(0, lines);
@@ -117,12 +129,23 @@ public class StatusPanel extends JPanel {
     public void hideLabel(int idx) {
         clearText(idx);
         labels[idx].setOpaque(false);
-        labels[idx].setBorder(BorderFactory.createLineBorder(background, 1, roundedBorders[idx]));
+        setBorder(idx, background);
+        // labels[idx].setBorder(BorderFactory.createLineBorder(background, 1, roundedBorders[idx]));
     }
 
     public void unHideLabel(int idx) {
         labels[idx].setOpaque(true);
-        labels[idx].setBorder(BorderFactory.createLineBorder(Color.BLACK, 1, roundedBorders[idx]));
+        setBorder(idx, Color.BLACK);
+        //labels[idx].setBorder(BorderFactory.createLineBorder(Color.BLACK, 1, roundedBorders[idx]));
+    }
+
+    private void setBorder(int idx, Color color) {
+        if (roundedBorders[idx]) {
+            labels[idx].setBorder(new RoundedBorder(color, borderWidth, borderRadius, borderInset));
+        }
+        else {
+            labels[idx].setBorder(BorderFactory.createLineBorder(color, borderWidth, false));
+        }
     }
 
     public void clearText(int idx) {
