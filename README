@@ -39,6 +39,7 @@ Before doing any of this, you may need to install libtool and autoconf.
 On debian/ubuntu and derived systems this requires:
   sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev pkg-config
 On other systems, use the native package manager to install these packages.
+On Windows under cygwin, you will need at least automake and pkg-config.
 
 additional packages you may need to install:
 	GIT and SSL: git libssl-dev
