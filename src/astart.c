@@ -117,23 +117,12 @@ static void init_pipes (int * pipes, int num_pipes)
   }
 }
 
-static char * itoa (int n)
-{
-  char * result = malloc (12);  /* plenty of bytes, easier than being exact */
-  snprintf (result, 10, "%d", n);
-  return result;
-}
-
 static void print_pid (int fd, int pid)
 {
-  char * buffer = itoa (pid);
-  int len = strlen (buffer);
+  char buffer [100];  /* plenty of bytes, easier than being exact */
+  int len = snprintf (buffer, sizeof (buffer), "%d\n", pid);
   if (write (fd, buffer, len) != len)
     perror ("pid file write");
-  buffer [0] = '\n';
-  if (write (fd, buffer, 1) != 1)
-    perror ("pid file newline write");
-  free (buffer);
 }
 
 #if 0
