@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
@@ -13,6 +14,24 @@
 #include "cutil.h"
 #include "retransmit.h"
 #include "xcommon.h"
+
+static int now_hour (time_t time)
+{
+  struct tm * tm = localtime (&time);
+  return tm->tm_hour;
+}
+
+static int now_minute (time_t time)
+{
+  struct tm * tm = localtime (&time);
+  return tm->tm_min;
+}
+
+static int now_second (time_t time)
+{
+  struct tm * tm = localtime (&time);
+  return tm->tm_sec;
+}
 
 int main (int argc, char ** argv)
 {
@@ -85,6 +104,7 @@ int main (int argc, char ** argv)
                                 &broadcast, contact, secret, NULL, key_hops,
                                 NULL, NULL, 0);
       if (mlen > 0) {
+        time_t rtime = time (NULL);
         char * ver_mess = "";
         if (! verified)
           ver_mess = " (not verified)";
@@ -98,8 +118,9 @@ int main (int argc, char ** argv)
           desc = "";
         }
         if ((! duplicate) || (print_duplicates) || (broadcast))
-          printf ("from '%s'%s got %s%s%s\n  %s\n", peer, ver_mess, dup_mess,
-                  bc_mess, desc, message);
+          printf ("from '%s'%s got %s%s%s (here %d:%02d:%02d)\n  %s\n",
+                  peer, ver_mess, dup_mess, bc_mess, desc, now_hour (rtime),
+                  now_minute (rtime), now_second (rtime), message);
         if ((! broadcast) &&
             ((old_contact == NULL) ||
              (strcmp (old_contact, peer) != 0) || (old_kset != kset))) {
