@@ -573,8 +573,9 @@ class UIController implements ControllerInterface, UIAPI {
                 // send it to the application to be sent
                 String msgText = cp.getMsgToSend();
                 String peer = cp.getContactName();
-                long sentTime = XchatSocket.sendToPeer(peer, msgText);
-                if (sentTime > 0) {
+                long seq = XchatSocket.sendToPeer(peer, msgText);
+                if (seq > 0) {
+                    long sentTime = new java.util.Date().getTime();
                     messageSent(peer, sentTime, msgText);
 //                  System.out.println("UIController.java: sent to " + peer +
 //                                     ": " + msgText);
