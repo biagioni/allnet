@@ -18,7 +18,8 @@
 #include "lib/mapchar.h"
 #include "lib/log.h"
 
-static int send_key_request (int sock, char * phrase)
+/* source must be ADDRESS_SIZE, and here will be filled in with random data */
+static int send_key_request (int sock, char * phrase, char * source, int slen)
 {
   /* compute the destination address from the phrase */
   unsigned char destination [ADDRESS_SIZE];
@@ -31,7 +32,8 @@ static int send_key_request (int sock, char * phrase)
   int psize;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
-                   NULL, 0, destination, 8, NULL, NULL, &psize);
+                   (unsigned char *) source, slen * 8, destination, 8,
+                   NULL, NULL, &psize);
   
   if (hp == NULL)
     return 0;
@@ -55,7 +57,8 @@ static int send_key_request (int sock, char * phrase)
   return 1;
 }
 
-static int handle_packet (char * message, int msize, char * ahra, int debug)
+static int handle_packet (char * message, int msize,
+                          char * ahra, char * address, int alen, int debug)
 {
   if (! is_valid_message (message, msize)) {
     if (debug)
@@ -70,6 +73,8 @@ static int handle_packet (char * message, int msize, char * ahra, int debug)
   if (hp->message_type != ALLNET_TYPE_CLEAR)
     return 0;
   if (msize <= hsize + h2size)  /* nothing */
+    return 0;
+  if (memcmp (address, hp->destination, alen) != 0)  /* not for me */
     return 0;
   int ksize = msize - (hsize + h2size);
 
@@ -90,7 +95,7 @@ static int handle_packet (char * message, int msize, char * ahra, int debug)
 }
 
 static void wait_for_response (int sock, char * phrase, char * ahra,
-                               int debug)
+                               char * address, int alen, int debug)
 {
   while (1) {
     int pipe;
@@ -102,7 +107,7 @@ static void wait_for_response (int sock, char * phrase, char * ahra,
       printf ("allnet-subscribe pipe closed, exiting\n");
       exit (1);
     }
-    if (handle_packet (message, found, ahra, debug))
+    if (handle_packet (message, found, ahra, address, alen, debug))
       return;
     free (message);
   }
@@ -158,8 +163,11 @@ int main (int argc, char ** argv)
   if (sock < 0)
     return 1;
 
-  if (send_key_request (sock, phrase)) 
-    wait_for_response (sock, phrase, argv [1], debug);
+  /* create a random source address */
+  char source [ADDRESS_SIZE];
+  random_bytes (source, sizeof (source));
+  if (send_key_request (sock, phrase, source, sizeof (source))) 
+    wait_for_response (sock, phrase, argv [1], source, sizeof (source), debug);
   return 0;
 }
 
