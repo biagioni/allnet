@@ -84,6 +84,7 @@ int main (int argc, char ** argv)
   char peer_secret_buf [200];
   int kmax_hops = 0;
   int wait_time = 5000;   /* 5 seconds to wait for acks and such */
+  unsigned long long int start_time = allnet_time_ms ();
 
   if (strcmp (contact, "-k") == 0) {   /* send a key */
     if ((argc != 3) && (argc != 4) && (argc != 5)) {
@@ -152,6 +153,9 @@ int main (int argc, char ** argv)
       printf ("error: contact '%s' does not exist\n", contact);
     }
   }
+  unsigned long long int send_time = allnet_time_ms () - start_time;
+  if (20 * send_time > wait_time)
+    wait_time = 20 * send_time;
 
   struct timeval start, deadline;
   gettimeofday (&start, NULL);
@@ -207,8 +211,8 @@ int main (int argc, char ** argv)
       printf ("got ack from %s in %lld.%06llds\n", contact,
               delta / 1000000, delta % 1000000);
 
-      gettimeofday (&deadline, NULL); /* wait another second from now */
-      add_time (&deadline, 1000);     /* for additional messages */
+      gettimeofday (&deadline, NULL);   /* wait another wait_time */
+      add_time (&deadline, wait_time);  /* for additional messages */
       ack_seen = 1;
     }
     if (mlen > 0) {
