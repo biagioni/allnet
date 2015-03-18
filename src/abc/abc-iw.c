@@ -131,17 +131,22 @@ static int if_command (const char * basic_command, const char * interface,
                        const char * fail_other)
 {
   static int printed_success = 0;
-  int size = strlen (basic_command) + strlen (interface) + 1;
-  char * command = malloc (size);
-  if (command == NULL) {
-    int n = snprintf (log_buf, LOG_SIZE,
-                      "abc-iw: unable to allocate %d bytes for command:\n",
-                      size);
-    snprintf (log_buf + n, LOG_SIZE - n, basic_command, interface);
+  char command [1000];
+  int ilen = 0;
+  if (interface != NULL)
+    ilen = strlen (interface);
+  if (strlen (basic_command) + ilen + 1 >= sizeof (command)) {
+    snprintf (log_buf, LOG_SIZE, "abc-iw: command %d+interface %d + 1 >= %d\n",
+              (int) (strlen (basic_command)), ilen, (int) (sizeof (command)));
+    log_print ();
+    snprintf (log_buf, LOG_SIZE, basic_command, interface);
     log_print ();
     return 0;
   }
-  snprintf (command, size, basic_command, interface);
+  if (interface != NULL)
+    snprintf (command, sizeof (command), basic_command, interface);
+  else
+    snprintf (command, sizeof (command), "%s", basic_command);
   int sys_result = my_system (command);
   int max_print_success = 0;
 #ifdef DEBUG_PRINT
@@ -173,20 +178,18 @@ static int if_command (const char * basic_command, const char * interface,
       else if (strlen (fail_other) > 0)
         printf ("%s\n", fail_other);
     } else {
-      snprintf (log_buf, LOG_SIZE,
-                "abc-iw: call to '%s' failed, %s\n", command, fail_wireless);
-      log_print ();
-      if (fail_wireless == NULL)
+      if (fail_wireless == NULL) {
         printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
-      else if (strlen (fail_wireless) > 0)
+      } else if (strlen (fail_wireless) > 0) {
+        snprintf (log_buf, LOG_SIZE,
+                  "abc-iw: call to '%s' failed, %s\n", command, fail_wireless);
+        log_print ();
         printf ("%s\n", fail_wireless);
-      free (command);
+      }
       return 2;
     }
-    free (command);
     return 0;
   }
-  free (command);
   return 1;
 }
 
@@ -210,6 +213,7 @@ static int abc_wifi_config_iw_init (const char * iface)
      * ifconfig to work. */
     /* TODO: this should look up the device index and only unblock that
      * in case the iface is not wifi or multiple wifi ifaces are present. */
+    /* TODO: this should be done either here or below, not both */
     char command [] = "rfkill unblock wifi";
 #ifdef DEBUG_PRINT
     int ret = my_system (command);
@@ -231,6 +235,13 @@ static int abc_wifi_config_iw_is_connected ()
 }
 
 /** Join allnet adhoc network */
+/* 2015/03/16: commands appear to be:
+   rfkill unblock wifi
+   iw dev $if set type ibss
+   ifconfig $if up
+   iw dev $if ibss join allnet 2412 fixed-freq 60:a4:4c:e8:bc:9c
+   see also https://wireless.wiki.kernel.org/en/users/documentation/iw/vif
+ */
 static int abc_wifi_config_iw_connect ()
 {
   if (self.is_connected)
@@ -239,6 +250,32 @@ static int abc_wifi_config_iw_connect ()
   snprintf (log_buf, LOG_SIZE, "abc: opening interface %s\n", self.iface);
   log_print ();
 #endif /* DEBUG_PRINT */
+  char * mess = NULL;
+  if (geteuid () != 0)
+    mess = "probably need to be root";
+  if (! if_command ("rfkill unblock wifi", NULL, 1, "", mess))
+    printf ("rfkill failed\n");
+  if (! if_command ("iw dev %s set type ibss", self.iface, 0, NULL, mess))
+    return 0;
+  if (! if_command ("ifconfig %s up", self.iface, 255,
+                    "interface already up", mess))
+    return 0;
+/* giving a specific BSSID (60:a4:4c:e8:bc:9c) on one trial sped up the
+ * time to turn on the interface from over 5s to less than 1/2s, because
+ * the driver no longer scans to see if somebody else is already offering
+ * this ssid on a different bssid.
+ * This BSSID is the MAC address of an existing Ethernet card,
+ * so should not be in use by anyone else in the world. */
+  char * cmd = "iw dev %s ibss join allnet 2412 fixed-freq 60:a4:4c:e8:bc:9c";
+  if (! if_command (cmd, self.iface, 142, "interface already on allnet", mess))
+    return 0;
+/* if (! if_command ("iw dev %s ibss join allnet 2412 fixed-freq", self.iface,
+      142, "interface already on allnet", mess))
+    return 0; */
+  self.is_connected = 1;
+  return 1;
+
+#if 0   /* previous code, didn't seem to work as well */
 /* need to execute the commands:
       sudo iw dev $if set type ibss
       sudo iw dev $if ibss join allnet 2412
@@ -279,8 +316,10 @@ static int abc_wifi_config_iw_connect ()
     FILE * in = popen (cmd, "r");
     if ((in == NULL) ||
         (fgets (command_result, sizeof (command_result) - 1, in) == NULL) ||
-        (pclose (in) == -1))
-      goto connerr;
+        (pclose (in) == -1)) {
+      perror ("abc-iw");
+      return 0;
+    }
     command_result [sizeof (command_result) - 1] = '\0';
 #ifdef DEBUG_PRINT
     printf ("result of %s is '%s'\n", cmd, command_result);
@@ -293,13 +332,9 @@ static int abc_wifi_config_iw_connect ()
     log_print ();
     return 0;
   }
-
   self.is_connected = 1;
   return 1;
-
-connerr:
-  perror ("abc-iw");
-  return 0;
+#endif /* 0    previous code, didn't seem to work as well */
 }
 
 /** Returns wlan state (1: enabled or 0: disabled, -1: unknown) */
@@ -317,8 +352,11 @@ static int abc_wifi_config_iw_set_enabled (int state)
 
   /* call (sudo) ifconfig $if {up|down} */
   if (state) {
+#if 0
     if (if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
+#endif /* 0 */
       self.is_enabled = 1;
+#if 0
       static char * message = "power saving mode not supported";
       /* set power save mode (if available) */
       if_command ("iw dev %s set power_save on", self.iface, 161,
@@ -326,6 +364,7 @@ static int abc_wifi_config_iw_set_enabled (int state)
       message = "";   /* print message only once */
       return 1;
     }
+#endif /* 0 */
   } else {
     if (self.is_connected) {
       if_command ("iw dev %s ibss leave", self.iface,
@@ -334,10 +373,14 @@ static int abc_wifi_config_iw_set_enabled (int state)
       self.is_connected = 0;
     }
 
+#if 0
     if (if_command ("ifconfig %s down", self.iface, 0, NULL, NULL)) {
+#endif /* 0 */
       self.is_enabled = 0;
       return 1;
+#if 0
     }
+#endif /* 0 */
   }
   self.is_enabled = -1;
   return -1;

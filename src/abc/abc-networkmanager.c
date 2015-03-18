@@ -8,6 +8,7 @@
 #include <unistd.h>             /* sleep */
 
 #include "lib/util.h"           /* random_bytes */
+#include "lib/log.h"            /* log_buf, LOG_SIZE, log_print */
 #include "abc-wifi.h"           /* abc_wifi_config_iface */
 #include "abc-networkmanager.h"
 
@@ -709,7 +710,9 @@ int abc_wifi_config_nm_init (const char * iface)
     return 0;
 
   if (!get_device_path ()) {
-    fprintf (stderr, "abc-nm: error: failed to resolve interface dbus object\n"); /* TODO: allnet log */
+    snprintf (log_buf, LOG_SIZE,
+              "abc-nm: error: failed to resolve interface dbus object\n");
+    log_print ();
     return 0;
   }
 

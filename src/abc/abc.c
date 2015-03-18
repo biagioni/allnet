@@ -256,12 +256,12 @@ static void send_beacon (int awake_ms)
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   writeb64u (mbp->awake_time,
              ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
-  if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT, BC_ADDR (iface),
-      iface->sockaddr_size) < size) {
+  if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT,
+              BC_ADDR (iface), iface->sockaddr_size) < size) {
     int e = errno;
     /* retry, first packet is sometimes dropped */
-    if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT, BC_ADDR (iface),
-        iface->sockaddr_size) < size) {
+    if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT,
+                BC_ADDR (iface), iface->sockaddr_size) < size) {
       perror ("beacon sendto (2nd try)");
       if (errno != e)
         printf ("...different error on 2nd try, first was %d\n", e);
@@ -330,7 +330,7 @@ static void unmanaged_send_pending (int new_only)
     if ((new_only && backoff) || (!new_only && cycle % (1 << backoff) != 0))
       continue;
     if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
-        BC_ADDR (iface), iface->sockaddr_size) < nsize) {
+                BC_ADDR (iface), iface->sockaddr_size) < nsize) {
       if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
         perror ("abc: sendto");
       continue;
@@ -363,7 +363,7 @@ static void send_pending (enum abc_send_type type, int size, char * message)
   switch (type) {
     case ABC_SEND_TYPE_REPLY:
       if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
-          BC_ADDR (iface), iface->sockaddr_size) < size)
+                  BC_ADDR (iface), iface->sockaddr_size) < size)
         perror ("abc: sendto (reply)");
       else
         beacon_state = pending_beacon_state;
@@ -383,7 +383,7 @@ static void send_pending (enum abc_send_type type, int size, char * message)
         if (cycle % (1 << backoff) != 0)
           continue;
         if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
-            BC_ADDR (iface), iface->sockaddr_size) < nsize) {
+                    BC_ADDR (iface), iface->sockaddr_size) < nsize) {
           perror ("abc: sendto (queue)");
           continue;
         }
@@ -819,9 +819,11 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
   /* clear_nonces (1, 0);  -- if we stay on, denying beacon replies is
    * not really helpful.  If we are off, we will get no beacon replies
    * anyway, so it doesn't matter */
+#if 0
   if ((! high_priority) &&
       (if_cycles_skipped == 0)) /* skipped cycle compensation */
     iface->iface_set_enabled_cb (0);
+#endif /* 0 */
   handle_until (&finish, quiet_end, rpipe, wpipe);
   received_high_priority = 0;
 }
@@ -831,8 +833,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   struct timeval quiet_end;   /* should we keep quiet? */
   gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
   if (!iface->init_iface_cb (interface)) {
-    snprintf (log_buf, LOG_SIZE,
-              "abc: unable to initialize interface %s\n", interface);
+    snprintf (log_buf, LOG_SIZE, "unable to init interface %s\n", interface);
     log_print ();
     goto iface_cleanup;
   }
