@@ -26,7 +26,11 @@ public class XchatSocket extends Thread {
   static final int codeBroadcastMessage = 1;
   static final int codeNewContact = 2;
   static final int codeAhra = 3;
-  static final int codeAck = 4;
+  static final int codeSeq = 4;
+  static final int codeAck = 5;
+
+  static java.util.concurrent.LinkedBlockingQueue<Long> seqQueue =
+    new java.util.concurrent.LinkedBlockingQueue<Long>();
 
   private static DatagramSocket initSocket() {
     try {
@@ -100,6 +104,30 @@ public class XchatSocket extends Thread {
     data [start+3] = ((byte) ((value >> 16) & 0xff));
     data [start+4] = ((byte) ((value >>  8) & 0xff));
     data [start+5] = ((byte) ((value      ) & 0xff));
+  }
+
+  private static long b64 (byte [] data, int start, int len) {
+    if (start + 8 > len)
+      return 0;
+    return (((((long) data [start    ]) & 0xff) << 56) |
+            ((((long) data [start + 1]) & 0xff) << 48) |
+            ((((long) data [start + 2]) & 0xff) << 40) |
+            ((((long) data [start + 3]) & 0xff) << 32) |
+            ((((long) data [start + 4]) & 0xff) << 24) |
+            ((((long) data [start + 5]) & 0xff) << 16) |
+            ((((long) data [start + 6]) & 0xff) <<  8) |
+            ((((long) data [start + 7]) & 0xff)      ));
+  }
+
+  private static void w64 (byte [] data, int start, long value) {
+    data [start  ] = ((byte) ((value >> 56) & 0xff));
+    data [start+1] = ((byte) ((value >> 48) & 0xff));
+    data [start+2] = ((byte) ((value >> 40) & 0xff));
+    data [start+3] = ((byte) ((value >> 32) & 0xff));
+    data [start+4] = ((byte) ((value >> 24) & 0xff));
+    data [start+5] = ((byte) ((value >> 16) & 0xff));
+    data [start+6] = ((byte) ((value >>  8) & 0xff));
+    data [start+7] = ((byte) ((value      ) & 0xff));
   }
 
   private static class IntRef {
@@ -191,6 +219,17 @@ public class XchatSocket extends Thread {
     } else if (code == codeAhra) {
       System.out.println ("subscription complete from " + peer);
       api.contactCreated(peer, true);
+    } else if (code == codeSeq) {
+      long seq = b64 (data, nextIndex.value, dlen);
+      System.out.println ("message to " + peer + " has sequence " + seq);
+      try {
+        seqQueue.put (seq);
+      } catch (java.lang.InterruptedException e) {
+        System.out.println ("sequence put exception: " + e);
+      }
+    } else if (code == codeAck) {
+      long ack = b64 (data, nextIndex.value, dlen);
+      System.out.println ("from " + peer + " got ack " + ack);
     } else {
       System.out.println ("unknown code " + code);
     }
@@ -254,7 +293,12 @@ public class XchatSocket extends Thread {
       System.out.println ("send exception: " + e);
       return -1;
     }
-    return time.value;
+    try {
+      return seqQueue.take (); // return the sequence number from xchat_socket
+    } catch (java.lang.InterruptedException e) {
+      System.out.println ("sequence take exception: " + e);
+      return -1;
+    }
   }
 
   public static boolean sendKeyRequest(String peer, String s1, String s2,

@@ -21,6 +21,7 @@
 #include "cutil.h"
 #include "retransmit.h"
 #include "xcommon.h"
+#include "message.h"
 
 /* messages have a length, time, code, peer name, and text of the message. */
 /* length (4 bytes, big-endian order) includes everything.
@@ -28,7 +29,9 @@
  *   in the os's local epoch
  * code is 1 byte,
  * - code value 0 identifies a data message: the peer name and the
- *   message are null-terminated */
+ *   message are null-terminated
+ * when sent from the GUI to this code, this code replies
+ * with a message of type 5, CODE_SEQ */
 #define	CODE_DATA_MESSAGE	0
 /* - code value 1 identifies a broadcast message: the peer name and the
  *   message are null-terminated */
@@ -40,11 +43,14 @@
 /* - code value 3 identifies an ahra, stored in the peer name, to which
  *   we want to subscribe or have subscribed */
 #define	CODE_AHRA		3
-/* - code value 4 identifies an ack.  peer and time identify the message */
-#define CODE_ACK                4
+/* - code value 4 identifies a seq.  text of the message is an 8-byte seq.
+ *   sent from the GUI to xchat_socket */
+#define CODE_SEQ                4
+/* - code value 5 identifies an ack.  text of the message is an 8-byte ack */
+#define CODE_ACK                5
 
 /* protocol: s (server) = xchat_socket, c (client) = ui
- * data:        s -> c: message received from peer
+ * data:        s -> c: message received from peer (server replies with seq #)
  *              c -> s: message sent to peer
  * broadcast:   s -> c: broadcast received
  *              c -> s: currently not supported (should be: send broadcast)
@@ -60,7 +66,9 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
                           const char * message)
 {
   int plen = strlen (peer) + 1;     /* include the null character */
-  int mlen = strlen (message) + 1;  /* include the null character */
+  int mlen = 8;                     /* fixed size for SEQ and ACK */
+  if ((code != CODE_SEQ) && (code != CODE_ACK))  /* null terminated */
+    mlen = strlen (message) + 1;    /* include the null character */
   int length = 11 + plen + mlen;
   int n;
   char buf [ALLNET_MTU];
@@ -72,8 +80,8 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
   writeb32 (buf, length);
   writeb48 (buf + 4, time + ALLNET_Y2K_SECONDS_IN_UNIX);
   buf [10] = code;
-  strcpy (buf + 11, peer);
-  strcpy (buf + 11 + plen, message);
+  memcpy (buf + 11, peer, plen);
+  memcpy (buf + 11 + plen, message, mlen);
   n = sendto (sock, buf, length, MSG_DONTWAIT, sap, slen);
   if ((n != length) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
     return;  /* socket is busy -- should never be, but who knows */
@@ -86,6 +94,17 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
     exit (1);   /* terminate the program */
   }
 /* print_buffer (buf, length, "sent", 20, 1); */
+}
+
+static void send_seq_ack (int sock, struct sockaddr * sap, socklen_t slen,
+                          int code, time_t time, const char * peer,
+                          long long int seq_ack)
+{
+  if ((code != CODE_SEQ) && (code != CODE_ACK))  /* null terminated */
+    printf ("error: illegal code %d in send_seq_ack\n", code);
+  char buf [8];
+  writeb64 (buf, seq_ack);
+  send_message (sock, sap, slen, code, time, peer, buf);
 }
 
 /* return the message length if a message was received, and 0 otherwise */
@@ -287,6 +306,72 @@ static void * child_wait_thread (void * arg)
   return NULL;
 }
 
+struct unacked {
+  long long int seq;
+  int contact_index;
+};
+
+static struct unacked * unacked_seqs = NULL;
+static int unacked_size = 0;
+static int unacked_count = 0;
+
+static void add_to_unacked (long long int seq, char * contact)
+{
+  char ** contacts;
+  int ncontacts = all_contacts (&contacts);
+  int contact_index = -1;
+  int i;
+  for (i = 0; i < ncontacts; i++)
+    if (strcmp (contact, contacts [i]) == 0)
+      contact_index = i;
+  if (contact_index < 0) {
+    snprintf (log_buf, LOG_SIZE, "xchat_socket: contact %s not found\n",
+              contact);
+    log_print ();
+    return;
+  }
+  for (i = 0; i < unacked_count; i++)
+    if ((unacked_seqs [i].seq == seq) &&
+        (unacked_seqs [i].contact_index == contact_index))
+      return;
+  if (unacked_count == unacked_size) {  /* reallocate */
+    unacked_size += unacked_size + 2;
+    int size = unacked_size * sizeof (struct unacked);
+    if (unacked_seqs == NULL)
+      unacked_seqs = realloc (unacked_seqs, size);
+    else
+      unacked_seqs = malloc (size);
+    if (unacked_seqs == NULL) {
+      perror ("realloc");
+      printf ("error: unable to allocate %d bytes for unacked array\n", size);
+      printf ("       acknowledgements will be unreliable\n");
+    }
+  }
+  unacked_seqs [unacked_count].seq = seq;
+  unacked_seqs [unacked_count].contact_index = contact_index;
+  unacked_count++;
+}
+
+static void acknowledge (int sock, struct sockaddr * sap, socklen_t slen)
+{
+  char ** contacts;
+  int ncontacts = all_contacts (&contacts);
+  int delta = 0;
+  int i;
+  for (i = 0; i < unacked_count; i++) {
+    int index = unacked_seqs [i].contact_index;
+    if ((index < ncontacts) &&
+        (is_acked (contacts [index], unacked_seqs [i].seq))) {
+      send_seq_ack (sock, sap, slen, CODE_ACK, time (NULL), contacts [index],
+                    unacked_seqs [i].seq);
+      delta++;
+    } else if (delta > 0) { /* move down to fill the gap */
+      unacked_seqs [i - delta] = unacked_seqs [i];
+    }
+  }
+  unacked_count -= delta;
+}
+
 static void thread_for_child_completion (pid_t pid)
 {
   static pid_t static_pid;
@@ -348,9 +433,14 @@ int main (int argc, char ** argv)
     int len = recv_message (forwarding_socket, &code, &rtime, peer, to_send,
                             extra);
     if (len > 0) {
-      if (code == 0)
-        send_data_message (sock, peer, to_send, strlen (to_send));
-      else if (code == 2) {
+      if (code == 0) {
+        long long int seq =
+          send_data_message (sock, peer, to_send, strlen (to_send));
+        add_to_unacked (seq, peer);
+        send_seq_ack (forwarding_socket,
+                      (struct sockaddr *) (&fwd_addr), fwd_addr_size,
+                      CODE_SEQ, time (NULL), peer, seq);
+      } else if (code == 2) {
         strcpy (kbuf1, peer);
         strcpy (kbuf2, to_send);
         key_contact = kbuf1;
@@ -438,6 +528,9 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
           subscription = NULL;
         }
       }
+      /* handle_packet may have changed what has and has not been acked */
+      acknowledge (forwarding_socket, 
+                   (struct sockaddr *) (&fwd_addr), fwd_addr_size);
     }
   }
 }
