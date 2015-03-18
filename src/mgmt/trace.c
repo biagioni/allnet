@@ -9,10 +9,13 @@
  * the daemon will optionally take a '-m' option, to specify tracing
    only when we match the address.
  * for the client, the specified address is the address to trace
- * the client also takes '-m' for exact match -- do not show non-matching dests
-                         '-i' for no display of intermediate (-i implies -m)
-                         '-f' for repeat forever,
-                         '-r n' to repeat n times
+ * the client also takes:
+           -f repeats forever, or -r n repeats n times
+           -m only reports responses from matching addresses
+           -i does not report intermediate nodes (a bit like ping)
+           -i implies -m
+           -v for verbose
+           -t sec, time to sleep after send (default 5 seconds)
  */
 
 #include <stdio.h>
@@ -830,9 +833,11 @@ static void usage (char * pname, int daemon)
     printf ("       -i does not report intermediate nodes (a bit like ping)\n");
     printf ("       -i implies -m\n");
     printf ("       -v for verbose\n");
+    printf ("       -t sec, time to sleep after send (default 5 seconds)\n");
   }
 }
 
+#if 0   /* replaced by getopt */
 static int get_repeat_option (int * argcp, char ** argv)
 {
   int orig_argc = *argcp;
@@ -858,6 +863,7 @@ static int get_repeat_option (int * argcp, char ** argv)
   }
   return 1;   /* only repeat once */
 }
+#endif /* 0 */
 
 #endif /* TRACE_MAIN_FUNCTION */
 
@@ -897,7 +903,8 @@ int main (int argc, char ** argv)
   int match_only = 0;
   int verbose = 0;
   int opt;
-  char * opt_string = "mivfr:";
+  int sleep = 5;
+  char * opt_string = "mivfr:t:";
   if (is_daemon)
     opt_string = "mv";
   while ((opt = getopt (argc, argv, opt_string)) != -1) {
@@ -907,13 +914,14 @@ int main (int argc, char ** argv)
     case 'v': verbose = 1; break;
     case 'f': repeat = 0; break;
     case 'r': repeat = atoi (optarg); break;
+    case 't': sleep = atoi (optarg); break;
     default:
       usage (argv [0], is_daemon);
       exit (1);
     }
   }
   log_to_output (verbose);
-  
+
   /* daemon may have one non-option argument, user program up to two */
   if ((argc > optind + 1) && ((is_daemon) || (argc > optind + 2))) {
     printf ("argc %d, optind %d, at most %d allowed for %s\n", argc, optind,
@@ -972,9 +980,6 @@ int main (int argc, char ** argv)
 #endif /* DEBUG_PRINT */
     char trace_id [MESSAGE_ID_SIZE];
     unsigned char my_addr [ADDRESS_SIZE];
-    int sleep = 5;
-    if (repeat != 1)
-      sleep = 1;
     int count;
     for (count = 0; (repeat == 0) || (count < repeat); count++) {
 /* printf ("%d/%d\n", count, repeat); */
