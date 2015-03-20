@@ -263,9 +263,10 @@ void log_packet (char * desc, char * packet, int plen)
 void log_error (char * syscall)
 {
   static char local_buf [LOG_SIZE + LOG_SIZE];
-  snprintf (local_buf, sizeof (local_buf), "%s: %s\n    %s",
-            syscall, strerror (errno), log_buf);
+  snprintf (local_buf, sizeof (local_buf), "%s: %s\n    ",
+            syscall, strerror (errno));
   log_print_str (local_buf);
+  log_print_str (log_buf);
 }
 
 /* output everything to stdout as well as the log file if on != 0.
