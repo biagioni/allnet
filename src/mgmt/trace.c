@@ -16,6 +16,7 @@
            -i implies -m
            -v for verbose
            -t sec, time to sleep after send (default 5 seconds)
+           -h hops gives the maximum number of hops (default 10)
  */
 
 #include <stdio.h>
@@ -834,6 +835,7 @@ static void usage (char * pname, int daemon)
     printf ("       -i implies -m\n");
     printf ("       -v for verbose\n");
     printf ("       -t sec, time to sleep after send (default 5 seconds)\n");
+    printf ("       -h hops gives the maximum number of hops (default 10)\n");
   }
 }
 
@@ -888,6 +890,23 @@ void traced_main (char * pname)
 }
 
 #ifdef TRACE_MAIN_FUNCTION
+static int atoi_in_range (char * value, int min, int max, int dflt, char * name)
+{
+  char * finish;
+  long int result = strtol (value, &finish, 10);
+  if ((finish == value) || /* no conversion */
+      (result < min) || ((max != 0) && (result > max))) {
+    printf ("%s should be ", name);
+    if (max != 0)
+      printf ("between %d and %d ", min, max);
+    else
+      printf ("at least %d ", min);
+    printf ("(using default %d %s)\n", dflt, name);
+    return dflt;
+  }
+  return result;
+}
+
 /* parts of this duplicate some of the code in traced_main, but
  * supporting the address on the command line seems like a useful feature */
 int main (int argc, char ** argv)
@@ -904,7 +923,8 @@ int main (int argc, char ** argv)
   int verbose = 0;
   int opt;
   int sleep = 5;
-  char * opt_string = "mivfr:t:";
+  int nhops = 10;
+  char * opt_string = "mivfr:t:h:";
   if (is_daemon)
     opt_string = "mv";
   while ((opt = getopt (argc, argv, opt_string)) != -1) {
@@ -913,8 +933,9 @@ int main (int argc, char ** argv)
     case 'i': no_intermediates = 1; match_only = 1; break;
     case 'v': verbose = 1; break;
     case 'f': repeat = 0; break;
-    case 'r': repeat = atoi (optarg); break;
-    case 't': sleep = atoi (optarg); break;
+    case 'r': repeat = atoi_in_range (optarg, 1, 0, repeat, "repeats"); break;
+    case 't': sleep = atoi_in_range (optarg, 1, 0, sleep, "seconds"); break;
+    case 'h': nhops = atoi_in_range (optarg, 1, 255, nhops, "hops"); break;
     default:
       usage (argv [0], is_daemon);
       exit (1);
@@ -968,7 +989,6 @@ int main (int argc, char ** argv)
     siga.sa_flags = 0;
     if (sigaction (SIGINT, &siga, NULL) != 0)
       perror ("sigaction");  /* not fatal */
-    int nhops = 10;
     if (argc > optind + 1) {   /* number of hops from the command line */
       int n = atoi (argv [optind + 1]);
       if (n > 0)
