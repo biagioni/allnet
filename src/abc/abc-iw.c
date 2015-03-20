@@ -255,8 +255,15 @@ static int abc_wifi_config_iw_connect ()
     mess = "probably need to be root";
   if (! if_command ("rfkill unblock wifi", NULL, 1, "", mess))
     printf ("rfkill failed\n");
-  if (! if_command ("iw dev %s set type ibss", self.iface, 0, NULL, mess))
-    return 0;
+  int iwret = if_command ("iw dev %s set type ibss", self.iface, 240, "", mess);
+  if (iwret == 2) { /* this happens if iface is up and in managed mode */
+    /* so bring it down first, then repeat */
+    if (! if_command ("ifconfig %s down", self.iface, 0, NULL,
+                      "unable to turn off interface"))
+      return 0;
+    if (! if_command ("iw dev %s set type ibss", self.iface, 0, NULL, mess))
+      return 0;
+  }
   if (! if_command ("ifconfig %s up", self.iface, 255,
                     "interface already up", mess))
     return 0;
@@ -273,8 +280,16 @@ static int abc_wifi_config_iw_connect ()
       142, "interface already on allnet", mess))
     return 0; */
   self.is_connected = 1;
-  return 1;
 
+  /* set power save mode (if available) -- at most once */
+  static int set_power_save = 1;
+  if (set_power_save) {   /* do this at most once */
+    if_command ("iw dev %s set power_save on", self.iface, 161,
+                "power saving mode not supported", NULL);
+    set_power_save = 0;
+  }
+
+  return 1;
 #if 0   /* previous code, didn't seem to work as well */
 /* need to execute the commands:
       sudo iw dev $if set type ibss
@@ -349,38 +364,29 @@ static int abc_wifi_config_iw_set_enabled (int state)
 {
   if (self.is_enabled == state)
     return 1;
+printf ("setting interface %s to %d\n", self.iface, state);
 
   /* call (sudo) ifconfig $if {up|down} */
   if (state) {
-#if 0
     if (if_command ("ifconfig %s up", self.iface, 0, NULL, NULL)) {
-#endif /* 0 */
       self.is_enabled = 1;
-#if 0
-      static char * message = "power saving mode not supported";
-      /* set power save mode (if available) */
-      if_command ("iw dev %s set power_save on", self.iface, 161,
-                  message, NULL);
-      message = "";   /* print message only once */
       return 1;
     }
-#endif /* 0 */
   } else {
     if (self.is_connected) {
+#if 0  /* or, we should connect to the ibss in the other direction */
       if_command ("iw dev %s ibss leave", self.iface,
-                          /* 161, "interface is not in ibss mode" */
-                          189, "ad-hoc network already disconnected", "unknown problem");
+                  /* 161, "interface is not in ibss mode" */
+                  189, "ad-hoc network already disconnected",
+                  "unknown problem");
+#endif /* 0 */
       self.is_connected = 0;
     }
 
-#if 0
     if (if_command ("ifconfig %s down", self.iface, 0, NULL, NULL)) {
-#endif /* 0 */
       self.is_enabled = 0;
       return 1;
-#if 0
     }
-#endif /* 0 */
   }
   self.is_enabled = -1;
   return -1;
