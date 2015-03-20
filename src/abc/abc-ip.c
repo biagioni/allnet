@@ -118,8 +118,12 @@ static int abc_ip_init (const char * interface)
       memset (&sa.sin_zero, 0, sizeof (sa.sin_zero));
       if (bind (abc_iface_ip.iface_sockfd,
                 (struct sockaddr *)&sa, sizeof (sa)) == -1) {
+        snprintf (log_buf, LOG_SIZE, "error binding interface %s\n", interface);
+        log_error ("abc-ip: error binding interface");
+#ifdef DEBUG_PRINT
         perror ("abc-ip: error binding interface");
         printf ("error binding interface %s\n", interface);
+#endif /* DEBUG_PRINT */
         close (abc_iface_ip.iface_sockfd);
         abc_iface_ip.iface_sockfd = -1;
         goto abc_ip_init_cleanup;
@@ -132,7 +136,8 @@ static int abc_ip_init (const char * interface)
       }
       abc_iface_ip.bc_address.in.sin_family = AF_INET;
       abc_iface_ip.bc_address.in.sin_port = htons (ALLNET_ABC_IP_PORT);
-      memset (&abc_iface_ip.bc_address.in.sin_zero, 0, sizeof (abc_iface_ip.bc_address.in.sin_zero));
+      memset (&abc_iface_ip.bc_address.in.sin_zero, 0,
+              sizeof (abc_iface_ip.bc_address.in.sin_zero));
       ret = 1;
       goto abc_ip_init_cleanup;
     }
