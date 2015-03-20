@@ -711,13 +711,13 @@ int abc_wifi_config_nm_init (const char * iface)
 
   if (!get_device_path ()) {
     snprintf (log_buf, LOG_SIZE,
-              "abc-nm: error: failed to resolve interface dbus object\n");
+              "abc-nm: network manager not found (probably not running)\n");
     log_print ();
     return 0;
   }
 
   if (!get_conn_obj ()) {
-    printf ("abc-nm: No NetworkManager connection AllNet found, creating new one\n");
+    printf ("abc-nm: no NetworkManager connection AllNet, creating new one\n");
     if (!setup_connection ())
       return 0;
   }
