@@ -86,7 +86,9 @@ int main (int argc, char ** argv)
   int wait_time = 5000;   /* 5 seconds to wait for acks and such */
   unsigned long long int start_time = allnet_time_ms ();
 
+  int exchanging_key = 0;
   if (strcmp (contact, "-k") == 0) {   /* send a key */
+    exchanging_key = 1;
     if ((argc != 3) && (argc != 4) && (argc != 5)) {
       printf ("usage: %s -k contact-name [hops [secret]] (%d)\n",
               argv [0], argc);
@@ -115,7 +117,7 @@ int main (int argc, char ** argv)
       peer_secret = peer_secret_buf;
     }
     kmax_hops = hops;
-    wait_time = 10 * 60 * 1000;   /* wait up to 10 minutes for a key */
+    wait_time = 10 * 24 * 3600 * 1000;   /* wait up to 10 days for a key */
     char * send_secret = my_secret;
     if (! create_contact_send_key (sock, kcontact, send_secret,
                                    peer_secret, hops))
@@ -163,7 +165,7 @@ int main (int argc, char ** argv)
   add_time (&deadline, wait_time);
   int max_wait = until_deadline (&deadline);
   int ack_seen = 0;
-  while (max_wait > 0) {
+  while (exchanging_key || (max_wait > 0)) {
     char * packet;
     int pipe, pri;
     int found = receive_pipe_message_any (max_wait, &packet, &pipe, &pri);
@@ -201,6 +203,7 @@ int main (int argc, char ** argv)
       printf ("success!  got remote key for %s\n", kcontact);
       gettimeofday (&deadline, NULL);
       add_time (&deadline, 5000);  /* wait 5 more seconds */
+      exchanging_key = 0;
     }
   /* handle_packet may change what has been acked */
     if ((ack_expected) && (! ack_seen) && (is_acked (contact, seq))) {
