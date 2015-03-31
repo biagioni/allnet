@@ -241,8 +241,41 @@ static char * make_program_path (char * path, char * program)
   return result;
 }
 
+static char * find_java_path ()
+{
+  static char * result = NULL;
+  if (result != NULL)   /* found it before */
+    return result;
+  char * path = getenv ("PATH");
+  char * colon = index (path, ':');
+  do {
+    int len = strlen (path);
+    if (colon != NULL)
+      len = colon - path;
+    if (len > 0) {
+        /* len+6 because   "/java" + null character   take 6 bytes*/
+      char * result = malloc_or_fail (len + 6, "find_java_path");
+      memcpy (result, path, len);
+      strcpy (result + len, "/java");
+      if (access (result, X_OK) == 0)
+        return result;
+      free (result);
+    }
+    if (colon == NULL)
+      path = NULL;
+    else {
+      path = colon + 1;
+      colon = index (path, ':');
+    }
+  } while (path != NULL);
+  return NULL;
+}
+
 static char * find_java ()
 {
+  char * path = find_java_path ();
+  if (path != NULL)
+    return path;
   char * candidates [] = { "/usr/bin/java", "C:\\winnt\\system32\\java",
                            "C:\\windows\\system\\java",
                            "C:\\windows\\system32\\java",
