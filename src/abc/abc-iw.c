@@ -285,7 +285,7 @@ static int abc_wifi_config_iw_connect ()
   static int set_power_save = 1;
   if (set_power_save) {   /* do this at most once */
     if_command ("iw dev %s set power_save on", self.iface, 161,
-                "power saving mode not supported", NULL);
+                "" /* power saving not supported, no error message */ , NULL);
     set_power_save = 0;
   }
 
