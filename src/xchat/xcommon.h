@@ -11,12 +11,20 @@ extern int xchat_init (char * program_name);
 /* optional... */
 extern void xchat_end (int sock);
 
+#define ALLNET_MAX_ACKS	((ALLNET_MTU - ALLNET_HEADER_SIZE) / MESSAGE_ID_SIZE)
+struct allnet_ack_info {
+  int num_acks;        /* num acks received */
+  long long int acks [ALLNET_MAX_ACKS];
+  char * peers [ALLNET_MAX_ACKS];
+};
+
 /* handle an incoming packet, acking it if it is a data packet for us
  * returns the message length > 0 if this was a valid data message from a peer.
  * if it gets a valid key, returns -1 (details below)
+ * if it gets a new valid ack, returns -2 (details below)
  * Otherwise returns 0 and does not fill in any of the following results.
  *
- * if it is a data or ack, it is saved in the xchat log
+ * if it is a data, it is saved in the xchat log
  * if it is a valid data message from a peer or a broadcaster,
  * fills in verified and broadcast
  * fills in contact, message (to point to malloc'd buffers, must be freed)
@@ -24,6 +32,9 @@ extern void xchat_end (int sock);
  * and duplicate.
  * if verified and not broadcast, fills in kset.
  * the data message (if any) is null-terminated
+ *
+ * if it is an ack to something we sent, saves it in the xchat log
+ * and if acks is not null, fills it in.
  *
  * if kcontact and ksecret1 are not NULL, assumes we are also looking
  * for key exchange messages sent to us matching either of ksecret1 or
@@ -44,6 +55,7 @@ extern void xchat_end (int sock);
  */
 extern int handle_packet (int sock, char * packet, int psize,
                           char ** contact, keyset * kset,
+                          struct allnet_ack_info * acks,
                           char ** message, char ** desc, int * verified,
                           time_t * sent, int * duplicate, int * broadcast,
                           char * kcontact, char * ksecret1, char * ksecret2,

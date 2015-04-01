@@ -94,18 +94,25 @@ printf ("packet not requesting an ack, no ack sent\n");
     request_and_resend (sock, contact, kset);
 }
 
-static void handle_ack (int sock, char * packet, int psize, int hsize)
+static void handle_ack (int sock, char * packet, int psize, int hsize,
+                        struct allnet_ack_info * acks)
 {
   struct allnet_header * hp = (struct allnet_header *) packet;
   /* save the acks */
   char * ack = packet + ALLNET_SIZE (hp->transport);
   int count = (psize - hsize) / MESSAGE_ID_SIZE; 
   int i;
+  int ack_count = 0;
   for (i = 0; i < count; i++) {
-    char * peer;
+    char * peer = NULL;
     keyset kset;
     long long int ack_number = ack_received (ack, &peer, &kset);
-    if (ack_number > 0) {
+    if ((ack_number > 0) && (peer != NULL)) {
+      if ((acks != NULL) && (ack_count < ALLNET_MAX_ACKS)) {
+        acks->acks [ack_count] = ack_number;
+        acks->peers [ack_count] = peer;
+      }
+      ack_count++;
 #ifdef DEBUG_PRINT
       printf ("sequence number %lld acked\n", ack_number);
 #endif /* DEBUG_PRINT */
@@ -122,6 +129,8 @@ static void handle_ack (int sock, char * packet, int psize, int hsize)
 /* */
     ack += MESSAGE_ID_SIZE;
   }
+  if (acks != NULL)
+    acks->num_acks = ack_count;
 }
 
 static int handle_clear (struct allnet_header * hp, char * data, int dsize,
@@ -478,7 +487,7 @@ printf ("sending back key with secret %s\n", secret);
  * if it gets a valid key, returns -1 (details below)
  * Otherwise returns 0 and does not fill in any of the following results.
  *
- * if it is a data or ack, it is saved in the xchat log
+ * if it is a data, it is saved in the xchat log
  * if it is a valid data message from a peer or a broadcaster,
  * fills in verified and broadcast
  * fills in contact, message (to point to malloc'd buffers, must be freed)
@@ -486,6 +495,9 @@ printf ("sending back key with secret %s\n", secret);
  * and duplicate.
  * if verified and not broadcast, fills in kset.
  * the data message (if any) is null-terminated
+ *
+ * if it is an ack to something we sent, saves it in the xchat log
+ * and if acks is not null, fills it in.
  *
  * if kcontact and ksecret1 are not NULL, assumes we are also looking
  * for key exchange messages sent to us matching either of ksecret1 or
@@ -506,6 +518,7 @@ printf ("sending back key with secret %s\n", secret);
  */
 int handle_packet (int sock, char * packet, int psize,
                    char ** contact, keyset * kset,
+                   struct allnet_ack_info * acks,
                    char ** message, char ** desc,
                    int * verified, time_t * sent,
                    int * duplicate, int * broadcast,
@@ -514,6 +527,8 @@ int handle_packet (int sock, char * packet, int psize,
                    char * subscription, 
                    unsigned char * addr, int nbits)
 {
+  if (acks != NULL)
+    acks->num_acks = 0;
   if (! is_valid_message (packet, psize))
     return 0;
 
@@ -528,7 +543,7 @@ int handle_packet (int sock, char * packet, int psize,
 #endif /* DEBUG_PRINT */
 
   if (hp->message_type == ALLNET_TYPE_ACK) {
-    handle_ack (sock, packet, psize, hsize);
+    handle_ack (sock, packet, psize, hsize, acks);
     return 0;
   }
 

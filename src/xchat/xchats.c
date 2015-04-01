@@ -177,8 +177,9 @@ int main (int argc, char ** argv)
     char * desc;
     char * message;
     char * peer = NULL;
+    struct allnet_ack_info acks;
     keyset kset = -1;
-    int mlen = handle_packet (sock, packet, found, &peer, &kset,
+    int mlen = handle_packet (sock, packet, found, &peer, &kset, &acks,
                               &message, &desc, &verified, NULL, &duplicate,
                               &broadcast, kcontact, my_secret, peer_secret,
                               kmax_hops, NULL, NULL, 0);
@@ -206,17 +207,22 @@ int main (int argc, char ** argv)
       exchanging_key = 0;
     }
   /* handle_packet may change what has been acked */
-    if ((ack_expected) && (! ack_seen) && (is_acked (contact, seq))) {
-      struct timeval finish;
-      gettimeofday (&finish, NULL);   /* how long did the ack take? */
-      long long int delta = (finish.tv_sec  - start.tv_sec ) * 1000000LL +
-                            (finish.tv_usec - start.tv_usec);
-      printf ("got ack from %s in %lld.%06llds\n", contact,
-              delta / 1000000, delta % 1000000);
+    if ((ack_expected) && (! ack_seen)) {
+      int i;
+      for (i = 0; i < acks.num_acks; i++) {
+        if ((seq == acks.acks [i]) && (strcmp (contact, acks.peers [i]) == 0)) {
+          struct timeval finish;
+          gettimeofday (&finish, NULL);   /* how long did the ack take? */
+          long long int delta = (finish.tv_sec  - start.tv_sec ) * 1000000LL +
+                                (finish.tv_usec - start.tv_usec);
+          printf ("got ack from %s in %lld.%06llds\n", contact,
+                  delta / 1000000, delta % 1000000);
 
-      gettimeofday (&deadline, NULL);   /* wait another wait_time */
-      add_time (&deadline, wait_time);  /* for additional messages */
-      ack_seen = 1;
+          gettimeofday (&deadline, NULL);   /* wait another wait_time */
+          add_time (&deadline, wait_time);  /* for additional messages */
+          ack_seen = 1;
+        }
+      }
     }
     if (mlen > 0) {
       free (peer);

@@ -518,9 +518,10 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       keyset kset;
       char * desc;
       char * message;
+      struct allnet_ack_info acks;
       time_t mtime = 0;
-      int mlen = handle_packet (sock, packet, found, &peer, &kset, &message,
-                                &desc, &verified, &mtime, &duplicate,
+      int mlen = handle_packet (sock, packet, found, &peer, &kset, &acks,
+                                &message, &desc, &verified, &mtime, &duplicate,
                                 &broadcast, key_contact, key_secret, 
                                 key_secret2, num_hops,
                                 subscription, saddr, sbits);
@@ -563,8 +564,13 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         }
       }
       /* handle_packet may have changed what has and has not been acked */
-      acknowledge (forwarding_socket, 
-                   (struct sockaddr *) (&fwd_addr), fwd_addr_size);
+      int i;
+      for (i = 0; i < acks.num_acks; i++)
+        send_seq_ack (forwarding_socket, (struct sockaddr *) (&fwd_addr),
+                      fwd_addr_size, CODE_ACK, time (NULL),
+                      acks.peers [i], acks.acks [i]);
+      /* acknowledge (forwarding_socket, 
+                   (struct sockaddr *) (&fwd_addr), fwd_addr_size); */ 
     }
   }
 }
