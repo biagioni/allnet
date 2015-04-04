@@ -66,7 +66,39 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug,
   return 0;
 }
 
-static void main_loop (int sock, int debug, int max, int verify)
+static int received_before (char * message, int mlen)
+{
+#define MAX_MESSAGES	1000
+#define MESSAGE_STORAGE	(ALLNET_MTU + 2)
+  static char * received_before = NULL;
+  static int latest_received = 0;
+  if (received_before == NULL) {
+    received_before = malloc_or_fail (MESSAGE_STORAGE * MAX_MESSAGES,
+                                      "storage of unique packets");
+    memset (received_before, 0, MESSAGE_STORAGE * MAX_MESSAGES);
+  }
+  char * ptr;
+  int i;
+  for (i = 0; i < MAX_MESSAGES; i++) {
+    ptr = received_before + (MESSAGE_STORAGE * i); 
+    int len = readb16 (ptr);
+    ptr += 2;  /* point to the message itself */
+    if ((len > ALLNET_HEADER_SIZE) && (len == mlen) &&
+        /* separately compare all but the byte at position 2 (hop count) */
+        (memcmp (ptr, message, 2) == 0) &&
+        (memcmp (ptr + 3, message, mlen - 3) == 0))
+      return 1;
+  }
+  latest_received = (latest_received + 1) % MAX_MESSAGES;
+  ptr = received_before + (MESSAGE_STORAGE * latest_received);
+  writeb16 (ptr, mlen);
+  memcpy (ptr + 2, message, mlen);
+  return 0;
+#undef MAX_MESSAGES
+#undef MESSAGE_STORAGE
+}
+
+static void main_loop (int sock, int debug, int max, int verify, int unique)
 {
   while (1) {
     int pipe;
@@ -78,15 +110,17 @@ static void main_loop (int sock, int debug, int max, int verify)
       printf ("packet sniffer pipe closed, exiting\n");
       exit (1);
     }
-    int received = 0;
-    if (handle_packet (message, found, &received, debug, verify))
-      return;
-    free (message);
-    if ((max > 0) && (received)) {
-      max--;
-      if (max == 0)
+    if ((! unique) || (! received_before (message, found))) {
+      int received = 0;
+      if (handle_packet (message, found, &received, debug, verify))
         return;
+      if ((max > 0) && (received)) {
+        max--;
+        if (max == 0)
+          return;
+      }
     }
+    free (message);
   }
 }
 
@@ -122,18 +156,21 @@ int main (int argc, char ** argv)
   int verbose = 0;
   int debug = 0;
   int verify = 0;
+  int unique = 0;
   int opt;
-  while ((opt = getopt (argc, argv, "vdy")) != -1) {
+  while ((opt = getopt (argc, argv, "vdyu")) != -1) {
     switch (opt) {
     case 'd': debug = 1; break;
     case 'v': verbose = 1; break;
     case 'y': verify = 1; break;
+    case 'u': unique = 1; break;
     default:
-      printf ("usage: %s [-v] [-d] [-y] [number-of-messages]\n", argv [0]);
+      printf ("usage: %s [-v] [-d] [-y] [-u] [number-of-messages]\n", argv [0]);
+      printf ("       -v: verbose, -d: debug, -y: verify sig, -u: unique only");
       exit (1);
     }
   }
-  if (verbose && (! debug))
+  if (verbose)
     debug = 1;
   log_to_output (verbose);
 
@@ -145,7 +182,7 @@ int main (int argc, char ** argv)
   if (argc > optind)
     max = atoi (argv [optind]);
 
-  main_loop (sock, debug, max, verify);
+  main_loop (sock, debug, max, verify, unique);
   return 0;
 }
 
