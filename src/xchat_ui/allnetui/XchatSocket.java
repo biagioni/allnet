@@ -230,6 +230,7 @@ public class XchatSocket extends Thread {
     } else if (code == codeAck) {
       long ack = b64 (data, nextIndex.value, dlen);
       System.out.println ("from " + peer + " got ack " + ack);
+      api.messageAcked (peer, ack);
     } else {
       System.out.println ("unknown code " + code);
     }

@@ -54,8 +54,6 @@ public class ConversationData {
     // capacity
     java.util.Vector<Message> messages =
       new java.util.Vector<Message>(200, 10000);
-    // acks is not really used yet, but might be if we record whether a
-    // message has been acked.
     java.util.Vector<String> acks = new java.util.Vector<String>(200, 10000);
 //    System.out.println ("paths has " + paths.size() + " paths");
     while(pathIter.hasPrevious()) {
@@ -69,6 +67,9 @@ public class ConversationData {
         if (maxCopy <= 0)   // finished, no point in reading more files
           break;
       }
+      for (int i = 0; i < maxCopy; i++)
+        for (String s: acks)
+          fileContents[fileContents.length - i - 1].setAcked(s);
       for (int i = 0; i < maxCopy; i++)
         messages.add(fileContents[fileContents.length - i - 1]);
       if ((limit) && (messages.size() >= max))
@@ -147,7 +148,8 @@ public class ConversationData {
     return result;
   }
 
-  private static Message[] readMessages(String contact, java.nio.file.Path path,
+  private static Message[] readMessages(String contact,
+                                        java.nio.file.Path path,
                                         java.util.Vector<String> acks)
   {
     try {
@@ -236,10 +238,10 @@ public class ConversationData {
       }
       if (sentMessage)
         return new Message(Message.SELF, contact, time * 1000, seq, text,
-                           false, false, true);
+                           messageId);
       else
-        return new Message(contact, Message.SELF, time * 1000, seq, text,
-                           false, false, false);
+        return new Message(contact, Message.SELF, time * 1000, text,
+                           false, false);
     } catch (java.io.IOException e) {
       System.out.println ("I/O error " + e + " in ReadMessage");
       return null;

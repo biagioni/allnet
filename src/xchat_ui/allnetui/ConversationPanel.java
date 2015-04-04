@@ -44,6 +44,11 @@ class ConversationPanel extends JPanel {
     // default colors to use
     private static Color background = Color.GRAY, foreground = Color.WHITE;
     private static Color broadcastColor = Color.LIGHT_GRAY;
+    private static Color ackedColor = Color.GREEN;
+    // everything needed to turn messages green once they are acked
+    private java.util.LinkedList<Message> unackedM = null;
+    private java.util.LinkedList<JPanel> unackedP = null;
+    private java.util.LinkedList<java.util.Vector<JLabel>> unackedL = null;
 
     ConversationPanel(String info, String commandPrefix, String contactName) {
         this.commandPrefix = commandPrefix;
@@ -74,6 +79,9 @@ class ConversationPanel extends JPanel {
         // make it scroll to the bottom when we add something
         scrollPane.getVerticalScrollBar().addAdjustmentListener(new MyAdjustmentListener());
         //
+        unackedM = new java.util.LinkedList<Message>();
+        unackedP = new java.util.LinkedList<JPanel>();
+        unackedL = new java.util.LinkedList<java.util.Vector<JLabel>>();
         // make the text input components
         msgField = new JTextField();
         msgField.setActionCommand(commandPrefix + ":" + SEND_COMMAND);
@@ -92,9 +100,6 @@ class ConversationPanel extends JPanel {
         gbc.gridwidth = 3;
         add(buttonPanel, gbc);
         gbc.gridx = 0;
-//        gbc.gridy++;
-//        gbc.gridwidth = 3;
-//        add(topLabel, gbc);
         gbc.gridy++;
         gbc.weighty = 1.0;
         gbc.anchor = GridBagConstraints.PAGE_START;
@@ -109,10 +114,6 @@ class ConversationPanel extends JPanel {
         gbc.gridx = 2;
         gbc.weightx = 0.0;
         add(send, gbc);
-//        gbc.gridy++;
-//        gbc.gridwidth = 3;
-//        gbc.gridx = 0;
-//        add(buttonPanel, gbc);
     }
 
     public String getContactName() {
@@ -136,10 +137,12 @@ class ConversationPanel extends JPanel {
         return (msg);
     }
 
-    static void setDefaultColors(Color background, Color foreground, Color broadcastColor) {
+    static void setDefaultColors(Color background, Color foreground,
+                                 Color broadcastColor, Color ackedColor) {
         ConversationPanel.background = background;
         ConversationPanel.foreground = foreground;
         ConversationPanel.broadcastColor = broadcastColor;
+        ConversationPanel.ackedColor = ackedColor;
     }
 
     void setListener(ActionListener listener) {
@@ -190,9 +193,18 @@ class ConversationPanel extends JPanel {
         return (panel);
     }
 
-    void addMsg(String text, boolean left, boolean broadcast) {
+    void addMsg(String text, Message msg) {
+        boolean left = msg.to.equals(Message.SELF);
+        boolean broadcast = msg.isBroadcast();
+        boolean acked = msg.acked();
         String[] lines = text.split("\n");
-        JPanel bubble = makeBubble(left, broadcast ? broadcastColor : Color.WHITE, lines);
+        Color bg = broadcast ? broadcastColor : acked ? ackedColor
+                 : Color.WHITE;
+        java.util.LinkedList<java.util.Vector<JLabel>> labels = null;
+        if (! acked)
+             labels = unackedL;
+        
+        JPanel bubble = makeBubble(left, bg, labels, lines);
         JPanel inner = new JPanel();
         inner.setBackground(background);
         inner.setLayout(new BoxLayout(inner, BoxLayout.X_AXIS));
@@ -204,6 +216,11 @@ class ConversationPanel extends JPanel {
             inner.add(Box.createHorizontalGlue());
             inner.add(bubble);
         }
+        if (! acked) {  // should parallel what happens in makeBubble
+                        // i.e. only add if not acked
+            unackedM.addFirst (msg);
+            unackedP.addFirst (bubble);
+        }
         messagePanel.add(inner);
         messagePanel.add(Box.createRigidArea(new Dimension(0, 4)));
         // tell scroll panel to scroll to the bottom the next time it adjusts,
@@ -213,11 +230,29 @@ class ConversationPanel extends JPanel {
         messagePanel.revalidate();
     }
 
-    private JPanel makeBubble(boolean leftJustified, Color color, String... lines) {
+    void ackMsg(Message msg) {
+        for (int i = 0; i < unackedM.size(); i++) {
+            if (unackedM.get (i).equals (msg)) {
+                unackedP.get (i).setBackground(ackedColor);
+                for (JLabel label: unackedL.get (i))
+                    label.setBackground(ackedColor);
+                unackedM.remove (i);
+                unackedP.remove (i);
+                unackedL.remove (i);
+                return;
+            }
+        }
+        messagePanel.revalidate();
+    }
+
+    private JPanel makeBubble(boolean leftJustified, Color color,
+                              java.util.LinkedList<java.util.Vector<JLabel>> labels,
+                              String... lines) {
         JPanel panel = new JPanel();
         panel.setBackground(color);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         JLabel label;
+        java.util.Vector<JLabel> labelv = new java.util.Vector<JLabel>();
         for (int i = 0; i < lines.length; i++) {
             label = new JLabel(lines[i]);
             label.setOpaque(true);
@@ -229,7 +264,11 @@ class ConversationPanel extends JPanel {
                 label.setAlignmentX(Component.RIGHT_ALIGNMENT);
             }
             panel.add(label);
+            if (labels != null)
+                labelv.add (label);
         }
+        if (labels != null)
+            labels.addFirst (labelv);
         // Border compound = BorderFactory.createCompoundBorder(new LineBorder(Color.BLACK, 1, true), new LineBorder(color, 2, true));
         // panel.setBorder(new LineBorder(Color.BLACK, 1, true));
         // panel.setBorder(compound);

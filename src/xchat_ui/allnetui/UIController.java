@@ -60,10 +60,12 @@ class UIController implements ControllerInterface, UIAPI {
     //-----------------------------------------
     // the application should call this method after a valid message is received
     @Override
-    public void messageReceived(final String from, final long sentTime, final String text, final boolean broadcast) {
+    public void messageReceived(final String from, final long sentTime,
+                                final String text, final boolean broadcast) {
         Runnable r = new Runnable() {
 
-            Message message = new Message(from, Message.SELF, sentTime, text, broadcast);
+            Message message = new Message(from, Message.SELF, sentTime,
+                                          text, broadcast, true);
 
             @Override
             public void run() {
@@ -98,10 +100,12 @@ class UIController implements ControllerInterface, UIAPI {
 
     // the application should call this method after a message has been successfully sent
     @Override
-    public void messageSent(final String to, final long sentTime, final String text) {
+    public void messageSent(final String to, final long sentTime,
+                            final long seq, final String text) {
         Runnable r = new Runnable() {
 
-            Message message = new Message(Message.SELF, to, sentTime, text, false);
+            Message message = new Message(Message.SELF, to, sentTime, seq,
+                                          text, null);
 
             @Override
             public void run() {
@@ -109,6 +113,19 @@ class UIController implements ControllerInterface, UIAPI {
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
+        SwingUtilities.invokeLater(r);
+    }
+
+    // the application should call this method after a message is acked
+    public void messageAcked(final String peer, final long seq) {
+        Runnable r = new Runnable() {
+
+            @Override
+            public void run() {
+                ackMessage(peer, seq);
+            }
+        };
+        // schedule it in the event disp thread, but don't wait
         SwingUtilities.invokeLater(r);
     }
 
@@ -406,7 +423,7 @@ class UIController implements ControllerInterface, UIAPI {
             Message msg;
             while (it.hasNext()) {
                 msg = it.next();
-                cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
+                cp.addMsg(formatMessage(msg, maxLineLength), msg);
             }
             myTabbedPane.addTabWithClose(contactName, cp.getTitle(), cp, ConversationPanel.CLOSE_COMMAND);
             myTabbedPane.setSelected(cp);
@@ -576,7 +593,7 @@ class UIController implements ControllerInterface, UIAPI {
                 long seq = XchatSocket.sendToPeer(peer, msgText);
                 if (seq > 0) {
                     long sentTime = new java.util.Date().getTime();
-                    messageSent(peer, sentTime, msgText);
+                    messageSent(peer, sentTime, seq, msgText);
 //                  System.out.println("UIController.java: sent to " + peer +
 //                                     ": " + msgText);
                 }
@@ -603,7 +620,8 @@ class UIController implements ControllerInterface, UIAPI {
     private void processReceivedMessage(Message msg) {
         if (!clientData.contactExists(msg.from)) {
             // maybe should throw Exception here, in production code 
-            System.out.println("got message from unknown contact " + msg.from);
+            System.out.println("got message from unknown contact " + msg.from
+                               + " (self is " + Message.SELF + ")");
             return;
         }
         Conversation conv = clientData.getConversation(msg.from);
@@ -612,7 +630,7 @@ class UIController implements ControllerInterface, UIAPI {
         ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(msg.from);
         if (cp != null) {
             // add the message to it
-            cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
+            cp.addMsg(formatMessage(msg, maxLineLength), msg);
             // if the tab is currently selected, then mark message as read
             String selectedName = myTabbedPane.getSelectedID();
             if (selectedName.equals(msg.from)) {
@@ -745,11 +763,32 @@ class UIController implements ControllerInterface, UIAPI {
         ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(msg.to);
         if (cp != null) {
             // add the message to it
-            cp.addMsg(formatMessage(msg, maxLineLength), msg.to.equals(Message.SELF), msg.broadcast);
+            cp.addMsg(formatMessage(msg, maxLineLength), msg);
             // mark the message as read, even though this is not checked at present
             msg.setRead();
         }
     }
+
+    // called from the event disp thread, so can do what we want with the UI
+    // in this method
+    private void ackMessage(String peer, long seq) {
+        if (!clientData.contactExists(peer)) {
+            return;
+        }
+        Conversation conv = clientData.getConversation(peer);
+        // see if there is a tab open for this conversation
+        Iterator<Message> it = conv.getIterator();
+        while (it.hasNext ()) {
+            Message msg = it.next ();
+            if (msg.setAcked (seq)) {  // set ack flag if this is the right seq
+                ConversationPanel cp =
+                    (ConversationPanel) myTabbedPane.getTabContent(peer);
+                if (cp != null)
+                    cp.ackMsg (msg);
+            }
+        }
+    }
+
 
     private void showKeyExchangeSuccess(KeyExchangePanel kep, String contactName) {
         // for debug

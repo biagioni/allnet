@@ -33,6 +33,7 @@ class UI extends ApplicationFrame {
     private static Color otherColor = new Color(255, 215, 0);
     private static Color broadcastBackgroundColor = Color.PINK;
     private static Color broadcastContactColor = Color.BLUE;
+    private static Color ackedBackgroundColor = Color.GREEN;
     // just to avoid a warning
     private static final long serialVersionUID = 1L;
 
@@ -44,12 +45,16 @@ class UI extends ApplicationFrame {
         return bgndColor;
     }
 
+    public static Color getAckedBgndColor() {
+        return bgndColor;
+    }
+
     public static Color getBroadcastBackgroundColor() {
         return broadcastBackgroundColor;
     }
 
     public static Color getBroadcastContactColor() {
-        return broadcastContactColor;
+        return ackedBackgroundColor;
     }
 
     public static Color getOtherColor() {
@@ -87,15 +92,23 @@ class UI extends ApplicationFrame {
                     ClientData clientData = new ClientData();
                     UIController controller = new UIController(clientData);
 
-                    ConversationPanel.setDefaultColors(bgndColor, otherColor, broadcastBackgroundColor);
-                    ContactsPanel contactsPanel = new ContactsPanel(" contacts<br>panel ", bgndColor, otherColor, broadcastContactColor);
-                    NewContactPanel newContactPanel = new NewContactPanel(" exchange a key with a new contact<br>&nbsp;", bgndColor, otherColor);
+                    ConversationPanel.setDefaultColors(bgndColor, otherColor,
+                                                       broadcastBackgroundColor,
+                                                       ackedBackgroundColor);
+                    ContactsPanel contactsPanel =
+                      new ContactsPanel(" contacts<br>panel ", bgndColor,
+                                        otherColor, broadcastContactColor);
+                    NewContactPanel newContactPanel =
+                      new NewContactPanel(" exchange a key with a new contact<br>&nbsp;",
+                                          bgndColor, otherColor);
                     MyTabbedPane uiTabs = new MyTabbedPane();
-                    uiTabs.addTab(NEW_CONTACT_PANEL_ID, "New Contact", newContactPanel);
+                    uiTabs.addTab(NEW_CONTACT_PANEL_ID, "New Contact",
+                                  newContactPanel);
                     uiTabs.addTab(CONTACTS_PANEL_ID, "Contacts", contactsPanel);
                     uiTabs.setSelected(contactsPanel);                    
                     // controller needs a references to the panels in the ui
-                    // and also to register to listen for events from those panels
+                    // and also to register to listen for events from
+                    // those panels
                     controller.setContactsPanel(contactsPanel);
                     controller.setNewContactPanel(newContactPanel);
                     controller.setMyTabbedPane(uiTabs);

@@ -113,7 +113,7 @@ class UITester extends JFrame implements ActionListener {
                 break;
             case sendStr:
                 controller.messageSent(toFrom.getText(),
-                        System.currentTimeMillis(), msg.getText());
+                        System.currentTimeMillis(), 1, msg.getText());
                 break;
             case createStr:
                 if (broadcastCheckBox.isSelected()) {
