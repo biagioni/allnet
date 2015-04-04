@@ -209,7 +209,7 @@ int main (int argc, char ** argv)
   /* handle_packet may change what has been acked */
     if ((ack_expected) && (! ack_seen)) {
       int i;
-      for (i = 0; i < acks.num_acks; i++) {
+      for (i = 0; (! ack_seen) && (i < acks.num_acks); i++) {
         if ((seq == acks.acks [i]) && (strcmp (contact, acks.peers [i]) == 0)) {
           struct timeval finish;
           gettimeofday (&finish, NULL);   /* how long did the ack take? */
