@@ -255,25 +255,41 @@ static int handle_data (int sock, struct allnet_header * hp,
     return 0;
   }
   int media = readb32u (cdp->app_media.media);
-  if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
-      (media != ALLNET_MEDIA_PUBLIC_KEY)) {
-#ifdef DEBUG_PRINT
-    printf ("handle_data ignoring media type %08x\n", media);
-    print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
-#endif /* DEBUG_PRINT */
-    return 0;
-  }
-  char * cleartext = text + CHAT_DESCRIPTOR_SIZE;
-  int msize = tsize - CHAT_DESCRIPTOR_SIZE;
-
   long long int seq = readb64u (cdp->counter);
   if (seq == COUNTER_FLAG) {
-    do_chat_control (*contact, *kset, text, tsize, sock, hp->hops + 4);
-    send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
+    if (media == ALLNET_MEDIA_DATA) {
+#ifdef DEBUG_PRINT
+      printf ("chat control message, responding\n");
+#endif /* DEBUG_PRINT */
+      do_chat_control (*contact, *kset, text, tsize, sock, hp->hops + 4);
+      send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
+#ifdef DEBUG_PRINT
+      printf ("chat control message response complete\n");
+#endif /* DEBUG_PRINT */
+    } else {
+#ifdef DEBUG_PRINT
+      printf ("chat control media type %08x, only %08x valid, ignoring\n",
+              media, ALLNET_MEDIA_DATA);
+      print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
+#endif /* DEBUG_PRINT */
+    }
     if (*contact != NULL) { free (*contact); *contact = NULL; }
     if (text != NULL) free (text);
     return 0;
   }
+
+  if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
+      (media != ALLNET_MEDIA_PUBLIC_KEY)) {
+#ifdef DEBUG_PRINT
+    printf ("handle_data ignoring media type %08x (valid %08x %08x)\n",
+            media, ALLNET_MEDIA_TEXT_PLAIN, ALLNET_MEDIA_PUBLIC_KEY);
+    print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
+
+  char * cleartext = text + CHAT_DESCRIPTOR_SIZE;
+  int msize = tsize - CHAT_DESCRIPTOR_SIZE;
 
   *broadcast = 0;
   *duplicate = 0;
@@ -615,6 +631,9 @@ long long int send_data_message (int sock, char * peer,
 /* but not too often */
 void request_and_resend (int sock, char * contact, keyset kset)
 {
+#ifdef DEBUG_PRINT
+  printf ("request and resend for %s\n", contact);
+#endif /* DEBUG_PRINT */
   if (get_counter (contact) <= 0) {
     printf ("unable to request and resend for %s, peer not found\n", contact);
     return;
@@ -624,7 +643,9 @@ void request_and_resend (int sock, char * contact, keyset kset)
 
   /* if it is the same peer as on the last call, we do nothing */
   if ((old_contact != NULL) && (strcmp (contact, old_contact) == 0)) {
-/*    printf ("request_and_resend (%s), same as old peer\n", peer); */
+#ifdef DEBUG_PRINT
+    printf ("request_and_resend (%s), same as old peer\n", contact);
+#endif /* DEBUG_PRINT */
     return;
   }
 
@@ -641,6 +662,9 @@ void request_and_resend (int sock, char * contact, keyset kset)
   static time_t last_resend = 0;
   time_t now = time (NULL);
   if (now - last_resend > 3600) {
+#ifdef DEBUG_PRINT
+    printf ("resending unacked\n");
+#endif /* DEBUG_PRINT */
     last_resend = now;
     resend_unacked (contact, kset, sock, hops, ALLNET_PRIORITY_LOCAL_LOW, 10);
   }

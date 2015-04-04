@@ -294,12 +294,15 @@ static void resend_message (uint64_t seq, char * contact,
   memcpy (cdp->message_ack, message_ack, MESSAGE_ID_SIZE);
   writeb64u (cdp->counter, seq);
   writeb64u (cdp->timestamp, time);
+  /* the fixed part of the header */
+  writeb32 ((char *) (cdp->app_media.app), XCHAT_ALLNET_APP_ID);
+  writeb32 ((char *) (cdp->app_media.media), ALLNET_MEDIA_TEXT_PLAIN);
   memcpy (message + CHAT_DESCRIPTOR_SIZE, text, size);
   free (text);
 #ifdef DEBUG_PRINT
   printf ("rexmit outgoing %s, seq %" PRIu64 ", t %" PRIu64 "/0x%" PRIx64 "\n",
           contact, seq, time, time);
-  print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
+  print_buffer ((char *) cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
 #endif /* DEBUG_PRINT */
   resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
                  hops, priority);
