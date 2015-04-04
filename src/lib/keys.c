@@ -1,6 +1,5 @@
 /* keys.c: manage keys on disk */
 
-
 /* keys are stored under ~/.allnet/contacts/yyyymmddhhmmss/ */
 /* each such directory has a file "name", a file "my_key", and possibly
  * a file "contact_public_key".  It is an error (and the contact is not
@@ -182,6 +181,20 @@ static void read_address_file (char * fname, char * address, int * nbits)
   }
 }
 
+static void remove_unprintable (char * s)
+{
+  int len = strlen (s);
+  int offset = 0;
+  int i;
+  for (i = 0; i < len; i++) {
+    if (! (isgraph (s [i]) || isblank (s [i]))) // unprintable, remove
+      offset++;
+    else
+      s [i - offset] = s [i];
+  }
+  s [len - offset] = '\0';
+}
+
 /* returns 0 if the contact does not exist, 1 otherwise */
 static int read_key_info (char * path, char * file, char ** contact,
                           allnet_rsa_prvkey * my_key,
@@ -204,6 +217,7 @@ static int read_key_info (char * path, char * file, char ** contact,
     memcpy (result, *contact, found);
     result [found] = '\0';
     free (*contact);
+    remove_unprintable (result);
     *contact = result;
   }
 
