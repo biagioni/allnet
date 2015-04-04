@@ -511,7 +511,7 @@ static char * interface_extra (struct ifaddrs * next)
     if (geteuid () == 0)
       return "wifi";
     else
-      return "wifi,nm";
+      return ""; /* don't use "wifi,nm" for now, hasn't been thought through */
   }
   return "";
 }
