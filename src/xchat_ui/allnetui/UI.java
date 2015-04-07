@@ -25,7 +25,7 @@ class UI extends ApplicationFrame {
     public static final String KEY_EXCHANGE_PANEL_ID = "KEY_EXCHANGE_PANEL_ID";
     //
     // private static boolean debug = false;
-    static final String TITLE = "Allnet Java UI";
+    static final String TITLE = "xchat - AllNet Java UI";
     static final String VERSION = "0.01";
     //
     // init default colors
