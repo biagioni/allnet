@@ -221,7 +221,7 @@ public class XchatSocket extends Thread {
       api.contactCreated(peer, true);
     } else if (code == codeSeq) {
       long seq = b64 (data, nextIndex.value, dlen);
-      System.out.println ("message to " + peer + " has sequence " + seq);
+      // System.out.println ("message to " + peer + " has sequence " + seq);
       try {
         seqQueue.put (seq);
       } catch (java.lang.InterruptedException e) {
@@ -229,7 +229,7 @@ public class XchatSocket extends Thread {
       }
     } else if (code == codeAck) {
       long ack = b64 (data, nextIndex.value, dlen);
-      System.out.println ("from " + peer + " got ack " + ack);
+      // System.out.println ("from " + peer + " got ack " + ack);
       api.messageAcked (peer, ack);
     } else {
       System.out.println ("unknown code " + code);
