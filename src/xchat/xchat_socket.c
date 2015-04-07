@@ -386,26 +386,6 @@ static void add_to_unacked (long long int seq, char * contact)
   unacked_count++;
 }
 
-static void acknowledge (int sock, struct sockaddr * sap, socklen_t slen)
-{
-  char ** contacts;
-  int ncontacts = all_contacts (&contacts);
-  int delta = 0;
-  int i;
-  for (i = 0; i < unacked_count; i++) {
-    int index = unacked_seqs [i].contact_index;
-    if ((index < ncontacts) &&
-        (is_acked (contacts [index], unacked_seqs [i].seq))) {
-      send_seq_ack (sock, sap, slen, CODE_ACK, time (NULL), contacts [index],
-                    unacked_seqs [i].seq);
-      delta++;
-    } else if (delta > 0) { /* move down to fill the gap */
-      unacked_seqs [i - delta] = unacked_seqs [i];
-    }
-  }
-  unacked_count -= delta;
-}
-
 static void thread_for_child_completion (pid_t pid)
 {
   static pid_t static_pid;
@@ -569,8 +549,6 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         send_seq_ack (forwarding_socket, (struct sockaddr *) (&fwd_addr),
                       fwd_addr_size, CODE_ACK, time (NULL),
                       acks.peers [i], acks.acks [i]);
-      /* acknowledge (forwarding_socket, 
-                   (struct sockaddr *) (&fwd_addr), fwd_addr_size); */ 
     }
   }
 }
