@@ -94,6 +94,65 @@ printf ("packet not requesting an ack, no ack sent\n");
     request_and_resend (sock, contact, kset);
 }
 
+/* call every once in a while, e.g. every 1-10s, to poke all our
+ * contacts and get any outstanding messages. */
+static void incremental_request_and_resend (int sock)
+{
+  static unsigned long long int last_time = 0;
+  static unsigned long long int interval = 10;
+  unsigned long long int now = allnet_time ();
+  if (now <= last_time + interval)
+    return;    /* too soon */
+  last_time = now;
+  static int num_contacts = 0;
+  static int current_contact = -1;
+  static char * * contacts = NULL;
+  if ((num_contacts == 0) || (contacts == NULL) || (current_contact < 0)) {
+    num_contacts = all_contacts (&contacts);
+    current_contact = 0;
+#ifdef DEBUG_PRINT
+    int i;
+    for (i = 0; i < num_contacts; i++)
+      printf ("contacts [%d] is %p\n", i, contacts [i]);
+    for (i = 0; i < num_contacts; i++)
+      printf ("contacts [%d] is %s\n", i, contacts [i]);
+#endif /* DEBUG_PRINT */
+    return;   /* get the keyset on the next call */
+  }
+  static int num_keysets = 0;
+  static int current_keyset = -1;
+  static const keyset * keysets = NULL;
+  if ((num_keysets == 0) || (keysets == NULL) || (current_keyset < 0)) {
+    num_keysets = all_keys (contacts [current_contact], &keysets);
+    current_keyset = 0;
+    return;   /* start sending on the next call */
+  }
+#ifdef DEBUG_PRINT
+  printf ("contact %s (%d/%d), sending keyset %d/%d\n",
+          contacts [current_contact], current_contact, num_contacts,
+          current_keyset, num_keysets);
+#endif /* DEBUG_PRINT */
+  request_and_resend (sock, contacts [current_contact],
+                      keysets [current_keyset]);
+  current_keyset++;
+  if (current_keyset >= num_keysets) {  /* switch to new contact, if any */
+    num_keysets = 0;
+    keysets = NULL;
+    current_keyset = -1;
+    current_contact++;
+    if (current_contact >= num_contacts) {  /* start over */
+      num_contacts = 0;
+      contacts = NULL;
+      current_contact = -1;
+      interval = 10000;  /* slow it down to once every 3 hours or so */
+    }
+  }
+#ifdef DEBUG_PRINT
+  printf ("next contact %d/%d, next keyset %d/%d\n",
+          current_contact, num_contacts, current_keyset, num_keysets);
+#endif /* DEBUG_PRINT */
+}
+
 static void handle_ack (int sock, char * packet, int psize, int hsize,
                         struct allnet_ack_info * acks)
 {
@@ -543,6 +602,7 @@ int handle_packet (int sock, char * packet, int psize,
                    char * subscription, 
                    unsigned char * addr, int nbits)
 {
+  incremental_request_and_resend (sock);
   if (acks != NULL)
     acks->num_acks = 0;
   if (! is_valid_message (packet, psize))
