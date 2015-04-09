@@ -25,7 +25,9 @@ adlink = social.c record.c track.c
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la \
         $(ALLNET_ABCDIR)/liballnet-abc-$(ALLNET_API_VERSION).la
+# eventually, phase out astart
 bin_PROGRAMS = \
+	$(ALLNET_BINDIR)/allnet \
 	$(ALLNET_BINDIR)/astart \
 	$(ALLNET_BINDIR)/astop
 
@@ -47,11 +49,15 @@ __ALLNET_BINDIR__astart_SOURCES = astart.c \
 __ALLNET_BINDIR__astart_LDFLAGS = -lpthread
 __ALLNET_BINDIR__astop_SOURCES = ${__ALLNET_BINDIR__astart_SOURCES}
 __ALLNET_BINDIR__astop_LDFLAGS = -lpthread
+__ALLNET_BINDIR__allnet_SOURCES = ${__ALLNET_BINDIR__astart_SOURCES}
+__ALLNET_BINDIR__allnet_LDFLAGS = -lpthread
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
 		rm -f astop && \
-		$(LN_S) astart astop;
+		$(LN_S) astart astop && \
+		$(LN_S) astart allnet;
 
 uninstall-hook:
-	rm -f $(DESTDIR)$(bindir)/astop
+	rm -f $(DESTDIR)$(bindir)/astop && \
+	rm -f $(DESTDIR)$(bindir)/allnet
