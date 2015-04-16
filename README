@@ -1,28 +1,27 @@
 ========================= GET ===================================
 
-The latest release is available from https://alnt.org or sourceforge.
+The latest release is available from https://alnt.org/ or sourceforge.
 
 alnt.org holds releases in .tar format.  A release is made after the code
 has been tested and evaluated.
 
-Sourceforge holds the latest version of the code, which may be buggier.
-You can get the source from sourceforge as follows:
+Sourceforge holds the latest version of the code, which may not have been
+tested as thoroughly.  You can get the source from sourceforge as follows:
 
 	mkdir allnet
 	cd allnet
+	git clone git://git.code.sf.net/p/allnet/code .
+
+If you plan to contribute to the code, replace the last line with these 3 lines:
 	git init
 	git remote add origin git://git.code.sf.net/p/allnet/code
 	git pull origin master
 
-For a copy that lets you read and compile the code but not update the
-repository, you can replace the last three lines with:
-	git clone git://git.code.sf.net/p/allnet/code .
-
-At this time there are no official binary releases.
+Any available binary releases are on https://alnt.org/
 
 ======================== BUILD ==================================
 
-to build this release, run these programs:
+to build this release from source, run these programs:
         ./autogen.sh
         ./configure --disable-shared
         make
@@ -32,8 +31,8 @@ Graphical User Interface (GUI) that comes with xchat, replace
 the second line with:
         ./configure --disable-shared --disable-gui
 
-you can also set specific CFLAGS with:
-        ./configure --disable-shared CFLAGS="-Wreturn-type -g"
+you can also set specific CFLAGS with, e.g.:
+        ./configure --disable-shared CFLAGS="-Wall -g"
 
 Before doing any of this, you may need to install libtool and autoconf.
 On debian/ubuntu and derived systems this requires:
@@ -44,20 +43,34 @@ On Windows under cygwin, you will need at least automake and pkg-config.
 additional packages you may need to install:
 	GIT and SSL: git libssl-dev
 	Java: openjdk-7-jre openjdk-7-jdk
+        for Voice-over-Allnet (voa): libgstreamer-plugins-base1.0-dev
+              gstreamer1.0-plugins-base gstreamer1.0-plugins-bad
+              (these bring in many other dependencies)
 
 ======================== RUN ==================================
 
-Running allnet requires running a collection of programs called the
-allnet daemon, then running individual user programs.
+AllNet provides communication services designed to work whenever possible.
+If there is no Internet, AllNet attempts to communicate wirelessly, even
+in the absence of existing access points.  To use AllNet, you must run the
+allnet program, and also a specific allnet app such as xchat.
 
-    ================ allnet daemon ================
+The instructions that follow assume that allnet is installed in a
+subdirectory of the current directory called "bin".  If you have done
+"make install" above (instead of just "make"), or in any way installed
+the binaries in your path, you should skip the "bin/" part.
+
+    ================ running allnet ================
 
 the first thing to run is
-   bin/astart
+   bin/allnet default
 
-this will start the allnet daemon, which is a collection of programs
-that run independently of user programs, and helps them communicate over
-AllNet.
+this will start the allnet daemon (previously called astart).  It will
+also print the interfaces allnet is trying to use to communicate (see below
+under "ad-hoc wireless").  AllNet will also communicate over the Internet
+if available.
+
+If you omit the word "default", AllNet will only communicate over
+the Internet.
 
 The allnet daemon is lightweight, and can be left running forever.
 Should you wish to stop the allnet daemon, run
@@ -65,42 +78,32 @@ Should you wish to stop the allnet daemon, run
    bin/astop
 
 If the allnet daemon is not running when an allnet user program is
-started, the allnet user program will automatically call "bin/astart default".
-The default parameter tells astart to use ad-hoc wireless if possible,
-as described in the next section.
+started, the allnet user program will automatically call "bin/allnet default".
 
     ================ ad-hoc wireless ================
 
 Using the wireless in ad-hoc mode requires special privileges.  Giving
 AllNet these privileges is optional -- if you are constantly connected
 to the Internet, you do not need to do this.  But if you wish to connect
-to devices near you, you will need to do ONE of the following:
+directly to devices near you, you will need to do ONE of the following:
 
-   sudo bin/astart default
+   sudo bin/allnet default
 (sudo): runs allnet as the root user.  You probably will have to enter your
-password.  To stop allnet, you will need "sudo bin/astop".
+password.
 
-   sudo chown root bin/astart ; sudo chmod u+s bin/astart 
+   sudo chown root bin/allnet ; sudo chmod u+s bin/allnet 
 (setuid): this only needs to be done once (you probably will have to
 enter your password), and will run AllNet as the root user until you undo
-it by removing bin/astart and running "make" again.
+it by removing bin/allnet and running "make" again.
 
-"bin/astart default" and "bin/astop" will now work even without "sudo".
+After "chown" and "chmod", "bin/allnet default" will use the ad-hoc
+wireless even without "sudo".
 
-   sudo setcap CAP_NET_RAW+eip bin/astart
-(capability): is only available on Linux, and makes AllNet work with
-Network Manager (and you will probably need to enter your password).
-"bin/astart default" and "bin/astop" will now work even without "sudo".
+If your system doesn't have sudo, you will need to figure out how to run
+"bin/allnet default" (or the "chown" and "chmod" programs) with root
+privileges (typically "su", then enter the commands without "sudo").
 
-With this capability, AllNet does not run as the superuser, which is
-slightly more secure (in the other two cases, AllNet runs the interface
-code with superuser privileges).  To disable this capability, remove
-bin/astart and run "make" again.
-
-If your system doesn't have sudo, you will need to figure out how to
-run "bin/astart default" with enough privileges.
-
-    ================ allnet user programs ================
+    ================ allnet user programs (allnet apps) ================
 
 Current AllNet user programs include the AllNet chat program xchat,
 broadcast/subscribe, and trace.
@@ -108,31 +111,51 @@ broadcast/subscribe, and trace.
          ======== xchat (allnet chat) with gui ========
 
 The functionality of chat is provided by the program xchat, which is built
-unless "--disable-gui" is given to config (or unless you don't have java
+unless "--disable-gui" is given to config (as long as you have have java
 on your system).  The xchat program is designed to be intuitive and easy
 to use.
 
 To start the xchat program, type
    bin/xchat
 
+         ======== xchat (allnet chat) key exchange ========
+
+Before you can chat with somebody, you have to have their key, and they
+have to have your key.
+
+To exchange keys, you must have some way to exchange a shared secret
+string that identifies your keys to each other.  The best way to do this
+is in person or over the phone.
+
+To exchange keys, click on "New Contact", enter your contact's name,
+and press "go".  This will give you a "shared secret" string that you
+must give to your contact (the string may be entered in UPPER, Mixed,
+or lower case).  Your new contact has to enter your shared secret before
+pressing "go".
+
+The contact's name can be anything you choose.  It is not used in the
+key exchange, and only used to identify the contact to you within xchat
+and other allnet programs.
+
        ======== xchat (allnet chat) without gui ========
 
 It is a good idea to read this whole section before trying anything.
 
 The basic functionality of chat is given by xchats and xchatr.  They
-are designed to be run in separate windows.
+are designed to be run in separate terminal windows.
 
-In one window simply run
+In one terminal window simply run
    bin/xchatr
 
-In another window, run
+In another terminal window, run
    bin/xchats friends-name message
 
-where "friends-name" is the name of your friend as specified in the key
-exchange (see below), and message is the message you want to send to
-your friend.  The message ends when you press return.  It is generally
-best to enclose the message in double quotes, otherwise the shell may
-interpret any special characters such as quotes, question marks, etc.
+where "friends-name" is the name of your friend as specified in the
+key exchange (see above and below), and "message" is the message you
+want to send to your friend.  The message ends when you press return.
+It is generally best to enclose the message in double quotes, otherwise
+the shell may interpret any special characters such as quotes, question
+marks, etc.
 
 For example,
    bin/xchats john "how are you today?"
@@ -140,17 +163,19 @@ For example,
 john's answer, if any, appears in the xchatr window.  You can then type:
    bin/xchats john "life is wonderful!"
 
-Before you can chat with a friend, you must exchange keys.  This can be
-done from the GUI, in the "New Contact" tab, or using bin/xchats -k
-(the commands xkeyr and xkeys from previous versions of AllNet are now
-obsolete).
+         ======== xchat (allnet chat) key exchange without gui ========
+
+Before you can chat with somebody, you must exchange keys.  This can be
+done from the GUI, using the "New Contact" tab, or using bin/xchats -k
 
 In order to securely exchange keys, you and your friend must both know
 a shared secret string that is provided for you by either the GUI,
 or xchats -k.  The string is conveniently short if you are directly
 connected to your contact, and more securely long if you are communicating
-over longer distances.  One side needs to enter the other side's secret
-string -- it does not matter which of the two is used.
+over longer distances.  Only one side needs to enter the other side's
+secret string -- as long as one of the two secret strings is used, it
+does not matter which of the two.  The string may be entered in UPPER
+or Mixed or lower case.
 
 The secret string must be exchanged in an authenticated way between you
 and your friend.  That means you must be sure that it is really your
@@ -161,47 +186,49 @@ not secure, an attacker may be able to listen in on your conversations,
 or even send fake messages to one or both of you.
 
 Once you have the secret, one of you runs
-   bin/xchats -k contact-name number-of-hops secret-string
-
-and the second one runs
    bin/xchats -k contact-name number-of-hops
 
-The equivalent in the bin/xchat program is to enter the contact name,
-and select the appropriate button (1st, 4th, or 5th).  One of you also
-has to enter the contact's secret.
+and the second one runs
+   bin/xchats -k contact-name number-of-hops secret-string
 
-Again, "contact-name" is any name each of you chooses, to identify
-the other person.  Number-of-hops is 1 for a direct connection, and
+Again, "contact-name" is any name each of you chooses to identify
+the other person.  "Number-of-hops" is 1 for a direct connection, and
 typically 10 otherwise.
 
-If the exchange is not successful, the contact may have been
-partially created.  If so, find it under your home directory's
-.allnet/contacts/ directory (i.e. ~/.allnet/contacts/), under
-the date and time that you tried to exchange the keys.  Check
-the name with
+If the exchange is not successful, the contact may have been partially
+created.  If that is the case, find it under your home directory's
+.allnet/contacts/ directory (i.e. ~/.allnet/contacts/), under the date
+and time that you tried to exchange the keys.  Check the name with
    cat ~/.allnet/contacts/YYYYMMDDhhmmss/name
-(where YYYYMMDDhhmmss are the date and time), then, if you really
-want to remove it, do so using
+(where YYYYMMDDhhmmss are the date and time -- note they are in universal
+time, that is, GMT), then, if you really want to remove it, do so using
    mkdir -p ~/.allnet/unused
    mv ~/.allnet/contacts/YYYYMMDDhhmmss ~/.allnet/unused/
 
+            ======== Voice over Allnet (voa) ======== 
+
+The voice over AllNet application provides for real-time secure voice
+communications.  It has been tested, but not extensively.
+
             ======== broadcast/subscribe ======== 
 
-AllNet supports broadcast messages that are authenticated (you can be
-confident who sent them), but not confidential (everyone can read them). 
+AllNet supports broadcast messages that are not confidential (anyone
+can read them) but still are authenticated (you can be confident who
+sent them).
 
-To identify a sender, you must be in possession of an AllNet Human-Readable
-Address, usually abbreviated AHRA or ahra.  An ahra a form that may look
-somewhat familiar:
-  "personal_phrase"@a_b.c_d.e_f
+To identify a sender, you must be in possession of their AllNet
+Human-Readable Address, usually abbreviated AHRA or ahra.  An ahra a
+form that may look somewhat familiar:
+  "personal_phrase@a_b.c_d.e_f"
 
-The quotes are needed if the personal phrase includes spaces or other
-special characters, but may be omitted otherwise.
+The quotes are only needed if the personal phrase includes spaces or
+other special characters.
 
 If you decide to create your own ahra, you choose your own personal
-phrase -- it can be anything you want, and, unlike an email address,
-it does not have to be unique, it could be the same as somebody else's
+phrase -- it can be anything you want.  Unlike an email address, a
+personal phrase does not have to be unique, and others may have the same
 personal phrase.  Again, upper- and lower-case are treated the same.
+(0, O, o, q and Q are treated as the same letter, as are 1, i, I, L, and l)
 
 Assuming your personal phrase is "AllNet is wonderful", you would then
 generate a valid ahra by running
@@ -210,8 +237,9 @@ generate a valid ahra by running
 The number 3 at the end of the command specifies the number of word-pairs
 you want after the '@' sign.  More word-pairs make it harder for
 somebody else to generate an ahra that matches yours, but they also
-will require allnet-generate to run longer before finding an ahra.
+require allnet-generate to run longer before finding a valid ahra.
 Three is a reasonable compromise between security and generation time.
+
 If you do not specify a number, allnet-generate assumes that two word
 pairs is enough, and you are more interested in generating ahra's as
 quickly as possible, than in security.
@@ -223,8 +251,8 @@ While allnet-generate is running, look up the keys it has generated with
 and are willing to use).
 
 All the generated keys will have the personal phrase that you specified,
-but each will a different set of identifying keywords.  Once you see
-an ahra that you like, you can stop allnet-generate, and remove from
+but each will have a different set of identifying keywords.  Once you
+see an ahra that you like, you can stop allnet-generate, and remove from
 ~/.allnet/own_bc_keys/ all the keys you do NOT plan to use.
 
 Even if somebody else chooses the same personal phrase as you do, your
@@ -236,26 +264,32 @@ is wonderful"@) is a valid ahra, but is not at all secure, since anybody
 can claim it and use it.
 
 Finally, if someone gives you an ahra for a broadcast server, you may
-subscribe to that.  AllNet runs an hourly time signal server with ahra
-   allnet_hourly_time_server@if_wish.think_past.get_future
+subscribe to that ahra.  For example, AllNet runs an hourly time signal
+server with ahra
+   allnet_hourly_time_server@for_time.for_game.there_work.from_health
 
 and you can subscribe and listen to this time server by running:
-   bin/allnet-subscribe allnet_hourly_time_server@if_wish.think_past.get_future
+   bin/allnet-subscribe allnet_hourly_time_server@for_time.for_game.there_work
+
    bin/allnet-radio
 
 The second command will run forever, and once an hour, on the hour,
-should print out the message from the allnet time server.  It will
-also print out messages from any other service(s) that you subscribe to.
-To know which services you subscribe to, simply
+if you are receiving the time signal broadcasts, will print out a
+corresponding message.  It will also print out messages from any other
+service(s) that you subscribe to.  To know which services you subscribe
+to, simply
    ls ~/.allnet/other_bc_keys
 
 To stop subscribing to a service, remove the corresponding key from the
 directory ~/.allnet/other_bc_keys
 
+xtime is the program used to send the allnet time signals.  For a
+more generic broadcast program, use bin/broadcast.
+
             ======== allnet trace ========
 
 The trace program is used to find and print a path to a destination.
-Each allnet daemon picks a different ID every time it is started, and it
+Each allnet daemon picks a different ID when it is first started, and it
 is these IDs that trace prints.  If you know the ID of the destination
 you are trying to reach, you can specify it as an argument to trace.
 Otherwise, trace without arguments will show all the daemons that respond.
@@ -276,12 +310,16 @@ with a 16-bit (/16) address: 21.cd, 2d.cd, and 25.e3.  Each of them
 matches the trace request, which had no arguments and therefore matched
 everything.
 
-The timestamp printed is only accurate if the clock on your system
-accurately matches the clock on the system that responded, whereas
-the round-trip time (rtt) should always be accurate.
+The round-trip time (rtt) is always accurate, whereas the timestamp is
+only accurate if the clock on your system is synchronized with the clock
+on the system that responded.
 
-The first response is always from the local AllNet daemon, so we know
-that 21.cd/16 is our own local address (until we restart the AllNet daemon).
+The first response is always from the local AllNet daemon, so in this example
+we know that 21.cd/16 is our own local address.
+
+If you want to change your ID, remove ~/.allnet/adht/my_id.  If you want
+to get a new ID each time you restart allnet, replace the contents of
+~/.allnet/adht/my_id with a '-' character.
 
 In this case, all three systems have (at random) chosen the first 4
 bits of their address to be the same, namely 0010, usually written 2.
@@ -312,4 +350,9 @@ bin/trace 2d.5c
 Now, the other two allnet daemons have been identified as local and
 forward, respectively.
 
+trace supports several options.  Run trace with an invalid option (e.g.
+bin/trace -q) to find out more.
 
+            ======== comments and suggestions ========
+
+If you have suggestions for improvement, please let us know at esb@hawaii.edu.
