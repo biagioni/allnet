@@ -50,7 +50,8 @@ class ConversationPanel extends JPanel {
     private java.util.LinkedList<JPanel> unackedP = null;
     private java.util.LinkedList<java.util.Vector<JLabel>> unackedL = null;
 
-    ConversationPanel(String info, String commandPrefix, String contactName) {
+    ConversationPanel(String info, String commandPrefix, String contactName,
+                      boolean createDialogBox) {
         this.commandPrefix = commandPrefix;
         this.contactName = contactName;
         setBackground(background);
@@ -104,16 +105,18 @@ class ConversationPanel extends JPanel {
         gbc.weighty = 1.0;
         gbc.anchor = GridBagConstraints.PAGE_START;
         add(scrollPane, gbc);
-        gbc.anchor = GridBagConstraints.CENTER;
-        gbc.gridy++;
-        gbc.weighty = 0.0;
-        gbc.weightx = 1.0;
-        gbc.gridwidth = 2;
-        add(msgField, gbc);
-        gbc.gridwidth = 1;
-        gbc.gridx = 2;
-        gbc.weightx = 0.0;
-        add(send, gbc);
+        if (createDialogBox) {
+            gbc.anchor = GridBagConstraints.CENTER;
+            gbc.gridy++;
+            gbc.weighty = 0.0;
+            gbc.weightx = 1.0;
+            gbc.gridwidth = 2;
+            add(msgField, gbc);
+            gbc.gridwidth = 1;
+            gbc.gridx = 2;
+            gbc.weightx = 0.0;
+            add(send, gbc);
+        }
     }
 
     public String getContactName() {

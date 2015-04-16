@@ -191,9 +191,12 @@ class NewContactPanel extends JPanel {
             "new contact is at a distance:<br>" +
                  "give contact your long secret<br>" +
                  "or enter their long secret below",
-            "you know your contact's AllNet address:<br>" +
-                 "(or want to subscribe to a broadcast)<br>" +
-                 "enter the address above",
+            "subscribe to a broadcast:<br>" +
+                 "enter the address above<br>" +
+                 "(no secrets needed)</b>",
+//            "you know your contact's AllNet address:<br>" +
+//                 "(or want to subscribe to a broadcast)<br>" +
+//                 "enter the address above",
 //            "you are both contacts of:<br>" +
 //                 "enter the name below<br>" +
 //                 "(not yet available)",

@@ -296,13 +296,24 @@ class UIController implements ControllerInterface, UIAPI {
                             " Shared secret:", " " + kep.getSecret(), " or:",
                             " " + variableInput, " ");
                 }
+                if (XchatSocket.sendKeyRequest(kep.getContactName(),
+                                               kep.getSecret(),
+                                               kep.getVariableInput(), hops)) {
+                    System.out.println("resent key request");
+                }
+                break;
+            case 2:
+                String ahra = kep.getVariableInput();
+                kep.setText(1, " Resent subscription request",
+                            " obtaining key from " + ahra);
+                if (XchatSocket.sendSubscription(ahra)) {
+                    System.out.println("sent ahra subscription");
+                } else {
+                    System.out.println("unable to send ahra subscription");
+                }
                 break;
             default:
                 return;
-        }
-        if (XchatSocket.sendKeyRequest(kep.getContactName(), kep.getSecret(),
-                                       kep.getVariableInput(), hops)) {
-            System.out.println("resent key request");
         }
     }
 
@@ -351,12 +362,6 @@ class UIController implements ControllerInterface, UIAPI {
         updateContactsPanelStatus();
     }
 
-//    private void updateContactsPanel(String contactName, boolean broadcast) {
-//        updateContactsPanel(contactName, broadcast);
-//    }
-//    private void updateContactsPanelBC(String contact) {
-//        updateContactsPanel(contact, true);
-//    }
     // give method package access so that it can be called at startup
     void updateContactsPanelStatus() {
         int n = clientData.getNumContacts();
@@ -410,10 +415,10 @@ class UIController implements ControllerInterface, UIAPI {
             // no such tab, so make the conversation panel
             // (the contact's name is also the command prefix)
             if (!clientData.isBroadcast(contactName)) {
-                cp = new ConversationPanel(" conversation with " + contactName, contactName, contactName);
+                cp = new ConversationPanel(" conversation with " + contactName, contactName, contactName, true);
             }
             else {
-                cp = new ConversationPanel(" broadcast from " + contactName, contactName, contactName);
+                cp = new ConversationPanel(" broadcast from " + contactName, contactName, contactName, false);
             }
             cp.setName(contactName);
             cp.setListener(this);
@@ -490,7 +495,8 @@ class UIController implements ControllerInterface, UIAPI {
                     kep = getKeyExchangePanel(contact);
                     if (kep == null) {
                         // now put up a key exchange panel
-                        String[] middlePanelMsg = makeMiddlePanel(false, variableInput);
+                        String[] middlePanelMsg =
+                            makeMiddlePanel(false, variableInput);
                         String[] bottomPanelMsg = new String[]{
                             " Key exchange in progress",
                             " Sent your key",

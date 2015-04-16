@@ -33,7 +33,7 @@ class UI extends ApplicationFrame {
     private static Color otherColor = new Color(255, 215, 0);
     private static Color broadcastBackgroundColor = Color.PINK;
     private static Color broadcastContactColor = Color.BLUE;
-    private static Color ackedBackgroundColor = Color.GREEN;
+    private static Color ackedBackgroundColor = Color.LIGHT_GRAY;
     // just to avoid a warning
     private static final long serialVersionUID = 1L;
 
@@ -97,7 +97,8 @@ class UI extends ApplicationFrame {
                                                        ackedBackgroundColor);
                     ContactsPanel contactsPanel =
                       new ContactsPanel(" contacts<br>panel ", bgndColor,
-                                        otherColor, broadcastContactColor);
+                                        otherColor, broadcastContactColor,
+                                        clientData);
                     NewContactPanel newContactPanel =
                       new NewContactPanel(" exchange a key with a new contact<br>&nbsp;",
                                           bgndColor, otherColor);

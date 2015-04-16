@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Comparator;
 import javax.swing.*;
 import utils.HtmlLabel;
 
@@ -31,11 +32,14 @@ class ContactsPanel extends JPanel {
     // save the action listener so we can set it for any new buttons created
     private ActionListener listener;
     private Color broadcastColor;
+    private Comparator<String> comparator;
     
-    ContactsPanel(String info, Color background, Color foreground, Color broadcastColor) {
+    ContactsPanel(String info, Color background, Color foreground,
+                  Color broadcastColor, ClientData clientData) {
         super();
         this.broadcastColor = broadcastColor;
         map = new HashMap<>();
+        comparator = new ContactComparator(clientData);
         topNames = new ArrayList<>();
         bottomNames = new ArrayList<>();
         topPanel = makePanel(background);
@@ -121,7 +125,7 @@ class ContactsPanel extends JPanel {
     
     private void updatePanel(JPanel to, ArrayList<String> toNames) {
         JButton b;
-        Collections.sort(toNames);
+        Collections.sort(toNames, comparator);
         to.removeAll();
         for (String name : toNames) {
             b = map.get(name);
