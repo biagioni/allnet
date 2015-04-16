@@ -737,7 +737,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
   int num_contacts = all_contacts (&contacts);
   for (i = 0; i < num_contacts; i++) {
     int j;
-    const keyset * keysets;
+    keyset * keysets;
     int num_keysets = all_keys (contacts [i], &keysets);
     for (j = 0; j < num_keysets; j++) {
       unsigned char address [ADDRESS_SIZE];
@@ -748,6 +748,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
         connect_to_index [index + 1] = 1;
       }
     }
+    free (keysets);
   }
   for (i = 0; i < NUM_LISTENERS; i += 2) {
     if (connect_to_index [i])

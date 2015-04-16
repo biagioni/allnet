@@ -33,7 +33,7 @@
  * messages to this contact.  returns 0 if the contact cannot be found */
 uint64_t get_counter (char * contact)
 {
-  const keyset * kset;
+  keyset * kset;
   int nkeys = all_keys (contact, &kset);
   if (nkeys < 0)
     return 0;
@@ -46,6 +46,7 @@ uint64_t get_counter (char * contact)
     if ((type != MSG_TYPE_DONE) && (seq > max))
       max = seq;
   }
+  free (kset);
   return max + 1;
 }
 
@@ -160,7 +161,7 @@ uint64_t ack_received (char * message_ack, char ** contact, keyset * kset)
   int nc = all_contacts (&contacts);
   int c;
   for (c = 0; c < nc; c++) {
-    const keyset * ksets;
+    keyset * ksets;
     int nk = all_keys (contacts [c], &ksets);
     int k;
     for (k = 0; k < nk; k++) {
@@ -174,9 +175,11 @@ uint64_t ack_received (char * message_ack, char ** contact, keyset * kset)
           *contact = contacts [c];
         if (kset != NULL)
           *kset = ksets [k];
+        free (ksets);
         return seq;
       }
     }
+    free (ksets);
   }
   return 0;
 }
@@ -267,14 +270,18 @@ char * get_unacked (char * contact, keyset k, int * singles, int * ranges)
  * 0 otherwise */
 int is_acked (char * contact, uint64_t seq)
 {
-  const keyset * kset;
+  keyset * kset;
   int nkeys = all_keys (contact, &kset);
   if (nkeys < 0)
     return 0;
   int k;
-  for (k = 0; k < nkeys; k++)
-    if (! is_acked_one (contact, kset [k], seq))
+  for (k = 0; k < nkeys; k++) {
+    if (! is_acked_one (contact, kset [k], seq)) {
+      free (kset);
       return 0;
+    }
+  }
+  free (kset);
   return 1;
 }
 

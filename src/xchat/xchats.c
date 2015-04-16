@@ -124,7 +124,7 @@ int main (int argc, char ** argv)
       return 1;
   } else { /* send the data packet */
     int i;
-    const keyset * keys;
+    keyset * keys;
     int nkeys = all_keys (contact, &keys);
     if ((argc > 2) && (nkeys > 0)) {
       int max_key = 0;
@@ -149,6 +149,9 @@ int main (int argc, char ** argv)
   /*  printf ("sending %d chars: '%s'\n", printed, text); */
       seq = send_data_message (sock, contact, text, printed);
       ack_expected = 1;
+      free (keys);
+    } else if (nkeys > 0) {
+      free (keys);
     } else if (nkeys == 0) {
       printf ("error: no keys for contact '%s'\n", contact);
     } else if (nkeys < 0) {

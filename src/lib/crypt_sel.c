@@ -198,7 +198,8 @@ static int read_RSA_file (const char * fname, RSA * * key, int expect_private)
     if (*key == NULL) {
       ERR_load_crypto_strings ();
       ERR_print_errors_fp (stdout);
-      printf ("unable to read RSA from file %s\n", fname);
+      printf ("unable to read %s RSA from file %s\n",
+              expect_private ? "private" : "public", fname);
       return 0;
     }
     BIO_free (mbio);

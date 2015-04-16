@@ -241,7 +241,7 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
                      int hops, int priority, int ack_and_save)
 {
   /* get the keys */
-  const keyset * keys;
+  keyset * keys;
   int nkeys = all_keys (contact, &keys);
   if (nkeys <= 0) {
     printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
@@ -254,6 +254,7 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     result = send_to_one (keys [k], data, dsize, contact, sock, src, sbits,
                           dst, dbits, hops, priority,
                           ack_and_save, NULL, ack_and_save);
+  free (keys);
   return result;
 }
 

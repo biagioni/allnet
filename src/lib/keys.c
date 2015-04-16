@@ -17,6 +17,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <assert.h>
 #include <sys/types.h>
 
 #include "crypt_sel.h"
@@ -56,8 +57,18 @@ int num_key_infos = 0;
 /* contact names is set to the same size as kip, although if a contact
  * has multiple keys, in practice the number of contacts will be less
  * than the number of keysets */
-char * * cp = NULL;
+char * * cpx = NULL;
 int cp_used = 0;
+
+#ifdef DEBUG_PRINT
+static void print_contacts (char * desc)
+{
+  int i;
+  printf ("%s: %d contacts (%p)\n", desc, cp_used, cpx);
+  for (i = 0; i < cp_used; i++)
+    printf ("   [%d]: %p %s\n", i, cpx [i], cpx [i]);
+}
+#endif /* DEBUG_PRINT */
 
 /* return 0 if the contact does not exist, otherwise one more than the
  * contact's index in cp */
@@ -65,7 +76,7 @@ static int contact_exists (const char * contact)
 {
   int i;
   for (i = 0; i < cp_used; i++) {
-    if (strcmp (cp [i], contact) == 0)
+    if (strcmp (cpx [i], contact) == 0)
       return i + 1;
     /* else
       printf ("%d: %s does not match %s\n", i, contact, cp [i]); */
@@ -85,7 +96,7 @@ static void generate_contacts ()
   for (ki = 0; ki < num_key_infos; ki++) {
     if ((kip [ki].contact_name != NULL) &&
         (! contact_exists (kip [ki].contact_name)))
-      cp [cp_used++] = kip [ki].contact_name;
+      cpx [cp_used++] = kip [ki].contact_name;
   }
 }
 
@@ -129,11 +140,11 @@ static void set_kip_size (int size)
   /* set kip, cp, cip to point to the new arrays */
   if (kip != NULL)
     free (kip);
-  if (cp != NULL)
-    free (cp);
+  if (cpx != NULL)
+    free (cpx);
   num_key_infos = size;
   kip = new_kip;
-  cp = new_cp;
+  cpx = new_cp;
   cp_used = 0;
   generate_contacts ();
 }
@@ -318,7 +329,10 @@ int num_contacts ()
 int all_contacts (char *** contacts)
 {
   init_from_file ();
-  *contacts = cp;
+#ifdef DEBUG_PRINT
+  print_contacts ("entering all_keys");
+#endif /* DEBUG_PRINT */
+  *contacts = cpx;
   return cp_used;
 }
 
@@ -700,22 +714,21 @@ int num_keysets (char * contact)
   int i;
   int count = 0;
   for (i = 0; i < cp_used; i++) {
-    if (strcmp (cp [i], contact) == 0)
+    if (strcmp (cpx [i], contact) == 0)
       count++;
   }
   return count;
 }
 
-/* returns the number of keysets, and has keysets point to a statically
- * allocated array of pointers to statically allocated keysets
- * (do not modify in any way). */
-int all_keys (const char * contact, const keyset ** keysets)
+/* returns the number of keysets.
+ * malloc's a new keysets (must be free'd) and fills it with the keysets. */
+/* returns -1 if the contact does not exist */
+int all_keys (const char * contact, keyset ** keysets)
 {
-#define DEFAULT_KEYSETS		10
-  static int buf [DEFAULT_KEYSETS];
-  static int * all_keysets = buf;
-  static int num_keysets = DEFAULT_KEYSETS;
   init_from_file ();
+#ifdef DEBUG_PRINT
+  print_contacts ("entering all_keys");
+#endif /* DEBUG_PRINT */
 
   if (! contact_exists (contact))
     return -1;
@@ -727,19 +740,16 @@ int all_keys (const char * contact, const keyset ** keysets)
   }
   if (keysets == NULL)
     return count;
-  
-  if (count > num_keysets) {   /* reallocate */
-    if (all_keysets != buf)
-      free (all_keysets);
-    all_keysets = malloc_or_fail (count * sizeof(int), "all keysets");
-    num_keysets = count;
-  }
-  count = 0;
+
+  *keysets = malloc_or_fail (count * sizeof (keyset), "all_keys");
+
+  int copied = 0;
   for (i = 0; i < num_key_infos; i++) {
     if (strcmp (kip [i].contact_name, contact) == 0)
-      all_keysets [count++] = i;
+      (*keysets) [copied++] = i;
   }
-  *keysets = all_keysets;
+  assert (copied == count);
+
   return count;
 }
 
@@ -943,7 +953,9 @@ static void init_key_info (char * config_dir, char * file,
 
   char * fname = strcat3_malloc (config_dir, "/", file, "init_key_info fname");
   int success = 0;
+  char * key_type = "public";
   if (expect_private) {
+    key_type = "private";
     success = allnet_rsa_read_prvkey (fname, &(key->prv_key));
     if (success)
       key->pub_key = allnet_rsa_private_to_public (key->prv_key);
@@ -952,7 +964,8 @@ static void init_key_info (char * config_dir, char * file,
   }
   free (fname);
   if (! success) {
-    printf ("unable to read RSA file %s/%s\n", config_dir, file);
+    printf ("unable to read %s RSA file %s/%s\n", key_type, config_dir, file);
+    printf ("init_key_info (%s, %s, %s, %d\n", config_dir, file, phrase, expect_private);
     return;
   }
   key->has_private = expect_private;

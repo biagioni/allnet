@@ -53,11 +53,10 @@ extern int create_spare_key (int keybits, char * random, int rsize);
 /* returns -1 if the contact does not exist, and 0 or more otherwise */
 extern int num_keysets (char * contact);
 
-/* returns the number of keysets, and has keysets point to a statically
- * allocated array of pointers to statically allocated keysets
- * (do not modify in any way). */
+/* returns the number of keysets.
+ * malloc's a new keysets (must be free'd) and fills it with the keysets. */
 /* returns -1 if the contact does not exist */
-extern int all_keys (const char * contact, const keyset ** keysets);
+extern int all_keys (const char * contact, keyset ** keysets);
 
 /* returns a pointer to a statically allocated (do not modify in any way).
  * name for the directory corresponding to this key. */

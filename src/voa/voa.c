@@ -168,7 +168,7 @@ static void get_key_for_contact (const char * contact,
 {
   /* method mostly copy-pasted from xchat/xcommon.c */
   /* get the keys */
-  const keyset * keys;
+  keyset * keys;
   int nkeys = all_keys ((char *)contact, &keys);
   if (nkeys <= 0) {
     printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
@@ -182,10 +182,13 @@ static void get_key_for_contact (const char * contact,
       int na_bits = get_remote (keysets [ink], address);
       if (matches (addr, addr_bits, (const unsigned char *)address, na_bits) > 0)
 */
+  if (nkeys > 1)
+    printf ("error: got %d keys for contact %s, using first\n", nkeys, contact);
   if (prvkey != NULL)
     get_my_privkey (keys [0], prvkey);
   if (pubkey != NULL)
     get_contact_pubkey (keys [0], pubkey);
+  free (keys);
 }
 
 /**
@@ -232,9 +235,10 @@ static int check_contact_signature (const char * payload, int vsize,
                                     allnet_rsa_prvkey * prvkey,
                                     allnet_rsa_pubkey * pubkey)
 {
-  const keyset * keysets;
+  keyset * keysets;
   int nk = all_keys (contact, &keysets);
   int ink;
+  int result = 0;
   for (ink = 0; ink < nk; ink++) {
     allnet_rsa_pubkey ckey;
     get_contact_pubkey (keysets [ink], &ckey);
@@ -243,10 +247,12 @@ static int check_contact_signature (const char * payload, int vsize,
         get_my_privkey (keysets [ink], prvkey);
       if (pubkey != NULL)
         *pubkey = ckey;
-      return 1;
+      result = 1;
+      break;
     }
   }
-  return 0;
+  free (keysets);
+  return result;
 }
 
 /**

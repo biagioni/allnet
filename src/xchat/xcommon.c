@@ -96,7 +96,7 @@ printf ("packet not requesting an ack, no ack sent\n");
 
 /* call every once in a while, e.g. every 1-10s, to poke all our
  * contacts and get any outstanding messages. */
-static void incremental_request_and_resend (int sock)
+static void do_request_and_resend (int sock)
 {
   static unsigned long long int last_time = 0;
   static unsigned long long int interval = 10;
@@ -104,53 +104,24 @@ static void incremental_request_and_resend (int sock)
   if (now <= last_time + interval)
     return;    /* too soon */
   last_time = now;
-  static int num_contacts = 0;
-  static int current_contact = -1;
-  static char * * contacts = NULL;
-  if ((num_contacts == 0) || (contacts == NULL) || (current_contact < 0)) {
-    num_contacts = all_contacts (&contacts);
-    current_contact = 0;
-#ifdef DEBUG_PRINT
-    int i;
-    for (i = 0; i < num_contacts; i++)
-      printf ("contacts [%d] is %p\n", i, contacts [i]);
-    for (i = 0; i < num_contacts; i++)
-      printf ("contacts [%d] is %s\n", i, contacts [i]);
-#endif /* DEBUG_PRINT */
-    return;   /* get the keyset on the next call */
-  }
-  static int num_keysets = 0;
-  static int current_keyset = -1;
-  static const keyset * keysets = NULL;
-  if ((num_keysets == 0) || (keysets == NULL) || (current_keyset < 0)) {
-    num_keysets = all_keys (contacts [current_contact], &keysets);
-    current_keyset = 0;
-    return;   /* start sending on the next call */
-  }
-#ifdef DEBUG_PRINT
-  printf ("contact %s (%d/%d), sending keyset %d/%d\n",
-          contacts [current_contact], current_contact, num_contacts,
-          current_keyset, num_keysets);
-#endif /* DEBUG_PRINT */
-  request_and_resend (sock, contacts [current_contact],
-                      keysets [current_keyset]);
-  current_keyset++;
-  if (current_keyset >= num_keysets) {  /* switch to new contact, if any */
-    num_keysets = 0;
-    keysets = NULL;
-    current_keyset = -1;
-    current_contact++;
-    if (current_contact >= num_contacts) {  /* start over */
-      num_contacts = 0;
-      contacts = NULL;
-      current_contact = -1;
-      interval = 10000;  /* slow it down to once every 3 hours or so */
+
+  char * * contacts = NULL;
+  int num_contacts = all_contacts (&contacts);
+  if (num_contacts <= 0)
+    return;
+
+  int contact;
+  for (contact = 0; contact < num_contacts; contact++) {
+    keyset * keysets = NULL;
+    int num_keysets = all_keys (contacts [contact], &keysets);
+    if (num_keysets > 0) {
+      int keyset;
+      for (keyset = 0; keyset < num_keysets; keyset++)
+        request_and_resend (sock, contacts [contact], keysets [keyset]);
+      free (keysets);
     }
   }
-#ifdef DEBUG_PRINT
-  printf ("next contact %d/%d, next keyset %d/%d\n",
-          current_contact, num_contacts, current_keyset, num_keysets);
-#endif /* DEBUG_PRINT */
+  interval = 10000;  /* slow it down to once every 3 hours or so */
 }
 
 static void handle_ack (int sock, char * packet, int psize, int hsize,
@@ -249,6 +220,7 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
 #endif /* DEBUG_PRINT */
       return text_size;
     } 
+#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
       else {
       printf ("matches (%02x%02x, %02x%02x/%d) == %d\n",
@@ -256,13 +228,13 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
               hp->source [0] & 0xff, hp->source [1] & 0xff, hp->src_nbits,
               matches (keys [i].address, ADDRESS_BITS,
                        hp->source, hp->src_nbits));
-      printf ("verify (%p/%d, %p/%d, %p/%d) == %d\n",
-              data, dsize - ssize, sig, ssize - 2,
-              keys [i].pub_key, keys [i].pub_klen,
-              verify (data, dsize - ssize, sig, ssize - 2,
-                      keys [i].pub_key, keys [i].pub_klen));
+      printf ("verify (%d/%d: %p/%d, %p/%d, %p) == %d\n",
+              i, nkeys, data, dsize - ssize, sig, ssize - 2, keys [i].pub_key,
+              allnet_verify (verif, dsize - ssize, sig, ssize - 2,
+                             keys [i].pub_key));
     }
 #endif /* DEBUG_PRINT */
+#undef DEBUG_PRINT
   }
 #ifdef DEBUG_PRINT
   printf ("unable to verify bc message\n");
@@ -463,7 +435,7 @@ static int handle_key (int sock, struct allnet_header * hp,
     return 0;
   if (hp->hops > max_hops)
     return 0;
-  const keyset * keys;
+  keyset * keys;
   int nkeys = all_keys (contact, &keys);
   if (nkeys < 1) {
     printf ("error '%s'/%d: create own key before calling handle_key\n",
@@ -513,6 +485,7 @@ static int handle_key (int sock, struct allnet_header * hp,
 /* it is fairly normal to get my own key back.  Ignore.
 */
       printf ("handle_key: got my own key\n");
+      free (keys);
       return 0;
     }
   }
@@ -546,14 +519,17 @@ printf ("sending back key with secret %s\n", secret);
       if (! send_key (sock, contact, keys [key_index], secret,
                       hp->source, hp->src_nbits, max_hops))
         printf ("send_key failed for key index %d/%d\n", key_index, nkeys);
+      free (keys);
       return -1;  /* successful key exchange */
     }
     printf ("handle_key error: set_contact_pubkey returned 0\n");
+    free (keys);
     return 0;
   }
 #ifdef DEBUG_PRINT
   printf ("public key does not check with secrets %s %s\n", secret1, secret2);
 #endif /* DEBUG_PRINT */
+  free (keys);
   return 0;
 }
 
@@ -602,7 +578,7 @@ int handle_packet (int sock, char * packet, int psize,
                    char * subscription, 
                    unsigned char * addr, int nbits)
 {
-  incremental_request_and_resend (sock);
+  do_request_and_resend (sock);
   if (acks != NULL)
     acks->num_acks = 0;
   if (! is_valid_message (packet, psize))

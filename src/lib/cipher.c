@@ -297,7 +297,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
 #ifdef DEBUG_PRINT
     printf ("to do: randomize and limit the number of contacts tried\n");
 #endif /* DEBUG_PRINT */
-    const keyset * keys;
+    keyset * keys;
     int nkeys = all_keys (contacts [i], &keys);
     for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
       int do_decrypt = 1;  /* for now, try to decrypt unsigned messages */
@@ -330,6 +330,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
                     (sig_algo != ALLNET_SIGTYPE_NONE) ? "" : "unsigned ", count,
                     decrypt_count, time_delta / 1000000, time_delta % 1000000);
                     log_print ();
+          free (keys);
           if (sig_algo != ALLNET_SIGTYPE_NONE)
             return res;
           else
@@ -340,6 +341,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
         }
       }
     }
+    free (keys);
   }
 #ifdef DEBUG_PRINT
   printf ("unable to decrypt packet, dropping\n");

@@ -70,6 +70,7 @@ static int in_array (char * name, char ** names, int count)
   return 0;
 }
 
+#if 0  /* now done in astart */
 static char * * get_bc_interfaces (char * pname)
 {
   struct ifaddrs * ap;
@@ -112,6 +113,7 @@ static char * * get_bc_interfaces (char * pname)
   freeifaddrs (ap);  */
   return result;
 }
+#endif /* 0 */
 
 static void exec_allnet (char * arg)
 {
@@ -121,13 +123,13 @@ static void exec_allnet (char * arg)
     char * path;
     char * pname;
     find_path (arg, &path, &pname);
-    char * astart = make_program_path (path, "astart");
+    char * astart = make_program_path (path, "allnet");
     if (access (astart, X_OK) != 0) {
-      perror ("access, unable to find astart executable");
+      perror ("access, unable to find allnet executable");
       printf ("unable to start AllNet daemon %s from %s\n", astart, arg);
       exit (1);   /* only exits the child */
     }
-    char * * args = get_bc_interfaces (astart);
+    char * * args = { "allnet", "default", NULL };
 #ifdef DEBUG_PRINT
     printf ("calling ");
     int i;
