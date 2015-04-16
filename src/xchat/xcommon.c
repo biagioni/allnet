@@ -609,7 +609,7 @@ int handle_packet (int sock, char * packet, int psize,
               addr, nbits, sub);
 #endif /* DEBUG_PRINT */
       if (sub > 0)   /* received a key in response to our subscription */
-        return sub;
+        return -2;
     }
 #ifdef DEBUG_PRINT
     else

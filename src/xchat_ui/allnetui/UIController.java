@@ -305,11 +305,12 @@ class UIController implements ControllerInterface, UIAPI {
             case 2:
                 String ahra = kep.getVariableInput();
                 kep.setText(1, " Resent subscription request",
-                            " obtaining key from " + ahra);
-                if (XchatSocket.sendSubscription(ahra)) {
+                            " requesting authentication for: " + ahra);
+System.out.println ("resending subscription for " + ahra);
+                if ((ahra != null) && (XchatSocket.sendSubscription(ahra))) {
                     System.out.println("sent ahra subscription");
                 } else {
-                    System.out.println("unable to send ahra subscription");
+                    System.out.println("unable to resend ahra subscription");
                 }
                 break;
             default:
@@ -444,7 +445,8 @@ class UIController implements ControllerInterface, UIAPI {
         updateConversationPanels();
     }
 
-    private String[] makeMiddlePanel(boolean useLongSecret, String variableInput) {
+    private String[] makeMiddlePanel(boolean useLongSecret,
+                                     String variableInput) {
         String secret = newContactPanel.getMySecretShort();
         int minLength = MIN_LENGTH_SHORT;
         if (useLongSecret) {
@@ -503,7 +505,7 @@ class UIController implements ControllerInterface, UIAPI {
                             " Waiting for key from " + contact
                         };
                         kep = createKeyExchangePanel(contact, middlePanelMsg,
-                                bottomPanelMsg, true);
+                                bottomPanelMsg, true, true);
                         kep.setButtonState(button);
                         kep.setSecret(secret);
                         kep.setVariableInput(variableInput);
@@ -535,7 +537,7 @@ class UIController implements ControllerInterface, UIAPI {
                             " Waiting for key from " + contact
                         };
                         kep = createKeyExchangePanel(contact, middlePanelMsg,
-                                bottomPanelMsg, true);
+                                bottomPanelMsg, true, true);
                         kep.setButtonState(button);
                         kep.setSecret(secret);
                         kep.setVariableInput(variableInput);
@@ -552,21 +554,38 @@ class UIController implements ControllerInterface, UIAPI {
                     }
                     break;
                 case 2:
-                    System.out.println("new ahra contact " + contact + ", "
-                            + newContactPanel.getVariableInput());
                     String ahra = newContactPanel.getVariableInput();
+                    System.out.println("new ahra contact " + contact + ", "
+                                       + ahra);
                     if ((ahra == null) || (ahra.indexOf('@') < 0)) {
                         ahra = contact;
                     }
                     if ((ahra == null) || (ahra.indexOf('@') < 0)) {
                         System.out.println("new ahra contact " + contact
                                 + " must contain '@' sign");
-                    }
-                    else if (XchatSocket.sendSubscription(ahra)) {
-                        System.out.println("sent ahra subscription");
-                    }
-                    else {
-                        System.out.println("unable to send ahra subscription");
+                    } else {
+                        kep = getKeyExchangePanel(contact);
+                        if (kep == null) {
+                            // now put up a key exchange panel
+                            String[] middlePanelMsg =
+                                { "requesting authentication for: " + contact };
+                            String[] bottomPanelMsg = new String[]{
+                                " authentication in progress",
+                                " Sent your your request",
+                                " Waiting for key matching " + contact
+                            };
+                            kep = createKeyExchangePanel(contact,
+                                                         middlePanelMsg,
+                                                         bottomPanelMsg,
+                                                         true, false);
+                            kep.setButtonState(button);
+                            kep.setVariableInput(ahra);
+                        }
+                        if (XchatSocket.sendSubscription(ahra)) {
+                            System.out.println("sent ahra subscription");
+                        } else {
+                            System.out.println("unable to send ahra request");
+                        }
                     }
                     break;
 //                case 3:
@@ -809,9 +828,17 @@ class UIController implements ControllerInterface, UIAPI {
         return (kep);
     }
 
-    private KeyExchangePanel createKeyExchangePanel(String contactName, String[] middlePanelText, String[] bottomPanelText, boolean selectIt) {
-        KeyExchangePanel keyExchangePanel = new KeyExchangePanel(contactName, new int[]{2, 6, 4});
-        keyExchangePanel.setText(1, middlePanelText);
+    private KeyExchangePanel
+       createKeyExchangePanel(String contactName, String[] middlePanelText,
+                              String[] bottomPanelText, boolean selectIt,
+                              boolean isKeyExchange) {
+        KeyExchangePanel keyExchangePanel =
+            new KeyExchangePanel(contactName, new int[]{2, 6, 4},
+                                 isKeyExchange);
+        if (middlePanelText != null)
+            keyExchangePanel.setText(1, middlePanelText);
+        else
+            keyExchangePanel.setText(1, new String [0]);
         keyExchangePanel.setText(2, bottomPanelText);
         keyExchangePanel.setListener(this);
         myTabbedPane.addTabWithCloseRight(keyExchangePanel.getCommandPrefix(),

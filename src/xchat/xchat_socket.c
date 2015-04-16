@@ -536,7 +536,9 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         key_secret2 = NULL;
         num_hops = 0;
       } else if (mlen == -2) {   /* confirm successful subscription */
+printf ("got subscription but subscription is null\n");
         if (subscription != NULL) {
+printf ("got subscription\n");
           send_message (forwarding_socket,
                         (struct sockaddr *) (&fwd_addr), fwd_addr_size,
                          CODE_AHRA, 0, subscription, "");

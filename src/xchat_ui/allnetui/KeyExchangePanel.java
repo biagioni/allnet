@@ -29,13 +29,21 @@ public class KeyExchangePanel extends StatusPanel {
     private String variableInput, secret, contactName;
     private int buttonState;
 
-    public KeyExchangePanel(String contactName, int[] labelHeights) {
-        super(labelHeights, getBooleans(labelHeights.length), UI.getBgndColor(), UI.getOtherColor(), UI.KEY_EXCHANGE_PANEL_ID + "_" + contactName,
-                new String[]{"resend your key", RESEND_KEY_COMMAND, CANCEL_BUTTON_NAME, CANCEL_COMMAND});
+    public KeyExchangePanel(String contactName, int[] labelHeights,
+                            boolean keyExchange) {
+        super(labelHeights, getBooleans(labelHeights.length),
+              UI.getBgndColor(), UI.getOtherColor(),
+              UI.KEY_EXCHANGE_PANEL_ID + "_" + contactName,
+              new String[]{keyExchange?"resend your key":"resend key request",
+                           RESEND_KEY_COMMAND,
+                           CANCEL_BUTTON_NAME, CANCEL_COMMAND});
         this.contactName = contactName;
         setColor(1, Color.WHITE);
         setColor(2, Color.PINK);
-        setText(0, " exchanging keys with " + contactName);
+        String title = " exchanging keys with " + contactName;
+        if (! keyExchange)
+            title = " requesting key for " + contactName;
+        setText(0, title);
         setBorderParams(borderWidth, borderRadius, borderInset);
     }
 
