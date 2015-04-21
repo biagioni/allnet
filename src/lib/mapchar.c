@@ -258,7 +258,7 @@ static char * default_pre [NUM_CODE_WORDS] = {
    "the", "be", "of", "to", "a", "in", "have", "for", "that", "on", "with",
    "do", "as", "this", "at", "from", "by", "will", "say", "go", "so",
    "all", "about", "if", "one", "there", "which", "get", "would", "think",
-   "like", "more", "their", "when", "what", "make", "who", "see", "some",
+   "like", "more", "free", "when", "what", "make", "who", "see", "some",
    "out", "good", "other", "very", "just", "take", "because", "could", "use",
    "also", "than", "into", "only", "want", "these", "new", "give", "first",
    "any", "over", "after", "find", "where", "most", "should", "need", "much",
