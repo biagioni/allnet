@@ -228,8 +228,8 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
               hp->source [0] & 0xff, hp->source [1] & 0xff, hp->src_nbits,
               matches (keys [i].address, ADDRESS_BITS,
                        hp->source, hp->src_nbits));
-      printf ("verify (%d/%d: %p/%d, %p/%d, %p) == %d\n",
-              i, nkeys, data, dsize - ssize, sig, ssize - 2, keys [i].pub_key,
+      printf ("verify (%d/%d: %p/%d, %p/%d %d) == %d\n",
+              i, nkeys, data, dsize - ssize, sig, ssize - 2, i,
               allnet_verify (verif, dsize - ssize, sig, ssize - 2,
                              keys [i].pub_key));
     }
