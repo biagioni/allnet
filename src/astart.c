@@ -34,7 +34,7 @@ extern void traced_main (char * pname);
 extern void keyd_main (char * pname);
 extern void keyd_generate (char * pname);
 
-static const char * daemon_name = "astart";
+static const char * daemon_name = "allnet";
 
 static void stop_all ();
 /* if astart is called as root, abc should run as root, and everything
@@ -54,6 +54,11 @@ static void make_root_other (int verbose)
   if (real_uid != geteuid ()) {   /* setuid executable, chmod u+s */
     if (setuid (real_uid) == 0) {
       if (verbose) printf ("set uids %d %d\n", getuid (), geteuid ());
+      int real_gid = getgid ();
+      if (real_gid != getegid ()) { /* set group ID as well */
+        if ((setuid (real_gid) == 0) && (verbose))
+          printf ("set gids %d %d\n", getgid (), getegid ());
+      }
       return;
     }
     perror ("setuid/real");   /* and still try to become someone else */
@@ -151,12 +156,42 @@ static void replace_command (char * old, int olen, char * new)
 
 static char * pid_file_name ()
 {
+#define PIDS_FILE_NAME	"allnet-pids"
+#define UNIX_TEMP	"/tmp"
+#define UNIX_TEMP_ROOT	"/var/run"
+  static char * result = "/tmp/allnet-pids";
+  static int first_call = 1;
+  if (! first_call)
+    return result;
+  first_call = 0;
+  char * temp = UNIX_TEMP;
 /*
-  int is_root = (geteuid () == 0);
-  if (is_root)
-    return "/var/run/allnet-pids";
-  else */
-    return "/tmp/allnet-pids";
+  if (geteuid () == 0)  / * is root * /
+    temp = UNIX_TEMP_ROOT;
+  */
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+/* from https://en.wikipedia.org/wiki/Temporary_folder
+     In MS-DOS and Microsoft Windows, the temporary directory is set by
+     the environment variable TEMP.
+     ...
+     In all versions of Windows the temp location can be accessed, for
+     example, in Explorer, Run... boxes and in application's internal
+     code by using %temp% */
+  temp = getenv ("TEMP");
+  if (temp == NULL)
+    temp = getenv ("%temp%");
+  if (temp == NULL)
+    temp = getenv ("temp");
+#endif /* _WIN32 || _WIN64 || __CYGWIN__ */
+  if (temp != NULL) {
+    int len = strlen (temp) + strlen (PIDS_FILE_NAME) + 2;
+    result = malloc_or_fail (len, "pids_file_name");
+    snprintf (result, len, "%s/%s", temp, PIDS_FILE_NAME);
+  }
+#ifdef DEBUG
+  printf ("temp file name is %s\n", result);
+#endif /* DEBUG */
+  return result;
 }
 
 /* returns 0 in case of failure */
@@ -175,8 +210,7 @@ static int read_pid (int fd)
     } else {                     /* done */
       if (result > 1)
         return result;
-      snprintf (log_buf, LOG_SIZE, "weird result from pid file %d\n", result);
-      log_print ();
+      printf ("weird result from pid file %d\n", result);
       result = -1;  /* start over */
     }
   }
@@ -644,10 +678,9 @@ int astart_main (int argc, char ** argv)
                      O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0644);
   if (pid_fd < 0) {
     perror ("open");
-    snprintf (log_buf, LOG_SIZE, "unable to write pids to %s\n",
-              pid_file_name ());
-    log_print ();
+    printf ("unable to write pids to %s\n", pid_file_name ());
     stop_all ();
+    exit (1);
   }
   for (i = 0; i < num_interfaces; i++)
     print_pid (pid_fd, abc_pids [i]);
@@ -655,6 +688,15 @@ int astart_main (int argc, char ** argv)
   init_log ("astart");  /* now we can do logging */
   snprintf (log_buf, LOG_SIZE, "astart called with %d arguments\n", argc);
   log_print ();
+  for (i = 0; i < argc + 1; i++) {
+    snprintf (log_buf, LOG_SIZE, "argument %d: %s\n", i, argv [i]);
+    log_print ();
+  }
+  for (i = 0; i < num_interfaces; i++) {
+    snprintf (log_buf, LOG_SIZE, "called abc on interface %d: %s\n",
+              i, interfaces [i]);
+    log_print ();
+  }
 
   /* start ad */
   my_call_ad (argv [0], alen, num_pipes, rpipes, wpipes, pid_fd, astart_pid);
