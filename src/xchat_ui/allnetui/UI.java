@@ -29,11 +29,11 @@ class UI extends ApplicationFrame {
     static final String VERSION = "0.01";
     //
     // init default colors
-    private static Color bgndColor = new Color(0, 255, 255);
+    private static Color bgndColor = new Color (224, 224, 224);
     private static Color otherColor = new Color(255, 215, 0);
     private static Color broadcastBackgroundColor = Color.PINK;
     private static Color broadcastContactColor = Color.BLUE;
-    private static Color ackedBackgroundColor = Color.LIGHT_GRAY;
+    private static Color ackedBackgroundColor = Color.GREEN;
     // just to avoid a warning
     private static final long serialVersionUID = 1L;
 
