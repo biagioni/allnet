@@ -219,7 +219,8 @@ static int receive_until (struct timeval * t, char ** message,
 #endif /* DEBUG_PRINT */
   if (msize < 0) {
     terminate = 1;
-    snprintf (log_buf, LOG_SIZE, "receive_until msize %d\n", msize);
+    snprintf (log_buf, LOG_SIZE, "receive_until msize %d on fd %d\n", msize,
+              iface->iface_sockfd);
     log_print ();
   }
   return msize;  /* -1 (error), zero (timeout) or positive, the value is correct */
@@ -863,7 +864,7 @@ iface_cleanup:
 
 void abc_main (int rpipe, int wpipe, char * ifopts)
 {
-  char log_string [30];
+  char log_string [300];
   snprintf (log_string, sizeof (log_string), "abc (%s)", ifopts);
   while (index (log_string, '/') != NULL)  /* init_log thinks '/' means dir */
     *(index (log_string, '/')) = '_';
