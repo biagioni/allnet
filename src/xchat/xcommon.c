@@ -120,8 +120,8 @@ static void do_request_and_resend (int sock)
         request_and_resend (sock, contacts [contact], keysets [keyset]);
       free (keysets);
     }
-  }
-  interval = 10000;  /* slow it down to once every 3 hours or so */
+  }  /* slow the requests down to once every 20 minutes or so (0-40min) */
+  interval = random_int (0, 2000);
 }
 
 static void handle_ack (int sock, char * packet, int psize, int hsize,
@@ -675,6 +675,7 @@ void request_and_resend (int sock, char * contact, keyset kset)
     return;
   }
 /*  printf ("request_and_resend (socket %d, peer %s)\n", sock, peer); */
+#if 0
   static char * old_contact = NULL;
 
   /* if it is the same peer as on the last call, we do nothing */
@@ -688,6 +689,7 @@ void request_and_resend (int sock, char * contact, keyset kset)
   if (old_contact != NULL)
     free (old_contact);
   old_contact = strcpy_malloc (contact, "request_and_resend contact");
+#endif /* 0 */
 
   /* request retransmission of any missing messages */
   int hops = 10;

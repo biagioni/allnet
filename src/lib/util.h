@@ -165,6 +165,11 @@ extern int read_file_malloc (const char * file_name, char ** content_p,
 /* fill this array with random bytes */
 extern void random_bytes (char * buffer, int bsize);
 
+/* a random int between min and max (inclusive) */
+/* returns min if min >= max */
+extern unsigned long long int random_int (unsigned long long int min, 
+                                          unsigned long long int max);
+
 /* fill this array with random alpha characters.  The last byte is set to \0 */
 extern void random_string (char * buffer, int bsize);
 

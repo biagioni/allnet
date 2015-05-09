@@ -1057,6 +1057,24 @@ void random_bytes (char * buffer, int bsize)
     computed_random_bytes (buffer, bsize);
 }
 
+/* a random int between min and max (inclusive) */
+/* returns min if min >= max */
+unsigned long long int random_int (unsigned long long int min, 
+                                   unsigned long long int max)
+{
+  if (min >= max)
+    return min;
+#define ULLI_SIZE	(sizeof (unsigned long long int))
+  char buffer [ULLI_SIZE];
+  random_bytes (buffer, ULLI_SIZE);
+#undef ULLI_SIZE
+  unsigned long long int result = * ((unsigned long long int *) buffer);
+  unsigned long long int delta = max - min + 1;
+  if (delta == 0)  /* min is 0, max is maxint, and % would fail */
+    return result;
+  return (result % delta) + min;
+}
+
 /* fill this array with random alpha characters.  The last byte is set to \0 */
 void random_string (char * buffer, int bsize)
 {
