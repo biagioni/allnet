@@ -77,8 +77,11 @@ class ConversationPanel extends JPanel {
         scrollPane.setMaximumSize(scrDim);
         // don't want a border around it
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        // set it so the scroll wheel scrolls substantially
+        scrollPane.getVerticalScrollBar().setUnitIncrement(10);
         // make it scroll to the bottom when we add something
-        scrollPane.getVerticalScrollBar().addAdjustmentListener(new MyAdjustmentListener());
+        scrollPane.getVerticalScrollBar().addAdjustmentListener(
+            new MyAdjustmentListener());
         //
         unackedM = new java.util.LinkedList<Message>();
         unackedP = new java.util.LinkedList<JPanel>();

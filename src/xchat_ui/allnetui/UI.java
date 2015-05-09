@@ -99,9 +99,9 @@ class UI extends ApplicationFrame {
                       new ContactsPanel(" contacts<br>panel ", bgndColor,
                                         otherColor, broadcastContactColor,
                                         clientData);
+                    String p = " exchange a key with a new contact<br>&nbsp;";
                     NewContactPanel newContactPanel =
-                      new NewContactPanel(" exchange a key with a new contact<br>&nbsp;",
-                                          bgndColor, otherColor);
+                      new NewContactPanel(p, bgndColor, otherColor);
                     MyTabbedPane uiTabs = new MyTabbedPane();
                     uiTabs.addTab(NEW_CONTACT_PANEL_ID, "New Contact",
                                   newContactPanel);

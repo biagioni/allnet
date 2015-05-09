@@ -33,6 +33,7 @@ class ContactsPanel extends JPanel {
     private ActionListener listener;
     private Color broadcastColor;
     private Comparator<String> comparator;
+    private JScrollPane scrollPane;
     
     ContactsPanel(String info, Color background, Color foreground,
                   Color broadcastColor, ClientData clientData) {
@@ -69,14 +70,36 @@ class ContactsPanel extends JPanel {
         add(topPanel, gbc);
         gbc.gridy++;
         add(Box.createRigidArea(new Dimension(0, 10)), gbc);
+        // add a vertical scroll bar if we have more than ~10 contacts
         gbc.gridy++;
-        add(bottomPanel, gbc);
+        // gbc.anchor = GridBagConstraints.PAGE_START;
+        scrollPane = makeScrollPane(bottomPanel);
+        add(scrollPane, gbc);
+        // add(bottomPanel, gbc);
         gbc.gridy++;
         // expand bottom area vertically to fill extra space
         gbc.weighty = 1.0;
         add(Box.createRigidArea(new Dimension(0, 10)), gbc);
     }
-    
+
+    private JScrollPane makeScrollPane(JPanel panel) {
+        JScrollPane scrollPane =
+            new JScrollPane(panel,
+                            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                            // ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
+                            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+// panel.getSize() and getSize() both return (0, 0) -- how do I get the size?.
+        Dimension panelDim = new Dimension(250, 300);
+// System.out.println("setting preferred size to " + panelDim);
+        // must set min and preferred size for the scroll pane, so set max too
+        scrollPane.setMinimumSize(panelDim);
+        scrollPane.setPreferredSize(panelDim);
+        scrollPane.setMaximumSize(panelDim);
+        // don't want a border around it
+        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        return scrollPane;
+    }
+
     private JPanel makePanel(Color background) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
