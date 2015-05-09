@@ -10,7 +10,8 @@
 #              interfaces and with super-user privileges
 ### END INIT INFO
 
-BIN="/home/e/src/allnet/v3/bin"
+USER="e"    # replace as appropriate
+BIN="/home/$USER/src/allnet/v3/bin"
 
 PATH=/bin:/usr/bin:/sbin:/usr/sbin:$BIN
 
@@ -28,11 +29,11 @@ case "$1" in
     # seem like a good idea.
     sleep 10
     echo $BIN/allnet default
-    su e -c "$BIN/allnet default"
+    su $USER -c "$BIN/allnet default"
     ;;
   restart|force-reload|reload)
     $BIN/astop
-    su e -c "$BIN/allnet default"
+    su $USER -c "$BIN/allnet default"
     ;;
   stop)
     $BIN/astop
