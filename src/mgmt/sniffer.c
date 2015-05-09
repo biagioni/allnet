@@ -17,6 +17,15 @@
 #include "lib/cipher.h"
 #include "lib/keys.h"
 
+/* whenever we set the types variable, the low bit will be 0 because 0 is
+ * not a valid packet type.  So we can distinguish ALL_PACKET_TYPES from
+ * anything the user may set. */
+/* we really only need the bits set up to the maximum packet type, setting
+ * all the bits is an attempt at future-proofing.  But if the last packet
+ * type is no longer ALLNET_TYPE_MGMT, must replace the value below. */
+#define ALL_PACKET_TYPES	0xffffffff
+#define MAX_PACKET_TYPE		ALLNET_TYPE_MGMT
+
 static char * hms (char * time_string)
 {
   /* format is "Tue Mar  3 20:28:06 2015 HST" */
@@ -35,7 +44,7 @@ static char * hms (char * time_string)
 }
 
 static int handle_packet (char * message, int msize, int * rcvd, int debug,
-                          int verify)
+                          int verify, int types)
 {
   *rcvd = 0;
   struct timeval receive_time;
@@ -45,12 +54,15 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug,
     printf ("got invalid message of size %d\n", msize);
     return 0;
   }
+  struct allnet_header * hp = (struct allnet_header *) message;
+  int type = hp->message_type;
+  if ((type <= MAX_PACKET_TYPE) && (! ((1 << type) & types)))
+    return 0;  /* do not print this type of packet */
   *rcvd = 1;
   char time_string [ALLNET_TIME_STRING_SIZE];
   allnet_localtime_string (allnet_time (), time_string);
   printf ("%s ", hms (time_string));
   print_packet (message, msize, "received: ", 1);
-  struct allnet_header * hp = (struct allnet_header *) message;
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
   int dsize = msize - (data - message);
   print_buffer (data, dsize, "   payload:", 16, 1);
@@ -61,7 +73,7 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug,
     int tsize = decrypt_verify (hp->sig_algo, data, dsize, &contact, &k, &text,
                                 NULL, 0, NULL, 0, 0);
     if (tsize > 0)
-      print_buffer (text, tsize, " decrypted:", 16, 1);
+      print_buffer (text, tsize, " decrypted:", 100, 1);
   }
   return 0;
 }
@@ -98,7 +110,8 @@ static int received_before (char * message, int mlen)
 #undef MESSAGE_STORAGE
 }
 
-static void main_loop (int sock, int debug, int max, int verify, int unique)
+static void main_loop (int sock, int debug, int max, int verify, int unique,
+                       int types)
 {
   while (1) {
     int pipe;
@@ -112,7 +125,7 @@ static void main_loop (int sock, int debug, int max, int verify, int unique)
     }
     if ((! unique) || (! received_before (message, found))) {
       int received = 0;
-      if (handle_packet (message, found, &received, debug, verify))
+      if (handle_packet (message, found, &received, debug, verify, types))
         return;
       if ((max > 0) && (received)) {
         max--;
@@ -157,16 +170,36 @@ int main (int argc, char ** argv)
   int debug = 0;
   int verify = 0;
   int unique = 0;
+  int types = ALL_PACKET_TYPES;
+  int type;
   int opt;
-  while ((opt = getopt (argc, argv, "vdyu")) != -1) {
+  while ((opt = getopt (argc, argv, "vdyut:")) != -1) {
     switch (opt) {
     case 'd': debug = 1; break;
     case 'v': verbose = 1; break;
     case 'y': verify = 1; break;
     case 'u': unique = 1; break;
+    case 't':
+      type = atoi (optarg);
+      if ((type != 0) && (type <= MAX_PACKET_TYPE)) {  /* valid parameter */
+        int mask = 1 << type;
+        if (types == ALL_PACKET_TYPES)  /* never set before */
+          types = mask;
+        else if (types & mask)  /* already set, clear */
+          types &= ~mask;
+        else
+          types |= mask;
+#ifdef DEBUG_PRINT
+        printf ("type %d, mask %x, types %x\n", type, mask, types);
+#endif /* DEBUG_PRINT */
+        break;
+      }  /* else print usage */
     default:
-      printf ("usage: %s [-v] [-d] [-y] [-u] [number-of-messages]\n", argv [0]);
+      printf ("usage: %s [-v] [-d] [-y] [-u] [-t type]* [number-of-messages]\n",
+              argv [0]);
       printf ("       -v: verbose, -d: debug, -y: verify sig, -u: unique only");
+      printf ("       -t n: only show messages of type n -- may be repeated\n");
+      printf ("       (repeating the SAME type, toggles it)\n");
       exit (1);
     }
   }
@@ -182,7 +215,7 @@ int main (int argc, char ** argv)
   if (argc > optind)
     max = atoi (argv [optind]);
 
-  main_loop (sock, debug, max, verify, unique);
+  main_loop (sock, debug, max, verify, unique, types);
   return 0;
 }
 
