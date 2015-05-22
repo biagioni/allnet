@@ -292,10 +292,14 @@ static char * find_java ()
 
 static pid_t exec_java_ui (char * arg)
 {
+#define JAR_FILE_NAME	"AllNetUI.jar"
   char * path;
   char * pname;
+printf ("exec_java_ui: arg is %s\n", arg);
   find_path (arg, &path, &pname);
-  char * jarfile = make_program_path (path, "AllNetUI.jar");
+printf ("exec_java_ui: path is %s\n", path);
+  char * jarfile = make_program_path (path, JAR_FILE_NAME);
+printf ("exec_java_ui: jarfile is %s\n", jarfile);
   if (access (jarfile, R_OK) != 0) {
     perror ("access");
     printf ("unable to start Java gui %s\n", jarfile);
@@ -309,6 +313,20 @@ static pid_t exec_java_ui (char * arg)
   if (pid == 0) {   /* child process */
     char * args [5];
     args [0] = find_java ();
+    /* if jarfile name is absolute, go to that directory and use a relative
+     * name instead.  This is because on windows, this code executes as a
+     * cygwin process, whereas the java executes as a windows process, and
+     * the file tree is different for the two, but relative paths work */
+    if ((jarfile [0] == '/') || (jarfile [0] == '\\')) {
+      if (chdir (path) == 0)
+        jarfile = JAR_FILE_NAME;  /* cd successful, so use just the name */
+    }
+#ifndef PATH_MAX
+#define PATH_MAX	4096
+#endif /* PATH_MAX */
+char debug [PATH_MAX + 1];
+getcwd (debug, sizeof (debug));
+printf ("exec_java_ui: final jarfile is %s, current dir %s\n", jarfile, debug);
     if (args [0] != NULL) {
       args [1] = "-jar";
       args [2] = jarfile;
