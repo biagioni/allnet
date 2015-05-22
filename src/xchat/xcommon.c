@@ -72,7 +72,9 @@ static void send_ack (int sock, struct allnet_header * hp,
                       int send_resend_request, char * contact, keyset kset)
 {
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) == 0) {
-printf ("packet not requesting an ack, no ack sent\n");
+#ifdef DEBUG_PRINT
+    printf ("packet not requesting an ack, no ack sent\n");
+#endif /* DEBUG_PRINT */
     return;
   }
   int size;
