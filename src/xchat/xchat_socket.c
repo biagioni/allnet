@@ -32,6 +32,8 @@
  *   message are null-terminated
  * when sent from the GUI to this code, this code replies
  * with a message of type 5, CODE_SEQ */
+/* to establish the connection, the GUI initially sends an arbitrary
+ * message (really, "hello world\n") */
 #define	CODE_DATA_MESSAGE	0
 /* - code value 1 identifies a broadcast message: the peer name and the
  *   message are null-terminated */
