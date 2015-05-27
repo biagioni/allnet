@@ -93,9 +93,9 @@ class NewContactPanel extends JPanel {
         gbc.gridwidth = 2;
         add(topLabel, gbc);
         gbc.gridy++;
-        add(namePanel, gbc);
-        gbc.gridy++;
         add(selectionPanel, gbc);
+        gbc.gridy++;
+        add(namePanel, gbc);
         gbc.gridy++;
         add(keyPanel, gbc);
         gbc.gridy++;
