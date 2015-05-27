@@ -382,6 +382,8 @@ System.out.println ("resending subscription for " + ahra);
 
     // pad a String to a fixed length
     private String pad(String src, String pad, int length) {
+        if (src == null)  // avoid null point exception
+            src = new String ("");
         StringBuilder sb = new StringBuilder(src);
         while (sb.length() < length) {
             sb.append(pad);
