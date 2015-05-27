@@ -94,8 +94,8 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   } else {
     if (debug)
       printf ("psize %d, strlen %zd\n", psize, strlen (payload));
-    printf ("received at %ld.%06ld\n", receive_time.tv_sec,
-            receive_time.tv_usec);
+    printf ("received at %ld.%06ld\n", (long) (receive_time.tv_sec),
+            (long) (receive_time.tv_usec));
     
   }
 
