@@ -152,7 +152,9 @@ static void replace_command (char * old, int olen, char * new)
 {
   /* printf ("replacing %s ", old); */
   /* strncpy, for all its quirks, is just right for this application */
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* I think segfaults on iOS */
   strncpy (old, new, olen);
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
   /* printf ("with %s (%s, %d)\n", new, old, olen); */
 }
 
