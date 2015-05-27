@@ -718,13 +718,25 @@ int create_contact_send_key (int sock, char * contact, char * secret1,
                              char * secret2, int hops)
 {
   unsigned char address [ADDRESS_SIZE];
-  random_bytes ((char *) address, sizeof (address));
   int abits = 16;
-  keyset kset = create_contact (contact, 4096, 1, NULL, 0,
-                                address, abits, NULL, 0);
-  if (kset < 0) {
-    printf ("contact %s already exists\n", contact);
-    return 0;
+  keyset kset;
+  if (num_keysets (contact) < 0) {
+    random_bytes ((char *) address, sizeof (address));
+    kset = create_contact (contact, 4096, 1, NULL, 0, address, abits, NULL, 0);
+    if (kset < 0) {
+      printf ("contact %s already exists\n", contact);
+      return 0;
+    }
+  } else {
+    keyset * keysets;
+    int n = all_keys (contact, &keysets);
+    if (n <= 0) {
+      printf ("contact %s already exists, but not found! %d\n", contact, n);
+      return 0;
+    }
+    kset = keysets [0];
+    free (keysets);
+    abits = get_local (kset, address);
   }
   if (send_key (sock, contact, kset, secret1, address, abits, hops)) {
     printf ("send_key sent key to contact %s, %d hops, secret %s\n",
