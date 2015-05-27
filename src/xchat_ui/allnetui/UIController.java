@@ -336,6 +336,10 @@ System.out.println ("resending subscription for " + ahra);
 
     // update the ContactsPanel with the info related to this contact 
     private void updateContactsPanel(String contact, boolean broadcast) {
+        if (contact == null) {
+            return;
+            // throw new RuntimeException("tried to update contacts panel for null contact name");
+        }
         Conversation conv = clientData.getConversation(contact);
         if (conv == null) {
             throw new RuntimeException("tried to update contacts panel for invalid contact name: " + contact);
@@ -382,8 +386,6 @@ System.out.println ("resending subscription for " + ahra);
 
     // pad a String to a fixed length
     private String pad(String src, String pad, int length) {
-        if (src == null)  // avoid null point exception
-            src = new String ("");
         StringBuilder sb = new StringBuilder(src);
         while (sb.length() < length) {
             sb.append(pad);
