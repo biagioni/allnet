@@ -83,6 +83,9 @@ public class ConversationData {
   private static java.nio.file.Path getContactChatDir(String contact)
   {
     String home = System.getenv ("HOME");
+    String profile = System.getenv ("USERPROFILE");
+    if (profile != null)
+        home = profile;
     if (home == null) {
       System.out.println ("ConversationData: no home directory");
       return null;

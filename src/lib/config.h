@@ -5,6 +5,13 @@
 
 #include <time.h>
 
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+#define HOME_ENV	"USERPROFILE"
+#else
+#define HOME_ENV	"HOME"
+#endif
+
+
 /* returns the number of characters in the full path name of the given file. */
 /* (including the null character at the end) */
 /* if name is not NULL, also malloc's the string and copies the path into it */

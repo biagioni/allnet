@@ -6,6 +6,9 @@ public class AllNetContacts {
 
   public static String [] get() {
     String home = System.getenv ("HOME");
+    String profile = System.getenv ("USERPROFILE");
+    if (profile != null)
+        home = profile;
     String [] result = new String [0];
     if (home == null) {
       System.out.println ("AllNetContacts: no home directory");
@@ -46,6 +49,9 @@ public class AllNetContacts {
 
   public static String [] getBroadcast() {
     String home = System.getenv ("HOME");
+    String profile = System.getenv ("USERPROFILE");
+    if (profile != null)
+        home = profile;
     String [] result = new String [0];
     if (home == null) {
       System.out.println ("AllNetContacts 2: no home directory");

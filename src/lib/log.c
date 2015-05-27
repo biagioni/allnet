@@ -129,7 +129,7 @@ void init_log (char * name)
     module_name = last_slash + 1;
 
   snprintf (log_dir, sizeof (log_dir), "/tmp/.allnet-log/");
-  char * home = getenv ("HOME");
+  char * home = getenv (HOME_ENV);
   if (home != NULL)
     snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
   else if (geteuid () == 0)  /* root user, keep the log in /var/log/allnet/ */

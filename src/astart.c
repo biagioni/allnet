@@ -1,4 +1,5 @@
 /* astart.c: start all the processes used by the allnet daemon */
+/* compiles to the executable now called "allnet" */
 /* takes as arguments:
    - the interface(s) on which to start sending and receiving broadcast packets
    - "defaults" (or any string beginning with "def"), which means to
@@ -23,6 +24,7 @@
 #include "lib/util.h"
 #include "lib/log.h"
 #include "lib/packet.h"
+#include "lib/config.h"
 
 extern void ad_main (int npipes, int * rpipes, int * wpipes);
 extern void alocal_main (int pipe1, int pipe2);
@@ -66,7 +68,7 @@ static void make_root_other (int verbose)
 /* try to find out who we might be, and otherwise, try to find root */
 /* note: there is a secure_getenv, but it only really matters for setuid
  * programs, which are handled above -- see "man getenv" on a linux system */
-  char * home = getenv ("HOME");
+  char * home = getenv (HOME_ENV);
   pid_t caller = -1;
   pid_t other = -1;
   setpwent ();

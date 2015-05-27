@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include "config.h"
 
 #define ROOT		"~/.allnet"
 #define HOME_EXT	"/.allnet"
@@ -65,7 +66,7 @@ int config_file_name (char * program, char * file, char ** name)
     root = allnet_config_env;
     root_length = strlen (ROOT);
   } else {
-    char * home_env = getenv ("HOME");
+    char * home_env = getenv (HOME_ENV);
     if ((home_env == NULL) || (strcmp (home_env, "/nonexistent") == 0)) {
       static int printed = 0;
       if (! printed)
