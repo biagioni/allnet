@@ -350,6 +350,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   snprintf (log_buf, LOG_SIZE,
             "%d verifications+%d decryptions took %lld.%06lld seconds\n",
             count, decrypt_count, time_delta / 1000000, time_delta % 1000000);
-  log_print ();
+  if (count + decrypt_count > 0)
+    log_print ();
   return 0;
 }
