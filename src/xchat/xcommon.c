@@ -484,9 +484,10 @@ static int handle_key (int sock, struct allnet_header * hp,
     char test_key [ALLNET_MTU];
     int pub_ksize = allnet_pubkey_to_raw (k, test_key, sizeof (test_key));
     if ((pub_ksize == ksize) && (memcmp (received_key, test_key, ksize) == 0)) {
-/* it is fairly normal to get my own key back.  Ignore.
-*/
+/* it is fairly normal to get my own key back.  Ignore.  */
+#ifdef DEBUG_PRINT
       printf ("handle_key: got my own key\n");
+#endif /* DEBUG_PRINT */
       free (keys);
       return 0;
     }
@@ -717,6 +718,18 @@ void request_and_resend (int sock, char * contact, keyset kset)
 int create_contact_send_key (int sock, char * contact, char * secret1,
                              char * secret2, int hops)
 {
+  if ((contact == NULL) || (strlen (contact) == 0)) {
+    printf ("empty contact, cannot send key\n");
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
+  if ((secret1 == NULL) || (strlen (secret1) == 0)) {
+    printf ("empty secret1, cannot send key\n");
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
   unsigned char address [ADDRESS_SIZE];
   int abits = 16;
   keyset kset;
