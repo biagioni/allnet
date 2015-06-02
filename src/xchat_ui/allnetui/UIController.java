@@ -480,6 +480,10 @@ System.out.println ("resending subscription for " + ahra);
         KeyExchangePanel kep;
         if (command.equals("go")) {
             String contact = newContactPanel.getInputName();
+            if (contact.equals("")) {
+                System.out.println("UIController.java: new contact name is empty");
+                return;
+            }
             int button = newContactPanel.getSelectedButton();
             String variableInput = newContactPanel.getVariableInput();
             if (variableInput == null)
@@ -860,6 +864,13 @@ System.out.println ("resending subscription for " + ahra);
     public void exit() {
         // do any housekeeping needed to close the application
         // and then exit
+        try {   // if on windows, show the hidden console so user can close it
+            Runtime.getRuntime().exec("showConsole.exe");
+        // } // not needed in production code
+          //  catch(IOException iOException)        {
+          //  iOException.printStackTrace();
+        } catch(Exception e) {  // ignore, especially on non-windows systems
+        }
         System.exit(0);
     }
 
