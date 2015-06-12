@@ -267,10 +267,12 @@ static int send_header_data (int pipe, const char * message, int mlen,
     log_print ();
     return 0; /* and return as an error */
   }
+#ifdef PACKET_DECLARED_AS_POINTER_IN_SEND_HEADER_DATA  /* never NULL */
 /* send_pipe_message_orig is simpler, but sometimes stalls for ~35ms-40ms
  * on the second send, so it is faster if we only call write once */
   if (packet == NULL)   /* unable to malloc, use the slow strategy */
     return send_pipe_message_orig (pipe, message, mlen, priority);
+#endif /* PACKET_DECLARED_AS_POINTER_IN_SEND_HEADER_DATA */
 
   char * header = packet;
   memcpy (header, MAGIC_STRING, MAGIC_SIZE);
