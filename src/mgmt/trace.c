@@ -38,6 +38,12 @@
 #include "lib/log.h"
 #include "lib/dcache.h"
 
+#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED /* on iOS, have a trace_main function */
+#ifndef TRACE_MAIN_FUNCTION
+#define TRACE_MAIN_FUNCTION
+#endif /* TRACE_MAIN_FUNCTION */
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+
 #ifdef TRACE_MAIN_FUNCTION
 static int get_nybble (char * string, int * offset)
 {
@@ -909,7 +915,7 @@ static int atoi_in_range (char * value, int min, int max, int dflt, char * name)
 
 /* parts of this duplicate some of the code in traced_main, but
  * supporting the address on the command line seems like a useful feature */
-int main (int argc, char ** argv)
+int trace_main (int argc, char ** argv)
 {
   int is_daemon = 0;
   if (strstr (argv [0], "traced") != NULL)  /* called as daemon */
@@ -1014,4 +1020,12 @@ int main (int argc, char ** argv)
   }
   return 0;
 }
+
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* not on iOS, define main */
+int main (int argc, char ** argv)
+{
+  trace_main (argc, argv);
+}
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+
 #endif /* TRACE_MAIN_FUNCTION */
