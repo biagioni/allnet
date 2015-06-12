@@ -1,5 +1,7 @@
 /* abc-networkmanager.c: Configure wireless card using NetworkManager */
 
+#ifdef USE_NETWORK_MANAGER  /* only really designed to work on Linux */
+
 #include <assert.h>
 #include <dbus-1.0/dbus/dbus.h>
 #include <stdio.h>              /* fprintf, printf, sprintf */
@@ -794,3 +796,5 @@ static int abc_wifi_config_nm_cleanup ()
 {
   return 1;
 }
+
+#endif /* USE_NETWORK_MANAGER */
