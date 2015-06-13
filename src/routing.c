@@ -393,8 +393,9 @@ static void * init_default_dns (void * arg)
 #ifndef DEBUG_PRINT
       if (code != EAI_NONAME)
 #endif /* ! DEBUG_PRINT */
-      printf ("getaddrinfo (%s): %s\n", default_dns [i],
-              gai_strerror (code));
+      snprintf (log_buf, LOG_SIZE, "getaddrinfo (%s): %s\n", default_dns [i],
+                gai_strerror (code));
+      log_print ();
     }
   }
 #ifdef DEBUG_PRINT
