@@ -61,4 +61,8 @@ extern int init_own_routing_entries (struct addr_info * entry, int max,
 /* returns 1 if the given addr is one of mine, or matches my_address */
 extern int is_own_address (struct addr_info * addr);
 
+/* return 1 after init is complete, 0 otherwise.  If parameter is nonzero,
+ * waits for completion and always returns 1 */
+extern int routing_init_is_complete (int wait_for_init);
+
 #endif /* ROUTING_H */

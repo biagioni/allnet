@@ -415,6 +415,8 @@ static void * init_default_dns (void * arg)
   return NULL;
 }
 
+static int dns_init = 0;
+
 /* always called with lock held */
 static int init_peers (int always)
 {
@@ -428,7 +430,6 @@ static int init_peers (int always)
       ip6_defaults [i].ss_family = 0;
     }
     pthread_t thread;
-    static int dns_init = 0;
     if (dns_init == 0) {
       dns_init = -1;   /* initialization in progress */
       pthread_create (&thread, NULL, init_default_dns, (void *) (&dns_init));
@@ -977,6 +978,22 @@ int is_own_address (struct addr_info * addr)
   for (i = 0; i < n; i++)
     if (same_ai (mine + i, addr))
       return 1;
+  return 0;
+}
+
+/* return 1 after init is complete, 0 otherwise.  If parameter is nonzero,
+ * waits for completion and always returns 1 */
+int routing_init_is_complete (int wait_for_init)
+{
+  while (wait_for_init && (dns_init != 1)) {
+    usleep (10 * 1000);  /* sleep 10ms */
+    pthread_mutex_lock (&mutex);
+    /* init_peers may or may not be needed, something to do while waiting */
+    init_peers (0);
+    pthread_mutex_unlock (&mutex);
+  }
+  if (dns_init == 1)
+    return 1;
   return 0;
 }
 

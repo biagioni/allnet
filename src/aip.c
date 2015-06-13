@@ -699,7 +699,7 @@ struct connect_thread_arg {
 static void * connect_thread (void * a)
 {
   struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
-  sleep_time_random_us (30 * 1000);   /* sleep up to 30ms */
+  routing_init_is_complete (1);   /* wait for routing to complete */
   listener_fds [arg->listener_index] = 
     connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);
   free (a);  /* the caller doesn't do it, so we should */
