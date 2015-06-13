@@ -681,9 +681,9 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       log_print ();
     }
   }
-  snprintf (log_buf, LOG_SIZE, "connect_listener (%d/0x%x, %d) => %d\n",
+  snprintf (log_buf, LOG_SIZE, "connect_listener (%d/0x%x, %d, %d) => %d\n",
             (address [0] & 0xff) >> (8 - LISTEN_BITS), address [0] & 0xff,
-            af, result);
+            af, num_dhts, result);
   log_print ();
   return result;
 }
