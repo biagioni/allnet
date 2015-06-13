@@ -719,7 +719,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
       int i;
       for (i = first; i < trp->num_entries; i++) {
         if (i + 1 == trp->num_entries)
-          printf ("%4d: ", seq);
+          printf ("%4d: ", seq + 1);
         else
           printf ("      ");
         printf ("         ");
