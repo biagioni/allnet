@@ -53,68 +53,6 @@ static char * make_program_path (char * path, char * program)
   return result;
 }
 
-#if 0
-static int is_bc_interface (struct ifaddrs *interface)
-{
-  return (((interface->ifa_flags & IFF_LOOPBACK) == 0) &&
-          ((interface->ifa_flags & IFF_UP) != 0) &&
-          ((interface->ifa_flags & IFF_BROADCAST) != 0));
-}
-
-static int in_array (char * name, char ** names, int count)
-{
-  int i;
-  for (i = 0; i < count; i++)
-    if (strncmp (name, names [i], strlen (name)) == 0)
-      return 1;
-  return 0;
-}
-
-#if 0  /* now done in astart */
-static char * * get_bc_interfaces (char * pname)
-{
-  struct ifaddrs * ap;
-  if (getifaddrs (&ap) != 0) {
-    perror ("getifaddrs");
-    ap = NULL;    /* same as no interfaces */
-  }
-  int count = 1;   /* at least the pname */
-  int length = strlen (pname) + 1;   /* at least the pname and null */
-  struct ifaddrs * next = ap;
-  while (next != NULL) {
-    if (is_bc_interface (next)) {
-      count++;
-      length += strlen (next->ifa_name) + 4; /* add /ip and the null char */
-    }
-    next = next->ifa_next;
-  }
-  int num_ptrs = count + 1;
-  int size_ptrs = num_ptrs * sizeof (char *);
-  int size = size_ptrs + length;
-  char * write_to = malloc_or_fail (size, "get_bc_interfaces");
-  char * * result = (char **) write_to;
-  write_to += size_ptrs;
-  result [0] = pname;
-  next = ap;
-  int index = 1;
-  while (next != NULL) {
-    if ((is_bc_interface (next)) &&
-        (! in_array (next->ifa_name, result, index))) {
-      result [index++] = write_to;
-      strcpy (write_to, next->ifa_name);
-      strcat (write_to, "/ip");
-      write_to += strlen (write_to) + 1;
-    }
-    next = next->ifa_next;
-  }
-  result [index++] = NULL;
-  /* cannot free since we are pointing into the struct.
-     it's actually OK because exec will free it after copying the args
-  freeifaddrs (ap);  */
-  return result;
-}
-#endif /* 0 */
-
 static void exec_allnet (char * arg)
 {
   pid_t child = fork ();
@@ -126,48 +64,6 @@ static void exec_allnet (char * arg)
     char * astart = make_program_path (path, "allnet");
     if (access (astart, X_OK) != 0) {
       perror ("access, unable to find allnet executable");
-      printf ("unable to start AllNet daemon %s from %s\n", astart, arg);
-      exit (1);   /* only exits the child */
-    }
-    char * * args = { "allnet", "default", NULL };
-#ifdef DEBUG_PRINT
-    printf ("calling ");
-    int i;
-    for (i = 0; args [i] != NULL; i++)
-      printf (" %s", args [i]);
-    printf ("\n");
-#endif /* DEBUG_PRINT */
-    execv (astart, args);
-    perror ("execv");
-    printf ("error: exec astart [interfaces] failed\nastart");
-    int a;
-    for (a = 0; args [a] != NULL; a++)
-      printf (" %s", args [a]);
-    printf ("\n");
-    exit (1);
-#else /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-    /* ios: do not look for executable, just call "astart_main" */
-    char * args [2] = { "astart", NULL };
-    extern int astart_main (int, char **);
-    astart_main (1, args);
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-  }
-  setpgid (child, 0);  /* put the child process in its own process group */
-  waitpid (child, NULL, 0);
-}
-#endif /* 0 */
-
-static void exec_allnet (char * arg)
-{
-  pid_t child = fork ();
-  if (child == 0) {  /* all this code is in the child process */
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
-    char * path;
-    char * pname;
-    find_path (arg, &path, &pname);
-    char * astart = make_program_path (path, "astart");
-    if (access (astart, X_OK) != 0) {
-      perror ("access, unable to find astart executable");
       printf ("unable to start AllNet daemon %s\n", astart);
       exit (1);   /* only exits the child */
     }
@@ -181,7 +77,7 @@ static void exec_allnet (char * arg)
 #endif /* DEBUG_PRINT */
     execv (astart, args);
     perror ("execv");
-    printf ("error: exec astart [interfaces] failed\nastart");
+    printf ("error: exec allnet [interfaces] failed\nallnet");
     int a;
     for (a = 0; args [a] != NULL; a++)
       printf (" %s", args [a]);
@@ -189,7 +85,7 @@ static void exec_allnet (char * arg)
     exit (1);
 #else /* __IPHONE_OS_VERSION_MIN_REQUIRED */
     /* ios: do not look for executable, just call "astart_main" */
-    char * args [2] = { "astart", NULL };
+    char * args [2] = { "allnet", NULL };
     extern int astart_main (int, char **);
     astart_main (1, args);
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
