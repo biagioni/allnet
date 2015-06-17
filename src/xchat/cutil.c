@@ -205,15 +205,18 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
 #ifdef DEBUG_PRINT
   print_packet (message, msize, "sending", 1);
 #endif /* DEBUG_PRINT */
+  int result = 1;
   if (! send_pipe_message_free (sock, message, msize, priority)) {
-    printf ("unable to request retransmission from %s\n", contact);
-    return 0;
+    perror ("send_pipe_message_free");
+    printf ("unable to send packet to %s, key %d, socket %d\n",
+            contact, k, sock);
+    result = 0;  /* still save if possible */
   } /* else
-    printf ("requested retransmission from %s\n", peer); */
+    printf ("sent packet to %s\n", peer); */
   if (do_ack && do_save)
     save_outgoing (contact, k, (struct chat_descriptor *) data,
                    data + CHAT_DESCRIPTOR_SIZE, dsize - CHAT_DESCRIPTOR_SIZE);
-  return 1;
+  return result;
 }
 
 /* same as send_to_contact, but only sends to the one key corresponding
