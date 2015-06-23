@@ -17,7 +17,7 @@
 #include "lib/util.h"
 #include "lib/ai.h"
 #include "lib/log.h"
-#include "lib/config.h"
+#include "lib/configfiles.h"
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 

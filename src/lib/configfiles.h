@@ -1,7 +1,7 @@
-/* config.h: give access to config files */
+/* configfiles.h: give access to config files */
 
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef CONFIG_FILES_H
+#define CONFIG_FILES_H
 
 #include <time.h>
 
@@ -34,4 +34,4 @@ extern int open_rw_config (char * program, char * file, int print_errors);
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
 extern int create_dir (char * path);
 
-#endif /* CONFIG_H */
+#endif /* CONFIG_FILES_H */

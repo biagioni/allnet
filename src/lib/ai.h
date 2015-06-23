@@ -47,4 +47,7 @@ extern int same_ai (struct addr_info * a, struct addr_info * b);
 /* if this is an IPv4-encoded-as-IPv6 address, make it an IPv4 address again */
 extern void standardize_ip (struct sockaddr * ap, socklen_t asize);
 
+/* is this address a local IP? */
+extern int is_loopback_ip (struct sockaddr * ap, socklen_t asize);
+
 #endif /* ALLNET_AI_H */

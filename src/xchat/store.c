@@ -20,7 +20,7 @@
 #include "lib/packet.h"
 #include "lib/util.h"
 #include "lib/keys.h"
-#include "lib/config.h"
+#include "lib/configfiles.h"
 #include "lib/sha.h"
 #include "store.h"
 

@@ -265,3 +265,18 @@ void standardize_ip (struct sockaddr * ap, socklen_t asize)
   }
 #endif /* DEBUG_PRINT */
 }
+
+/* is this address a local IP? */
+int is_loopback_ip (struct sockaddr * ap, socklen_t asize)
+{
+  struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap;
+  struct sockaddr_in6 * ap6 = (struct sockaddr_in6 *) ap;
+  if ((asize >= sizeof (struct sockaddr_in)) && (ap->sa_family == AF_INET)) {
+    return ap4->sin_addr.s_addr == htonl (INADDR_LOOPBACK);
+  } else if ((asize >= sizeof (struct sockaddr_in6)) &&
+             (ap->sa_family == AF_INET6)) {
+    return (0 == memcmp (&(ap6->sin6_addr), &(in6addr_loopback),
+                         sizeof (ap6->sin6_addr)));
+  } else  /* unknown address type */
+    return 0;
+}

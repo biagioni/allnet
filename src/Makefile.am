@@ -3,7 +3,7 @@ AUTOMAKE_OPTIONS = subdir-objects
 
 libincludes = \
 	lib/ai.h \
-	lib/config.h \
+	lib/configfiles.h \
 	lib/dcache.h \
 	lib/log.h \
 	lib/packet.h \

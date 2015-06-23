@@ -130,7 +130,11 @@ static void * listen_loop (void * arg)
     snprintf (log_buf + off, LOG_SIZE - off, "\n");
 #endif /* DEBUG_PRINT */
     log_print ();
-
+    if ((ra->info->localhost_only) && (! is_loopback_ip (ap, addr_size))) {
+      snprintf (log_buf, LOG_SIZE, "warning: loopback got from nonlocal\n");
+      log_print ();
+      continue;   /* skip the rest of the while loop */
+    }
     int option = 1;  /* disable Nagle algorithm if nodelay */
     if ((ra->info->nodelay) &&
         (setsockopt (connection, IPPROTO_TCP, TCP_NODELAY, &option,
@@ -169,6 +173,7 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
   info->program_name = name;
   info->port = port;
   info->add_remove_pipe = add_remove_pipe;
+  info->localhost_only = local_only;
   info->num_fds = 0;
   info->max_num_fds = max_fds;
   info->fds = malloc_or_fail (max_fds * sizeof (int), "listen thread fds");

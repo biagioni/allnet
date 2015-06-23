@@ -2,7 +2,7 @@ AM_CFLAGS = -I$(ALLNET_SRCDIR) # Overridden by custom __ALLNET_BINDIR__foo_CFLAG
 libincludes = \
 	app_util.h \
 	cipher.h \
-	config.h \
+	configfiles.h \
 	crypt_sel.h \
 	keys.h \
 	log.h \

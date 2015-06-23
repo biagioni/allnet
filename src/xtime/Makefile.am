@@ -2,7 +2,7 @@ AM_CFLAGS = -I$(ALLNET_SRCDIR)
 libincludes = \
 	lib/app_util.h \
 	lib/cipher.h \
-	lib/config.h \
+	lib/configfiles.h \
 	lib/log.h \
 	lib/media.h \
 	lib/packet.h \

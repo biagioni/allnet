@@ -21,6 +21,7 @@ struct listen_info {
   int listen_fd4;        /* fd for listening for new connections on ipv4 */
   int listen_fd6;        /* fd for listening for new connections on ipv6 */
   int port;              /* TCP port number */
+  int localhost_only;    /* immediately close connections not from local host */
   int add_remove_pipe;   /* call add_pipe and remove_pipe */
   /* if the ip version of a peer is 0, that fd does not have a peer address */
   struct addr_info * peers;  /* handled similar to fds, holds peer addrs */

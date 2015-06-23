@@ -2,7 +2,7 @@ libincludes = \
 	ai.h \
 	app_util.h \
 	cipher.h \
-	config.h \
+	configfiles.h \
 	crypt_sel.h \
 	dcache.h \
 	keys.h \
@@ -26,7 +26,7 @@ libsrc = \
 	ai.c \
 	app_util.c \
 	cipher.c \
-	config.c \
+	configfiles.c \
 	crypt_sel.c \
 	dcache.c \
 	keys.c \

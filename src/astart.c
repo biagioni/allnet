@@ -24,7 +24,7 @@
 #include "lib/util.h"
 #include "lib/log.h"
 #include "lib/packet.h"
-#include "lib/config.h"
+#include "lib/configfiles.h"
 
 extern void ad_main (int npipes, int * rpipes, int * wpipes);
 extern void alocal_main (int pipe1, int pipe2);

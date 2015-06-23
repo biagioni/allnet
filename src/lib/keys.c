@@ -27,7 +27,7 @@
 #include "keys.h"
 #include "util.h"
 #include "log.h"
-#include "config.h"
+#include "configfiles.h"
 #include "sha.h"
 #include "mapchar.h"
 

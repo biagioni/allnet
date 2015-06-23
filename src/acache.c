@@ -21,7 +21,7 @@
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/log.h"
-#include "lib/config.h"
+#include "lib/configfiles.h"
 #include "lib/sha.h"
 
 struct ack_entry {

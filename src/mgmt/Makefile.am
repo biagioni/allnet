@@ -14,7 +14,7 @@ keydlibincludes = \
 	${libincludes} \
 	lib/cipher.h \
 	lib/keys.h \
-	lib/config.h \
+	lib/configfiles.h \
 	lib/mapchar.h
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la

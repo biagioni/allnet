@@ -3,7 +3,7 @@
 AM_CFLAGS = -I$(ALLNET_SRCDIR) -I$(ALLNET_SRCDIR)/xtime
 libincludes = \
     app_util.h \
-    config.h \
+    configfiles.h \
     log.h \
     media.h \
     packet.h \

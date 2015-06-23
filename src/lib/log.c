@@ -15,7 +15,7 @@
 #include "packet.h"
 #include "log.h"
 #include "util.h"
-#include "config.h"
+#include "configfiles.h"
 
 char log_buf [LOG_SIZE];    /* global */
 

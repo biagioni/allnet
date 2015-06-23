@@ -1,7 +1,7 @@
 AM_CFLAGS = -I$(ALLNET_SRCDIR)
 libincludes = \
 	lib/cipher.h \
-	lib/config.h \
+	lib/configfiles.h \
 	lib/keys.h \
 	lib/log.h \
 	lib/pipemsg.h \

@@ -32,7 +32,7 @@
 #include "lib/mgmt.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
-#include "lib/config.h"
+#include "lib/configfiles.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/log.h"
@@ -1024,7 +1024,7 @@ int trace_main (int argc, char ** argv)
 #ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* not on iOS, define main */
 int main (int argc, char ** argv)
 {
-  trace_main (argc, argv);
+  return trace_main (argc, argv);
 }
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 

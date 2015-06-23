@@ -1,4 +1,4 @@
-/* config.c: give access to config files */
+/* configfiles.c: give access to config files */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,7 +8,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include "config.h"
+#include "configfiles.h"
 
 #define ROOT		"~/.allnet"
 #define HOME_EXT	"/.allnet"
