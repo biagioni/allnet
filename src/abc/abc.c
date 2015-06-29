@@ -70,6 +70,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/time.h>
 #include <unistd.h>           /* usleep */
 #include <sys/socket.h>       /* sockaddr */
