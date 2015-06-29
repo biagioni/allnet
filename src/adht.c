@@ -37,7 +37,6 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
-#include <ifaddrs.h>
 #include <sys/types.h>
 #include <net/if.h>
 
@@ -63,115 +62,6 @@
 #define EXPIRATION_MULT	3    /* for debugging */
 
 #endif /* DEBUG_SPEED */
-
-#if 0
-/* returns the number of entries filled in, 0...max */
-/* entry may be NULL, in which case nothing is filled in */
-int init_own_routing_entries (struct addr_info * entry, int max,
-                              const char * dest, int nbits)
-{
-  int result = 0;
-  if (entry != NULL)
-    bzero (entry, sizeof (struct addr_info) * max);
-
-  struct ifaddrs * ifap;
-  if (getifaddrs (&ifap) != 0) {
-    perror ("getifaddrs");
-    printf ("unable to obtain own IP addresses, ignoring\n");
-    return 0;
-  }
-  struct ifaddrs * next = ifap;
-  while ((max > 0) && (next != NULL)) {
-    int valid = 0;
-    if (next->ifa_flags & IFF_LOOPBACK) {
-#ifdef DEBUG_PRINT
-      printf ("skipping loopback address\n");
-#endif /* DEBUG_PRINT */
-    } else if (next->ifa_addr->sa_family == AF_INET) {
-      struct sockaddr_in * sinp = (struct sockaddr_in *) (next->ifa_addr);
-      int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
-      int next_byte = ((char *) (&(sinp->sin_addr.s_addr))) [1] & 0xff;
-      int then_byte = ((char *) (&(sinp->sin_addr.s_addr))) [2] & 0xff;
-      int last_byte = ((char *) (&(sinp->sin_addr.s_addr))) [3] & 0xff;
-      if ((high_byte != 10) &&  /* anything beginning with 10 is private */
-          ((high_byte != 172) || ((next_byte & 0xf0) != 16)) &&
-          ((high_byte != 192) || (next_byte != 168)) &&
-          ((high_byte | next_byte | then_byte | last_byte) != 0) &&
-          ((high_byte & next_byte & then_byte & last_byte) != 0xff)) {
-        if (entry != NULL) {
-/* the address is already zeroed.  Assign the IP address to the last four
- * bytes (entry->ip.ip.s6_addr + 12), and 0xff to the immediately preceding
- * two bytes */
-          uint32_t s_addr = sinp->sin_addr.s_addr;
-          * ((uint32_t *) (entry->ip.ip.s6_addr + 12)) = s_addr;
-          entry->ip.ip.s6_addr [10] = entry->ip.ip.s6_addr [11] = 0xff;
-          entry->ip.ip_version = 4;
-        }
-        valid = 1;
-      }
-    } else if (next->ifa_addr->sa_family == AF_INET6) {
-      struct sockaddr_in6 * sinp = (struct sockaddr_in6 *) (next->ifa_addr);
-      int high_byte = sinp->sin6_addr.s6_addr [0] & 0xff;
-      int next_bits = sinp->sin6_addr.s6_addr [1] & 0xc0;
-      if ((high_byte != 0xff) &&  /* 0xff/8 is a multicast address */
-                                  /* 0xfe80/10 is a link-local address */
-          ((high_byte != 0xfe) || (next_bits != 0x80))) {
-        if (entry != NULL) {
-          entry->ip.ip = sinp->sin6_addr;
-          entry->ip.ip_version = 6;
-        }
-        valid = 1;
-      } else {
-#ifdef DEBUG_PRINT
-        printf ("ignoring address %02x%02x::\n", high_byte, next_bits);
-#endif /* DEBUG_PRINT */
-      }
-    } else {
-#ifdef DEBUG_PRINT
-      printf ("interface %s, ignoring address family %d\n", next->ifa_name,
-              next->ifa_addr->sa_family);
-#endif /* DEBUG_PRINT */
-    }
-    if (valid) {
-      if (entry != NULL) {
-        entry->ip.port = ALLNET_PORT;
-        memcpy (entry->destination, dest, ADDRESS_SIZE);
-        entry->nbits = nbits;
-        entry->type = ALLNET_ADDR_INFO_TYPE_DHT;
-#ifdef DEBUG_PRINT
-        printf ("%d/%d: added own address: ", result, max);
-        print_addr_info (entry);
-#endif /* DEBUG_PRINT */
-        entry++;
-      }
-      result++;
-      max--;
-    }
-    next = next->ifa_next;
-  }
-  freeifaddrs (ifap);
-  return result;
-}
-
-/* returns 1 if the given addr is one of mine, or matches my_address */
-int is_own_address (struct addr_info * addr)
-{
-  unsigned char my_address [ADDRESS_SIZE];
-  routing_my_address (my_address);
-  if (memcmp (addr->destination, my_address, ADDRESS_SIZE) == 0)
-    return 1;
-#define MAX_MY_ADDRS	100
-  struct addr_info mine [MAX_MY_ADDRS];
-  int n = init_own_routing_entries (mine, addr->destination, MAX_MY_ADDRS);
-#undef MAX_MY_ADDRS
-  int i;
-  for (i = 0; i < n; i++)
-    if (same_ai (mine + i, addr))
-      return 1;
-  return 0;
-}
-
-#endif /* 0 */
 
 static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
 {
