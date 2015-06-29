@@ -756,32 +756,6 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
     if (connect_to_index [i + 1])
       create_connect_thread (info, addr_cache, AF_INET6, i + 1);
   }
-
-#if 0
-  char ** contacts;
-  int num_contacts = all_contacts (&contacts);
-  for (i = 0; i < num_contacts; i++) {
-    int j;
-    const keyset * keysets;
-    int num_keysets = all_keys (contacts [i], &keysets);
-    for (j = 0; j < num_keysets; j++) {
-      unsigned char address [ADDRESS_SIZE];
-      if (get_local (keysets [j], address) >= LISTEN_BITS) {
-        int index = ((address [0] & 0xff) >> (8 - LISTEN_BITS)) * 2;
-/* printf ("calling connect_listener [%d/%d] [%d/%d] [%d, %d]\n",
-i, num_contacts, j, num_keysets, index, index + 1); */
-        if (listener_fds [index] < 0)
-          listener_fds [index] =
-            connect_listener (address, info, addr_cache, AF_INET);
-        if (listener_fds [index + 1] < 0)
-          listener_fds [index + 1] =
-            connect_listener (address, info, addr_cache, AF_INET6);
-/* printf ("set listeners_fds [%d] = %d, [%d] = %d\n",
-        index, listener_fds [index], index + 1, listener_fds [index + 1]); */
-      }
-    }
-  }
-#endif /* 0 */
 }
 
 static void remove_listener (int fd, struct listen_info * info,
