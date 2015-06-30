@@ -1,5 +1,12 @@
 /* xchat_socket.c: send and receive xchat messages over a socket */
 
+#if defined(WIN32) || defined(WIN64)
+#ifndef WINDOWS_ENVIRONMENT
+#define WINDOWS_ENVIRONMENT
+#define WINDOWS_ENVIRONMENT
+#endif /* WINDOWS_ENVIRONMENT */
+#endif /* WIN32 || WIN64 */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -11,6 +18,9 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <netinet/ip.h>
+#ifdef WINDOWS_ENVIRONMENT
+#include <windows.h>
+#endif /* WINDOWS_ENVIRONMENT */
 
 #include "lib/packet.h"
 #include "lib/pipemsg.h"
@@ -423,6 +433,11 @@ static void thread_for_child_completion (pid_t pid)
 int main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
+#ifdef WINDOWS_ENVIRONMENT
+  HWND hwNd = GetConsoleWindow ();
+  ShowWindow (hwNd, SW_HIDE);
+#endif /* WINDOWS_ENVIRONMENT */
+
 /*
   if (argc < 2) {
     printf ("%s should have one socket arg, and never be called directly!\n",
