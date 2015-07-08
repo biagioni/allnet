@@ -29,13 +29,13 @@
 static char * hms (char * time_string)
 {
   /* format is "Tue Mar  3 20:28:06 2015 HST" */
-  char * space = rindex (time_string, ' ');
+  char * space = strrchr (time_string, ' ');
   if (space != NULL) {
     *space = '\0';  /* get rid of timezone */
-    space = rindex (time_string, ' ');
+    space = strrchr (time_string, ' ');
     if (space != NULL) {
       *space = '\0';  /* get rid of year */
-      space = rindex (time_string, ' ');
+      space = strrchr (time_string, ' ');
       if (space != NULL)
         return space + 1; /* get rid of day-of-week, month, and day-of-month */
     }

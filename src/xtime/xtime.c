@@ -125,9 +125,9 @@ static int time_to_buf (time_t t, char * dp, int n)
   struct tm details;
   gmtime_r (&unix_time, &details);
   asctime_r (&details, dp);
-  char * pos = index (dp, '\n');
+  char * pos = strchr (dp, '\n');
   snprintf (pos, n - (pos - dp), " UTC");
-  pos = index (dp, '\0') + 1;
+  pos = strchr (dp, '\0') + 1;
   /* printf ("time is '%s', offset %ld\n", dp, pos - dp); */
   binary_time_to_buf (t, pos, n - (pos - dp));
   /* printf ("final time is '%s'\n", dp); */

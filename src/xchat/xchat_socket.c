@@ -228,7 +228,7 @@ static void wait_for_connection (int sock,
 
 static void find_path (char * arg, char ** path, char ** program)
 {
-  char * slash = rindex (arg, '/');
+  char * slash = strrchr (arg, '/');
   if (slash == NULL) {
     *path = ".";
     *program = arg;
@@ -259,7 +259,7 @@ static char * find_java_path ()
   if (result != NULL)   /* found it before */
     return result;
   char * path = getenv ("PATH");
-  char * colon = index (path, ':');
+  char * colon = strchr (path, ':');
   do {
     int len = strlen (path);
     if (colon != NULL)
@@ -277,7 +277,7 @@ static char * find_java_path ()
       path = NULL;
     else {
       path = colon + 1;
-      colon = index (path, ':');
+      colon = strchr (path, ':');
     }
   } while (path != NULL);
   return NULL;

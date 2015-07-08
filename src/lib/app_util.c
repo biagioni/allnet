@@ -27,7 +27,7 @@
 
 static void find_path (char * arg, char ** path, char ** program)
 {
-  char * slash = rindex (arg, '/');
+  char * slash = strrchr (arg, '/');
   if (slash == NULL) {
     *path = ".";
     *program = arg;

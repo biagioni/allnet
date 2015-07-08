@@ -101,7 +101,7 @@ printf ("unable to stat %s\n", fname);  /* debug msg, remove later */
 /* if it is the kind of name we want, it should end in a string of n digits */
 static int end_ndigits (char * path, int ndigits)
 {
-  char * slash = rindex (path, '/');
+  char * slash = strrchr (path, '/');
   char * name = path;
   if (slash != NULL)
     name = slash + 1;
@@ -145,11 +145,11 @@ printf ("debug time: %d\n", 5 / debug);
      * greater than gltc but less than the current.  The comparison always
      * succeeds in case gltc or current are NULL */
     char * current_tail = iter->current_fname;
-    if ((current_tail != NULL) && (rindex (current_tail, '/') != NULL))
-      current_tail = rindex (current_tail, '/') + 1;
+    if ((current_tail != NULL) && (strrchr (current_tail, '/') != NULL))
+      current_tail = strrchr (current_tail, '/') + 1;
     char * gltc_tail = greatest_less_than_current;
-    if ((gltc_tail != NULL) && (rindex (gltc_tail, '/') != NULL))
-      gltc_tail = rindex (gltc_tail, '/') + 1;
+    if ((gltc_tail != NULL) && (strrchr (gltc_tail, '/') != NULL))
+      gltc_tail = strrchr (gltc_tail, '/') + 1;
 /* printf ("examining %s, %s + %s\n", dep->d_name, current_tail, gltc_tail); */
     if ((end_ndigits (dep->d_name, DATE_LEN)) &&
         ((current_tail == NULL) || (strcmp (dep->d_name, current_tail) < 0)) &&
@@ -240,7 +240,7 @@ static int parse_seq_time (char * string, uint64_t * seq, uint64_t * time,
   }
   if (seq != NULL)
     *seq = n;
-  char * paren = index (seqs, '(');
+  char * paren = strchr (seqs, '(');
   if (paren == NULL) {
     printf ("paren missing from '%s'\n", string);
     return 0;
@@ -293,7 +293,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
   if (type == MSG_TYPE_DONE) {
     return type;
   }
-  char * second_line = index (record, '\n');
+  char * second_line = strchr (record, '\n');
   if (second_line == NULL) {
     return MSG_TYPE_DONE;
   }
@@ -317,7 +317,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
     return MSG_TYPE_DONE;
   }
 
-  char * user_data = index (second_line, '\n');
+  char * user_data = strchr (second_line, '\n');
   if (user_data == NULL) {
     bzero (message_ack, MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;

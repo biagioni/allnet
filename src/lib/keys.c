@@ -154,7 +154,7 @@ static void set_kip_size (int size)
 /* if it is the kind of name we want, it should end in a string of n digits */
 static int is_ndigits (char * path, int ndigits)
 {
-  char * slash = rindex (path, '/');
+  char * slash = strrchr (path, '/');
   char * name = path;
   if (slash != NULL)
     name = slash + 1;
@@ -183,7 +183,7 @@ static void read_address_file (char * fname, char * address, int * nbits)
         int value;
         sscanf (p, " %x", &value);
         address [i] = value;
-        p = index (p, ':');
+        p = strchr (p, ':');
         if (p != NULL)  /* p points to ':' */
           p++;
       }
@@ -1005,7 +1005,7 @@ static void init_bc_key_set (char * dirname, struct bc_key_info ** keys,
       printf ("unable to open key directory ~/.allnet/%s\n", dirname);
     } else {
 /* printf ("init_bc_key_set 2, debug %p\n", *keyd_debug); */
-      char * slash = rindex (config_dir, '/');
+      char * slash = strrchr (config_dir, '/');
       if (slash != NULL)
         *slash = '\0';
 /* printf ("init_bc_key_set 3, debug %p\n", *keyd_debug); */
@@ -1047,12 +1047,12 @@ static void assign_lang_bits (char * p, int length,
 static int parse_position (char * p, int * result)
 {
   int length = strlen (p);
-  char * end = index (p, '.');
+  char * end = strchr (p, '.');
   if (end != NULL) {
     end++;   /* point after the '.' */
     length = end - p;
   } else {
-    end = index (p, ',');
+    end = strchr (p, ',');
     if (end != NULL)
       length = end - p;
   }
@@ -1071,7 +1071,7 @@ int parse_ahra (char * ahra,
     if (reason != NULL) *reason = "AHRA is NULL";
     return 0;
   }
-  char * middle = index (ahra, '@');
+  char * middle = strchr (ahra, '@');
   if (middle == NULL) {
     if (reason != NULL) *reason = "AHRA lacks '@'";
     return 0;
@@ -1110,7 +1110,7 @@ int parse_ahra (char * ahra,
   if (*p != ',')
     return 1;
   p++;
-  char * next_comma = index (p, ',');
+  char * next_comma = strchr (p, ',');
   if (next_comma == NULL) {
     assign_lang_bits (p, strlen (p), language, matching_bits);
   } else {
@@ -1282,10 +1282,10 @@ char * generate_key (int key_bits, char * phrase, char * lang,
  * language, bits, or both.  The existing string is modified in place */
 void delete_lang (char * ahra)
 {
-  char * comma = index (ahra, ',');
+  char * comma = strchr (ahra, ',');
   if (comma == NULL)
     return;
-  char * second = index (comma + 1, ',');
+  char * second = strchr (comma + 1, ',');
   if (isalpha (comma [1])) {
     if (second != NULL) {
       int lsize = strlen (second + 1);
@@ -1301,10 +1301,10 @@ void delete_lang (char * ahra)
 
 void delete_bits (char * ahra)
 {
-  char * comma = index (ahra, ',');
+  char * comma = strchr (ahra, ',');
   if (comma == NULL)
     return;
-  char * second = index (comma + 1, ',');
+  char * second = strchr (comma + 1, ',');
   if (isdigit (comma [1])) {
     if (second != NULL) {
       int lsize = strlen (second + 1);
@@ -1320,7 +1320,7 @@ void delete_bits (char * ahra)
 
 void delete_lang_bits (char * ahra)
 {
-  char * comma = index (ahra, ',');
+  char * comma = strchr (ahra, ',');
   if (comma != NULL)
     *comma = '\0';
 }

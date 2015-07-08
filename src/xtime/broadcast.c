@@ -129,7 +129,7 @@ int main (int argc, char ** argv)
 
   char buffer [100000];
   while (fgets (buffer, sizeof (buffer), stdin) == buffer) {
-    char * eol = rindex (buffer, '\n');
+    char * eol = strrchr (buffer, '\n');
     if ((eol != NULL) && (strlen (buffer) == 1 + (eol - buffer)))
        *eol = '\0';
     broadcast (sock, buffer, strlen (buffer), hops, key->prv_key,

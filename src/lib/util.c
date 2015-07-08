@@ -237,7 +237,7 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         for (i = 0; i < amp->num_peers; i++) {
           char local [100];
           ia_to_string (amp->peers + i, local, sizeof (local));
-          char * nl = index (local, '\n');
+          char * nl = strchr (local, '\n');
           *nl = '\0';   /* segfault if no newline */
           r += snprintf (to + r, tsize - r, "%s", local);
           if (i + 1 < amp->num_peers)
@@ -266,7 +266,7 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
         for (i = 0; i < dht->num_sender + dht->num_dht_nodes; i++) {
           char local [100];
           ia_to_string (&(dht->nodes [i].ip), local, sizeof (local));
-          char * nl = index (local, '\n');
+          char * nl = strchr (local, '\n');
           *nl = '\0';   /* segfault if no newline */
           r += snprintf (to + r, tsize - r, "%s %s",
                          b2su (dht->nodes [i].destination,

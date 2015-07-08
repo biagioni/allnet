@@ -124,7 +124,7 @@ static void latest_file (time_t seconds)
 void init_log (char * name)
 {
   module_name = name;
-  char * last_slash = rindex (module_name, '/');
+  char * last_slash = strrchr (module_name, '/');
   if (last_slash != NULL)
     module_name = last_slash + 1;
 

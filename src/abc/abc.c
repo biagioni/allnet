@@ -867,8 +867,8 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
 {
   char log_string [300];
   snprintf (log_string, sizeof (log_string), "abc (%s)", ifopts);
-  while (index (log_string, '/') != NULL)  /* init_log thinks '/' means dir */
-    *(index (log_string, '/')) = '_';
+  while (strchr (log_string, '/') != NULL)  /* init_log thinks '/' means dir */
+    *(strchr (log_string, '/')) = '_';
   init_log (log_string);
   queue_init (16 * 1024 * 1024);  /* 16MBi */
 
