@@ -71,6 +71,7 @@ static void make_root_other (int verbose)
   char * home = getenv (HOME_ENV);
   pid_t caller = -1;
   pid_t other = -1;
+#ifndef ANDROID   /* android neither uses /etc/passwd, nor supports *pwent */
   setpwent ();
   struct passwd * pwd;
   while ((pwd = getpwent ()) != NULL) {
@@ -82,6 +83,7 @@ static void make_root_other (int verbose)
       caller = pwd->pw_uid;
   }
   endpwent ();
+#endif /* ANDROID */
   if (caller != -1)
     other = caller;
   if ((other < 0) || (setuid (other) != 0)) {
