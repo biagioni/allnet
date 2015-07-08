@@ -146,6 +146,7 @@ static inline int read_big_endian32 (char * array)
           (array [2] & 0xff) <<  8 | (array [3] & 0xff));
 }
 
+#if 0  /* dead code, but might be useful in the future */
 static int send_pipe_message_orig (int pipe, const char * message, int mlen,
                                    int priority)
 {
@@ -174,6 +175,7 @@ static int send_pipe_message_orig (int pipe, const char * message, int mlen,
   }
   return 1;
 }
+#endif /* 0 */
 
 static int send_buffer (int pipe, char * buffer, int blen, int do_free)
 {
