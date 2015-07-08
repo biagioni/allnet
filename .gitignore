@@ -32,3 +32,6 @@ Makefile.in
 
 # Binaries
 bin/
+
+# private
+todo/
