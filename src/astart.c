@@ -264,10 +264,14 @@ static void stop_all ()
   if (access (fname, F_OK) == 0) {          /* PID file found */
     stop_all_on_signal (SIGINT);
   } else {                                  /* no PID file, just pkill */
-    printf ("%s: cannot stop allnet (no pid file %s), running pkill astart\n",
+    printf ("%s: cannot stop allnet (no pid file %s), running ",
             daemon_name, fname);
-    /* send a sigint to all astart processes */
-    execlp ("pkill", "pkill", "astart", ((char *)NULL));
+    printf ("'pkill -x allnet|ad'\n");
+    /* send a sigint to all allnet processes */
+    /* -x specifies that we only use exact match on process names */
+    /* allnet|ad kills processes whether they retain the original name
+     * or use the new name */
+    execlp ("pkill", "pkill", "-x", "allnet|ad", ((char *)NULL));
     /* execlp should never return */
     perror ("execlp");
     printf ("unable to pkill\n");
