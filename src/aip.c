@@ -604,20 +604,23 @@ void listen_callback (int fd)
   }
 }
 
-/* DHT nodes that we listen to.  We keep at most 2 for each of 2^LISTEN_BITS.
+/* NUM_LISTENERS is the number of DHT nodes that we listen to.
+ * We keep at most 2 for each of 2^LISTEN_BITS.
  * for example, when LISTEN_BITS is 5, we keep at most 32*2 = 64 listeners,
- * two for each 32nd part of the address space.  However, note that we
+ * two for each 32nd part of the address space.  However, we
  * only keep listeners for the addresses that we actually care about,
  * so if all these addresses are in, e.g. 3 of the parts, we only listen
- * to at most 2 nodes in each of these parts.  Also note that multiple
- * parts may be assigned to the same DHT node -- if so, we only open a
- * single listen connection to that node.
+ * to at most 2 nodes in each of these parts, that is, 6 listeners.
+ * Multiple parts may be assigned to the same DHT node -- if so, we only
+ * open a single listen connection to that node.
+ * All this makes the code more complex, but the networking more efficient.
  *
  * current code in make_listeners and connect_thread only works if
  * listen_bits <= 8 */
 #define LISTEN_BITS	5
 #define NUM_LISTENERS	(1 << LISTEN_BITS) * 2   /* 2 ^ LISTEN_BITS for v4/v6*/
 static int listener_fds [NUM_LISTENERS];
+static pthread_mutex_t listener_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int connect_listener (unsigned char * address, struct listen_info * info,
                              void * addr_cache, int af)
@@ -642,6 +645,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
   int k;
   for (k = 0; (k < num_dhts) && (result < 0); k++) {
     if (af == sas [k].ss_family) {
+      /* standard socket connection code supporting both IPv4 and IPv6 */
       socklen_t salen = 0;
       if (af == AF_INET)
         salen = sizeof (struct sockaddr_in);
@@ -663,7 +667,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         int n = snprintf (log_buf, LOG_SIZE, "unable to connect to ");
         print_sockaddr_str (sap, salen, 1, log_buf + n, LOG_SIZE - n);
         log_error ("listener connect");
-        continue;   /* return to the top of the loop */
+        continue;   /* return to the top of the loop and try the next addr */
       }
       /* success! */
       /* ai now needs to be malloc'd, to make it good even after we return */
@@ -700,8 +704,19 @@ static void * connect_thread (void * a)
 {
   struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
   routing_init_is_complete (1);   /* wait for routing to complete */
-  listener_fds [arg->listener_index] = 
-    connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);
+  int fd = connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);
+  pthread_mutex_lock (&listener_mutex);
+  if (listener_fds [arg->listener_index] == -1) {
+    listener_fds [arg->listener_index] = fd;
+    pthread_mutex_unlock (&listener_mutex);
+  } else {   /* undo connect */
+    /* unlock first, so the slow operations are done with the mutex unlocked */
+    pthread_mutex_unlock (&listener_mutex);
+    close (fd);       /* remove from kernel */
+    /* remove from cache, info, and pipemsg */
+    cache_remove (arg->addr_cache, listen_fd_addr (arg->info, fd));
+    listen_remove_fd (arg->info, fd);
+  }
   free (a);  /* the caller doesn't do it, so we should */
   return NULL;
 }
@@ -744,8 +759,10 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
       if (get_local (keysets [j], address) >= LISTEN_BITS) {
         int index = ((address [0] & 0xff) >> (8 - LISTEN_BITS)) * 2;
 /* printf ("original address %02x, index %02x\n", address [0] & 0xff, index); */
-        connect_to_index [index] = 1;
-        connect_to_index [index + 1] = 1;
+        if (listener_fds [index] < 0)
+          connect_to_index [index] = 1;
+        if (listener_fds [index + 1] < 0)
+          connect_to_index [index + 1] = 1;
       }
     }
     free (keysets);
@@ -765,6 +782,7 @@ static void remove_listener (int fd, struct listen_info * info,
   printf ("remove_listener (fd %d)\n", fd);
   int removed = 0;
 #endif /* DEBUG_PRINT */
+  pthread_mutex_lock (&listener_mutex);
   int i;
   for (i = 0; i < NUM_LISTENERS; i++) {
     if (listener_fds [i] == fd) {
@@ -774,6 +792,7 @@ static void remove_listener (int fd, struct listen_info * info,
 #endif /* DEBUG_PRINT */
     }
   }
+  pthread_mutex_unlock (&listener_mutex);
   cache_remove (addr_cache, listen_fd_addr (info, fd)); /* remove from cache */
   listen_remove_fd (info, fd); /* remove from info and pipemsg */
   close (fd);       /* remove from kernel */
@@ -1093,10 +1112,12 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
   time_t last_keepalive = 0;
   while (1) {
     if ((last_listen == 0) ||                 /* if never updated */
-        (time (NULL) - last_listen > 3600) || /* once an hour try to update */
-        /* or once a minute if we've recently removed an fd */
-        ((removed_listener) && (time (NULL) - last_listen > 60))) {
+        (time (NULL) - last_listen > 300) || /* once every 5min try to update */
+        /* or once every 30sec if we've recently removed an fd */
+        ((removed_listener) && (time (NULL) - last_listen > 30))) {
 /* printf ("making listeners\n"); */
+/* if we are already connected to everyone we want to connect to, then the
+   call to make_listeners should be essentially free */
       make_listeners (info, addr_cache);
       last_listen = time (NULL);
       removed_listener = 0;
@@ -1227,6 +1248,7 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
   listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0, listen_callback);
 
   listen_add_fd (&info, rpipe, NULL);
+  pthread_mutex_init (&listener_mutex, NULL);
   int i;
   for (i = 0; i < NUM_LISTENERS; i++)
     listener_fds [i] = -1;
