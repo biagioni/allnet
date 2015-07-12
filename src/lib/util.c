@@ -917,7 +917,7 @@ void sleep_time_random_us (unsigned long long us)
 }
 
 /* if malloc is not successful, exit after printing */
-void * malloc_or_fail (int bytes, char * desc)
+void * malloc_or_fail (int bytes, const char * desc)
 {
   void * result = malloc (bytes);
   if (result == NULL) {
@@ -931,7 +931,7 @@ void * malloc_or_fail (int bytes, char * desc)
 }
 
 /* copy a string to new storage, using malloc_or_fail to get the memory */
-char * strcpy_malloc (char * string, char * desc)
+char * strcpy_malloc (const char * string, const char * desc)
 {
   int size = strlen (string) + 1;
   char * result = malloc_or_fail (size, desc);
@@ -939,7 +939,7 @@ char * strcpy_malloc (char * string, char * desc)
   return result;
 }
 
-char * strcat_malloc (char * s1, char * s2, char * desc)
+char * strcat_malloc (const char * s1, const char * s2, const char * desc)
 {
   int size = strlen (s1) + strlen (s2) + 1;
   char * result = malloc_or_fail (size, desc);
@@ -947,7 +947,8 @@ char * strcat_malloc (char * s1, char * s2, char * desc)
   return result;
 }
 
-char * strcat3_malloc (char * s1, char * s2, char * s3, char * desc)
+char * strcat3_malloc (const char * s1, const char * s2, const char * s3,
+                       const char * desc)
 {
   int size = strlen (s1) + strlen (s2) + strlen (s3) + 1;
   char * result = malloc_or_fail (size, desc);
@@ -956,7 +957,7 @@ char * strcat3_malloc (char * s1, char * s2, char * s3, char * desc)
 }
 
 /* copy memory to new storage, using malloc_or_fail to get the memory */
-void * memcpy_malloc (void * bytes, int bsize, char * desc)
+void * memcpy_malloc (const void * bytes, int bsize, const char * desc)
 {
   char * result = malloc_or_fail (bsize, desc);
   memcpy (result, bytes, bsize);
