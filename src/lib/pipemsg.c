@@ -813,3 +813,121 @@ int receive_pipe_message_any (int timeout, char ** message,
   return receive_pipe_message_fd (timeout, message, -1, NULL, NULL,
                                   from_pipe, priority);
 }
+
+/* if there is a valid message in the first dlen bytes of data,
+ * copies it into *message (malloc'd for the purpose, must be free'd)
+ * and returns its size.  If not NULL, also fills in priority.
+ *
+ * if there is no valid message, returns 0.
+ *
+ * On the first call for a new socket, *buffer should be NULL.  the
+ * buffer is then used to keep any data received from prior calls,
+ * assuming that data may hold parts of multiple messages (as TCP
+ * may split up or join messages together).  The buffer should be
+ * kept for as long as messages are received on the same socket.  It
+ * should not be modified in any way.  It may be free'd once the
+ * socket is closed.
+ *
+ * first_message should usually be called in a loop.  On the second and
+ * subsequent calls, dlen should be zero (and then data can be NULL or
+ * any value), and returns any additional messages from the buffer.
+ * The loop should end once the call returns 0.  Later can again call
+ * first_message with newly received data from the network.
+ */
+/* first_message uses memmove to move data from the end of the buffer
+ * to the front of the buffer, even if there is overlap between the
+ * beginning of the data to be moved and the end of the copied data.
+ * memmove should do the right thing in this case -- see the man page */
+int first_message (char * data, int dlen, void ** buffer,
+                   char ** message, int * priority)
+{
+  struct buffer_info {
+    int allocated;
+    int filled;
+    char data [0];  /* actually, 'allocated' bytes */
+  };
+  static struct buffer_info * bp = NULL;
+  if (*buffer == NULL) {
+    /* allocate enough to hold dlen and also ALLNET_MTU and the largest
+     * possible IP packet */
+#define MIN_BUFFER	(ALLNET_MTU + HEADER_SIZE + 65536)
+    int size = dlen;
+    if (size < MIN_BUFFER)
+      size = MIN_BUFFER;
+    int asize = size + sizeof (struct buffer_info);
+    bp = malloc (asize);
+    if (bp == NULL) {
+      snprintf (log_buf, LOG_SIZE,
+                "first_message unable to malloc %d\n", asize);
+      printf ("%s", log_buf);
+      log_print ();
+      exit (1);  /* for now -- maybe later return 0 */
+    }
+    bp->allocated = size;
+    bp->filled = 0;
+    *buffer = bp;
+  } else {
+    bp = * ((struct buffer_info **) buffer);
+    if (dlen > 0) {   /* check that the data will fit */
+      if ((bp->allocated < dlen + bp->filled) ||
+          (bp->filled < 0)) {  /* should never happen */
+        snprintf (log_buf, LOG_SIZE,
+                  "first_message error, sizes %d + %d >? %d\n",
+                  dlen, bp->filled, bp->allocated);
+        printf ("%s", log_buf);
+        log_print ();
+        exit (1);  /* should realloc, but should also never happen */
+      }
+    }
+  }
+  if ((dlen > 0) && (data != NULL)) {
+    memcpy (bp->data + bp->filled, data, dlen);
+    bp->filled += dlen;
+  }
+  /* at this point all the data, hopefully beginning with a header, is
+   * in bp->data [0..bp->filled - 1] */
+  if (message != NULL)
+    *message = NULL;
+  if (bp->filled < HEADER_SIZE)
+    return 0;
+  int msize;
+  while ((bp->filled >= HEADER_SIZE) &&
+         (((msize = parse_header (bp->data, -1, priority)) < 0) ||
+          (msize > ALLNET_MTU))) {
+    /* look for a header inside the data, discard any preceding data */
+    int i;
+    for (i = 0; i <= bp->filled - HEADER_SIZE; i++) {
+      if (memcmp (bp->data + i, MAGIC_STRING, MAGIC_SIZE) == 0) {
+        /* found the magic string, what follows should be a header */
+	bp->filled -= i;   /* get rid of the preceding data */
+        memmove (bp->data, bp->data + i, bp->filled);
+        break;   /* go back to the outer while loop */
+      }
+    }
+    bp->filled -= i;   /* discard all the data except the last HEADER_SIZE */
+    memmove (bp->data, bp->data + i, bp->filled);
+    return 0;         /* no message */
+  }
+  /* msize should have message size */
+  int total_size = msize + HEADER_SIZE;
+  if (bp->filled < total_size)   /* incomplete message */
+    return 0;
+  int retval = msize;
+  if (message != NULL) {
+    *message = malloc (msize);
+    if (*message != NULL) {
+      memcpy (*message, bp->data + HEADER_SIZE, msize);
+    } else {
+      snprintf (log_buf, LOG_SIZE,
+                "pipemsg.c first_message: unable to allocate size %d\n", msize);
+      printf ("%s", log_buf);
+      log_print ();
+      retval = 0;
+    }
+  }
+  /* erase this message from the bp->data buffer */
+  bp->filled -= total_size;
+  if (bp->filled > 0)
+    memmove (bp->data, bp->data + total_size, bp->filled);
+  return retval;
+}

@@ -67,4 +67,27 @@ extern int receive_pipe_message_fd (int timeout, char ** message, int fd,
                                     struct sockaddr * sa, socklen_t * salen,
                                     int * from_pipe, int * priority);
 
+/* if there is a valid message in the first dlen bytes of data,
+ * copies it into *message (malloc'd for the purpose, must be free'd)
+ * and returns its size.  If not NULL, also fills in priority.
+ *
+ * if there is no valid message, returns 0.
+ *
+ * On the first call for a new socket, *buffer should be NULL.  the
+ * buffer is then used to keep any data received from prior calls,
+ * assuming that data may hold parts of multiple messages (as TCP
+ * may split up or join messages together).  The buffer should be
+ * kept for as long as messages are received on the same socket.  It
+ * should not be modified in any way.  It may be free'd once the
+ * socket is closed.
+ *
+ * first_message should usually be called in a loop.  On the second and
+ * subsequent calls, dlen should be zero (and then data can be NULL or
+ * any value), and returns any additional messages from the buffer.
+ * The loop should end once the call returns 0.  Later can again call
+ * first_message with newly received data from the network.
+ */
+extern int first_message (char * data, int dlen, void ** buffer,
+                          char ** message, int * priority);
+
 #endif /* PIPEMSG_H */
