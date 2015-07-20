@@ -67,27 +67,42 @@ extern int receive_pipe_message_fd (int timeout, char ** message, int fd,
                                     struct sockaddr * sa, socklen_t * salen,
                                     int * from_pipe, int * priority);
 
-/* if there is a valid message in the first dlen bytes of data,
- * copies it into *message (malloc'd for the purpose, must be free'd)
- * and returns its size.  If not NULL, also fills in priority.
+/* splits an incoming data into n = zero or more allnet messages, returning
+ * the number of messages.
+ * if the number of messages is greater than zero, malloc's arrays
+ * for messages, lengths, and priorities (for each, if not NULL).  If malloc'd,
+ * these arrays must be free'd when no longer needed.
+ * the pointers in messages[0..n-1] point into data (or *buffer, see below),
+ * and should not be free'd.
  *
- * if there is no valid message, returns 0.
+ * incoming data may hold partial messages at the beginning and the end.
+ * buffer is used to store such partial messages from one call to another
+ * of split_messages.  The management of buffer is hidden from the caller,
+ * except when a socket is closed, the corresponding buffer should be free'd.
+ * The space in buffer is limited, and pointers into buffer may no
+ * longer be available on a subsequent call.
+ * buffers should generally be declared as static or global, and should be
+ * NULL on the first call to split_messages for a given socket.
  *
- * On the first call for a new socket, *buffer should be NULL.  the
- * buffer is then used to keep any data received from prior calls,
- * assuming that data may hold parts of multiple messages (as TCP
- * may split up or join messages together).  The buffer should be
- * kept for as long as messages are received on the same socket.  It
- * should not be modified in any way.  It may be free'd once the
- * socket is closed.
- *
- * first_message should usually be called in a loop.  On the second and
- * subsequent calls, dlen should be zero (and then data can be NULL or
- * any value), and returns any additional messages from the buffer.
- * The loop should end once the call returns 0.  Later can again call
- * first_message with newly received data from the network.
+ * example:
+    char data [...] = ...;  // usually data received from network
+    int dlen = ...;         // the number of bytes from network
+    char ** messages;
+    int * lengths;
+    int * priorities;
+    static void * buffer = NULL;   // see comments for buffer handling
+    int n = split_messages (data, dlen, &messages, &lengths, &priorities,
+                            &buffer);
+    int i;
+    for (i = 0; i < n; i++)
+      process_message (messages [i], lengths [i], priorities [i]);
+    if (n > 0) {
+      free (messages);
+      free (lengths);
+      free (priorities);
+    }
  */
-extern int first_message (char * data, int dlen, void ** buffer,
-                          char ** message, int * priority);
+extern int split_messages (char * data, int dlen, char *** messages,
+                           int ** lengths, int ** priorities, void ** buffer);
 
 #endif /* PIPEMSG_H */

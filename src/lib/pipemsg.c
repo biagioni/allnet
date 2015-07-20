@@ -814,120 +814,182 @@ int receive_pipe_message_any (int timeout, char ** message,
                                   from_pipe, priority);
 }
 
-/* if there is a valid message in the first dlen bytes of data,
- * copies it into *message (malloc'd for the purpose, must be free'd)
- * and returns its size.  If not NULL, also fills in priority.
+/* splits an incoming data into n = zero or more allnet messages, returning
+ * the number of messages.
+ * if the number of messages is greater than zero, malloc's arrays
+ * for messages, lengths, and priorities (for each, if not NULL).  If malloc'd,
+ * these arrays must be free'd when no longer needed.
+ * the pointers in messages[0..n-1] point into data (or *buffer, see below),
+ * and should not be free'd.
  *
- * if there is no valid message, returns 0.
+ * incoming data may hold partial messages at the beginning and the end.
+ * buffer is used to store such partial messages from one call to another
+ * of split_messages.  The management of buffer is hidden from the caller,
+ * except when a socket is closed, the corresponding buffer should be free'd.
+ * The space in buffer is limited, and pointers into buffer may no
+ * longer be available on a subsequent call.
+ * buffers should generally be declared as static or global, and should be
+ * NULL on the first call to split_messages for a given socket.
  *
- * On the first call for a new socket, *buffer should be NULL.  the
- * buffer is then used to keep any data received from prior calls,
- * assuming that data may hold parts of multiple messages (as TCP
- * may split up or join messages together).  The buffer should be
- * kept for as long as messages are received on the same socket.  It
- * should not be modified in any way.  It may be free'd once the
- * socket is closed.
- *
- * first_message should usually be called in a loop.  On the second and
- * subsequent calls, dlen should be zero (and then data can be NULL or
- * any value), and returns any additional messages from the buffer.
- * The loop should end once the call returns 0.  Later can again call
- * first_message with newly received data from the network.
+ * example:
+    char data [...] = ...;  // usually data received from network
+    int dlen = ...;         // the number of bytes from network
+    char ** messages;
+    int * lengths;
+    int * priorities;
+    static void * buffer = NULL;   // see comments for buffer handling
+    int n = split_messages (data, dlen, &messages, &lengths, &priorities,
+                            &buffer);
+    int i;
+    for (i = 0; i < n; i++)
+      process_message (messages [i], lengths [i], priorities [i]);
+    if (n > 0) {
+      free (messages);
+      free (lengths);
+      free (priorities);
+    }
  */
-/* first_message uses memmove to move data from the end of the buffer
- * to the front of the buffer, even if there is overlap between the
- * beginning of the data to be moved and the end of the copied data.
- * memmove should do the right thing in this case -- see the man page */
-int first_message (char * data, int dlen, void ** buffer,
-                   char ** message, int * priority)
+#define DEBUG_PRINT
+int split_messages (char * data, int dlen, char *** messages, int ** lengths,
+                    int ** priorities, void ** buffer)
 {
   struct buffer_info {
-    int allocated;
     int filled;
-    char data [0];  /* actually, 'allocated' bytes */
+    char data [HEADER_SIZE + ALLNET_MTU];
+    char prior [ALLNET_MTU];
   };
-  static struct buffer_info * bp = NULL;
-  if (*buffer == NULL) {
-    /* allocate enough to hold dlen and also ALLNET_MTU and the largest
-     * possible IP packet */
-#define MIN_BUFFER	(ALLNET_MTU + HEADER_SIZE + 65536)
-    int size = dlen;
-    if (size < MIN_BUFFER)
-      size = MIN_BUFFER;
-    int asize = size + sizeof (struct buffer_info);
-    bp = malloc (asize);
-    if (bp == NULL) {
-      snprintf (log_buf, LOG_SIZE,
-                "first_message unable to malloc %d\n", asize);
-      printf ("%s", log_buf);
-      log_print ();
-      exit (1);  /* for now -- maybe later return 0 */
-    }
-    bp->allocated = size;
+  struct buffer_info * bp = (struct buffer_info *) (*buffer);
+  if (bp == NULL) {
+    int asize = sizeof (struct buffer_info);
+    bp = (struct buffer_info *)
+            (malloc_or_fail (asize, "pipemsg.c split_messages"));
     bp->filled = 0;
     *buffer = bp;
-  } else {
-    bp = * ((struct buffer_info **) buffer);
-    if (dlen > 0) {   /* check that the data will fit */
-      if ((bp->allocated < dlen + bp->filled) ||
-          (bp->filled < 0)) {  /* should never happen */
-        snprintf (log_buf, LOG_SIZE,
-                  "first_message error, sizes %d + %d >? %d\n",
-                  dlen, bp->filled, bp->allocated);
-        printf ("%s", log_buf);
+  }
+  int mi = 0;                 /* message index */
+  if (messages != NULL);
+    *messages = NULL;
+  if (lengths != NULL);
+    *lengths = NULL;
+  if (priorities != NULL);
+    *priorities = NULL;
+#define MAX_MESSAGES	100000
+/* really, size should be dynamic, but that would require
+   two passes through the data which I don't want to do */
+  char * mbuf [MAX_MESSAGES];
+  int lbuf [MAX_MESSAGES];
+  int pbuf [MAX_MESSAGES];
+  int msize = 0;
+  int priority;
+  while (bp->filled > 0) {
+    if ((bp->filled < HEADER_SIZE) && (dlen > 0)) {
+      int copy_length = HEADER_SIZE - bp->filled;
+      if (copy_length > dlen)
+        copy_length = dlen;
+      memcpy (bp->data + bp->filled, data, copy_length);
+      bp->filled += copy_length;
+      data += copy_length;
+      dlen -= copy_length;
+    }
+    if (bp->filled < HEADER_SIZE)
+      return 0;   /* finished */
+    msize = parse_header (bp->data, -1, &priority);
+    if ((msize < 0) || (msize > ALLNET_MTU)) {
+       /* bad header, try again with next char */
+      if (msize > ALLNET_MTU) {
+        snprintf (log_buf, LOG_SIZE, "split_messages 1 bad msg size %d %d\n",
+                  msize, ALLNET_MTU);
+#ifdef DEBUG_PRINT
+        printf ("%s\n", log_buf);
+#endif /* DEBUG_PRINT */
         log_print ();
-        exit (1);  /* should realloc, but should also never happen */
       }
-    }
-  }
-  if ((dlen > 0) && (data != NULL)) {
-    memcpy (bp->data + bp->filled, data, dlen);
-    bp->filled += dlen;
-  }
-  /* at this point all the data, hopefully beginning with a header, is
-   * in bp->data [0..bp->filled - 1] */
-  if (message != NULL)
-    *message = NULL;
-  if (bp->filled < HEADER_SIZE)
-    return 0;
-  int msize;
-  while ((bp->filled >= HEADER_SIZE) &&
-         (((msize = parse_header (bp->data, -1, priority)) < 0) ||
-          (msize > ALLNET_MTU))) {
-    /* look for a header inside the data, discard any preceding data */
-    int i;
-    for (i = 0; i <= bp->filled - HEADER_SIZE; i++) {
-      if (memcmp (bp->data + i, MAGIC_STRING, MAGIC_SIZE) == 0) {
-        /* found the magic string, what follows should be a header */
-	bp->filled -= i;   /* get rid of the preceding data */
-        memmove (bp->data, bp->data + i, bp->filled);
-        break;   /* go back to the outer while loop */
+      bp->filled -= 1;
+      memmove (bp->data, bp->data + 1, bp->filled);
+    } else if (bp->filled + dlen >= msize) {
+      int from_bp = 0;
+      int from_data = msize;
+      if (bp->filled > HEADER_SIZE) {
+        from_bp = bp->filled - HEADER_SIZE;
+        from_data -= from_bp;
+        memcpy (bp->prior, bp->data + HEADER_SIZE, from_bp);
       }
+      bp->filled = 0;     /* at most one message in bp->data, so end loop */
+      if (from_data > 0)
+        memcpy (bp->prior + from_bp, data, from_data);
+      data += from_data;
+      dlen -= from_data;
+      mbuf [mi] = bp->prior;
+      lbuf [mi] = msize;
+      pbuf [mi] = priority;
+      mi++;
+      if (mi >= MAX_MESSAGES) {
+        printf ("error: mi1 %d\n", mi);
+        exit (1);
+      }
+    } else { /* not enough data for the message */
+             /* add partial data to bp->data, return */
+  /* assertion should hold because bp->filled + dlen < msize <= ALLNET_MTU); */
+      assert (bp->filled + dlen < ALLNET_MTU);
+      if (dlen > 0) {
+        memcpy (bp->data + bp->filled, data, dlen);
+        bp->filled += dlen;
+      }
+      return 0;
     }
-    bp->filled -= i;   /* discard all the data except the last HEADER_SIZE */
-    memmove (bp->data, bp->data + i, bp->filled);
-    return 0;         /* no message */
   }
-  /* msize should have message size */
-  int total_size = msize + HEADER_SIZE;
-  if (bp->filled < total_size)   /* incomplete message */
-    return 0;
-  int retval = msize;
-  if (message != NULL) {
-    *message = malloc (msize);
-    if (*message != NULL) {
-      memcpy (*message, bp->data + HEADER_SIZE, msize);
-    } else {
-      snprintf (log_buf, LOG_SIZE,
-                "pipemsg.c first_message: unable to allocate size %d\n", msize);
-      printf ("%s", log_buf);
-      log_print ();
-      retval = 0;
+  /* should be zero because that is the only way to leave the while loop */
+  assert (bp->filled == 0);
+
+  while (dlen >= HEADER_SIZE) {
+    int priority;
+    int msize = parse_header (data, -1, &priority);
+    if ((msize < 0) || (msize > ALLNET_MTU)) {
+      /* bad header, try again with next char */
+      if (msize > ALLNET_MTU) {  /* discard message */
+        snprintf (log_buf, LOG_SIZE, "split_messages bad msg size %d %d\n",
+                  msize, ALLNET_MTU);
+#ifdef DEBUG_PRINT
+        printf ("%s\n", log_buf);
+#endif /* DEBUG_PRINT */
+        log_print ();
+      }
+      data++;
+      dlen--;
+    } else if (dlen >= HEADER_SIZE + msize) {
+      mbuf [mi] = data + HEADER_SIZE;
+      lbuf [mi] = msize;
+      pbuf [mi] = priority;
+      mi++;
+      if (mi >= MAX_MESSAGES) {
+        printf ("error: mi %d\n", mi);
+        exit (1);
+      }
+      data += HEADER_SIZE + msize;
+      dlen -= HEADER_SIZE + msize;
+    } else {      /* dlen < msize, end loop, save in bp->data */
+      break;
     }
   }
-  /* erase this message from the bp->data buffer */
-  bp->filled -= total_size;
-  if (bp->filled > 0)
-    memmove (bp->data, bp->data + total_size, bp->filled);
-  return retval;
+  if ((dlen > 0) && (dlen <= sizeof (bp->data))) {      /* save in bp->data */
+    memcpy (bp->data, data, dlen);
+    bp->filled = dlen;
+    data += dlen;
+    dlen -= dlen;
+  } else if (dlen > 0) {   /* dlen > sizeof (bp->data), some error */
+    snprintf (log_buf, LOG_SIZE, "split_messages error: %d %d %d\n",
+              msize, dlen, (int) (sizeof (bp->data)));
+#ifdef DEBUG_PRINT
+    printf ("%s\n", log_buf);
+#endif /* DEBUG_PRINT */
+    log_print ();
+    exit (1);
+  }
+  if (messages != NULL);
+    *messages = memcpy_malloc (mbuf, mi * sizeof (char *), "split_msgs 1");
+  if (lengths != NULL);
+    *lengths = memcpy_malloc (lbuf, mi * sizeof (int), "split_messages 2");
+  if (priorities != NULL);
+    *priorities = memcpy_malloc (pbuf, mi * sizeof (int), "split_mesgs 3");
+  return mi;
 }
