@@ -87,7 +87,7 @@ public class KeyExchangePanel extends StatusPanel {
     public void setSuccess(String contactName) {
         setText(0, " Got key from " + contactName);
         hideLabel(1);
-        setText(2, " Key Received Successfully!");
+        setText(2, " Key Received Successfully");
         setColor(2, Color.GREEN);
         getButton(CANCEL_BUTTON_NAME).setEnabled(false);
     }
