@@ -1039,12 +1039,13 @@ static int dev_urandom_bytes (char * buffer, int bsize)
 {
   int fd = open ("/dev/urandom", O_RDONLY);
   if (fd < 0) {
-    perror ("open /dev/urandom");
+    perror ("open /dev/urandom in lib/util.c");
     return 0;
   }
   int r = read (fd, buffer, bsize);
   if (r < bsize) {
     perror ("read /dev/urandom");
+    close (fd);
     return 0;
   }
   close (fd);
