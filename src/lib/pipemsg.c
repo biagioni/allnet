@@ -814,6 +814,46 @@ int receive_pipe_message_any (int timeout, char ** message,
                                   from_pipe, priority);
 }
 
+#define DEBUG_PRINT
+static void print_split_message_error (int code, int n1, int n2, int n3)
+{
+  snprintf (log_buf, LOG_SIZE, "split_messages %d: error %d %d %d\n",
+            code, n1, n2, n3);
+#ifdef DEBUG_PRINT
+  printf ("%s\n", log_buf);
+#endif /* DEBUG_PRINT */
+  log_print ();
+}
+
+#if 0
+static int next_char2 (char** first, int* nfirst, char** second, int* nsecond)
+{
+  if ((*nfirst <= 0) && (*nsecond <= 0))
+    return -1;
+  if (*nfirst > 0) {
+    int result = **first;
+    *first = *first + 1;
+    *nfirst = *nfirst - 1;
+    return result;
+  }
+  assert (*nsecond > 0);
+  int result = **second;
+  *second = *second + 1;
+  *nsecond = *nsecond - 1;
+  return result;
+}
+
+static int next_char (char** buf, int* n)
+{
+  if (*n <= 0)
+    return -1;
+  int result = **buf;
+  *buf = *buf + 1;
+  *n = *n - 1;
+  return result;
+}
+#endif /* 0 */
+
 /* splits an incoming data into n = zero or more allnet messages, returning
  * the number of messages.
  * if the number of messages is greater than zero, malloc's arrays
@@ -849,14 +889,13 @@ int receive_pipe_message_any (int timeout, char ** message,
       free (priorities);
     }
  */
-#define DEBUG_PRINT
 int split_messages (char * data, int dlen, char *** messages, int ** lengths,
                     int ** priorities, void ** buffer)
 {
   struct buffer_info {
-    int filled;
-    char data [HEADER_SIZE + ALLNET_MTU];
-    char prior [ALLNET_MTU];
+    int filled;    /* number of bytes in data */
+    char data [HEADER_SIZE + ALLNET_MTU];   /* bytes not yet processed */
+    char prior [ALLNET_MTU];                /* message returned in prior call */
   };
   struct buffer_info * bp = (struct buffer_info *) (*buffer);
   if (bp == NULL) {
@@ -866,9 +905,9 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
     bp->filled = 0;
     *buffer = bp;
   }
-  int mi = 0;                 /* message index */
-  if (messages != NULL);
-    *messages = NULL;
+  int mi = 0;                 /* message index (and the return value) */
+  if (messages != NULL);      /* clear *messages, *lengths, *priorities */
+    *messages = NULL;         /* in case of error return */
   if (lengths != NULL);
     *lengths = NULL;
   if (priorities != NULL);
@@ -882,55 +921,54 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
   int msize = 0;
   int priority;
   while (bp->filled > 0) {
-    if ((bp->filled < HEADER_SIZE) && (dlen > 0)) {
-      int copy_length = HEADER_SIZE - bp->filled;
-      if (copy_length > dlen)
-        copy_length = dlen;
-      memcpy (bp->data + bp->filled, data, copy_length);
-      bp->filled += copy_length;
-      data += copy_length;
-      dlen -= copy_length;
+    while ((bp->filled < HEADER_SIZE) && (dlen > 0)) {
+      bp->data [bp->filled] = *data;
+      bp->filled++;
+      data++;
+      dlen--;
     }
-    if (bp->filled < HEADER_SIZE)
+    if (bp->filled < HEADER_SIZE)   /* dlen is zero, incomplete header */
       return 0;   /* finished */
     msize = parse_header (bp->data, -1, &priority);
     if ((msize < 0) || (msize > ALLNET_MTU)) {
-       /* bad header, try again with next char */
-      if (msize > ALLNET_MTU) {
-        snprintf (log_buf, LOG_SIZE, "split_messages 1 bad msg size %d %d\n",
-                  msize, ALLNET_MTU);
-#ifdef DEBUG_PRINT
-        printf ("%s\n", log_buf);
-#endif /* DEBUG_PRINT */
-        log_print ();
-      }
+      if (msize > ALLNET_MTU)
+        print_split_message_error (1, msize, ALLNET_MTU, bp->filled);
+      /* bad header, try again with next char */
       bp->filled -= 1;
       memmove (bp->data, bp->data + 1, bp->filled);
-    } else if (bp->filled + dlen >= msize) {
-      int from_bp = 0;
+    } else if (bp->filled + dlen >= msize + HEADER_SIZE) {
+      /* valid msize, and we have the data */
       int from_data = msize;
-      if (bp->filled > HEADER_SIZE) {
-        from_bp = bp->filled - HEADER_SIZE;
-        from_data -= from_bp;
-        memcpy (bp->prior, bp->data + HEADER_SIZE, from_bp);
+      if (bp->filled > HEADER_SIZE) {   /* copy message to prior */
+        int from_bp = bp->filled - HEADER_SIZE;
+        from_data = msize - from_bp; /* may be zero or less */
+        if (from_data < 0)
+          from_data = 0;
+        if (from_bp > 0)
+          memcpy (bp->prior, bp->data + HEADER_SIZE, from_bp);
+        if (from_data > 0)
+          memcpy (bp->prior + from_bp, data, from_data);
+        mbuf [mi] = bp->prior;
+        lbuf [mi] = msize;
+        pbuf [mi] = priority;
+      } else {     /* point to the message in data */
+        mbuf [mi] = bp->data;
+        lbuf [mi] = msize;
+        pbuf [mi] = priority;
       }
       bp->filled = 0;     /* at most one message in bp->data, so end loop */
-      if (from_data > 0)
-        memcpy (bp->prior + from_bp, data, from_data);
       data += from_data;
       dlen -= from_data;
-      mbuf [mi] = bp->prior;
-      lbuf [mi] = msize;
-      pbuf [mi] = priority;
       mi++;
       if (mi >= MAX_MESSAGES) {
-        printf ("error: mi1 %d\n", mi);
+        print_split_message_error (4, mi, MAX_MESSAGES, 0);
         exit (1);
       }
     } else { /* not enough data for the message */
              /* add partial data to bp->data, return */
-  /* assertion should hold because bp->filled + dlen < msize <= ALLNET_MTU); */
-      assert (bp->filled + dlen < ALLNET_MTU);
+  /* assertion should hold because bp->filled + dlen < msize + HEADER_SIZE
+   * and msize <= ALLNET_MTU */
+      assert (bp->filled + dlen < sizeof (bp->data));
       if (dlen > 0) {
         memcpy (bp->data + bp->filled, data, dlen);
         bp->filled += dlen;
@@ -946,14 +984,8 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
     int msize = parse_header (data, -1, &priority);
     if ((msize < 0) || (msize > ALLNET_MTU)) {
       /* bad header, try again with next char */
-      if (msize > ALLNET_MTU) {  /* discard message */
-        snprintf (log_buf, LOG_SIZE, "split_messages bad msg size %d %d\n",
-                  msize, ALLNET_MTU);
-#ifdef DEBUG_PRINT
-        printf ("%s\n", log_buf);
-#endif /* DEBUG_PRINT */
-        log_print ();
-      }
+      if (msize > ALLNET_MTU)
+        print_split_message_error (2, msize, ALLNET_MTU, dlen);
       data++;
       dlen--;
     } else if (dlen >= HEADER_SIZE + msize) {
@@ -962,7 +994,7 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
       pbuf [mi] = priority;
       mi++;
       if (mi >= MAX_MESSAGES) {
-        printf ("error: mi %d\n", mi);
+        print_split_message_error (5, mi, MAX_MESSAGES, 0);
         exit (1);
       }
       data += HEADER_SIZE + msize;
@@ -975,14 +1007,9 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
     memcpy (bp->data, data, dlen);
     bp->filled = dlen;
     data += dlen;
-    dlen -= dlen;
+    dlen -= dlen;   /* not needed, but good for consistency */
   } else if (dlen > 0) {   /* dlen > sizeof (bp->data), some error */
-    snprintf (log_buf, LOG_SIZE, "split_messages error: %d %d %d\n",
-              msize, dlen, (int) (sizeof (bp->data)));
-#ifdef DEBUG_PRINT
-    printf ("%s\n", log_buf);
-#endif /* DEBUG_PRINT */
-    log_print ();
+    print_split_message_error (6, msize, dlen, sizeof (bp->data));
     exit (1);
   }
   if (messages != NULL);
