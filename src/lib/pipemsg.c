@@ -906,11 +906,11 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
     *buffer = bp;
   }
   int mi = 0;                 /* message index (and the return value) */
-  if (messages != NULL);      /* clear *messages, *lengths, *priorities */
+  if (messages != NULL)      /* clear *messages, *lengths, *priorities */
     *messages = NULL;         /* in case of error return */
-  if (lengths != NULL);
+  if (lengths != NULL)
     *lengths = NULL;
-  if (priorities != NULL);
+  if (priorities != NULL)
     *priorities = NULL;
 #define MAX_MESSAGES	100000
 /* really, size should be dynamic, but that would require
@@ -1012,11 +1012,11 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
     print_split_message_error (6, msize, dlen, sizeof (bp->data));
     exit (1);
   }
-  if (messages != NULL);
+  if (messages != NULL)
     *messages = memcpy_malloc (mbuf, mi * sizeof (char *), "split_msgs 1");
-  if (lengths != NULL);
+  if (lengths != NULL)
     *lengths = memcpy_malloc (lbuf, mi * sizeof (int), "split_messages 2");
-  if (priorities != NULL);
+  if (priorities != NULL)
     *priorities = memcpy_malloc (pbuf, mi * sizeof (int), "split_mesgs 3");
   return mi;
 }
