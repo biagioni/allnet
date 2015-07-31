@@ -667,6 +667,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         int n = snprintf (log_buf, LOG_SIZE, "unable to connect to ");
         print_sockaddr_str (sap, salen, 1, log_buf + n, LOG_SIZE - n);
         log_error ("listener connect");
+        close (s);
         continue;   /* return to the top of the loop and try the next addr */
       }
       /* success! */
