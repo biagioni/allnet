@@ -284,7 +284,7 @@ static void get_my_addr (unsigned char * my_addr, int my_addr_size)
   }
 }
 
-/*
+#ifdef DEBUG_PRINT_ID
 static void debug_prt_trace_id (void * state, void * n)
 {
   print_buffer (n, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 1);
@@ -295,12 +295,12 @@ static void debug_prt_trace_id (void * state, void * n)
                               log_buf + offset, LOG_SIZE - offset);
   * ((int *) state) = offset;
 }
-*/
+#endif /* DEBUG_PRINT_ID */
 
 static int same_trace_id (void * n1, void * n2)
 {
   int result = (memcmp (n1, n2, MESSAGE_ID_SIZE) == 0);
-/*
+#ifdef DEBUG_PRINT_ID
   int off = snprintf (log_buf, LOG_SIZE, "same_trace_id (");
   off += buffer_to_string (n1, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 0,
                            log_buf + off, LOG_SIZE - off);
@@ -309,7 +309,7 @@ static int same_trace_id (void * n1, void * n2)
                            log_buf + off, LOG_SIZE - off);
   off += snprintf (log_buf + off, LOG_SIZE - off, ") => %d\n", result);
   log_print ();
-*/
+#endif /* DEBUG_PRINT_ID */
   return result;
 }
 
@@ -385,13 +385,13 @@ static void respond_to_trace (int sock, char * message, int msize,
   }
   /* else new trace, save it in the cache so we only forward it once */
   cache_add (cache, memcpy_malloc (trp->trace_id, MESSAGE_ID_SIZE, "trace id"));
-/*
+#ifdef DEBUG_PRINT_ID
   int debug_off = snprintf (log_buf, LOG_SIZE, "cache contains: ");
   printf ("cache contains: ");
   cache_map (cache, debug_prt_trace_id, &debug_off);
   debug_off += snprintf (log_buf + debug_off, LOG_SIZE - debug_off, "\n");
   log_print ();
-*/
+#endif /* DEBUG_PRINT_ID */
 
   struct timeval timestamp;
   gettimeofday (&timestamp, NULL);
@@ -574,6 +574,7 @@ struct arrival {
 static int num_arrivals = 0;
 static struct arrival arrivals [MAX_ARRIVALS];
 
+/* looks for this entry in the arrivals array */
 /* returns -1 if not found, otherwise the index */
 static int find_arrival (struct allnet_mgmt_trace_entry * entry)
 {
