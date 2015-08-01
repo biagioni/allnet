@@ -41,16 +41,22 @@ struct key_address {
   char address [ADDRESS_SIZE];
 };
 
-/* typedef int keyset;  refers to a key_info */
+/* typedef int keyset;  refers to a key_info or a group_info */
 struct key_info {
   char * contact_name;
-  allnet_rsa_pubkey contact_pubkey;
-  allnet_rsa_prvkey my_key;
-  struct key_address local;
-  struct key_address remote;
+  int num_members;   /* -1 for plain contacts, >= 0 for groups */
+  allnet_rsa_pubkey contact_pubkey;  /* only defined if not a group */
+  allnet_rsa_prvkey my_key;          /* only defined if not a group */
+  struct key_address local;          /* only defined if not a group */
+  struct key_address remote;         /* only defined if not a group */
   char * dir_name;
+  char ** members;                   /* only defined if num_members > 0 */
+  int has_symmetric_key;
+#ifndef SYMMETRIC_KEY_SIZE
+#define SYMMETRIC_KEY_SIZE AES256_SIZE
+#endif /* SYMMETRIC_KEY_SIZE */
+  char symmetric_key [SYMMETRIC_KEY_SIZE];
 };
-
 struct key_info * kip = NULL;
 int num_key_infos = 0;
 
@@ -118,14 +124,19 @@ static void set_kip_size (int size)
   /* free any keys from the old array that don't fit in the new array */
   for (i = size; i < num_key_infos; i++) {
     free (kip [i].contact_name);
-    allnet_rsa_free_pubkey (kip [i].contact_pubkey);
-    allnet_rsa_free_prvkey (kip [i].my_key);
+    if (kip [i].num_members < 0) {  /* not a group */
+      allnet_rsa_free_pubkey (kip [i].contact_pubkey);
+      allnet_rsa_free_prvkey (kip [i].my_key);
+    }
     if (kip [i].dir_name != NULL)
       free (kip [i].dir_name);
+    if (kip [i].members != NULL)
+      free (kip [i].members);
   }
   /* zero out the new entries (if any) in kip */
   for (i = num_key_infos; i < size; i++) {
     new_kip [i].contact_name = NULL;
+    new_kip [i].num_members = -1;   /* mark it as not a group */
     allnet_rsa_null_pubkey (&(new_kip [i].contact_pubkey));
     allnet_rsa_null_prvkey (&(new_kip [i].my_key));
     new_kip [i].local.nbits = 0;
@@ -133,6 +144,7 @@ static void set_kip_size (int size)
     new_kip [i].remote.nbits = 0;
     bzero (new_kip [i].remote.address, ADDRESS_SIZE);
     new_kip [i].dir_name = NULL;
+    new_kip [i].members = NULL;
   }
   /* clear the new entries in cp/cip, generate_contacts will init them */
   for (i = 0; i < size; i++)
@@ -167,6 +179,53 @@ static int is_ndigits (char * path, int ndigits)
   return 1;
 }
 
+static int write_bytes_file (char * fname, char * bytes, int nbytes)
+{
+  /* two hex digits for each byte, a separator (: or \n) after each byte,
+   * and a null char at the end. */
+  int size = nbytes * 3 + 1;
+  char * print_buffer = malloc_or_fail (size, "write_bytes_file");
+  print_buffer [0] = '\0';
+  int i;
+  for (i = 0; i < nbytes; i++) {
+    int slen = strlen (print_buffer);  /* print after the current string */
+    char * p = print_buffer + slen;
+    char * post = ":";
+    if (i + 1 == nbytes)
+      post = "\n";
+    snprintf (p, size - slen, "%02x%s", bytes [i] & 0xff, post);
+  }
+  int result = 0;
+  if (write_file (fname, print_buffer, strlen (print_buffer), 1))
+    result = 1;
+  else
+    printf ("write_bytes_file: unable to write %d bytes to %s\n", size, fname);
+  free (print_buffer);
+  return result;
+}
+
+static int read_bytes_file (char * fname, char * bytes, int nbytes)
+{
+  bzero (bytes, nbytes);
+  char * data;
+  int size = read_file_malloc (fname, &data, 0);
+  if (size > 0) {
+    int i;
+    char * p = data;
+    for (i = 0; (p != NULL) && (i < nbytes); i++) {
+      int value;
+      sscanf (p, " %x", &value);
+      bytes [i] = value;
+      p = strchr (p, ':');
+      if (p != NULL)  /* p points to ':' */
+        p++;
+      else            /* read last one */
+        return i + 1;
+    }
+  }
+  return 0;
+}
+
 static void read_address_file (char * fname, char * address, int * nbits)
 {
   bzero (address, ADDRESS_SIZE);
@@ -192,31 +251,118 @@ static void read_address_file (char * fname, char * address, int * nbits)
   }
 }
 
-static void remove_unprintable (char * s)
+static int remove_unprintable (char * s, int len)
 {
-  int len = strlen (s);
   int offset = 0;
   int i;
   for (i = 0; i < len; i++) {
+/* newline is not a graph */
     if (! (isgraph (s [i]) || isblank (s [i]))) // unprintable, remove
       offset++;
     else
       s [i - offset] = s [i];
   }
-  s [len - offset] = '\0';
+  return len - offset;
 }
 
-/* returns 0 if the contact does not exist, 1 otherwise */
-static int read_key_info (char * path, char * file, char ** contact,
+static int get_members (const char * members_content, int mlen,
+                        char *** members_list)
+{
+  int i;
+  int num_members = 0;
+  for (i = 0; i < mlen; i++)
+    if (members_content [i] == '\n')
+      num_members++;
+  int extra = 0;
+  if (members_content [mlen - 1] != '\n') {
+    num_members++;   /* last member name not null-terminated */
+    extra = 1;       /* need room for a null character, not in mlen */
+  }
+  int ptr_size = num_members * sizeof (char *);
+  int size = ptr_size + mlen + extra;
+  char ** result = malloc_or_fail (size, "get_members");
+  const char * p = members_content;
+  int plen = mlen;
+  char * s = ((char *) result) + ptr_size;
+  printf ("num_members %d, result %p, ptr_size %d, size %d(%d)\n", num_members,
+          result, ptr_size, size, extra);
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+  for (i = 0; i < num_members; i++) {
+    printf ("i %d, p %p/%d, s %p/%d\n", i, p, plen, s, mlen);
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+    if (p + plen != members_content + mlen) {
+      printf ("group members error: %p + %d != %p + %d\n",
+              p, plen, members_content, mlen);
+      exit (1);
+    }
+    int slen = plen;
+    char * nl = index (p, '\n');
+    if (nl != NULL)
+      slen = (nl - p);
+    if (s + slen > ((char *) result) + size) {
+      printf ("group members error: %p + %d > %p + %d\n",
+              s, slen, result, size);
+      exit (1);
+    }
+    memcpy (s, p, slen);
+    s [slen] = '\0';
+    result [i] = s;  /* save ptr to the newly copied/null-terminated string */
+    slen++;  /* now count the null character (for p/plen, the newline if any) */
+    p += slen;
+    plen -= slen;
+    s += slen;
+  }
+  if (members_list != NULL)
+    *members_list = result;
+  else
+    free (result);
+  for (i = 0; i < num_members; i++)
+    printf ("member [%d] = %s\n", i, result [i]);
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+  return num_members;
+}
+
+/* returns 0 if the contact does not exist, 1 if it does, 2 if it is a group.
+ * if num_members is not NULL, it is set to -1 for a plain contact, or otherwise
+ * the number of members. */
+static int read_key_info (const char * path, char * file, char ** contact,
                           allnet_rsa_prvkey * my_key,
                           allnet_rsa_pubkey * contact_pubkey,
                           char * local, int * loc_nbits,
                           char * remote, int * rem_nbits,
-                          char ** dir_name)
+                          char ** dir_name,
+                          char *** members, int * num_members,
+                          int * has_symmetric_key, char * symmetric_key)
 {
+/* initialize all the results to NULL/zero defaults, in case we return */
+  if (contact != NULL)
+    *contact = NULL;
+  if (my_key != NULL)
+    allnet_rsa_null_prvkey (my_key);
+  if (contact_pubkey != NULL)
+    allnet_rsa_null_prvkey (contact_pubkey);
+  if ((local != NULL) && (loc_nbits != NULL))
+    bzero (local, (*loc_nbits + 7) / 8);
+  if ((remote != NULL) && (rem_nbits != NULL))
+    bzero (remote, (*rem_nbits + 7) / 8);
+  if (members != NULL)
+    *members = NULL;
+  if (num_members != NULL)
+    *num_members = -1;  /* by default, not a group */
+  if (has_symmetric_key != NULL)
+    *has_symmetric_key = 0;
+  if (symmetric_key != NULL)
+    bzero (symmetric_key, SYMMETRIC_KEY_SIZE);
+  int result = 1;   /* found individual contact */
+
+  /* basename is the name of the directory for the contact information files */
   char * basename = strcat3_malloc (path, "/", file, "basename");
 
-  char * contact_name = strcat_malloc (basename, "/name", "name-name");
+  /* contact name is the path to the file containing the contact name */
+  char * contact_name = strcat_malloc (basename, "/name", "name-path");
   int found = read_file_malloc (contact_name, contact, 0);
   free (contact_name);
   if (found <= 0) {
@@ -224,40 +370,80 @@ static int read_key_info (char * path, char * file, char ** contact,
     return 0;
   }
   if (contact != NULL) {  /* null-terminate contact */
-    char * result = malloc_or_fail (found + 1, "result of read_key_info");
-    memcpy (result, *contact, found);
-    result [found] = '\0';
+    int slen = remove_unprintable (*contact, found);
+    /* cannot use memcpy_malloc because we copy one less than we allocate */
+    char * cname_mem = malloc_or_fail (slen + 1, "result of read_key_info");
+    memcpy (cname_mem, *contact, slen);
     free (*contact);
-    remove_unprintable (result);
-    *contact = result;
+    cname_mem [slen] = '\0';
+    *contact = cname_mem;
   }
-
-  if (my_key != NULL) {
-    char * name = strcat_malloc (basename, "/my_key", "my key name");
-    allnet_rsa_read_prvkey (name, my_key);
+  /* check to see if this is a group */
+  char * members_name = strcat_malloc (basename, "/members", "members-name");
+  char * members_content;
+  int mlen = read_file_malloc (members_name, &members_content, 0);
+  free (members_name);
+  if (mlen > 0) {
+    char ** members_list;
+printf ("found group %s\n", basename);
+    int mcount = get_members (members_content, mlen, &members_list);
+    free (members_content);
+    if (mcount > 0) {
+      if (members != NULL)
+        *members = members_list;
+      else
+        free (members_list);
+      if (num_members != NULL)
+        *num_members = mcount;
+      result = 2;  /* found a group */
+    }
+  } else {
+    if (my_key != NULL) {
+      char * name = strcat_malloc (basename, "/my_key", "my key name");
+      allnet_rsa_read_prvkey (name, my_key);
+      free (name);
+    }
+    if (contact_pubkey != NULL) {
+      char * name = strcat_malloc (basename, "/contact_pubkey", "pub name");
+      allnet_rsa_read_pubkey (name, contact_pubkey);
+      free (name);
+    }
+    if ((local != NULL) && (loc_nbits != NULL)) {
+      char * name = strcat_malloc (basename, "/local", "local name");
+      read_address_file (name, local, loc_nbits);
+      free (name);
+    }
+    if ((remote != NULL) && (rem_nbits != NULL)) {
+      char * name = strcat_malloc (basename, "/remote", "remote name");
+      read_address_file (name, remote, rem_nbits);
+      free (name);
+    }
+  }
+  if (symmetric_key != NULL) {
+    char * name = strcat_malloc (basename, "/symmetric_key", "symmetric name");
+    int n = read_bytes_file (name, symmetric_key, SYMMETRIC_KEY_SIZE);
+    if ((n >= SYMMETRIC_KEY_SIZE) && (has_symmetric_key != NULL)) {
+      *has_symmetric_key = 1;
+    } else {
+      bzero (symmetric_key, SYMMETRIC_KEY_SIZE);
+      if ((n < SYMMETRIC_KEY_SIZE) && (n > 0))
+        printf ("found symmetric key in %s, but lenght %d < minimum %d\n",
+                name, n, SYMMETRIC_KEY_SIZE);
+    }
     free (name);
+#ifdef DEBUG_PRINT
+    printf ("symmetric key for %s has size %d/%d\n",
+            basename, n, SYMMETRIC_KEY_SIZE);
+    if ((has_symmetric_key != NULL) && (*has_symmetric_key))
+      printf ("%d: %02x:%02x:%02x...\n", *has_symmetric_key,
+              symmetric_key [0], symmetric_key [1], symmetric_key [2]);
+#endif /* DEBUG_PRINT */
   }
-  if (contact_pubkey != NULL) {
-    char * name = strcat_malloc (basename, "/contact_pubkey", "pub name");
-    allnet_rsa_read_pubkey (name, contact_pubkey);
-    free (name);
-  }
-  if ((local != NULL) && (loc_nbits != NULL)) {
-    char * name = strcat_malloc (basename, "/local", "local name");
-    read_address_file (name, local, loc_nbits);
-    free (name);
-  }
-  if ((remote != NULL) && (rem_nbits != NULL)) {
-    char * name = strcat_malloc (basename, "/remote", "remote name");
-    read_address_file (name, remote, rem_nbits);
-    free (name);
-  }
-  if (dir_name != NULL) {
+  if (dir_name != NULL)
     *dir_name = basename;
-    /* printf ("dir name for %s set to %s\n", *contact, *dir_name); */
-  } else
+  else
     free (basename);
-  return 1;
+  return result;
 }
 
 static void init_from_file ()
@@ -283,7 +469,8 @@ static void init_from_file ()
   while ((dep = readdir (dir)) != NULL) {
     if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* key directory */
         (read_key_info (dirname, dep->d_name, NULL, NULL, NULL,
-                        NULL, NULL, NULL, NULL, NULL)))
+                        NULL, NULL, NULL, NULL, NULL,
+                        NULL, NULL, NULL, NULL)))
       num_keys++;
   }
   closedir (dir);
@@ -304,7 +491,9 @@ static void init_from_file ()
                         &(kip [i].my_key), &(kip [i].contact_pubkey),
                         kip [i].local.address, &(kip [i].local.nbits),
                         kip [i].remote.address, &(kip [i].remote.nbits),
-                        &(kip [i].dir_name))))
+                        &(kip [i].dir_name),
+                        &(kip [i].members), &(kip [i].num_members),
+                        &(kip [i].has_symmetric_key), kip [i].symmetric_key)))
       i++;
   }
   closedir (dir);
@@ -357,22 +546,6 @@ static void no_feedback (int type, int count, void * arg)
 }
 #endif /* 0 */
 
-static void write_file (char * fname, char * contents, int len)
-{
-  int fd = open (fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-  if (fd < 0) {
-    perror ("open in write_file");
-    return;
-  }
-  int n = write (fd, contents, len);
-  if (n < 0) {
-    perror ("write in write_file");
-    printf ("attempted to write %d bytes, wrote %d\n", len, n);
-    return;
-  }
-  close (fd);
-}
-
 #if 0
 static void write_RSA_file (char * fname, RSA * key, int write_priv)
 {
@@ -383,12 +556,13 @@ static void write_RSA_file (char * fname, RSA * key, int write_priv)
     PEM_write_bio_RSAPublicKey (mbio, key);
   char * keystore;
   long ksize = BIO_get_mem_data (mbio, &keystore);
-  write_file (fname, keystore, ksize);
+  write_file (fname, keystore, ksize, 1);
   BIO_free (mbio);
 }
 #endif /* 0 */
 
-static void write_address_file (char * fname, char * address, int nbits)
+static void write_address_file (const char * fname,
+                                const char * address, int nbits)
 {
   if (nbits <= 0)
     return;
@@ -402,7 +576,30 @@ static void write_address_file (char * fname, char * address, int nbits)
                         ":%02x", address [i] & 0xff);
   }
   offset += snprintf (buf + offset, sizeof (buf) - offset, "\n");
-  write_file (fname, buf, offset);
+  write_file (fname, buf, offset, 1);
+}
+
+/* only access members if num_members > 0 */
+static void write_member_file (const char * fname, char ** members,
+                               int num_members)
+{
+  int size = 1;  /* allocate at least one for the null character at the end */
+  if (num_members > 0) {
+    int i;
+    for (i = 0; i < num_members; i++)
+      size += strlen (members [i]) + 1;
+  }
+  char * buffer = malloc_or_fail (size, "write_member_file");
+  buffer [0] = '\0';  /* if there are no members */
+  if (num_members > 0) {
+    char * p = buffer;
+    int i;
+    for (i = 0; i < num_members; i++) {
+      snprintf (p, size - (p - buffer), "%s\n", members [i]);
+      p += strlen (members [i]) + 1;
+    }
+  }
+  write_file (fname, buffer, strlen (buffer), 1);
 }
 
 static void save_contact (struct key_info * k)
@@ -431,7 +628,7 @@ static void save_contact (struct key_info * k)
   create_dir (dirname);
   if (k->contact_name != NULL) {
     char * name_fname = strcat3_malloc (dirname, "/", "name", "name file");
-    write_file (name_fname, k->contact_name, strlen (k->contact_name));
+    write_file (name_fname, k->contact_name, strlen (k->contact_name), 1);
     free (name_fname);
   }
   if (! allnet_rsa_prvkey_is_null (k->my_key)) {
@@ -455,6 +652,16 @@ static void save_contact (struct key_info * k)
     char * remote_fname = strcat3_malloc (dirname, "/", "remote", "rfile");
     write_address_file (remote_fname, k->remote.address, k->remote.nbits);
     free (remote_fname);
+  }
+  if (k->num_members >= 0) {
+    char * member_fname = strcat3_malloc (dirname, "/", "member", "mfile");
+    write_member_file (member_fname, k->members, k->num_members);
+    free (member_fname);
+  }
+  if (k->has_symmetric_key) {
+    char * fname = strcat3_malloc (dirname, "/", "symmetric_key", "mfile");
+    write_bytes_file (fname, k->symmetric_key, SYMMETRIC_KEY_SIZE);
+    free (fname);
   }
 #ifdef DEBUG_PRINT
   printf ("save_contact %d file name is %s\n", ((int) (k - kip)), dirname);
@@ -612,7 +819,7 @@ int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
  * If the contact was already created, but does not have the peer's
  * info, returns as if it were a newly created contact after replacing
  * the contents of local (as long as loc_nbits matches the original nbits) */
-keyset create_contact (char * contact, int keybits, int feedback,
+keyset create_contact (const char * contact, int keybits, int feedback,
                        char * contact_key, int contact_ksize,
                        unsigned char * local, int loc_nbits,
                        unsigned char * remote, int rem_nbits)
@@ -648,6 +855,10 @@ keyset create_contact (char * contact, int keybits, int feedback,
   new.remote.nbits = 0;
   bzero (new.remote.address, ADDRESS_SIZE);
   new.dir_name = NULL;
+  new.num_members = -1;  /* not a group */
+  new.members = NULL;
+  new.has_symmetric_key = 0;
+  bzero (new.symmetric_key, SYMMETRIC_KEY_SIZE);
 
   if ((contact_key != NULL) && (contact_ksize > 0) &&
       (do_set_contact_pubkey (&new, contact_key, contact_ksize) == 0)) {
@@ -703,10 +914,195 @@ int create_spare_key (int keybits, char * random, int rsize)
   return 0;
 }
 
+/*************** operations on groups of contacts ******************/
+
+/* a contact may actually be a group of contacts. */
+/* the members of a group may themselves be groups. */
+/* deleting a group does not delete the members of the group. */
+int is_group (const char * contact)   
+{
+  int ki;
+  for (ki = 0; ki < num_key_infos; ki++) {
+    if ((strcmp (kip [ki].contact_name, contact) == 0) &&
+        (kip [ki].num_members >= 0))
+      return 1;
+  }
+  return 0;
+}
+
+/* group creation succeeds iff there is no prior contact or group
+ * with the same name
+ * returns 1 for success, 0 for failure */
+int create_group (const char * group)
+{
+  init_from_file ();
+  int index_plus_one = contact_exists (group);
+  if (index_plus_one) {  /* found an existing entry */
+    printf ("create_group failed, %s already exists\n", group);
+    return 0;
+  }
+
+  struct key_info new;
+  new.contact_name = strcpy_malloc (group, "create_group");
+  allnet_rsa_null_prvkey (&(new.my_key));
+  allnet_rsa_null_pubkey (&(new.contact_pubkey));
+  new.local.nbits = 0;
+  bzero (new.local.address, ADDRESS_SIZE);
+  new.remote.nbits = 0;
+  bzero (new.remote.address, ADDRESS_SIZE);
+  new.dir_name = NULL;
+  new.has_symmetric_key = 0;
+  bzero (new.symmetric_key, SYMMETRIC_KEY_SIZE);
+  new.num_members = 0;  /* new group, no members */
+  new.members = NULL;   /* new group, no members */
+  /* save into the kip data structure */
+  int new_contact = num_key_infos;
+  set_kip_size (new_contact + 1);   /* make room for the new entry */
+  kip [new_contact] = new;
+  generate_contacts ();
+
+  /* now save to disk */
+  save_contact (kip + new_contact);
+  return 1;
+}
+
+/* returns the number of members of the group, and the names listed
+ * in a dynamically allocated array (if not NULL, must be free'd) */
+int group_membership (const char * group, char *** members)   
+{
+  init_from_file ();
+  if (members != NULL)
+    *members = NULL;
+  int index_plus_one = contact_exists (group);
+  if (index_plus_one <= 0)
+    return 0;
+  int index = index_plus_one - 1;
+  if ((members != NULL) && (kip [index].members != NULL) &&
+      (kip [index].num_members > 0)) {
+    int size = kip [index].num_members * sizeof (char *);
+    int ptr_size = size;
+    int i;
+    for (i = 0; i < kip [index].num_members; i++)
+      size += strlen (kip [index].members [i]) + 1;
+    char ** result = malloc_or_fail (size, "group_membership");
+    char * p = ((char *) result) + ptr_size;
+    for (i = 0; i < kip [index].num_members; i++) {
+      result [i] = p;
+      strcpy (p, kip [index].members [i]);
+      p += strlen (kip [index].members [i]) + 1;
+    }
+    *members = result;
+  }
+  return kip [index].num_members;
+}
+
+static int reload_members_from_file (int ki)
+{
+  int result = 0;
+  char * fname = strcat_malloc (kip [ki].dir_name, "/members",
+                                "add_to_group members-name");
+  char * members_content = NULL;
+  int mlen = read_file_malloc (fname, &members_content, 0);
+  if (mlen >= 0)
+    result = 1;
+  free (fname);
+  if (result && (mlen > 0)) {
+    if ((kip [ki].num_members > 0) && (kip [ki].members != NULL))
+      free (kip [ki].members); /* throw away the in-memory info */
+    char ** members_list;
+    int mcount = get_members (members_content, mlen, &members_list);
+    free (members_content);
+    kip [ki].num_members = mcount;
+    if (mcount > 0)
+      kip [ki].members = members_list;
+  }
+  if (members_content != NULL)
+    free (members_content);
+  return result;
+}
+
+/* these return 0 for failure, 1 for success.  Reason for failures
+ * include non-existence of the group or contact, or the group being
+ * an individual contact rather than a group */
+int add_to_group (const char * group, const char * contact)
+{
+  init_from_file ();
+  int index_plus_one = contact_exists (group);
+  if (index_plus_one <= 0)
+    return 0;
+  int index = index_plus_one - 1;
+  if ((kip [index].num_members > 0) && (kip [index].members != NULL)) {
+    int i;
+    for (i = 0; i < kip [index].num_members; i++)
+      if (strcmp (kip [index].members [i], contact) == 0)
+        return 0;  /* already in the group */
+  }
+  int result = 0;
+  char * fname = strcat_malloc (kip [index].dir_name, "/members",
+                                "add_to_group members-name");
+  char * copy = strcat_malloc (contact, "\n", "add_to_group");
+  if (append_file (fname, copy, strlen (copy), 1))
+    result = 1;
+  free (copy);
+  free (fname);
+  if (result)
+    return reload_members_from_file (index);
+  else
+    return 0;
+}
+
+int remove_from_group (const char * group, const char * contact)
+{
+  init_from_file ();
+  int index_plus_one = contact_exists (group);
+  if (index_plus_one <= 0)
+    return 0;
+  int index = index_plus_one - 1;
+  if ((kip [index].num_members <= 0) || (kip [index].members == NULL))
+    return 0;  /* cannot remove if the group has no members */
+  char * fname = strcat_malloc (kip [index].dir_name, "/members",
+                                "remove_from_group members-name");
+  char * members_content;
+  int mlen = read_file_malloc (fname, &members_content, 0);
+  if ((members_content == NULL) || (mlen < 0)) {
+    free (fname);
+    return 0;
+  }
+  char * match = members_content;
+  int clen = strlen (contact);
+  int found = 0;
+  while ((! found) && ((match = strstr (match, contact)) != NULL)) {
+    int remlen = mlen - (match - members_content);  /* remaining length */
+    /* check for newline at beginning (or at start of file) */
+    /* it is safe to use the -1 index iff match != members_content */
+    if (((match == members_content) || (match [-1] == '\n')) &&
+        (match [clen] == '\n')) {  /* also check for match at end */
+      /* real match, delete the string (with memmove) and write back */
+      memmove (match, match + (clen + 1), remlen - (clen + 1));
+      mlen -= clen + 1;
+      found = 1;
+      break;   /* removed */
+    }
+    match++;  /* so it no longer matches at the same spot */
+  }
+  if (found) {
+    int wlen = write_file (fname, members_content, mlen, 1);
+    if (wlen != mlen) {
+      printf ("unable to write %d bytes to %s\n", mlen, fname);
+      found = 0;
+    }
+  }
+  free (fname);
+  free (members_content);
+  if (found)
+    return reload_members_from_file (index);
+  return 0;
+}
+
 /*************** operations on keysets and keys ********************/
 
 /* returns -1 if the contact does not exist, and 0 or more otherwise */
-int num_keysets (char * contact)
+int num_keysets (const char * contact)
 {
   init_from_file ();
   if (! contact_exists (contact))
@@ -838,24 +1234,193 @@ unsigned int get_remote (keyset k, unsigned char * address)
 }
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
- * longer be accessed unless the marked as valid again */
-int mark_invalid (keyset k)
+ * longer be accessed unless marked as valid again
+ * invalid_keys returns the number of invalid keys, or 0.
+ * mark_* return 1 for success, 0 if not successful */
+/* a keyset is marked as invalid by renaming the my_key to my_key_invalidated */
+int mark_invalid (const char * contact, keyset k)
 {
   init_from_file ();
-  printf ("mark_invalid not implemented\n");
+  if (! valid_keyset (k))
+    return 0;
+  char * fname = strcat_malloc (kip [k].dir_name, "/my_key",
+                                "invalidate_symmetric_key-1");
+  char * new_fname = strcat_malloc (fname, "_invalidated",
+                                    "invalidate_symmetric_key-2");
+  int result = 0;
+  if (rename (fname, new_fname) == 0)
+    result = 1;
+  else {
+    perror ("rename in mark_invalid");
+    printf ("unable to rename %s to %s\n", fname, new_fname);
+  }
+  free (fname);
+  free (new_fname);
+  /* delete from data structure */
+  allnet_rsa_null_prvkey (&(kip [k].my_key));
+  return result;
+}
+
+int invalid_keys (const char * contact, keyset ** keysets)
+{
+  init_from_file ();
+  int ki;
+  int count = 0;
+  for (ki = 0; ki < num_key_infos; ki++)
+    if ((strcmp (kip [ki].contact_name, contact) == 0) &&
+        (allnet_rsa_prvkey_is_null (kip [ki].my_key)))
+      count++;
+  if ((keysets != NULL) && (count > 0)) {
+    *keysets = malloc_or_fail (sizeof (keyset *) * count, "invalid_keys");
+    int index = 0;
+    for (ki = 0; ki < num_key_infos; ki++)
+      if ((strcmp (kip [ki].contact_name, contact) == 0) &&
+          (allnet_rsa_prvkey_is_null (kip [ki].my_key)))
+        (*keysets) [index++] = ki;
+  }
+  return count;
+}
+
+/* mirror image of mark_invalid */
+int mark_valid (const char * contact, keyset k)
+{
+  init_from_file ();
+  if (! valid_keyset (k))
+    return 0;
+  char * fname = strcat_malloc (kip [k].dir_name, "/my_key",
+                                "invalidate_symmetric_key-1");
+  char * old_fname = strcat_malloc (fname, "_invalidated",
+                                    "invalidate_symmetric_key-2");
+  int result = 0;
+  if (rename (old_fname, fname) == 0) {
+    /* read the key into the kip data structure */
+    if (allnet_rsa_read_prvkey (fname, &(kip [k].my_key)))
+      result = 1;
+    else
+      printf ("unable to read private key from %s\n", fname);
+  } else {
+    perror ("rename in mark_valid");
+    printf ("unable to rename %s to %s\n", old_fname, fname);
+  }
+  free (old_fname);
+  free (fname);
+  return result;
+}
+
+/*************** operations on symmetric keys ********************/
+
+/* returns the index of the kip that has the symmetric key for this contact,
+ * if any.  If the contact exists but has no symmetric key, it returns
+ * - (the index of the contact).
+ * If the contact is not found, returns num_key_infos */
+static int find_symmetric_key (const char * contact)
+{
+  int ki = 0;
+  int found = num_key_infos;
+  for (ki = 0; ki < num_key_infos; ki++) {
+    if ((kip [ki].contact_name != NULL) &&
+        (strcmp (kip [ki].contact_name, contact) == 0)) {
+      if (kip [ki].has_symmetric_key)
+        return ki;
+      found = -ki;
+    }
+  }
+  return found;
+}
+
+/* returns the symmetric key size if any, or 0 otherwise */
+/* if there is a symmetric key && key != NULL && ksize >= key size,
+ * copies the key value into key */
+int has_symmetric_key (const char * contact, char * key, int ksize)
+{
+  init_from_file ();
+  int found = find_symmetric_key (contact);
+  if ((found >= 0) && (found < num_key_infos)) {  /* found */
+    if ((key != NULL) && (ksize >= SYMMETRIC_KEY_SIZE))
+      memcpy (key, kip [found].symmetric_key, SYMMETRIC_KEY_SIZE);
+    return SYMMETRIC_KEY_SIZE;
+  }  /* else not found */
   return 0;
 }
-int invalid_keys (char * contact, keyset ** keysets)
+
+/* returns 1 if the contact is valid and there was no prior symmetric key
+ * for this contact and the ksize is adequate for a symmetric key,
+ * returns 0 otherwise */
+int set_symmetric_key (const char * contact, char * key, int ksize)
 {
   init_from_file ();
-  printf ("invalid_keys not implemented\n");
-  return 0;
+  if ((ksize < SYMMETRIC_KEY_SIZE) || (key == NULL))
+    return 0;
+  int ki = find_symmetric_key (contact);
+  if (ki == num_key_infos)
+    return 0;
+  /* else found contact, with or without symmetric key */
+  if (ki < 0)  /* no symmetric key, but the code is the same */
+    ki = -ki;
+  memcpy (kip [ki].symmetric_key, key, SYMMETRIC_KEY_SIZE);
+  kip [ki].has_symmetric_key = 1;
+  char * fname = strcat_malloc (kip [ki].dir_name, "/symmetric_key",
+                                "set_symmetric_key");
+  int result = write_bytes_file (fname, key, SYMMETRIC_KEY_SIZE);
+  free (fname);
+  return result;
 }
-int mark_valid (keyset k)
+
+/* after invalidating, can set a new symmetric key, and then the old
+ * one can no longer be revalidated.  Until then, revalidation is an option 
+ * return 1 for success, 0 if the operation was not done for any reason */
+int invalidate_symmetric_key (const char * contact)
 {
   init_from_file ();
-  printf ("mark_valid not implemented\n");
-  return 0;
+  int ki = find_symmetric_key (contact);
+  if ((ki < 0) || (ki >= num_key_infos))  /* not found */
+    return 0;
+  char * fname = strcat_malloc (kip [ki].dir_name, "/symmetric_key",
+                                "invalidate_symmetric_key-1");
+  char * new_fname = strcat_malloc (fname, "_invalidated",
+                                    "invalidate_symmetric_key-2");
+  int result = 0;
+  if (rename (fname, new_fname) == 0)
+    result = 1;
+  else {
+    perror ("rename");
+    printf ("unable to rename %s to %s\n", fname, new_fname);
+  }
+  free (fname);
+  free (new_fname);
+  /* delete from data structure */
+  kip [ki].has_symmetric_key = 0;
+  return result;
+}
+
+int revalidate_symmetric_key (const char * contact)
+{
+  init_from_file ();
+  int ki = find_symmetric_key (contact);
+  if (ki >= 0)   /* no contact, or contact already has a symmetric key */
+    return 0;
+  ki = -ki;   /* turn it into a valid index */
+  char * fname = strcat_malloc (kip [ki].dir_name, "/symmetric_key",
+                                "invalidate_symmetric_key-1");
+  char * old_fname = strcat_malloc (fname, "_invalidated",
+                                    "invalidate_symmetric_key-2");
+  int result = 0;
+  if (rename (old_fname, fname) == 0) {
+    int n = read_bytes_file (fname, kip [ki].symmetric_key, SYMMETRIC_KEY_SIZE);
+    if (n >= SYMMETRIC_KEY_SIZE) {
+      kip [ki].has_symmetric_key = 1; /* mark in data structure */
+      result = 1;
+    } else {
+      printf ("renamed %s to %s, but found %d < %d bytes\n", old_fname, fname,
+              n, SYMMETRIC_KEY_SIZE);
+    }
+  } else {
+    perror ("rename");
+    printf ("unable to rename %s to %s\n", old_fname, fname);
+  }
+  free (old_fname);
+  free (fname);
+  return result;
 }
 
 /*************** operations on broadcast keys ********************/

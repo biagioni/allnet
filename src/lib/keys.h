@@ -33,25 +33,46 @@ extern int all_contacts (char *** contacts);
  * If the contact was already created, but does not have the peer's
  * info, returns as if it were a newly created contact after replacing
  * the contents of local (as long as loc_nbits matches the original nbits) */
-extern keyset create_contact (char * contact, int keybits, int feedback,
+extern keyset create_contact (const char * contact, int keybits, int feedback,
                               char * contact_key, int contact_ksize,
                               unsigned char * local, int loc_nbits,
                               unsigned char * remote, int rem_nbits);
 
-/* create a spare key of the given size, returning the number of spare keys.
- * if random is not NULL and rsize >= keybits / 8, uses the bytes from
- * random to randomize the generated key
- * if keybits < 0, returns the number of spare keys without generating
- * any new key (and ignoring random/rsize)
- * returns 0 in case of error
- * should normally only be called after calling
- *    setpriority (PRIO_PROCESS, 0, n), with n >= 15 */
-extern int create_spare_key (int keybits, char * random, int rsize);
+/* a contact may be marked as invalid/deleted.  Nothing is deleted,
+ * but the contact can no longer be accessed unless undeleted again.
+ * deleted_contacts returns the number of deleted contacts, or 0.
+ * if not 0, the contacts array is malloc'd, should be free'd. */
+extern int deleted_contacts (char ** contacts);
+/* un/delete_contact return 1 for success, 0 if not successful */
+extern int delete_contact (const char * contact);
+extern int undelete_contact (const char * contact);
+
+/*************** operations on groups of contacts ******************/
+
+/* a contact may actually be a group of contacts. */
+/* the members of a group may themselves be groups. */
+/* deleting a group does not delete the members of the group. */
+extern int is_group (const char * contact);   
+
+/* group creation succeeds iff there is no prior contact or group
+ * with the same name */
+/* returns 1 for success, 0 for failure */
+extern int create_group (const char * group);
+
+/* returns the number of members of the group, and the names listed
+ * in a dynamically allocated array (if not NULL, must be free'd) */
+extern int group_membership (const char * group, char *** members);   
+
+/* these return 0 for failure, 1 for success.  Reason for failures
+ * include non-existence of the group or contact, or the group being
+ * an individual contact rather than a group */
+extern int add_to_group (const char * group, const char * contact);
+extern int remove_from_group (const char * group, const char * contact);
 
 /*************** operations on keysets and keys ********************/
 
 /* returns -1 if the contact does not exist, and 0 or more otherwise */
-extern int num_keysets (char * contact);
+extern int num_keysets (const char * contact);
 
 /* returns the number of keysets.
  * malloc's a new keysets (must be free'd) and fills it with the keysets. */
@@ -83,14 +104,41 @@ extern unsigned int get_my_privkey     (keyset k, allnet_rsa_prvkey * key);
 extern unsigned int get_local (keyset k, unsigned char * address);
 extern unsigned int get_remote (keyset k, unsigned char * address);
 
-
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
  * longer be accessed unless marked as valid again
  * invalid_keys returns the number of invalid keys, or 0.
  * mark_* return 1 for success, 0 if not successful */
-extern int invalid_keys (char * contact, keyset ** keysets);
-extern int mark_invalid (keyset k);
-extern int mark_valid (keyset k);
+extern int invalid_keys (const char * contact, keyset ** keysets);
+extern int mark_invalid (const char * contact, keyset k);
+extern int mark_valid (const char * contact, keyset k);
+
+/* create a spare key of the given size, returning the number of spare keys.
+ * if random is not NULL and rsize >= keybits / 8, uses the bytes from
+ * random to randomize the generated key
+ * if keybits < 0, returns the number of spare keys without generating
+ * any new key (and ignoring random/rsize)
+ * returns 0 in case of error
+ * should normally only be called after calling
+ *    setpriority (PRIO_PROCESS, 0, n), with n >= 15 */
+extern int create_spare_key (int keybits, char * random, int rsize);
+
+/*************** operations on symmetric keys ********************/
+
+/* returns the symmetric key size if any, or 0 otherwise */
+/* if there is a symmetric key && key != NULL && ksize >= key size,
+ * copies the key value into key */
+extern int has_symmetric_key (const char * contact, char * key, int ksize);
+
+/* returns 1 if the contact is valid and there was no prior symmetric key
+ * for this contact and the ksize is adequate for a symmetric key,
+ * returns 0 otherwise */
+extern int set_symmetric_key (const char * contact, char * key, int ksize);
+
+/* after invalidating, can set a new symmetric key, and then the old
+ * one can no longer be revalidated.  Until then, revalidation is an option
+ * return 1 for success, 0 if the operation was not done for any reason */
+extern int invalidate_symmetric_key (const char * contact);
+extern int revalidate_symmetric_key (const char * contact);
 
 /*************** operations on broadcast keys ********************/
 
