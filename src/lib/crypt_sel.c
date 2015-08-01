@@ -209,23 +209,6 @@ static int read_RSA_file (const char * fname, RSA * * key, int expect_private)
   return 0;
 }
 
-static int write_file (const char * fname, const char * contents, int len)
-{
-  int fd = open (fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-  if (fd < 0) {
-    perror ("open in write_file");
-    return 0;
-  }
-  int n = write (fd, contents, len);
-  if (n < 0) {
-    perror ("write in write_file");
-    printf ("attempted to write %d bytes, wrote %d\n", len, n);
-    return 0;
-  }
-  close (fd);
-  return 1;
-}
-
 static int write_RSA_file (const char * fname, RSA * key, int write_priv)
 {
   BIO * mbio = BIO_new (BIO_s_mem ());
@@ -235,7 +218,7 @@ static int write_RSA_file (const char * fname, RSA * key, int write_priv)
     PEM_write_bio_RSAPublicKey (mbio, key);
   char * keystore;
   long ksize = BIO_get_mem_data (mbio, &keystore);
-  int success = write_file (fname, keystore, ksize);
+  int success = write_file (fname, keystore, ksize, 1);
   BIO_free (mbio);
   return success;
 }

@@ -1019,6 +1019,42 @@ int read_file_malloc (const char * file_name, char ** content_p,
   return st.st_size;
 }
 
+static int write_to_fd (int fd, const char * contents, int len, int print_errors,
+                        const char * fname)
+{
+  if (fd < 0) {
+    if (print_errors) {
+      perror ("open in write_to_fd");
+      printf ("unable to open %s\n", fname);
+    }
+    return 0;
+  }
+  int n = write (fd, contents, len);
+  if (n < 0) {
+    if (print_errors) {
+      perror ("write in write_to_fd");
+      printf ("attempted to write %d bytes to %s, wrote %d\n", len, fname, n);
+    }
+    return 0;
+  }
+  close (fd);
+  return 1;
+}
+
+int write_file (const char * fname, const char * contents, int len,
+                int print_errors)
+{
+  int fd = open (fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  return write_to_fd (fd, contents, len, print_errors, fname);
+}
+
+int append_file (const char * fname, const char * contents, int len,
+                 int print_errors)
+{
+  int fd = open (fname, O_WRONLY | O_CREAT | O_APPEND, 0600);
+  return write_to_fd (fd, contents, len, print_errors, fname);
+}
+
 /* low-grade randomness, in case the other calls don't work */
 static void computed_random_bytes (char * buffer, int bsize)
 {
