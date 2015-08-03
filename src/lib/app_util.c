@@ -25,6 +25,7 @@
 #include "log.h"
 #include "crypt_sel.h"
 
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
 static void find_path (char * arg, char ** path, char ** program)
 {
   char * slash = strrchr (arg, '/');
@@ -51,6 +52,7 @@ static char * make_program_path (char * path, char * program)
   snprintf (result, size, "%s/%s", path, program);
   return result;
 }
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 static void exec_allnet (char * arg)
 {
