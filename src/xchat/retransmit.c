@@ -264,7 +264,7 @@ static void record_resend (uint64_t seq, char * contact, keyset k)
   recently_resent [latest_resent].k = k;
   recently_resent [latest_resent].contact =
       strcpy_malloc (contact, "record_resend");
-  recently_resent [latest_resent].resend_time = allnet_time ();
+  recently_resent [latest_resent].resend_time = (time_t) (allnet_time ());
 }
 
 static void resend_message (uint64_t seq, char * contact,
