@@ -336,6 +336,44 @@ static void acknowledge_bcast (int sock, char * message, int msize)
   log_print ();
 }
 
+/* check for a recent trace with same ID.  If found, or the cache is full,
+ * return 1, to say the trace should not be forwarded or replied to.
+ * if the cache fills in less than a second, traces are ignored for
+ * a second, to avoid forwarding too many traces.  The cache is then
+ * made available for recording new traces -- we still look at all the
+ * old traces that haven't yet been overwritten.
+ * trace_id must have MESSAGE_ID_SIZE bytes
+ */
+static int is_in_trace_cache (const unsigned char * trace_id /* MESSAGE_ID_SIZE */ )
+{
+  static time_t last_received = 0;
+  static time_t first_received = 0;
+  static int next = 0;
+#define TRACE_CACHE_SIZE	10
+  static char cache [TRACE_CACHE_SIZE] [MESSAGE_ID_SIZE];
+  time_t now = time (NULL);
+  if (next >= TRACE_CACHE_SIZE) {
+    if ((first_received == last_received) && (now <= last_received))
+      return 1;    /* cache is full, ignore trace messages */
+    next = 0;    /* enough time has passed, reset cache */
+  }
+  /* look through all of the cache, even if next < TRACE_CACHE_SIZE,
+   * to match older traces that might still be in the cache */
+  int i;
+  for (i = 0; i < TRACE_CACHE_SIZE; i++) {
+    if (memcmp (cache [i], trace_id, MESSAGE_ID_SIZE) == 0)
+      return 1;   /* already seen, ignore */
+  }
+  /* trace not found, add the trace_id to the cache */
+  if (next == 0)
+    first_received = now;
+  memcpy (cache [next], trace_id, MESSAGE_ID_SIZE);
+  next++;
+  last_received = now;
+  return 0;  /* respond */
+#undef TRACE_CACHE_SIZE
+}
+
 static void respond_to_trace (int sock, char * message, int msize,
                               int priority,
                               unsigned char * my_address, int abits,
@@ -372,6 +410,9 @@ static void respond_to_trace (int sock, char * message, int msize,
   log_print (); */
   if ((num_entries < 1) ||
       (msize < ALLNET_TRACE_REQ_SIZE (hp->transport, num_entries, k)))
+    return;
+
+  if (is_in_trace_cache (trp->trace_id))
     return;
 
   /* found a valid trace request */
