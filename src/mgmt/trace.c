@@ -27,6 +27,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <limits.h>
 
 #include "lib/packet.h"
 #include "lib/mgmt.h"
@@ -696,8 +697,8 @@ static void print_times (struct allnet_mgmt_trace_entry * entry,
       fraction = 0LL;
     }
     struct timeval timestamp;
-    timestamp.tv_sec = readb64u (entry->seconds);
-    timestamp.tv_usec = fraction;
+    timestamp.tv_sec = (time_t) (readb64u (entry->seconds));
+    timestamp.tv_usec = (suseconds_t)fraction;
     unsigned long long int delta = delta_us (&timestamp, start);
   /* printf ("%ld.%06ld - %ld.%06ld = %lld\n",
           timestamp.tv_sec, timestamp.tv_usec,
@@ -848,7 +849,8 @@ static void wait_for_responses (int sock, char * trace_id, int sec, int seq,
     int pipe;
     int pri;
     char * message;
-    int ms = max_ms - time_spent;
+    unsigned long long int computed_ms = max_ms - time_spent;
+    int ms = (computed_ms > INT_MAX) ? INT_MAX : ((int) computed_ms);
     int found = receive_pipe_message_any (ms, &message, &pipe, &pri);
     if (found < 0) {
 #ifdef DEBUG_PRINT

@@ -121,12 +121,12 @@ static inline uint64_t read_int (char * data)
           (((uint64_t) (data [7] & 0xff))      ));
 }
 
-static inline uint64_t read_int32 (char * data)
+static inline uint32_t read_int32 (char * data)
 {
-  return ((((uint64_t) (data [0] & 0xff)) << 24) |
-          (((uint64_t) (data [1] & 0xff)) << 16) |
-          (((uint64_t) (data [2] & 0xff)) <<  8) |
-          (((uint64_t) (data [3] & 0xff))      ));
+  return ((((uint32_t) (data [0] & 0xff)) << 24) |
+          (((uint32_t) (data [1] & 0xff)) << 16) |
+          (((uint32_t) (data [2] & 0xff)) <<  8) |
+          (((uint32_t) (data [3] & 0xff))      ));
 }
 
 static inline void write_int32 (char * data, uint32_t value)

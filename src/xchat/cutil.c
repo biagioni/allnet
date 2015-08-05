@@ -275,7 +275,7 @@ char * chat_time_to_string (unsigned char * t, int static_result)
   int my_time_offset = local_time_offset ();
 
   struct tm time_tm;
-  time_t time_t_time = time + ALLNET_Y2K_SECONDS_IN_UNIX;
+  time_t time_t_time = (time_t) (time + ALLNET_Y2K_SECONDS_IN_UNIX);
   localtime_r (&time_t_time, &time_tm);
   asctime_r (&time_tm, result);
   /* delete the final \n by overwriting it with the null character */

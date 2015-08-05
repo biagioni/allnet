@@ -418,7 +418,7 @@ static int wp_rsa_write_key_to_bytes (char * buffer, int bsize,
     written += write_int (buffer, bsize - written, key->d, key->nbits);
   }
   uint64_t elong;
-  wp_init (64, &elong, key->e);
+  wp_init (64, &elong, (int) (key->e));
   written += write_int (buffer, bsize - written, &elong, 64);
   written += write_int (buffer, bsize - written, key->n, key->nbits);
   if (write_zero) {    /* write zero if encapsulated or has private key */

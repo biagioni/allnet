@@ -27,7 +27,7 @@ int power_half_fraction (int power)
 int allnet_multiply (int p1, int p2)
 {
   long long int product = ((long long int) p1) * ((long long int) p2);
-  int result = product >> 30;
+  int result = (int)(product >> 30);
   return result;
 }
 

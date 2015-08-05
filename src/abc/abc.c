@@ -186,7 +186,7 @@ static int receive_until (struct timeval * t, char ** message,
   struct timeval now;
   gettimeofday (&now, NULL);
   unsigned long long int us_to_wait = delta_us (t, &now);  /* 0 or more */
-  int timeout_ms = us_to_wait / 1000LL;
+  int timeout_ms = (int) (us_to_wait / 1000LL);
 
   struct sockaddr_storage recv_addr;
   struct sockaddr * sap = (struct sockaddr *) (&recv_addr);
@@ -523,7 +523,7 @@ static int handle_beacon (const char * message, int msize,
           bits_per_s * send_ns / (8 * 1000LL * 1000LL * 1000LL);
         if (bytes_to_send > may_send)
           bytes_to_send = may_send;
-        *send_size = bytes_to_send;
+        *send_size = (int)bytes_to_send;
 
       } else {
         /* granted to somebody else, so start listening again */
@@ -793,7 +793,7 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
 
     unsigned long long dus = delta_us (&if_on, &if_off);
     unsigned long long dms = dus / 1000LLU;
-    if_cycles_skipped = dms / (1000 * BASIC_CYCLE_SEC);
+    if_cycles_skipped = (int) (dms / (1000 * BASIC_CYCLE_SEC));
 #if defined(LOG_PACKETS) || defined(DEBUG_PRINT)
     snprintf (log_buf, LOG_SIZE,
               "took %lluus, skipped %d cycle(s), priority %d\n",

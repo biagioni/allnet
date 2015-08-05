@@ -259,7 +259,7 @@ printf ("parsed time %llu from string %s\n", *time, paren + 1); */
   if (end == blank + 1)
     printf ("timezone missing from '%s', not a problem\n", blank);
   else if (tz != NULL)
-    *tz = n;
+    *tz = (int)n;
 /* if (tz != NULL)
 printf ("parsed tz %d from string %s\n", *tz, blank + 1); */
   return 1;
@@ -369,7 +369,7 @@ static char * find_prev_record (struct msg_iter * iter)
       (iter->current_pos)--;
     } while ((iter->current_pos >= 0) && (! match_record_start (iter)));
     if ((iter->current_pos >= 0) && (match_record_start (iter))) {
-      uint64_t size = record_end_pos - iter->current_pos;
+      int size = (int) (record_end_pos - iter->current_pos);
       char * result = malloc_or_fail (size + 1, "find_prev_record");
       memcpy (result, (iter->current_file) + (iter->current_pos), size);
       result [size] = '\0';

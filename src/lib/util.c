@@ -781,7 +781,7 @@ void allnet_time_string (unsigned long long int allnet_seconds, char * result)
   /* in case of errors */
   snprintf (result, ALLNET_TIME_STRING_SIZE, "bad time %lld\n", allnet_seconds);
 
-  time_t unix_seconds = allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX;
+  time_t unix_seconds = (time_t) (allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX);
   struct tm detail_time;
   if (gmtime_r (&unix_seconds, &detail_time) == NULL)
     return;
@@ -796,7 +796,7 @@ void allnet_localtime_string (unsigned long long int allnet_seconds,
   /* in case of errors */
   snprintf (result, ALLNET_TIME_STRING_SIZE, "bad time %lld\n", allnet_seconds);
 
-  time_t unix_seconds = allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX;
+  time_t unix_seconds = (time_t) (allnet_seconds + ALLNET_Y2K_SECONDS_IN_UNIX);
   struct tm * detail_time = localtime (&unix_seconds);  /* sets tzname */
   if (detail_time == NULL)
     return;
@@ -913,7 +913,7 @@ void set_time_random (const struct timeval * start, unsigned long long min,
 /* sleep between 0 and us microseconds */
 void sleep_time_random_us (unsigned long long us)
 {
-  usleep (random_mod (us));
+  usleep ((useconds_t) (random_mod (us)));
 }
 
 /* if malloc is not successful, exit after printing */
@@ -979,21 +979,22 @@ int read_file_malloc (const char * file_name, char ** content_p,
     }
     return 0;
   }
+  int size = (int) (st.st_size);
   if (st.st_size == 0)
     return 0;
   if (content_p == NULL) {   /* just make sure could read the file */
     if (access (file_name, R_OK) == 0)
-      return st.st_size;
+      return size;
     else
       return 0;
   }
   /* allocate one more so we can put a \0 at the end */
   /* (useful for text files, which can then be used as strings) */
-  char * result = malloc (st.st_size + 1);
+  char * result = malloc (size + 1);
   if (result == NULL) {
     if (print_errors)
-      printf ("unable to allocate %lld bytes for contents of file %s\n",
-              (long long) st.st_size, file_name);
+      printf ("unable to allocate %d bytes for contents of file %s\n",
+              size, file_name);
     return 0;
   }
   int fd = open (file_name, O_RDONLY);
@@ -1005,21 +1006,21 @@ int read_file_malloc (const char * file_name, char ** content_p,
     free (result);
     return 0;
   }
-  int n = read (fd, result, st.st_size);
-  if (n != st.st_size) {
+  int n = read (fd, result, size);
+  if (n != size) {
     if (print_errors) {
       perror ("read");
-      printf ("unable to read %lld bytes from %s, got %d\n",
-              (long long) st.st_size, file_name, n);
+      printf ("unable to read %d bytes from %s, got %d\n",
+              size, file_name, n);
     }
     free (result);
     close (fd);
     return 0;
   }
   close (fd);
-  result [st.st_size] = '\0';   /* make sure it is a C string */
+  result [size] = '\0';   /* make sure it is a C string */
   *content_p = result;
-  return st.st_size;
+  return size;
 }
 
 static int write_to_fd (int fd, const char * contents, int len, int print_errors,
@@ -1137,7 +1138,7 @@ void random_permute_array (int n, int * array)
     return;
   /* now assign to each element a random selection of the other elements */
   for (i = 0; i < n; i++) {
-    int r = random_mod (n);
+    unsigned long long int r = random_mod (n);
     int swap = array [i];   /* this code works even if r == i */
     array [i] = array [r];
     array [r] = swap;

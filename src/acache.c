@@ -172,7 +172,7 @@ static void init_acks (int fd, int max_acks)
   int max_size = ack_size * max_acks;
   /* if file is bigger than max_size, get rid of the last part */
   truncate_to_size (fd, max_size, "init_acks");
-  int fsize = fd_size (fd);
+  off_t fsize = fd_size (fd);
   /* allocate the memory to hold the acks */
   ack_space = max_acks;
   acks = malloc_or_fail (max_size, "acache init_acks");
@@ -183,7 +183,7 @@ static void init_acks (int fd, int max_acks)
   bzero (&empty, sizeof (struct ack_entry));
   read_ack_data (fd);
   int i;
-  int limit = fsize / sizeof (struct ack_entry);
+  int limit = (int) (fsize / sizeof (struct ack_entry));
   for (i = 1; i < limit; i++) {
     if (memcmp (acks [i].message_id, empty.message_id, MESSAGE_ID_SIZE) == 0) {
       last_ack = i - 1;
@@ -964,7 +964,7 @@ static void gc (int fd, int max_size)
 {
   int gc_size = max_size;
   if (gc_size > fd_size (fd))
-    gc_size = fd_size (fd);
+    gc_size = (int) (fd_size (fd));
   int copied = 0, deleted = 0;
   int read_position = 0;
   int write_position = 0;
@@ -1044,7 +1044,7 @@ static void cache_message (int fd, int max_size,
   off_t write_position = fd_size (fd);
   write_at_pos (fd, mbuffer, fsize, write_position);
   fsync (fd);
-  hash_add_message (message, msize, message + id_off, write_position,
+  hash_add_message (message, msize, message + id_off, (int) write_position,
                     mbuffer + MESSAGE_ENTRY_HEADER_TIME_OFFSET);
 #ifdef USING_MESSAGE_LIST
   list_add_message (message + id_off);
