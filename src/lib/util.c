@@ -987,7 +987,9 @@ int read_file_malloc (const char * file_name, char ** content_p,
     else
       return 0;
   }
-  char * result = malloc (st.st_size);
+  /* allocate one more so we can put a \0 at the end */
+  /* (useful for text files, which can then be used as strings) */
+  char * result = malloc (st.st_size + 1);
   if (result == NULL) {
     if (print_errors)
       printf ("unable to allocate %lld bytes for contents of file %s\n",
@@ -1015,6 +1017,7 @@ int read_file_malloc (const char * file_name, char ** content_p,
     return 0;
   }
   close (fd);
+  result [st.st_size] = '\0';   /* make sure it is a C string */
   *content_p = result;
   return st.st_size;
 }
