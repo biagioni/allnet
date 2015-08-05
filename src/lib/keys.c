@@ -230,7 +230,7 @@ static void read_address_file (char * fname, char * address, int * nbits)
 {
   bzero (address, ADDRESS_SIZE);
   *nbits = 0;
-  char * bytes;
+  char * bytes = NULL;
   int size = read_file_malloc (fname, &bytes, 0);
   if (size > 0) {
     char * p;
@@ -249,7 +249,8 @@ static void read_address_file (char * fname, char * address, int * nbits)
       *nbits = n;
     }
   }
-  free (bytes);
+  if (bytes != NULL)
+    free (bytes);
 }
 
 static int remove_unprintable (char * s, int len)

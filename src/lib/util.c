@@ -971,6 +971,8 @@ void * memcpy_malloc (const void * bytes, int bsize, const char * desc)
 int read_file_malloc (const char * file_name, char ** content_p,
                       int print_errors)
 {
+  if (content_p != NULL)
+    *content_p = NULL;
   struct stat st;
   if (stat (file_name, &st) < 0) {
     if (print_errors) {
