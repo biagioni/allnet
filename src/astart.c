@@ -228,7 +228,9 @@ static int read_pid (int fd)
 static void stop_all_on_signal (int signal)
 {
   char * fname = pid_file_name ();
-  int fd = open (fname, O_RDONLY, 0);
+  int fd = -1;
+  if (fname != NULL)
+    fd = open (fname, O_RDONLY, 0);
   if (fd >= 0) {   /* kill all the pids in the file (except ourselves) */
 #define MAX_STOP_PROCS	1000
     static pid_t pids [MAX_STOP_PROCS];
@@ -656,8 +658,9 @@ int astart_main (int argc, char ** argv)
   init_pipes (pipes, num_pipes);
   int * rpipes = pipes;
   int * wpipes = pipes + num_pipes;
-  pid_t * abc_pids =
-    malloc_or_fail (num_interfaces * sizeof (pid_t), "abc pids");
+  pid_t * abc_pids = NULL;
+  if (num_interfaces > 0)
+    abc_pids = malloc_or_fail (num_interfaces * sizeof (pid_t), "abc pids");
 
   /* in case we are root, start abc first, then become non-root, and
    * only after we become non-root start the other daemons */
@@ -684,16 +687,19 @@ int astart_main (int argc, char ** argv)
   }
 #endif /* PRODUCTION_CODE */
 
-  int pid_fd = open (pid_file_name (),
-                     O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0644);
+  char * fname = pid_file_name ();
+  int pid_fd = open (fname, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0644);
   if (pid_fd < 0) {
     perror ("open");
-    printf ("unable to write pids to %s\n", pid_file_name ());
+    printf ("unable to write pids to %s\n", fname);
     stop_all ();
     exit (1);
   }
+  free (fname);
   for (i = 0; i < num_interfaces; i++)
     print_pid (pid_fd, abc_pids [i]);
+  if (num_interfaces > 0)
+    free (abc_pids);
 
   init_log ("astart");  /* now we can do logging */
   snprintf (log_buf, LOG_SIZE, "astart called with %d arguments\n", argc);
@@ -735,6 +741,7 @@ int astart_main (int argc, char ** argv)
   snprintf (log_buf, LOG_SIZE, "child %d terminated, exiting\n", child);
   log_print ();
 #endif /* WAIT_FOR_CHILD_TERMINATION */
+  free (pipes);
   return 1;
 }
 

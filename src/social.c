@@ -175,6 +175,7 @@ static int is_my_contact (char * message, int msize,
           (allnet_verify (message, msize, sig, ssize, key))) {
         snprintf (log_buf, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
         log_print ();
+        free (keysets);
         return 1;
       }
     }

@@ -249,6 +249,7 @@ static void read_address_file (char * fname, char * address, int * nbits)
       *nbits = n;
     }
   }
+  free (bytes);
 }
 
 static int remove_unprintable (char * s, int len)
@@ -343,7 +344,7 @@ static int read_key_info (const char * path, char * file, char ** contact,
   if (my_key != NULL)
     allnet_rsa_null_prvkey (my_key);
   if (contact_pubkey != NULL)
-    allnet_rsa_null_prvkey (contact_pubkey);
+    allnet_rsa_null_pubkey (contact_pubkey);
   if ((local != NULL) && (loc_nbits != NULL))
     bzero (local, (*loc_nbits + 7) / 8);
   if ((remote != NULL) && (rem_nbits != NULL))
@@ -1582,6 +1583,7 @@ static void init_bc_key_set (char * dirname, struct bc_key_info ** keys,
 /* printf ("init_bc_key_set 5, debug %p\n", *keyd_debug); */
       init_bc_from_files (config_dir, *keys, *num_keys, expect_private);
 /* printf ("init_bc_key_set 6, debug %p\n", *keyd_debug); */
+      free (config_dir);
     }
   }
 }

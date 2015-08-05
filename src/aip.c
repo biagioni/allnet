@@ -176,6 +176,8 @@ static int top_destinations (void * addr_cache, int max, unsigned char * dest,
   print_buffer (dest, (nbits + 7) / 8, NULL, 100, 0);
   printf (" (%d), %d)\n", nbits, num_matches);
 */
+  if (num_matches <= 0)
+    return 0;
   if (num_matches > max)
     num_matches = max;    /* only return the first n matches */
   if (max > num_matches)

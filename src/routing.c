@@ -370,6 +370,7 @@ static void * init_default_dns (void * arg)
     struct addrinfo * next;
     int code = getaddrinfo (default_dns [i], service, NULL, &next);
     if (code == 0) {   /* getaddrinfo succeded */
+      struct addrinfo * original = next;  /* so we can free it */
       while (next != NULL) {
 #ifdef DEBUG_PRINT
         print_sockaddr (next->ai_addr, next->ai_addrlen, -1);
@@ -388,7 +389,7 @@ static void * init_default_dns (void * arg)
           memcpy ((char *) sap, (char *) (next->ai_addr), next->ai_addrlen);
         next = next->ai_next;
       }
-      freeaddrinfo (next);
+      freeaddrinfo (original);
     } else {
 #ifndef DEBUG_PRINT
       if (code != EAI_NONAME)
