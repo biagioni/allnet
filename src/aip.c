@@ -13,9 +13,13 @@
   - the fd number of the pipe to ad
   - the name of the Unix socket
  */
-/* config file "aip" "speed" (e.g. ~/.allnet/aip/speed)
+/* config file "aip" "max_bps_for_others"
+ * (e.g. ~/.allnet/aip/max_bps_for_others)
  * gives the maximum speed to send over the internet, in bytes/second
- * this speed limit only applies to messages with priority 0.5 or less,
+ * this speed limit only applies to messages with priority 0.5 or less.
+ * if not given, the speed limit is 1% of the total traffic rate on
+ * all internet interfaces since aip was started.
+ * not currently implemented
  */
 
 #include <stdio.h>
