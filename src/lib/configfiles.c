@@ -60,11 +60,11 @@ int config_file_name (char * program, char * file, char ** name)
     *name = NULL;  /* in case we return error, make sure it is initialized */
   char * root = ROOT;
   int free_root = 0;    /* in case root points to allocated memory */
-  int root_length = strlen (ROOT);
+  int root_length = strlen (root);
   char * allnet_config_env = getenv ("ALLNET_CONFIG");
   if (allnet_config_env != NULL) {
     root = allnet_config_env;
-    root_length = strlen (ROOT);
+    root_length = strlen (root);
   } else {
     char * home_env = getenv (HOME_ENV);
     if ((home_env == NULL) || (strcmp (home_env, "/nonexistent") == 0)) {
