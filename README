@@ -33,6 +33,8 @@ the second line with:
 
 you can also set specific CFLAGS with, e.g.:
         ./configure --disable-shared CFLAGS="-Wall -g"
+(additional CFLAGS you might want to use include: -Werror -Wextra
+-Wuninitialized -Winit-self)
 
 Before doing any of this, you may need to install libtool and autoconf.
 On debian/ubuntu and derived systems this requires:
