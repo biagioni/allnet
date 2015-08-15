@@ -16,7 +16,7 @@
 #define MSG_TYPE_SENT	2
 #define MSG_TYPE_ACK	3
 
-extern struct msg_iter * start_iter (char * contact, keyset k);
+extern struct msg_iter * start_iter (const char * contact, keyset k);
 
 /* returns the message type, or MSG_TYPE_DONE if we've reached the end */
 /* in case of SENT or RCVD, sets *seq, message_ack (which must have
@@ -25,27 +25,28 @@ extern struct msg_iter * start_iter (char * contact, keyset k);
  * for ACK, sets message_ack only, sets *seq to 0 and *message to NULL
  * for DONE, sets *seq to 0, clears message_ack, and sets *message to NULL */
 extern int prev_message (struct msg_iter * iter, uint64_t * seq,
-                         uint64_t * time, int * tz_min,
+                         uint64_t * time, int * tz_min, uint64_t * rcvd_time,
                          char * message_ack, char ** message, int * msize);
 
 extern void free_iter (struct msg_iter * iter);
 
 /* returns the message type, or MSG_TYPE_DONE if none are available */
-extern int highest_seq_record (char * contact, keyset k, int type_wanted,
+extern int highest_seq_record (const char * contact, keyset k, int type_wanted,
                                uint64_t * seq, uint64_t * time, int * tz_min,
-                               char * message_ack,
+                               uint64_t * rcvd_time, char * message_ack,
                                char ** message, int * msize);
 
 /* returns the message type, or MSG_TYPE_DONE if none are available.
  * most recent refers to the most recently saved in the file.  This may
  * not be very useful, highest_seq_record may be more useful */ 
-extern int most_recent_record (char * contact, keyset k, int type_wanted,
+extern int most_recent_record (const char * contact, keyset k, int type_wanted,
                                uint64_t * seq, uint64_t * time, int * tz_min,
-                               char * message_ack,
+                               uint64_t * rcvd_time, char * message_ack,
                                char ** message, int * msize);
 
-extern void save_record (char * contact, keyset k, int type, uint64_t seq,
-                         uint64_t time, int tz_min, char * message_ack,
-                         char * message, int msize);
+extern void save_record (const char * contact, keyset k, int type, uint64_t seq,
+                         uint64_t time, int tz_min, uint64_t rcvd_time,
+                         const char * message_ack, const char * message,
+                         int msize);
 
 #endif /* ALLNET_CHAT_STORE_H */

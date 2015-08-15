@@ -67,7 +67,7 @@ static char * string_replace (char * original, char * pattern, char * repl)
   return result;
 }
 
-struct msg_iter * start_iter (char * contact, keyset k)
+struct msg_iter * start_iter (const char * contact, keyset k)
 {
   if ((contact == NULL) || (k < 0))
     return NULL;
@@ -223,7 +223,7 @@ static int parse_hex (char * dest, char * string, int dest_len)
 }
 
 static int parse_seq_time (char * string, uint64_t * seq, uint64_t * time,
-                           int * tz)
+                           int * tz, uint64_t * rcvd_time)
 {
 #define SEQUENCE_STR     "sequence "
   char * seqs = strstr (string, SEQUENCE_STR);
@@ -252,6 +252,8 @@ static int parse_seq_time (char * string, uint64_t * seq, uint64_t * time,
   }
   if (time != NULL)
     *time = n;
+  if (rcvd_time != NULL)   /* in case we don't set it later */
+    *rcvd_time = n;
 /* if (time != NULL)
 printf ("parsed time %llu from string %s\n", *time, paren + 1); */
   char * blank = end;
@@ -262,6 +264,12 @@ printf ("parsed time %llu from string %s\n", *time, paren + 1); */
     *tz = (int)n;
 /* if (tz != NULL)
 printf ("parsed tz %d from string %s\n", *tz, blank + 1); */
+  char * slash = strchr (seqs, '/');
+  if (slash != NULL) {  /* receive time only included since 2015/08/07 */
+    n = strtoll (slash + 1, &end, 10);
+    if ((end != slash + 1) && (rcvd_time != NULL))
+      *rcvd_time = n;
+  }
   return 1;
 } 
 
@@ -271,7 +279,7 @@ printf ("parsed tz %d from string %s\n", *tz, blank + 1); */
  * is indented by a blank */
 /* an ack record only has one line. */
 static int parse_record (char * record, uint64_t * seq, uint64_t * time,
-                         int * tz, char * message_ack,
+                         int * tz, uint64_t * rcvd_time, char * message_ack,
                          char ** message, int * msize)
 {
   if (seq != NULL)
@@ -310,7 +318,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
   /* note that even though an ack is all on one line, the computation
    * of second_line should still have worked */
 
-  if (! parse_seq_time (second_line, seq, time, tz)) {
+  if (! parse_seq_time (second_line, seq, time, tz, rcvd_time)) {
     bzero (message_ack, MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;
     if (time != NULL) *time = 0;
@@ -386,7 +394,7 @@ static char * find_prev_record (struct msg_iter * iter)
  * for ACK, sets message_ack only, sets *seq to 0 and *message to NULL
  * for DONE, sets *seq to 0, clears message_ack, and sets *message to NULL */
 int prev_message (struct msg_iter * iter, uint64_t * seq, uint64_t * time,
-                  int * tz_min, char * message_ack,
+                  int * tz_min, uint64_t * rcvd_time, char * message_ack,
                   char ** message, int * msize)
 {
   if (iter->k < 0)  /* invalid */
@@ -394,8 +402,8 @@ int prev_message (struct msg_iter * iter, uint64_t * seq, uint64_t * time,
   char * record = find_prev_record (iter);
   if (record == NULL)  /* finished */
     return MSG_TYPE_DONE;
-  int result = parse_record (record, seq, time, tz_min, message_ack, message,
-                             msize);
+  int result = parse_record (record, seq, time, tz_min, rcvd_time,
+                             message_ack, message, msize);
   if ((message == NULL) || (*message != record))
     free (record);
   return result;
@@ -425,8 +433,9 @@ void free_iter (struct msg_iter * iter)
 /* returns the message type, or MSG_TYPE_DONE if none are available.
  * most recent refers to the most recently saved in the file.  This may
  * not be very useful, highest_seq_record may be more useful */ 
-int most_recent_record (char * contact, keyset k, int type_wanted,
+int most_recent_record (const char * contact, keyset k, int type_wanted,
                         uint64_t * seq, uint64_t * time, int * tz_min,
+                        uint64_t * rcvd_time,
                         char * message_ack, char ** message, int * msize)
 {
   /* easy implementation, just calling the iterator.  Later perhaps optimize */
@@ -435,7 +444,8 @@ int most_recent_record (char * contact, keyset k, int type_wanted,
     return MSG_TYPE_DONE;
   int type;
   do {
-    type = prev_message (iter, seq, time, tz_min, message_ack, message, msize);
+    type = prev_message (iter, seq, time, tz_min, rcvd_time,
+                         message_ack, message, msize);
   } while ((type != MSG_TYPE_DONE) &&
            (type_wanted != MSG_TYPE_ANY) && (type != type_wanted));
   free_iter (iter);
@@ -443,8 +453,9 @@ int most_recent_record (char * contact, keyset k, int type_wanted,
 }
 
 /* returns the message type, or MSG_TYPE_DONE if none are available */
-int highest_seq_record (char * contact, keyset k, int type_wanted,
+int highest_seq_record (const char * contact, keyset k, int type_wanted,
                         uint64_t * seq, uint64_t * time, int * tz_min,
+                        uint64_t * rcvd_time,
                         char * message_ack, char ** message, int * msize)
 {
   struct msg_iter * iter = start_iter (contact, k);
@@ -454,6 +465,7 @@ int highest_seq_record (char * contact, keyset k, int type_wanted,
   int max_type = MSG_TYPE_DONE;  /* in case we have no matches */
   uint64_t max_seq = 0;
   uint64_t max_time = 0;
+  uint64_t max_rcvd_time = 0;
   int max_tz = 0;
   char max_ack [MESSAGE_ID_SIZE];
   char * max_message = NULL;
@@ -461,16 +473,18 @@ int highest_seq_record (char * contact, keyset k, int type_wanted,
   while (1) {
     uint64_t this_seq = 0;
     uint64_t this_time = 0;
+    uint64_t this_rcvd_time = 0;
     int this_tz = 0;
     char this_ack [MESSAGE_ID_SIZE];
     char * this_message = NULL;
     int this_msize = 0;
     if (message != NULL) {
-      type = prev_message (iter, &this_seq, &this_time, &this_tz, this_ack,
+      type = prev_message (iter, &this_seq, &this_time, &this_tz,
+                           &this_rcvd_time, this_ack,
                            &this_message, &this_msize);
     } else {
-      type = prev_message (iter, &this_seq, &this_time, &this_tz, this_ack,
-                           NULL, NULL);
+      type = prev_message (iter, &this_seq, &this_time, &this_tz,
+                           &this_rcvd_time, this_ack, NULL, NULL);
     }
     if (type == MSG_TYPE_DONE)  /* no (more) messages */
       break;
@@ -481,6 +495,7 @@ int highest_seq_record (char * contact, keyset k, int type_wanted,
       max_seq = this_seq;
       max_time = this_time;
       max_tz = this_tz;
+      max_rcvd_time = this_rcvd_time;
       memcpy (max_ack, this_ack, MESSAGE_ID_SIZE);
       if (message != NULL) {
         max_message = this_message;
@@ -498,6 +513,8 @@ int highest_seq_record (char * contact, keyset k, int type_wanted,
       *time = max_time;
     if (tz_min != NULL)
       *tz_min = max_tz;
+    if (rcvd_time != NULL)
+      *rcvd_time = max_rcvd_time;
     if (message_ack != NULL)
       memcpy (message_ack, max_ack, MESSAGE_ID_SIZE);
     if (message != NULL)
@@ -535,7 +552,7 @@ static void store_save_64 (int fd, uint64_t value)
   store_save_string (fd, buffer);
 }
 
-static void store_save_message (int fd, char * message, int mlen)
+static void store_save_message (int fd, const char * message, int mlen)
 {
   int num_indents = 1;  /* have to insert a blank before the message */
   int i;
@@ -575,7 +592,7 @@ static void store_save_message_type (int fd, int type)
   }
 }
 
-static void store_save_message_id (int fd, char * id)
+static void store_save_message_id (int fd, const char * id)
 {
   store_save_string (fd, " ");
   char buffer [MESSAGE_ID_SIZE * 2 + 1];
@@ -586,7 +603,7 @@ static void store_save_message_id (int fd, char * id)
 }
 
 static void store_save_message_seq_time (int fd, uint64_t seq,
-                                         uint64_t time, int tz)
+                                         uint64_t time, int tz, uint64_t rcvd)
 {
   store_save_string (fd, "sequence ");
   store_save_64 (fd, seq);
@@ -603,12 +620,14 @@ static void store_save_message_seq_time (int fd, uint64_t seq,
     store_save_string (fd, " +");
   }
   store_save_64 (fd, tz);
-  store_save_string (fd, ")\n");
+  store_save_string (fd, ")/");
+  store_save_64 (fd, rcvd);
+  store_save_string (fd, "\n");
 }
 
-void save_record (char * contact, keyset k, int type, uint64_t seq,
-                  uint64_t t, int tz_min, char * message_ack,
-                  char * message, int msize)
+void save_record (const char * contact, keyset k, int type, uint64_t seq,
+                  uint64_t t, int tz_min, uint64_t rcvd_time,
+                  const char * message_ack, const char * message, int msize)
 {
   if ((type != MSG_TYPE_RCVD) && (type != MSG_TYPE_SENT) &&
       (type != MSG_TYPE_ACK))
@@ -641,7 +660,7 @@ void save_record (char * contact, keyset k, int type, uint64_t seq,
   store_save_string (fd, "\n");
 
   if (type != MSG_TYPE_ACK) {
-    store_save_message_seq_time (fd, seq, t, tz_min);
+    store_save_message_seq_time (fd, seq, t, tz_min, rcvd_time);
     store_save_message (fd, message, msize);
   }
   flock (fd, LOCK_UN);  /* remove the file lock */
@@ -676,6 +695,7 @@ int main (int argc, char ** argv)
   int k = atoi (argv [2]);
   uint64_t seq;
   uint64_t time;
+  uint64_t rcvd_time;
   int tz = -1;
   char ack [MESSAGE_ID_SIZE];
   char * msg;
@@ -708,10 +728,10 @@ int main (int argc, char ** argv)
   }
   int i = 0;
   int msize;
-  while ((type = prev_message (iter, &seq, &time, &tz, ack, &msg, &msize)) !=
-         MSG_TYPE_DONE) {
-    printf ("message %i, %d bytes type %d, %s, seq %" PRIu64 ", time %" PRIu64 "%+d\n",
-            ++i, msize, type, msg, seq, time, tz);
+  while ((type = prev_message (iter, &seq, &time, &tz, &rcvd_time,
+                               ack, &msg, &msize)) != MSG_TYPE_DONE) {
+    printf ("message %i, %d bytes type %d, %s, seq %" PRIu64 ", time %" PRIu64 "%+d/%" PRIu64 "\n",
+            ++i, msize, type, msg, seq, time, tz, rcvd_time);
     print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
   }
   return 0;

@@ -42,7 +42,7 @@ uint64_t get_counter (char * contact)
   for (i = 0; i < nkeys; i++) {
     uint64_t seq;
     int type = highest_seq_record (contact, kset [i], MSG_TYPE_SENT,
-                                   &seq, NULL, NULL, NULL, NULL, NULL);
+                                   &seq, NULL, NULL, NULL, NULL, NULL, NULL);
     if ((type != MSG_TYPE_DONE) && (seq > max))
       max = seq;
   }
@@ -56,7 +56,7 @@ uint64_t get_last_received (char * contact, keyset k)
 {
   uint64_t seq;
   int type = highest_seq_record (contact, k, MSG_TYPE_RCVD,
-                                 &seq, NULL, NULL, NULL, NULL, NULL);
+                                 &seq, NULL, NULL, NULL, NULL, NULL, NULL);
   if (type == MSG_TYPE_RCVD)
     return seq;
   return 0;
@@ -76,7 +76,7 @@ static uint64_t find_ack (char * contact, keyset k, char * wanted, int wtype)
   int type;
   uint64_t seq = 0;
   char ack [MESSAGE_ID_SIZE];
-  while ((type = prev_message (iter, &seq, NULL, NULL, ack, NULL, NULL))
+  while ((type = prev_message (iter, &seq, NULL, NULL, NULL, ack, NULL, NULL))
          != MSG_TYPE_DONE) {
     if ((type == wtype) &&
         (memcmp (wanted, ack, MESSAGE_ID_SIZE) == 0)) {
@@ -101,7 +101,7 @@ void save_outgoing (char * contact, keyset k, struct chat_descriptor * cp,
   int tz;
   get_time_tz (readb64u (cp->timestamp), &time, &tz);
   save_record (contact, k, MSG_TYPE_SENT, readb64u (cp->counter), time, tz,
-               (char *) (cp->message_ack), text, tsize);
+               allnet_time (), (char *) (cp->message_ack), text, tsize);
 }
 
 /* return the (malloc'd) outgoing message with the given sequence number,
@@ -119,7 +119,7 @@ char * get_outgoing (char * contact, keyset k, uint64_t seq,
   int msize;
   int tz;
   char * result;
-  while ((type = prev_message (iter, &mseq, &mtime, &tz, message_ack,
+  while ((type = prev_message (iter, &mseq, &mtime, &tz, NULL, message_ack,
           &result, &msize)) != MSG_TYPE_DONE) {
     if ((type == MSG_TYPE_SENT) && (mseq == seq)) { /* found */
       if (time != NULL)
@@ -144,7 +144,8 @@ void save_incoming (char * contact, keyset k,
   get_time_tz (readb64 ((char *) (cp->timestamp)), &time, &tz);
   if (find_ack (contact, k, (char *) (cp->message_ack), MSG_TYPE_RCVD) == 0)
     save_record (contact, k, MSG_TYPE_RCVD, readb64u (cp->counter),
-                 time, tz, (char *) (cp->message_ack), text, tsize);
+                 time, tz, allnet_time (),
+                 (char *) (cp->message_ack), text, tsize);
 }
 
 /* mark a previously sent message as acknowledged
@@ -170,7 +171,7 @@ uint64_t ack_received (char * message_ack, char ** contact, keyset * kset)
       if (seq > 0) {
         if (! find_ack (contacts [c], ksets [k], message_ack, MSG_TYPE_ACK))
           save_record (contacts [c], ksets [k], MSG_TYPE_ACK, seq,
-                       0, 0, message_ack, NULL, 0);
+                       0, 0, 0, message_ack, NULL, 0);
         if (contact != NULL)
           *contact = contacts [c];
         if (kset != NULL)
@@ -188,7 +189,7 @@ static uint64_t max_seq (char * contact, keyset k, int wanted)
 {
   uint64_t seq;
   int type = highest_seq_record (contact, k, wanted, &seq, NULL, NULL, NULL,
-                                 NULL, NULL);
+                                 NULL, NULL, NULL);
   if (type == MSG_TYPE_DONE)
     return 0;
   return seq;
@@ -295,7 +296,7 @@ int is_acked_one (char * contact, keyset k, uint64_t wanted)
   int type;
   uint64_t seq;
   char ack [MESSAGE_ID_SIZE];
-  while ((type = prev_message (iter, &seq, NULL, NULL, ack, NULL, NULL))
+  while ((type = prev_message (iter, &seq, NULL, NULL, NULL, ack, NULL, NULL))
          != MSG_TYPE_DONE) {
     if ((type == MSG_TYPE_SENT) && (seq == wanted)) {
 /* this is the first (most recent) message sent with this sequence number.
@@ -318,7 +319,7 @@ int was_received (char * contact, keyset k, uint64_t wanted)
     return 0;
   int type;
   uint64_t seq;
-  while ((type = prev_message (iter, &seq, NULL, NULL, NULL, NULL, NULL))
+  while ((type = prev_message (iter, &seq, NULL, NULL, NULL, NULL, NULL, NULL))
          != MSG_TYPE_DONE) {
     if ((type == MSG_TYPE_RCVD) && (seq == wanted)) {
       free_iter (iter);
