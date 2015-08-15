@@ -65,8 +65,8 @@ class UIController implements ControllerInterface, UIAPI {
         Runnable r = new Runnable() {
 
             Message message = new Message(from, Message.SELF, sentTime,
+                                          java.util.Calendar.getInstance().getTimeInMillis(),
                                           text, broadcast, true);
-
             @Override
             public void run() {
 // System.out.println("processing received message " + message.toString());
@@ -87,8 +87,7 @@ class UIController implements ControllerInterface, UIAPI {
                 for (Message message : messages) {
                     if (message.sentNotReceived) {
                         displaySentMessage(message);
-                    }
-                    else {
+                    } else {
                         processReceivedMessage(message);
                     }
                 }
@@ -201,7 +200,8 @@ class UIController implements ControllerInterface, UIAPI {
         String contactName;
         while (it.hasNext()) {
             contactName = it.next();
-            updateContactsPanel(contactName, clientData.isBroadcast(contactName));
+            updateContactsPanel(contactName,
+                                clientData.isBroadcast(contactName));
         }
         contactsPanel.setActionListener(this);
     }
@@ -382,6 +382,14 @@ System.out.println ("resending subscription for " + ahra);
         }
         line2 = line2 + " total";
         contactsPanel.setTopLabelText(line1, line2);
+        String tabTitle = "Contacts";
+        int contactsWithNewMessages = AllNetContacts.contactsWithNewMessages();
+        if (contactsWithNewMessages > 0) {
+            int newMessages = AllNetContacts.totalNewMessages();
+            tabTitle = "Contacts (" 
+                     + contactsWithNewMessages + "/" + newMessages + ")";
+        }
+        myTabbedPane.setTitle(UI.CONTACTS_PANEL_ID, tabTitle);
     }
 
     // pad a String to a fixed length
@@ -411,6 +419,7 @@ System.out.println ("resending subscription for " + ahra);
         conv.setReadAll();
         updateContactsPanel(contactName, clientData.isBroadcast(contactName));
         updateConversationPanels();
+        AllNetContacts.messagesHaveBeenRead(contactName);
     }
 
     private void processContactsEvent(String contactName) {
@@ -657,10 +666,13 @@ System.out.println ("resending subscription for " + ahra);
                                + " (self is " + Message.SELF + ")");
             return;
         }
+if (msg.from.equals("edo-on-andev"))
+System.out.println("adding message " + msg);
         Conversation conv = clientData.getConversation(msg.from);
         conv.add(msg);
         // see if there is a tab open for this conversation
-        ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(msg.from);
+        ConversationPanel cp =
+          (ConversationPanel) myTabbedPane.getTabContent(msg.from);
         if (cp != null) {
             // add the message to it
             cp.addMsg(formatMessage(msg, maxLineLength), msg);

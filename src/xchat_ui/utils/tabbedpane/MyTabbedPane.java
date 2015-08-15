@@ -52,6 +52,18 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
         tabbedPane.add(panel, idx);
         idToPanel.put(id, panel);
     }
+
+    public void setTitle(String id, String newTitle) {
+        Component wanted = idToPanel.getValueFor(id);
+        if (wanted == null)
+            return;
+        for (int i = 0; i < tabbedPane.getTabCount(); i++) {
+            if (tabbedPane.getComponentAt(i) == wanted) {
+                tabbedPane.setTitleAt(i, newTitle);
+                return;
+            }
+        }
+    }
     
     public void addTabWithClose(String id, String title, JPanel panel, String closeCommand) {
         addTabWithClose(0, id, title, panel,closeCommand);

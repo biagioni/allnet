@@ -23,19 +23,10 @@ class Conversation {
     }
 
     int getNumNewMsgs() {
-        Message msg;
         int count = 0;
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            msg = messages.get(i);
-            if (msg.from.equals(otherParty)) {
-                if (msg.isNewMessage()) {
-                    count++;
-                }
-                else {
-                    return (count);
-                }
-            }
-        }
+        for (Message msg: messages)
+            if (msg.isNewMessage())
+                count++;
         return (count);
     }
 

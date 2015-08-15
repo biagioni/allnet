@@ -10,6 +10,7 @@ public class Message implements java.lang.Comparable<Message> {
     // the contact name of the sender
     final String from, to;
     final long sentTime;
+    final long receivedTime;  // only meaningful for received packets
     final long sequence;  // set to -1 if not known, e.g. for recv'd packets
     final String text;
     final boolean sentNotReceived;   // set to true if not known
@@ -17,7 +18,7 @@ public class Message implements java.lang.Comparable<Message> {
     final String messageId;   // only meaningful for sent messages, may be null
     boolean isAcked;          // only meaningful for sent messages
     // set to false by the client when message has been read
-    private boolean newMessgeFlag;  // only meaningful for received messages
+    private boolean newMessageFlag;  // only meaningful for received messages
     
 //    Message(String from, String to, long sentTime, String text, boolean broadcast) {
 //        this.from = from;
@@ -29,22 +30,23 @@ public class Message implements java.lang.Comparable<Message> {
 //        this.sentNotReceived = true;
 //        this.messageId = null;
 //        this.isAcked = false;
-//        newMessgeFlag = false;
+//        newMessageFlag = false;
 //    }
     
 // use this for received messages only
-    Message(String from, String to, long sentTime, String text,
-            boolean broadcast, boolean newMessage) {
+    Message(String from, String to, long sentTime, long receivedTime,
+            String text, boolean broadcast, boolean newMessage) {
         this.from = from;
         this.to = to;
         this.sentTime = sentTime;
+        this.receivedTime = receivedTime;
         this.sequence = -1;
         this.text = text;
         this.broadcast = broadcast;
         this.sentNotReceived = false;
         this.messageId = null;
         this.isAcked = false;
-        newMessgeFlag = newMessage;
+        newMessageFlag = newMessage;
     }
 
     // sent messages should have a message ID, so we can figure out when they
@@ -54,21 +56,22 @@ public class Message implements java.lang.Comparable<Message> {
         this.from = from;
         this.to = to;
         this.sentTime = sentTime;
+        this.receivedTime = sentTime;
         this.sequence = seq;
         this.text = text;
         this.sentNotReceived = true;
         this.broadcast = false;
         this.messageId = messageId;
         this.isAcked = false;
-        newMessgeFlag = false;
+        newMessageFlag = false;
     }
 
     boolean isNewMessage() {
-        return newMessgeFlag;
+        return newMessageFlag;
     }
 
     void setRead() {
-        newMessgeFlag = false;
+        newMessageFlag = false;
     }
 
     boolean isBroadcast() {
@@ -94,10 +97,11 @@ public class Message implements java.lang.Comparable<Message> {
 
     @Override
     public String toString() {
+      String isNew = (newMessageFlag ? ", new" : ", not new");
       return ("message from " + from +
               ", to " + to +
               ", time " + sentTime +
-              ", broadcast " + broadcast +
+              ", broadcast " + broadcast + isNew +
               ", text: '" + text + "'");
     }
 
@@ -125,4 +129,12 @@ public class Message implements java.lang.Comparable<Message> {
         return 0;
     }
 
+    // always returns false if file time is null
+    public boolean newer(java.nio.file.attribute.FileTime t) {
+        if (t == null)
+            return false;
+        long ft = t.toMillis();
+// System.out.println ("Message.java/newer: comparing " + ft + " to " + receivedTime);
+        return ft <= this.receivedTime;
+    }
 }

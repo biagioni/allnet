@@ -91,4 +91,16 @@ class ClientData {
         }
         return (count);
     }
+
+    int getNumNewMsgs(String contact) {
+        Iterator<String> it = getContactIterator();
+        int count = 0;
+        Conversation conv;
+        while (it.hasNext()) {
+            conv = getConversation(it.next());
+            if (conv.getNumNewMsgs() > 0)
+                count++;
+        }
+        return (count);
+    }
 }

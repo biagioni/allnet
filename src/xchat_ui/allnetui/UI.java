@@ -130,11 +130,15 @@ class UI extends ApplicationFrame {
                         }
                     }
                     else {
-                        for (String contactName : AllNetContacts.get()) {
+                        for (String contactName: AllNetContacts.get()) {
                             controller.contactCreated(contactName);
-                            controller.savedMessages(ConversationData.get(contactName, 100));
+                            Message [] msgs =
+                              ConversationData.getAll(contactName);
+                            //  ConversationData.get(contactName, 100);
+                            controller.savedMessages(msgs);
                         }
-                        for (String contactName : AllNetContacts.getBroadcast()) {
+                        for (String contactName:
+                               AllNetContacts.getBroadcast()) {
                             controller.broadcastContactCreated(contactName);
                         }
                     }
