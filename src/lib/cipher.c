@@ -293,6 +293,8 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   int i, j;
   int count = 0;
   int decrypt_count = 0;
+  if ((maxcontacts > 0) && (maxcontacts < ncontacts))
+    ncontacts = maxcontacts;
   for (i = 0; ((*contact == NULL) && (i < ncontacts)); i++) {
 #ifdef DEBUG_PRINT
     printf ("to do: randomize and limit the number of contacts tried\n");
@@ -301,7 +303,24 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
     int nkeys = all_keys (contacts [i], &keys);
     for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
       int do_decrypt = 1;  /* for now, try to decrypt unsigned messages */
-      if (sig_algo != ALLNET_SIGTYPE_NONE) {  /* verify signature */
+      if ((dest != NULL) && (dbits > 0)) {
+        char laddr [ADDRESS_SIZE];
+        int lbits = get_local (keys [j], (unsigned char *)laddr);
+        if ((lbits > 0) &&  /* if lbits or dbits is zero, we verify */
+            (matches ((unsigned char *) dest, dbits,
+                      (unsigned char *) laddr, lbits) <= 0))
+          do_decrypt = 0;
+      }
+      if ((sender != NULL) && (sbits > 0)) {
+        char raddr [ADDRESS_SIZE];
+        int rbits = get_remote (keys [j], (unsigned char *)raddr);
+        if ((rbits > 0) &&  /* if lbits or dbits is zero, we verify */
+            (matches ((unsigned char *) sender, sbits,
+                      (unsigned char *) raddr, rbits) <= 0))
+          do_decrypt = 0;
+      }
+      if (do_decrypt && (sig_algo != ALLNET_SIGTYPE_NONE)) {
+        /* verify signature */
         do_decrypt = 0;
         allnet_rsa_pubkey pub_key;
         if (get_contact_pubkey (keys [j], &pub_key)) {
