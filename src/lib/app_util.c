@@ -260,6 +260,7 @@ int connect_to_local (char * program_name, char * arg0)
   return sock;
 }
 
+#ifdef GET_BCKEY_IS_IMPLEMENTED
 /* retrieve or request a public key.
  *
  * if successful returns the key length and sets *key to point to
@@ -288,5 +289,6 @@ unsigned int get_bckey (char * address, char ** key,
   }
 */
 }
+#endif /* GET_BCKEY_IS_IMPLEMENTED */
 
 
