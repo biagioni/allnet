@@ -459,6 +459,9 @@ print_buffer (hash, hsize, "hash to be verified", 64, 1);
 #ifdef HAVE_OPENSSL
 static void no_feedback (int type, int count, void * arg)
 {
+  /* use the arguments to avoid warnings. */
+  if ((type > count) || (arg == NULL))
+    return;
 }
 #endif /* HAVE_OPENSSL */
 /* may be slow
