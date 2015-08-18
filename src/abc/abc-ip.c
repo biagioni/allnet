@@ -5,9 +5,9 @@
 #include <string.h>
 #include <unistd.h>           /* close */
 #include <ifaddrs.h>
+#include <sys/socket.h>       /* struct sockaddr */
 #include <net/if.h>           /* ifa_flags */
 #include <netinet/in.h>       /* struct sockaddr_in */
-#include <sys/socket.h>       /* struct sockaddr */
 #include <sys/time.h>         /* gettimeofday */
 
 #include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */

@@ -4,6 +4,7 @@
 #include <stdlib.h>    /* exit */
 #include <string.h>    /* strlen */
 #include <unistd.h>    /* fork, dup2, execvp */
+#include <sys/socket.h> /* struct sockaddr */
 #include <net/if.h>    /* IFNAMSIZ */
 #include <sys/types.h> /* pid_t */
 #include <sys/wait.h>  /* waitpid */

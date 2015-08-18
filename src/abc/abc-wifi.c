@@ -10,8 +10,8 @@
 #include <string.h>
 #include <unistd.h>           /* close */
 #include <ifaddrs.h>
-#include <net/if.h>           /* ifa_flags */
 #include <sys/socket.h>       /* struct sockaddr */
+#include <net/if.h>           /* ifa_flags */
 #include <sys/time.h>         /* gettimeofday */
 
 #include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */

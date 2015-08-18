@@ -27,7 +27,9 @@
 #ifndef __CYGWIN__
 #ifndef _WIN32
 #ifndef _WIN64
+#ifndef __OpenBSD__
 #define ALLNET_NETPACKET_SUPPORT
+#endif /* __OpenBSD__ */
 #endif /* _WIN64 */
 #endif /* _WIN32 */
 #endif /* __CYGWIN__ */

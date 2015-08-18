@@ -3,13 +3,16 @@
 /* abc-iface.h: Interface used by abc for broadcasting messages on a network */
 
 #include <sys/socket.h>        /* struct sockaddr, socklen_t */
-#include <netinet/ip.h>        /* struct sockaddr_in */
+#include <netinet/in.h>        /* struct sockaddr_in on some systems */
+#include <netinet/ip.h>        /* struct sockaddr_in on other systems */
 
 #ifndef __APPLE__
 #ifndef __CYGWIN__
 #ifndef _WIN32
 #ifndef _WIN64
+#ifndef __Open_BSD__
 #define ALLNET_NETPACKET_SUPPORT
+#endif /* __Open_BSD__ */
 #endif /* _WIN64 */
 #endif /* _WIN32 */
 #endif /* __CYGWIN__ */
