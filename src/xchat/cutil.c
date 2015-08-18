@@ -285,9 +285,11 @@ char * chat_time_to_string (unsigned char * t, int static_result)
   if (time_offset == my_time_offset) { /* easy case, we are almost finished */
     tzset ();     /* set the timezone variables */
     strcat (result, " ");
+#ifndef __OpenBSD__
     if (daylight)
       strcat (result, tzname [1]);
     else
+#endif /* __OpenBSD__ */
       strcat (result, tzname [0]);
     return result;
   }

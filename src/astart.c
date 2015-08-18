@@ -19,6 +19,8 @@
 #include <ifaddrs.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <net/if.h>      /* IFF_LOOPBACK, etc */
 
 #include "lib/util.h"

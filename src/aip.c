@@ -847,7 +847,7 @@ void send_keepalive (void * udp_cache, int fd,
     } else {
       cache_remove (udp_cache, udp_void_ptr);
       off = snprintf (log_buf, LOG_SIZE, "time out (%ld seconds), removed ",
-                      time (NULL) - ucr->last_received);
+                      (long) (time (NULL) - ucr->last_received));
     } 
 #ifdef DEBUG_PRINT
     off += print_sockaddr_str (sap, sizeof (sas_copy), 0,
