@@ -170,9 +170,9 @@ static int recv_message (int sock, int * code, time_t * time,
             mlen, ALLNET_MTU - 1);
     return 0;
   }
-  strcpy (peer, buf + 11);
+  snprintf (peer, ALLNET_MTU, "%s", buf + 11);
   if (mlen > 0)
-    strcpy (message, msg);
+    snprintf (message, ALLNET_MTU, "%s", msg);
   else
     message [0] = '\0';
   extra [0] = '\0';
@@ -181,7 +181,7 @@ static int recv_message (int sock, int * code, time_t * time,
     char * secret = msg + mlen + 1;
     int elen = strlen (secret);
     if ((elen < ALLNET_MTU) && (elen + (secret - buf) < n))
-      strcpy (extra, secret);
+      snprintf (extra, ALLNET_MTU, "%s", secret);
   }
   if ((*code) == CODE_AHRA)
     mlen = strlen (peer);
@@ -268,8 +268,7 @@ static char * find_java_path ()
     if (len > 0) {
         /* len+6 because   "/java" + null character   take 6 bytes*/
       char * result = malloc_or_fail (len + 6, "find_java_path");
-      memcpy (result, path, len);
-      strcpy (result + len, "/java");
+      snprintf (result, len + 6, "%s/java", path);
       if (access (result, X_OK) == 0)
         return result;
       free (result);
@@ -494,13 +493,13 @@ int main (int argc, char ** argv)
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
                       CODE_SEQ, time (NULL), peer, seq);
       } else if (code == 2) {
-        strcpy (kbuf1, peer);
-        strcpy (kbuf2, to_send);
+        snprintf (kbuf1, sizeof (kbuf1), "%s", peer);
+        snprintf (kbuf2, sizeof (kbuf2), "%s", to_send);
         key_contact = kbuf1;
         key_secret = kbuf2;
         normalize_secret (key_secret);
         if (strlen (extra) > 0) {
-          strcpy (kbuf3, extra);
+          snprintf (kbuf3, sizeof (kbuf3), "%s", extra);
           key_secret2 = kbuf3;
           normalize_secret (key_secret2);
         }
@@ -510,7 +509,7 @@ peer, key_contact, to_send, key_secret, key_secret2, num_hops);
         create_contact_send_key (sock, key_contact, key_secret, key_secret2,
                                  num_hops);
       } else if (code == 3) {   /* subscribe message -- peer is only field */
-        strcpy (sbuf, peer);
+        snprintf (sbuf, sizeof (sbuf), "%s", peer);
 printf ("sending subscription to %s/%s\n", peer, sbuf);
         if (subscribe_broadcast (sock, sbuf, saddr, &sbits))
           subscription = sbuf;

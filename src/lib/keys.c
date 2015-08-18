@@ -990,8 +990,9 @@ int group_membership (const char * group, char *** members)
     char * p = ((char *) result) + ptr_size;
     for (i = 0; i < kip [index].num_members; i++) {
       result [i] = p;
-      strcpy (p, kip [index].members [i]);
-      p += strlen (kip [index].members [i]) + 1;
+      int len = strlen (kip [index].members [i]) + 1;
+      memcpy (p, kip [index].members [i], len);
+      p += len;
     }
     *members = result;
   }

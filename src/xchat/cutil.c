@@ -284,13 +284,12 @@ char * chat_time_to_string (unsigned char * t, int static_result)
     result [eol_index] = '\0';
   if (time_offset == my_time_offset) { /* easy case, we are almost finished */
     tzset ();     /* set the timezone variables */
-    strcat (result, " ");
+    int index = 0;
 #ifndef __OpenBSD__
     if (daylight)
-      strcat (result, tzname [1]);
-    else
+      index = 1;
 #endif /* __OpenBSD__ */
-      strcat (result, tzname [0]);
+    snprintf (result, size, " %s", tzname [index]);
     return result;
   }
 #ifdef DEBUG_PRINT

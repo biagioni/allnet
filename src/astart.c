@@ -591,21 +591,23 @@ static int default_interfaces (char * * * interfaces_p)
   char * * interfaces = *interfaces_p;
   /* copy the names/extra to the malloc'd space after the pointers */
   char * write_to = ((char *) (interfaces + count));
+  int write_len = length;
   int index = 0;
   int accept_non_ip;  /* favor /ip over /wifi, so on first pass only take ip */
   for (accept_non_ip = 0; accept_non_ip < 2; accept_non_ip++) {
     next = ap;
-    while (next != NULL) {
+    while ((write_len > 0) && (next != NULL)) {
       char * extra = interface_extra (next);
       if ((! in_interface_array (next->ifa_name, interfaces, index)) &&
           (is_bc_interface (next)) &&
           (strlen (extra) != 0) &&
           ((accept_non_ip) || (strcmp (extra, "ip") == 0))) {
         interfaces [index++] = write_to;
-        strcpy (write_to, next->ifa_name);
-        strcat (write_to, "/");
-        strcat (write_to, interface_extra (next));
-        write_to += strlen (write_to) + 1;
+        int slen = snprintf (write_to, write_len,
+                             "%s/%s", next->ifa_name, interface_extra (next))
+                 + 1;  /* for the null character */
+        write_len -= slen;
+        write_to += slen;
       }
       next = next->ifa_next;
     }
