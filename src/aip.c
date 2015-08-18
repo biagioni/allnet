@@ -565,12 +565,14 @@ static int udp_socket ()
   /* enable dual-stack IPv6 and IPv4 for systems that don't enable it
      by default */
   int v6only_flag = 0;   /* disable v6 only */
+#ifndef __OpenBSD__  /* on openbsd, IPV6_V6ONLY is read-only */
   if (setsockopt (udp, IPPROTO_IPV6, IPV6_V6ONLY,
                   &v6only_flag, sizeof (v6only_flag)) != 0) {
     snprintf (log_buf, LOG_SIZE, "unable to setsockopt on UDP socket, exiting");
     log_error ("setsockopt");
     exit (1);
   }
+#endif /* __OpenBSD__ */
   struct sockaddr_storage address;
   struct sockaddr     * ap  = (struct sockaddr     *) &address;
   /* struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap; */
