@@ -12,6 +12,11 @@
 
 #define ROOT		"~/.allnet"
 #define HOME_EXT	"/.allnet"
+/* check to see if IOS_ROOT exists, if so, use that. */
+#define IOS_ROOT	"Library/Application Support/allnet/"
+/* and if it does, maybe save xchat files in Documents/allnet */
+/* and log files in Library/Caches/" */
+/* except chat files are done in xchat/store.c... */
 
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
 int create_dir (char * path)
@@ -61,34 +66,42 @@ int config_file_name (char * program, char * file, char ** name)
   char * root = ROOT;
   int free_root = 0;    /* in case root points to allocated memory */
   int root_length = strlen (root);
-  char * allnet_config_env = getenv ("ALLNET_CONFIG");
-  if (allnet_config_env != NULL) {
-    root = allnet_config_env;
+  /* if the iOS root exists, use that */
+  DIR * d = opendir (IOS_ROOT);
+  if (d != NULL) {  /* exists, use this */
+    closedir (d);
+    root = IOS_ROOT;
     root_length = strlen (root);
   } else {
-    char * home_env = getenv (HOME_ENV);
-    if ((home_env == NULL) || (strcmp (home_env, "/nonexistent") == 0)) {
-      static int printed = 0;
-      if (! printed)
-        printf ("no home environment (%s), running without configs\n",
-                home_env);
-      printed = 1;
-      return -1;
-    }
-    /* printf ("no ALLNET_CONFIG, home is %s\n", home_env); */
-    int size = strlen (home_env) + strlen (HOME_EXT) + 1;
-    if (name != NULL) {
-      char * home = malloc (size);
-      if (home == NULL) {
-        printf ("unable to allocate %d bytes for home\n", size);
+    char * allnet_config_env = getenv ("ALLNET_CONFIG");
+    if (allnet_config_env != NULL) {
+      root = allnet_config_env;
+      root_length = strlen (root);
+    } else {
+      char * home_env = getenv (HOME_ENV);
+      if ((home_env == NULL) || (strcmp (home_env, "/nonexistent") == 0)) {
+        static int printed = 0;
+        if (! printed)
+          printf ("no home environment (%s), running without configs\n",
+                  home_env);
+        printed = 1;
         return -1;
       }
-      snprintf (home, size, "%s%s", home_env, HOME_EXT);
-      root = home;
-      free_root = 1;
-      root_length = strlen (root);
-    } else {   /* do not allocate, just record the length */
-      root_length = size;
+      /* printf ("no ALLNET_CONFIG, home is %s\n", home_env); */
+      int size = strlen (home_env) + strlen (HOME_EXT) + 1;
+      if (name != NULL) {
+        char * home = malloc (size);
+        if (home == NULL) {
+          printf ("unable to allocate %d bytes for home\n", size);
+          return -1;
+        }
+        snprintf (home, size, "%s%s", home_env, HOME_EXT);
+        root = home;
+        free_root = 1;
+        root_length = strlen (root);
+      } else {   /* do not allocate, just record the length */
+        root_length = size;
+      }
     }
   }
   /* printf ("root is %s of length %d (free %d)\n",
@@ -100,7 +113,7 @@ int config_file_name (char * program, char * file, char ** name)
     if (free_root) free (root);
     return total_length;
   }
-  * name = malloc (total_length);
+  *name = malloc (total_length);
   if (*name == NULL) {
     printf ("unable to allocate %d bytes for config_file_name\n", total_length);
     if (free_root) free (root);

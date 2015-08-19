@@ -156,7 +156,7 @@ static void replace_command (char * old, int olen, char * new)
 {
   /* printf ("replacing %s ", old); */
   /* strncpy, for all its quirks, is just right for this application */
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* I think segfaults on iOS */
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* seems to segfault on iOS */
   strncpy (old, new, olen);
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
   /* printf ("with %s (%s, %d)\n", new, old, olen); */
@@ -167,6 +167,7 @@ static char * pid_file_name ()
 #define PIDS_FILE_NAME	"allnet-pids"
 #define UNIX_TEMP	"/tmp"
 #define UNIX_TEMP_ROOT	"/var/run"
+#define IOS_TEMP	"/Library/Caches"
   static char * result = "/tmp/allnet-pids";
   static int first_call = 1;
   if (! first_call)
@@ -177,6 +178,13 @@ static char * pid_file_name ()
   if (geteuid () == 0)  / * is root * /
     temp = UNIX_TEMP_ROOT;
   */
+#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+  DIR * ios_d = opendir (IOS_TEMP);
+  if (ios_d != NULL) {  /* directory exists, use it */
+    closedir (ios_d);
+    temp = IOS_TEMP;
+  }
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 #if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
 /* from https://en.wikipedia.org/wiki/Temporary_folder
      In MS-DOS and Microsoft Windows, the temporary directory is set by
