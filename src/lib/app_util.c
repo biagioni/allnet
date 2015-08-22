@@ -103,6 +103,7 @@ static void * call_allnet_main (void * unused_arg)
   char * args [] = { "allnet", NULL };
   /* could be: char * args [] = { "allnet", "def", NULL }; */
   astart_main (1, args);
+  return NULL;
 }
 
 static void exec_allnet (char * arg)  /* iOS version, threads instead of fork */
@@ -258,8 +259,7 @@ int connect_to_local (char * program_name, char * arg0)
     int * arg = malloc_or_fail (sizeof (int), "connect_to_local");
     *arg = sock;
     pthread_t receive_thread;
-    if (pthread_create (&receive_thread, NULL, receive_ignore, (void *) arg)
-        != 0) {
+    if (pthread_create (&receive_thread, NULL, receive_ignore, (void *) arg)) {
       perror ("connect_to_local pthread_create/receive");
       return -1;
     }
