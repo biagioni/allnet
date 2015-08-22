@@ -68,7 +68,7 @@ static int init_listen_socket (int version, int port, int local)
   log_print ();
   if (bind (fd, ap, addr_size) < 0) {
     if (version == 6) {
-      perror ("bind");
+      perror ("listen.c bind 6");
       n = snprintf (log_buf, LOG_SIZE,
                     "ipv%d unable to bind %d/%x(%d), maybe already running\n",
                     version, ntohs (port), ntohs (port), addr_size);
