@@ -149,6 +149,9 @@ static void log_print_buffer (char * buffer, int blen)
 {
   static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_lock (&mutex);
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
+/* ios doesn't give the user any reasonable way to read or
+ * manage log files, so no use printing to log */
   int fd = open (log_file_name, O_WRONLY | O_APPEND);
   if (fd < 0) {
     printf ("%s", buffer);
@@ -177,8 +180,9 @@ static void log_print_buffer (char * buffer, int blen)
   }
   lock.l_type = F_UNLCK;
   if (fcntl (fd, F_SETLKW, &lock) < 0)   /* essentially, ignore this error */
-    perror ("unable to unlock log file\n");
+    perror ("unable to unlock log file");
   close (fd);
+#endif /* ! __IPHONE_OS_VERSION_MIN_REQUIRED  */
   if (allnet_global_debugging)
     printf ("%s", buffer);
   pthread_mutex_unlock (&mutex);
