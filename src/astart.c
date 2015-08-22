@@ -407,7 +407,7 @@ static void my_call1 (char * argv, int alen, char * program,
     tap->string_function = run_function;
     tap->string_arg = strcpy_malloc (argv, "astart my_call1 string");
     pthread_t thread;
-    if (! pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
+    if (pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
       printf ("pthread_create failed for %s\n", program);
       exit (1);
     }
@@ -451,7 +451,7 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe, int fd,
     tap->rpipe = rpipe;
     tap->wpipe = wpipe;
     pthread_t thread;
-    if (! pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
+    if (pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
       printf ("pthread_create failed for alocal\n");
       exit (1);
     }
@@ -491,7 +491,7 @@ static void my_call_aip (char * argv, int alen, char * program,
     tap->wpipe = wpipe;
     tap->extra = extra;
     pthread_t thread;
-    if (! pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
+    if (pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
       printf ("pthread_create failed for aip\n");
       exit (1);
     }
@@ -538,7 +538,7 @@ static void my_call_abc (char * argv, int alen, char * program,
   tap->wpipe = wpipe;
   tap->ifopts = ifopts;
   pthread_t thread;
-  if (! pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
+  if (pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
     printf ("pthread_create failed for abc\n");
     exit (1);
   }
@@ -597,7 +597,7 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
     tap->rpipes = rpipes;
     tap->wpipes = wpipes;
     pthread_t thread;
-    if (! pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
+    if (pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
       printf ("pthread_create failed for ad\n");
       exit (1);
     }
