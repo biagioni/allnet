@@ -8,6 +8,7 @@
 #include <netdb.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/socket.h>
@@ -101,8 +102,8 @@ static void * call_allnet_main (void * unused_arg)
   if (unused_arg != NULL)  /* check arg to prevent warnings */
     printf ("error: argument to call_allnet_main should be NULL\n");
   char * args [] = { "allnet", NULL };
-  /* could be: char * args [] = { "allnet", "def", NULL }; */
-  astart_main (1, args);
+  /* could be: char * args [] = { "allnet", "-v", "def", NULL }; */
+  astart_main (2, args);
   return NULL;
 }
 
