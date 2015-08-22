@@ -52,13 +52,16 @@ static char * make_program_path (char * path, char * program)
   snprintf (result, size, "%s/%s", path, program);
   return result;
 }
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 static void exec_allnet (char * arg)
 {
   pid_t child = fork ();
+  if (child < 0) {
+    perror ("fork");
+    printf ("exec_allnet unable to fork, errno %d\n", errno);
+    exit (1);  /* no point continuing */
+  }
   if (child == 0) {  /* all this code is in the child process */
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
     char * path;
     char * pname;
     find_path (arg, &path, &pname);
@@ -84,16 +87,34 @@ static void exec_allnet (char * arg)
       printf (" %s", args [a]);
     printf ("\n");
     exit (1);
-#else /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-    /* ios: do not look for executable, just call "astart_main" */
-    char * args [2] = { "allnet", NULL };
-    extern int astart_main (int, char **);
-    astart_main (1, args);
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
   }
   setpgid (child, 0);  /* put the child process in its own process group */
   waitpid (child, NULL, 0);
 }
+
+#else /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+
+extern int astart_main (int, char **);
+
+static void * call_allnet_main (void * unused_arg)
+{
+  if (unused_arg != NULL)  /* check arg to prevent warnings */
+    printf ("error: argument to call_allnet_main should be NULL\n");
+  char * args [] = { "allnet", NULL };
+  /* could be: char * args [] = { "allnet", "def", NULL }; */
+  astart_main (1, args);
+}
+
+static void exec_allnet (char * arg)  /* iOS version, threads instead of fork */
+{
+  pthread_t thread;
+  int error = pthread_create (&thread, NULL, call_allnet_main, NULL);
+  if (error) {
+    printf ("ios exec_allnet unable to create thread for allnet main\n");
+    exit (1);  /* no point continuing */
+  }
+}
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 static int connect_once (int print_error)
 {
