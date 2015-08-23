@@ -481,6 +481,7 @@ static int next_available (int extra, int timeout)
   log_print ();
 #endif /* DEBUG_PRINT */
   if (s < 0) {
+    do_not_print = 0;  /* we are going to exit, so print everything */
     if (! do_not_print)
       perror ("next_available/select");
     print_pipes ("current", max_pipe);
