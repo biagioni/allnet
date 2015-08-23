@@ -458,12 +458,14 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe, int fd,
 #endif /* USE_FORK */
   }
   /* parent, close the child pipes */
+#ifdef USE_FORK
   close (rpipe);
   close (wpipe);
   print_pid (fd, child);
   snprintf (log_buf, LOG_SIZE, "parent called %s %d %d, closed %d %d\n",
             program, rpipe, wpipe, rpipe, wpipe);
   log_print ();
+#endif /* USE_FORK */
   do {   /* wait for alocal to start and open its socket */
     usleep (10 * 1000);
   } while (! connect_to_local());
@@ -501,10 +503,10 @@ static void my_call_aip (char * argv, int alen, char * program,
   close (rpipe);
   close (wpipe);
   print_pid (fd, child);
-#endif /* USE_FORK */
   snprintf (log_buf, LOG_SIZE, "parent called %s %d %d %s, closed %d %d\n",
             program, rpipe, wpipe, extra, rpipe, wpipe);
   log_print ();
+#endif /* USE_FORK */
 }
 
 static void my_call_abc (char * argv, int alen, char * program,
@@ -530,6 +532,9 @@ static void my_call_abc (char * argv, int alen, char * program,
   /* print_pid (fd, child); */
   close (rpipe);
   close (wpipe);
+/* snprintf (log_buf, LOG_SIZE, "parent called %s %d %d %s, closed %d %d\n",
+            program, rpipe, wpipe, ifopts, rpipe, wpipe);
+  log_print (); */
 #else /* ! USE_FORK */
   struct thread_arg * tap = thread_args + (free_thread_arg++);
   tap->name = "abc";
@@ -544,20 +549,18 @@ static void my_call_abc (char * argv, int alen, char * program,
   }
   *pid = getpid ();
 #endif /* USE_FORK */
-/*
-  snprintf (log_buf, LOG_SIZE, "parent called %s %d %d %s, closed %d %d\n",
-            program, rpipe, wpipe, ifopts, rpipe, wpipe);
-  log_print (); */
 }
 
 static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
                          int * wpipes, int fd, pid_t parent)
 {
 #ifndef USE_FORK
+  int * original_rpipes = rpipes;
+  int * original_wpipes = wpipes;
   int * rcopy = memcpy_malloc (rpipes, num_pipes * sizeof (int *),
                                "my_call_ad rpipes");
   rpipes = rcopy;  /* use the copy */
-  int * wcopy = memcpy_malloc (rpipes, num_pipes * sizeof (int *),
+  int * wcopy = memcpy_malloc (wpipes, num_pipes * sizeof (int *),
                                "my_call_ad wpipes");
   wpipes = wcopy;  /* use the copy */
 #endif /* ! USE_FORK */
@@ -594,19 +597,21 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
     tap->name = "ad";
     tap->call_type = CALL_AD;
     tap->num_pipes = num_pipes / 2;
-    tap->rpipes = rpipes;
-    tap->wpipes = wpipes;
+    tap->rpipes = rcopy;
+    tap->wpipes = wcopy;
     pthread_t thread;
     if (pthread_create (&thread, NULL, generic_thread, (void *) tap)) {
       printf ("pthread_create failed for ad\n");
       exit (1);
     }
     child = getpid ();
+    rpipes = original_rpipes;
+    wpipes = original_wpipes;
 #endif /* ! USE_FORK */
   }  /* parent, close the child pipes */
   print_pid (fd, child);
   for (i = 0; i < num_pipes / 2; i++) {
-#ifndef USE_FORK
+#ifdef USE_FORK
     close (rpipes [2 * i + 1]);
     close (wpipes [2 * i    ]);
 #endif /* ! USE_FORK */
