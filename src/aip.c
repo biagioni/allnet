@@ -1148,11 +1148,11 @@ snprintf (log_buf, LOG_SIZE, "00: fd %d/%d, result %d/%d/%zd, bad afamily %d\n",
 udp, fd, result, sasize, sizeof (sockaddr), sap->sa_family); log_print (); }
     if (result < 0) {
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (log_buf, LOG_SIZE, "0/%d: fd %d/%d, bad address family %d\n", result, udp, fd,
-sap->sa_family); log_print (); }
+snprintf (log_buf, LOG_SIZE, "0/%d: fd %d/%d, bad address family %d\n",
+ result, udp, fd, sap->sa_family); log_print (); }
       if ((fd == rpipe) || (fd == udp)) {
-        snprintf (log_buf, LOG_SIZE, "aip %s %d closed\n",
-                  ((fd == rpipe) ? "ad pipe" : "udp socket"), fd);
+        snprintf (log_buf, LOG_SIZE, "aip %s %d closed (%d)\n",
+                  ((fd == rpipe) ? "ad pipe" : "udp socket"), fd, result);
         log_print ();
         break;  /* exit the loop and the program */
       }
@@ -1250,6 +1250,8 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
   pthread_t addr_thread;
   if (pthread_create (&addr_thread, NULL, receive_addrs, &ra) != 0) {
     perror ("pthread_create/addrs");
+    snprintf (log_buf, LOG_SIZE, unable to create receive_addrs thread\n");
+    log_error ("pthread_create/addrs");
     return;
   }
 #endif /* ALLNET_ADDRS */
