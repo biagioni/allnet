@@ -324,7 +324,6 @@ public class ConversationData {
             long lastReadSecond = 0;
             if (lr != null)
                 lastReadSecond = lr.to(java.util.concurrent.TimeUnit.SECONDS);
-// if ((contact.equals("edo-on-andev") || contact.equals("test4")) && (lr != null)) System.out.println("andev/test4, comparing " + lastReadSecond + " to " + rcvdTime + ", unreadOnly " + unreadOnly);
             boolean isUnread = ((lr == null) || (lastReadSecond < rcvdTime));
             // if unreadOnly is specified, ignore sent messages and any
             // messages that have been read already (aka not unread)
@@ -333,7 +332,6 @@ public class ConversationData {
                     return readMessage(contact, in, acks, maxLine,
                                        unreadOnly, lr);
             }
-// if (isUnread) System.out.println(contact + " (andev/test4?), lr is " + lr + ", unread is " + isUnread);
             if (sentMessage)
                 return new Message(Message.SELF, contact, time * 1000, seq,
                                    text, messageId);

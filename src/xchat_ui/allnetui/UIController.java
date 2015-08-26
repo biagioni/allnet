@@ -666,8 +666,6 @@ System.out.println ("resending subscription for " + ahra);
                                + " (self is " + Message.SELF + ")");
             return;
         }
-if (msg.from.equals("edo-on-andev"))
-System.out.println("adding message " + msg);
         Conversation conv = clientData.getConversation(msg.from);
         conv.add(msg);
         // see if there is a tab open for this conversation
