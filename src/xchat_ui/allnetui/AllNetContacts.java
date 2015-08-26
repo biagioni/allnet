@@ -43,9 +43,10 @@ public class AllNetContacts {
 //                  System.out.println ("looking at file " + name);
                     java.nio.charset.Charset charset =
                         java.nio.charset.Charset.forName("UTF-8");
-                    java.io.BufferedReader in =
-                        java.nio.file.Files.newBufferedReader(name, charset);
-                    rlist.add (in.readLine());
+                    java.util.List<String> names =
+                        java.nio.file.Files.readAllLines(name, charset);
+                    for (String s: names)
+                        rlist.add (s);
 //                  System.out.println (in.readLine());
                 }
             }
@@ -104,11 +105,9 @@ public class AllNetContacts {
 //                  System.out.println ("looking at file " + name);
                     java.nio.charset.Charset charset =
                         java.nio.charset.Charset.forName("UTF-8");
-                    java.io.BufferedReader in =
-                        java.nio.file.Files.newBufferedReader(name, charset);
-                    String contactName = in.readLine();
-//                  System.out.println (contactName);
-                    if (contact.equals(contactName)) {
+                    java.util.List<String> names =
+                        java.nio.file.Files.readAllLines(name, charset);
+                    if ((names.size() > 0) && (contact.equals(names.get(0)))) {
                         String fname = p.toString().replace("contacts",
                                                             "xchat") +
                                                             "/last_read";
@@ -160,6 +159,7 @@ public class AllNetContacts {
 
     private static void updateChatTime(java.nio.file.Path path) {
         String lr = path.toString().replace("contacts", "xchat") + "/last_read";
+System.out.println ("creating " + lr);
         try {
             java.nio.file.Path lrp =
                 java.nio.file.FileSystems.getDefault().getPath(lr);
@@ -173,6 +173,7 @@ public class AllNetContacts {
     }
 
     public static void messagesHaveBeenRead(String contact) {
+        System.out.println ("marking as read messages for " + contact);
         java.nio.file.Path cpath = getContactsDir("contacts");
         try (java.nio.file.DirectoryStream<java.nio.file.Path> stream =
                  java.nio.file.Files.newDirectoryStream (cpath)) {
@@ -183,12 +184,13 @@ public class AllNetContacts {
                             getDefault().getPath(p + "/name");
                     java.nio.charset.Charset charset =
                         java.nio.charset.Charset.forName("UTF-8");
-                    java.io.BufferedReader in =
-                        java.nio.file.Files.newBufferedReader(name, charset);
-                    String contactName = in.readLine();
-                    if (contact.equals(contactName)) {
-                        updateChatTime(p);
-                        return;
+                    java.util.List<String> names =
+                        java.nio.file.Files.readAllLines(name, charset);
+                    for (String s: names) {
+                        if (contact.equals(s)) {
+                            updateChatTime(p);
+                            return;
+                        }
                     }
                 }
             }
