@@ -236,5 +236,6 @@ int main (int argc, char ** argv)
     }
     max_wait = until_deadline (&deadline);
   }
+printf ("xchats main exiting\n");
   return 0;
 }

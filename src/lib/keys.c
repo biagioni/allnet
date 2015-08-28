@@ -226,31 +226,33 @@ static int read_bytes_file (char * fname, char * bytes, int nbytes)
   return 0;
 }
 
-static void read_address_file (char * fname, char * address, int * nbits)
+/* returns 1 for success, 0 for failure */
+static int read_address_file (char * fname, char * address, int * nbits)
 {
   bzero (address, ADDRESS_SIZE);
   *nbits = 0;
   char * bytes = NULL;
   int size = read_file_malloc (fname, &bytes, 0);
-  if (size > 0) {
-    char * p;
-    int n = strtol (bytes, &p, 10);
-    if (p != bytes) {
-      int count = (n + 7) / 8;
-      int i;
-      for (i = 0; (p != NULL) && (i < count) && (i < ADDRESS_SIZE); i++) {
-        int value;
-        sscanf (p, " %x", &value);
-        address [i] = value;
-        p = strchr (p, ':');
-        if (p != NULL)  /* p points to ':' */
-          p++;
-      }
-      *nbits = n;
+  if (size <= 0)
+    return 0;
+  char * p;
+  int n = strtol (bytes, &p, 10);
+  if (p != bytes) {
+    int count = (n + 7) / 8;
+    int i;
+    for (i = 0; (p != NULL) && (i < count) && (i < ADDRESS_SIZE); i++) {
+      int value;
+      sscanf (p, " %x", &value);
+      address [i] = value;
+      p = strchr (p, ':');
+      if (p != NULL)  /* p points to ':' */
+        p++;
     }
+    *nbits = n;
   }
   if (bytes != NULL)
     free (bytes);
+  return 1;
 }
 
 static int remove_unprintable (char * s, int len)
@@ -402,22 +404,22 @@ printf ("found group %s\n", basename);
   } else {
     if (my_key != NULL) {
       char * name = strcat_malloc (basename, "/my_key", "my key name");
-      allnet_rsa_read_prvkey (name, my_key);
+      result = allnet_rsa_read_prvkey (name, my_key);
       free (name);
     }
-    if (contact_pubkey != NULL) {
+    if (result && (contact_pubkey != NULL)) {
       char * name = strcat_malloc (basename, "/contact_pubkey", "pub name");
-      allnet_rsa_read_pubkey (name, contact_pubkey);
+      result = allnet_rsa_read_pubkey (name, contact_pubkey);
       free (name);
     }
-    if ((local != NULL) && (loc_nbits != NULL)) {
+    if (result && (local != NULL) && (loc_nbits != NULL)) {
       char * name = strcat_malloc (basename, "/local", "local name");
-      read_address_file (name, local, loc_nbits);
+      result = read_address_file (name, local, loc_nbits);
       free (name);
     }
-    if ((remote != NULL) && (rem_nbits != NULL)) {
+    if (result && (remote != NULL) && (rem_nbits != NULL)) {
       char * name = strcat_malloc (basename, "/remote", "remote name");
-      read_address_file (name, remote, rem_nbits);
+      result = read_address_file (name, remote, rem_nbits);
       free (name);
     }
   }

@@ -194,7 +194,6 @@ static int is_my_contact (char * message, int msize,
       return 1;
     }
   }
-/* printf ("is_my_contact (%d, %d) => 0\n", nc, nbc); */
   return 0;
 }
 

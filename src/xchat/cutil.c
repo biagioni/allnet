@@ -127,6 +127,7 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
                         int hops, int priority, int do_ack,
                         unsigned char * ack, int do_save)
 {
+/* printf ("sending to contact %s, keyset %d\n", contact, k); */
   allnet_rsa_prvkey priv_key;
   allnet_rsa_pubkey key;
   int priv_ksize = get_my_privkey (k, &priv_key);

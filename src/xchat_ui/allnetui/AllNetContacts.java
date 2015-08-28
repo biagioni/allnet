@@ -159,7 +159,7 @@ public class AllNetContacts {
 
     private static void updateChatTime(java.nio.file.Path path) {
         String lr = path.toString().replace("contacts", "xchat") + "/last_read";
-System.out.println ("creating " + lr);
+// System.out.println ("creating " + lr);
         try {
             java.nio.file.Path lrp =
                 java.nio.file.FileSystems.getDefault().getPath(lr);
@@ -173,7 +173,7 @@ System.out.println ("creating " + lr);
     }
 
     public static void messagesHaveBeenRead(String contact) {
-        System.out.println ("marking as read messages for " + contact);
+//      System.out.println ("marking as read messages for " + contact);
         java.nio.file.Path cpath = getContactsDir("contacts");
         try (java.nio.file.DirectoryStream<java.nio.file.Path> stream =
                  java.nio.file.Files.newDirectoryStream (cpath)) {
