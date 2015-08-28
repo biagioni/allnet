@@ -261,7 +261,8 @@ static void respond_to_dht (int sock, char * message, int msize)
 void adht_main (char * pname)
 {
   /* connect to alocal */
-  int sock = connect_to_local ("adht", pname);
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local ("adht", pname, p);
   if (sock < 0)
     return;
 
@@ -274,7 +275,7 @@ void adht_main (char * pname)
     char * message;
     int pipe, pri;
     int timeout = PIPE_MESSAGE_WAIT_FOREVER;
-    int found = receive_pipe_message_any (timeout, &message, &pipe, &pri);
+    int found = receive_pipe_message_any (p, timeout, &message, &pipe, &pri);
     if (found < 0) {
       /* printf ("adht: pipe closed, exiting\n"); */
       pthread_cancel (send_thread);

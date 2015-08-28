@@ -239,7 +239,7 @@ static void * receive_ignore (void * arg)
 
 /* returns the socket, or -1 in case of failure */
 /* arg0 is the first argument that main gets -- useful for finding binaries */
-int connect_to_local (char * program_name, char * arg0)
+int connect_to_local (char * program_name, char * arg0, pd p)
 {
   seed_rng ();
   int sock = connect_once (0);
@@ -254,7 +254,7 @@ int connect_to_local (char * program_name, char * arg0)
       return -1;
     }
   }
-  add_pipe (sock);   /* tell pipe_msg to listen to this socket */
+  add_pipe (p, sock);   /* tell pipe_msg to listen to this socket */
 #ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */
   if (send_only == 1) {
     int * arg = malloc_or_fail (sizeof (int), "connect_to_local");

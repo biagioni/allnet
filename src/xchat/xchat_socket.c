@@ -447,7 +447,8 @@ int main (int argc, char ** argv)
   int forwarding_socket = atoi (argv [1]);
 */
 
-  int sock = xchat_init (argv [0]);
+  pd p = init_pipe_descriptor ();
+  int sock = xchat_init (argv [0], p);
   if (sock < 0)
     return 1;
 
@@ -518,7 +519,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
     }
     char * packet;
     int pipe, pri;
-    int found = receive_pipe_message_any (timeout, &packet, &pipe, &pri);
+    int found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchat_socket pipe closed, exiting\n");
       kill (child_pid, SIGKILL);

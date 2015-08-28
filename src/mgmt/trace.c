@@ -521,7 +521,7 @@ static void respond_to_trace (int sock, char * message, int msize,
 #endif /* LOG_PACKETS */
 }
 
-static void main_loop (int sock, unsigned char * my_address, int nbits,
+static void main_loop (int sock, pd p, unsigned char * my_address, int nbits,
                        int match_only, int forward_only)
 {
   void * cache = cache_init (100, free);
@@ -529,7 +529,7 @@ static void main_loop (int sock, unsigned char * my_address, int nbits,
     char * message;
     int pipe, pri;
     int timeout = PIPE_MESSAGE_WAIT_FOREVER;
-    int found = receive_pipe_message_any (timeout, &message, &pipe, &pri);
+    int found = receive_pipe_message_any (p, timeout, &message, &pipe, &pri);
     if (found < 0) {
       snprintf (log_buf, LOG_SIZE, "traced pipe closed, exiting\n");
       log_print ();
@@ -836,8 +836,8 @@ static void handle_packet (char * message, int msize, char * seeking,
   print_trace_result (trp, start, now, seq, match_only, no_intermediates);
 }
 
-static void wait_for_responses (int sock, char * trace_id, int sec, int seq,
-                                int match_only, int no_intermediates)
+static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
+                                int seq, int match_only, int no_intermediates)
 {
   num_arrivals = 0;   /* not received anything yet */
   unsigned long long int max_ms = sec * 1000;
@@ -851,7 +851,7 @@ static void wait_for_responses (int sock, char * trace_id, int sec, int seq,
     char * message;
     unsigned long long int computed_ms = max_ms - time_spent;
     int ms = (computed_ms > INT_MAX) ? INT_MAX : ((int) computed_ms);
-    int found = receive_pipe_message_any (ms, &message, &pipe, &pri);
+    int found = receive_pipe_message_any (p, ms, &message, &pipe, &pri);
     if (found < 0) {
 #ifdef DEBUG_PRINT
       printf ("trace pipe closed, exiting\n");  
@@ -921,7 +921,8 @@ static int get_repeat_option (int * argcp, char ** argv)
 
 void traced_main (char * pname)
 {
-  int sock = connect_to_local (pname, pname);
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local (pname, pname, p);
   if (sock < 0)
     return;
 
@@ -934,7 +935,7 @@ void traced_main (char * pname)
   printf ("trace daemon (m %d) for %d bits: ", match_only, abits);
   print_bitstring (address, 0, abits, 1);
 #endif /* DEBUG_PRINT */
-  main_loop (sock, address, abits, 0, 0);
+  main_loop (sock, p, address, abits, 0, 0);
   printf ("trace error: main loop returned\n");
   return;
 }
@@ -1019,7 +1020,8 @@ int trace_main (int argc, char ** argv)
     }
   }
 
-  int sock = connect_to_local (argv [0], argv [0]);
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local (argv [0], argv [0], p);
   if (sock < 0)
     return 1;
 /* print_buffer (address, abits, "argument address", 8, 1); */
@@ -1029,7 +1031,7 @@ int trace_main (int argc, char ** argv)
     printf ("trace daemon (m %d) for %d bits: ", match_only, abits);
     print_bitstring (address, 0, abits, 1);
 #endif /* DEBUG_PRINT */
-    main_loop (sock, address, abits, match_only, 0);
+    main_loop (sock, p, address, abits, match_only, 0);
     printf ("trace error: main loop returned\n");
     return 1;
   } else {                                    /* called as client */
@@ -1057,7 +1059,7 @@ int trace_main (int argc, char ** argv)
       random_bytes ((char *) my_addr, sizeof (my_addr));
       send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
       sent_count++;
-      wait_for_responses (sock, trace_id, sleep, count,
+      wait_for_responses (sock, p, trace_id, sleep, count,
                           match_only, no_intermediates);
     }
     print_summary (0);

@@ -5,6 +5,8 @@
 #ifndef LISTEN_H
 #define LISTEN_H
 
+#include "lib/pipemsg.h"  /* pd */
+
 /* this structure is declared in the caller and passed to every function.
  * Some of the fields should not be accessed by the caller */
 struct listen_info {
@@ -30,6 +32,7 @@ struct listen_info {
   unsigned int * used;   /* array of most recent access times */
   void (* callback) (int);  /* may be NULL, otherwise called when new
                                fd added, parameter is fd */
+  pd pipe_descriptor;
 };
 
 /* exits in case of errors, otherwise initializes info and starts the
@@ -40,7 +43,7 @@ struct listen_info {
 extern void listen_init_info (struct listen_info * info, int max_fds,
                               char * name, int port, int local_only,
                               int add_remove_pipe, int nodelay,
-                              void (* callback) (int));
+                              void (* callback) (int), pd p);
 
 /* call to record that this fd was active at this time */
 extern void listen_record_usage (struct listen_info * info, int fd);

@@ -159,7 +159,7 @@ static void * listen_loop (void * arg)
 
 void listen_init_info (struct listen_info * info, int max_fds, char * name,
                        int port, int local_only, int add_remove_pipe,
-                       int nodelay, void (* callback) (int))
+                       int nodelay, void (* callback) (int), pd p)
 {
   if (max_fds > 1024) {
     printf ("using 1024 as the maximum number of open fds, %d is too large\n",
@@ -181,6 +181,7 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
                                 "listen thread peers");
   info->used = malloc_or_fail (max_fds * sizeof (int), "listen thread used");
   info->callback = callback;
+  info->pipe_descriptor = p;
   info->nodelay = nodelay;
   int i;
   for (i = 0; i < max_fds; i++)
@@ -317,7 +318,7 @@ static int close_oldest_fd (struct listen_info * info)
   int fd = info->fds [min_index];
   send_peer_message (fd, info, min_index);
   if (info->add_remove_pipe)
-    remove_pipe (fd);
+    remove_pipe (info->pipe_descriptor, fd);
   close (fd);
   info->fds [min_index] = -1;
   return min_index;
@@ -339,7 +340,7 @@ void listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr)
   else
     info->peers [index].ip.ip_version = 0;
   if (info->add_remove_pipe)
-    add_pipe (fd);
+    add_pipe (info->pipe_descriptor, fd);
   pthread_mutex_unlock (&(info->mutex));
 }
 
@@ -347,7 +348,7 @@ void listen_remove_fd (struct listen_info * info, int fd)
 {
   pthread_mutex_lock (&(info->mutex));
   if (info->add_remove_pipe) {
-    remove_pipe (fd);
+    remove_pipe (info->pipe_descriptor, fd);
     /* printf ("removed_pipe (%d)\n", fd); */
   }
   int i;

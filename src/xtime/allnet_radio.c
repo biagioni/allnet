@@ -102,14 +102,14 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   return 0;  /* continue */
 }
 
-static void main_loop (int sock, int debug, int max)
+static void main_loop (int sock, pd p, int debug, int max)
 {
   while (1) {
     int pipe;
     int pri;
     char * message;
-    int found = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
-                                          &pipe, &pri);
+    int found = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
+                                          &message, &pipe, &pri);
     if (found <= 0) {
       printf ("allnet-radio pipe closed, exiting\n");
       exit (1);
@@ -149,7 +149,8 @@ int main (int argc, char ** argv)
   int verbose = get_option ('v', &argc, argv);
   log_to_output (verbose);
 
-  int sock = connect_to_local (argv [0], argv [0]);
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local (argv [0], argv [0], p);
   if (sock < 0)
     return 1;
 
@@ -161,7 +162,7 @@ int main (int argc, char ** argv)
   if (argc > 1)
     max = atoi (argv [1]);
 
-  main_loop (sock, debug, max);
+  main_loop (sock, p, debug, max);
   return 0;
 }
 

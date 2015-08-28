@@ -1110,7 +1110,7 @@ log_print ();
   return 0;   /* no peer connection established, or no valid DHT msg */
 }
 
-static void main_loop (int rpipe, int wpipe, struct listen_info * info,
+static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
                        void * addr_cache, void * dht_cache)
 {
   int udp = udp_socket ();
@@ -1141,7 +1141,7 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info,
     struct sockaddr_storage sockaddr;
     struct sockaddr * sap = (struct sockaddr *) (&sockaddr);
     socklen_t sasize = sizeof (sockaddr);
-    int result = receive_pipe_message_fd (1000, &message, udp, sap, &sasize,
+    int result = receive_pipe_message_fd (p, 1000, &message, udp, sap, &sasize,
                                           &fd, &priority);
 if ((result > 0) && (fd == udp) && (sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
 snprintf (log_buf, LOG_SIZE, "00: fd %d/%d, result %d/%d/%zd, bad afamily %d\n",
@@ -1250,13 +1250,15 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
   pthread_t addr_thread;
   if (pthread_create (&addr_thread, NULL, receive_addrs, &ra) != 0) {
     perror ("pthread_create/addrs");
-    snprintf (log_buf, LOG_SIZE, unable to create receive_addrs thread\n");
+    snprintf (log_buf, LOG_SIZE, "unable to create receive_addrs thread\n");
     log_error ("pthread_create/addrs");
     return;
   }
 #endif /* ALLNET_ADDRS */
+  pd p = init_pipe_descriptor ();
   struct listen_info info;
-  listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0, listen_callback);
+  listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0,
+                    listen_callback, p);
 
   listen_add_fd (&info, rpipe, NULL);
   pthread_mutex_init (&listener_mutex, NULL);
@@ -1265,7 +1267,7 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
     listener_fds [i] = -1;
 
   srandom (time (NULL));
-  main_loop (rpipe, wpipe, &info, ra.rp_cache, ra.dht_cache);
+  main_loop (p, rpipe, wpipe, &info, ra.rp_cache, ra.dht_cache);
 
   snprintf (log_buf, LOG_SIZE,
             "end of aip main thread, deleting %s\n", addr_socket_name);

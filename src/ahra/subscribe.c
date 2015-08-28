@@ -94,15 +94,15 @@ static int handle_packet (char * message, int msize,
   return correct;  /* we are done */
 }
 
-static void wait_for_response (int sock, char * phrase, char * ahra,
+static void wait_for_response (int sock, pd p, char * phrase, char * ahra,
                                char * address, int alen, int debug)
 {
   while (1) {
     int pipe;
     int pri;
     char * message;
-    int found = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
-                                          &pipe, &pri);
+    int found = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
+                                          &message, &pipe, &pri);
     if (found <= 0) {
       printf ("allnet-subscribe pipe closed, exiting\n");
       exit (1);
@@ -159,7 +159,8 @@ int main (int argc, char ** argv)
   if (! parse_ahra (argv [1], &phrase, NULL, NULL, NULL, NULL, &reason))
     usage (argv [0], reason);
 
-  int sock = connect_to_local (argv [0], argv [0]);
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local (argv [0], argv [0], p);
   if (sock < 0)
     return 1;
 
@@ -167,7 +168,8 @@ int main (int argc, char ** argv)
   char source [ADDRESS_SIZE];
   random_bytes (source, sizeof (source));
   if (send_key_request (sock, phrase, source, sizeof (source))) 
-    wait_for_response (sock, phrase, argv [1], source, sizeof (source), debug);
+    wait_for_response (sock, p, phrase, argv [1],
+                       source, sizeof (source), debug);
   return 0;
 }
 

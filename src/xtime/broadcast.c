@@ -23,24 +23,31 @@
 #include "lib/keys.h"
 #include "lib/log.h"
 
-static int init_broadcast (char * arg0)
+static int init_broadcast (char * arg0, pd p)
 {
-  int sock = connect_to_local ("cmdline_broadcast", arg0);
+  int sock = connect_to_local ("cmdline_broadcast", arg0, p);
   if (sock < 0)
     exit (1);
   return sock;
 }
+
+struct thread_arg {
+  int sock;
+  pd p;
+};
 
 /* need to keep reading and emptying the socket buffer, otherwise
  * it will fill and alocal will get an error from sending to us,
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
-  int * sockp = (int *) arg;
+  struct thread_arg * tap = (struct thread_arg *) arg;
+  int sock = tap->sock;
+  pd p = tap->p;
   while (1) {
     char * message;
     int priority;
-    int n = receive_pipe_message (*sockp, &message, &priority);
+    int n = receive_pipe_message (p, sock, &message, &priority);
     if (n > 0)    /* ignore the message and recycle the storage */
       free (message);
     else          /* some error -- quit */
@@ -120,9 +127,13 @@ int main (int argc, char ** argv)
           key->address [1] & 0xff);
 */
   
-  int sock = init_broadcast (argv [0]);
+  pd p = init_pipe_descriptor ();
+  int sock = init_broadcast (argv [0], p);
   pthread_t receive_thread;
-  if (pthread_create (&receive_thread, NULL, receive_ignore, &sock) != 0) {
+  struct thread_arg arg;
+  arg.sock = sock;
+  arg.p = p;
+  if (pthread_create (&receive_thread, NULL, receive_ignore, &arg) != 0) {
     perror ("xtime pthread_create/receive");
     return 1;
   }

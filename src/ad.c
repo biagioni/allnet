@@ -204,9 +204,10 @@ static void send_all (char * packet, int psize, int priority,
 static void main_loop (int npipes, int * read_pipes, int * write_pipes,
                        int update_seconds, int max_social_bytes, int max_checks)
 {
+  pd p = init_pipe_descriptor ();
   int i;
   for (i = 0; i < npipes; i++)
-    add_pipe (read_pipes [i]);
+    add_pipe (p, read_pipes [i]);
 /* snprintf (log_buf, LOG_SIZE, "ad calling init_social\n"); log_print (); */
   struct social_info * soc = init_social (max_social_bytes, max_checks);
 /* snprintf (log_buf, LOG_SIZE, "ad calling update_social\n"); log_print (); */
@@ -219,7 +220,7 @@ static void main_loop (int npipes, int * read_pipes, int * write_pipes,
     int from_pipe;
  /* incoming priorities ignored unless from local */
     int priority = ALLNET_PRIORITY_EPSILON;
-    int psize = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER,
+    int psize = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
                                           &packet, &from_pipe, &priority);
 #ifdef LOG_PACKETS
     snprintf (log_buf, LOG_SIZE, "ad received %d, fd %d\n", psize, from_pipe);
@@ -236,7 +237,7 @@ static void main_loop (int npipes, int * read_pipes, int * write_pipes,
           abc_pipe = i;
       if (abc_pipe) {  /* abc may fail, we should not die */
 printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes [abc_pipe]);
-        remove_pipe (read_pipes [abc_pipe]);
+        remove_pipe (p, read_pipes [abc_pipe]);
         close (read_pipes [abc_pipe]);
         close (write_pipes [abc_pipe]);
         for (i = abc_pipe; i + 1 < npipes; i++) {

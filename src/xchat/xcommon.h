@@ -5,9 +5,10 @@
 
 #include "chat.h"
 #include "lib/keys.h"
+#include "lib/pipemsg.h"
 
 /* returns the socket if successful, -1 otherwise */
-extern int xchat_init (char * program_name);
+extern int xchat_init (char * program_name, pd p);
 /* optional... */
 extern void xchat_end (int sock);
 

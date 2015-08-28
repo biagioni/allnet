@@ -23,7 +23,7 @@
 #include "listen.h"
 #include "lib/log.h"
 
-static void main_loop (int rpipe, int wpipe, struct listen_info * info)
+static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
 {
   while (1) {
     int fd;
@@ -36,7 +36,7 @@ static void main_loop (int rpipe, int wpipe, struct listen_info * info)
  * to 1ms, but then alocal took a little more CPU time than I liked.
  * If this value is changed, should change the corresponding value in
  * app_util.c */
-    int result = receive_pipe_message_any (50, &message, &fd, &priority);
+    int result = receive_pipe_message_any (p, 50, &message, &fd, &priority);
 #ifdef LOG_PACKETS
     if (result != 0) {
       snprintf (log_buf, LOG_SIZE, "receive_pipe_message_any returns %d\n",
@@ -112,17 +112,18 @@ void alocal_main (int rpipe, int wpipe)
   printf ("'%d %d'\n", rpipe, wpipe);
 */
   /* printf ("read pipe is fd %d, write pipe is fd %d\n", rpipe, wpipe); */
+  pd p = init_pipe_descriptor ();
   struct listen_info info;
   snprintf (log_buf, LOG_SIZE, "calling listen_init_info\n");
   log_print ();
-  listen_init_info (&info, 256, "alocal", ALLNET_LOCAL_PORT, 1, 1, 1, NULL);
+  listen_init_info (&info, 256, "alocal", ALLNET_LOCAL_PORT, 1, 1, 1, NULL, p);
   snprintf (log_buf, LOG_SIZE, "calling listen_add_fd\n");
   log_print ();
   listen_add_fd (&info, rpipe, NULL);
   snprintf (log_buf, LOG_SIZE, "calling main loop\n");
   log_print ();
 
-  main_loop (rpipe, wpipe, &info);
+  main_loop (p, rpipe, wpipe, &info);
   pthread_cancel (info.thread4);
   pthread_cancel (info.thread6);
   snprintf (log_buf, LOG_SIZE, "end of alocal main thread\n");

@@ -1407,7 +1407,7 @@ static void init_acache (int * msg_fd, int * max_msg_size,
     init_msgs (*msg_fd, *max_msg_size);
 }
 
-static void main_loop (int sock)
+static void main_loop (int sock, pd p)
 {
   int msg_fd;
   int max_msg_size;
@@ -1418,7 +1418,7 @@ static void main_loop (int sock)
   while (1) {
     char * message;
     int priority;
-    int result = receive_pipe_message (sock, &message, &priority);
+    int result = receive_pipe_message (p, sock, &message, &priority);
     struct allnet_header * hp = (struct allnet_header *) message;
     /* unless we save it, free the message */
     int mfree = 1;
@@ -1487,8 +1487,9 @@ void acache_main (char * pname)
 {
   /* printf ("sizeof struct hash_entry = %zd\n", sizeof (struct hash_entry));
               sizeof struct hash_entry = 56 */
-  int sock = connect_to_local ("acache", pname);
-  main_loop (sock);
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local ("acache", pname, p);
+  main_loop (sock, p);
   snprintf (log_buf, LOG_SIZE, "end of acache\n");
   log_print ();
 }

@@ -181,7 +181,7 @@ static void check_priority_mode ()
 /* if the interface is off, receives only from ad, otherwise from both ad and
  * the abc interface  */
 static int receive_until (struct timeval * t, char ** message,
-                          int * from_fd, int * priority)
+                          pd p, int * from_fd, int * priority)
 {
   struct timeval now;
   gettimeofday (&now, NULL);
@@ -201,13 +201,15 @@ static int receive_until (struct timeval * t, char ** message,
 #ifdef DEBUG_PRINT
     call = "receive_pipe_message_fd";
 #endif /* DEBUG_PRINT */
-    msize = receive_pipe_message_fd (timeout_ms, message, iface->iface_sockfd,
+    msize = receive_pipe_message_fd (p, timeout_ms, message,
+                                     iface->iface_sockfd,
                                      sap, &al, from_fd, priority);
   } else {                               /* only read from ad */
 #ifdef DEBUG_PRINT
     call = "receive_pipe_message_any";
 #endif /* DEBUG_PRINT */
-    msize = receive_pipe_message_any (timeout_ms, message, from_fd, priority);
+    msize = receive_pipe_message_any (p, timeout_ms, message,
+                                      from_fd, priority);
     if (msize > 0 && al > 0 && !iface->accept_sender_cb (sap)) {
       free (*message);
       return 0;
@@ -642,14 +644,15 @@ static void handle_network_message (const char * message, int msize,
 
 /* same as handle_until, but does not send any messages or change any
  * global state other than possibly quiet_end */
-static void handle_quiet (struct timeval * quiet_end, int rpipe, int wpipe)
+static void handle_quiet (struct timeval * quiet_end, pd p,
+                          int rpipe, int wpipe)
 {
   check_priority_mode ();
   while (is_before (quiet_end) && !terminate) {
     char * message;
     int from_fd;
     int priority;
-    int msize = receive_until (quiet_end, &message, &from_fd, &priority);
+    int msize = receive_until (quiet_end, &message, p, &from_fd, &priority);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
 printf ("%d-byte message from %d (ad is %d)\n", msize, from_fd, rpipe);
@@ -669,13 +672,14 @@ else { printf ("invalid message from %d (ad is %d)\n", from_fd, rpipe); }
 }
 
 /* handle incoming packets until time t */
-static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
+static void unmanaged_handle_until (struct timeval * t, pd p,
+                                    int rpipe, int wpipe)
 {
   while (is_before (t) && !terminate) {
     char * message;
     int fd;
     int priority;
-    int msize = receive_until (t, &message, &fd, &priority);
+    int msize = receive_until (t, &message, p, &fd, &priority);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
         if (fd == rpipe) {
@@ -693,7 +697,7 @@ static void unmanaged_handle_until (struct timeval * t, int rpipe, int wpipe)
 }
 /* handle incoming packets until time t.  Do not send before quiet_end */
 static void handle_until (struct timeval * t, struct timeval * quiet_end,
-                          int rpipe, int wpipe)
+                          pd p, int rpipe, int wpipe)
 {
   check_priority_mode ();
   struct timeval * beacon_deadline = NULL;
@@ -705,7 +709,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     struct timeval * deadline = t;
     if ((beacon_deadline != NULL) && (delta_us (t, beacon_deadline) > 0))
       deadline = beacon_deadline;
-    int msize = receive_until (deadline, &message, &fd, &priority);
+    int msize = receive_until (deadline, &message, p, &fd, &priority);
     enum abc_send_type send_type = ABC_SEND_TYPE_NONE;
     int send_size = 0;
     static char send_message [ALLNET_MTU];
@@ -719,7 +723,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
       free (message);
       /* forward any pending messages */
       if (send_type != ABC_SEND_TYPE_NONE) {
-        handle_quiet (quiet_end, rpipe, wpipe);
+        handle_quiet (quiet_end, p, rpipe, wpipe);
         send_pending (send_type, send_size, send_message);
       }
       /* see if priority has changed */
@@ -768,20 +772,21 @@ static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
 }
 
 /* do one basic 5s unmanaged cycle */
-static void unmanaged_one_cycle (const char * interface, int rpipe, int wpipe)
+static void unmanaged_one_cycle (const char * interface, pd p,
+                                 int rpipe, int wpipe)
 {
   struct timeval start, finish;
   gettimeofday (&start, NULL);
   finish.tv_sec = compute_next (start.tv_sec, BASIC_CYCLE_SEC, 0);
   finish.tv_usec = 0;
 
-  unmanaged_handle_until (&finish, rpipe, wpipe);
+  unmanaged_handle_until (&finish, p, rpipe, wpipe);
   unmanaged_send_pending (0); /* resend queued data if needed */
   ++cycle;
 }
 
 /* do one basic 5s cycle */
-static void one_cycle (const char * interface, int rpipe, int wpipe,
+static void one_cycle (const char * interface, pd p, int rpipe, int wpipe,
                        struct timeval * quiet_end)
 {
   struct timeval if_off, if_on, start, finish, beacon_time, beacon_stop;
@@ -814,10 +819,10 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
   beacon_state = BEACON_NONE;
   clear_nonces (1, 1);   /* start a new cycle */
 
-  handle_until (&beacon_time, quiet_end, rpipe, wpipe);
+  handle_until (&beacon_time, quiet_end, p, rpipe, wpipe);
   send_beacon (BEACON_MS);
   beacon_state = BEACON_SENT;
-  handle_until (&beacon_stop, quiet_end, rpipe, wpipe);
+  handle_until (&beacon_stop, quiet_end, p, rpipe, wpipe);
   /* clear_nonces (1, 0);  -- if we stay on, denying beacon replies is
    * not really helpful.  If we are off, we will get no beacon replies
    * anyway, so it doesn't matter */
@@ -826,7 +831,7 @@ static void one_cycle (const char * interface, int rpipe, int wpipe,
       (if_cycles_skipped == 0)) /* skipped cycle compensation */
     iface->iface_set_enabled_cb (0);
 #endif /* 0 */
-  handle_until (&finish, quiet_end, rpipe, wpipe);
+  handle_until (&finish, quiet_end, p, rpipe, wpipe);
   received_high_priority = 0;
 }
 
@@ -849,14 +854,15 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   snprintf (log_buf, LOG_SIZE,
             "interface '%s' on fd %d\n", interface, iface->iface_sockfd);
   log_print ();
-  add_pipe (rpipe);      /* tell pipemsg that we want to receive from ad */
+  pd p = init_pipe_descriptor ();
+  add_pipe (p, rpipe);      /* tell pipemsg that we want to receive from ad */
   if (iface->iface_is_managed)
     bzero (zero_nonce, NONCE_SIZE);
   while (!terminate) {
     if (iface->iface_is_managed)
-      one_cycle (interface, rpipe, wpipe, &quiet_end);
+      one_cycle (interface, p, rpipe, wpipe, &quiet_end);
     else
-      unmanaged_one_cycle (interface, rpipe, wpipe);
+      unmanaged_one_cycle (interface, p, rpipe, wpipe);
   }
 
 iface_cleanup:

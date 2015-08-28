@@ -37,9 +37,9 @@ static void request_cached_data (int sock, int hops)
 }
 
 /* returns the socket if successful, -1 otherwise */
-int xchat_init (char * arg0)
+int xchat_init (char * arg0, pd p)
 {
-  int sock = connect_to_local ("xcommon", arg0);
+  int sock = connect_to_local ("xcommon", arg0, p);
   if (sock < 0)
     return -1;
   request_cached_data (sock, 10);

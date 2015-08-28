@@ -36,7 +36,8 @@ static int now_second (time_t time)
 int main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
-  int sock = xchat_init (argv [0]);
+  pd p = init_pipe_descriptor ();
+  int sock = xchat_init (argv [0], p);
   if (sock < 0)
     return 1;
 
@@ -81,7 +82,7 @@ int main (int argc, char ** argv)
   while (1) {
     char * packet;
     int pipe, pri;
-    int found = receive_pipe_message_any (timeout, &packet, &pipe, &pri);
+    int found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchatr pipe closed, exiting\n");
       exit (1);

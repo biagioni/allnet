@@ -30,8 +30,6 @@
 #define LENGTH_SIZE	4
 #define HEADER_SIZE	(MAGIC_SIZE + PRIORITY_SIZE + LENGTH_SIZE)
 
-static int num_pipes = 0;
-
 struct allnet_pipe_info {
   int pipe_fd;	   /* file descriptor for input */
   int in_header;
@@ -41,95 +39,100 @@ struct allnet_pipe_info {
   int bsize;       /* how many bytes do we receive before we are done? */
 };
 
+/*
+static int num_pipes = 0;
 static struct allnet_pipe_info * buffers = NULL;
+*/
+
+#define MAX_PIPES	100
+struct pipedesc {
+  int num_pipes;
+  struct allnet_pipe_info buffers [MAX_PIPES];
+};
+
+pd init_pipe_descriptor ()
+{
+  pd result = malloc_or_fail (sizeof (struct pipedesc), "init pipe descriptor");
+  result->num_pipes = 0;
+  return result;
+}
 
 static int do_not_print = 1;
-static void print_pipes (const char * desc, int pipe)
+static void print_pipes (pd p, const char * desc, int pipe)
 {
   if (do_not_print)
     return;
   if (pipe != -1)
     snprintf (log_buf, LOG_SIZE, "%s pipe %d, total %d:\n",
-              desc, pipe, num_pipes);
+              desc, pipe, p->num_pipes);
   else
-    snprintf (log_buf, LOG_SIZE, "%s %d pipes:\n", desc, num_pipes);
+    snprintf (log_buf, LOG_SIZE, "%s %d pipes:\n", desc, p->num_pipes);
   log_print ();
   int i;
-  for (i = 0; i < num_pipes; i++) {
+  for (i = 0; i < p->num_pipes; i++) {
+    char * inhdr = ((p->buffers [i].in_header) ? "" : "not ");
     snprintf (log_buf, LOG_SIZE,
               "  [%d]: pipe %d, %shdr, h %p b %p, filled %d bsize %d\n", i,
-              buffers [i].pipe_fd, ((buffers [i].in_header) ? "" : "not "),
-              buffers [i].header, buffers [i].buffer,
-              buffers [i].filled, buffers [i].bsize);
+              p->buffers [i].pipe_fd, inhdr,
+              p->buffers [i].header, p->buffers [i].buffer,
+              p->buffers [i].filled, p->buffers [i].bsize);
    log_print ();
   }
 }
 
 /* returns the pipe index if present, -1 otherwise */
-static int pipe_index (int pipe)
+static int pipe_index (pd p, int pipe)
 {
   int i;
-  for (i = 0; i < num_pipes; i++)
-    if (buffers [i].pipe_fd == pipe)
+  for (i = 0; i < p->num_pipes; i++)
+    if (p->buffers [i].pipe_fd == pipe)
       return i;
   return -1;
 }
 
-void add_pipe (int pipe)
+void add_pipe (pd p, int pipe)
 {
-  if (pipe_index (pipe) != -1) {
+  if (pipe_index (p, pipe) != -1) {
     snprintf (log_buf, LOG_SIZE,
               "adding pipe %d already in data structure [%d]\n",
-              pipe, pipe_index (pipe));
+              pipe, pipe_index (p, pipe));
     log_print ();
     return;
   }
-  int total = num_pipes + 1;
-  size_t size = total * sizeof (struct allnet_pipe_info);
-  struct allnet_pipe_info * new_buffer =
-    (struct allnet_pipe_info *) malloc (size);
-  if (new_buffer == NULL) {
+  if (p->num_pipes >= MAX_PIPES) {
     snprintf (log_buf, LOG_SIZE,
-              "unable to allocate %zd bytes for %d slots\n", size, total);
+              "too many (%d) pipes, not adding %d\n", p->num_pipes, pipe);
     log_print ();
     return;
   }
-  int i;
-  for (i = 0; i < num_pipes; i++) {
-    new_buffer [i] = buffers [i];
-    if (new_buffer [i].in_header)  /* update the pointer */
-      new_buffer [i].buffer = new_buffer [i].header;
-  }
-  new_buffer [num_pipes].pipe_fd = pipe;
-  new_buffer [num_pipes].in_header = 1;/* always start by reading the header */
-  new_buffer [num_pipes].buffer = new_buffer [num_pipes].header;
-  new_buffer [num_pipes].bsize = HEADER_SIZE;
-  new_buffer [num_pipes].filled = 0;
-
-  if (buffers != NULL)
-    free (buffers);
-  buffers = new_buffer;
-  num_pipes = total;
-  print_pipes ("added", pipe);
+  struct allnet_pipe_info * api = p->buffers + p->num_pipes;
+  p->num_pipes = p->num_pipes + 1;
+  api->pipe_fd = pipe;
+  api->in_header = 1;  /* always start by reading the header */
+  api->buffer = api->header;
+  api->bsize = HEADER_SIZE;
+  api->filled = 0;
+  print_pipes (p, "added", pipe);
 }
 
-void remove_pipe (int pipe)
+void remove_pipe (pd p, int pipe)
 {
-  int index = pipe_index (pipe);
+  int index = pipe_index (p, pipe);
   if (index == -1)  /* nothing to delete */
     return;
   snprintf (log_buf, LOG_SIZE,
             "removing pipe %d from data structure [%d]\n", pipe, index);
   log_print ();
-  if ((! buffers [index].in_header) && (buffers [index].buffer != NULL))
-    free (buffers [index].buffer);
-  if (index + 1 < num_pipes) {
-    buffers [index] = buffers [num_pipes - 1];
-    if (buffers [index].in_header)  /* update the pointer */
-      buffers [index].buffer = buffers [index].header;
+  struct allnet_pipe_info * api = p->buffers + index;
+  if ((! api->in_header) && (api->buffer != NULL))
+    free (api->buffer);
+  if (index + 1 < p->num_pipes) {
+    p->buffers [index] = p->buffers [p->num_pipes - 1];
+    if (p->buffers [index].in_header)  /* update the pointer */
+      p->buffers [index].buffer = p->buffers [index].header;
   }
-  num_pipes--;
-  print_pipes ("removed", pipe);
+  p->num_pipes = p->num_pipes - 1;
+  print_pipes (p, "removed", pipe);
 }
 
 static inline void write_big_endian32 (char * array, int value)
@@ -419,23 +422,24 @@ static struct timeval * set_timeout (int timeout, struct timeval * tvp)
 /* returns exactly one fd, choosing extra first, and then fds appearing
  * earlier in the buffers array.  The order is probably not a big deal */
 /* returns -1 (and prints some messages) if nothing found */
-static int find_fd (fd_set * set, int extra, int select_result, int max_pipe)
+static int find_fd (pd p, fd_set * set, int extra,
+                    int select_result, int max_pipe)
 {
   if ((extra != -1) && (FD_ISSET (extra, set)))
     return extra;
   int i;
-  for (i = 0; i < num_pipes; i++)
-    if (FD_ISSET (buffers [i].pipe_fd, set))
-      return buffers [i].pipe_fd;
+  for (i = 0; i < p->num_pipes; i++)
+    if (FD_ISSET (p->buffers [i].pipe_fd, set))
+      return p->buffers [i].pipe_fd;
   /* we hope not to hit the rest of this code -- mostly debugging */
   int x = snprintf (log_buf, LOG_SIZE,
                     "find_fd: strange, s is %d but no pipes found\n",
                     select_result);
-  for (i = 0; i < num_pipes; i++) {
-    if (FD_ISSET (buffers [i].pipe_fd, set))
-      x += snprintf (log_buf + x, LOG_SIZE - x, " +%d", buffers [i].pipe_fd);
+  for (i = 0; i < p->num_pipes; i++) {
+    if (FD_ISSET (p->buffers [i].pipe_fd, set))
+      x += snprintf (log_buf + x, LOG_SIZE - x, " +%d", p->buffers [i].pipe_fd);
     else
-      x += snprintf (log_buf + x, LOG_SIZE - x, " -%d", buffers [i].pipe_fd);
+      x += snprintf (log_buf + x, LOG_SIZE - x, " -%d", p->buffers [i].pipe_fd);
   }
   snprintf (log_buf + x, LOG_SIZE - x, "\n");
   log_print ();
@@ -447,14 +451,14 @@ static int find_fd (fd_set * set, int extra, int select_result, int max_pipe)
       log_print ();
     }
   }
-  print_pipes ("not found", found_set);
+  print_pipes (p, "not found", found_set);
   return -1;
 }
 
 /* returns the first available file descriptor, or -1 in case of timeout */
 /* timeout is in milliseconds, or one of PIPE_MESSAGE_WAIT_FOREVER or
  * PIPE_MESSAGE_NO_WAIT */
-static int next_available (int extra, int timeout)
+static int next_available (pd p, int extra, int timeout)
 {
 #ifdef DEBUG_PRINT
   snprintf (log_buf, LOG_SIZE, "next_available (%d, %d)\n", extra, timeout);
@@ -465,8 +469,8 @@ static int next_available (int extra, int timeout)
   int max_pipe = 0;
   fd_set receiving;
   FD_ZERO (&receiving);
-  for (i = 0; i < num_pipes; i++)
-    add_fd_to_bitset (&receiving, buffers [i].pipe_fd, &max_pipe);
+  for (i = 0; i < p->num_pipes; i++)
+    add_fd_to_bitset (&receiving, p->buffers [i].pipe_fd, &max_pipe);
   if (extra != -1)
     add_fd_to_bitset (&receiving, extra, &max_pipe);
 
@@ -484,7 +488,7 @@ static int next_available (int extra, int timeout)
     do_not_print = 0;  /* we are going to exit, so print everything */
     if (! do_not_print)
       perror ("next_available/select");
-    print_pipes ("current", max_pipe);
+    print_pipes (p, "current", max_pipe);
     snprintf (log_buf, LOG_SIZE, "some error in select, aborting\n");
     log_print ();
     exit (1);
@@ -492,7 +496,7 @@ static int next_available (int extra, int timeout)
   if (s == 0)
     return -1;
   /* s > 0 */
-  int found = find_fd (&receiving, extra, s, max_pipe);
+  int found = find_fd (p, &receiving, extra, s, max_pipe);
 #ifdef DEBUG_PRINT
   snprintf (log_buf, LOG_SIZE, "next_available returning %d\n", found);
   log_print ();
@@ -590,13 +594,14 @@ static void shift_header (char * header)
 
 /* similar to receive_pipe_message but may return 0 if no message
  * is immediately ready to return.  returns -1 in case of error */
-static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
+static int receive_pipe_message_poll (pd p, int pipe,
+                                      char ** message, int * priority)
 {
   *message = NULL;
-  int index = pipe_index (pipe);
+  int index = pipe_index (p, pipe);
   if (index < 0) {
     do_not_print = 0;
-    print_pipes ("not found", pipe);
+    print_pipes (p, "not found", pipe);
     snprintf (log_buf, LOG_SIZE,
               "pipe %d not found, aborting and dumping core\n", pipe);
     log_print ();
@@ -604,7 +609,7 @@ static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
     /* if NDEBUG is set, assert will not end the program, so return -1 */
     return -1;
   }
-  struct allnet_pipe_info * bp = buffers + index;
+  struct allnet_pipe_info * bp = (p->buffers) + index;
 
   int offset = bp->filled;
   int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0);
@@ -636,7 +641,7 @@ static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
       /* we stopped because the header was filled.  Try again, for either
          the next attempt to match, or the actual data */
 /* printf ("recursive call rpmp (%d, %p, %d)\n", pipe, *message, *priority); */
-      return receive_pipe_message_poll (pipe, message, priority);
+      return receive_pipe_message_poll (p, pipe, message, priority);
     } else {    /* not reading header and buffer is full, so we are done. */
       *message = bp->buffer;
       int result = bp->bsize;
@@ -652,7 +657,7 @@ static int receive_pipe_message_poll (int pipe, char ** message, int * priority)
 
 /* receives the message into a buffer it allocates for the purpose. */
 /* the caller is responsible for freeing the buffer. */
-int receive_pipe_message (int pipe, char ** message, int * priority)
+int receive_pipe_message (pd p, int pipe, char ** message, int * priority)
 {
   char header [HEADER_SIZE];
 
@@ -755,7 +760,7 @@ static int receive_dgram (int fd, char ** message,
  * in case some other socket is ready first, or if fd is -1,
  * this call is the same as receive_pipe_message_any
  */
-int receive_pipe_message_fd (int timeout, char ** message, int fd,
+int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
                              struct sockaddr * sa, socklen_t * salen,
                              int * from_pipe, int * priority)
 {
@@ -770,12 +775,12 @@ int receive_pipe_message_fd (int timeout, char ** message, int fd,
   while ((timeout == PIPE_MESSAGE_WAIT_FOREVER) ||
          (tv_compare (&now, &finish) <= 0)) {
     int pipe;
-    pipe = next_available (fd, timeout);
+    pipe = next_available (p, fd, timeout);
     if (pipe >= 0) { /* can read pipe */
       if (from_pipe != NULL) *from_pipe = pipe;
       int r;
       if (pipe != fd) { /* it is a pipe, not a datagram socket */
-        r = receive_pipe_message_poll (pipe, message, priority);
+        r = receive_pipe_message_poll (p, pipe, message, priority);
 /* if (r < 0) printf ("receive_pipe_message_poll returned %d\n", r); */
         if ((sa != NULL) && (salen != NULL) && (*salen > 0))
 {
@@ -808,10 +813,10 @@ sa->sa_family = -1; /* debug */ }
  * if udp_fd is not -1, also listens to the UDP fd, returning the
  * corresponding *from_pipe and returning 0, but not actually reading the fd
  */
-int receive_pipe_message_any (int timeout, char ** message,
+int receive_pipe_message_any (pd p, int timeout, char ** message,
                               int * from_pipe, int * priority)
 {
-  return receive_pipe_message_fd (timeout, message, -1, NULL, NULL,
+  return receive_pipe_message_fd (p, timeout, message, -1, NULL, NULL,
                                   from_pipe, priority);
 }
 

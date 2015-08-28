@@ -68,7 +68,8 @@ int main (int argc, char ** argv)
     return 1;
   }
 
-  int sock = xchat_init (argv [0]);
+  pd p = init_pipe_descriptor ();
+  int sock = xchat_init (argv [0], p);
   if (sock < 0)
     return 1;
 
@@ -171,7 +172,7 @@ int main (int argc, char ** argv)
   while (exchanging_key || (max_wait > 0)) {
     char * packet;
     int pipe, pri;
-    int found = receive_pipe_message_any (max_wait, &packet, &pipe, &pri);
+    int found = receive_pipe_message_any (p, max_wait, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchats pipe closed, exiting\n");
       exit (1);

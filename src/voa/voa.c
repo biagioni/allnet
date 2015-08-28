@@ -722,7 +722,7 @@ static struct allnet_header * create_voa_hs_packet (const char * key,
  * @return 0 on error or term (or timeout reached when timeout is set),
  *         1 on success (only when timeout is set)
  */
-static int voa_receive (int timeout)
+static int voa_receive (pd p, int timeout)
 {
   struct timeval now;
   struct timeval timeout_end;
@@ -739,7 +739,8 @@ static int voa_receive (int timeout)
     int pipe;
     int priority;
     char * message;
-    int size = receive_pipe_message_any (timeout, &message, &pipe, &priority);
+    int size = receive_pipe_message_any (p, timeout,
+                                         &message, &pipe, &priority);
     if (size > 0) {
       ret = handle_packet ((const char *)message, size, timeout != PIPE_MESSAGE_WAIT_FOREVER);
       free (message);
@@ -1185,7 +1186,8 @@ int main (int argc, char ** argv)
             argv [0]);
     return 0;
   }
-  int socket = connect_to_local (argv [0], argv [0]);
+  pd p = init_pipe_descriptor ();
+  int socket = connect_to_local (argv [0], argv [0], p);
   if (socket < 0) {
     fprintf (stderr, "Could not connect to AllNet\n");
     return 1;
@@ -1294,7 +1296,7 @@ int main (int argc, char ** argv)
         fflush (stdout);
         if (!send_voa_request ())
           break;
-        if (voa_receive (2000)) {
+        if (voa_receive (p, 2000)) {
           printf ("\n");
           enc_main_loop ();
           break;
@@ -1302,7 +1304,7 @@ int main (int argc, char ** argv)
       } while (++i < 10);
     }
   } else {
-    voa_receive (0);
+    voa_receive (p, 0);
   }
 
   cleanup_audio ();

@@ -221,7 +221,8 @@ void keyd_generate (char * pname)
 
 void keyd_main (char * pname)
 {
-  int sock = connect_to_local (pname, pname);
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local (pname, pname, p);
   if (sock < 0)
     return;
 
@@ -229,7 +230,7 @@ void keyd_main (char * pname)
     int pipe;
     int pri;
     char * message;                      /* sleep for up to a minute */
-    int found = receive_pipe_message_any (60 * 1000, &message, &pipe, &pri);
+    int found = receive_pipe_message_any (p, 60 * 1000, &message, &pipe, &pri);
     if (found < 0) {
       snprintf (log_buf, LOG_SIZE, "keyd pipe closed, exiting\n");
       log_print ();

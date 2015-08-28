@@ -110,15 +110,15 @@ static int received_before (char * message, int mlen)
 #undef MESSAGE_STORAGE
 }
 
-static void main_loop (int sock, int debug, int max, int verify, int unique,
-                       int types)
+static void main_loop (int sock, pd p, int debug,
+                       int max, int verify, int unique, int types)
 {
   while (1) {
     int pipe;
     int pri;
     char * message;
-    int found = receive_pipe_message_any (PIPE_MESSAGE_WAIT_FOREVER, &message,
-                                          &pipe, &pri);
+    int found = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
+                                          &message, &pipe, &pri);
     if (found <= 0) {
       printf ("packet sniffer pipe closed, exiting\n");
       exit (1);
@@ -207,7 +207,8 @@ int main (int argc, char ** argv)
     debug = 1;
   log_to_output (verbose);
 
-  int sock = connect_to_local (argv [0], argv [0]);
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local (argv [0], argv [0], p);
   if (sock < 0)
     return 1;
 
@@ -215,7 +216,7 @@ int main (int argc, char ** argv)
   if (argc > optind)
     max = atoi (argv [optind]);
 
-  main_loop (sock, debug, max, verify, unique, types);
+  main_loop (sock, p, debug, max, verify, unique, types);
   return 0;
 }
 

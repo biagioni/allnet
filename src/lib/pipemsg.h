@@ -6,6 +6,11 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+/* pipedesc is defined in pipemsg.c, and only used for receiving */
+/* should be initialized to NULL before the first call */
+typedef struct pipedesc * pd;
+
+extern pd init_pipe_descriptor();
 
 /* the send functions return 1 in case of success and 0 in case of failure.
  * if 0 is returned, it means the pipe is no longer valid.
@@ -13,7 +18,8 @@
  * in case of timeout, and -1 in case of error, including the pipe
  * no longer being usable. */
 
-extern int send_pipe_message (int pipe, const char * message, int mlen, int priority);
+extern int send_pipe_message (int pipe,
+                              const char * message, int mlen, int priority);
 
 /* same as send_pipe_message, but frees the memory referred to by message */
 extern int send_pipe_message_free (int pipe, char * message, int mlen,
@@ -23,7 +29,8 @@ extern int send_pipe_message_free (int pipe, char * message, int mlen,
  * delay when sending multiple times in close succession on a socket.
  * messages are not freed */
 extern int send_pipe_multiple (int pipe, int num_messages,
-                               const char ** messages, const int * mlens, const int * priorities);
+                               const char ** messages, const int * mlens,
+                               const int * priorities);
 /* same, but messages are freed */
 extern int send_pipe_multiple_free (int pipe, int num_messages,
                                     char ** messages, const int * mlens,
@@ -31,12 +38,13 @@ extern int send_pipe_multiple_free (int pipe, int num_messages,
 
 /* receives the message into a buffer it allocates for the purpose. */
 /* the caller is responsible for freeing the message buffer. */
-extern int receive_pipe_message (int pipe, char ** message, int * priority);
+extern int receive_pipe_message (pd p, int pipe,
+                                 char ** message, int * priority);
 
 /* keeps track of which pipes are needed for receive_pipe_message_any,
  * which buffers partial messages received on a socket. */
-extern void add_pipe (int pipe);
-extern void remove_pipe (int pipe);
+extern void add_pipe (pd p, int pipe);
+extern void remove_pipe (pd p, int pipe);
 
 #define PIPE_MESSAGE_WAIT_FOREVER	-1
 #define PIPE_MESSAGE_NO_WAIT		0
@@ -49,7 +57,7 @@ extern void remove_pipe (int pipe);
  * The pipe from which the message is received (or which has an error)
  * is returned in *from_pipe if not NULL.
  */
-extern int receive_pipe_message_any (int timeout, char ** message,
+extern int receive_pipe_message_any (pd p, int timeout, char ** message,
                                      int * from_pipe, int * priority);
 
 /* same as receive_pipe_message_any, but listens to the given socket as
@@ -63,7 +71,7 @@ extern int receive_pipe_message_any (int timeout, char ** message,
  * in case some other socket is ready first, or if fd is -1,
  * this call is the same as receive_pipe_message_any
  */
-extern int receive_pipe_message_fd (int timeout, char ** message, int fd,
+extern int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
                                     struct sockaddr * sa, socklen_t * salen,
                                     int * from_pipe, int * priority);
 
