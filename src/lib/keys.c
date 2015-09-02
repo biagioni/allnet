@@ -1136,7 +1136,8 @@ int all_keys (const char * contact, keyset ** keysets)
   int i;
   int count = 0;
   for (i = 0; i < num_key_infos; i++) {
-    if (strcmp (kip [i].contact_name, contact) == 0)
+    if ((kip [i].contact_name != NULL) &&
+        (strcmp (kip [i].contact_name, contact) == 0))
       count++;
   }
   if (keysets == NULL)
@@ -1146,7 +1147,8 @@ int all_keys (const char * contact, keyset ** keysets)
 
   int copied = 0;
   for (i = 0; i < num_key_infos; i++) {
-    if (strcmp (kip [i].contact_name, contact) == 0)
+    if ((kip [i].contact_name != NULL) &&
+        (strcmp (kip [i].contact_name, contact) == 0))
       (*keysets) [copied++] = i;
   }
   assert (copied == count);
