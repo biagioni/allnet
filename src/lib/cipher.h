@@ -40,7 +40,7 @@ extern int allnet_sign (const char * text, int tsize, allnet_rsa_prvkey key,
  * With either of these, malloc's and fills in *text.
  * if decryption does not work, returns 0 and sets *contact and *text to NULL
  *
- * if maxcontacts > 0, only tries to match up to maxcontacts (to be implemented)
+ * if maxcontacts > 0, only tries to match up to maxcontacts
  */
 extern int decrypt_verify (int sig_algo, char * encrypted, int esize,
                            char ** contact, keyset * key, char ** text,
