@@ -200,7 +200,7 @@ static int read_n_random_bytes (char * buffer, int bsize, int pure_random)
       offset = 32;
     else
       offset = bsize;
-    printf ("waiting for %d purely random bytes...\n", offset);
+    /* printf ("waiting for %d purely random bytes...\n", offset); */
     if (! read_all_or_none ("/dev/random", buffer, offset))
       return 0;
     if (offset >= bsize)
@@ -249,8 +249,8 @@ pure_random = 0;
       exit (1);
     }
   }
-  if (pure_random)
-    printf ("...done in %ld seconds\n", time (NULL) - start_time);
+  /* if (pure_random)
+    printf ("...done in %ld seconds\n", time (NULL) - start_time); */
 #ifdef PREDICTABLE_RANDOM
   printf ("warning: non-random key is very insecure, use only for debugging\n");
   /* debugging */
