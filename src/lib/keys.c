@@ -1915,6 +1915,7 @@ int get_temporary_key (char ** pubkey, allnet_rsa_prvkey * prvkey)
 
 /* verifies that a key obtained by a key exchange matches the address */
 /* the default lang and bits are used if they are not part of the address */
+/* if save_is_correct != 0, also saves it to a file using the given address */
 unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
                             char * default_lang, int bitstring_bits,
                             int save_if_correct)
@@ -1989,12 +1990,14 @@ unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
     }
   }
   char * fname;
-  if (config_file_name ("other_bc_keys", ahra, &fname) < 0) {
-    printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", ahra);
-  } else {
-    if (! allnet_rsa_write_pubkey (fname, rsa))
-      printf ("unable to write broadcast key to file %s\n", fname);
-    free (fname);
+  if (save_if_correct) {
+    if (config_file_name ("other_bc_keys", ahra, &fname) < 0) {
+      printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", ahra);
+    } else {
+      if (! allnet_rsa_write_pubkey (fname, rsa))
+        printf ("unable to write broadcast key to file %s\n", fname);
+      free (fname);
+    }
   }
   allnet_rsa_free_pubkey (rsa);
   free (positions);
@@ -2035,6 +2038,8 @@ static struct bc_key_info * find_bc_key (char * address,
     if (parse_ahra (address, NULL, NULL, NULL, NULL, &num_bits, NULL))
       success = verify_bc_key (address, key, klen, NULL, num_bits, 0);
     free (key);
+    if (success)
+      printf ("address %s matches key %s\n", address, keys [i].identifier);
     if (success)
       return keys + i;
   }
