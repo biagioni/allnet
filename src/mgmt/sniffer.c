@@ -66,14 +66,64 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug,
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
   int dsize = msize - (data - message);
   print_buffer (data, dsize, "   payload:", 16, 1);
-  if (verify && (hp->message_type == ALLNET_TYPE_DATA)) {
-    char * contact;
-    char * text;
-    keyset k;
-    int tsize = decrypt_verify (hp->sig_algo, data, dsize, &contact, &k, &text,
-                                NULL, 0, NULL, 0, 0);
-    if (tsize > 0)
-      print_buffer (text, tsize, " decrypted:", 100, 1);
+  if (verify) {
+    if (hp->message_type == ALLNET_TYPE_DATA) {
+      char * contact;
+      char * text;
+      keyset k;
+      int tsize = decrypt_verify (hp->sig_algo, data, dsize, &contact, &k,
+                                  &text, NULL, 0, NULL, 0, 0);
+      if (tsize > 0)
+        print_buffer (text, tsize, " decrypted:", 100, 1);
+    } else if ((hp->message_type == ALLNET_TYPE_CLEAR) && 
+               (hp->sig_algo != ALLNET_SIGTYPE_NONE)) {
+      int verified = 0;
+      int ssize = readb16 (data + dsize - 2) + 2;
+      if ((ssize > 2) && (ssize < dsize)) {
+        int msize = dsize - ssize;  /* size of text message */
+        char * likely_start = data + sizeof (struct allnet_app_media_header);
+        char * likely_end = data + msize;
+        char * sig = data + msize;
+        struct bc_key_info * keys;
+        int nkeys = get_other_keys (&keys);
+        int i;
+        for (i = 0; i < nkeys; i++) {
+printf (" %d: attempting to verify with %s\n", i, keys [i].identifier);
+          if (allnet_verify (data, dsize - ssize, sig, ssize - 2,
+                             keys [i].pub_key)) {
+            *likely_end = '\0';
+            printf (" verified with %s: %s\n",
+                    keys [i].identifier, likely_start);
+            verified = 1;
+            break;
+          }
+        }
+        nkeys = get_own_keys (&keys);
+        for (i = 0; i < nkeys; i++) {
+printf (" %d: attempting to verify with own key %s\n", i, keys [i].identifier);
+          if (allnet_verify (data, dsize - ssize, sig, ssize - 2,
+                             keys [i].pub_key)) {
+            *likely_end = '\0';
+            printf (" verified (own %s): %s\n",
+                    keys [i].identifier, likely_start);
+            verified = 1;
+            break;
+          }
+        }
+      }
+      if (! verified) {
+        if ((ssize > 2) && (ssize < dsize)) {
+          data [dsize - ssize] = '\0';
+          printf (" (not verified %s)\n",
+                  data + sizeof (struct allnet_app_media_header));
+        } else {
+          char c = data [dsize - 1];  /* so we can null terminate */
+          data [dsize - 1] = '\0';  
+          printf (" (not verified, no sig: %s%c)\n",
+                  data + sizeof (struct allnet_app_media_header), c);
+        }
+      }
+    }
   }
   return 0;
 }
