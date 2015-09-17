@@ -114,7 +114,7 @@ class UI extends ApplicationFrame {
                     controller.setNewContactPanel(newContactPanel);
                     controller.setMyTabbedPane(uiTabs);
                     // update the contacts tab
-                    controller.updateContactsPanelStatus();
+                    // controller.updateContactsPanelStatus(); -- do it later
                     // tell controller when the selected tab changes
                     uiTabs.setListener(controller);
 
@@ -130,11 +130,11 @@ class UI extends ApplicationFrame {
                         }
                     }
                     else {
-                        for (String contactName: AllNetContacts.get()) {
-                            controller.contactCreated(contactName);
-                            Message [] msgs =
-                              ConversationData.getAll(contactName);
-                            //  ConversationData.get(contactName, 100);
+                        String[] contacts = AllNetContacts.get();
+                        for (String contact: contacts) {
+                            controller.contactCreated(contact);
+                            Message [] msgs = ConversationData.getAll(contact);
+                            //  ConversationData.get(contact, 100);
                             controller.savedMessages(msgs);
                         }
                         for (String contactName:
@@ -142,6 +142,7 @@ class UI extends ApplicationFrame {
                             controller.broadcastContactCreated(contactName);
                         }
                     }
+                    controller.initializationComplete();
                     XchatSocket s = new XchatSocket(controller);
                     s.start();
                 }

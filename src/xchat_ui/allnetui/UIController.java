@@ -63,14 +63,13 @@ class UIController implements ControllerInterface, UIAPI {
     public void messageReceived(final String from, final long sentTime,
                                 final String text, final boolean broadcast) {
         Runnable r = new Runnable() {
-
+            long rcvdTime = java.util.Calendar.getInstance().getTimeInMillis();
             Message message = new Message(from, Message.SELF, sentTime,
-                                          java.util.Calendar.getInstance().getTimeInMillis(),
-                                          text, broadcast, true);
+                                          rcvdTime, text, broadcast, true);
             @Override
             public void run() {
 // System.out.println("processing received message " + message.toString());
-                processReceivedMessage(message);
+                processReceivedMessage(message, true);
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
@@ -88,12 +87,33 @@ class UIController implements ControllerInterface, UIAPI {
                     if (message.sentNotReceived) {
                         displaySentMessage(message);
                     } else {
-                        processReceivedMessage(message);
+                        processReceivedMessage(message, false);
                     }
                 }
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
+        SwingUtilities.invokeLater(r);
+    }
+
+    // the application should call this method after all messages have
+    // been read from files and the UI should display the results
+    @Override
+    public void initializationComplete() {
+        Runnable r = new Runnable() {
+            @Override
+            public void run() {
+                Iterator<String> it = clientData.getContactIterator();
+                while (it.hasNext()) {
+                    String contactName = it.next();
+                    boolean bc = clientData.isBroadcast(contactName);
+                    updateContactsPanel(contactName, bc);
+                }
+                updateConversationPanels();
+            }
+        };
+        // schedule it in the event dispatch thread,
+        // but don't wait for it to execute
         SwingUtilities.invokeLater(r);
     }
 
@@ -137,7 +157,8 @@ class UIController implements ControllerInterface, UIAPI {
             @Override
             public void run() {
                 clientData.createContact(contactName, isBroadcast);
-                updateContactsPanel(contactName, isBroadcast);
+                // updateContactsPanel called in initializationComplete
+                // updateContactsPanel(contactName, isBroadcast);
                 KeyExchangePanel kep = getKeyExchangePanel(contactName);
                 if (kep != null) {
                     showKeyExchangeSuccess(kep, contactName);
@@ -197,11 +218,10 @@ class UIController implements ControllerInterface, UIAPI {
         this.contactsPanel = contactsPanel;
         // add all contacts to the contacts panel
         Iterator<String> it = clientData.getContactIterator();
-        String contactName;
         while (it.hasNext()) {
-            contactName = it.next();
-            updateContactsPanel(contactName,
-                                clientData.isBroadcast(contactName));
+            String contactName = it.next();
+            boolean bc = clientData.isBroadcast(contactName);
+            updateContactsPanel(contactName, bc);
         }
         contactsPanel.setActionListener(this);
     }
@@ -342,7 +362,8 @@ System.out.println ("resending subscription for " + ahra);
         }
         Conversation conv = clientData.getConversation(contact);
         if (conv == null) {
-            throw new RuntimeException("tried to update contacts panel for invalid contact name: " + contact);
+            return;   // there is no conversation, that's OK
+            // throw new RuntimeException("tried to update contacts panel for invalid contact name: " + contact);
         }
         int unreadCount = conv.getNumNewMsgs();
         if (unreadCount > 0) {
@@ -383,11 +404,11 @@ System.out.println ("resending subscription for " + ahra);
         line2 = line2 + " total";
         contactsPanel.setTopLabelText(line1, line2);
         String tabTitle = "Contacts";
-        int contactsWithNewMessages = AllNetContacts.contactsWithNewMessages();
-        if (contactsWithNewMessages > 0) {
-            int newMessages = AllNetContacts.totalNewMessages();
-            tabTitle = "Contacts (" 
-                     + contactsWithNewMessages + "/" + newMessages + ")";
+        if (m > 0) {
+//            tabTitle = "Contacts (" 
+//                     + contactsWithNewMessages + "/" + newMessages + ")";
+            tabTitle = "Contacts (" + m + "/" + 
+                                  clientData.getTotalNewMsgs() + ")";
         }
         myTabbedPane.setTitle(UI.CONTACTS_PANEL_ID, tabTitle);
     }
@@ -659,31 +680,35 @@ System.out.println ("resending subscription for " + ahra);
 
     // called from the event disp thread, so can do what we want with the UI
     // in this method
-    private void processReceivedMessage(Message msg) {
-        if (!clientData.contactExists(msg.from)) {
-            // maybe should throw Exception here, in production code 
-            System.out.println("got message from unknown contact " + msg.from
-                               + " (self is " + Message.SELF + ")");
+    private void processReceivedMessage(Message msg, boolean isNew) {
+        String contactName = msg.from;
+        if (!clientData.contactExists(contactName)) {
+            // maybe should throw Exception here, in production code?
+            System.out.println("got message from unknown contact " +
+                               contactName + " (self is " + Message.SELF + ")");
             return;
         }
-        Conversation conv = clientData.getConversation(msg.from);
+        Conversation conv = clientData.getConversation(contactName);
         conv.add(msg);
         // see if there is a tab open for this conversation
         ConversationPanel cp =
-          (ConversationPanel) myTabbedPane.getTabContent(msg.from);
+          (ConversationPanel) myTabbedPane.getTabContent(contactName);
         if (cp != null) {
             // add the message to it
             cp.addMsg(formatMessage(msg, maxLineLength), msg);
             // if the tab is currently selected, then mark message as read
             String selectedName = myTabbedPane.getSelectedID();
-            if (selectedName.equals(msg.from)) {
+            if (selectedName.equals(contactName)) {
                 msg.setRead();
             }
         }
         // finally, update the contacts panel 
         // (new messages or time of last msg for this contact)
-        updateContactsPanel(msg.from, clientData.isBroadcast(msg.from));
-        updateConversationPanels();
+        if (isNew) {  // don't update during initialization
+            boolean isBroadcast = clientData.isBroadcast(contactName);
+            updateContactsPanel(contactName, isBroadcast);
+            updateConversationPanels();
+        }
     }
 
     private void updateConversationPanels() {

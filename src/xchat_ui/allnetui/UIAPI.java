@@ -15,6 +15,9 @@ public interface UIAPI {
                                 String text, boolean broadcast);
     // initialization should call this method at startup with older messages
     public void savedMessages(Message[] message);
+    // the application should call this method after all messages have
+    // been read from files and the UI should display the results
+    public void initializationComplete();
     
     // the application should call this method after a message
     // has been successfully sent
@@ -27,6 +30,7 @@ public interface UIAPI {
     public void contactCreated(final String contactName, boolean isBroadcast);
     public void contactCreated(final String contactName);
     public void broadcastContactCreated(final String contactName);
+
     
     // the application should call this method to tell the UI to
     // remove a contact
