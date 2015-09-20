@@ -229,7 +229,7 @@ static void init_random (char * buffer, int bsize, int pure_random,
 #ifdef PREDICTABLE_RANDOM
 pure_random = 0;
 #endif /* PREDICTABLE_RANDOM */
-  time_t start_time = time (NULL);
+  /* time_t start_time = time (NULL); */
   if (! read_n_random_bytes (buffer, bsize, pure_random)) {
     if (random_init) {   /* use AES in counter mode with random_bank as key */
       printf ("warning: less randomness available, key may be less secure\n");

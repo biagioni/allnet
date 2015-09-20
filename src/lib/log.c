@@ -28,10 +28,12 @@ char log_buf [LOG_SIZE];    /* global */
 #endif /* PATH_MAX */
 #endif /* PATH_MAX */
 
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
 static char log_dir [PATH_MAX] = LOG_DIR;
 
-static char * module_name = "unknown module -- have main call init_log()";
 static char log_file_name [PATH_MAX] = "";
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+static char * module_name = "unknown module -- have main call init_log()";
 
 static int allnet_global_debugging = 0;
 
@@ -57,10 +59,10 @@ static int make_string ()
   return LOG_SIZE - 1;
 }
 
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
 /* returns 1 if the file exists by the end of the call, and 0 otherwise. */
 static int create_if_needed ()
 {
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
   int fd = open (log_file_name, O_WRONLY | O_APPEND | O_CREAT, 0644);
   if (fd < 0) {
     perror ("creat");
@@ -71,7 +73,6 @@ static int create_if_needed ()
   }
   close (fd);   /* file has been created, should now exist */
   /* printf ("%s: created file %s\n", module_name, log_file_name); */
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
   return 1;
 }
 
@@ -92,7 +93,6 @@ static int file_name (time_t seconds)
 /* put the latest log file name in log_file_name */
 static void latest_file (time_t seconds)
 {
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
   DIR * dir = opendir (log_dir);
   if (dir == NULL) {
     perror ("opendir");
@@ -122,8 +122,8 @@ static void latest_file (time_t seconds)
   }
   if (! file_exists)
     file_name (seconds);  /* create new log file */
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 }
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 void init_log (char * name)
 {
