@@ -253,7 +253,7 @@ static char * pid_file_name ()
     temp = getenv ("temp");
 #endif /* _WIN32 || _WIN64 || __CYGWIN__ */
   if (temp != NULL) {
-    int len = strlen (temp) + strlen (PIDS_FILE_NAME) + 2;
+    int len = (int) (strlen (temp) + strlen (PIDS_FILE_NAME) + 2);
     result = malloc_or_fail (len, "pids_file_name");
     snprintf (result, len, "%s/%s", temp, PIDS_FILE_NAME);
   }
@@ -727,7 +727,7 @@ static int default_interfaces (char * * * interfaces_p)
   /* compute the buffer size needed to store all interface information */
   while (next != NULL) {
     if (is_bc_interface (next)) {
-      int extra_len = strlen (interface_extra (next));
+      size_t extra_len = strlen (interface_extra (next));
       if (extra_len != 0) {
         count++; /* and add interface/extra and the null char */
         length += strlen (next->ifa_name) + 1 + extra_len + 1;
@@ -781,7 +781,7 @@ static void find_path (char * arg, char ** path, char ** program)
 int astart_main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
-  int alen = strlen (argv [0]);
+  int alen = (int)strlen (argv [0]);
   char * path;
   char * pname;
   find_path (argv [0], &path, &pname);
@@ -840,8 +840,10 @@ int astart_main (int argc, char ** argv)
   }
 #endif /* PRODUCTION_CODE */
 
+  int pid_fd = 0;
+#ifdef USE_FORK  /* only save pids if we do have processes */
   char * fname = pid_file_name ();
-  int pid_fd = open (fname, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0644);
+  pid_fd = open (fname, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0644);
   if (pid_fd < 0) {
     perror ("open");
     printf ("unable to write pids to %s\n", fname);
@@ -851,6 +853,7 @@ int astart_main (int argc, char ** argv)
   free (fname);
   for (i = 0; i < num_interfaces; i++)
     print_pid (pid_fd, abc_pids [i]);
+#endif /* USE_FORK */
   if (num_interfaces > 0)
     free (abc_pids);
 

@@ -225,4 +225,11 @@ extern int get_option (char option_letter, int * argcp, char ** argv);
 extern void print_usage (int argc, char ** argv, int user_callable,
                          int do_exit);
 
+/* in case of error on iOS, don't kill the process, only the thread (since
+ * in iOS, we only have one process */
+#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+#include <pthread.h>
+#define exit(n)        pthread_exit(NULL)
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+
 #endif /* ALLNET_UTIL_H */
