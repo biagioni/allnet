@@ -96,6 +96,7 @@ struct receive_arg {
 
 static void * receive_addrs (void * arg)
 {
+  init_log ("aip receive_addrs");
   struct receive_arg * ra = (struct receive_arg *) arg;
   int addr_socket = init_unix_socket (ra->socket_name);
   snprintf (log_buf, LOG_SIZE, "receive_addrs, socket is %d\n", addr_socket);
@@ -711,6 +712,7 @@ struct connect_thread_arg {
 
 static void * connect_thread (void * a)
 {
+  init_log ("aip connect_thread");
   struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
   routing_init_is_complete (1);   /* wait for routing to complete */
   int fd = connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);

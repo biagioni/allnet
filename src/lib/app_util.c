@@ -99,6 +99,7 @@ extern int astart_main (int, char **);
 
 static void * call_allnet_main (void * unused_arg)
 {
+  init_log ("app_util call_allnet_main");
   if (unused_arg != NULL)  /* check arg to prevent warnings */
     printf ("error: argument to call_allnet_main should be NULL\n");
   char * args [] = { "allnet", NULL };
@@ -223,6 +224,7 @@ static void seed_rng ()
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
+  init_log ("app_util receive_ignore");
   int * sockp = (int *) arg;
   while (1) {
     char * message;

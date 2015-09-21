@@ -101,6 +101,7 @@ struct real_arg {
 
 static void * listen_loop (void * arg)
 {
+  init_log ("listen_loop");
   struct real_arg * ra = (struct real_arg *) arg;
   snprintf (log_buf, LOG_SIZE, "started listen_loop, listen socket is %d\n",
             ra->fd);

@@ -17,6 +17,9 @@
 #include "util.h"
 #include "configfiles.h"
 
+#include <pthread.h>
+
+
 char log_buf [LOG_SIZE];    /* global */
 
 #define LOG_DIR		"log"
@@ -33,7 +36,41 @@ static char log_dir [PATH_MAX] = LOG_DIR;
 
 static char log_file_name [PATH_MAX] = "";
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-static char * module_name = "unknown module -- have main call init_log()";
+
+struct thread_info {
+  const char * name;
+  pthread_t id;
+};
+#define MAX_THREAD_INFO		100
+static struct thread_info ti [MAX_THREAD_INFO];
+static int free_thread_info = 0;
+
+static void log_thread_id (const char * name)
+{
+  pthread_t id = pthread_self ();
+  if (free_thread_info < MAX_THREAD_INFO) {
+    ti [free_thread_info].name = strcpy_malloc (name, "log_thread_id");
+    ti [free_thread_info].id = id;
+/* printf ("ti [%d] = {%s, %u}\n", free_thread_info, name, id); */
+    free_thread_info++;
+  } else {
+    printf ("reached MAX_THREAD_INFO %d\n", MAX_THREAD_INFO);
+  }
+}
+
+const char * module_name ()
+{
+  if (free_thread_info <= 0)
+    return "unknown module -- have main call init_log ()";
+  pthread_t id = pthread_self ();
+  int i;
+  for (i = 0; i < free_thread_info; i++) {
+    if (ti [i].id == id)
+      return ti [i].name;
+  }
+/* printf ("unknown thread ID %u\n", me); */
+  return "allnet";
+}
 
 static int allnet_global_debugging = 0;
 
@@ -66,7 +103,7 @@ static int create_if_needed ()
   int fd = open (log_file_name, O_WRONLY | O_APPEND | O_CREAT, 0644);
   if (fd < 0) {
     perror ("creat");
-    printf ("%s: unable to create '%s'\n", module_name, log_file_name);
+    printf ("%s: unable to create '%s'\n", module_name (), log_file_name);
     /* clear the name */
     log_file_name [0] = '\0';
     return 0;
@@ -127,12 +164,8 @@ static void latest_file (time_t seconds)
 
 void init_log (char * name)
 {
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
-  module_name = name;
-  char * last_slash = strrchr (module_name, '/');
-  if (last_slash != NULL)
-    module_name = last_slash + 1;
-
+  log_thread_id (name);
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED   /* create a log file */
   snprintf (log_dir, sizeof (log_dir), "/tmp/.allnet-log/");
   char * home = getenv (HOME_ENV);
   if (home != NULL)
@@ -148,9 +181,6 @@ void init_log (char * name)
     file_name (now); /* create a new file */
   else /* use the latest available file, only create new if none are present */
     latest_file (now);
-#else /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-  /* cannot keep track of module names if there is a single process */
-  module_name = "allnet";
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 }
 
@@ -211,7 +241,7 @@ void log_print_str (char * string)
               n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec,
               (long int) (now.tv_usec));
   int len = snprintf (buffer, sizeof (buffer), "%s %s: %s",
-                      time_str, module_name, string);
+                      time_str, module_name (), string);
   /* add a newline if it is not already at the end of the string */
   if ((len + 1 < sizeof (buffer)) && (len > 0) && (buffer [len - 1] != '\n')) {
     buffer [len++] = '\n';
@@ -288,4 +318,5 @@ void log_to_output (int on)
 {
   allnet_global_debugging = on;
 }
+
 

@@ -360,6 +360,7 @@ printf ("unable to open .allnet/adht/my_id\n");
 /* run as a thread since getaddrinfo can be extremely slow (10's of seconds) */
 static void * init_default_dns (void * arg)
 {
+  init_log ("routing.c init_default_dns");
   int * initialized = (int *) arg;
   char service [10];
   snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));

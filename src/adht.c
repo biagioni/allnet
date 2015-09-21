@@ -118,6 +118,7 @@ static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
 /* sends parts of my DHT routing table to all my DHT peers */
 static void * send_loop (void * a)
 {
+  init_log ("adht send_loop");
   int sock = *((int *) a);
   char packet [ADHT_MAX_PACKET_SIZE];
   unsigned char dest [ADDRESS_SIZE];

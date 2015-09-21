@@ -364,6 +364,7 @@ static pid_t exec_java_ui (char * arg)
 
 static void * child_wait_thread (void * arg)
 {
+  init_log ("xchat_socket child_wait_thread");
   pid_t pid = * ((int *) arg);
   int status;
   waitpid (pid, &status, 0);

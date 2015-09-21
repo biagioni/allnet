@@ -32,6 +32,7 @@ struct thread_arg {
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
+  init_log ("xtime.c receive_ignore");
   struct thread_arg * tap = (struct thread_arg *) arg;
   int sock = tap->sock;
   pd p = tap->p;

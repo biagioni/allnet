@@ -41,6 +41,7 @@ struct thread_arg {
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
+  init_log ("xtime/broadcast receive_ignore");
   struct thread_arg * tap = (struct thread_arg *) arg;
   int sock = tap->sock;
   pd p = tap->p;
@@ -101,6 +102,8 @@ static void broadcast (int sock, char * data, int dsize, int hops,
     }
   }
   int send_size = hsize + h2size + dsize + ssize;
+printf ("sending %d = %d + %d + %d + %d bytes\n",
+send_size, hsize, h2size, dsize, ssize);
   /* send with relatively low priority */
   send_pipe_message (sock, buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW);
 }
@@ -110,7 +113,8 @@ int main (int argc, char ** argv)
   log_to_output (get_option ('v', &argc, argv));
   int hops = 10;
   if (argc < 2) {
-    printf ("%s: needs at least a signing address\n", argv [0]);
+    printf ("%s: needs at least a signing address (optional hops)\n",
+            argv [0]);
     exit (1);
   }
   char * address = argv [1];
@@ -121,6 +125,7 @@ int main (int argc, char ** argv)
     printf ("key '%s' not found\n", address);
     exit (1);
   }
+printf ("sending using key %s\n", key->identifier);
 /*
   printf ("%s: got %d-byte public, %d-byte private key, address %02x.%02x\n",
           argv [0], key->pub_klen, key->priv_klen, key->address [0] & 0xff,
