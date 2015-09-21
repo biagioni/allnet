@@ -23,7 +23,7 @@ public class ConversationData {
     // if there is no last_read file, same as getAll
     public static Message [] getUnread(String contact)
     {
-        Message[] debug = getLatest(contact, false, 0, true);
+        // Message[] debug = getLatest(contact, false, 0, true);
         return getLatest(contact, false, 0, true);
     }
 
@@ -219,32 +219,53 @@ public class ConversationData {
                                           boolean unreadOnly,
                                           java.nio.file.attribute.FileTime lr)
     {
-        java.io.BufferedReader inFile = null;
-        try {
-            java.nio.charset.Charset charset =
-                java.nio.charset.Charset.forName("UTF-8");
-            java.util.Vector<Message> messages =
-                new java.util.Vector<Message>(10000, 10000);
+        // java.io.BufferedReader inFile = null;
+        java.nio.charset.Charset charset =
+            java.nio.charset.Charset.forName("UTF-8");
+        java.util.Vector<Message> messages =
+            new java.util.Vector<Message>(10000, 10000);
+        try (java.io.BufferedReader inFile =
+             java.nio.file.Files.newBufferedReader(path, charset)) {
+        // try {
             long fileSize = java.nio.file.Files.size(path);
-            inFile = java.nio.file.Files.newBufferedReader(path, charset);
             int maxLine = ((fileSize > Integer.MAX_VALUE) ? Integer.MAX_VALUE :
                              ((int) fileSize));
             Message newMessage = readMessage(contact, inFile, acks, maxLine,
-                                             unreadOnly, lr);
+                                             unreadOnly, lr, path.toString());
             while (newMessage != null) {
                 messages.add(newMessage);
                 newMessage = readMessage(contact, inFile, acks, maxLine,
-                                         unreadOnly, lr);
+                                         unreadOnly, lr, path.toString());
             }
             inFile.close();
-            inFile = null;
+            // inFile = null;
             Message[] result = new Message[0];    // needed to set the type
             return messages.toArray(result);
         } catch (java.io.IOException e) {
-            if (inFile != null)
-                try { inFile.close(); } catch (java.io.IOException c) { }
             return new Message[0];
         }
+    }
+
+    private static String myReadLine(java.io.BufferedReader in)
+    {
+       String result = "";
+       int c;
+       try {
+           while ((c = in.read()) >= 0) {
+// next is ridiculous code required by Java's attempt to harmonize
+// unicode and UTF-16
+               char[] cs = new char[2];
+               Character.toChars (c, cs, 0);
+               if (cs [0] == '\n')
+                   return result;
+               result = result + cs[0];
+           }
+       } catch (java.io.IOException e) {   // reached EOF, text is good
+System.out.println ("myReadLine exception " + e + ", already read " + result);
+       }
+       if (result.length() <= 0)
+           return null;
+       return result;
     }
 
     // returns null if unable to read a message
@@ -253,20 +274,25 @@ public class ConversationData {
                                        java.util.Vector<String> acks,
                                        int maxLine,
                                        boolean unreadOnly,
-                                       java.nio.file.attribute.FileTime lr)
+                                       java.nio.file.attribute.FileTime lr,
+                                       String fname)  // fname for debugging
     {
+        String firstLine = "no first line read yet";
+        String secondLine = "no second line read yet";
         try {
-            String firstLine = in.readLine();
+            firstLine = in.readLine();
+            // firstLine = myReadLine(in);
             if ((firstLine == null) || (firstLine.length() < 10))
                 return null;
             String start = firstLine.substring(0, 8);
             if (start.equals("got ack:")) {  
                 acks.add(firstLine.substring(9));
-                return readMessage(contact, in, acks, maxLine, unreadOnly, lr);
+                return readMessage(contact, in, acks, maxLine,
+                                   unreadOnly, lr, fname);
             }   // there should be three or more lines for either sent or rcvd
             String messageId = firstLine.substring(9);
             boolean sentMessage = start.equals ("sent id:");
-            String secondLine = in.readLine();
+            secondLine = in.readLine();
             if ((secondLine == null) || (secondLine.length() < 46))
                 return null;
             final String sequence = "sequence ";
@@ -330,7 +356,7 @@ public class ConversationData {
             if (unreadOnly) {
                 if (sentMessage || (! isUnread))
                     return readMessage(contact, in, acks, maxLine,
-                                       unreadOnly, lr);
+                                       unreadOnly, lr, fname);
             }
             if (sentMessage)
                 return new Message(Message.SELF, contact, time * 1000, seq,
@@ -339,7 +365,10 @@ public class ConversationData {
                 return new Message(contact, Message.SELF, time * 1000,
                                    rcvdTime * 1000, text, false, isUnread);
         } catch (java.io.IOException e) {
-            System.out.println ("I/O error " + e + " in ReadMessage");
+            System.out.println ("I/O error " + e + " on file " + fname +
+                                " in ReadMessage for contact " + contact);
+            System.out.println ("line 1: " + firstLine);
+            System.out.println ("line 2: " + secondLine);
             return null;
         }
     }
