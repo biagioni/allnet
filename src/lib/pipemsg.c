@@ -860,6 +860,27 @@ static int next_char (char** buf, int* n)
 }
 #endif /* 0 */
 
+static void extend_results (char * data, int len, int prio,
+                            int * index,  /* incremented by this call */
+                            char *** mbuf, int ** lbuf, int ** pbuf)
+{
+  int num_entries = (*index) + 1;
+  size_t csize = num_entries * sizeof (char *);
+  size_t isize = num_entries * sizeof (int);
+  *mbuf = realloc (*mbuf, csize);
+  *lbuf = realloc (*lbuf, isize);
+  *pbuf = realloc (*pbuf, isize);
+  if ((*mbuf == NULL) || (*lbuf == NULL) || (*pbuf == NULL)) {
+    printf ("pipemsg.c extend_results: ptrs %p %p %p, i %d, sizes %zu %zu\n",
+            *mbuf, *lbuf, *pbuf, *index, csize, isize);
+    exit (1);
+  }
+  (*mbuf) [*index] = data;
+  (*lbuf) [*index] = len;
+  (*pbuf) [*index] = prio;
+  *index = num_entries;
+}
+
 /* splits an incoming data into n = zero or more allnet messages, returning
  * the number of messages.
  * if the number of messages is greater than zero, malloc's arrays
@@ -918,15 +939,12 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
     *lengths = NULL;
   if (priorities != NULL)
     *priorities = NULL;
-#define MAX_MESSAGES	100000
-/* really, size should be dynamic, but that would require
-   two passes through the data which I don't want to do */
-  char * mbuf [MAX_MESSAGES];
-  int lbuf [MAX_MESSAGES];
-  int pbuf [MAX_MESSAGES];
+  char ** mbuf = NULL;
+  int *lbuf = NULL;
+  int *pbuf = NULL;
   int msize = 0;
   int priority;
-  while (bp->filled > 0) {
+  while (bp->filled > 0) {  /* there is still data to process */
     while ((bp->filled < HEADER_SIZE) && (dlen > 0)) {
       bp->data [bp->filled] = *data;
       bp->filled++;
@@ -954,22 +972,13 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
           memcpy (bp->prior, bp->data + HEADER_SIZE, from_bp);
         if (from_data > 0)
           memcpy (bp->prior + from_bp, data, from_data);
-        mbuf [mi] = bp->prior;
-        lbuf [mi] = msize;
-        pbuf [mi] = priority;
+        extend_results (bp->prior, msize, priority, &mi, &mbuf, &lbuf, &pbuf);
       } else {     /* point to the message in data */
-        mbuf [mi] = bp->data;
-        lbuf [mi] = msize;
-        pbuf [mi] = priority;
+        extend_results (bp->data, msize, priority, &mi, &mbuf, &lbuf, &pbuf);
       }
       bp->filled = 0;     /* at most one message in bp->data, so end loop */
       data += from_data;
       dlen -= from_data;
-      mi++;
-      if (mi >= MAX_MESSAGES) {
-        print_split_message_error (4, mi, MAX_MESSAGES, 0);
-        exit (1);
-      }
     } else { /* not enough data for the message */
              /* add partial data to bp->data, return */
   /* assertion should hold because bp->filled + dlen < msize + HEADER_SIZE
@@ -995,14 +1004,8 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
       data++;
       dlen--;
     } else if (dlen >= HEADER_SIZE + msize) {
-      mbuf [mi] = data + HEADER_SIZE;
-      lbuf [mi] = msize;
-      pbuf [mi] = priority;
-      mi++;
-      if (mi >= MAX_MESSAGES) {
-        print_split_message_error (5, mi, MAX_MESSAGES, 0);
-        exit (1);
-      }
+      extend_results (data + HEADER_SIZE, msize, priority,
+                      &mi, &mbuf, &lbuf, &pbuf);
       data += HEADER_SIZE + msize;
       dlen -= HEADER_SIZE + msize;
     } else {      /* dlen < msize, end loop, save in bp->data */
@@ -1018,11 +1021,8 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
     print_split_message_error (6, msize, dlen, sizeof (bp->data));
     exit (1);
   }
-  if (messages != NULL)
-    *messages = memcpy_malloc (mbuf, mi * sizeof (char *), "split_msgs 1");
-  if (lengths != NULL)
-    *lengths = memcpy_malloc (lbuf, mi * sizeof (int), "split_messages 2");
-  if (priorities != NULL)
-    *priorities = memcpy_malloc (pbuf, mi * sizeof (int), "split_mesgs 3");
+  if (messages != NULL)   *messages   = mbuf; else if (mi > 0) free (mbuf);
+  if (lengths != NULL)    *lengths    = lbuf; else if (mi > 0) free (lbuf);
+  if (priorities != NULL) *priorities = pbuf; else if (mi > 0) free (pbuf);
   return mi;
 }
