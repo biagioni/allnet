@@ -44,26 +44,32 @@ struct thread_info {
 #define MAX_THREAD_INFO		100
 static struct thread_info ti [MAX_THREAD_INFO];
 static int num_threads = 0;
+static pthread_mutex_t ti_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void log_thread_id (const char * name)
 {
+  pthread_mutex_lock (&ti_mutex);
   pthread_t id = pthread_self ();
   if (num_threads < MAX_THREAD_INFO) {
     ti [num_threads].name = strcpy_malloc (name, "log_thread_id");
     ti [num_threads].id = id;
-/* printf ("ti [%d] = {%s, %u}\n", num_threads, name, id); */
+printf ("ti [%d] (%d) = {%p (%s), %u}\n", num_threads, getpid (), ti [num_threads].name, name, id);
     num_threads++;
   } else {
     printf ("reached MAX_THREAD_INFO %d\n", MAX_THREAD_INFO);
   }
+  pthread_mutex_unlock (&ti_mutex);
 }
 
 static void unlog_thread_id ()
 {
+  pthread_mutex_lock (&ti_mutex);
   pthread_t id = pthread_self ();
   int i = 0;
   while (i < num_threads) {
     if (id == ti [i].id) {
+printf ("freeing name [%d] (%d) = { %p", i, getpid (), ti [i].name);
+printf (" (%s), %u}\n", ti [i].name, ti [i].id);
       free (ti [i].name);
       ti [i].name = NULL;
       ti [i] = ti [num_threads - 1];
@@ -72,6 +78,7 @@ static void unlog_thread_id ()
       i++;
     }
   }
+  pthread_mutex_unlock (&ti_mutex);
 }
 
 const char * module_name ()
