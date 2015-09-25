@@ -364,6 +364,7 @@ static pid_t exec_java_ui (char * arg)
 
 static void * child_wait_thread (void * arg)
 {
+  pthread_cleanup_push (close_log, NULL);
   init_log ("xchat_socket child_wait_thread");
   pid_t pid = * ((int *) arg);
   int status;
@@ -371,6 +372,7 @@ static void * child_wait_thread (void * arg)
   /* child has terminated, exit the entire program */
   /* printf ("shutting down\n"); */
   exit (0);
+  pthread_cleanup_pop (1);
   return NULL;
 }
 

@@ -5,6 +5,9 @@
 
 /* call at the very beginning of "main" with the module name */
 extern void init_log (char * module_name);
+/* call at the very end of a thread or a process, if possible */
+/* argument is ignored, used to make usable with pthread_cleanup_push */
+extern void close_log (void * ignored);
 
 /* to use:     snprintf (log_buffer, LOG_SIZE, "...", ...);
    then        log_print ();    */

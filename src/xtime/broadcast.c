@@ -41,6 +41,7 @@ struct thread_arg {
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
+  pthread_cleanup_push (close_log, NULL);
   init_log ("xtime/broadcast receive_ignore");
   struct thread_arg * tap = (struct thread_arg *) arg;
   int sock = tap->sock;
@@ -52,8 +53,9 @@ static void * receive_ignore (void * arg)
     if (n > 0)    /* ignore the message and recycle the storage */
       free (message);
     else          /* some error -- quit */
-      return NULL;
+      break;
   }
+  pthread_cleanup_pop (1);
   return NULL;
 }
 

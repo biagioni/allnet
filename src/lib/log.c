@@ -38,33 +38,49 @@ static char log_file_name [PATH_MAX] = "";
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 struct thread_info {
-  const char * name;
+  char * name;
   pthread_t id;
 };
 #define MAX_THREAD_INFO		100
 static struct thread_info ti [MAX_THREAD_INFO];
-static int free_thread_info = 0;
+static int num_threads = 0;
 
 static void log_thread_id (const char * name)
 {
   pthread_t id = pthread_self ();
-  if (free_thread_info < MAX_THREAD_INFO) {
-    ti [free_thread_info].name = strcpy_malloc (name, "log_thread_id");
-    ti [free_thread_info].id = id;
-/* printf ("ti [%d] = {%s, %u}\n", free_thread_info, name, id); */
-    free_thread_info++;
+  if (num_threads < MAX_THREAD_INFO) {
+    ti [num_threads].name = strcpy_malloc (name, "log_thread_id");
+    ti [num_threads].id = id;
+/* printf ("ti [%d] = {%s, %u}\n", num_threads, name, id); */
+    num_threads++;
   } else {
     printf ("reached MAX_THREAD_INFO %d\n", MAX_THREAD_INFO);
   }
 }
 
+static void unlog_thread_id ()
+{
+  pthread_t id = pthread_self ();
+  int i = 0;
+  while (i < num_threads) {
+    if (id == ti [i].id) {
+      free (ti [i].name);
+      ti [i].name = NULL;
+      ti [i] = ti [num_threads - 1];
+      num_threads--;
+    } else {
+      i++;
+    }
+  }
+}
+
 const char * module_name ()
 {
-  if (free_thread_info <= 0)
+  if (num_threads <= 0)
     return "unknown module -- have main call init_log ()";
   pthread_t id = pthread_self ();
   int i;
-  for (i = 0; i < free_thread_info; i++) {
+  for (i = 0; i < num_threads; i++) {
     if (ti [i].id == id)
       return ti [i].name;
   }
@@ -182,6 +198,13 @@ void init_log (char * name)
   else /* use the latest available file, only create new if none are present */
     latest_file (now);
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+}
+
+/* call at the very end of a thread or a process, if possible */
+/* argument is ignored, used to make usable with pthread_cleanup_push */
+void close_log (void * ignored)
+{
+  unlog_thread_id ();
 }
 
 static void log_print_buffer (char * buffer, int blen)

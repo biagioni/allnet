@@ -99,12 +99,14 @@ extern int astart_main (int, char **);
 
 static void * call_allnet_main (void * unused_arg)
 {
+  pthread_cleanup_push (close_log, NULL);
   init_log ("app_util call_allnet_main");
   if (unused_arg != NULL)  /* check arg to prevent warnings */
     printf ("error: argument to call_allnet_main should be NULL\n");
   char * args [] = { "allnet", NULL };
   /* could be: char * args [] = { "allnet", "-v", "def", NULL }; */
   astart_main (2, args);
+  pthread_cleanup_pop (1);
   return NULL;
 }
 
@@ -224,6 +226,7 @@ static void seed_rng ()
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
+  pthread_cleanup_push (close_log, NULL);
   init_log ("app_util receive_ignore");
   int * sockp = (int *) arg;
   while (1) {
@@ -235,6 +238,7 @@ static void * receive_ignore (void * arg)
     if (n < 0)
       break;
   }
+  pthread_cleanup_pop (1);
   return NULL;  /* returns if the pipe is closed */
 }
 #endif /* CREATE_READ_IGNORE_THREAD */

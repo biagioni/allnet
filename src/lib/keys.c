@@ -288,12 +288,16 @@ static int get_members (const char * members_content, int mlen,
   const char * p = members_content;
   int plen = mlen;
   char * s = ((char *) result) + ptr_size;
+#ifdef DEBUG_GROUP
   printf ("num_members %d, result %p, ptr_size %d, size %d(%d)\n", num_members,
           result, ptr_size, size, extra);
+#endif /* DEBUG_GROUP */
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
   for (i = 0; i < num_members; i++) {
+#ifdef DEBUG_GROUP
     printf ("i %d, p %p/%d, s %p/%d\n", i, p, plen, s, mlen);
+#endif /* DEBUG_GROUP */
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
     if (p + plen != members_content + mlen) {
@@ -322,10 +326,12 @@ static int get_members (const char * members_content, int mlen,
     *members_list = result;
   else
     free (result);
+#ifdef DEBUG_GROUP
   for (i = 0; i < num_members; i++)
     printf ("member [%d] = %s\n", i, result [i]);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
+#endif /* DEBUG_GROUP */
   return num_members;
 }
 
@@ -389,7 +395,9 @@ static int read_key_info (const char * path, char * file, char ** contact,
   free (members_name);
   if (mlen > 0) {
     char ** members_list;
+#ifdef DEBUG_GROUP
 printf ("found group %s\n", basename);
+#endif /* DEBUG_GROUP */
     int mcount = get_members (members_content, mlen, &members_list);
     free (members_content);
     if (mcount > 0) {

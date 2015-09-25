@@ -76,6 +76,7 @@ static void * generic_thread (void * arg)
     exit (1);
   }
   struct thread_arg * ta = (struct thread_arg *) arg;
+  pthread_cleanup_push (close_log, NULL);
   init_log (ta->name);
   if (ta->call_type == CALL_STRING) {
     ta->string_function (ta->string_arg);
@@ -93,7 +94,8 @@ static void * generic_thread (void * arg)
   }
   printf ("astart generic_thread: error termination of %s, call type %d\n",
           ta->name, ta->call_type);
-  exit (1);
+  pthread_cleanup_pop (1);
+  exit (1);  /* debugging */
   return NULL;
 }
 

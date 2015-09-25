@@ -96,6 +96,7 @@ struct receive_arg {
 
 static void * receive_addrs (void * arg)
 {
+  pthread_cleanup_push (close_log, NULL);
   init_log ("aip receive_addrs");
   struct receive_arg * ra = (struct receive_arg *) arg;
   int addr_socket = init_unix_socket (ra->socket_name);
@@ -112,7 +113,7 @@ static void * receive_addrs (void * arg)
     if (bytes <= 0) {
       printf ("error: address socket %d closed, thread exiting\n", addr_socket);
       free (ai);
-      return NULL;
+      break;
     }
     if (bytes == sizeof (struct addr_info)) {
       /* error checking, print or abort loop if find inconsistencies */
@@ -137,6 +138,8 @@ static void * receive_addrs (void * arg)
       free (buffer);
     }
   }
+  pthread_cleanup_pop (1);
+  return NULL;
 }
 #endif /* ALLNET_ADDRS */
 
@@ -712,6 +715,7 @@ struct connect_thread_arg {
 
 static void * connect_thread (void * a)
 {
+  pthread_cleanup_push (close_log, NULL);
   init_log ("aip connect_thread");
   struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
   routing_init_is_complete (1);   /* wait for routing to complete */
@@ -729,6 +733,7 @@ static void * connect_thread (void * a)
     listen_remove_fd (arg->info, fd);
   }
   free (a);  /* the caller doesn't do it, so we should */
+  pthread_cleanup_pop (1);
   return NULL;
 }
 
