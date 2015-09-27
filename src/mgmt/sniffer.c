@@ -73,8 +73,19 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug,
       keyset k;
       int tsize = decrypt_verify (hp->sig_algo, data, dsize, &contact, &k,
                                   &text, NULL, 0, NULL, 0, 0);
-      if (tsize > 0)
-        print_buffer (text, tsize, " decrypted:", 100, 1);
+      if (tsize > 0) {
+        print_buffer (text, tsize, " decrypted:", 100, 0);
+        if (tsize > 40) {
+          int len = tsize - 40;
+          char * copy = malloc_or_fail (len + 1, "sniffer/handle_packet");
+          memcpy (copy, text + 40, len);
+          copy [len] = '\0';
+          printf (" (%s)", copy);
+          free (copy);
+        }
+        printf ("\n");
+        free (text);
+      }
     } else if ((hp->message_type == ALLNET_TYPE_CLEAR) && 
                (hp->sig_algo != ALLNET_SIGTYPE_NONE)) {
       int verified = 0;
