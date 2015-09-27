@@ -138,6 +138,10 @@ static void handle_packet (int sock, char * message, int msize)
 /* used for debugging the generation of spare keys */
 /* #define DEBUG_PRINT_SPARES */
 
+/* ok to call with bsize == 0, will not gather any random bytes */
+/* only returns after time "until" has been reached */
+/* returns the number of bytes gathered, if any, 0 otherwise */
+/* should never return more than bsize */
 static int gather_random_and_wait (int bsize, char * buffer, time_t until)
 {
   int fd = -1;
@@ -146,13 +150,14 @@ static int gather_random_and_wait (int bsize, char * buffer, time_t until)
     fd = open ("/dev/random", O_RDONLY);
     while ((fd >= 0) && (count < bsize)) {
 #ifdef DEBUG_PRINT_SPARES
-      printf ("graw, count %d, bsize %d\n", count, bsize);
+      if ((count < 4) || (count + 4 >= bsize) || ((count % 128) == 127))
+        printf ("graw, count %d, bsize %d\n", count, bsize);
 #endif /* DEBUG_PRINT_SPARES */
       char data [1];
       ssize_t found = read (fd, data, 1);
       if (found == 1)
         buffer [count++] = data [0];
-      else if (found < 0) {
+      else if (found < 0) {  /* some kind of error */
         close (fd);
         fd = -1;
       }
@@ -163,18 +168,25 @@ static int gather_random_and_wait (int bsize, char * buffer, time_t until)
 #ifdef DEBUG_PRINT_SPARES
   printf ("at %ld: generated %d bytes, until %ld\n", time (NULL), count, until);
 #endif /* DEBUG_PRINT_SPARES */
-  while (time (NULL) < until) {
+  time_t now;
+  while ((now = time (NULL)) < until) {
 #ifdef DEBUG_PRINT_SPARES
     printf ("graw, time %ld, until %ld\n", time (NULL), until);
 #endif /* DEBUG_PRINT_SPARES */
-    if (sleep (10)) {  /* interrupted */
+    time_t interval = until - now;
+    if (sleep (interval)) {  /* interrupted */
 #ifdef DEBUG_PRINT_SPARES
       printf ("graw killed\n");
 #endif /* DEBUG_PRINT_SPARES */
       exit (1);
     }
   }
-  return ((fd >= 0) && (count == bsize));
+  if ((fd < 0) || (count > bsize))
+    printf ("gather_random_and_wait error: %d > %d (%d)\n", count, bsize, fd);
+  if (fd >= 0)
+    return count;
+  else
+    return 0;
 }
 
 #define KEY_GEN_BITS	4096
@@ -189,36 +201,49 @@ void keyd_generate (char * pname)
   }
   /* sleep 10 min, or 100 * the time to generate a key, whichever is longer */
   time_t sleep_time = 60 * 10;  /* 10 minutes, in seconds */
-  time_t start = time (NULL);
-  /* generate up to 100 keys, then generate more as they are used */
+  char buffer [KEY_GEN_BYTES];
+  int bytes_in_buffer = 0;
+  /* generate up to 100 keys (8 in low-power mode), then generate more
+   * as they are used */
   while (1) {
+    time_t start = time (NULL);
     time_t finish = start + sleep_time;
-    if (create_spare_key (-1, NULL, 0) < 100) {
-      static char buffer [KEY_GEN_BYTES];
-      char * bp = NULL;
+    int min_spares = 8;   /* stop generating when we reach 8 spare keys */
+    if (speculative_computation_is_ok ())  /* or 100 if plenty of power */
+      min_spares = 100;
+    int gather_bytes = KEY_GEN_BYTES - bytes_in_buffer;
 #ifdef DEBUG_PRINT_SPARES
-      printf ("gathering %d bytes and waiting %ld until %ld\n",
-              KEY_GEN_BYTES, finish - time (NULL), finish);
+    printf ("gathering %d bytes (have %d) and waiting %ld until %ld\n",
+            gather_bytes, bytes_in_buffer, finish - time (NULL), finish);
 #endif /* DEBUG_PRINT_SPARES */
-      if (gather_random_and_wait (KEY_GEN_BYTES, buffer, finish))
-        bp = buffer;
+    bytes_in_buffer +=
+      gather_random_and_wait (gather_bytes, buffer + bytes_in_buffer, finish);
+    int existing_spares = create_spare_key (-1, NULL, 0);
+    if (existing_spares < min_spares)  /* for now, report how many we have */
+      printf ("%ld: %d spares, min %d\n", start, existing_spares, min_spares);
+#ifdef DEBUG_PRINT_SPARES
+    printf ("%ld: %d spares, min %d\n", start, existing_spares, min_spares);
+    printf ("gathered %d bytes, done waiting, now %ld (and %d spares)\n",
+            bytes_in_buffer, time (NULL), create_spare_key (-1, NULL, 0));
+#endif /* DEBUG_PRINT_SPARES */
+    sleep_time = (60 * 10);  /* sleep for 10 minutes, or 100x key gen time */
+    if ((existing_spares < min_spares) && (bytes_in_buffer >= KEY_GEN_BYTES)) {
       start = time (NULL);
 #ifdef DEBUG_PRINT_SPARES
-      printf ("%ld: %d spare keys\n", start, create_spare_key (-1, NULL, 0));
+      printf ("creating spare key, start time %ld\n", start);
 #endif /* DEBUG_PRINT_SPARES */
-      create_spare_key (KEY_GEN_BITS, bp, KEY_GEN_BYTES);
-    } else {
-      if (gather_random_and_wait (0, NULL, finish))
-        printf ("generate_spare_keys: unexpected positive\n");
-      start = time (NULL);
+      create_spare_key (KEY_GEN_BITS, buffer, KEY_GEN_BYTES);
+      bytes_in_buffer = 0;   /* used all the bytes */
+      time_t done = time (NULL);
+      time_t delta = done - start;
+      /* sleep time is 100 * generation time or 10min, whichever is more */
+      int sleep_time_from_key_gen = delta * 100;
+      if (sleep_time < sleep_time_from_key_gen)
+        sleep_time = sleep_time_from_key_gen;
+#ifdef DEBUG_PRINT_SPARES
+      printf ("%ld: created, sleep %ld (from %ld)\n", done, sleep_time, delta);
+#endif /* DEBUG_PRINT_SPARES */
     }
-    sleep_time = (time (NULL) - start) * 100;
-    if (sleep_time < (60 * 10))
-      sleep_time = (60 * 10);
-#ifdef DEBUG_PRINT_SPARES
-    printf ("%ld: sleep time %ld (from %ld)\n", time (NULL), sleep_time,
-            time (NULL) - start);
-#endif /* DEBUG_PRINT_SPARES */
   }
 }
 
