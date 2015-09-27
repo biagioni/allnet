@@ -53,7 +53,9 @@ static void log_thread_id (const char * name)
   if (num_threads < MAX_THREAD_INFO) {
     ti [num_threads].name = strcpy_malloc (name, "log_thread_id");
     ti [num_threads].id = id;
-printf ("ti [%d] (%d) = {%p (%s), %u}\n", num_threads, getpid (), ti [num_threads].name, name, id);
+#ifdef DEBUG_PRINT
+    printf ("ti [%d] (%d) = {%p (%s), %u}\n", num_threads, getpid (), ti [num_threads].name, name, id);
+#endif /* DEBUG_PRINT */
     num_threads++;
   } else {
     printf ("reached MAX_THREAD_INFO %d\n", MAX_THREAD_INFO);
@@ -68,8 +70,10 @@ static void unlog_thread_id ()
   int i = 0;
   while (i < num_threads) {
     if (id == ti [i].id) {
-printf ("freeing name [%d] (%d) = { %p", i, getpid (), ti [i].name);
-printf (" (%s), %u}\n", ti [i].name, ti [i].id);
+#ifdef DEBUG_PRINT
+      printf ("freeing name [%d] (%d) = { %p", i, getpid (), ti [i].name);
+      printf (" (%s), %u}\n", ti [i].name, ti [i].id);
+#endif /* DEBUG_PRINT */
       free (ti [i].name);
       ti [i].name = NULL;
       ti [i] = ti [num_threads - 1];
