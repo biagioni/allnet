@@ -60,7 +60,7 @@ extern int handle_packet (int sock, char * packet, int psize,
                           char ** message, char ** desc, int * verified,
                           time_t * sent, int * duplicate, int * broadcast,
                           char * kcontact, char * ksecret1, char * ksecret2,
-                          int kmax_hops,
+                          unsigned char * kaddr, int kbits, int kmax_hops,
                           char * subscription,
                           unsigned char * addr, int nbits);
 
@@ -76,11 +76,15 @@ extern void request_and_resend (int sock, char * peer, keyset kset);
 /* create the contact and key, and send
  * the public key followed by
  *   the hmac of the public key using the secret as the key for the hmac.
+ * the address (at least ADDRESS_SIZE bytes) and the number of bits are
+ * filled in, should not be NULL.
  * secret2 may be NULL, secret1 should not be.
  * return 1 if successful, 0 for failure (usually if the contact already
  * exists, but other errors are possible) */
 extern int create_contact_send_key (int sock, char * contact, char * secret1,
-                                    char * secret2, int hops);
+                                    char * secret2,
+                                    unsigned char * addr, int * abits,
+                                    int hops);
 
 /* sends out a request for a key matching the subscription.
  * returns 1 for success (and fills in my_addr and nbits), 0 for failure */

@@ -474,6 +474,8 @@ int main (int argc, char ** argv)
   char kbuf1 [ALLNET_MTU];  /* key buffer to hold the contact name */
   char kbuf2 [ALLNET_MTU];  /* key buffer to hold the first secret */
   char kbuf3 [ALLNET_MTU];  /* key buffer to hold the second secret, if any */
+  unsigned char kaddr [ADDRESS_SIZE];
+  int kabits;
   int num_hops = 0;
   char * subscription = NULL;
   char sbuf [ALLNET_MTU];   /* subscribe buffer */
@@ -511,7 +513,7 @@ int main (int argc, char ** argv)
 printf ("sending key to peer %s/%s, secret %s/%s/%s, %d hops\n",
 peer, key_contact, to_send, key_secret, key_secret2, num_hops);
         create_contact_send_key (sock, key_contact, key_secret, key_secret2,
-                                 num_hops);
+                                 kaddr, &kabits, num_hops);
       } else if (code == 3) {   /* subscribe message -- peer is only field */
         snprintf (sbuf, sizeof (sbuf), "%s", peer);
 printf ("sending subscription to %s/%s\n", peer, sbuf);
@@ -545,7 +547,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       int mlen = handle_packet (sock, packet, found, &peer, &kset, &acks,
                                 &message, &desc, &verified, &mtime, &duplicate,
                                 &broadcast, key_contact, key_secret, 
-                                key_secret2, num_hops,
+                                key_secret2, kaddr, kabits, num_hops,
                                 subscription, saddr, sbits);
       if ((mlen > 0) && (verified)) {
         int mtype = CODE_DATA_MESSAGE; /* data */

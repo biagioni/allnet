@@ -48,6 +48,8 @@ int main (int argc, char ** argv)
   int key_hops = 0;
   int print_duplicates = 0;
   int seeking_key = 0;
+  int abits;
+  unsigned char my_addr [ADDRESS_SIZE];
   int i;
   for (i = 1; i < argc; i++) {
     if (strcmp (argv [i], "-a") == 0)
@@ -72,7 +74,8 @@ int main (int argc, char ** argv)
       printf ("%d hops, my secret string is '%s'", key_hops, secret);
       normalize_secret (secret);
       printf (" (or %s)\n", secret);
-      create_contact_send_key (sock, contact, secret, NULL, key_hops);
+      create_contact_send_key (sock, contact, secret, NULL, my_addr, &abits,
+                               key_hops);
     }
   }
 
@@ -102,8 +105,8 @@ int main (int argc, char ** argv)
       char * message;
       int mlen = handle_packet (sock, packet, found, &peer, &kset, NULL,
                                 &message, &desc, &verified, NULL, &duplicate,
-                                &broadcast, contact, secret, NULL, key_hops,
-                                NULL, NULL, 0);
+                                &broadcast, contact, secret, NULL,
+                                my_addr, abits, key_hops, NULL, NULL, 0);
       if (mlen > 0) {
         time_t rtime = time (NULL);
         char * ver_mess = "";

@@ -428,7 +428,8 @@ static int send_key (int sock, char * contact, keyset kset, char * secret,
 
 static int handle_key (int sock, struct allnet_header * hp,
                        char * data, int dsize, char * contact,
-                       char * secret1, char * secret2, int max_hops)
+                       char * secret1, char * secret2,
+                       unsigned char * my_addr, int my_bits, int max_hops)
 {
 #ifdef DEBUG_PRINT
   printf ("in handle_key (%s, %s, %s)\n", contact, secret1, secret2);
@@ -519,8 +520,12 @@ static int handle_key (int sock, struct allnet_header * hp,
         secret = secret2;
       /* else peer sent us a valid key, must know our secret1 */
 printf ("sending back key with secret %s\n", secret);
+print_buffer ((char *)my_addr, my_bits, "sending from", (my_bits + 7) / 8, 1);
       if (! send_key (sock, contact, keys [key_index], secret,
+                      (unsigned char *) my_addr, my_bits, max_hops))
+/* if (! send_key (sock, contact, keys [key_index], secret,
                       hp->source, hp->src_nbits, max_hops))
+*/
         printf ("send_key failed for key index %d/%d\n", key_index, nkeys);
       free (keys);
       return -1;  /* successful key exchange */
@@ -577,7 +582,7 @@ int handle_packet (int sock, char * packet, int psize,
                    int * verified, time_t * sent,
                    int * duplicate, int * broadcast,
                    char * kcontact, char * ksecret1, char * ksecret2,
-                   int kmax_hops,
+                   unsigned char * kaddr, int kbits, int kmax_hops,
                    char * subscription, 
                    unsigned char * addr, int nbits)
 {
@@ -630,7 +635,7 @@ int handle_packet (int sock, char * packet, int psize,
 
   if (hp->message_type == ALLNET_TYPE_KEY_XCHG)
     return handle_key (sock, hp, packet + hsize, psize - hsize,
-                       kcontact, ksecret1, ksecret2, kmax_hops);
+                       kcontact, ksecret1, ksecret2, kaddr, kbits, kmax_hops);
 
   return 0;
 }
@@ -711,12 +716,17 @@ void request_and_resend (int sock, char * contact, keyset kset)
   }
 }
 
-/* send the public key, followed by the hmac of the public key using
- * the secret as the key for the hmac, and return 1.
+/* create the contact and key, and send
+ * the public key followed by
+ *   the hmac of the public key using the secret as the key for the hmac.
+ * the address (at least ADDRESS_SIZE bytes) and the number of bits are
+ * filled in, should not be NULL.
  * secret2 may be NULL, secret1 should not be.
- * or fail and returns 0 if the contact already exists (or other errors) */
+ * return 1 if successful, 0 for failure (usually if the contact already
+ * exists, but other errors are possible) */
 int create_contact_send_key (int sock, char * contact, char * secret1,
-                             char * secret2, int hops)
+                             char * secret2, unsigned char * addr, int * abits,
+                             int hops)
 {
   if ((contact == NULL) || (strlen (contact) == 0)) {
     printf ("empty contact, cannot send key\n");
@@ -730,17 +740,19 @@ int create_contact_send_key (int sock, char * contact, char * secret1,
 #endif /* DEBUG_PRINT */
     return 0;
   }
-  unsigned char address [ADDRESS_SIZE];
-  int abits = 16;
   keyset kset;
+  *abits = 16;  /* static for now */
   if (num_keysets (contact) < 0) {
-    random_bytes ((char *) address, sizeof (address));
-    kset = create_contact (contact, 4096, 1, NULL, 0, address, abits, NULL, 0);
+    if (*abits > ADDRESS_SIZE * 8)
+      *abits = ADDRESS_SIZE * 8;
+    bzero (addr, ADDRESS_SIZE);
+    random_bytes ((char *) addr, (*abits + 7) / 8);
+    kset = create_contact (contact, 4096, 1, NULL, 0, addr, *abits, NULL, 0);
     if (kset < 0) {
       printf ("contact %s already exists\n", contact);
       return 0;
     }
-  } else {
+  } else {  /* contact already exists, get the keyset and the address */
     keyset * keysets;
     int n = all_keys (contact, &keysets);
     if (n <= 0) {
@@ -749,13 +761,13 @@ int create_contact_send_key (int sock, char * contact, char * secret1,
     }
     kset = keysets [0];
     free (keysets);
-    abits = get_local (kset, address);
+    *abits = get_local (kset, addr);
   }
-  if (send_key (sock, contact, kset, secret1, address, abits, hops)) {
+  if (send_key (sock, contact, kset, secret1, addr, *abits, hops)) {
     printf ("send_key sent key to contact %s, %d hops, secret %s\n",
             contact, hops, secret1);
     if ((secret2 != NULL) && (strlen (secret2) > 0) &&
-        (send_key (sock, contact, kset, secret2, address, abits, hops)))
+        (send_key (sock, contact, kset, secret2, addr, *abits, hops)))
       printf ("send_key also sent key to contact %s, %d hops, secret %s\n",
               contact, hops, secret2);
     return 1;

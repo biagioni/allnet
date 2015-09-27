@@ -80,6 +80,8 @@ int main (int argc, char ** argv)
   char * kcontact = NULL;
   char * my_secret = NULL;
   char * peer_secret = NULL;
+  unsigned char my_addr [ADDRESS_SIZE];
+  int my_bits;
 #define MAX_SECRET	15  /* including a terminating null character */
   char my_secret_buf [MAX_SECRET];
   char peer_secret_buf [200];
@@ -121,7 +123,7 @@ int main (int argc, char ** argv)
     wait_time = 10 * 24 * 3600 * 1000;   /* wait up to 10 days for a key */
     char * send_secret = my_secret;
     if (! create_contact_send_key (sock, kcontact, send_secret,
-                                   peer_secret, hops))
+                                   peer_secret, my_addr, &my_bits, hops))
       return 1;
   } else { /* send the data packet */
     int i;
@@ -186,7 +188,7 @@ int main (int argc, char ** argv)
     int mlen = handle_packet (sock, packet, found, &peer, &kset, &acks,
                               &message, &desc, &verified, NULL, &duplicate,
                               &broadcast, kcontact, my_secret, peer_secret,
-                              kmax_hops, NULL, NULL, 0);
+                              my_addr, my_bits, kmax_hops, NULL, NULL, 0);
     if (mlen > 0) {
       time_t rtime = time (NULL);
       char * ver_mess = "";

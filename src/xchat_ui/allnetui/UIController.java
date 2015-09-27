@@ -151,14 +151,13 @@ class UIController implements ControllerInterface, UIAPI {
     // the application should call this method to tell the UI about a new contact
     @Override
     public void contactCreated(final String contactName,
-            final boolean isBroadcast) {
+                               final boolean isBroadcast) {
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
                 clientData.createContact(contactName, isBroadcast);
-                // updateContactsPanel called in initializationComplete
-                // updateContactsPanel(contactName, isBroadcast);
+                updateContactsPanel(contactName, isBroadcast);
                 KeyExchangePanel kep = getKeyExchangePanel(contactName);
                 if (kep != null) {
                     showKeyExchangeSuccess(kep, contactName);
