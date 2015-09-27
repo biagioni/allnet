@@ -288,6 +288,20 @@ int connect_to_local (char * program_name, char * arg0, pd p)
   return sock;
 }
 
+int ok_for_speculative_computation = 1;
+/* since allnet may run on devices with limited power, some things
+ * (speculative computation, i.e. stuff that is not needed immediately)
+ * may be postponed if we are not plugged in to power */
+int speculative_computation_is_ok ()
+{
+  return ok_for_speculative_computation;
+}
+
+void set_speculative_computation (int ok)
+{
+  ok_for_speculative_computation = ok;
+}
+
 #ifdef GET_BCKEY_IS_IMPLEMENTED
 /* retrieve or request a public key.
  *
