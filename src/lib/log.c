@@ -19,10 +19,13 @@
 
 #include <pthread.h>
 
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
+#define LOG_TO_FILE
+/* ios doesn't give the user any reasonable way to read or
+ * manage log files, so no use printing to file under iOS */
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 char log_buf [LOG_SIZE];    /* global */
-
-#define LOG_DIR		"log"
 
 #ifndef PATH_MAX	/* defined in a different place in some OS's */
 #include <sys/syslimits.h>
@@ -31,11 +34,13 @@ char log_buf [LOG_SIZE];    /* global */
 #endif /* PATH_MAX */
 #endif /* PATH_MAX */
 
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
+#ifdef LOG_TO_FILE 
+#define LOG_DIR		"log"
+
 static char log_dir [PATH_MAX] = LOG_DIR;
 
 static char log_file_name [PATH_MAX] = "";
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#endif /* LOG_TO_FILE */
 
 struct thread_info {
   char * name;
@@ -44,11 +49,11 @@ struct thread_info {
 #define MAX_THREAD_INFO		100
 static struct thread_info ti [MAX_THREAD_INFO];
 static int num_threads = 0;
-static pthread_mutex_t ti_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void log_thread_id (const char * name)
 {
-  pthread_mutex_lock (&ti_mutex);
+  pthread_mutex_lock (&log_mutex);
   pthread_t id = pthread_self ();
   if (num_threads < MAX_THREAD_INFO) {
     ti [num_threads].name = strcpy_malloc (name, "log_thread_id");
@@ -60,12 +65,12 @@ static void log_thread_id (const char * name)
   } else {
     printf ("reached MAX_THREAD_INFO %d\n", MAX_THREAD_INFO);
   }
-  pthread_mutex_unlock (&ti_mutex);
+  pthread_mutex_unlock (&log_mutex);
 }
 
 static void unlog_thread_id ()
 {
-  pthread_mutex_lock (&ti_mutex);
+  pthread_mutex_lock (&log_mutex);
   pthread_t id = pthread_self ();
   int i = 0;
   while (i < num_threads) {
@@ -82,7 +87,7 @@ static void unlog_thread_id ()
       i++;
     }
   }
-  pthread_mutex_unlock (&ti_mutex);
+  pthread_mutex_unlock (&log_mutex);
 }
 
 const char * module_name ()
@@ -123,14 +128,17 @@ static int make_string ()
   return LOG_SIZE - 1;
 }
 
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
+#ifdef LOG_TO_FILE 
 /* returns 1 if the file exists by the end of the call, and 0 otherwise. */
 static int create_if_needed ()
 {
+  char original [PATH_MAX];  /* for debugging */
+  strncpy (original, log_file_name, sizeof (original));
   int fd = open (log_file_name, O_WRONLY | O_APPEND | O_CREAT, 0644);
   if (fd < 0) {
     perror ("creat");
-    printf ("%s: unable to create '%s'\n", module_name (), log_file_name);
+    printf ("%s: unable to create %s(%zd)/%s(%zd)\n", module_name (),
+            log_file_name, strlen (log_file_name), original, strlen (original));
     /* clear the name */
     log_file_name [0] = '\0';
     return 0;
@@ -187,12 +195,13 @@ static void latest_file (time_t seconds)
   if (! file_exists)
     file_name (seconds);  /* create new log file */
 }
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#endif /* LOG_TO_FILE */
 
 void init_log (char * name)
 {
-  log_thread_id (name);
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED   /* create a log file */
+  log_thread_id (name);  /* acquires log_mutex, so call before acquiring */
+#ifdef LOG_TO_FILE   /* create a log file */
+  pthread_mutex_lock (&log_mutex);
   snprintf (log_dir, sizeof (log_dir), "/tmp/.allnet-log/");
   char * home = getenv (HOME_ENV);
   if (home != NULL)
@@ -201,14 +210,15 @@ void init_log (char * name)
     snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
 
   if (! create_dir (log_dir))
-    printf ("unable to create directory %s\n", log_dir);
+    printf ("%s: unable to create directory %s\n", name, log_dir);
   time_t now = time (NULL);
   /* only open a new log file if this is the astart or allnet module */
   if ((strcasecmp (name, "astart") == 0) || (strcasecmp (name, "allnet") == 0))
     file_name (now); /* create a new file */
   else /* use the latest available file, only create new if none are present */
     latest_file (now);
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+  pthread_mutex_unlock (&log_mutex);
+#endif /* LOG_TO_FILE */
 }
 
 /* call at the very end of a thread or a process, if possible */
@@ -220,18 +230,13 @@ void close_log (void * ignored)
 
 static void log_print_buffer (char * buffer, int blen)
 {
-  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-  pthread_mutex_lock (&mutex);
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
-/* ios doesn't give the user any reasonable way to read or
- * manage log files, so no use printing to log */
+#ifdef LOG_TO_FILE 
   int fd = open (log_file_name, O_WRONLY | O_APPEND);
   if (fd < 0) {
     printf ("%s", buffer);
-    pthread_mutex_unlock (&mutex);
     return;
   }
-  struct flock lock;
+  struct flock lock;  /* lock the file, to keep others out while we print */
   lock.l_type = F_WRLCK;
   lock.l_whence = SEEK_END;
   lock.l_start = 0;
@@ -240,7 +245,6 @@ static void log_print_buffer (char * buffer, int blen)
     perror ("unable to lock log file");
     printf ("(%d) %s", blen, buffer);
     close (fd);
-    pthread_mutex_unlock (&mutex);
     return;
   }
   int w = write (fd, buffer, blen);
@@ -255,13 +259,12 @@ static void log_print_buffer (char * buffer, int blen)
   if (fcntl (fd, F_SETLKW, &lock) < 0)   /* essentially, ignore this error */
     perror ("unable to unlock log file");
   close (fd);
-#endif /* ! __IPHONE_OS_VERSION_MIN_REQUIRED  */
+#endif /* LOG_TO_FILE  */
   if (allnet_global_debugging)
     printf ("%s", buffer);
-  pthread_mutex_unlock (&mutex);
 }
 
-void log_print_str (char * string)
+void log_print_str_locked (char * string)
 {
   char time_str [100];
   char buffer [LOG_SIZE + LOG_SIZE];
@@ -284,11 +287,21 @@ void log_print_str (char * string)
   log_print_buffer (buffer, len);
 }
 
+
+void log_print_str (char * string)
+{
+  pthread_mutex_lock (&log_mutex);
+  log_print_str_locked (string);
+  pthread_mutex_unlock (&log_mutex);
+}
+
 void log_print ()
 {
-  make_string ();   /* make sure it is terminated */
-  log_print_str (log_buf);
+  pthread_mutex_lock (&log_mutex);
+  make_string ();   /* make sure it is terminated with newline and \0 */
+  log_print_str_locked (log_buf);
   bzero (log_buf, sizeof (log_buf));
+  pthread_mutex_unlock (&log_mutex);
 }
 
 #ifdef ADDRS_TO_STR_USED
