@@ -397,8 +397,9 @@ static int handle_sub (int sock, struct allnet_header * hp,
   return 0;
 }
 
-static int send_key (int sock, char * contact, keyset kset, char * secret,
-                     unsigned char * address, int abits, int max_hops)
+static int send_key (int sock, const char * contact, keyset kset,
+                     const char * secret, unsigned char * address, int abits,
+                     int max_hops)
 {
   allnet_rsa_pubkey k;
   get_my_pubkey (kset, &k);
@@ -731,8 +732,9 @@ void request_and_resend (int sock, char * contact, keyset kset)
  * secret2 may be NULL, secret1 should not be.
  * return 1 if successful, 0 for failure (usually if the contact already
  * exists, but other errors are possible) */
-int create_contact_send_key (int sock, char * contact, char * secret1,
-                             char * secret2, unsigned char * addr, int * abits,
+int create_contact_send_key (int sock, const char * contact,
+                             const char * secret1, const char * secret2,
+                             unsigned char * addr, int * abits,
                              int hops)
 {
   if ((contact == NULL) || (strlen (contact) == 0)) {

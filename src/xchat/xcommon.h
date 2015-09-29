@@ -81,8 +81,9 @@ extern void request_and_resend (int sock, char * peer, keyset kset);
  * secret2 may be NULL, secret1 should not be.
  * return 1 if successful, 0 for failure (usually if the contact already
  * exists, but other errors are possible) */
-extern int create_contact_send_key (int sock, char * contact, char * secret1,
-                                    char * secret2,
+extern int create_contact_send_key (int sock, const char * contact,
+                                    const char * secret1,
+                                    const char * secret2,
                                     unsigned char * addr, int * abits,
                                     int hops);
 
