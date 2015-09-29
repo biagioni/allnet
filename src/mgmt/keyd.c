@@ -32,15 +32,20 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
 #endif /* DEBUG_PRINT */
   int dlen = allnet_rsa_pubkey_size (key->pub_key) + 1;
   char * data = malloc_or_fail (dlen, "keyd send_key");
-  if (! allnet_pubkey_to_raw (key->pub_key, data, dlen))
+  int klen = allnet_pubkey_to_raw (key->pub_key, data, dlen);
+  if ((klen > dlen) || (klen == 0)) {
+    snprintf (log_buf, LOG_SIZE, "error in send_key: %d, %d\n", klen, dlen);
+    log_print ();
     return;
+  }
   int type = ALLNET_TYPE_CLEAR;
   int allocated = 0;
   int amhsize = sizeof (struct allnet_app_media_header);
   int bytes;
   struct allnet_header * hp =
-    create_packet (dlen + amhsize, type, hops, ALLNET_SIGTYPE_NONE,
-                   key->address, 16, address, abits, NULL, NULL, &bytes);
+    create_packet (dlen + amhsize + KEY_RANDOM_PAD_SIZE, type, hops,
+                   ALLNET_SIGTYPE_NONE, key->address, 16, address, abits,
+                   NULL, NULL, &bytes);
   char * adp = ALLNET_DATA_START(hp, hp->transport, bytes);
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) adp;
@@ -51,9 +56,8 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   if (allocated)
     free (data);
   print_buffer (dp, dlen, "key", 10, 1);
-#ifdef DEBUG_PRINT
-printf ("verification is %d\n", verify_bc_key ("testxyzzy@by_sign.that_health", dp, dlen, "en", 16, 0));
-#endif /* DEBUG_PRINT */
+  char * r = dp + klen;
+  random_bytes (r, KEY_RANDOM_PAD_SIZE);
 
   /* send with relatively low priority */
   char * message = (char *) hp;
@@ -158,6 +162,7 @@ static int gather_random_and_wait (int bsize, char * buffer, time_t until)
       if (found == 1)
         buffer [count++] = data [0];
       else if (found < 0) {  /* some kind of error */
+perror ("gather_random_and_wait read /dev/random");
         close (fd);
         fd = -1;
       }
@@ -181,7 +186,7 @@ static int gather_random_and_wait (int bsize, char * buffer, time_t until)
       exit (1);
     }
   }
-  if ((fd < 0) || (count > bsize))
+  if ((bsize > 0) && ((fd < 0) || (count > bsize)))
     printf ("gather_random_and_wait error: %d > %d (%d)\n", count, bsize, fd);
   if (fd >= 0)
     return count;

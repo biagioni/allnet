@@ -28,7 +28,8 @@ static int send_key_request (int sock, char * phrase, char * source, int slen)
   sha512_bytes (mapped, mlen, (char *) destination, 1);
   free (mapped);
 
-  int dsize = 1;  /* nbits_fingerprint plus the key */
+#define EMPTY_FINGERPRINT_SIZE	1  /* nbits_fingerprint plus the fingerprint */
+  int dsize = EMPTY_FINGERPRINT_SIZE + KEY_RANDOM_PAD_SIZE;
   int psize;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
@@ -48,6 +49,8 @@ static int send_key_request (int sock, char * phrase, char * source, int slen)
   struct allnet_key_request * kp =
     (struct allnet_key_request *) (packet + hsize);
   kp->nbits_fingerprint = 0;
+  char * r = ((char *) kp) + EMPTY_FINGERPRINT_SIZE;
+  random_bytes (r, KEY_RANDOM_PAD_SIZE);
 
 /* printf ("sending %d-byte key request\n", psize); */
   if (! send_pipe_message_free (sock, packet, psize, ALLNET_PRIORITY_LOCAL)) {

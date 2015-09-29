@@ -7,6 +7,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <assert.h>
 
 #include "chat.h"
 #include "xcommon.h"
@@ -367,18 +368,22 @@ static int handle_sub (int sock, struct allnet_header * hp,
 #endif /* DEBUG_PRINT */
     struct allnet_app_media_header * amhp =
       (struct allnet_app_media_header *) data;
+    assert (ALLNET_APP_ID_SIZE == 4);
+    assert (ALLNET_MEDIA_ID_SIZE == 4);
     int media = 0;
-    if (dsize >= sizeof (struct allnet_app_media_header) + 2)
+    if (dsize >=
+        sizeof (struct allnet_app_media_header) + 2 + KEY_RANDOM_PAD_SIZE)
       media = readb32u (amhp->media);
-    if (media != ALLNET_MEDIA_PUBLIC_KEY) {
+    if ((memcmp ("keyd", &(amhp->app), ALLNET_APP_ID_SIZE) != 0) ||
+        (media != ALLNET_MEDIA_PUBLIC_KEY)) {
 #ifdef DEBUG_PRINT
-      printf ("handle_sub ignoring unknown media type %08x, dsize %d\n",
-              media, dsize);
+      printf ("handle_sub ignoring unknown app %d, media type %08x, dsize %d\n",
+              readb32 (amhp->app), media, dsize);
 #endif /* DEBUG_PRINT */
       return 0;
     }
     data += sizeof (struct allnet_app_media_header);
-    dsize -= sizeof (struct allnet_app_media_header);
+    dsize -= sizeof (struct allnet_app_media_header) + KEY_RANDOM_PAD_SIZE;
     int correct = verify_bc_key (subscription, data, dsize, "en", 16, 1);
     if (correct)
       printf ("received key does verify %s, saved\n", subscription);
@@ -405,7 +410,7 @@ static int send_key (int sock, char * contact, keyset kset, char * secret,
             contact, kset, pub_ksize);
     return 0;
   }
-  int dsize = pub_ksize + SHA512_SIZE;
+  int dsize = pub_ksize + SHA512_SIZE + KEY_RANDOM_PAD_SIZE;
   int size;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_XCHG, max_hops, ALLNET_SIGTYPE_NONE,
@@ -417,7 +422,9 @@ static int send_key (int sock, char * contact, keyset kset, char * secret,
   sha512hmac (my_public_key, pub_ksize, secret, strlen (secret),
               /* hmac is written directly into the packet */
               data + pub_ksize);
+  random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
 
+/* printf ("sending key of size %d\n", size); */
   if (! send_pipe_message_free (sock, message, size, ALLNET_PRIORITY_LOCAL)) {
     printf ("unable to send %d-byte key exchange packet to %s\n",
             size, contact);
@@ -469,15 +476,15 @@ static int handle_key (int sock, struct allnet_header * hp,
     if (nkeys <= 0)
       printf ("handle_key error: contact '%s' has %d keys\n", contact, nkeys);
 /* it is fairly normal to get multiple copies of the key.  Ignore.
-    else
-      printf ("handle_key: contact '%s' has %d keys, no unmatched key found\n",
               contact, nkeys);
 */
     return 0;
   }
 
   char * received_key = data;
-  int ksize = dsize - SHA512_SIZE;
+  int ksize = dsize - SHA512_SIZE - KEY_RANDOM_PAD_SIZE;
+  if (ksize < 2)
+    return 0;
   /* check to see if it is my own key */
   for (i = 0; i < nkeys; i++) {
     allnet_rsa_pubkey k;

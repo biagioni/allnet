@@ -106,27 +106,45 @@ struct allnet_variable_signature {
   unsigned char sig_nbytes [2];   /* number of bytes, MSB first */
 };
 
-/* ALLNET_TYPE_KEY_XCHG carries a public key preceded by
- *   an hmac of (the public key followed by a secret nonce).
+/* ALLNET_TYPE_KEY_XCHG carries a public key followed by
+ *   an hmac of (the public key followed by a secret nonce)
+ *   followed by a random bitstring.  The random bitstring allows
+ *   the message to be resent, without the retransmission being seen
+ *   as duplicate.
  * ALLNET_TYPE_KEY_REQ
  *   carries a (partial) fingerprint of a public key.  The public key sent
  *   in response should match the given fingerprint.
- *   The reply is sent as a broadcast message, using as destination address
- *   the source address of the sender.
+ *   The reply is sent as a broadcast (CLEAR) message, using as
+ *   destination address the source address of the key request.
+ *   A key request carries a number of bits in the fingerprint (may be zero),
+ *   then a corresponding number of bytes of fingerprint, and a
+ *   random bitstring.
+ * ALLNET_TYPE_CLEAR
+ *   the key sent in response to a subscription (KEY_REQ) starts with
+ *   an app media header, with app "keyd" and media ALLNET_MEDIA_PUBLIC_KEY
+ *   This is followed by the key, then a random bitstring.
  */
+#define KEY_RANDOM_PAD_SIZE	8
 struct allnet_key_exchange {
-  unsigned char nbytes_hmac;  	    /* number of bytes in the hmac */
-  unsigned char hmac [0];           /* confirms knowledge of secret nonce */
-  unsigned char public_key [0];     /* public key to be used */
+  unsigned char public_key [0];     /* public key to be used -- 513 for RSA */
+  unsigned char hmac [64];          /* confirms knowledge of secret nonce */
+  unsigned char random [KEY_RANDOM_PAD_SIZE];    /* make each msg unique */
 };
 struct allnet_key_request {
   unsigned char nbits_fingerprint;  /* number of bits in the fingerprint,
                                        may be zero */
   unsigned char fingerprint [0];    /* (nbits + 7) / 8 bytes of fingerprint,
                                        identifies requested public key */
+  unsigned char random [KEY_RANDOM_PAD_SIZE];    /* make each msg unique */
+};
+struct allnet_key_reply {
+  unsigned char app_media_header [8];/* keyd and ALLNET_MEDIA_PUBLIC_KEY */
+  unsigned char public_key [0];     /* public key -- 513 bytes for RSA */
+  unsigned char random [KEY_RANDOM_PAD_SIZE];    /* make each msg unique */
 };
 
-/* a LARGE packet must be an ACK packet.  All the other flags are orthogonal */
+/* a LARGE packet must also be an ACK_REQ packet.  All other flags can
+ * be used independently of each other */
 #define ALLNET_TRANSPORT_STREAM		1	/* related packets */
 #define ALLNET_TRANSPORT_ACK_REQ	2	/* message_id allows acking */
 #define ALLNET_TRANSPORT_LARGE		4	/* packets part of 1 message */
@@ -231,20 +249,6 @@ struct allnet_key_request {
  * The difference is: */
 #define ALLNET_Y2K_SECONDS_IN_UNIX	946720800
 
-/* data messages and clear messages carry, after the message ID (if any),
- * an application and media header that identifies the intended application
- * and media type.  It is up to the receiving application to use these
- * to identify messages intended for itself.
- */
-#define ALLNET_APP_ID_SIZE		4
-#define ALLNET_MEDIA_ID_SIZE		4
-struct allnet_app_media_header {
-  unsigned char app [ALLNET_APP_ID_SIZE];
-  unsigned char media [ALLNET_MEDIA_ID_SIZE];
-};
-
-/* AllNet media types are defined in media.h */
-
 /* a message with all possible header fields */
 struct allnet_header_max {
   unsigned char version;
@@ -332,6 +336,19 @@ struct allnet_header_max {
 
 #define ALLNET_DATA_START(hp, t, s)		\
   (((char *) (hp)) + ALLNET_AFTER_HEADER(t, s))
+
+/* data messages and clear messages carry, after the message ID (if any),
+ * an application and media header that identifies the intended application
+ * and media type.  It is up to the receiving application to use these
+ * to identify messages intended for itself.
+ */
+/* AllNet media types are defined in media.h */
+#define ALLNET_APP_ID_SIZE		4
+#define ALLNET_MEDIA_ID_SIZE		4
+struct allnet_app_media_header {
+  unsigned char app [ALLNET_APP_ID_SIZE];
+  unsigned char media [ALLNET_MEDIA_ID_SIZE];
+};
 
 /* a data request may specify the earliest time from which a message is
  * desired.  It may also specify a bitmap of destinations that are of
