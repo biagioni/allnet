@@ -169,11 +169,15 @@ public class AllNetContacts {
         try {
             java.nio.file.Path lrp =
                 java.nio.file.FileSystems.getDefault().getPath(lr);
-            java.nio.file.Files.deleteIfExists(lrp);
+            try {
+                java.nio.file.Files.deleteIfExists(lrp);
+            } catch (java.nio.file.NoSuchFileException e) {
+                // ignore, if it is not there, no need to delete
+            }
             java.nio.file.Files.createFile(lrp);
         } catch (Exception e) {
             System.out.println ("updateChatTime: exception " + e +
-                                " deleting/udpating " + lr);
+                                " udpating " + lr);
         }
         // System.out.println ("updated time for file " + lr);
     }
