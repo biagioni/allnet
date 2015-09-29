@@ -37,17 +37,23 @@ public class AllNetContacts {
             for (java.nio.file.Path p: stream) {
 //              System.out.println ("looking at path " + p);
                 if (java.nio.file.Files.isDirectory(p)) {
-                    java.nio.file.Path name =
-                        java.nio.file.FileSystems.
-                            getDefault().getPath(p + "/name");
-//                  System.out.println ("looking at file " + name);
-                    java.nio.charset.Charset charset =
-                        java.nio.charset.Charset.forName("UTF-8");
-                    java.util.List<String> names =
-                        java.nio.file.Files.readAllLines(name, charset);
-                    for (String s: names)
-                        rlist.add (s);
-//                  System.out.println (in.readLine());
+                    java.nio.file.Path name = null;
+                    try {
+                        name = java.nio.file.FileSystems.
+                                   getDefault().getPath(p + "/name");
+//                      System.out.println ("looking at file " + name);
+                        java.nio.charset.Charset charset =
+                            java.nio.charset.Charset.forName("UTF-8");
+                        java.util.List<String> names =
+                            java.nio.file.Files.readAllLines(name, charset);
+                        for (String s: names)
+                            rlist.add (s);
+//                      System.out.println (in.readLine());
+                    } catch (java.io.IOException e) {
+                        System.out.println ("AllNetContacts: IO exception " +
+                                            e + " not found " + name +
+                                            ", ignoring");
+                    }
                 }
             }
         } catch (java.io.IOException e) {
