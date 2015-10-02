@@ -22,6 +22,8 @@ class ContactsPanel extends JPanel {
     private static final long serialVersionUID = 1L;
     // 2 panels for the buttons
     private JPanel topPanel, bottomPanel;
+    // one panel to combine them and allow scrolling
+    private JPanel bothPanel;
     // list of which names' buttons are in which panel
     private ArrayList<String> topNames, bottomNames;
     // associate each name with a button
@@ -34,6 +36,38 @@ class ContactsPanel extends JPanel {
     private Color broadcastColor;
     private Comparator<String> comparator;
     private JScrollPane scrollPane;
+
+    private void buildScrollPane(Color background) {
+        topNames = new ArrayList<>();
+        bottomNames = new ArrayList<>();
+        topPanel = makePanel(background);
+        bottomPanel = makePanel(background);
+        bothPanel = makePanel(background);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.weighty = 0.0;
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.anchor = GridBagConstraints.CENTER;
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.gridheight = 1;
+        gbc.gridwidth = 1;
+        bothPanel.add(Box.createRigidArea(new Dimension(0, 10)), gbc);
+        gbc.gridy++;
+        bothPanel.add(topPanel, gbc);
+        gbc.gridy++;
+        bothPanel.add(Box.createRigidArea(new Dimension(0, 10)), gbc);
+        gbc.gridy++;
+        // gbc.anchor = GridBagConstraints.PAGE_START;
+        bothPanel.add(bottomPanel, gbc);
+        gbc.gridy++;
+        // expand bottom area vertically to fill extra space
+        gbc.weighty = 1.0;
+        bothPanel.add(Box.createRigidArea(new Dimension(0, 10)), gbc);
+        // add a vertical scroll bar if we have more than ~10 contacts
+        scrollPane = makeScrollPane(bothPanel);
+    }
     
     ContactsPanel(String info, Color background, Color foreground,
                   Color broadcastColor, ClientData clientData) {
@@ -41,17 +75,15 @@ class ContactsPanel extends JPanel {
         this.broadcastColor = broadcastColor;
         map = new HashMap<>();
         comparator = new ContactComparator(clientData);
-        topNames = new ArrayList<>();
-        bottomNames = new ArrayList<>();
-        topPanel = makePanel(background);
-        bottomPanel = makePanel(background);
         setBackground(background);
         // make the info label for the top of the panel
         topLabel = new HtmlLabel(info);
         topLabel.setOpaque(true);
         topLabel.setBackground(foreground);
         topLabel.setLineBorder(Color.BLACK, 1, false);
-        //
+        // create the main content panel, scrollPane which holds bothPanel
+        buildScrollPane(background);
+        // put into the contacts panel: topPanel, space, scrollPane, 
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -67,19 +99,8 @@ class ContactsPanel extends JPanel {
         gbc.gridy++;
         add(Box.createRigidArea(new Dimension(0, 10)), gbc);
         gbc.gridy++;
-        add(topPanel, gbc);
-        gbc.gridy++;
-        add(Box.createRigidArea(new Dimension(0, 10)), gbc);
-        // add a vertical scroll bar if we have more than ~10 contacts
-        gbc.gridy++;
-        // gbc.anchor = GridBagConstraints.PAGE_START;
-        scrollPane = makeScrollPane(bottomPanel);
         add(scrollPane, gbc);
-        // add(bottomPanel, gbc);
         gbc.gridy++;
-        // expand bottom area vertically to fill extra space
-        gbc.weighty = 1.0;
-        add(Box.createRigidArea(new Dimension(0, 10)), gbc);
     }
 
     private JScrollPane makeScrollPane(JPanel panel) {
