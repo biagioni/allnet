@@ -655,15 +655,18 @@ static void handle_quiet (struct timeval * quiet_end, pd p,
     int msize = receive_until (quiet_end, &message, p, &from_fd, &priority);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
-printf ("%d-byte message from %d (ad is %d)\n", msize, from_fd, rpipe);
+        printf ("abc.c handle_quiet: %d-byte message from %d (ad is %d)\n",
+                msize, from_fd, rpipe);
         if (from_fd == rpipe)
           handle_ad_message (message, msize, priority);
         else
           handle_network_message (message, msize, wpipe,
                                   NULL, NULL, NULL, NULL, NULL, NULL, 1);
         check_priority_mode ();
+      } else {
+        printf ("abc.c handle_quiet: invalid message from %d (ad is %d)\n",
+                from_fd, rpipe);
       }
-else { printf ("invalid message from %d (ad is %d)\n", from_fd, rpipe); }
       free (message);
     } else {
       usleep (10 * 1000); /* 10ms */
