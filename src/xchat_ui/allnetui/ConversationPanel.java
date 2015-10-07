@@ -45,6 +45,7 @@ class ConversationPanel extends JPanel {
     private static Color background = Color.GRAY, foreground = Color.WHITE;
     private static Color broadcastColor = Color.LIGHT_GRAY;
     private static Color ackedColor = Color.GREEN;
+    private static Color newColor = Color.CYAN;
     // everything needed to turn messages green once they are acked
     private java.util.LinkedList<Message> unackedM = null;
     private java.util.LinkedList<JPanel> unackedP = null;
@@ -203,9 +204,10 @@ class ConversationPanel extends JPanel {
         boolean left = msg.to.equals(Message.SELF);
         boolean broadcast = msg.isBroadcast();
         boolean acked = msg.acked();
+        boolean isNew = msg.isNewMessage();
         String[] lines = text.split("\n");
         Color bg = broadcast ? broadcastColor : acked ? ackedColor
-                 : Color.WHITE;
+                 : isNew ? newColor : Color.WHITE;
         java.util.LinkedList<java.util.Vector<JLabel>> labels = null;
         if (! acked)
              labels = unackedL;
