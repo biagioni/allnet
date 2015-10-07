@@ -223,7 +223,6 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
 #endif /* DEBUG_PRINT */
       return text_size;
     } 
-#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
       else {
       printf ("matches (%02x%02x, %02x%02x/%d) == %d\n",
@@ -237,7 +236,6 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
                              keys [i].pub_key));
     }
 #endif /* DEBUG_PRINT */
-#undef DEBUG_PRINT
   }
 #ifdef DEBUG_PRINT
   printf ("unable to verify bc message\n");
