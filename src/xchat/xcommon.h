@@ -69,6 +69,12 @@ extern int handle_packet (int sock, char * packet, int psize,
 extern long long int send_data_message (int sock, char * peer,
                                         char * message, int mlen);
 
+/* if a previously received key matches one of the secrets, returns 1,
+ * otherwise returns 0 */
+extern int key_received (int sock, char * contact, char * secret1,
+                         char * secret2, unsigned char * addr, int bits,
+                         int max_hops);
+
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it */
 extern void request_and_resend (int sock, char * peer, keyset kset);

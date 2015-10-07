@@ -434,6 +434,57 @@ static int send_key (int sock, const char * contact, keyset kset,
   return 1;
 }
 
+#define KEY_CACHE_SIZE	10
+struct key_cache_entry {
+  struct allnet_header hp;
+  char buffer [ALLNET_MTU];
+  int dsize;
+};
+static struct key_cache_entry key_cache [KEY_CACHE_SIZE];
+static int key_cache_next = -1;
+
+static void init_key_cache ()
+{
+  if (key_cache_next >= 0)
+    return;
+  int i;
+  for (i = 0; i < KEY_CACHE_SIZE; i++)
+    key_cache [i].dsize = 0;
+  key_cache_next = 0;
+}
+
+static void save_key_in_cache (struct allnet_header * hp,
+                               char * data, int dsize)
+{
+  init_key_cache ();
+  if (dsize > ALLNET_MTU)
+    return;
+#ifdef DEBUG_KEY_CACHE_PRINT
+  printf ("saving key, dsize %d\n", dsize);
+#endif /* DEBUG_KEY_CACHE_PRINT */
+  int free = -1;
+  int i;
+  for (i = 0; i < KEY_CACHE_SIZE; i++) {
+    if (key_cache [i].dsize == 0)
+      free = i;
+    else if ((key_cache [i].dsize == dsize) &&
+             (memcmp (key_cache [i].buffer, data, dsize) == 0))
+      return;  /* saved already */
+  }
+  if (free == -1) { /* replace the oldest in the cache */
+    key_cache_next = (key_cache_next + 1) % KEY_CACHE_SIZE;
+    free = key_cache_next;
+  }
+#ifdef DEBUG_KEY_CACHE_PRINT
+  printf ("assigning %d to cache location %d (was %d)\n",
+          dsize, free, key_cache [free].dsize);
+#endif /* DEBUG_KEY_CACHE_PRINT */
+  key_cache [free].dsize = dsize;
+  memcpy (key_cache [free].buffer, data, dsize);
+  key_cache [free].hp = *hp;
+}
+
+/* if successful, returns -1, otherwise 0 */
 static int handle_key (int sock, struct allnet_header * hp,
                        char * data, int dsize, char * contact,
                        char * secret1, char * secret2,
@@ -442,6 +493,7 @@ static int handle_key (int sock, struct allnet_header * hp,
 #ifdef DEBUG_PRINT
   printf ("in handle_key (%s, %s, %s)\n", contact, secret1, secret2);
 #endif /* DEBUG_PRINT */
+  save_key_in_cache (hp, data, dsize);
   if ((contact == NULL) || (secret1 == NULL))
     return 0;
   if (hp->hops > max_hops)
@@ -546,6 +598,29 @@ print_buffer ((char *)my_addr, my_bits, "sending from", (my_bits + 7) / 8, 1);
   printf ("public key does not check with secrets %s %s\n", secret1, secret2);
 #endif /* DEBUG_PRINT */
   free (keys);
+  return 0;
+}
+
+/* if a previously received key matches one of the secrets, returns 1,
+ * otherwise returns 0 */
+int key_received (int sock, char * contact, char * secret1, char * secret2,
+                  unsigned char * addr, int bits, int max_hops)
+{
+  init_key_cache ();
+  int i;
+  for (i = 0; i < KEY_CACHE_SIZE; i++) {
+    if ((key_cache [i].dsize > 0) &&
+         (handle_key (sock, &(key_cache [i].hp), key_cache [i].buffer,
+                      key_cache [i].dsize, contact, secret1, secret2,
+                      addr, bits, max_hops) == -1)) {
+#ifdef DEBUG_KEY_CACHE_PRINT
+      printf ("using previously saved key, i %d, dsize %d\n",
+              i, key_cache [i].dsize);
+#endif /* DEBUG_KEY_CACHE_PRINT */
+      key_cache [i].dsize = 0;   /* don't use it again */
+      return 1;
+    }
+  }
   return 0;
 }
 

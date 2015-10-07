@@ -476,6 +476,7 @@ int main (int argc, char ** argv)
   char kbuf3 [ALLNET_MTU];  /* key buffer to hold the second secret, if any */
   unsigned char kaddr [ADDRESS_SIZE];
   int kabits;
+  int check_for_key = 0;
   int num_hops = 0;
   char * subscription = NULL;
   char sbuf [ALLNET_MTU];   /* subscribe buffer */
@@ -514,6 +515,7 @@ printf ("sending key to peer %s/%s, secret %s/%s/%s, %d hops\n",
 peer, key_contact, to_send, key_secret, key_secret2, num_hops);
         create_contact_send_key (sock, key_contact, key_secret, key_secret2,
                                  kaddr, &kabits, num_hops);
+        check_for_key = 1;
       } else if (code == 3) {   /* subscribe message -- peer is only field */
         snprintf (sbuf, sizeof (sbuf), "%s", peer);
 printf ("sending subscription to %s/%s\n", peer, sbuf);
@@ -524,19 +526,25 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
     }
     char * packet;
     int pipe, pri;
-    int found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
+    int found_key = 0;
+    if (check_for_key)  /* was a key received earlier? */
+      found_key = key_received (sock, key_contact, key_secret, key_secret2,
+                                kaddr, kabits, num_hops); 
+    int found = 0;
+    if (! found_key)
+      found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchat_socket pipe closed, exiting\n");
       kill (child_pid, SIGKILL);
       exit (1);
     }
-    if (found == 0) {  /* timed out, request/resend any missing */
-      if (old_contact != NULL) {
+    if ((found == 0) && (found_key == 0)) { 
+      if (old_contact != NULL) { /* timed out, request/resend any missing */
         request_and_resend (sock, old_contact, old_kset);
         old_contact = NULL;
         old_kset = -1;
       }
-    } else {    /* found > 0, got a packet */
+    } else {    /* found > 0, got a packet, or found_key, got a key */
       int verified, duplicate, broadcast;
       char * peer;
       keyset kset;
@@ -544,11 +552,13 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       char * message;
       struct allnet_ack_info acks;
       time_t mtime = 0;
-      int mlen = handle_packet (sock, packet, found, &peer, &kset, &acks,
-                                &message, &desc, &verified, &mtime, &duplicate,
-                                &broadcast, key_contact, key_secret, 
-                                key_secret2, kaddr, kabits, num_hops,
-                                subscription, saddr, sbits);
+      int mlen = -1;  /* found a key, or the result of handle_packet */
+      if (! found_key)
+        mlen = handle_packet (sock, packet, found, &peer, &kset, &acks,
+                              &message, &desc, &verified, &mtime, &duplicate,
+                              &broadcast, key_contact, key_secret, 
+                              key_secret2, kaddr, kabits, num_hops,
+                              subscription, saddr, sbits);
       if ((mlen > 0) && (verified)) {
         int mtype = CODE_DATA_MESSAGE; /* data */
         if (broadcast) {
@@ -579,6 +589,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         key_secret = NULL;
         key_secret2 = NULL;
         num_hops = 0;
+        check_for_key = 0;
       } else if (mlen == -2) {   /* confirm successful subscription */
 printf ("got subscription but subscription is null\n");
         if (subscription != NULL) {
