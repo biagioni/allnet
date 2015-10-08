@@ -518,7 +518,8 @@ static void my_call_abc (char * argv, int alen, char * program,
   pid_t child = fork ();
   if (child == 0) {
     replace_command (argv, alen, program);
-    /* printf ("calling %s %d %d %s\n", program, rpipe, wpipe, ifopts); */
+    /* printf ("calling %s %d %d %d %d %s\n", program, rpipe, wpipe,
+               ppipe1, ppip2, ifopts); */
     daemon_name = "abc";
     setup_signal_handler (0);  /* abc has its own signal handler */
     usleep (10 * 1000);        /* wait for parent to create log file */
@@ -822,9 +823,13 @@ int astart_main (int argc, char ** argv)
       interface = interfaces [i];
     else
       interface = argv [i + 1];
-    printf ("calling abc %s\n", interface);
-    my_call_abc (argv [0], alen, "abc", rpipes [2 * i + 4], wpipes [2 * i + 5],
-                 rpipes [2 * i + 5], wpipes [2 * i + 4],
+    int rpipe = rpipes [2 * i + 4];
+    int wpipe =  wpipes [2 * i + 5];
+    int ppipe1 = rpipes [2 * i + 5];
+    int ppipe2 = wpipes [2 * i + 4];
+    printf ("calling abc %s, pipes %d %d %d %d\n", interface,
+            rpipe, wpipe, ppipe1, ppipe2);
+    my_call_abc (argv [0], alen, "abc", rpipe, wpipe, ppipe1, ppipe2,
                  interface, abc_pids + i, astart_pid);
   }
   make_root_other (0); /* if we were root, become the caller or allnet/nobody */
