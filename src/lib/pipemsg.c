@@ -733,8 +733,11 @@ static int receive_dgram (int fd, char ** message,
 #endif /* DEBUG_PRINT */
   int result = recvfrom (fd, *message, ALLNET_MTU, MSG_DONTWAIT, sa, salen);
   if (result < 0) {
-    if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
+    if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {
       perror ("recvfrom");
+      printf ("errno is %d, fd %d, pointers %p %p %p\n", errno,
+              fd, *message, sa, salen);
+    }
     free (*message);
     *message = NULL;
     if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
