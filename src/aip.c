@@ -633,6 +633,9 @@ void listen_callback (int fd)
 #define NUM_LISTENERS	(1 << LISTEN_BITS) * 2   /* 2 ^ LISTEN_BITS for v4/v6*/
 static int listener_fds [NUM_LISTENERS];
 static pthread_mutex_t listener_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* only modify active_listeners or any of these data structures,
+ * while holding the mutex */
+static int active_listeners = 0;
 
 static int connect_listener (unsigned char * address, struct listen_info * info,
                              void * addr_cache, int af)
@@ -722,15 +725,15 @@ static void * connect_thread (void * a)
   int fd = connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);
   pthread_mutex_lock (&listener_mutex);
   if (listener_fds [arg->listener_index] == -1) {
+    active_listeners++;
     listener_fds [arg->listener_index] = fd;
     pthread_mutex_unlock (&listener_mutex);
   } else {   /* undo connect */
-    /* unlock first, so the slow operations are done with the mutex unlocked */
-    pthread_mutex_unlock (&listener_mutex);
     close (fd);       /* remove from kernel */
     /* remove from cache, info, and pipemsg */
     cache_remove (arg->addr_cache, listen_fd_addr (arg->info, fd));
     listen_remove_fd (arg->info, fd);
+    pthread_mutex_unlock (&listener_mutex);
   }
   free (a);  /* the caller doesn't do it, so we should */
   pthread_cleanup_pop (1);
@@ -817,15 +820,17 @@ static void remove_listener (int fd, struct listen_info * info,
   for (i = 0; i < NUM_LISTENERS; i++) {
     if (listener_fds [i] == fd) {
       listener_fds [i] = -1;
+      if (active_listeners > 0)
+        active_listeners--;
 #ifdef DEBUG_PRINT
       removed = 1;
 #endif /* DEBUG_PRINT */
     }
   }
-  pthread_mutex_unlock (&listener_mutex);
   cache_remove (addr_cache, listen_fd_addr (info, fd)); /* remove from cache */
   listen_remove_fd (info, fd); /* remove from info and pipemsg */
   close (fd);       /* remove from kernel */
+  pthread_mutex_unlock (&listener_mutex);
 #ifdef DEBUG_PRINT
   if (removed)
     printf ("removed fd %d\n", fd);
@@ -1143,8 +1148,9 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
   while (1) {
     if ((last_listen == 0) ||                 /* if never updated */
         (time (NULL) - last_listen > 300) || /* once every 5min try to update */
-        /* or once every 30sec if we've recently removed an fd */
-        ((removed_listener) && (time (NULL) - last_listen > 30))) {
+  /* or once every 30sec if we've recently removed an fd or are disconnected */
+        ((removed_listener || (active_listeners == 0)) &&
+         ((time (NULL) - last_listen) > 30))) {
 /* printf ("making listeners\n"); */
 /* if we are already connected to everyone we want to connect to, then the
    call to make_listeners should be essentially free */
