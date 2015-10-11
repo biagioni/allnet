@@ -778,7 +778,11 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
       unsigned char address [ADDRESS_SIZE];
       if (get_local (keysets [j], address) >= LISTEN_BITS) {
         int index = ((address [0] & 0xff) >> (8 - LISTEN_BITS)) * 2;
-/* printf ("original address %02x, index %02x\n", address [0] & 0xff, index); */
+        if (index + 1 >= NUM_LISTENERS) { /* sanity check, should not happen */
+          printf ("error: original address %02x, index %02x (%d %d), %d bits\n",
+                  address [0] & 0xff, index, index, index + 1, LISTEN_BITS);
+          exit (1);
+        }
         if (listener_fds [index] < 0) {
           connect_to_index [index] = 1;
           dht_count++;
@@ -796,7 +800,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
     unsigned long long int r = random_int (0, NUM_LISTENERS - 1);
     int index = (int)r;
     if (listener_fds [index] < 0) {
-      connect_to_index [index + 1] = 1;
+      connect_to_index [index] = 1;
       dht_count++;
     }
   }
