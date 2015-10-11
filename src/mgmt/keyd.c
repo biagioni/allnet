@@ -196,6 +196,8 @@ perror ("gather_random_and_wait read /dev/random");
 
 #define KEY_GEN_BITS	4096
 #define KEY_GEN_BYTES	(KEY_GEN_BITS / 8)
+#define MIN_SPARES	8  /* below this, generate keys without stopping */
+#define HEALTHY_SPARES	100  /* do not generate more than this */
 /* run from astart as a separate process */
 void keyd_generate (char * pname)
 {
@@ -206,6 +208,9 @@ void keyd_generate (char * pname)
   }
   /* sleep 10 min, or 100 * the time to generate a key, whichever is longer */
   time_t sleep_time = 60 * 10;  /* 10 minutes, in seconds */
+  int existing_spares = create_spare_key (-1, NULL, 0);
+  if (existing_spares < MIN_SPARES)  /* create keys as fast as possible */
+    sleep_time = 1;
   char buffer [KEY_GEN_BYTES];
   int bytes_in_buffer = 0;
   /* generate up to 100 keys (8 in low-power mode), then generate more
@@ -213,9 +218,9 @@ void keyd_generate (char * pname)
   while (1) {
     time_t start = time (NULL);
     time_t finish = start + sleep_time;
-    int min_spares = 8;   /* stop generating when we reach 8 spare keys */
+    int min_spares = MIN_SPARES; /* stop generating when we have 8 spare keys */
     if (speculative_computation_is_ok ())  /* or 100 if plenty of power */
-      min_spares = 100;
+      min_spares = HEALTHY_SPARES;
     int gather_bytes = KEY_GEN_BYTES - bytes_in_buffer;
 #ifdef DEBUG_PRINT_SPARES
     printf ("gathering %d bytes (have %d) and waiting %ld until %ld\n",
@@ -223,7 +228,7 @@ void keyd_generate (char * pname)
 #endif /* DEBUG_PRINT_SPARES */
     bytes_in_buffer +=
       gather_random_and_wait (gather_bytes, buffer + bytes_in_buffer, finish);
-    int existing_spares = create_spare_key (-1, NULL, 0);
+    existing_spares = create_spare_key (-1, NULL, 0);
     if (existing_spares < min_spares)  /* for now, report how many we have */
       printf ("%ld: %d spares, min %d\n", start, existing_spares, min_spares);
 #ifdef DEBUG_PRINT_SPARES
@@ -249,6 +254,9 @@ void keyd_generate (char * pname)
       printf ("%ld: created, sleep %ld (from %ld)\n", done, sleep_time, delta);
 #endif /* DEBUG_PRINT_SPARES */
     }
+    existing_spares = create_spare_key (-1, NULL, 0);
+    if (existing_spares < MIN_SPARES)  /* create keys as fast as possible */
+      sleep_time = 1;
   }
 }
 
