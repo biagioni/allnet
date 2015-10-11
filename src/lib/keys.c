@@ -531,7 +531,7 @@ int all_contacts (char *** contacts)
 {
   init_from_file ();
 #ifdef DEBUG_PRINT
-  print_contacts ("entering all_keys");
+  print_contacts ("entering all_contacts");
 #endif /* DEBUG_PRINT */
   *contacts = cpx;
   return cp_used;
