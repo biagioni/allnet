@@ -50,16 +50,26 @@ struct thread_info {
 static struct thread_info ti [MAX_THREAD_INFO];
 static int num_threads = 0;
 static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pid_t process_id = 0;
 
 static void log_thread_id (const char * name)
 {
   pthread_mutex_lock (&log_mutex);
   pthread_t id = pthread_self ();
+  pid_t pid = getpid ();
+  if ((process_id == 0) || (process_id != pid)) {
+  /* if process_id != pid, we have been called after a fork.  The only
+   * sensible thing to do is to overwrite any existing entries */
+    process_id = pid;
+    num_threads = 0;
+  }
   if (num_threads < MAX_THREAD_INFO) {
     ti [num_threads].name = strcpy_malloc (name, "log_thread_id");
     ti [num_threads].id = id;
 #ifdef DEBUG_PRINT
-    printf ("ti [%d] (%d) = {%p (%s), %u}\n", num_threads, getpid (), ti [num_threads].name, name, id);
+    printf ("ti [%d] (%04x) = {%p (%s), %04x}\n", num_threads,
+            ((unsigned int) pid) & 0xffff, ti [num_threads].name, name,
+            ((unsigned int) id) & 0xffff);
 #endif /* DEBUG_PRINT */
     num_threads++;
   } else {
@@ -77,7 +87,8 @@ static void unlog_thread_id ()
     if (id == ti [i].id) {
 #ifdef DEBUG_PRINT
       printf ("freeing name [%d] (%d) = { %p", i, getpid (), ti [i].name);
-      printf (" (%s), %u}\n", ti [i].name, ti [i].id);
+      printf (" (%s), ", ti [i].name);
+      printf ("%04x}\n", ((unsigned int) ti [i].id) & 0xffff);
 #endif /* DEBUG_PRINT */
       free (ti [i].name);
       ti [i].name = NULL;
