@@ -731,12 +731,27 @@ static int receive_dgram (int fd, char ** message,
   snprintf (log_buf, LOG_SIZE, "ready to receive datagram on fd %d\n", fd);
   log_print ();
 #endif /* DEBUG_PRINT */
+  int old_salen = -3;  /* a value unlikely to be in *salen */
+  if (salen != NULL)
+    old_salen = *salen;
+  char old_sa [20] = "";
+  char new_sa [20] = "";
+  if ((sa != NULL) && (old_salen > 0))
+    buffer_to_string ((char *) sa, old_salen, NULL, 10, 0,
+                      old_sa, sizeof (old_sa));
   int result = recvfrom (fd, *message, ALLNET_MTU, MSG_DONTWAIT, sa, salen);
   if (result < 0) {
     if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {
       perror ("recvfrom");
-      printf ("errno is %d, fd %d, pointers %p %p %p\n", errno,
-              fd, *message, sa, salen);
+      int new_salen = -5;  /* a value unlikely to be in *salen */
+      if (salen != NULL)
+        new_salen = *salen;
+      if ((sa != NULL) && (new_salen > 0))
+        buffer_to_string ((char *) sa, new_salen, NULL, 10, 0,
+                          new_sa, sizeof (new_sa));
+      printf ("errno is %d, fd %d, pointers %p %p %p, salen %d/%d, sa %s/%s\n",
+              errno, fd, *message, sa, salen,
+              new_salen, old_salen, new_sa, old_sa);
     }
     free (*message);
     *message = NULL;
