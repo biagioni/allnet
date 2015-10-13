@@ -528,8 +528,8 @@ static int fd_can_recv (int fd, int wait_forever)
 }
 
 /* returns the number of characters received, or -1 in case of error */
-/* if may_block is false, only returns -1 or blen. */
-/* if may_block is true, may return any value between -1 and blen */
+/* if may_block is true, only returns -1 or blen. */
+/* if may_block is false, may return any value between -1 and blen */
 static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
 {
   int recvd = 0;
@@ -613,9 +613,10 @@ static int receive_pipe_message_poll (pd p, int pipe,
 
   int offset = bp->filled;
   int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0);
-  if (read <= 0) {
+  if (read < 0)
     return -1;
-  }
+  if (read == 0)
+    return 0;
   offset += read;
   if (offset == bp->bsize) {
    /* received all we were looking for, either allocate new buffer or return */
@@ -767,6 +768,18 @@ static int receive_dgram (int fd, char ** message,
   return result;
 }
 
+/* if returning for a pipe rather than a UDP socket, clear the address */
+static void clear_addr (struct sockaddr * sa, socklen_t * salen)
+{
+  if (salen != NULL) {
+    if ((sa != NULL) && (*salen > 0)) {
+      bzero (sa, *salen);
+      sa->sa_family = -1; /* debug */
+    }
+    *salen = 0;
+  }
+}
+
 /* same as receive_pipe_message_any, but listens to the given socket as
  * well as the pipes added previously,  The socket is assumed to be a
  * UDP or raw socket.  If the first message is received on this socket,
@@ -799,21 +812,17 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
       int r;
       if (pipe != fd) { /* it is a pipe, not a datagram socket */
         r = receive_pipe_message_poll (p, pipe, message, priority);
+        if (r != 0) {
 /* if (r < 0) printf ("receive_pipe_message_poll returned %d\n", r); */
-        if ((sa != NULL) && (salen != NULL) && (*salen > 0))
-{
-          bzero (sa, *salen);
-sa->sa_family = -1; /* debug */ }
-        if (salen != NULL)
-          *salen = 0;
+          clear_addr (sa, salen); /* clear the address */
+          return r;
+        }
       } else {         /* UDP or raw socket */
         r = receive_dgram (pipe, message, sa, salen);
 /* if (r < 0) printf ("receive_dgram returned %d\n", r); */
+        if (r != 0)
+          return r;
       }
-      if (r < 0)
-        return -1;
-      if (r > 0)
-        return r;
       /* else read a partial or no buffer, repeat until timeout */
       if (from_pipe != NULL) *from_pipe = -1;
     }
