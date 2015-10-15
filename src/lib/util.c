@@ -63,6 +63,13 @@ void print_buffer (const char * buffer, int count, char * desc,
     printf ("\n");
 }
 
+static int minz (int from, int subtract)
+{
+  if (from >= subtract)
+    return from - subtract;
+  return 0;
+}
+
 /* same as print_buffer, but prints to the given string */
 int buffer_to_string (const char * buffer, int count, char * desc,
                       int max, int print_eol, char * to, int tsize)
@@ -74,16 +81,16 @@ int buffer_to_string (const char * buffer, int count, char * desc,
   else
     offset = snprintf (to, tsize, "%d bytes:", count);
   if (buffer == NULL)
-    offset += snprintf (to + offset, tsize - offset, "(null)");
+    offset += snprintf (to + offset, minz (tsize, offset), "(null)");
   else {
     for (i = 0; i < count && i < max; i++)
-      offset += snprintf (to + offset, tsize - offset,
+      offset += snprintf (to + offset, minz (tsize, offset),
                           " %02x", buffer [i] & 0xff);
     if (i < count)
-      offset += snprintf (to + offset, tsize - offset, " ...");
+      offset += snprintf (to + offset, minz (tsize, offset), " ...");
   }
   if (print_eol)
-    offset += snprintf (to + offset, tsize - offset, "\n");
+    offset += snprintf (to + offset, minz (tsize, offset), "\n");
   return offset;
 }
 
