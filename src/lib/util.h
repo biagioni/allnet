@@ -224,6 +224,8 @@ extern int get_option (char option_letter, int * argcp, char ** argv);
 /* set user_callable to 1 for astart and allnetx, to 0 for all others */
 extern void print_usage (int argc, char ** argv, int user_callable,
                          int do_exit);
+/* returns (from - subtract) if from >= subtract, otherwise returns 0 */
+extern int minz (int from, int subtract);
 
 /* in case of error on iOS, don't kill the process, only the thread (since
  * in iOS, we only have one process */

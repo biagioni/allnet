@@ -325,8 +325,8 @@ static int addr_to_str (int nbits, char * addr,
   int offset = 0;
   for (i = 0; i < (nbits + 7 / 8); i++) {
     if (i > 0)
-      offset += snprintf (result + offset, rsize - offset, ":");
-    offset += snprintf (result + offset, rsize - offset, "%02x",
+      offset += snprintf (result + offset, minz (rsize, offset), ":");
+    offset += snprintf (result + offset, minz (rsize, offset), "%02x",
                         addr [i] & 0xff);
   }
   return offset;
@@ -337,7 +337,7 @@ static int addrs_to_str (int src_nbits, char * source,
                          int rsize, char * result)
 {
   int offset = addr_to_str (src_nbits, source, rsize, result);
-  offset += snprintf (result + offset, rsize - offset, "->");
+  offset += snprintf (result + offset, minz (rsize, offset), "->");
   offset += addr_to_str (dst_nbits, destination, rsize, result);
   return offset;
 }
