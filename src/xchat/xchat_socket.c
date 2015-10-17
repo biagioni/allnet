@@ -564,10 +564,11 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         if (broadcast) {
           mtype = CODE_BROADCAST_MESSAGE;  /* broadcast */
         }
-        if (broadcast || (! duplicate))
+        if (broadcast || (! duplicate)) {
           send_message (forwarding_socket,
                         (struct sockaddr *) (&fwd_addr), fwd_addr_size,
                         mtype, mtime, peer, message);
+        }
         if ((! broadcast) &&
             ((old_contact == NULL) ||
              (strcmp (old_contact, peer) != 0) || (old_kset != kset))) {

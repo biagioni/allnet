@@ -311,21 +311,139 @@ int is_acked_one (char * contact, keyset k, uint64_t wanted)
   return 0;
 }
 
+/* returns 1 if found in the cache, 0 otherwise.  
+ * if add != 0, and not found, it is added to the cache */
+static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
+{
+/* this cache only supports one contact at a time.  That gives reasonable
+ * performance at the beginning, when we are loading the list of contacts,
+ * but has some cost when we switch contacts */
+  static char * cached_contact = NULL;
+  static keyset cached_k = -1;
+/* a cache entry consists of the first and last sequence number known.
+ * at most MAX_CACHE such sequences are supported */
+  struct cache_entry {
+    uint64_t first;
+    uint64_t last;
+  };
+#define MAX_CACHE	100
+  static struct cache_entry cache [MAX_CACHE];
+  static int cache_used = 0;
+#ifdef DEBUG_PRINT
+  if ((cache_used > 0) && (cached_contact != NULL)) {
+    printf ("contact '%s'/'%s', seq %" PRIu64 ", add %d, used %d, k %d/%d",
+            cached_contact, contact, seq, add, cache_used, cached_k, k);
+    int x;
+    for (x = 0; x < cache_used; x++)
+      printf (", %" PRIu64 "..%" PRIu64 "", cache [x].first, cache [x].last);
+    printf ("\n");
+  }
+#endif /* DEBUG_PRINT */
+  if ((cached_contact == NULL) || (strcmp (contact, cached_contact) != 0) ||
+      (k != cached_k)) {  /* not found */
+    if (add) {  /* initialize or reinitialize */
+#ifdef DEBUG_PRINT
+      printf ("adding %s, keyset %d, seq %" PRIu64 "\n", contact, k, seq);
+#endif /* DEBUG_PRINT */
+      if (cached_contact != NULL)
+        free (cached_contact);
+      cached_contact = strcpy_malloc (contact, "message.c is_in_cache contact");
+      cached_k = k;
+      cache [0].first = seq;
+      cache [0].last = seq;
+      cache_used = 1;
+    }
+    return 0;
+  }
+  int i;
+  for (i = 0; i < cache_used; i++) {
+    if ((seq >= cache [i].first) && (seq <= cache [i].last)) {
+#ifdef DEBUG_PRINT
+      printf ("returning found\n");
+#endif /* DEBUG_PRINT */
+      return 1;
+    }
+  }
+/* not found, will return 0, perhaps after adding */
+  if (add) {
+    int merge = 0;
+    for (i = 0; i < cache_used; i++) {
+      if (seq + 1 == cache [i].first) {
+        if (add)
+          cache [i].first = seq;
+        else
+          merge = 1;
+        add = 0;
+      }
+      if (cache [i].last + 1 == seq) {
+        if (add)
+          cache [i].last = seq;
+        else
+          merge = 1;
+        add = 0;
+      }
+    }
+    if (merge) {  /* the sequence number is adjacent to at least two entries */
+      /* we may modify cache_used during the loop, so while instead of for */
+      i = 0;
+      while (i + 1 < cache_used) {
+        int j;
+        for (j = i + 1; j < cache_used; j++) {
+          /* in the code that follows, i < j */
+          int merged = 0;
+          if (cache [j].last + 1 == cache [i].first) {
+            cache [i].first = cache [j].first;
+            merged = 1;
+          } else if (cache [i].last + 1 == cache [j].first) {
+            cache [i].last = cache [j].last;
+            merged = 1;
+          }
+          if (merged) {
+/* copy last entry to merged entry.  Harmless even if merged is last entry */
+            cache [j] = cache [cache_used - 1];
+            cache_used = cache_used - 1;
+          }
+        }
+        i++;
+      }
+    } else if (add && (cache_used < MAX_CACHE)) {
+      cache [cache_used].first = seq;
+      cache [cache_used].last = seq;
+      cache_used++;
+    }
+#ifdef DEBUG_PRINT
+    if (cache_used > 0) {
+      printf (" added '%s' %" PRIu64 "", contact, seq);
+    int x;
+    for (x = 0; x < cache_used; x++)
+      printf (", %" PRIu64 "..%" PRIu64 "", cache [x].first, cache [x].last);
+    printf ("\n");
+    }
+#endif /* DEBUG_PRINT */
+  }
+  return 0;
+#undef MAX_CACHE
+}
+
 /* returns 1 if this sequence number has been received, 0 otherwise */
 int was_received (char * contact, keyset k, uint64_t wanted)
 {
+  if (is_in_cache (contact, k, wanted, 0))
+    return 1;
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)
     return 0;
   int type;
   uint64_t seq;
+  int result = 0;
   while ((type = prev_message (iter, &seq, NULL, NULL, NULL, NULL, NULL, NULL))
          != MSG_TYPE_DONE) {
-    if ((type == MSG_TYPE_RCVD) && (seq == wanted)) {
-      free_iter (iter);
-      return 1;
+    if (type == MSG_TYPE_RCVD) {
+      is_in_cache (contact, k, seq, 1);  /* add to cache */
+      if (seq == wanted)
+        result = 1;  /* continue the loop, adding everything to the cache */
     }
   }
   free_iter (iter);
-  return 0;
+  return result;
 }

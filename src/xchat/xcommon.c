@@ -274,7 +274,7 @@ static int handle_data (int sock, struct allnet_header * hp,
     return 0;
   }
 #ifdef DEBUG_PRINT
-  printf ("got packet from contact %s\n", *contact);
+  printf ("got %d-byte packet from contact %s\n", tsize, *contact);
 #endif /* DEBUG_PRINT */
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
 
@@ -741,10 +741,11 @@ long long int send_data_message (int sock, char * peer,
   }
   uint64_t seq = readb64u (cp->counter);
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
-  /* send_to_contact initializes the message ack in data_with_cd/cp */
 #ifdef DEBUG_PRINT
   printf ("sending seq %" PRIu64 ":\n", seq);
+  print_buffer (data_with_cd, dsize, "sending", 64, 1);
 #endif /* DEBUG_PRINT */
+  /* send_to_contact initializes the message ack in data_with_cd/cp */
   send_to_contact (data_with_cd, dsize, peer, sock,
                    NULL, 16, NULL, 16, 4, ALLNET_PRIORITY_LOCAL, 1);
   free (data_with_cd);

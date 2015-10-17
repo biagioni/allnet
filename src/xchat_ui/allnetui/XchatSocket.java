@@ -170,9 +170,9 @@ public class XchatSocket extends Thread {
     if (! debug)
       return;
     if (sent)
-      System.out.print ("sending ");
+      System.out.print ("XchatSocket sending ");
     else
-      System.out.print ("got ");
+      System.out.print ("XchatSocket got ");
     System.out.println (dlen + " bytes, packet code " + code +
                         ", peer " + peer);
   }

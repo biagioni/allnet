@@ -226,21 +226,21 @@ static int parse_seq_time (char * string, uint64_t * seq, uint64_t * time,
                            int * tz, uint64_t * rcvd_time)
 {
 #define SEQUENCE_STR     "sequence "
-  char * seqs = strstr (string, SEQUENCE_STR);
-  if (seqs == NULL) {
+  char * parse_string = strstr (string, SEQUENCE_STR);
+  if (parse_string == NULL) {
     printf ("sequence string missing from '%s'\n", string);
     return 0;
   }
-  seqs += strlen (SEQUENCE_STR);
+  parse_string += strlen (SEQUENCE_STR);
   char * end;
-  uint64_t n = strtoll (seqs, &end, 10);
-  if (end == seqs) {
+  uint64_t n = strtoll (parse_string, &end, 10);
+  if (end == parse_string) {
     printf ("sequence value missing from '%s'\n", string);
     return 0;
   }
   if (seq != NULL)
     *seq = n;
-  char * paren = strchr (seqs, '(');
+  char * paren = strchr (parse_string, '(');
   if (paren == NULL) {
     printf ("paren missing from '%s'\n", string);
     return 0;
@@ -264,7 +264,7 @@ printf ("parsed time %llu from string %s\n", *time, paren + 1); */
     *tz = (int)n;
 /* if (tz != NULL)
 printf ("parsed tz %d from string %s\n", *tz, blank + 1); */
-  char * slash = strchr (seqs, '/');
+  char * slash = strchr (parse_string, '/');
   if (slash != NULL) {  /* receive time only included since 2015/08/07 */
     n = strtoll (slash + 1, &end, 10);
     if ((end != slash + 1) && (rcvd_time != NULL))
