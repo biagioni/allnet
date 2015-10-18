@@ -275,8 +275,10 @@ static void resend_message (uint64_t seq, char * contact,
 #endif /* DEBUG_PRINT */
   init_resent ();
   if (was_recently_resent (seq, contact, k)) {
+#ifdef DEBUG_PRINT
     printf ("recently resent seq %" PRIu64 " %s/%d, not sending again\n",
             seq, contact, k);
+#endif /* DEBUG_PRINT */
     return;
   }
   int size;
@@ -284,8 +286,10 @@ static void resend_message (uint64_t seq, char * contact,
   char message_ack [MESSAGE_ID_SIZE];
   char * text = get_outgoing (contact, k, seq, &size, &time, message_ack);
   if ((text == NULL) || (size <= 0)) {
+#ifdef DEBUG_PRINT
     printf ("resend_message %s %d: no outgoing %" PRIu64 ", %p %d\n",
             contact, k, seq, text, size);
+#endif /* DEBUG_PRINT */
     return;
   }
   record_resend (seq, contact, k);
