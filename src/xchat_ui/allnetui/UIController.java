@@ -651,6 +651,8 @@ System.out.println ("resending subscription for " + ahra);
                 // here we yank the message data from the ConversationPanel and 
                 // send it to the application to be sent
                 String msgText = cp.getMsgToSend();
+                if (msgText.length() <= 0)
+                  break;
                 String peer = cp.getContactName();
                 long seq = XchatSocket.sendToPeer(peer, msgText);
                 if (seq > 0) {
@@ -673,7 +675,7 @@ System.out.println ("resending subscription for " + ahra);
             case ConversationPanel.CONTACTS_COMMAND:
                 System.out.println("UIController.java: contacts");
                 myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
-
+                break;
         }
     }
 
