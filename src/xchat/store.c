@@ -99,15 +99,19 @@ printf ("unable to stat %s\n", fname);  /* debug msg, remove later */
 }
 
 /* if it is the kind of name we want, it should end in a string of n digits */
-static int end_ndigits (char * path, int ndigits)
+/* if ext is not NULL, it indicates a possible extension, e.g. ".txt" */
+static int end_ndigits (char * path, int ndigits, char * ext)
 {
   char * slash = strrchr (path, '/');
   char * name = path;
   if (slash != NULL)
     name = slash + 1;
-  if (strlen (name) < ndigits) {
-/* printf ("end_ndigits (%s, %d) => 0 (length %zd is less than %d)\n",
-            path, ndigits, strlen (name), ndigits); */
+  int elen = 0;
+  if (ext != NULL)
+    elen = strlen (ext);
+  if ((strlen (name) != ndigits) && (strlen (name) != ndigits + elen)) {
+  /* printf ("end_ndigits (%s, %d, %s) => 0 (length %zd != %d [ + %zd])\n",
+            path, ndigits, ext, strlen (name), ndigits, strlen (ext)); */
     return 0;
   }
   int i;
@@ -119,7 +123,10 @@ static int end_ndigits (char * path, int ndigits)
     }
   }
 /* printf ("end_ndigits (%s, %d) => 1\n", path, ndigits); */
-  return 1;
+  if (strlen (name) == ndigits)
+    return 1;
+/*  strlen (name) == ndigits + elen, from a previous if */
+  return (strcmp (name + ndigits, ext) == 0);
 }
 
 /* returns 1 for success, 0 for failure */
@@ -133,7 +140,7 @@ static int find_prev_file (struct msg_iter * iter)
 int debug = 0;
     perror ("find_prev_file");
     printf ("unable to open directory %s\n", iter->dirname);
-printf ("debug time: %d\n", 5 / debug);
+printf ("debug time: %d\n", 5 / debug);  /* crash */
     return 0;
   }
   char * greatest_less_than_current = NULL;
@@ -151,7 +158,7 @@ printf ("debug time: %d\n", 5 / debug);
     if ((gltc_tail != NULL) && (strrchr (gltc_tail, '/') != NULL))
       gltc_tail = strrchr (gltc_tail, '/') + 1;
 /* printf ("examining %s, %s + %s\n", dep->d_name, current_tail, gltc_tail); */
-    if ((end_ndigits (dep->d_name, DATE_LEN)) &&
+    if ((end_ndigits (dep->d_name, DATE_LEN, ".txt")) &&
         ((current_tail == NULL) || (strcmp (dep->d_name, current_tail) < 0)) &&
         ((gltc_tail == NULL)    || (strcmp (dep->d_name, gltc_tail) > 0)) &&
         (is_data_file (path))) {
@@ -638,9 +645,11 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
   time_t now;
   time (&now);
   struct tm * tm = gmtime (&now);
-  char fname [DATE_LEN + 1];
-  snprintf (fname, sizeof (fname), "%04d%02d%02d", tm->tm_year + 1900,
-            tm->tm_mon + 1, tm->tm_mday);
+#define EXTENSION		".txt"
+#define EXTENSION_LENGTH	4  /* number of characters in ".txt" */
+  char fname [DATE_LEN + EXTENSION_LENGTH + 1];
+  snprintf (fname, sizeof (fname), "%04d%02d%02d%s", tm->tm_year + 1900,
+            tm->tm_mon + 1, tm->tm_mday, EXTENSION);
   char * path = strcat3_malloc (iter->dirname, "/", fname, "save_record");
   int fd = open (path, O_WRONLY | O_APPEND | O_CREAT, 0600);
   if (fd < 0) {
