@@ -701,6 +701,7 @@ System.out.println ("resending subscription for " + ahra);
             String selectedName = myTabbedPane.getSelectedID();
             if (selectedName.equals(contactName)) {
                 msg.setRead();
+                AllNetContacts.messagesHaveBeenRead(contactName);
             }
         }
         // finally, update the contacts panel 
