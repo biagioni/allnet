@@ -1,14 +1,13 @@
 package allnetui;
 
 import java.awt.*;
-import java.awt.event.ActionListener;
-import java.awt.event.AdjustmentEvent;
-import java.awt.event.AdjustmentListener;
+import java.awt.event.*;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.border.LineBorder;
 import utils.HtmlLabel;
 import utils.RoundedBorder;
+import utils.ScrollPaneResizeAdapter;
 
 /**
  *
@@ -38,7 +37,7 @@ class ConversationPanel extends JPanel {
     private boolean scrollToBottom;
     private JTextField msgField;
     // the buttons
-    private JButton /* close, exchangeKeys, goToContacts,*/ send;
+    private JButton send;
     // the command prefix will identify which instance of the Class is sending the event
     private String commandPrefix;
     // default colors to use
@@ -52,7 +51,7 @@ class ConversationPanel extends JPanel {
     private java.util.LinkedList<java.util.Vector<JLabel>> unackedL = null;
 
     ConversationPanel(String info, String commandPrefix, String contactName,
-                      boolean createDialogBox) {
+            boolean createDialogBox) {
         this.commandPrefix = commandPrefix;
         this.contactName = contactName;
         setBackground(background);
@@ -62,16 +61,14 @@ class ConversationPanel extends JPanel {
         topLabel.setBackground(foreground);
         topLabel.setLineBorder(Color.BLACK, 1, false);
 
-        // make the button panel
-        JPanel buttonPanel = makeButtonPanel(topLabel);
-
         // make the panel to hold the messages
         messagePanel = makeMessagePanel(background);
         scrollPane = new JScrollPane(messagePanel,
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         // must set a min and preferred size for the scroll pane
-        Dimension scrDim = new Dimension(250, 1500);
+        // Dimension scrDim = new Dimension(250, 250);
+        Dimension scrDim = new Dimension(1, 1);
         scrollPane.setMinimumSize(scrDim);
         scrollPane.setPreferredSize(scrDim);
         // so why not set max as well...
@@ -82,7 +79,10 @@ class ConversationPanel extends JPanel {
         scrollPane.getVerticalScrollBar().setUnitIncrement(10);
         // make it scroll to the bottom when we add something
         scrollPane.getVerticalScrollBar().addAdjustmentListener(
-            new MyAdjustmentListener());
+                new MyAdjustmentListener());
+        // make it scroll to the bottom when resized
+        scrollPane.getVerticalScrollBar().addComponentListener(
+                new ScrollPaneResizeAdapter(scrollPane, true));
         //
         unackedM = new java.util.LinkedList<Message>();
         unackedP = new java.util.LinkedList<JPanel>();
@@ -94,16 +94,18 @@ class ConversationPanel extends JPanel {
         // now add these components to our panel
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
+        // gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.fill = GridBagConstraints.BOTH;
         gbc.weightx = 1.0;
         gbc.weighty = 0.0;
         gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.anchor = GridBagConstraints.CENTER;
+        gbc.anchor = GridBagConstraints.PAGE_START;
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.gridheight = 1;
         gbc.gridwidth = 3;
-        add(buttonPanel, gbc);
+        add(topLabel, gbc);
+        gbc.anchor = GridBagConstraints.CENTER;
         gbc.gridx = 0;
         gbc.gridy++;
         gbc.weighty = 1.0;
@@ -145,7 +147,7 @@ class ConversationPanel extends JPanel {
     }
 
     static void setDefaultColors(Color background, Color foreground,
-                                 Color broadcastColor, Color ackedColor) {
+            Color broadcastColor, Color ackedColor) {
         ConversationPanel.background = background;
         ConversationPanel.foreground = foreground;
         ConversationPanel.broadcastColor = broadcastColor;
@@ -153,38 +155,9 @@ class ConversationPanel extends JPanel {
     }
 
     void setListener(ActionListener listener) {
-//        close.addActionListener(listener);
-//        exchangeKeys.addActionListener(listener);
-//        goToContacts.addActionListener(listener);
         send.addActionListener(listener);
         // send event when return key is entered
         msgField.addActionListener(listener);
-    }
-
-    private JPanel makeButtonPanel(HtmlLabel label) {
-//        close = makeButton("x", CLOSE_COMMAND);
-//        close.setForeground(java.awt.Color.RED);
-//        exchangeKeys = makeButton("Exchange Keys", EXCHANGE_KEYS_COMMAND);
-//        goToContacts = makeButton("Contacts", CONTACTS_COMMAND);
-//        Insets insets = new Insets(2, 8, 2, 8);
-//        close.setMargin(insets);
-//        exchangeKeys.setMargin(insets);
-//        goToContacts.setMargin(insets);
-        JPanel panel = new JPanel();
-        panel.setBackground(background);
-        panel.setLayout(new BoxLayout(panel, BoxLayout.X_AXIS));
-        // panel.add(Box.createHorizontalGlue());
-// exchanging keys is now done through "New Contact"
-//        panel.add(exchangeKeys);
-//        panel.add(Box.createHorizontalGlue());
-//        panel.add(close);
-//        panel.add(Box.createHorizontalGlue());
-        panel.add(label);
-//        panel.add(Box.createHorizontalGlue());
-//        panel.add(goToContacts);
-        // panel.add(Box.createHorizontalGlue());
-        // panel.setBorder(new LineBorder(Color.BLACK, 1));
-        return (panel);
     }
 
     private JButton makeButton(String text, String command) {
@@ -207,11 +180,12 @@ class ConversationPanel extends JPanel {
         boolean isNew = msg.isNewMessage();
         String[] lines = text.split("\n");
         Color bg = broadcast ? broadcastColor : acked ? ackedColor
-                 : isNew ? newColor : Color.WHITE;
+                : isNew ? newColor : Color.WHITE;
         java.util.LinkedList<java.util.Vector<JLabel>> labels = null;
-        if (! acked)
-             labels = unackedL;
-        
+        if (!acked) {
+            labels = unackedL;
+        }
+
         JPanel bubble = makeBubble(left, bg, labels, lines);
         JPanel inner = new JPanel();
         inner.setBackground(background);
@@ -224,10 +198,10 @@ class ConversationPanel extends JPanel {
             inner.add(Box.createHorizontalGlue());
             inner.add(bubble);
         }
-        if (! acked) {  // should parallel what happens in makeBubble
-                        // i.e. only add if not acked
-            unackedM.addFirst (msg);
-            unackedP.addFirst (bubble);
+        if (!acked) {  // should parallel what happens in makeBubble
+            // i.e. only add if not acked
+            unackedM.addFirst(msg);
+            unackedP.addFirst(bubble);
         }
         messagePanel.add(inner);
         messagePanel.add(Box.createRigidArea(new Dimension(0, 4)));
@@ -240,13 +214,14 @@ class ConversationPanel extends JPanel {
 
     void ackMsg(Message msg) {
         for (int i = 0; i < unackedM.size(); i++) {
-            if (unackedM.get (i).equals (msg)) {
-                unackedP.get (i).setBackground(ackedColor);
-                for (JLabel label: unackedL.get (i))
+            if (unackedM.get(i).equals(msg)) {
+                unackedP.get(i).setBackground(ackedColor);
+                for (JLabel label : unackedL.get(i)) {
                     label.setBackground(ackedColor);
-                unackedM.remove (i);
-                unackedP.remove (i);
-                unackedL.remove (i);
+                }
+                unackedM.remove(i);
+                unackedP.remove(i);
+                unackedL.remove(i);
                 return;
             }
         }
@@ -254,8 +229,8 @@ class ConversationPanel extends JPanel {
     }
 
     private JPanel makeBubble(boolean leftJustified, Color color,
-                              java.util.LinkedList<java.util.Vector<JLabel>> labels,
-                              String... lines) {
+            java.util.LinkedList<java.util.Vector<JLabel>> labels,
+            String... lines) {
         JPanel panel = new JPanel();
         panel.setBackground(color);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -272,11 +247,13 @@ class ConversationPanel extends JPanel {
                 label.setAlignmentX(Component.RIGHT_ALIGNMENT);
             }
             panel.add(label);
-            if (labels != null)
-                labelv.add (label);
+            if (labels != null) {
+                labelv.add(label);
+            }
         }
-        if (labels != null)
-            labels.addFirst (labelv);
+        if (labels != null) {
+            labels.addFirst(labelv);
+        }
         // Border compound = BorderFactory.createCompoundBorder(new LineBorder(Color.BLACK, 1, true), new LineBorder(color, 2, true));
         // panel.setBorder(new LineBorder(Color.BLACK, 1, true));
         // panel.setBorder(compound);
@@ -323,4 +300,5 @@ class ConversationPanel extends JPanel {
             }
         }
     }
+
 }

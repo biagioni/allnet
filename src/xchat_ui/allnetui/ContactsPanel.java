@@ -3,12 +3,12 @@ package allnetui;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.Comparator;
 import javax.swing.*;
+import javax.swing.border.LineBorder;
 import utils.HtmlLabel;
+import utils.ScrollPaneResizeAdapter;
 
 /**
  * Keep 2 panels of buttons, keyed by name, and provide methods to add/delete
@@ -18,12 +18,13 @@ import utils.HtmlLabel;
  * @author Henry
  */
 class ContactsPanel extends JPanel {
-    
+
     private static final long serialVersionUID = 1L;
     // 2 panels for the buttons
-    private JPanel topPanel, bottomPanel;
+    //private JPanel topPanel, bottomPanel;
     // one panel to combine them and allow scrolling
-    private JPanel bothPanel;
+    // private JPanel bothPanel;
+    private JPanel buttonsPanel;
     // list of which names' buttons are in which panel
     private ArrayList<String> topNames, bottomNames;
     // associate each name with a button
@@ -34,47 +35,15 @@ class ContactsPanel extends JPanel {
     // save the action listener so we can set it for any new buttons created
     private ActionListener listener;
     private Color broadcastColor;
-    private Comparator<String> comparator;
+    // private Comparator<String> comparator;
     private JScrollPane scrollPane;
 
-    private void buildScrollPane(Color background) {
-        topNames = new ArrayList<>();
-        bottomNames = new ArrayList<>();
-        topPanel = makePanel(background);
-        bottomPanel = makePanel(background);
-        bothPanel = makePanel(background);
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.weighty = 0.0;
-        gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.anchor = GridBagConstraints.CENTER;
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.gridheight = 1;
-        gbc.gridwidth = 1;
-        bothPanel.add(Box.createRigidArea(new Dimension(0, 10)), gbc);
-        gbc.gridy++;
-        bothPanel.add(topPanel, gbc);
-        gbc.gridy++;
-        bothPanel.add(Box.createRigidArea(new Dimension(0, 10)), gbc);
-        gbc.gridy++;
-        // gbc.anchor = GridBagConstraints.PAGE_START;
-        bothPanel.add(bottomPanel, gbc);
-        gbc.gridy++;
-        // expand bottom area vertically to fill extra space
-        gbc.weighty = 1.0;
-        bothPanel.add(Box.createRigidArea(new Dimension(0, 10)), gbc);
-        // add a vertical scroll bar if we have more than ~10 contacts
-        scrollPane = makeScrollPane(bothPanel);
-    }
-    
     ContactsPanel(String info, Color background, Color foreground,
-                  Color broadcastColor, ClientData clientData) {
+            Color broadcastColor, ClientData clientData) {
         super();
         this.broadcastColor = broadcastColor;
         map = new HashMap<>();
-        comparator = new ContactComparator(clientData);
+        // comparator = new ContactComparator(clientData);
         setBackground(background);
         // make the info label for the top of the panel
         topLabel = new HtmlLabel(info);
@@ -83,63 +52,79 @@ class ContactsPanel extends JPanel {
         topLabel.setLineBorder(Color.BLACK, 1, false);
         // create the main content panel, scrollPane which holds bothPanel
         buildScrollPane(background);
-        // put into the contacts panel: topPanel, space, scrollPane, 
+        // put into the contacts panel: topPanel, space, scrollPane
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
+        gbc.anchor = GridBagConstraints.CENTER;
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0;
         gbc.weighty = 0.0;
         gbc.insets = new Insets(5, 5, 5, 5);
-        gbc.anchor = GridBagConstraints.CENTER;
         gbc.gridx = 0;
         gbc.gridy = 0;
         gbc.gridheight = 1;
         gbc.gridwidth = 1;
         add(topLabel, gbc);
         gbc.gridy++;
-        add(Box.createRigidArea(new Dimension(0, 10)), gbc);
+        add(Box.createRigidArea(new Dimension(0, 5)), gbc);
         gbc.gridy++;
+        //
+        gbc.anchor = GridBagConstraints.PAGE_START;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
         add(scrollPane, gbc);
-        gbc.gridy++;
+    }
+
+    private void buildScrollPane(Color background) {
+        topNames = new ArrayList<>();
+        bottomNames = new ArrayList<>();
+        // topPanel = makePanel(background);
+        // bottomPanel = makePanel(background);
+        // bothPanel = makePanel(background);
+        buttonsPanel = new JPanel();
+        buttonsPanel.setLayout(new BoxLayout(buttonsPanel, BoxLayout.Y_AXIS));
+        buttonsPanel.setBackground(background);
+        scrollPane = makeScrollPane(buttonsPanel);
+        scrollPane.getVerticalScrollBar().addComponentListener(
+                new ScrollPaneResizeAdapter(scrollPane, false));
     }
 
     private JScrollPane makeScrollPane(JPanel panel) {
-        JScrollPane scrollPane =
-            new JScrollPane(panel,
-                            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-                            // ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
-                            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
-// panel.getSize() and getSize() both return (0, 0) -- how do I get the size?.
-        Dimension panelDim = new Dimension(250, 300);
-// System.out.println("setting preferred size to " + panelDim);
-        // must set min and preferred size for the scroll pane, so set max too
-        scrollPane.setMinimumSize(panelDim);
-        scrollPane.setPreferredSize(panelDim);
-        scrollPane.setMaximumSize(panelDim);
+        JScrollPane scrP =
+                new JScrollPane(
+                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+                // ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
+                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+        Dimension scrDim = new Dimension(1, 1);
+        scrP.setMinimumSize(scrDim);
+        scrP.setPreferredSize(scrDim);
+        scrP.setMaximumSize(scrDim);
+        scrP.setViewportView(panel);
         // don't want a border around it
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
-        return scrollPane;
+        scrP.setBorder(BorderFactory.createEmptyBorder());
+        return scrP;
     }
 
     private JPanel makePanel(Color background) {
         JPanel panel = new JPanel();
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
         panel.setBackground(background);
-        // panel.setBorder(new LineBorder(Color.BLACK, 1));
+        panel.setBorder(new LineBorder(Color.BLACK, 1));
         return (panel);
     }
 
     // set the named button's text and place it in the top panel
     void placeInTop(String name, String text, boolean broadcast) {
-        placeIt(name, text, topPanel, bottomPanel, topNames, bottomNames, broadcast);
+        placeIt(name, text, topNames, bottomNames, broadcast);
     }
-    
+
     void placeInBottom(String name, String text, boolean broadcast) {
-        placeIt(name, text, bottomPanel, topPanel, bottomNames, topNames, broadcast);
+        placeIt(name, text, bottomNames, topNames, broadcast);
     }
-    
-    private void placeIt(String name, String text, JPanel to, JPanel other,
-            ArrayList<String> toNames, ArrayList<String> otherNames, boolean broadcast) {
+
+    private void placeIt(String name, String text,
+            ArrayList<String> toNames, ArrayList<String> otherNames,
+            boolean broadcast) {
         boolean changed = false;
         JButton button = map.get(name);
         if (button == null) {
@@ -147,36 +132,37 @@ class ContactsPanel extends JPanel {
             button = makeButton(name, text, broadcast);
             map.put(name, button);
             toNames.add(name);
-            updatePanel(to, toNames);
             changed = true;
         }
         else {
             button.setText(text);
             if (!toNames.contains(name)) {
                 // we have to move it
-                other.remove(button);
                 otherNames.remove(name);
                 toNames.add(name);
-                updatePanel(to, toNames);
                 changed = true;
             }
         }
         // redo the layout only if changed something
         if (changed) {
-            validate();
+            updateButtonsPanel();
         }
     }
-    
-    private void updatePanel(JPanel to, ArrayList<String> toNames) {
-        JButton b;
-        Collections.sort(toNames, comparator);
-        to.removeAll();
-        for (String name : toNames) {
-            b = map.get(name);
-            to.add(b);
+
+    private void updateButtonsPanel() {
+        buttonsPanel.removeAll();
+        for (String b : topNames) {
+            buttonsPanel.add(map.get(b));
         }
+        if (!topNames.isEmpty()) {
+            buttonsPanel.add(Box.createRigidArea(new Dimension(0, 20)));
+        }
+        for (String b : bottomNames) {
+            buttonsPanel.add(map.get(b));
+        }
+        buttonsPanel.revalidate();
     }
-    
+
     private JButton makeButton(String name, String text, boolean broadcast) {
         JButton button = new JButton(text);
         if (broadcast) {
@@ -199,20 +185,18 @@ class ContactsPanel extends JPanel {
         button.setMaximumSize(d);
         return (button);
     }
-    
+
     void removeName(String name) {
         JButton button = map.get(name);
         if (button != null) {
             // delete it from everywhere
             map.remove(name);
-            topPanel.remove(button);
             topNames.remove(name);
-            bottomPanel.remove(button);
             bottomNames.remove(name);
-            validate();
+            updateButtonsPanel();
         }
     }
-    
+
     void setTopLabelText(String... lines) {
         topLabel.setText(lines);
     }
@@ -228,7 +212,7 @@ class ContactsPanel extends JPanel {
             button.addActionListener(listener);
         }
     }
-    
+
     String getCommandPrefix() {
         return commandPrefix;
     }
