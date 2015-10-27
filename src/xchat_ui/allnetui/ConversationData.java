@@ -48,6 +48,18 @@ public class ConversationData {
             for (java.nio.file.Path p: dirIter)
                 paths.add(p);
         } catch (java.io.IOException e) {
+            System.out.println ("ConversationData.java: IO exception x " + e +
+                                  " iterating over directory " + chatDir +
+                                  ", aborting search for contact " + contact);
+            return emptyResult;
+        }
+        try (java.nio.file.DirectoryStream<java.nio.file.Path> dirIter =
+                 java.nio.file.Files.newDirectoryStream(chatDir,
+                                                        "????????.txt")) {
+                      // only match files with YYYYMMDD.txt
+            for (java.nio.file.Path p: dirIter)
+                paths.add(p);  // ignore .txt
+        } catch (java.io.IOException e) {
             System.out.println ("ConversationData.java: IO exception " + e +
                                   " iterating over directory " + chatDir +
                                   ", aborting search for contact " + contact);
@@ -60,12 +72,11 @@ public class ConversationData {
             java.util.Iterator<java.nio.file.Path> pit = paths.iterator();
             while (pit.hasNext()) {
                 java.nio.file.Path p = pit.next();
-                int length = p.toString().length();
-                int lastEight = length - 8;
-                if (lastEight < 0)
-                    lastEight = 0;
-                String name = p.toString().substring(lastEight, length);
-                if (name.compareTo(oldestPath) < 0)
+                String name = p.toString(); 
+                if ((name.length() == 12) &&
+                    (name.substring(8, 12).equals(".txt")))
+                    name = name.substring(0, 8);
+                if ((name.length() != 8) || (name.compareTo(oldestPath) < 0))
                     pit.remove();
             }
         }
