@@ -35,7 +35,7 @@ class ContactsPanel extends JPanel {
     // save the action listener so we can set it for any new buttons created
     private ActionListener listener;
     private Color broadcastColor;
-    // private Comparator<String> comparator;
+    private java.util.Comparator<String> comparator;
     private JScrollPane scrollPane;
 
     ContactsPanel(String info, Color background, Color foreground,
@@ -43,7 +43,7 @@ class ContactsPanel extends JPanel {
         super();
         this.broadcastColor = broadcastColor;
         map = new HashMap<>();
-        // comparator = new ContactComparator(clientData);
+        comparator = new ContactComparator(clientData);
         setBackground(background);
         // make the info label for the top of the panel
         topLabel = new HtmlLabel(info);
@@ -151,12 +151,14 @@ class ContactsPanel extends JPanel {
 
     private void updateButtonsPanel() {
         buttonsPanel.removeAll();
+        java.util.Collections.sort(topNames, comparator);
         for (String b : topNames) {
             buttonsPanel.add(map.get(b));
         }
         if (!topNames.isEmpty()) {
             buttonsPanel.add(Box.createRigidArea(new Dimension(0, 20)));
         }
+        java.util.Collections.sort(bottomNames, comparator);
         for (String b : bottomNames) {
             buttonsPanel.add(map.get(b));
         }
