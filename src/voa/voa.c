@@ -500,7 +500,7 @@ static int check_voa_reply (const char * payload, int psize)
 static int handle_packet (const char * message, int msize, int reply_only)
 {
   if (! is_valid_message (message, msize)) {
-    printf ("got invalid message of size %d\n", msize);
+    print_buffer (message, msize, "got invalid message", 32, 1);
     return 0;
   }
   const struct allnet_header * hp = (const struct allnet_header *) message;

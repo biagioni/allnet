@@ -51,7 +51,7 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug,
   gettimeofday (&receive_time, NULL);
 
   if (! is_valid_message (message, msize)) {
-    printf ("got invalid message of size %d\n", msize);
+    print_buffer (message, msize, "got invalid message", 32, 1);
     return 0;
   }
   struct allnet_header * hp = (struct allnet_header *) message;

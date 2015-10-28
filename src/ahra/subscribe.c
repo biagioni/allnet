@@ -65,7 +65,7 @@ static int handle_packet (char * message, int msize,
 {
   if (! is_valid_message (message, msize)) {
     if (debug)
-      printf ("got invalid message of size %d\n", msize);
+      print_buffer (message, msize, "got invalid message", 32, 1);
     return 0;
   }
   if (debug)
