@@ -3,7 +3,9 @@
 #ifndef STREAM_ENCRYPTION_H
 #define STREAM_ENCRYPTION_H
 
-#define ALLNET_STREAM_KEY_SIZE		32	/* 32 bytes, 256 bits */
+#include "crypt_sel.h"   /* AES256_SIZE */
+
+#define ALLNET_STREAM_KEY_SIZE		AES256_SIZE  /* 32 bytes, 256 bits */
 #define ALLNET_STREAM_SECRET_SIZE	64	/* 64 bytes, 512 bits */
 
 struct allnet_stream_encryption_state {
