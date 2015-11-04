@@ -65,7 +65,7 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug,
   print_packet (message, msize, "received: ", 1);
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
   int dsize = msize - (data - message);
-  print_buffer (data, dsize, "   payload:", 16, 1);
+  print_buffer (data, dsize, "   payload:", 40, 1);
   if (verify) {
     if (hp->message_type == ALLNET_TYPE_DATA) {
       char * contact;
