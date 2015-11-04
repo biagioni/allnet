@@ -12,6 +12,7 @@
 
 #include "packet.h"		/* ADDRESS_SIZE */
 #include "crypt_sel.h"		/* allnet_rsa_prvkey/pubkey */
+#include "stream.h"		/* struct allnet_stream_encryption_state */
 
 typedef int keyset;  /* opaque type, do not access directly */
 
@@ -127,12 +128,27 @@ extern int create_spare_key (int keybits, char * random, int rsize);
 /* returns the symmetric key size if any, or 0 otherwise */
 /* if there is a symmetric key && key != NULL && ksize >= key size,
  * copies the key value into key */
+/* to use allnet_stream_encrypt, use key state instead. */
 extern int has_symmetric_key (const char * contact, char * key, int ksize);
 
 /* returns 1 if the contact is valid and there was no prior symmetric key
  * for this contact and the ksize is adequate for a symmetric key,
  * returns 0 otherwise */
 extern int set_symmetric_key (const char * contact, char * key, int ksize);
+
+/* for use with allnet_stream_encrypt and decrypt.  You MUST save the state
+ * after successfully encrypting or decrypting
+ *
+ * returns 1 if the state is available, 0 otherwise.
+ * if state is not null, copies the state if available
+ *
+ * to initialize the state correctly, always call allnet_stream_init with
+ * the key given by has_symmetric_key */
+extern int symmetric_key_state (const char * contact,
+                                struct allnet_stream_encryption_state * state);
+/* returns 1 if the state was saved, 0 otherwise. */
+extern int save_key_state (const char * contact,
+                           struct allnet_stream_encryption_state * state);
 
 /* after invalidating, can set a new symmetric key, and then the old
  * one can no longer be revalidated.  Until then, revalidation is an option

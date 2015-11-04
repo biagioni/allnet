@@ -15,6 +15,7 @@
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <assert.h>
@@ -56,6 +57,10 @@ struct key_info {
 #define SYMMETRIC_KEY_SIZE AES256_SIZE
 #endif /* SYMMETRIC_KEY_SIZE */
   char symmetric_key [SYMMETRIC_KEY_SIZE];
+/* state includes a key, which may or may not be the same as symmetric_key,
+ * but usually will be. */
+  int has_state;
+  struct allnet_stream_encryption_state state;
 };
 struct key_info * kip = NULL;
 int num_key_infos = 0;
@@ -204,26 +209,46 @@ static int write_bytes_file (char * fname, char * bytes, int nbytes)
   return result;
 }
 
+/* hex must be a C string, i.e. null terminated.
+ * the return value is NULL in case of failure, or the next bytes to read
+ * otherwise */
+static char * s_to_bytes (char * hex, char * result, int rbytes)
+{
+  if (rbytes <= 0)
+    return hex;
+  int i;
+  char * p = hex;
+  for (i = 0; i < rbytes; i++) {
+    int value;
+    int num_chars = 0;
+    int found = sscanf (p, " %x%n", &value, &num_chars);
+    if (found == 0)
+      found = sscanf (p, " : %x%n", &value, &num_chars);
+    if ((found >= 1) && (num_chars > 0)) {
+      result [i] = value;
+      p += num_chars;
+    } else {
+      printf ("s_to_bytes (%s, %d) returning NULL at pos %d\n", hex, rbytes, i);
+      return NULL;
+    }
+  }
+  return p;
+}
+
 static int read_bytes_file (char * fname, char * bytes, int nbytes)
 {
   bzero (bytes, nbytes);
   char * data;
   int size = read_file_malloc (fname, &data, 0);
-  if (size > 0) {
-    int i;
-    char * p = data;
-    for (i = 0; (p != NULL) && (i < nbytes); i++) {
-      int value;
-      sscanf (p, " %x", &value);
-      bytes [i] = value;
-      p = strchr (p, ':');
-      if (p != NULL)  /* p points to ':' */
-        p++;
-      else            /* read last one */
-        return i + 1;
-    }
-  }
-  return 0;
+  if (size <= 0)
+    return 0;
+  char * next = s_to_bytes (data, bytes, nbytes);
+  if (next == NULL)
+    return 0;
+#ifdef DEBUG_PRINT
+  print_buffer (bytes, nbytes, " read_bytes_file returns", 64, 1);
+#endif /* DEBUG_PRINT */
+  return nbytes;
 }
 
 /* returns 1 for success, 0 for failure */
@@ -252,6 +277,33 @@ static int read_address_file (char * fname, char * address, int * nbits)
   }
   if (bytes != NULL)
     free (bytes);
+  return 1;
+}
+
+/* return 1 for success, 0 for failure */
+static int read_symmetric_state (char * fname,
+                                 struct allnet_stream_encryption_state * state)
+{
+  bzero (state, sizeof (struct allnet_stream_encryption_state));
+  char * data;
+  int size = read_file_malloc (fname, &data, 0);
+  if (size <= 0) return 0;
+  char * next = s_to_bytes (data, state->key, ALLNET_STREAM_KEY_SIZE);
+  if (next == NULL) return 0;
+  next = s_to_bytes (next, state->secret, ALLNET_STREAM_SECRET_SIZE);
+  if (next == NULL) return 0;
+  int read = sscanf (next, "%d %d %" SCNu64 " %d", &(state->counter_size),
+                     &(state->hash_size), &(state->counter),
+                     &(state->block_offset));
+#ifdef DEBUG_PRINT
+  printf ("read state: ");
+  print_buffer (state->key, ALLNET_STREAM_KEY_SIZE, "key", 32, 0);
+  print_buffer (state->secret, ALLNET_STREAM_SECRET_SIZE, ", secret", 64, 0);
+  printf (", %d %d %" PRIu64 " %d\n", state->counter_size, state->hash_size,
+          state->counter, state->block_offset);
+#endif /* DEBUG_PRINT */
+  if (read < 4)
+    return 0;
   return 1;
 }
 
@@ -345,7 +397,9 @@ static int read_key_info (const char * path, char * file, char ** contact,
                           char * remote, int * rem_nbits,
                           char ** dir_name,
                           char *** members, int * num_members,
-                          int * has_symmetric_key, char * symmetric_key)
+                          int * has_symmetric_key, char * symmetric_key,
+                          int * has_state,
+                          struct allnet_stream_encryption_state * state)
 {
 /* initialize all the results to NULL/zero defaults, in case we return */
   if (contact != NULL)
@@ -366,6 +420,10 @@ static int read_key_info (const char * path, char * file, char ** contact,
     *has_symmetric_key = 0;
   if (symmetric_key != NULL)
     bzero (symmetric_key, SYMMETRIC_KEY_SIZE);
+  if (has_state != NULL)
+    *has_state = 0;
+  if (state != NULL)
+    bzero (state, sizeof (struct allnet_stream_encryption_state));
   int result = 1;   /* found individual contact */
 
   /* basename is the name of the directory for the contact information files */
@@ -436,7 +494,7 @@ printf ("found group %s\n", basename);
     int n = read_bytes_file (name, symmetric_key, SYMMETRIC_KEY_SIZE);
     if ((n >= SYMMETRIC_KEY_SIZE) && (has_symmetric_key != NULL)) {
       *has_symmetric_key = 1;
-    } else {
+    } else if (n < SYMMETRIC_KEY_SIZE) {
       bzero (symmetric_key, SYMMETRIC_KEY_SIZE);
       if ((n < SYMMETRIC_KEY_SIZE) && (n > 0))
         printf ("found symmetric key in %s, but lenght %d < minimum %d\n",
@@ -450,6 +508,12 @@ printf ("found group %s\n", basename);
       printf ("%d: %02x:%02x:%02x...\n", *has_symmetric_key,
               symmetric_key [0], symmetric_key [1], symmetric_key [2]);
 #endif /* DEBUG_PRINT */
+  }
+  if (state != NULL) {
+    char * name = strcat_malloc (basename, "/send_state", "symm state");
+    if ((read_symmetric_state (name, state)) && (has_state != NULL))
+      *has_state = 1;
+    free (name);
   }
   if (dir_name != NULL)
     *dir_name = basename;
@@ -482,7 +546,7 @@ static void init_from_file ()
     if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* key directory */
         (read_key_info (dirname, dep->d_name, NULL, NULL, NULL,
                         NULL, NULL, NULL, NULL, NULL,
-                        NULL, NULL, NULL, NULL)))
+                        NULL, NULL, NULL, NULL, NULL, NULL)))
       num_keys++;
   }
   closedir (dir);
@@ -505,7 +569,8 @@ static void init_from_file ()
                         kip [i].remote.address, &(kip [i].remote.nbits),
                         &(kip [i].dir_name),
                         &(kip [i].members), &(kip [i].num_members),
-                        &(kip [i].has_symmetric_key), kip [i].symmetric_key)))
+                        &(kip [i].has_symmetric_key), kip [i].symmetric_key,
+                        &(kip [i].has_state), &(kip [i].state))))
       i++;
   }
   closedir (dir);
@@ -1335,8 +1400,9 @@ static int find_symmetric_key (const char * contact)
   for (ki = 0; ki < num_key_infos; ki++) {
     if ((kip [ki].contact_name != NULL) &&
         (strcmp (kip [ki].contact_name, contact) == 0)) {
-      if (kip [ki].has_symmetric_key)
+      if (kip [ki].has_symmetric_key) {
         return ki;
+      }
       found = -ki;
     }
   }
@@ -1363,11 +1429,11 @@ int has_symmetric_key (const char * contact, char * key, int ksize)
  * returns 0 otherwise */
 int set_symmetric_key (const char * contact, char * key, int ksize)
 {
-  init_from_file ();
   if ((ksize < SYMMETRIC_KEY_SIZE) || (key == NULL))
     return 0;
+  init_from_file ();
   int ki = find_symmetric_key (contact);
-  if (ki == num_key_infos)
+  if (ki == num_key_infos)  /* contact not found */
     return 0;
   /* else found contact, with or without symmetric key */
   if (ki < 0)  /* no symmetric key, but the code is the same */
@@ -1379,6 +1445,100 @@ int set_symmetric_key (const char * contact, char * key, int ksize)
   int result = write_bytes_file (fname, key, SYMMETRIC_KEY_SIZE);
   free (fname);
   return result;
+}
+
+/* returns the index of the kip that has the state for this contact,
+ * if any.  If the contact exists but has no state, it returns
+ * - (the index of the contact).
+ * If the contact is not found, returns num_key_infos */
+static int find_state (const char * contact)
+{
+  int ki = 0;
+  int found = num_key_infos;
+  for (ki = 0; ki < num_key_infos; ki++) {
+    if ((kip [ki].contact_name != NULL) &&
+        (strcmp (kip [ki].contact_name, contact) == 0)) {
+      if (kip [ki].has_state) {
+        return ki;
+      }
+      found = -ki;
+    }
+  }
+  return found;
+}
+
+/* for use with allnet_stream_encrypt and decrypt.  You MUST save the state
+ * after successfully encrypting or decrypting
+ *
+ * returns 1 if the state is available, 0 otherwise.
+ * if state is not null, copies the state if available
+ *
+ * to initialize the state correctly, always call allnet_stream_init with
+ * the key given by has_symmetric_key */
+int symmetric_key_state (const char * contact,
+                         struct allnet_stream_encryption_state * state)
+{
+  if (state == NULL)
+    return 0;
+  init_from_file ();
+  int found = find_state (contact);
+  if ((found >= 0) && (found < num_key_infos)) {  /* found */
+    if (state != NULL)
+      memcpy (state, &(kip [found].state),
+              sizeof (struct allnet_stream_encryption_state));
+    return 1;
+  }  /* else not found */
+  return 0;
+}
+
+static char * array_to_buf (const char * array, int abytes,
+                            char * buf, int * bbytes)
+{
+  char * p = buf;
+  int psize = *bbytes;
+  int i;
+  for (i = 0; ((i < abytes) && (psize > 0)); i++) {
+    int printed = 0;
+    if (i + 1 < abytes)  /* not the last */
+      printed = snprintf (p, psize, "%02x:", (array [i]) & 0xff);
+    else                 /* the last byte printed */
+      printed = snprintf (p, psize, "%02x\n", (array [i]) & 0xff);
+    p += printed;
+    psize = minz (psize, printed);
+  }
+  *bbytes = psize;
+  return p;
+}
+
+/* returns 1 if the state was saved, 0 otherwise. */
+int save_key_state (const char * contact,
+                    struct allnet_stream_encryption_state * state)
+{
+  if (state == NULL)
+    return 0;
+  init_from_file ();
+  int ki = find_state (contact);
+  if (ki == num_key_infos)  /* contact not found */
+    return 0;
+  /* else found contact, with or without state */
+  if (ki < 0)  /* no state, but the code is the same */
+    ki = -ki;
+  memcpy (&(kip [ki].state), state,
+          sizeof (struct allnet_stream_encryption_state));
+  kip [ki].has_state = 1;
+  char print_buffer [sizeof (struct allnet_stream_encryption_state) * 10];
+  int psize = sizeof (print_buffer);
+  char * next = array_to_buf (state->key, ALLNET_STREAM_KEY_SIZE,
+                              print_buffer, &psize);
+  next = array_to_buf (state->secret, ALLNET_STREAM_SECRET_SIZE, next, &psize);
+  snprintf (next, psize, "%d %d %" PRIu64 " %d\n", state->counter_size,
+            state->hash_size, state->counter, state->block_offset);
+  char * fname = strcat_malloc (kip [ki].dir_name, "/send_state",
+                                "save_key_state");
+  int result = write_file (fname, print_buffer, strlen (print_buffer), 1);
+  free (fname);
+  return result;
+
 }
 
 /* after invalidating, can set a new symmetric key, and then the old

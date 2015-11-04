@@ -128,14 +128,33 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
                         unsigned char * ack, int do_save)
 {
 /* printf ("sending to contact %s, keyset %d\n", contact, k); */
+  int sksize = has_symmetric_key (contact, NULL, 0);
+  struct allnet_stream_encryption_state sym_state;
+  int has_sym_state = 0;
+  if (symmetric_key_state (contact, &sym_state)) {
+    has_sym_state = 1;
+  } else if (sksize >= ALLNET_STREAM_KEY_SIZE) {  /* initialize the state */
+    char * sym_key = malloc_or_fail (sksize * 2, "cutil.c send_to_one sym_key");
+    sksize = has_symmetric_key (contact, sym_key, sksize);
+    /* copy the key to the upper part of sym_key, to make a secret */
+    memmove (sym_key + sksize, sym_key, sksize);
+    allnet_stream_init (&sym_state, sym_key, 0, sym_key, 0, 8, 32);
+    free (sym_key);
+    save_key_state (contact, &sym_state);
+    has_sym_state = 1;
+  }
+  int priv_ksize = 0;
+  int ksize = 0;
   allnet_rsa_prvkey priv_key;
   allnet_rsa_pubkey key;
-  int priv_ksize = get_my_privkey (k, &priv_key);
-  int ksize = get_contact_pubkey (k, &key);
-  if ((priv_ksize == 0) || (ksize == 0)) {
-    printf ("unable to locate key %d for contact %s (%d, %d)\n",
-            k, contact, priv_ksize, ksize);
-    return 1;  /* skip to the next key */
+  if (! has_sym_state) {  /* use public key, if any */
+    priv_ksize = get_my_privkey (k, &priv_key);
+    ksize = get_contact_pubkey (k, &key);
+    if ((priv_ksize == 0) || (ksize == 0)) {
+      printf ("unable to locate key %d for contact %s (%d, %d)\n",
+              k, contact, priv_ksize, ksize);
+      return 1;  /* skip to the next key */
+    }
   }
   /* if not already specified, get the addresses for the specific key */
   unsigned char a1 [ADDRESS_SIZE];
@@ -163,29 +182,48 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
   } /* else message_ack is null, to make sure we don't ack, below */
 
   /* encrypt */
-  char * encrypted;
-  int esize = allnet_encrypt (data, dsize, key, &encrypted);
-  if (esize == 0) {  /* some serious problem */
-    printf ("unable to encrypt retransmit request for key %d of %s\n",
-            k, contact);
-    return 0;  /* exit the loop */
+  char * encrypted = NULL;
+  char * signature = NULL;
+  int esize = 0;
+  int sendsize = 0;
+  int ssize = 0;
+  int sigtype = ALLNET_SIGTYPE_RSA_PKCS1;
+  if (has_sym_state) {
+    esize = dsize + sym_state.counter_size + sym_state.hash_size;
+    encrypted = malloc_or_fail (esize, "cutil.c send_to_one encrypted msg");
+    esize = allnet_stream_encrypt_buffer (&sym_state, data, dsize,
+                                          encrypted, esize);
+    save_key_state (contact, &sym_state);
+    sigtype = ALLNET_SIGTYPE_NONE;  /* the hash provides the authentication */
+    sendsize = esize;
+  } else {
+    esize = allnet_encrypt (data, dsize, key, &encrypted);
+    if (esize > 0) {
+      /* sign */
+      ssize = allnet_sign (encrypted, esize, priv_key, &signature);
+      if (ssize == 0) {
+        printf ("unable to sign retransmit request\n");
+        if (encrypted != NULL) free (encrypted);
+        if (signature != NULL) free (signature);
+        return 0;  /* exit the loop */
+      }
+      sendsize = esize + ssize + 2;
+    }
   }
-  /* sign */
-  char * signature;
-  int ssize = allnet_sign (encrypted, esize, priv_key, &signature);
-  if (ssize == 0) {
-    printf ("unable to sign retransmit request\n");
-    free (encrypted);
+  if ((esize == 0) || (sendsize == 0)) {  /* some serious problem */
+    printf ("unable to encrypt retransmit request for key %d of %s: %d %d\n",
+            k, contact, esize, sendsize);
+    if (encrypted != NULL) free (encrypted);
+    if (signature != NULL) free (signature);
     return 0;  /* exit the loop */
   }
 
-  int sendsize = esize + ssize + 2;
-  int csize = sendsize;
+  int csize = sendsize;  /* create_packet wants size without message ack */
   if (message_ack != NULL)
     csize = sendsize - MESSAGE_ID_SIZE;
   int psize;
   struct allnet_header * hp =
-    create_packet (csize, ALLNET_TYPE_DATA, hops, ALLNET_SIGTYPE_RSA_PKCS1,
+    create_packet (csize, ALLNET_TYPE_DATA, hops, sigtype,
                    src, sbits, dst, dbits, NULL, message_ack, &psize);
   int hsize = ALLNET_SIZE (hp->transport);
   int msize = hsize + sendsize;
@@ -198,9 +236,9 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
   char * message = (char *) hp;
 
   memcpy (message + hsize, encrypted, esize);
-  free (encrypted);
+  if (encrypted != NULL) free (encrypted);
   memcpy (message + hsize + esize, signature, ssize);
-  free (signature);
+  if (signature != NULL) free (signature);
   writeb16 (message + hsize + esize + ssize, ssize);
 
 #ifdef DEBUG_PRINT
@@ -229,6 +267,7 @@ int resend_packet (char * data, int dsize, char * contact, keyset key, int sock,
   /* ack should already be in the packet data */
   unsigned char ack [MESSAGE_ID_SIZE];
   memcpy (ack, data, MESSAGE_ID_SIZE);
+printf ("resend_packet (%d) for contact %s\n", key, contact);
   return send_to_one (key, data, dsize, contact, sock, NULL, ADDRESS_BITS,
                       NULL, ADDRESS_BITS, hops, priority, 1, ack, 0);
 }
@@ -251,6 +290,7 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
     return 0;
   }
+printf ("send_to_contact: %d keys (%d) for contact %s\n", nkeys, keys [0], contact);
 
   int result = 1;
   int k;
