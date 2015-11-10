@@ -28,6 +28,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <fcntl.h>
 
 #include "lib/packet.h"
 #include "lib/mgmt.h"
@@ -46,9 +47,12 @@
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 #ifdef TRACE_MAIN_FUNCTION
-static int get_nybble (char * string, int * offset)
+
+static int print_details = 1;
+
+static int get_nybble (const char * string, int * offset)
 {
-  char * p = string + *offset;
+  const char * p = string + *offset;
   while ((*p == ':') || (*p == ',') || (*p == '.'))
     p++;
   *offset = (p + 1) - string;
@@ -62,7 +66,7 @@ static int get_nybble (char * string, int * offset)
   return -1;
 }
 
-static int get_byte (char * string, int * offset, unsigned char * result)
+static int get_byte (const char * string, int * offset, unsigned char * result)
 {
   int first = get_nybble (string, offset);
   if (first == -1)
@@ -76,7 +80,7 @@ static int get_byte (char * string, int * offset, unsigned char * result)
   return 8;
 }
 
-static int get_address (char * address, unsigned char * result, int rsize)
+static int get_address (const char * address, unsigned char * result, int rsize)
 {
   int offset = 0;
   int index = 0;
@@ -648,18 +652,21 @@ static int64_t max_rtt = -1;
 static int64_t sum_rtt = 0;  /* sum_rtt / received_count is the mean rtt */
 
 /* print summaries.  Also, signal handler in case we are stopped */
-static void print_summary (int signal)
+static void print_summary_file (int signal, FILE * out)
 {
   if (sent_count > 0) {
     if (received_count > 0) {
       int64_t mean_rtt = sum_rtt / ((int64_t) received_count);
-      printf ("sent %d packets, received %d, ", sent_count, received_count);
-      printf ("rtt min/mean/max is %" PRId64 ".%03d/", min_rtt / 1000,
-              (int) (min_rtt % 1000));
-      printf ("%" PRId64 ".%03d/", mean_rtt / 1000, (int) (mean_rtt % 1000));
-      printf ("%" PRId64 ".%03d\n", max_rtt / 1000, (int) (max_rtt % 1000));
+      fprintf (out, "sent %d packets, received %d, ",
+               sent_count, received_count);
+      fprintf (out, "rtt min/mean/max is %" PRId64 ".%03d/", min_rtt / 1000,
+               (int) (min_rtt % 1000));
+      fprintf (out, "%" PRId64 ".%03d/", mean_rtt / 1000,
+               (int) (mean_rtt % 1000));
+      fprintf (out, "%" PRId64 ".%03d\n", max_rtt / 1000,
+               (int) (max_rtt % 1000));
     } else {  /* received_count is 0 */
-      printf ("sent %d packets, received 0\n", sent_count);
+      fprintf (out, "sent %d packets, received 0\n", sent_count);
     }
   } /* else nothing sent, print nothing */
   if ((signal == SIGHUP) || (signal == SIGINT) || (signal == SIGKILL)) {
@@ -667,6 +674,12 @@ static void print_summary (int signal)
     exit (1);
   }
 }
+
+static void print_summary (int signal)
+{
+  print_summary_file (signal, stdout);
+}
+
 
 static void record_rtt (unsigned long long us)
 {
@@ -680,7 +693,7 @@ static void record_rtt (unsigned long long us)
 
 static void print_times (struct allnet_mgmt_trace_entry * entry,
                          struct timeval * start, struct timeval * now,
-                         int save_to_intermediate)
+                         int save_to_intermediate, FILE * out)
 {
   if ((start != NULL) && (now != NULL)) {
     unsigned long long int fraction = readb64u (entry->seconds_fraction);
@@ -703,10 +716,13 @@ static void print_times (struct allnet_mgmt_trace_entry * entry,
   /* printf ("%ld.%06ld - %ld.%06ld = %lld\n",
           timestamp.tv_sec, timestamp.tv_usec,
           start->tv_sec, start->tv_usec, delta); */
-    if (delta > 0)
-      printf (" %6lld.%03lldms timestamp, ", delta / 1000LL, delta % 1000LL);
-    else
-      printf ("                         ");
+    if (print_details) {
+      if (delta > 0)
+        fprintf (out, " %6lld.%03lldms timestamp, ", delta / 1000LL,
+                 delta % 1000LL);
+      else
+        fprintf (out, "                         ");
+    }
   
     delta = delta_us (now, start);
     int index = find_arrival (entry);
@@ -717,38 +733,39 @@ static void print_times (struct allnet_mgmt_trace_entry * entry,
       arrivals [num_arrivals].time = *now;
       num_arrivals++;
     }
-    printf (" %6lld.%03lldms rtt,", delta / 1000LL, delta % 1000LL);
+    fprintf (out, " %6lld.%03lldms rtt,", delta / 1000LL, delta % 1000LL);
   }
 }
 
 static void print_entry (struct allnet_mgmt_trace_entry * entry,
                          struct timeval * start, struct timeval * now,
-                         int print_eol)
+                         int print_eol, FILE * out)
 {
   int index = (entry->hops_seen) & 0xff;
-  printf ("%3d ", index);
+  fprintf (out, "%3d ", index);
 
   if (entry->nbits > 0)
-    printf ("%02x", entry->address [0] % 0xff);
+    fprintf (out, "%02x", entry->address [0] % 0xff);
   int i;
   for (i = 1; ((i < ADDRESS_SIZE) && (i < (entry->nbits + 7) / 8)); i++)
-    printf (".%02x", entry->address [i] % 0xff);
-  printf ("/%d", entry->nbits);
+    fprintf (out, ".%02x", entry->address [i] % 0xff);
+  fprintf (out, "/%d", entry->nbits);
 
   if (print_eol)
-    printf ("\n");
+    fprintf (out, "\n");
 }
 
 static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                                 struct timeval start, struct timeval finish,
-                                int seq, int match_only, int no_intermediates)
+                                int seq, int match_only, int no_intermediates,
+                                FILE * out)
 {
   unsigned long long us = delta_us (&finish, &start);
   /* put the unix times into allnet format */
   start.tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
   finish.tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
   if (trp->encrypted) {
-    printf ("to do: implement decrypting encrypted trace result\n");
+    fprintf (out, "to do: implement decrypting encrypted trace result\n");
     return;
   }
   if (trp->intermediate_reply == 0) {      /* final reply */
@@ -758,40 +775,42 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
       first = trp->num_entries - 1;
     if (trp->num_entries > 1) {
       if ((! no_intermediates) && (! match_only))
-        printf ("trace to matching destination:\n");
+        fprintf (out, "trace to matching destination:\n");
       int i;
       for (i = first; i < trp->num_entries; i++) {
         if (i + 1 == trp->num_entries)
-          printf ("%4d: ", seq + 1);
+          fprintf (out, "%4d: ", seq + 1);
         else
-          printf ("      ");
-        printf ("         ");
-        print_times (trp->trace + i, &start, &finish, 1);
-        print_entry (trp->trace + i, &start, &finish, 1);
+          fprintf (out, "      ");
+        if (print_details)
+          fprintf (out, "         ");
+        print_times (trp->trace + i, &start, &finish, 1, out);
+        print_entry (trp->trace + i, &start, &finish, 1, out);
       }
     }
   } else if ((no_intermediates) || (match_only)) {  /* skip intermediates */
                                                     /* and not exact match */
   } else if (trp->num_entries == 2) {
     /* generally two trace entries for intermediate replies */
-    printf ("forward: ");
-    print_times (trp->trace + 1, &start, &finish, 1);
-    print_entry (trp->trace + 0, NULL, NULL, 0);
-    printf ("  to");
-    print_entry (trp->trace + 1, &start, &finish, 1);
+    fprintf (out, "forward: ");
+    print_times (trp->trace + 1, &start, &finish, 1, out);
+    print_entry (trp->trace + 0, NULL, NULL, 0, out);
+    fprintf (out, "  to");
+    print_entry (trp->trace + 1, &start, &finish, 1, out);
   } else if (trp->num_entries == 1) {
     /* generally only one trace entry, so always print the first */
-    printf ("local:   ");
-    print_times (trp->trace, &start, &finish, 1);
-    print_entry (trp->trace, &start, &finish, 1);
+    fprintf (out, "local:   ");
+    print_times (trp->trace, &start, &finish, 1, out);
+    print_entry (trp->trace, &start, &finish, 1, out);
   } else {
-    printf ("intermediate response with %d entries\n", trp->num_entries);
+    fprintf (out, "intermediate response with %d entries\n", trp->num_entries);
   }
+  fflush (out);
 }
 
 static void handle_packet (char * message, int msize, char * seeking,
                            struct timeval start, int seq,
-                           int match_only, int no_intermediates)
+                           int match_only, int no_intermediates, FILE * out)
 {
 /* print_packet (message, msize, "handle_packet got", 1); */
   if (! is_valid_message (message, msize))
@@ -833,11 +852,12 @@ static void handle_packet (char * message, int msize, char * seeking,
 */
   snprintf (log_buf, LOG_SIZE, "matching trace response of size %d\n", msize);
   log_print ();
-  print_trace_result (trp, start, now, seq, match_only, no_intermediates);
+  print_trace_result (trp, start, now, seq, match_only, no_intermediates, out);
 }
 
 static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
-                                int seq, int match_only, int no_intermediates)
+                                int seq, int match_only, int no_intermediates,
+                                FILE * out)
 {
   num_arrivals = 0;   /* not received anything yet */
   unsigned long long int max_ms = sec * 1000;
@@ -859,7 +879,7 @@ static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
       exit (1);
     }
     handle_packet (message, found, trace_id, tv_start, seq,
-                   match_only, no_intermediates);
+                   match_only, no_intermediates, out);
     if (found > 0)
       free (message);
     time_spent = allnet_time_ms () - start;
@@ -958,6 +978,29 @@ static int atoi_in_range (char * value, int min, int max, int dflt, char * name)
   return result;
 }
 
+static void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
+                           int repeat, int sleep, int nhops, int match_only,
+                           int no_intermediates, FILE * out)
+{
+#ifdef DEBUG_PRINT
+  printf ("tracing %d bits to %d hops: ", abits, nhops);
+  print_bitstring (address, 0, abits, 1);
+#endif /* DEBUG_PRINT */
+  char trace_id [MESSAGE_ID_SIZE];
+  unsigned char my_addr [ADDRESS_SIZE];
+  int count;
+  for (count = 0; (repeat == 0) || (count < repeat); count++) {
+/* printf ("%d/%d\n", count, repeat); */
+    random_bytes (trace_id, sizeof (trace_id));
+    random_bytes ((char *) my_addr, sizeof (my_addr));
+    send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
+    sent_count++;
+    wait_for_responses (sock, p, trace_id, sleep, count,
+                        match_only, no_intermediates, out);
+  }
+  print_summary_file (0, out);
+}
+
 /* parts of this duplicate some of the code in traced_main, but
  * supporting the address on the command line seems like a useful feature */
 int trace_main (int argc, char ** argv)
@@ -1046,6 +1089,9 @@ int trace_main (int argc, char ** argv)
       if (n > 0)
         nhops = n;
     }
+    do_trace_loop (sock, p, address, abits, repeat, sleep, nhops, match_only,
+                   no_intermediates, stdout);
+#if 0
 #ifdef DEBUG_PRINT
     printf ("tracing %d bits to %d hops: ", abits, nhops);
     print_bitstring (address, 0, abits, 1);
@@ -1060,11 +1106,95 @@ int trace_main (int argc, char ** argv)
       send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
       sent_count++;
       wait_for_responses (sock, p, trace_id, sleep, count,
-                          match_only, no_intermediates);
+                          match_only, no_intermediates, stdout);
     }
     print_summary (0);
+#endif /* 0 */
   }
   return 0;
+}
+
+/* returns a (malloc'd) string representation of the trace result */
+char * trace_string (const char * tmp_dir, int sleep, const char * dest,
+                     int nhops, int no_intermediates, int match_only)
+{
+  unsigned char address [ADDRESS_SIZE];
+  bzero (address, sizeof (address));  /* set any unused part to all zeros */
+  int abits = 0;
+  if ((dest != NULL) && (strlen (dest) > 0)) {
+    abits = get_address (dest, address, sizeof (address));
+    if (abits <= 0)
+      return strcat_malloc ("illegal destination ", dest, "trace_string");
+  }
+  print_details = 0;
+
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local ("trace_string", "trace_string", p);
+  if (sock < 0)
+    return strcpy_malloc ("unable to connect to allnet", "trace_string");
+
+#define TEMP_FILE	"tmp-file"
+  char * fname = strcat3_malloc (tmp_dir, "/", TEMP_FILE, "trace_string");
+  FILE * file = fopen (fname, "w");
+  if (file == NULL)
+    return strcat_malloc ("unable to open file ", fname, "trace_string");
+
+  do_trace_loop (sock, p, address, abits, 1, sleep, nhops, match_only,
+                 no_intermediates, file);
+#if 0
+#ifdef DEBUG_PRINT
+  printf ("tracing %d bits to %d hops: ", abits, nhops);
+  print_bitstring (address, 0, abits, 1);
+#endif /* DEBUG_PRINT */
+  char trace_id [MESSAGE_ID_SIZE];
+  unsigned char my_addr [ADDRESS_SIZE];
+  random_bytes (trace_id, sizeof (trace_id));
+  random_bytes ((char *) my_addr, sizeof (my_addr));
+  send_trace (sock, address, abits, trace_id, my_addr, 5, nhops);
+  sent_count++;
+  wait_for_responses (sock, p, trace_id, sleep, 0,
+                      match_only, no_intermediates, file);
+  print_summary_file (0, file);
+#endif /* 0 */
+  fclose (file);
+  char * result;
+  size_t success = read_file_malloc (fname, &result, 0);
+  if (success <= 0)
+    result = strcat_malloc ("unable to read file ", fname, "trace_string");
+  unlink (fname);
+  free (fname);
+  return result;
+}
+
+void trace_pipe (int pipe, int sleep, const char * dest,
+                 int nhops, int no_intermediates, int match_only)
+{
+  FILE * pipe_file = fdopen (pipe, "w");
+  if (pipe_file == NULL) {
+    char * err = "unable to open pipe file ";
+    write (pipe, err, strlen (err));
+    return;
+  }
+  unsigned char address [ADDRESS_SIZE];
+  bzero (address, sizeof (address));  /* set any unused part to all zeros */
+  int abits = 0;
+  if ((dest != NULL) && (strlen (dest) > 0)) {
+    abits = get_address (dest, address, sizeof (address));
+    if (abits <= 0)
+      printf ("illegal destination %s\n", dest);
+  }
+  print_details = 0;
+
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local ("trace_pipe", "trace_pipe", p);
+  if (sock < 0) {
+    printf ("unable to connect to allnet\n");
+    return;
+  }
+
+  do_trace_loop (sock, p, address, abits, 1, sleep, nhops, match_only,
+                 no_intermediates, pipe_file);
+  fclose (pipe_file);
 }
 
 #ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* not on iOS, define main */
