@@ -42,6 +42,7 @@ class UIController implements ControllerInterface, UIAPI {
     // will need a references to the ui panels
     private ContactsPanel contactsPanel;
     private NewContactPanel newContactPanel;
+    private SettingsPanel settingsPanel;
     private MyTabbedPane myTabbedPane;
     // need to keep client data (contacts, keys, conversations, etc.)
     private ClientData clientData;
@@ -232,6 +233,10 @@ class UIController implements ControllerInterface, UIAPI {
 
     void setMyTabbedPane(MyTabbedPane myTabbedPane) {
         this.myTabbedPane = myTabbedPane;
+    }
+
+    void setSettingsPanel(SettingsPanel settingsPanel) {
+        this.settingsPanel = settingsPanel;
     }
 
     void setMaxLineLength(int maxLineLength) {
