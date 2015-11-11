@@ -655,10 +655,13 @@ static int64_t sum_rtt = 0;  /* sum_rtt / received_count is the mean rtt */
 static void print_summary_file (int signal, FILE * out)
 {
   if (sent_count > 0) {
+    char * ps = "packets";
+    if (sent_count == 1)
+      ps = "packet";
     if (received_count > 0) {
       int64_t mean_rtt = sum_rtt / ((int64_t) received_count);
-      fprintf (out, "sent %d packets, received %d, ",
-               sent_count, received_count);
+      fprintf (out, "sent %d %s, received %d, ",
+               sent_count, ps, received_count);
       fprintf (out, "rtt min/mean/max is %" PRId64 ".%03d/", min_rtt / 1000,
                (int) (min_rtt % 1000));
       fprintf (out, "%" PRId64 ".%03d/", mean_rtt / 1000,
@@ -666,7 +669,7 @@ static void print_summary_file (int signal, FILE * out)
       fprintf (out, "%" PRId64 ".%03d\n", max_rtt / 1000,
                (int) (max_rtt % 1000));
     } else {  /* received_count is 0 */
-      fprintf (out, "sent %d packets, received 0\n", sent_count);
+      fprintf (out, "sent %d %s, received 0\n", sent_count, ps);
     }
   } /* else nothing sent, print nothing */
   if ((signal == SIGHUP) || (signal == SIGINT) || (signal == SIGKILL)) {
@@ -778,12 +781,13 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
         fprintf (out, "trace to matching destination:\n");
       int i;
       for (i = first; i < trp->num_entries; i++) {
-        if (i + 1 == trp->num_entries)
-          fprintf (out, "%4d: ", seq + 1);
-        else
-          fprintf (out, "      ");
-        if (print_details)
+        if (print_details) {
+          if (i + 1 == trp->num_entries)
+            fprintf (out, "%4d: ", seq + 1);
+          else
+            fprintf (out, "      ");
           fprintf (out, "         ");
+        }
         print_times (trp->trace + i, &start, &finish, 1, out);
         print_entry (trp->trace + i, &start, &finish, 1, out);
       }
@@ -980,8 +984,9 @@ static int atoi_in_range (char * value, int min, int max, int dflt, char * name)
 
 static void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
                            int repeat, int sleep, int nhops, int match_only,
-                           int no_intermediates, FILE * out)
+                           int no_intermediates, int wide, FILE * out)
 {
+  print_details = wide;
 #ifdef DEBUG_PRINT
   printf ("tracing %d bits to %d hops: ", abits, nhops);
   print_bitstring (address, 0, abits, 1);
@@ -999,6 +1004,7 @@ static void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
                         match_only, no_intermediates, out);
   }
   print_summary_file (0, out);
+  print_details = 1;
 }
 
 /* parts of this duplicate some of the code in traced_main, but
@@ -1090,7 +1096,7 @@ int trace_main (int argc, char ** argv)
         nhops = n;
     }
     do_trace_loop (sock, p, address, abits, repeat, sleep, nhops, match_only,
-                   no_intermediates, stdout);
+                   no_intermediates, 1, stdout);
 #if 0
 #ifdef DEBUG_PRINT
     printf ("tracing %d bits to %d hops: ", abits, nhops);
@@ -1116,7 +1122,7 @@ int trace_main (int argc, char ** argv)
 
 /* returns a (malloc'd) string representation of the trace result */
 char * trace_string (const char * tmp_dir, int sleep, const char * dest,
-                     int nhops, int no_intermediates, int match_only)
+                     int nhops, int no_intermediates, int match_only, int wide)
 {
   unsigned char address [ADDRESS_SIZE];
   bzero (address, sizeof (address));  /* set any unused part to all zeros */
@@ -1126,7 +1132,6 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
     if (abits <= 0)
       return strcat_malloc ("illegal destination ", dest, "trace_string");
   }
-  print_details = 0;
 
   pd p = init_pipe_descriptor ();
   int sock = connect_to_local ("trace_string", "trace_string", p);
@@ -1140,7 +1145,7 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
     return strcat_malloc ("unable to open file ", fname, "trace_string");
 
   do_trace_loop (sock, p, address, abits, 1, sleep, nhops, match_only,
-                 no_intermediates, file);
+                 no_intermediates, wide, file);
 #if 0
 #ifdef DEBUG_PRINT
   printf ("tracing %d bits to %d hops: ", abits, nhops);
@@ -1167,7 +1172,7 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
 }
 
 void trace_pipe (int pipe, int sleep, const char * dest,
-                 int nhops, int no_intermediates, int match_only)
+                 int nhops, int no_intermediates, int match_only, int wide)
 {
   FILE * pipe_file = fdopen (pipe, "w");
   if (pipe_file == NULL) {
@@ -1183,7 +1188,6 @@ void trace_pipe (int pipe, int sleep, const char * dest,
     if (abits <= 0)
       printf ("illegal destination %s\n", dest);
   }
-  print_details = 0;
 
   pd p = init_pipe_descriptor ();
   int sock = connect_to_local ("trace_pipe", "trace_pipe", p);
@@ -1193,7 +1197,7 @@ void trace_pipe (int pipe, int sleep, const char * dest,
   }
 
   do_trace_loop (sock, p, address, abits, 1, sleep, nhops, match_only,
-                 no_intermediates, pipe_file);
+                 no_intermediates, wide, pipe_file);
   fclose (pipe_file);
 }
 
