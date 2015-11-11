@@ -102,7 +102,16 @@ static int get_address (const char * address, unsigned char * result, int rsize)
   }
   return bits;
 }
+
 #endif /* TRACE_MAIN_FUNCTION */
+
+static int do_respond_to_trace ()
+{
+  time_t mod = config_file_mod_time ("adht", "do_not_respond_to_trace");
+  if (mod != 0)  /* file exists */
+    return 0;
+  return 1;
+}
 
 static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
                               int hops, struct timeval * now,
@@ -250,6 +259,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
 }
 
 /* see if adht has an address, if so, use that */
+/* return 1 if there is no do_not_respond_to_trace file, 0 otherwise */
 static void get_my_addr (unsigned char * my_addr, int my_addr_size)
 {
   /* init to a random value, in case there is no address in the file */
@@ -265,7 +275,7 @@ static void get_my_addr (unsigned char * my_addr, int my_addr_size)
                 "error: traced still waiting for adht peer file creation\n");
       log_print ();
       if (count > 20)
-        exit (1);
+        return;
     }
   }
 #define EXPECTED_FIRST_LINE	33  /* first line should always be 33 bytes */
@@ -273,7 +283,7 @@ static void get_my_addr (unsigned char * my_addr, int my_addr_size)
   int n = read (fd, line, EXPECTED_FIRST_LINE);
   close (fd);
   if (n != EXPECTED_FIRST_LINE)
-    return;
+    return;   /* random ID on each new invocation */
   line [EXPECTED_FIRST_LINE - 1] = '\0';  /* terminate by overwriting \n */
 #undef EXPECTED_FIRST_LINE
   int i;
@@ -281,7 +291,7 @@ static void get_my_addr (unsigned char * my_addr, int my_addr_size)
   for (i = 0; i < ADDRESS_SIZE; i++) {
     char * end;
     my_addr [i] = strtol (start, &end, 16);
-    if (start == end) {   /* nothing read */
+    if (start == end) {   /* not read, go back to a random ID */
       random_bytes ((char *) my_addr, my_addr_size);
       return;
     }
@@ -458,7 +468,8 @@ static void respond_to_trace (int sock, char * message, int msize,
 #endif /* DEBUG_PRINT */
   /* when forwarding, use a low priority > epsilon, to tell ad it is from us */
   int fwd_priority = ALLNET_PRIORITY_TRACE_FWD;
-  if ((forward_only) || ((match_only) && (nmatch < mbits))) {
+  if ((! do_respond_to_trace ()) || (forward_only) ||
+      ((match_only) && (nmatch < mbits))) {
     /* forward without adding my entry */
     if (! send_pipe_message (sock, message, msize, fwd_priority))
       printf ("unable to forward trace response\n");
@@ -913,47 +924,19 @@ static void usage (char * pname, int daemon)
   }
 }
 
-#if 0   /* replaced by getopt */
-static int get_repeat_option (int * argcp, char ** argv)
-{
-  int orig_argc = *argcp;
-  int i;
-  for (i = 1; i < orig_argc; i++) {
-    if (strcmp (argv [i], "-r") == 0) {  /* found a match */
-      int skip = 1;
-      int result = 0;                    /* repeat forever */
-      if (i + 1 < orig_argc) {
-        char * e;
-        int count = strtol (argv [i + 1], &e, 10);
-        if (e != argv [i + 1]) {  /* found something */
-          result = count;
-          skip = 2;
-        }
-      }
-      int j;
-      for (j = i; j + skip < orig_argc; j++)
-        argv [j] = argv [j + skip];
-      *argcp = orig_argc - skip;
-      return result;
-    }
-  }
-  return 1;   /* only repeat once */
-}
-#endif /* 0 */
-
 #endif /* TRACE_MAIN_FUNCTION */
 
 void traced_main (char * pname)
 {
-  pd p = init_pipe_descriptor ();
-  int sock = connect_to_local (pname, pname, p);
-  if (sock < 0)
-    return;
-
   unsigned char address [ADDRESS_SIZE];
   bzero (address, sizeof (address));  /* set any unused part to all zeros */
   int abits = 16;
   get_my_addr (address, sizeof (address));
+
+  pd p = init_pipe_descriptor ();
+  int sock = connect_to_local (pname, pname, p);
+  if (sock < 0)
+    return;
 
 #ifdef DEBUG_PRINT
   printf ("trace daemon (m %d) for %d bits: ", match_only, abits);
@@ -1177,7 +1160,8 @@ void trace_pipe (int pipe, int sleep, const char * dest,
   FILE * pipe_file = fdopen (pipe, "w");
   if (pipe_file == NULL) {
     char * err = "unable to open pipe file ";
-    write (pipe, err, strlen (err));
+    if (write (pipe, err, strlen (err)) != strlen (err))
+      perror ("write in trace_pipe");
     return;
   }
   unsigned char address [ADDRESS_SIZE];
