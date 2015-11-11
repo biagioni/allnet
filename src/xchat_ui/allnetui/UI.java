@@ -23,7 +23,7 @@ class UI extends ApplicationFrame {
     public static final String CONTACTS_PANEL_ID = "CONTACTS_PANEL_ID";
     public static final String NEW_CONTACT_PANEL_ID = "NEW_CONTACT_PANEL_ID";
     public static final String KEY_EXCHANGE_PANEL_ID = "KEY_EXCHANGE_PANEL_ID";
-    public static final String SETTINGS_PANEL_ID = "SETTINGS_PANEL_ID";
+    public static final String MORE_PANEL_ID = "MORE_PANEL_ID";
     //
     // private static boolean debug = false;
     static final String TITLE = "xchat - AllNet Java UI";
@@ -103,10 +103,10 @@ class UI extends ApplicationFrame {
                     String p = " exchange a key with a new contact<br>&nbsp;";
                     NewContactPanel newContactPanel =
                         new NewContactPanel(p, bgndColor, otherColor);
-                    SettingsPanel settingsPanel =
-                        new SettingsPanel(bgndColor, otherColor);
+                    MorePanel morePanel =
+                        new MorePanel(bgndColor, otherColor);
                     MyTabbedPane uiTabs = new MyTabbedPane();
-                    uiTabs.addTab(SETTINGS_PANEL_ID, "Settings", settingsPanel);
+                    uiTabs.addTab(MORE_PANEL_ID, "More", morePanel);
                     uiTabs.addTab(NEW_CONTACT_PANEL_ID, "New Contact",
                                   newContactPanel);
                     uiTabs.addTab(CONTACTS_PANEL_ID, "Contacts", contactsPanel);
@@ -116,7 +116,7 @@ class UI extends ApplicationFrame {
                     // those panels
                     controller.setContactsPanel(contactsPanel);
                     controller.setNewContactPanel(newContactPanel);
-                    controller.setSettingsPanel(settingsPanel);
+                    controller.setMorePanel(morePanel);
                     controller.setMyTabbedPane(uiTabs);
                     // update the contacts tab
                     // controller.updateContactsPanelStatus(); -- do it later

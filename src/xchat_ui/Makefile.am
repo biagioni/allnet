@@ -12,6 +12,7 @@ JAVASOURCELIST= \
     allnetui/ConversationPanel.java \
     allnetui/KeyExchangePanel.java \
     allnetui/Message.java \
+    allnetui/MorePanel.java \
     allnetui/NewContactPanel.java \
     allnetui/UIAPI.java \
     allnetui/UIController.java \

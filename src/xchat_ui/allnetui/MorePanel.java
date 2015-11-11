@@ -11,9 +11,13 @@ import utils.HtmlLabel;
  *
  * @author edo (using code by Henry)
  */
-class SettingsPanel extends JPanel {
+class MorePanel extends JPanel {
 
     private static final long serialVersionUID = 1L;
+    // commands to send to UIController
+    public static final String CLOSE_COMMAND = "CLOSE";
+    public static final String TRACE_COMMAND = "TRACE";
+    // private data fields
     private JButton traceButton;
     private JLabel traceLabel;
     private String traceText;
@@ -29,15 +33,15 @@ class SettingsPanel extends JPanel {
     private JRadioButton[] buttons;
     private ButtonGroup group;
 */
-    private String commandPrefix = "SettingsPanel";
+    private String commandPrefix = UI.MORE_PANEL_ID;
 
-    SettingsPanel(Color background, Color foreground) {
+    MorePanel(Color background, Color foreground) {
         setBackground(background);
         // put the trace button and the space for the trace output
         traceButton = new JButton("trace");
         traceButton.setBackground(foreground);
-        traceButton.setActionCommand(commandPrefix + ":" + "trace");
-        traceText = " \n\n\n\n\n\n ";
+        traceButton.setActionCommand(commandPrefix + ":" + TRACE_COMMAND);
+        traceText = " \n \n \n \n \n \n ";
         traceLabel = new JLabel(traceText);
         traceLabel.setOpaque(true);
         traceLabel.setBackground(Color.WHITE);
@@ -82,14 +86,11 @@ class SettingsPanel extends JPanel {
 //        }
 //        return (-1);
 //    }
-//
-//    // set where we will send events
-//    void setActionListener(ActionListener listener) {
-//        goButton.addActionListener(listener);
-//        for (JRadioButton rb : buttons) {
-//            rb.addActionListener(listener);
-//        }
-//    }
+
+    // set where we will send events
+    void setActionListener(ActionListener listener) {
+        traceButton.addActionListener(listener);
+    }
 
     String getCommandPrefix() {
         return commandPrefix;

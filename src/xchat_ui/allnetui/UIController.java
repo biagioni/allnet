@@ -42,7 +42,7 @@ class UIController implements ControllerInterface, UIAPI {
     // will need a references to the ui panels
     private ContactsPanel contactsPanel;
     private NewContactPanel newContactPanel;
-    private SettingsPanel settingsPanel;
+    private MorePanel morePanel;
     private MyTabbedPane myTabbedPane;
     // need to keep client data (contacts, keys, conversations, etc.)
     private ClientData clientData;
@@ -235,8 +235,9 @@ class UIController implements ControllerInterface, UIAPI {
         this.myTabbedPane = myTabbedPane;
     }
 
-    void setSettingsPanel(SettingsPanel settingsPanel) {
-        this.settingsPanel = settingsPanel;
+    void setMorePanel(MorePanel morePanel) {
+        this.morePanel = morePanel;
+        morePanel.setActionListener(this);
     }
 
     void setMaxLineLength(int maxLineLength) {
@@ -284,7 +285,10 @@ class UIController implements ControllerInterface, UIAPI {
             // from the tabbed pane
             processKeyExchangePanelEvent(actionCommand);
         }
-        else {
+        else if (actionCommand[0].startsWith(UI.MORE_PANEL_ID)) {
+            // from the more panel
+            processMorePanelEvent(actionCommand);
+        } else {
             // must be from a conversation panel
             processConversationPanelEvent(actionCommand);
         }
@@ -354,6 +358,18 @@ System.out.println ("resending subscription for " + ahra);
                 break;
             case KeyExchangePanel.RESEND_KEY_COMMAND:
                 resendKey((KeyExchangePanel) myTabbedPane.getTabContent(actionCommand[0]));
+                break;
+        }
+    }
+
+    private void processMorePanelEvent(String[] actionCommand) {
+        switch (actionCommand[1]) {
+            case MorePanel.CLOSE_COMMAND:
+                myTabbedPane.removeTab(actionCommand[0]);
+                myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
+                break;
+            case MorePanel.TRACE_COMMAND:
+                System.out.println ("trace command called");
                 break;
         }
     }
