@@ -296,9 +296,10 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   if ((maxcontacts > 0) && (maxcontacts < ncontacts))
     ncontacts = maxcontacts;
   for (i = 0; ((*contact == NULL) && (i < ncontacts)); i++) {
-#ifdef DEBUG_PRINT
-    printf ("to do: randomize and limit the number of contacts tried\n");
-#endif /* DEBUG_PRINT */
+static int p = 0;
+if (! p)
+printf ("to do: randomize and limit the number of contacts tried\n");
+p = 1;
     keyset * keys;
     int nkeys = all_keys (contacts [i], &keys);
     for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
