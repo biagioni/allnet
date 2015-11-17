@@ -1391,7 +1391,7 @@ int mark_valid (const char * contact, keyset k)
 
 /* returns the index of the kip that has the symmetric key for this contact,
  * if any.  If the contact exists but has no symmetric key, it returns
- * - (the index of the contact).
+ * -1 - (the index of the contact).
  * If the contact is not found, returns num_key_infos */
 static int find_symmetric_key (const char * contact)
 {
@@ -1403,7 +1403,7 @@ static int find_symmetric_key (const char * contact)
       if (kip [ki].has_symmetric_key) {
         return ki;
       }
-      found = -ki;
+      found = -1 - ki;
     }
   }
   return found;
@@ -1449,7 +1449,7 @@ int set_symmetric_key (const char * contact, char * key, int ksize)
 
 /* returns the index of the kip that has the state for this contact,
  * if any.  If the contact exists but has no state, it returns
- * - (the index of the contact).
+ * -1 - (the index of the contact).
  * If the contact is not found, returns num_key_infos */
 static int find_state (const char * contact)
 {
@@ -1461,7 +1461,7 @@ static int find_state (const char * contact)
       if (kip [ki].has_state) {
         return ki;
       }
-      found = -ki;
+      found = -1 - ki;
     }
   }
   return found;
