@@ -267,7 +267,6 @@ int resend_packet (char * data, int dsize, char * contact, keyset key, int sock,
   /* ack should already be in the packet data */
   unsigned char ack [MESSAGE_ID_SIZE];
   memcpy (ack, data, MESSAGE_ID_SIZE);
-printf ("resend_packet (%d) for contact %s\n", key, contact);
   return send_to_one (key, data, dsize, contact, sock, NULL, ADDRESS_BITS,
                       NULL, ADDRESS_BITS, hops, priority, 1, ack, 0);
 }
@@ -290,8 +289,6 @@ int send_to_contact (char * data, int dsize, char * contact, int sock,
     printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
     return 0;
   }
-printf ("send_to_contact: %d keys (%d) for contact %s\n", nkeys, keys [0], contact);
-
   int result = 1;
   int k;
   for (k = 0; ((result) && (k < nkeys)); k++)
