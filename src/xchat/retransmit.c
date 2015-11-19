@@ -14,6 +14,7 @@
 #include "chat.h"
 #include "message.h"
 #include "cutil.h"
+#include "store.h"
 #include "retransmit.h"
 
 /* #define DEBUG_PRINT */
@@ -159,6 +160,50 @@ int send_retransmit_request (char * contact, keyset k, int sock,
   free (request);
   free (keys);
   return result;
+}
+
+/* sanity check: if the last_received value is greater than
+ * our get_counter, change our sequence number to match, otherwise
+ * our messages will be ignored as duplicates. */
+static void sanity_check_sequence_number (const char * contact, keyset k,
+                                          struct chat_control_request * hp,
+                                          int sock, int hops)
+{
+  uint64_t counter = get_counter (contact);
+  uint64_t last = readb64u (hp->last_received);
+  if (counter >= last)
+    return;
+  printf ("error: counter %" PRIu64 " < last_received %" PRIu64 "\n",
+          counter, last);
+  /* resend the last message, but using all the missing sequence numbers */
+  uint64_t seq, time, rtime;
+  char ack [MESSAGE_ID_SIZE];
+  int tz_min, msize;
+  char * message_text = NULL;
+  if (most_recent_record (contact, k, MSG_TYPE_SENT, &seq, &time, &tz_min,
+                          &rtime, ack, &message_text, &msize) != MSG_TYPE_SENT)
+    return;
+  if ((message_text == NULL) || (msize < 0))
+    return;
+  size_t cd_size = sizeof (struct chat_descriptor);
+  char * message = malloc_or_fail (cd_size + msize, "sanity_check_seq");
+  char * data = message + cd_size;
+  int dsize = msize;
+  memcpy (data, message_text, dsize);
+  free (message_text);
+  msize += cd_size;
+  struct chat_descriptor * cdp = (struct chat_descriptor *) message;
+  if (! init_chat_descriptor (cdp, contact))
+    return;
+  while (counter <= last) {
+    writeb64u (cdp->counter, counter++);  /* new, higher sequence number */
+    save_outgoing (contact, k, cdp, data, 0);
+  }
+  writeb64u (cdp->counter, counter);  /* final sequence number */
+  /* since this is sort of a housekeeping message, send with minimum priority */
+  send_to_contact (message, msize, contact, sock, NULL, ADDRESS_BITS,
+                   NULL, ADDRESS_BITS, hops, ALLNET_PRIORITY_EPSILON, 1);
+  free (message);
 }
 
 #define MAXLL	(-1LL)
@@ -397,8 +442,8 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
     last = prev;
     priority -= ALLNET_PRIORITY_EPSILON;
   }
+  sanity_check_sequence_number (contact, k, hp, sock, hops);
 }
-#undef DEBUG_PRINT
 
 void resend_unacked (char * contact, keyset k, int sock, 
                      int hops, int priority, int max)

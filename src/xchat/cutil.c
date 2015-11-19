@@ -95,7 +95,7 @@ static int local_time_offset ()
 }
 
 /* returns 1 if successful, 0 otherwise */
-int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
+int init_chat_descriptor (struct chat_descriptor * cp, const char * contact)
 {
   uint64_t counter = get_counter (contact);
   if (counter == 0) {
@@ -121,8 +121,9 @@ int init_chat_descriptor (struct chat_descriptor * cp, char * contact)
  * returns 0 if the encryption or transmission failed, and it would probably
  * be best to stop trying */
 /* can only do_save if also do_ack */
-static int send_to_one (keyset k, char * data, int dsize, char * contact,
-                        int sock, unsigned char * src, int sbits,
+static int send_to_one (keyset k, char * data, int dsize,
+                        const char * contact, int sock,
+                        unsigned char * src, int sbits,
                         unsigned char * dst, int dbits,
                         int hops, int priority, int do_ack,
                         unsigned char * ack, int do_save)
@@ -261,8 +262,8 @@ static int send_to_one (keyset k, char * data, int dsize, char * contact,
 /* same as send_to_contact, but only sends to the one key corresponding
  * to key, and does not save outgoing.  Does request ack, and
  * uses the addresses saved for the contact. */
-int resend_packet (char * data, int dsize, char * contact, keyset key, int sock,
-                   int hops, int priority)
+int resend_packet (char * data, int dsize, const char * contact,
+                   keyset key, int sock, int hops, int priority)
 {
   /* ack should already be in the packet data */
   unsigned char ack [MESSAGE_ID_SIZE];
@@ -277,7 +278,8 @@ int resend_packet (char * data, int dsize, char * contact, keyset key, int sock,
 /* the message ACK must be set at the start of the data */
 /* unless ack_and_save is 0, requests an ack, and after the message is sent,
  * calls save_outgoing. */
-int send_to_contact (char * data, int dsize, char * contact, int sock,
+int send_to_contact (char * data, int dsize,
+                     const char * contact, int sock,
                      unsigned char * src, int sbits,
                      unsigned char * dst, int dbits,
                      int hops, int priority, int ack_and_save)
@@ -321,13 +323,13 @@ char * chat_time_to_string (unsigned char * t, int static_result)
   if (result [eol_index] == '\n')
     result [eol_index] = '\0';
   if (time_offset == my_time_offset) { /* easy case, we are almost finished */
-    tzset ();     /* set the timezone variables */
+    tzset ();     /* set the tzname timezone variables */
     int index = 0;
 #ifndef __OpenBSD__
     if (daylight)
       index = 1;
 #endif /* __OpenBSD__ */
-    snprintf (result, size, " %s", tzname [index]);
+    snprintf (result + eol_index, size, " %s", tzname [index]);
     return result;
   }
 #ifdef DEBUG_PRINT

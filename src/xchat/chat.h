@@ -60,6 +60,7 @@ struct chat_control {
   unsigned char type;
 };
 
+/* values for the chat_control.type */
 #define CHAT_CONTROL_TYPE_REQUEST	1
 
 /* this packet requests delivery of all packets that fit one or more of:
@@ -76,6 +77,7 @@ struct chat_control {
  */
 struct chat_control_request {
   unsigned char message_ack [MESSAGE_ID_SIZE];
+  /* app should be XCHAT_ALLNET_APP_ID, media should be ALLNET_MEDIA_DATA */
   struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
   unsigned char type;                   /* always CHAT_CONTROL_TYPE_REQUEST */

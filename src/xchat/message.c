@@ -31,7 +31,7 @@
 
 /* return the lowest unused counter, used as sequence number when sending
  * messages to this contact.  returns 0 if the contact cannot be found */
-uint64_t get_counter (char * contact)
+uint64_t get_counter (const char * contact)
 {
   keyset * kset;
   int nkeys = all_keys (contact, &kset);
@@ -52,7 +52,7 @@ uint64_t get_counter (char * contact)
 
 /* return the largest received counter, or 0 if the contact cannot be found
  * or the keyset is not valid. */
-uint64_t get_last_received (char * contact, keyset k)
+uint64_t get_last_received (const char * contact, keyset k)
 {
   uint64_t seq;
   int type = highest_seq_record (contact, k, MSG_TYPE_RCVD,
@@ -68,7 +68,8 @@ uint64_t get_last_received (char * contact, keyset k)
  *   if wtype is MSG_TYPE_ACK, return 1
  *   otherwise, return the sequence number of the matching message
  */
-static uint64_t find_ack (char * contact, keyset k, char * wanted, int wtype)
+static uint64_t find_ack (const char * contact, keyset k, const char * wanted,
+                          int wtype)
 {
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)
@@ -94,7 +95,7 @@ static uint64_t find_ack (char * contact, keyset k, char * wanted, int wtype)
 /* save an outgoing message to a specific directory for this contact.
  * the directory is specific because the message ack is different for
  * each copy of the message */
-void save_outgoing (char * contact, keyset k, struct chat_descriptor * cp,
+void save_outgoing (const char * contact, keyset k, struct chat_descriptor * cp,
                     char * text, int tsize)
 {
   uint64_t time;
@@ -109,7 +110,7 @@ void save_outgoing (char * contact, keyset k, struct chat_descriptor * cp,
  * if there is more than one such message, returns the latest.
  * Also fills in the size, time and message_ack -- message_ack must have
  * at least MESSAGE_ID_SIZE bytes */
-char * get_outgoing (char * contact, keyset k, uint64_t seq,
+char * get_outgoing (const char * contact, keyset k, uint64_t seq,
                      int * size, uint64_t * time, char * message_ack)
 {
   struct msg_iter * iter = start_iter (contact, k);
@@ -136,7 +137,7 @@ char * get_outgoing (char * contact, keyset k, uint64_t seq,
 }
 
 /* save a received message */
-void save_incoming (char * contact, keyset k,
+void save_incoming (const char * contact, keyset k,
                     struct chat_descriptor * cp, char * text, int tsize)
 {
   uint64_t time;
@@ -156,7 +157,7 @@ void save_incoming (char * contact, keyset k,
  * contact name (statically allocated, do not modify in any way) and
  * if kset is not null, the location it points to is set to the keyset
  */
-uint64_t ack_received (char * message_ack, char ** contact, keyset * kset)
+uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
 {
   char ** contacts;
   int nc = all_contacts (&contacts);
@@ -185,7 +186,7 @@ uint64_t ack_received (char * message_ack, char ** contact, keyset * kset)
   return 0;
 }
 
-static uint64_t max_seq (char * contact, keyset k, int wanted)
+static uint64_t max_seq (const char * contact, keyset k, int wanted)
 {
   uint64_t seq;
   int type = highest_seq_record (contact, k, wanted, &seq, NULL, NULL, NULL,
@@ -201,7 +202,7 @@ static uint64_t max_seq (char * contact, keyset k, int wanted)
  * that we never received.
  * the next *ranges * 2 sequence numbers are pairs a, b such that we have
  * not received any of the sequence numbers a <= seq <= b */
-char * get_missing (char * contact, keyset k, int * singles, int * ranges)
+char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
 {
   uint64_t last = max_seq (contact, k, MSG_TYPE_RCVD);
   *singles = 0;
@@ -237,7 +238,7 @@ char * get_missing (char * contact, keyset k, int * singles, int * ranges)
  * for which we never received an ack.
  * the next *ranges * 2 sequence numbers are pairs a, b such that we have
  * not received acks for the sequence numbers a <= seq <= b */
-char * get_unacked (char * contact, keyset k, int * singles, int * ranges)
+char * get_unacked (const char * contact, keyset k, int * singles, int * ranges)
 {
   uint64_t last = max_seq (contact, k, MSG_TYPE_SENT);
   *singles = 0;
@@ -269,7 +270,7 @@ char * get_unacked (char * contact, keyset k, int * singles, int * ranges)
 
 /* returns 1 if this sequence number has been acked by all the recipients,
  * 0 otherwise */
-int is_acked (char * contact, uint64_t seq)
+int is_acked (const char * contact, uint64_t seq)
 {
   keyset * kset;
   int nkeys = all_keys (contact, &kset);
@@ -288,7 +289,7 @@ int is_acked (char * contact, uint64_t seq)
 
 /* returns 1 if this sequence number has been acked by this specific recipient,
  * 0 otherwise */
-int is_acked_one (char * contact, keyset k, uint64_t wanted)
+int is_acked_one (const char * contact, keyset k, uint64_t wanted)
 {
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)
@@ -426,7 +427,7 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
 }
 
 /* returns 1 if this sequence number has been received, 0 otherwise */
-int was_received (char * contact, keyset k, uint64_t wanted)
+int was_received (const char * contact, keyset k, uint64_t wanted)
 {
   if (is_in_cache (contact, k, wanted, 0))
     return 1;

@@ -9,14 +9,16 @@
 #include "lib/keys.h"
 
 /* returns 1 if successful, 0 otherwise */
-extern int init_chat_descriptor (struct chat_descriptor * cp, char * contact);
+extern int init_chat_descriptor (struct chat_descriptor * cp,
+                                 const char * contact);
 
 /* send to the contact, returning 1 if successful, 0 otherwise */
 /* if src is NULL, source address is taken from get_source, likewise for dst */
 /* if so, uses the lesser of s/dbits and the address bits */
 /* unless ack_and_save is 0, requests an ack, and after the message is sent,
  * calls save_outgoing. */
-extern int send_to_contact (char * data, int dsize, char * contact, int sock,
+extern int send_to_contact (char * data, int dsize,
+                            const char * contact, int sock,
                             unsigned char * src, int sbits,
                             unsigned char * dst, int dbits,
                             int hops, int priority, int ack_and_save);
@@ -24,7 +26,8 @@ extern int send_to_contact (char * data, int dsize, char * contact, int sock,
 /* same as send_to_contact, but only sends to the one key corresponding
  * to key, and does not save outgoing.  Does request ack, and
  * uses the addresses saved for the contact. */
-extern int resend_packet (char * data, int dsize, char * contact, keyset key,
+extern int resend_packet (char * data, int dsize,
+                          const char * contact, keyset key,
                           int sock, int hops, int priority);
 
 /* the times that follow must be arrays of TIMESTAMP_SIZE chars */
