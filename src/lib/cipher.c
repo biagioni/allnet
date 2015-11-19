@@ -260,6 +260,39 @@ int allnet_sign (const char * text, int tsize, allnet_rsa_prvkey key, char ** re
   return rsa_size;
 }
 
+static char ** deep_copy (char ** original, int n)
+{
+  size_t needed = 0;
+  int i;
+  for (i = 0; i < n; i++)
+    needed += strlen (original [i]) + 1 + sizeof (char *);
+  char ** result = malloc_or_fail (needed, "cipher.c deep_copy");
+  char * strings = (char *) (&(result [n]));
+  for (i = 0; i < n; i++) {
+    result [i] = strings;
+    strcpy (result [i], original [i]);
+    strings += strlen (original [i]) + 1;
+  }
+  return result;
+}
+
+/* deep copy everything, then permute so a random subset is at the front */
+static char ** randomize_contacts (char ** original, int n, int max)
+{
+  char ** result = deep_copy (original, n);
+  int * permutation = random_permute (n);
+  char ** copy = malloc_or_fail (sizeof (char *) * max, "cipher.c randomize");
+  int i;
+  for (i = 0; i < max; i++)  /* save the contact pointers we will try */
+    copy [i] = result [permutation [i]];
+  free (permutation);
+  /* now save the pointers back in result */
+  for (i = 0; i < max; i++)
+    result [i] = copy [i];
+  free (copy);
+  return result;
+}
+
 /* #define DEBUG_PRINT */
 
 /* returns the data size > 0, and malloc's and fills in the contact, if able
@@ -282,6 +315,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   *kset = -1;
   *text = NULL;
   char ** contacts;
+  int free_contacts = 0;  /* if we randomize, contacts will be malloc'd */
   int ncontacts = all_contacts (&contacts);
   int ssize = 0;
   if (sig_algo != ALLNET_SIGTYPE_NONE)  /* has signature */
@@ -293,13 +327,12 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   int i, j;
   int count = 0;
   int decrypt_count = 0;
-  if ((maxcontacts > 0) && (maxcontacts < ncontacts))
+  if ((maxcontacts > 0) && (maxcontacts < ncontacts)) {
+    contacts = randomize_contacts (contacts, ncontacts, maxcontacts);
+    free_contacts = 1;
     ncontacts = maxcontacts;
+  }
   for (i = 0; ((*contact == NULL) && (i < ncontacts)); i++) {
-static int p = 0;
-if (! p)
-printf ("to do: randomize and limit the number of contacts tried\n");
-p = 1;
     keyset * keys;
     int nkeys = all_keys (contacts [i], &keys);
     for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
@@ -351,6 +384,7 @@ p = 1;
                     decrypt_count, time_delta / 1000000, time_delta % 1000000);
                     log_print ();
           free (keys);
+          if (free_contacts) free (contacts);
           if (sig_algo != ALLNET_SIGTYPE_NONE)
             return res;
           else
@@ -363,6 +397,7 @@ p = 1;
     }
     free (keys);
   }
+  if (free_contacts) free (contacts);
 #ifdef DEBUG_PRINT
   printf ("unable to decrypt packet, dropping\n");
 #endif /* DEBUG_PRINT */

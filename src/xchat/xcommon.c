@@ -248,11 +248,20 @@ static int handle_data (int sock, struct allnet_header * hp,
                         char ** message, char ** desc, int * verified,
                         time_t * sent, int * duplicate, int * broadcast)
 {
+  if (hp->sig_algo == ALLNET_SIGTYPE_NONE) {
+    printf ("handle_data ignoring unsigned message\n");
+    return 0;
+  }
   int verif = 0;
   char * text = NULL;
+  int max_contacts = 0;  /* try all contacts */
+  if (hp->src_nbits + hp->dst_nbits < 4)
+    /* addresses are not very selective, don't try too many contacts */
+    max_contacts = 30;  /* if we have a lot of contacts, don't try all */
   int tsize = decrypt_verify (hp->sig_algo, data, dsize, contact, kset, &text,
                               (char *) (hp->source), hp->src_nbits,
-                              (char *) (hp->destination), hp->dst_nbits, 0);
+                              (char *) (hp->destination), hp->dst_nbits,
+                              max_contacts);
   if (tsize < 0) {
     printf ("no signature to verify, but decrypted from %s\n", *contact);
     tsize = -tsize;
