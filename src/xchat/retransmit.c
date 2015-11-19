@@ -195,9 +195,13 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
   if (! init_chat_descriptor (cdp, contact))
     return;
-  while (counter <= last) {
-    writeb64u (cdp->counter, counter++);  /* new, higher sequence number */
-    save_outgoing (contact, k, cdp, data, 0);
+  if (last - counter < 300) {  /* too many might fill disk with empty msgs */
+    while (counter <= last) {
+      writeb64u (cdp->counter, counter++);  /* new, higher sequence number */
+      save_outgoing (contact, k, cdp, data, 0);
+    }
+  } else {
+    counter = last + 1;
   }
   writeb64u (cdp->counter, counter);  /* final sequence number */
   /* since this is sort of a housekeeping message, send with minimum priority */
