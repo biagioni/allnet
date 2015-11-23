@@ -261,18 +261,25 @@ static char * pid_file_name ()
     result = malloc_or_fail (len, "pids_file_name");
     snprintf (result, len, "%s/%s", temp, PIDS_FILE_NAME);
   }
+  printf ("pid temp file name is %s\n", result);
 #ifdef DEBUG
-  printf ("temp file name is %s\n", result);
 #endif /* DEBUG */
   return result;
 }
 
-/* returns 0 in case of failure */
+/* returns -1 in case of failure */
 static int read_pid (int fd)
 {
+  static char debug [1000];
+  debug [0] = '\0';
+  int debug_pos = 0;
   int result = -1;
   char buffer [1];
   while (read (fd, buffer, 1) == 1) {
+    if (debug_pos + 1 < sizeof (debug)) {
+      debug [debug_pos++] = buffer [0];
+      debug [debug_pos] = '\0';
+    }
     if ((buffer [0] >= '0') && (buffer [0] <= '9')) {  /* digit */
       if (result == -1)
         result = buffer [0] - '0';
@@ -283,7 +290,7 @@ static int read_pid (int fd)
     } else {                     /* done */
       if (result > 1)
         return result;
-      printf ("weird result from pid file %d\n", result);
+      printf ("weird result from pid file %d, line %s\n", result, debug);
       result = -1;  /* start over */
     }
   }
@@ -299,6 +306,7 @@ static void stop_all_on_signal (int signal)
   if (fname != NULL)
     fd = open (fname, O_RDONLY, 0);
   if (fd >= 0) {   /* kill all the pids in the file (except ourselves) */
+printf ("stop_all_on_signal (%d, %s)\n", signal, fname);
 #define MAX_STOP_PROCS	1000
     static pid_t pids [MAX_STOP_PROCS];
     pid_t pid;
