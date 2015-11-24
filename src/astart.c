@@ -225,16 +225,12 @@ static char * pid_file_name ()
 #define UNIX_TEMP	"/tmp"
 #define UNIX_TEMP_ROOT	"/var/run"
 #define IOS_TEMP	"/Library/Caches"
-  static char * result = "/tmp/allnet-pids";
-  static int first_call = 1;
-  if (! first_call)
-    return result;
-  first_call = 0;
+  char * result = "/tmp/allnet-pids";
   char * temp = UNIX_TEMP;
-/*
-  if (geteuid () == 0)  / * is root * /
+#if 0
+  if (geteuid () == 0)  /* is root */
     temp = UNIX_TEMP_ROOT;
-  */
+#endif /* 0 */
 #ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
   DIR * ios_d = opendir (IOS_TEMP);
   if (ios_d != NULL) {  /* directory exists, use it */
@@ -256,13 +252,10 @@ static char * pid_file_name ()
   if (temp == NULL)
     temp = getenv ("temp");
 #endif /* _WIN32 || _WIN64 || __CYGWIN__ */
-  if (temp != NULL) {
-    int len = (int) (strlen (temp) + strlen (PIDS_FILE_NAME) + 2);
-    result = malloc_or_fail (len, "pids_file_name");
-    snprintf (result, len, "%s/%s", temp, PIDS_FILE_NAME);
-  }
-  printf ("pid temp file name is %s\n", result);
+  if (temp != NULL)
+    result = strcat3_malloc (temp, "/", PIDS_FILE_NAME, "pids file name");
 #ifdef DEBUG
+  printf ("new pid temp file name is %s (from %s)\n", result, temp);
 #endif /* DEBUG */
   return result;
 }
@@ -306,7 +299,6 @@ static void stop_all_on_signal (int signal)
   if (fname != NULL)
     fd = open (fname, O_RDONLY, 0);
   if (fd >= 0) {   /* kill all the pids in the file (except ourselves) */
-printf ("stop_all_on_signal (%d, %s)\n", signal, fname);
 #define MAX_STOP_PROCS	1000
     static pid_t pids [MAX_STOP_PROCS];
     pid_t pid;
@@ -374,7 +366,7 @@ static void setup_signal_handler (int set)
   else
     sa.sa_handler = SIG_DFL;  /* whatever the default is */
   sigfillset (&(sa.sa_mask)); /* block all signals while sighandler running */
-  sa.sa_flags = SA_NOCLDSTOP | SA_RESTART;
+  sa.sa_flags = SA_NOCLDSTOP | SA_RESTART | SA_RESETHAND;
   int i;
   for (i = 0; i < sizeof (terminating_signals) / sizeof (int); i++) {
     if (sigaction (terminating_signals [i], &sa, NULL) != 0) {
