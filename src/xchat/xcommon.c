@@ -29,11 +29,19 @@
 static void request_cached_data (int sock, int hops)
 {
   int size;
+  int adr_size = sizeof (struct allnet_data_request);
   struct allnet_header * hp =
-    create_packet (0, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
+    create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
                    NULL, 0, NULL, 0, NULL, NULL, &size);
-  if (! send_pipe_message_free (sock, (char *) (hp), size,
-                                ALLNET_PRIORITY_LOCAL_LOW))
+  struct allnet_data_request * adr =
+    (struct allnet_data_request *) (ALLNET_DATA_START (hp, hp->transport,
+                                                       size));
+  bzero (adr->since, sizeof (adr->since));
+  adr->dst_bits_power_two = 0;
+  adr->src_bits_power_two = 0;
+  random_bytes ((char *) (adr->padding), sizeof (adr->padding));
+  int priority = ALLNET_PRIORITY_LOCAL_LOW;
+  if (! send_pipe_message_free (sock, (char *) (hp), size, priority))
     printf ("unable to request cached data\n");
 }
 
