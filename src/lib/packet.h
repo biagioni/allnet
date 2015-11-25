@@ -351,17 +351,18 @@ struct allnet_app_media_header {
 };
 
 /* a data request may specify the earliest time from which a message is
- * desired.  It may also specify a bitmap of destinations that are of
- * interest -- 2^x bits.  Each bit in the bitmap, when set to one,
- * specifies that destinations matching that prefix are of interest.
- * if x = destination_bits_power_two > 0, the bitmap has 2^x bits,
- * and (2^x + 7) / 8 bytes.  Similarly for the source bits.
+ * desired (a time of zero means any time).  It may also specify a bitmap
+ * of destinations that are of interest -- 2^x bits.  Each bit in
+ * the bitmap, when set to one, specifies that destinations matching
+ * that prefix are of interest.  if x = destination_bits_power_two > 0,
+ * the bitmap has 2^x bits, and floor((2^x + 7) / 8) bytes.
+ * Similarly for the source bits.
  * messages are sent back only if they match ALL the requested constraints.
  * a zero-bit bitmap will match all packets, as will a 0 time "since".
  *
- * It is important for a receiver to ignore the padding, as well as any
- * data that follows the last bitmap (if any) -- this allows for future
- * compatible expansion of this message format.
+ * the padding is set to random bytes.  This allows us to distinguish
+ * retransmitted and looped packets from new transmissions.
+ * It also allows for future compatible expansion of this message format.
  *
  * An empty data request message is also allowed, and requests all
  * packets addressed TO the sender of the request.  In this case, any
@@ -372,7 +373,7 @@ struct allnet_data_request {
   unsigned char since [ALLNET_TIME_SIZE];
   unsigned char dst_bits_power_two;  /* bitmap has 2^this bits */
   unsigned char src_bits_power_two;  /* bitmap has 2^this bits */
-  unsigned char padding [6];	     /* sent as 0s, ignored on receipt */
+  unsigned char padding [6];	     /* sent as random, ignored on receipt */
   unsigned char dst_bitmap [0];
   unsigned char src_bitmap [0];
 };
