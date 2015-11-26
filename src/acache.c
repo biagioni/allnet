@@ -31,7 +31,7 @@ struct ack_entry {
 
 static struct ack_entry * acks = NULL;
 static int ack_space = 0;
-static int last_ack = 0;
+static int save_ack_pos = 0;  /* save the next ack at this index */
 
 /* for now, a fixed-size entry, later, allocate dynamically according to size */
 /* or, may just delete -- only needed for list_next_matching, used to loop
@@ -89,17 +89,10 @@ static struct hash_entry * * message_hash_table;
 static struct hash_entry * * message_source_table;
 #endif /* SMALL_FIXED_SIZE */
 
-static off_t fd_size (int fd)
+static int fd_size_or_zero (int fd)
 {
-  struct stat st;
-  if (fstat (fd, &st) != 0) {
-    perror ("fstat");
-    return 0;
-  }
-  off_t fsize = st.st_size;
-  if (fsize <= 0)
-    return 0;
-  return fsize;
+  /* fd_size in util.[ch] returns -1 in case of errors.  We want to return 0 */
+  return minz (fd_size (fd), 0);
 }
 
 static int read_at_pos (int fd, char * data, int max, off_t position)
@@ -108,7 +101,7 @@ static int read_at_pos (int fd, char * data, int max, off_t position)
     /* perror ("acache read_at_pos lseek"); */
     snprintf (log_buf, LOG_SIZE,
               "acache unable to lseek to position %d for %d/%d\n",
-              (int) position, max, (int) (fd_size (fd)));
+              (int) position, max, fd_size (fd));
     log_error ("acache read_at_pos lseek");
     return 0;
   }
@@ -117,20 +110,20 @@ static int read_at_pos (int fd, char * data, int max, off_t position)
     /* perror ("acache read_at_pos read"); */
     snprintf (log_buf, LOG_SIZE,
               "acache unable to read data at %d: %d %d %d %d\n",
-              (int) position, fd, r, max, (int) (fd_size (fd)));
+              (int) position, fd, r, max, fd_size (fd));
     log_error ("acache read_at_pos read");
     r = 0;
   }
   return r;
 }
 
-static void write_at_pos (int fd, char * data, int dsize, off_t position)
+static void write_at_pos (int fd, char * data, int dsize, int position)
 {
   if (lseek (fd, position, SEEK_SET) != position) {
     /* perror ("acache write_at_pos lseek"); */
     snprintf (log_buf, LOG_SIZE,
               "acache unable to lseek to pos %d for %d %d\n",
-              (int) position, dsize, (int) (fd_size (fd)));
+              position, dsize, fd_size (fd));
     log_error ("acache write_at_pos lseek");
     return;
   }
@@ -139,7 +132,7 @@ static void write_at_pos (int fd, char * data, int dsize, off_t position)
     /* perror ("acache write_at_pos write"); */
     snprintf (log_buf, LOG_SIZE,
               "acache unable to save data at %d: %d %d %d\n",
-              (int) position, w, dsize, (int) (fd_size (fd)));
+              position, w, dsize, fd_size (fd));
     log_error ("acache write_at_pos write");
     return;
   }
@@ -172,23 +165,22 @@ static void init_acks (int fd, int max_acks)
   int max_size = ack_size * max_acks;
   /* if file is bigger than max_size, get rid of the last part */
   truncate_to_size (fd, max_size, "init_acks");
-  off_t fsize = fd_size (fd);
   /* allocate the memory to hold the acks */
   ack_space = max_acks;
   acks = malloc_or_fail (max_size, "acache init_acks");
   /* if file is smaller than max_size, the last part should be zeros */
   bzero (acks, max_size);
   read_ack_data (fd);
+  /* find the last non-zero ack position */
   struct ack_entry empty;
   bzero (&empty, sizeof (struct ack_entry));
   read_ack_data (fd);
-  int i;
-  int limit = (int) (fsize / sizeof (struct ack_entry));
-  for (i = 1; i < limit; i++) {
-    if (memcmp (acks [i].message_id, empty.message_id, MESSAGE_ID_SIZE) == 0) {
-      last_ack = i - 1;
-      break;
-    }
+  /* if all filled, we start at random */
+  save_ack_pos = random_int (0, max_acks - 1);
+  int i = max_acks;
+  while (i-- > 0) {
+    if (memcmp (acks [i].message_id, empty.message_id, MESSAGE_ID_SIZE) == 0)
+      save_ack_pos = i;  /* lowest-numbered (so far) empty ack position */
   }
 }
 
@@ -207,13 +199,13 @@ static void ack_add (char * ack, char * id, int ack_fd)
 {
   if (ack_found (ack))
     return;
-  last_ack = (last_ack + 1) % ack_space;
-  memcpy (acks [last_ack].message_ack, ack, MESSAGE_ID_SIZE);
-  memcpy (acks [last_ack].message_id , id , MESSAGE_ID_SIZE);
+  memcpy (acks [save_ack_pos].message_ack, ack, MESSAGE_ID_SIZE);
+  memcpy (acks [save_ack_pos].message_id , id , MESSAGE_ID_SIZE);
   /* clear the next location, to mark it in the file */
-  int next_ack = (last_ack + 1) % ack_space;
+  int next_ack = (save_ack_pos + 1) % ack_space;
   bzero (&(acks [next_ack]), sizeof (struct ack_entry));
   save_ack_data (ack_fd);
+  save_ack_pos = next_ack;
 }
 
 /* storage of a message in the file: 12-byte header */
@@ -963,8 +955,9 @@ static int delete_gc_message (char * message, int msize,
 static void gc (int fd, int max_size)
 {
   int gc_size = max_size;
-  if (gc_size > fd_size (fd))
-    gc_size = (int) (fd_size (fd));
+  int actual_size = fd_size_or_zero (fd);
+  if (gc_size > actual_size)
+    gc_size = actual_size;
   int copied = 0, deleted = 0;
   int read_position = 0;
   int write_position = 0;
@@ -1041,7 +1034,7 @@ static void cache_message (int fd, int max_size,
       exit (1);
     gc (fd, max_size);
   }
-  off_t write_position = fd_size (fd);
+  int write_position = fd_size_or_zero (fd);
   write_at_pos (fd, mbuffer, fsize, write_position);
   fsync (fd);
   hash_add_message (message, msize, message + id_off, (int) write_position,
@@ -1053,7 +1046,7 @@ snprintf (log_buf, LOG_SIZE, "saved message at position %d, hash index %d, ", (i
   count = 0;
   while (fd_size (fd) > max_size) {
     snprintf (log_buf, LOG_SIZE, "gc'ing to reduce space from %d to %d: %d\n",
-              (int) (fd_size (fd)), max_size, ++count);
+              fd_size (fd), max_size, ++count);
     log_print ();
     gc (fd, max_size);
   }
@@ -1077,7 +1070,7 @@ static void remove_cached_message (int fd, int max_size, char * id,
   if ((next != 0) && (next - position != fsize)) {
     snprintf (log_buf, LOG_SIZE,
               "warning in acache: next %d - pos %d != fsize %d (%d)\n",
-              next, position, fsize, (int) (fd_size (fd)));
+              next, position, fsize, fd_size (fd));
     log_print ();
     buffer_to_string (id, MESSAGE_ID_SIZE, "id", MESSAGE_ID_SIZE, 1,
                       log_buf, LOG_SIZE);
@@ -1333,12 +1326,12 @@ static void init_msgs (int msg_fd, int max_msg_size)
     }
   }
   snprintf (log_buf, LOG_SIZE, "init almost done, %d %d %d, ",
-            msg_fd, (int) (fd_size (msg_fd)), max_msg_size);
+            msg_fd, fd_size (msg_fd), max_msg_size);
   log_print ();
   print_stats (0, count);
   while (fd_size (msg_fd) > max_msg_size) {
     snprintf (log_buf, LOG_SIZE, "message file %d, max %d, gc'ing",
-              (int) (fd_size (msg_fd)), max_msg_size);
+              fd_size (msg_fd), max_msg_size);
     log_print ();
     gc (msg_fd, max_msg_size);
   }
@@ -1350,8 +1343,10 @@ static void init_acache (int * msg_fd, int * max_msg_size,
                          int * ack_fd, int * max_acks, int * local_caching)
 {
   /* either read or create ~/.allnet/acache/sizes */
-  *max_msg_size = 1000000;  /* default values: 1M bytes for msgs, 5000 acks */
+  /* by default, allow 1MB of messages, 5,000 acks = 80KB, no local caching */
+  *max_msg_size = 1000000;
   *max_acks = 5000;
+  *local_caching = 0;
   int fd = open_read_config ("acache", "sizes", 1);
   if (fd < 0) {
   /* create ~/.allnet/acache/sizes */
@@ -1360,19 +1355,19 @@ static void init_acache (int * msg_fd, int * max_msg_size,
       snprintf (log_buf, LOG_SIZE, "unable to create ~/.allnet/acache/sizes\n");
       log_error ("create ~/.allnet/acache/sizes");
       printf ("unable to create ~/.allnet/acache/sizes\n");
-      exit (1);
+      /* not a fatal error: exit (1); */
+    } else {
+      char string [] = "1000000\n5000\nno\n";
+      int len = strlen (string);
+      if (write (fd, string, len) != len) {
+        snprintf (log_buf, LOG_SIZE,
+                  "unable to write ~/.allnet/acache/sizes\n");
+        log_error ("write ~/.allnet/acache/sizes");
+        printf ("unable to write ~/.allnet/acache/sizes\n");
+        /* also not a fatal error: exit (1); */
+      }
     }
-    /* by default, allow 1MB of messages, 5,000 acks, and no local caching */
-    char string [] = "1000000\n5000\nno\n";
-    int len = strlen (string);
-    if (write (fd, string, len) != len) {
-      snprintf (log_buf, LOG_SIZE, "unable to write ~/.allnet/acache/sizes\n");
-      log_error ("write ~/.allnet/acache/sizes");
-      printf ("unable to write ~/.allnet/acache/sizes\n");
-      exit (1);
-    }
-  } else {
-  /* read ~/.allnet/acache/sizes */
+  } else {     /* read input from ~/.allnet/acache/sizes */
     static char buffer [1000];
     int n = read (fd, buffer, sizeof (buffer));
     if ((n > 0) && (n < sizeof (buffer))) {

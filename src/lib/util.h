@@ -163,11 +163,18 @@ extern void * memcpy_malloc (const void * bytes, int bsize, const char * desc);
  * in case of problems, returns 0, and prints the error if print_errors != 0 */
 extern int read_file_malloc (const char * file_name, char ** content_p,
                              int print_errors);
+/* same, but fd must have been opened, and is closed if close_fd is nonzero */
+/* the optional file name is used for printing errors, may be NULL */
+extern int read_fd_malloc (int fd, char ** content_p,
+                           int print_errors, int close_fd, const char * fname);
 /* return 1, except in case of error when they return 0 */
 extern int write_file (const char * file_name, const char * content, int clen,
                        int print_errors);
 extern int append_file (const char * file_name, const char * content, int clen,
                         int print_errors);
+/* returns -1 in case of errors, usually if the file doesn't exist */
+extern int file_size (const char * file_name);
+extern int fd_size (int fd);
 
 /* fill this array with random bytes */
 extern void random_bytes (char * buffer, int bsize);

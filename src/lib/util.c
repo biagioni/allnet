@@ -979,32 +979,34 @@ void * memcpy_malloc (const void * bytes, int bsize, const char * desc)
   return result;
 }
 
-/* returns the file size, and if content_p is not NULL, allocates an
- * array to hold the file contents and assigns it to content_p.
- * in case of problems, returns 0
- */
-int read_file_malloc (const char * file_name, char ** content_p,
-                      int print_errors)
+/* returns -1 in case of errors, usually if the file doesn't exist */
+int file_size (const char * file_name)
 {
-  if (content_p != NULL)
-    *content_p = NULL;
   struct stat st;
-  if (stat (file_name, &st) < 0) {
-    if (print_errors) {
-      perror ("stat");
-      printf ("read_file_malloc: unable to stat %s\n", file_name);
-    }
+  if (stat (file_name, &st) < 0)
+    return -1;
+  return (int) (st.st_size);
+}
+
+int fd_size (int fd)
+{
+  struct stat st;
+  if (fstat (fd, &st) < 0)
+    return -1;
+  return (int) (st.st_size);
+}
+
+static int read_fd_malloc_noclose (int fd, char ** content_p, int print_errors,
+                                   const char * file_name)
+{
+  if (file_name == NULL)
+    file_name = "(file name not available)";
+  int size = fd_size (fd);
+  if (content_p == NULL)  /* just return the size */
+    return minz (size, 0);
+  *content_p = NULL;
+  if (size <= 0)
     return 0;
-  }
-  int size = (int) (st.st_size);
-  if (st.st_size == 0)
-    return 0;
-  if (content_p == NULL) {   /* just make sure could read the file */
-    if (access (file_name, R_OK) == 0)
-      return size;
-    else
-      return 0;
-  }
   /* allocate one more so we can put a \0 at the end */
   /* (useful for text files, which can then be used as strings) */
   char * result = malloc (size + 1);
@@ -1012,15 +1014,6 @@ int read_file_malloc (const char * file_name, char ** content_p,
     if (print_errors)
       printf ("unable to allocate %d bytes for contents of file %s\n",
               size, file_name);
-    return 0;
-  }
-  int fd = open (file_name, O_RDONLY);
-  if (fd < 0) {
-    if (print_errors) {
-      perror ("open");
-      printf ("unable to open file %s for reading\n", file_name);
-    }
-    free (result);
     return 0;
   }
   int n = read (fd, result, size);
@@ -1031,17 +1024,52 @@ int read_file_malloc (const char * file_name, char ** content_p,
               size, file_name, n);
     }
     free (result);
-    close (fd);
     return 0;
   }
-  close (fd);
   result [size] = '\0';   /* make sure it is a C string */
   *content_p = result;
   return size;
 }
 
-static int write_to_fd (int fd, const char * contents, int len, int print_errors,
-                        const char * fname)
+/* same as read_file_malloc, but fd must have been opened, and is closed
+ * if close_fd is nonzero*/
+int read_fd_malloc (int fd, char ** content_p, int print_errors, int close_fd,
+                    const char * fname)
+{
+  int result = read_fd_malloc_noclose (fd, content_p, print_errors, fname);
+  if (close_fd)
+    close (fd);
+  return result;
+}
+
+/* returns the file size, and if content_p is not NULL, allocates an
+ * array to hold the file contents and assigns it to content_p.
+ * in case of problems, returns 0
+ */
+int read_file_malloc (const char * file_name, char ** content_p,
+                      int print_errors)
+{
+  int size = file_size (file_name);
+  if (content_p == NULL) {  /* if we can read it, just return the size */
+    if (access (file_name, R_OK) == 0)
+      return minz (size, 0);
+    else
+      return 0;
+  }
+  *content_p = NULL;
+  int fd = open (file_name, O_RDONLY);
+  if (fd < 0) {
+    if (print_errors) {
+      perror ("open");
+      printf ("unable to open file %s for reading\n", file_name);
+    }
+    return 0;
+  }
+  return read_fd_malloc (fd, content_p, print_errors, 1, file_name);
+}
+
+static int write_to_fd (int fd, const char * contents, int len,
+                        int print_errors, const char * fname)
 {
   if (fd < 0) {
     if (print_errors) {
