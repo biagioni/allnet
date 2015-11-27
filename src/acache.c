@@ -23,6 +23,7 @@
 #include "lib/log.h"
 #include "lib/configfiles.h"
 #include "lib/sha.h"
+#include "lib/cipher.h" /* for print_caches, in case we want to decrypt */
 
 struct ack_entry {
   char message_id  [MESSAGE_ID_SIZE];
@@ -601,7 +602,7 @@ static void print_stats (int exit_if_none_free, int must_match)
     snprintf (log_buf + off, LOG_SIZE - off,
               "%d in hash, %d in message list, %d free\n",
               hcount, mcount, fcount);
-#else /* USING_MESSAGE_LIST */
+#else /* ! USING_MESSAGE_LIST */
     snprintf (log_buf + off, LOG_SIZE - off, "%d in hash, %d free\n",
               hcount, fcount);
 #endif /* USING_MESSAGE_LIST */
@@ -875,33 +876,6 @@ static int64_t list_next_matching (int fd, int max_size, int64_t position,
   }
   return -1;  /* nothing found */
 }
-
-#if 0
-static int list_next_matching (int fd, int max_size, int position,
-                               struct request_details * rd, char ** message,
-                               int * msize)
-{
-  if (position < 0)
-    return -1;
-  if ((rd == NULL) ||
-      ((rd->empty) && (rd->src_nbits < bits_in_hash_table)))
-    return get_next_message (fd, max_size, position, NULL,
-                             message, msize, NULL, NULL, NULL);
-  if (rd->empty)
-    return source_get_next (fd, max_size, position, rd->source,
-                            message, msize, NULL, NULL, NULL);
-  int index;
-  for (index = position; index < message_list_used; index++) {
-    struct hash_entry * entry = hash_find (message_list [index].message_id);
-    if ((entry != NULL) && (hash_matches (rd, entry))) {
-      int m = assign_matching (entry, fd, message, msize, NULL, NULL, NULL);
-      if (m > 0)
-        return index + 1;
-    }
-  }
-  return -1;  /* nothing found */
-}
-#endif /* 0 */
 
 /* returns 1 if this message is ready to be deleted, 0 otherwise */
 static int delete_gc_message (char * message, int msize,
@@ -1335,7 +1309,7 @@ static void init_msgs (int msg_fd, int max_msg_size)
     log_print ();
     gc (msg_fd, max_msg_size);
   }
-  snprintf (log_buf, LOG_SIZE, "after init, ");
+  snprintf (log_buf, LOG_SIZE, "after init, saving at %d, ", save_ack_pos);
   print_stats (0, -1);
 }
 
@@ -1377,8 +1351,10 @@ static void init_acache (int * msg_fd, int * max_msg_size,
       *local_caching = 1;
       if (tolower (yesno [0]) == 'n')
         *local_caching = 0;
+#ifdef DEBUG_PRINT
       snprintf (log_buf, LOG_SIZE, "local caching is %d\n", *local_caching);
       log_print ();
+#endif /* DEBUG_PRINT */
     } else {
       snprintf (log_buf, LOG_SIZE,
                 "unable to read ~/.allnet/acache/sizes (%d)\n", n);
@@ -1476,6 +1452,139 @@ static void main_loop (int sock, pd p)
     if (mfree)
       free (message);
   }
+}
+
+static void print_message (int fd, struct hash_entry * entry, int print_level,
+                           int count, int h_index)
+{
+  if (print_level == 1) {
+    char desc [1000];
+    snprintf (desc, sizeof (desc), "%4d (h %d)", count, h_index);
+    print_buffer ((char *)entry->id, MESSAGE_ID_SIZE, desc, 100, 1);
+    return;
+  }     /* print_level > 1, print the details about the entry */
+  printf ("%4d (h %d), ", count, h_index);
+  print_buffer ((char *)entry->id, MESSAGE_ID_SIZE, "id", 100, 1);
+  char time_str [ALLNET_TIME_STRING_SIZE];
+  allnet_localtime_string (readb64u (entry->received_at), time_str);
+  printf ("  received at %s\n", time_str);
+  if (entry->src_nbits > 0)
+    printf ("  from %02x.%02x/%d", entry->source [0],
+            entry->source [1], entry->src_nbits);
+  else
+    printf ("  from X");
+  if (entry->dst_nbits > 0)
+    printf (" to %02x.%02x/%d\n", entry->destination [0],
+            entry->destination [1], entry->dst_nbits);
+  else
+    printf (" to Y\n");
+  if (print_level <= 2)
+    return;
+  /* print_level > 2, print the packet */
+  int msize;
+  char * message;
+  int priority;
+  int id_off;
+  char ptime [ALLNET_TIME_SIZE];
+  int assigned = assign_matching (entry, fd, &message, &msize,
+                                  &id_off, &priority, ptime);
+  if (assigned < 0) {
+    printf ("error getting the actual message\n");
+    return;
+  }
+  if (memcmp (ptime, entry->received_at, ALLNET_TIME_SIZE) != 0) {
+    allnet_localtime_string (readb64 (ptime), time_str);
+    printf ("   @%d, %d bytes, received at %s, prio %d, id %d\n",
+            assigned, msize, time_str, priority, id_off);
+  } else {
+    printf ("   @%d, %d bytes, prio %d, id %d\n",
+            assigned, msize, priority, id_off);
+  }
+  print_packet (message, msize, NULL, 1);
+  if (print_level <= 3)
+    return;
+  /* print_level > 3, attempt to decrypt data packets and verify signatures */
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if (hp->message_type == ALLNET_TYPE_DATA) {
+    char * data = ALLNET_DATA_START (hp, hp->transport, msize);
+    int dsize = msize - (data - message);
+    char * contact;
+    char * text;
+    keyset k;
+    int tsize = decrypt_verify (hp->sig_algo, data, dsize,
+                                &contact, &k, &text,
+                                NULL, 0, NULL, 0, 0);
+    if (tsize > 0) {
+      char * desc = strcat_malloc (" decrypted from ", contact, "print_msg");
+      print_buffer (text, tsize, desc, 100, 0);
+      free (desc);
+      if (tsize > 40) {
+        int len = tsize - 40;
+        char * copy = malloc_or_fail (len + 1, "print_caches");
+        memcpy (copy, text + 40, len);
+        copy [len] = '\0';
+        printf (" (%s)", copy);
+        free (copy);
+      }
+      free (text);
+      printf ("\n");
+    }
+  } else if (hp->sig_algo != ALLNET_SIGTYPE_NONE) {
+    /* should verify signatures.  Not implemented, but see code in sniffer.c */
+  }
+}
+
+/* intented to be called by an outside program, for debugging */
+/* each print variable is 0 to not print, 1 to print short, 2 for long */
+void print_caches (int print_msgs, int print_acks)
+{
+  int msg_fd;
+  int max_msg_size;
+  int ack_fd;
+  int max_acks;
+  int local_caching = 0;
+  init_acache (&msg_fd, &max_msg_size, &ack_fd, &max_acks, &local_caching);
+  printf ("cache sizes are %d for messages, %d for acks\n",
+          max_msg_size, max_acks);
+  char zero [MESSAGE_ID_SIZE];
+  bzero (zero, sizeof (zero));
+  if (print_msgs > 0) {
+    int count = 0;
+    int ecount = 0;
+    int h_index;
+    for (h_index = 0; h_index < hash_size; h_index++) {
+      struct hash_entry * entry = message_hash_table [h_index];
+      if (entry != NULL)
+        ecount++;
+      while (entry != NULL) {
+        if (memcmp (zero, entry->id, MESSAGE_ID_SIZE) != 0) {
+          print_message (msg_fd, entry, print_msgs, count, h_index);
+          count++;
+        }
+        entry = entry->next_by_hash;
+      }
+    }
+    printf ("found %d messages in %d (out of %d) hash table entries\n",
+            count, ecount, hash_size);
+  }
+  if (print_acks > 0) {
+    int i;
+    int count = 0;
+    for (i = 0; i < ack_space; i++) {
+      if (memcmp (acks [i].message_id, zero, MESSAGE_ID_SIZE) != 0) {
+        count++;
+        unsigned char * id = (unsigned char *) (acks [i].message_id);
+        unsigned char * ack = (unsigned char *) (acks [i].message_ack);
+        printf ("%4d@%d ", count, i);
+        printf ("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x ", ack [0], ack [1], ack [2], ack [3], ack [4], ack [5], ack [6], ack [7], ack [8], ack [9], ack [10], ack [11], ack [12], ack [13], ack [14], ack [15]);
+        printf ("%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x\n", id [0], id [1], id [2], id [3], id [4], id [5], id [6], id [7], id [8], id [9], id [10], id [11], id [12], id [13], id [14], id [15]);
+      }
+    }
+    printf ("found %d acks out of %d entries\n", count, ack_space);
+  }
+  /* print_stats (0, 0); */
+  close (msg_fd);
+  close (ack_fd);
 }
 
 void acache_main (char * pname)

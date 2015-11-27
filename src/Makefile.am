@@ -29,7 +29,8 @@ LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la \
 bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/allnet \
 	$(ALLNET_BINDIR)/astart \
-	$(ALLNET_BINDIR)/astop
+	$(ALLNET_BINDIR)/astop \
+	$(ALLNET_BINDIR)/allnet-print-caches
 
 __ALLNET_BINDIR__astart_SOURCES = astart.c \
 				  ad.c \
@@ -51,6 +52,7 @@ __ALLNET_BINDIR__astop_SOURCES = ${__ALLNET_BINDIR__astart_SOURCES}
 __ALLNET_BINDIR__astop_LDFLAGS = -lpthread
 __ALLNET_BINDIR__allnet_SOURCES = ${__ALLNET_BINDIR__astart_SOURCES}
 __ALLNET_BINDIR__allnet_LDFLAGS = -lpthread
+__ALLNET_BINDIR__allnet_print_caches_SOURCES = print_caches.c acache.c
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
