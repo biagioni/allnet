@@ -61,6 +61,10 @@
 #define CODE_SEQ                4
 /* - code value 5 identifies an ack.  text of the message is an 8-byte ack */
 #define CODE_ACK                5
+/* - code value 6 is a trace request.  text is a 1-byte hop count */
+#define CODE_TRACE              6
+/* - code value 7 is a trace response.  text is the text of the response */
+#define CODE_TRACE_RESPONSE     7
 
 /* protocol: s (server) = xchat_socket, c (client) = ui
  * data:        s -> c: message received from peer (server replies with seq #)
@@ -72,6 +76,7 @@
  * ahra:        s -> c: confirm subscription
  *              c -> s: subscribe to ahra
  * ack:         s -> c: inbound ack received from peer
+ * trace:       c -> s: trace request
  */
 
 static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
@@ -153,9 +158,15 @@ static int recv_message (int sock, int * code, time_t * time,
   *time = sent_time;
   *code = buf [10] & 0xff;
   if ((*code != CODE_DATA_MESSAGE) && (*code != CODE_NEW_CONTACT) &&
-      (*code != CODE_AHRA)) {
-    printf ("error: received code %d but only 0, 2, and 3 supported\n", *code);
+      (*code != CODE_AHRA) && (*code != CODE_TRACE)) {
+    printf ("error: received code %d but only 0, 2, 3, and 6 supported\n",
+            *code);
     return 0;
+  }
+  if (*code == CODE_TRACE) {
+    int hops = buf [11];
+    printf ("requested trace with hop count %d\n", hops);
+    return hops;
   }
   plen = strlen (buf + 11);
   if (plen >= ALLNET_MTU) {
@@ -521,6 +532,21 @@ peer, key_contact, to_send, key_secret, key_secret2, num_hops);
 printf ("sending subscription to %s/%s\n", peer, sbuf);
         if (subscribe_broadcast (sock, sbuf, saddr, &sbits))
           subscription = sbuf;
+      } else if (code == CODE_TRACE) {
+/*
+        extern char * trace_string (const char * tmp_dir, int sleep,
+                                    const char * dest, int nhops,
+                                    int no_intermediates, int match_only,
+                                    int wide);
+        char * result = trace_string ("/tmp", 30, NULL, len, 1, 0, 1);
+printf ("result of trace was %s\n", result);
+        free (result);
+*/
+        char * result = "trace requested, but not implemented";
+printf ("trace result: %s\n", result);
+        send_message (forwarding_socket,
+                      (struct sockaddr *) (&fwd_addr), fwd_addr_size,
+                      CODE_TRACE_RESPONSE, 0, "trace", result);
       } else
         printf ("received message with code %d\n", code);
     }

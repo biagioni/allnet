@@ -208,6 +208,21 @@ class UIController implements ControllerInterface, UIAPI {
 //        // schedule it in the event disp thread, but don't wait for it to execute
 //        SwingUtilities.invokeLater(r);
 //    }
+
+    @Override
+    // if a trace response is received, call this method
+    public void traceReceived(final String traceMessage) { 
+        Runnable r = new Runnable() {
+
+            @Override
+            public void run() {
+                morePanel.addTraceText (traceMessage);
+            }
+        };
+        // schedule it in the event disp thread, but don't wait for it to execute
+        SwingUtilities.invokeLater(r);
+    }
+
     //-----------------------------------------
     //
     //  end of public API methods
@@ -370,6 +385,9 @@ System.out.println ("resending subscription for " + ahra);
                 break;
             case MorePanel.TRACE_COMMAND:
                 System.out.println ("trace command called");
+                if (XchatSocket.sendTrace(5)) {
+                    System.out.println("resent trace request");
+                }
                 break;
         }
     }

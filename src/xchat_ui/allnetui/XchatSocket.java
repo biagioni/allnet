@@ -28,6 +28,8 @@ public class XchatSocket extends Thread {
   static final int codeAhra = 3;
   static final int codeSeq = 4;
   static final int codeAck = 5;
+  static final int codeTrace = 6;
+  static final int codeTraceReply = 7;
 
   static java.util.concurrent.LinkedBlockingQueue<Long> seqQueue =
     new java.util.concurrent.LinkedBlockingQueue<Long>();
@@ -231,6 +233,10 @@ public class XchatSocket extends Thread {
       long ack = b64 (data, nextIndex.value, dlen);
       // System.out.println ("from " + peer + " got ack " + ack);
       api.messageAcked (peer, ack);
+    } else if (code == codeTraceReply) {
+      String message = bString (data, nextIndex.value, dlen, nextIndex);
+      System.out.println ("trace response '" + message + "'");
+      api.traceReceived (message);
     } else {
       System.out.println ("unknown code " + code);
     }
@@ -284,47 +290,62 @@ public class XchatSocket extends Thread {
     return packet;
   }
 
-  public static long sendToPeer(String peer, String text) {
-    LongRef time = new LongRef();
-    DatagramPacket packet = makeMessagePacket(peer, text, time, false);
-    debugOutgoing (packet, codeDataMessage, peer);
+  private static DatagramPacket makeTracePacket(int hops) {
+    int size = 1 + 11;
+    byte [] buf = new byte [size];
+    DatagramPacket packet =
+      new DatagramPacket (buf, size, local, xchatSocketPort);
+    w32(buf, 0, size);
+    w48(buf, 4, 0);
+    buf [10] = codeTrace;
+    buf [11] = (byte) hops;
+    return packet;
+  }
+
+  private static boolean sendPacket(DatagramPacket packet) {
     try {
       socket.send (packet);
     } catch (java.io.IOException e) {
       System.out.println ("send exception: " + e);
+      return false;
+    }
+    return true;
+  }
+
+  public static long sendToPeer(String peer, String text) {
+    LongRef time = new LongRef();
+    DatagramPacket packet = makeMessagePacket(peer, text, time, false);
+    debugOutgoing (packet, codeDataMessage, peer);
+    if (! sendPacket (packet)) {
       return -1;
     }
     try {
       return seqQueue.take (); // return the sequence number from xchat_socket
     } catch (java.lang.InterruptedException e) {
       System.out.println ("sequence take exception: " + e);
-      return -1;
     }
+    return -1;
   }
 
   public static boolean sendKeyRequest(String peer, String s1, String s2,
                                        int hops) {
     DatagramPacket packet = makeKeyPacket(peer, s1, s2, hops);
     debugOutgoing (packet, codeNewContact, peer);
-    try {
-      socket.send (packet);
-    } catch (java.io.IOException e) {
-      System.out.println ("send exception: " + e);
-      return false;
-    }
-    return true;
+    return sendPacket(packet);
   }
 
   public static boolean sendSubscription(String peer) {
     DatagramPacket packet = makeSubPacket(peer);
     debugOutgoing (packet, codeAhra, peer);
-    try {
-      socket.send (packet);
-    } catch (java.io.IOException e) {
-      System.out.println ("send exception: " + e);
-      return false;
-    }
-    return true;
+    return sendPacket(packet);
+  }
+
+  // start a trace with the given number of hops
+  public static boolean sendTrace(int hops) {
+System.out.println ("send_trace (" + hops + ")");
+    DatagramPacket packet = makeTracePacket(hops);
+    debugOutgoing (packet, codeTrace, "trace");
+    return sendPacket(packet);
   }
 
   /* main method, called to start the thread

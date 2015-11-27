@@ -30,7 +30,6 @@ public interface UIAPI {
     public void contactCreated(final String contactName, boolean isBroadcast);
     public void contactCreated(final String contactName);
     public void broadcastContactCreated(final String contactName);
-
     
     // the application should call this method to tell the UI to
     // remove a contact
@@ -38,5 +37,8 @@ public interface UIAPI {
     
 //    // the application should call this method to update a user's key
 //    public void updateKey(String contactName, String key);
+
+    // if a trace response is received, call this method
+    public void traceReceived(String traceMessage);
     
 }

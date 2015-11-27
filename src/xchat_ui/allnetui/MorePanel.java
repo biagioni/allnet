@@ -17,7 +17,12 @@ class MorePanel extends JPanel {
     // commands to send to UIController
     public static final String CLOSE_COMMAND = "CLOSE";
     public static final String TRACE_COMMAND = "TRACE";
+    private static final String UNVERIFIED_INIT_STRING
+        = "no unverified broadcasts yet";
     // private data fields
+    // private data fields
+    private JLabel recentUnverifiedBroadcasts;
+    private String recentText;
     private JButton traceButton;
     private JLabel traceLabel;
     private String traceText;
@@ -46,6 +51,12 @@ class MorePanel extends JPanel {
         traceLabel.setOpaque(true);
         traceLabel.setBackground(Color.WHITE);
         traceLabel.setBorder(new LineBorder(Color.BLACK, 1, false));
+        recentText = "";
+        recentUnverifiedBroadcasts = new JLabel(UNVERIFIED_INIT_STRING);
+        recentUnverifiedBroadcasts.setOpaque(true);
+        recentUnverifiedBroadcasts.setBackground(Color.WHITE);
+        recentUnverifiedBroadcasts.setBorder(new LineBorder(Color.BLACK,
+                                                            1, false));
         // add them to the panel
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
@@ -58,6 +69,8 @@ class MorePanel extends JPanel {
         gbc.gridy = 0;
         gbc.gridheight = 1;
         gbc.gridwidth = 2;
+        add(recentUnverifiedBroadcasts, gbc);
+        gbc.gridy++;
         add(traceButton, gbc);
         gbc.gridy++;
         add(traceLabel, gbc);
@@ -75,6 +88,26 @@ class MorePanel extends JPanel {
     void addTraceText(String text) {
         traceText = traceText + "\n" + text;
         traceLabel.setText(traceText);
+    }
+
+    static String addAndTruncateToNlines (String text,
+                                          String previousText, int n) {
+        String result = text + "\n" + previousText;
+        int count = 0;
+        int index = 0;
+        while ((index = result.indexOf("\n", index)) >= 0) {
+            if ((count++) >= n)  // truncate the rest of the string
+                return result.substring(0, index);
+            index++;  // start looking at the next character position
+        }
+        return result;
+    }
+
+    void addUnverifiedBroadcasts(String text) {
+System.out.print("concatenating " + text + " with " + recentText + " gives ");
+        recentText = addAndTruncateToNlines (text, recentText, 4);
+System.out.println(recentText);
+        recentUnverifiedBroadcasts.setText(recentText);
     }
 
 //    // return the index of the selected button
