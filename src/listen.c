@@ -381,14 +381,15 @@ struct addr_info * listen_fd_addr (struct listen_info * info, int fd)
   return result;
 }
 
+/* returns the socket number if already listening, and -1 otherwise */
 int already_listening (struct addr_info * ai, struct listen_info * info)
 {
-  int result = 0;
+  int result = -1;
   pthread_mutex_lock (&(info->mutex));
   int i;
-  for (i = 0; (i < info->num_fds) && (! result); i++) {
+  for (i = 0; (i < info->num_fds) && (result == -1); i++) {
     if (same_ai (info->peers + i, ai))
-      result = 1;
+      result = info->fds [i];
   }
   pthread_mutex_unlock (&(info->mutex));
   return result;

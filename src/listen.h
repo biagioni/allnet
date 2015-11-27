@@ -61,6 +61,7 @@ extern void listen_remove_fd (struct listen_info * info, int fd);
  * do not modify in any way.  Returns NULL for no match */
 extern struct addr_info * listen_fd_addr (struct listen_info * info, int fd);
 
+/* returns the socket number if already listening, and -1 otherwise */
 extern int already_listening (struct addr_info * ai,
                               struct listen_info * info);
 

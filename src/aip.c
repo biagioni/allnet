@@ -644,6 +644,14 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
 #define MAX_DHT	10
   struct sockaddr_storage sas [MAX_DHT];
   int num_dhts = routing_top_dht_matches (address, LISTEN_BITS, sas, MAX_DHT);
+  if (num_dhts <= 0) {
+    snprintf (log_buf, LOG_SIZE,
+              "%d dhts, connect_listener (%d/0x%x, %d, %d) => %d\n", num_dhts,
+              (address [0] & 0xff) >> (8 - LISTEN_BITS), address [0] & 0xff,
+              af, num_dhts, result);
+    log_print ();
+    return result;
+  }
 #undef MAX_DHT
 #ifdef LOG_PACKETS
   int i;
@@ -666,12 +674,18 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         salen = sizeof (struct sockaddr_in);
       else if (af == AF_INET6)
         salen = sizeof (struct sockaddr_in6);
+      /* check to see if we are already connected */
       struct addr_info local_ai;
-      if (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, &local_ai))
-        continue;
-      if (already_listening (&local_ai, info))
-        continue;
+      if ((salen == 0) ||
+          (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, &local_ai)))
+        continue;   /* invalid address, ignore */
+      int prev_fd = already_listening (&local_ai, info);
+      if (prev_fd >= 0) {  /* already listening */
+        result = prev_fd;
+        break;
+      }
 
+      /* standard socket connection code supporting both IPv4 and IPv6 */
       int s = socket (af, SOCK_STREAM, 0);
       if (s < 0) {
         perror ("listener socket");
@@ -1179,8 +1193,8 @@ snprintf (log_buf, LOG_SIZE, "00: fd %d/%d, result %d/%d/%zd, bad afamily %d\n",
 udp, fd, result, sasize, sizeof (sockaddr), sap->sa_family); log_print (); }
     if (result < 0) {
 if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (log_buf, LOG_SIZE, "0/%d: fd %d/%d, bad address family %d\n",
- result, udp, fd, sap->sa_family); log_print (); }
+snprintf (log_buf, LOG_SIZE, "0/%d: fd %d/%d/%d, bad address family %d\n",
+ result, rpipe, udp, fd, sap->sa_family); log_print (); }
       if ((fd == rpipe) || (fd == udp)) {
         snprintf (log_buf, LOG_SIZE, "aip %s %d closed (%d)\n",
                   ((fd == rpipe) ? "ad pipe" : "udp socket"), fd, result);
@@ -1197,8 +1211,9 @@ snprintf (log_buf, LOG_SIZE, "0/%d: fd %d/%d, bad address family %d\n",
       removed_listener = 1;
     } else if (result > 0) {
 if ((fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (log_buf, LOG_SIZE, "1: fd %d/%d, result %d/%d, bad addr family %d\n",
-udp, fd, result, sasize, sap->sa_family); log_print (); }
+snprintf (log_buf, LOG_SIZE,
+"1/%d: fd %d/%d/%d, result %d/%d, bad addr family %d\n",
+result, rpipe, udp, fd, result, sasize, sap->sa_family); log_print (); }
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
 #ifdef LOG_PACKETS
         snprintf (log_buf, LOG_SIZE, "got %d-byte message from ad\n", result);
