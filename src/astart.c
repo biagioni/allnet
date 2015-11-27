@@ -704,7 +704,8 @@ static char * interface_extra (struct ifaddrs * next)
   if (next->ifa_addr->sa_family == AF_INET) /* || when add ipv6 to abc-ip.c
       (next->ifa_addr->sa_family == AF_INET6)) */
     return "ip";
-  if (strncmp (next->ifa_name, "wlan", 4) == 0) {
+  if ((strncmp (next->ifa_name, "wlan", 4) == 0) ||
+      (strncmp (next->ifa_name, "wlx", 3) == 0)) {
     if (geteuid () == 0)
       return "wifi";
     else
