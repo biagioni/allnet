@@ -204,16 +204,19 @@ static int receive_until (struct timeval * t, char ** message,
     msize = receive_pipe_message_fd (p, timeout_ms, message,
                                      iface->iface_sockfd,
                                      sap, &al, from_fd, priority);
+printf ("receive_pipe_message_fd returned %d\n", msize);
+    if ((msize > 0) && (al > 0) && (! iface->accept_sender_cb (sap))) {
+      /* message from myself, ignore */
+      free (*message);
+      return 0;
+    }
   } else {                               /* only read from ad */
 #ifdef DEBUG_PRINT
     call = "receive_pipe_message_any";
 #endif /* DEBUG_PRINT */
     msize = receive_pipe_message_any (p, timeout_ms, message,
                                       from_fd, priority);
-    if (msize > 0 && al > 0 && !iface->accept_sender_cb (sap)) {
-      free (*message);
-      return 0;
-    }
+printf ("receive_pipe_message_any returned %d\n", msize);
   }
 #ifdef DEBUG_PRINT
   unsigned long long finish = allnet_time_ms ();
@@ -845,14 +848,16 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   if (!iface->init_iface_cb (interface)) {
     snprintf (log_buf, LOG_SIZE, "unable to init interface %s\n", interface);
     log_print ();
-    goto iface_cleanup;
+    iface->iface_cleanup_cb ();
+    return;
   }
   int is_on = iface->iface_is_enabled_cb ();
   if ((is_on < 0) || ((is_on == 0) && (iface->iface_set_enabled_cb (1) != 1))) {
     snprintf (log_buf, LOG_SIZE,
               "abc: unable to bring up interface %s\n", interface);
     log_print ();
-    goto iface_cleanup;
+    iface->iface_cleanup_cb ();
+    return;
   }
   snprintf (log_buf, LOG_SIZE,
             "interface '%s' on fd %d\n", interface, iface->iface_sockfd);
@@ -867,8 +872,6 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
     else
       unmanaged_one_cycle (interface, p, rpipe, wpipe);
   }
-
-iface_cleanup:
   iface->iface_cleanup_cb ();
 }
 
