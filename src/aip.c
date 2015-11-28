@@ -772,60 +772,6 @@ static void create_connect_thread (struct listen_info * info, void * addr_cache,
     log_error ("pthread_create");
 }
 
-/* Connect can block for several seconds, so spawn a thread for
-   each listener.  Listeners are selected to correspond to at least
-   one of our local addresses. */
-static void make_listeners (struct listen_info * info, void * addr_cache)
-{
-  int i;
-  int connect_to_index [NUM_LISTENERS];
-  for (i = 0; i < NUM_LISTENERS; i++)
-    connect_to_index [i] = 0;  /* set to 1 if we should connect */
-  char ** contacts;
-  int num_contacts = all_contacts (&contacts);
-  int dht_count = 0;
-  for (i = 0; i < num_contacts; i++) {
-    int j;
-    keyset * keysets;
-    int num_keysets = all_keys (contacts [i], &keysets);
-    for (j = 0; j < num_keysets; j++) {
-      unsigned char address [ADDRESS_SIZE];
-      if (get_local (keysets [j], address) >= LISTEN_BITS) {
-        int index = ((address [0] & 0xff) >> (8 - LISTEN_BITS)) * 2;
-        if (index + 1 >= NUM_LISTENERS) { /* sanity check, should not happen */
-          printf ("error: original address %02x, index %02x (%d %d), %d bits\n",
-                  address [0] & 0xff, index, index, index + 1, LISTEN_BITS);
-          exit (1);
-        }
-        if (listener_fds [index] < 0) {
-          connect_to_index [index] = 1;
-          dht_count++;
-        }
-        if (listener_fds [index + 1] < 0) {
-          connect_to_index [index + 1] = 1;
-          dht_count++;
-        }
-      }
-    }
-    free (keysets);
-  }
-#define MIN_DHT_CONNECTIONS     4            /* if we have no contacts, */
-  while (dht_count < MIN_DHT_CONNECTIONS) {  /* connect some random addresses */
-    unsigned long long int r = random_int (0, NUM_LISTENERS - 1);
-    int index = (int)r;
-    if (listener_fds [index] < 0) {
-      connect_to_index [index] = 1;
-      dht_count++;
-    }
-  }
-  for (i = 0; i < NUM_LISTENERS; i += 2) {
-    if (connect_to_index [i])
-      create_connect_thread (info, addr_cache, AF_INET, i);
-    if (connect_to_index [i + 1])
-      create_connect_thread (info, addr_cache, AF_INET6, i + 1);
-  }
-}
-
 static void remove_listener (int fd, struct listen_info * info,
                              void * addr_cache)
 {
@@ -855,6 +801,90 @@ static void remove_listener (int fd, struct listen_info * info,
   else
     printf ("fd %d not found, not removed\n", fd);
 #endif /* DEBUG_PRINT */
+}
+
+/* Connect can block for several seconds, so spawn a thread for
+   each listener.  Listeners are selected to correspond to at least
+   one of our local addresses. */
+static void make_listeners (struct listen_info * info, void * addr_cache)
+{
+  int i;
+  int connect_to_index [NUM_LISTENERS];
+  int in_use [NUM_LISTENERS];
+  for (i = 0; i < NUM_LISTENERS; i++) {
+    connect_to_index [i] = 0;  /* set to 1 if we should connect */
+    in_use [i] = 0;            /* set to 1 if already in use */
+  }
+  char ** contacts;
+  int num_contacts = all_contacts (&contacts);
+  int dht_count = 0;
+  int existing = 0;
+  for (i = 0; i < num_contacts; i++) {
+    int j;
+    keyset * keysets;
+    int num_keysets = all_keys (contacts [i], &keysets);
+    for (j = 0; j < num_keysets; j++) {
+      unsigned char address [ADDRESS_SIZE];
+      if (get_local (keysets [j], address) >= LISTEN_BITS) {
+        int index = ((address [0] & 0xff) >> (8 - LISTEN_BITS)) * 2;
+        if (index + 1 >= NUM_LISTENERS) { /* sanity check, should not happen */
+          printf ("error: original address %02x, index %02x (%d %d), %d bits\n",
+                  address [0] & 0xff, index, index, index + 1, LISTEN_BITS);
+          continue;
+        }
+        if (listener_fds [index] < 0) {
+          connect_to_index [index] = 1;
+          dht_count++;
+        } else {
+          in_use [index] = 1;
+          existing++;
+        }
+        if (listener_fds [index + 1] < 0) {
+          connect_to_index [index + 1] = 1;
+          dht_count++;
+        } else {
+          in_use [index + 1] = 1;
+          existing++;
+        }
+      }
+    }
+    free (keysets);
+  }
+  for (i = 0; i < NUM_LISTENERS; i++) {
+    if (! in_use [i]) {   /* close socket (if any) if it is not in use */
+      if (listener_fds [i] >= 0)
+        remove_listener (listener_fds [i], info, addr_cache);
+      listener_fds [i] = -1;
+    }
+  }
+#define MIN_DHT_CONNECTIONS     4
+  int debug_loop_count = 0;  /* sanity check, make sure we don't loop forever */
+  while (existing + dht_count < MIN_DHT_CONNECTIONS) {
+    /* if we have too few contacts, connect some random addresses */
+    unsigned long long int r = random_int (0, NUM_LISTENERS - 1);
+    int index = (int) r;
+    if (listener_fds [index] < 0) {
+      connect_to_index [index] = 1;
+      dht_count++;
+    }
+    if (debug_loop_count++ > 1000 * NUM_LISTENERS) {
+      printf ("error: infinite loop in make_listeners\n");
+      printf ("       existing %d, dht_count %d, min %d, num %d %d\n",
+              existing, dht_count, MIN_DHT_CONNECTIONS, NUM_LISTENERS,
+              debug_loop_count);
+      printf ("       ");
+      for (index = 0; index < NUM_LISTENERS; index++)
+        printf ("%d, ", listener_fds [index]);
+      printf ("\n");
+      break;
+    }
+  }
+  for (i = 0; i < NUM_LISTENERS; i += 2) {
+    if (connect_to_index [i])
+      create_connect_thread (info, addr_cache, AF_INET, i);
+    if (connect_to_index [i + 1])
+      create_connect_thread (info, addr_cache, AF_INET6, i + 1);
+  }
 }
 
 void send_keepalive (void * udp_cache, int fd,
