@@ -241,11 +241,11 @@ static void save_peers (int save_id_peers)
       close (fd);
     }
   }
+  int cpeer = 0;
+  int cping = 0;
   if (save_id_peers & SAVE_PEERS) {
     int fd = open_write_config ("adht", "peers", 1);
     int i;
-    int cpeer = 0;
-    int cping = 0;
     for (i = 0; i < MAX_PEERS; i++)
       cpeer += entry_to_file (fd, &(peers [i].ai), i);
     for (i = 0; i < MAX_PINGS; i++)
@@ -527,7 +527,7 @@ print_dht (0); */
     peer += add_default_routes (result, peer, max_matches);
 #ifdef DEBUG_PRINT
   printf ("routing_top_dht_matches returning %d for ", peer);
-  print_buffer (dest, (nbits + 7) / 8, NULL, ADDRESS_SIZE, 1);
+  print_buffer ((char *) dest, (nbits + 7) / 8, NULL, ADDRESS_SIZE, 1);
   int i;
   for (i = 0; i < peer; i++) {
     printf ("%d: ", i);
@@ -765,6 +765,8 @@ int routing_add_ping_locked (struct addr_info * addr)
 void routing_expire_dht ()
 {
 #ifdef DEBUG_PRINT
+  int debug_ping_count = 0;
+  int debug_peer_count = 0;
   printf ("routing_expire_dht ()\n");
   print_dht (0);
   print_ping_list (0);
@@ -778,6 +780,9 @@ void routing_expire_dht ()
     if ((pings [i].ai.nbits > 0) && (! pings [i].refreshed)) {
       pings [i].ai.nbits = 0;
       changed = 1;
+#ifdef DEBUG_PRINT
+      debug_ping_count++;
+#endif /* DEBUG_PRINT */
     }
     /* mark all pings as not refreshed */
     pings [i].refreshed = 0;
@@ -795,6 +800,7 @@ void routing_expire_dht ()
       else
         printf ("rapl result is %d for", rapl);
       print_addr_info (&copy);
+      debug_peer_count++;
 #endif /* DEBUG_PRINT */
     }
     /* mark all peers as not refreshed */
@@ -804,7 +810,9 @@ void routing_expire_dht ()
     save_peers (SAVE_PEERS);
   pthread_mutex_unlock (&mutex);
 #ifdef DEBUG_PRINT
-  printf ("routing_expire_dht () finished\n");
+  printf ("routing_expire_dht () finished, %s, expired %d pings, %d peers\n",
+          (changed) ? "changed" : "no change", debug_ping_count,
+          debug_peer_count);
   print_dht (0);
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
