@@ -522,7 +522,7 @@ static int fd_can_recv (int fd, int wait_forever)
     perror ("fd_can_recv/select");
     snprintf (log_buf, LOG_SIZE,
               "fd_can_recv (%d): select returned %d\n", fd, s);
-    log_print ();
+    log_error ("fd_can_recv/select");
   }
   return 0;
 }
