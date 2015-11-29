@@ -92,6 +92,9 @@ struct allnet_header {
 /* 24 bytes (192 bits) */
 #define ALLNET_HEADER_SIZE	(sizeof (struct allnet_header))
 
+/* the maximum number of acks in an ack packet is 766 */
+#define ALLNET_MAX_ACKS	((ALLNET_MTU - ALLNET_HEADER_SIZE) / MESSAGE_ID_SIZE)
+
 /* used in sig_algo */
 #define ALLNET_SIGTYPE_NONE			  0
 #define ALLNET_SIGTYPE_RSA_PKCS1		  1

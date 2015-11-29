@@ -12,7 +12,6 @@ extern int xchat_init (char * program_name, pd p);
 /* optional... */
 extern void xchat_end (int sock);
 
-#define ALLNET_MAX_ACKS	((ALLNET_MTU - ALLNET_HEADER_SIZE) / MESSAGE_ID_SIZE)
 struct allnet_ack_info {
   int num_acks;        /* num acks received */
   long long int acks [ALLNET_MAX_ACKS];
