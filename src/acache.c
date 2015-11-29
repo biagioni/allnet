@@ -190,7 +190,7 @@ static int ack_found (char * ack)
   int i;
   for (i = 0; i < ack_space; i++) {
     if (memcmp (acks [i].message_ack, ack, MESSAGE_ID_SIZE) == 0) {
-      return 1;
+      return i + 1;
     }
   }
   return 0;
@@ -251,6 +251,7 @@ static void build_request_details (char * message, int msize,
   struct allnet_header * hp = (struct allnet_header *) message;
   int hsize = ALLNET_SIZE (hp->transport);
   int drsize = ALLNET_TIME_SIZE + 8;
+  int bsize = minz (msize, hsize + drsize);
   result->src_nbits = hp->src_nbits;
   if (result->src_nbits > ADDRESS_BITS)
     result->src_nbits = ADDRESS_BITS;
@@ -259,12 +260,12 @@ static void build_request_details (char * message, int msize,
   if (result->src_nbits < 0)
     result->src_nbits = 0;
   memcpy (result->source, hp->source, ADDRESS_SIZE);
-  if (msize < hsize + drsize) {
-    result->empty = 1;
-  } else {
+  result->empty = 1;
+  if (bsize > 0) {
     result->empty = 0;
     struct allnet_data_request * drp =
       (struct allnet_data_request *) (message + hsize);
+    int max_bits = bsize * 8;
     result->since = drp->since;
     char empty_time [ALLNET_TIME_SIZE];
     bzero (empty_time, sizeof (empty_time));
@@ -280,17 +281,20 @@ static void build_request_details (char * message, int msize,
     int dbytes = 0;
     int sbits = 0;
     int sbytes = 0;
-    if ((drp->dst_bits_power_two > 0) && (drp->dst_bits_power_two < 32)) {
-      dbits = 1 << (drp->dst_bits_power_two - 1);
+    if ((drp->dst_bits_power_two > 0) &&
+        (drp->dst_bits_power_two <= 20) &&
+        ((dbits = (1 << (drp->dst_bits_power_two))) <= max_bits)) {
       dbytes = (dbits + 7) / 8;
       if (hsize + drsize + dbytes <= msize) {
         result->dpower_two = drp->dst_bits_power_two;
         result->dbits = dbits;
         result->dbitmap = (unsigned char *) (message + (hsize + drsize));
+        max_bits = minz (max_bits, dbytes * 8);
       }
     }
-    if ((drp->src_bits_power_two > 0) && (drp->src_bits_power_two < 32)) {
-      sbits = 1 << (drp->src_bits_power_two - 1);
+    if ((drp->src_bits_power_two > 0) &&
+        (drp->src_bits_power_two <= 20) &&
+        ((sbits = (1 << (drp->src_bits_power_two))) <= max_bits)) {
       sbytes = (sbits + 7) / 8;
       if (hsize + drsize + dbytes + sbytes <= msize) {
         result->spower_two = drp->src_bits_power_two;
@@ -300,10 +304,17 @@ static void build_request_details (char * message, int msize,
       }
     }
   }
+#ifdef DEBUG_PRINT
+  printf ("request, power_two s %d d %d (%d %d), bitmaps s %p d %p\n",
+          result->spower_two, result->dpower_two, result->sbits, result->dbits,
+          result->sbitmap, result->dbitmap);
+#endif /* DEBUG_PRINT */
 }
 
+/* return the first n bits of the array, shifted all the way to the left */
 static uint64_t get_nbits (unsigned char * bits, int nbits)
 {
+printf ("result of get_nbits (%u, %d) is ", *bits, nbits);
   uint64_t result = 0;
   while (nbits >= 8) {
     result = ((result << 8) | ((*bits) & 0xff));
@@ -312,7 +323,18 @@ static uint64_t get_nbits (unsigned char * bits, int nbits)
   }
   if (nbits > 0)
     result = ((result << nbits) | (((*bits) & 0xff) >> (8 - nbits)));
+printf ("%" PRIx64 "\n", result);
   return result;
+}
+
+/* returns 0 or 1, the bit at the given position */
+static int get_bit (unsigned char * bits, uint64_t pos)
+{
+  int byte = bits [pos / 8];
+  unsigned int offset = pos % 8;
+  if (offset == 0)
+    return byte & 0x1;
+  return (byte >> offset) & 0x1;
 }
 
 /* returns 1 if the address is (or may be) in the bitmap, 0 otherwise */
@@ -325,31 +347,37 @@ static int match_bitmap (int power_two, int bitmap_bits, unsigned char * bitmap,
     return 1;   /* empty address matches every bitmap, even one with all 0's */
   uint64_t start_index = get_nbits (address, abits);
   uint64_t end_index = start_index;
-  if (abits > power_two) {
-    start_index = (start_index >> (abits - power_two));
+  if (abits > power_two) {  /* rescale everything to the bitmap */
+    int delta = abits - power_two;
+    start_index = (start_index >> delta);
+    end_index = start_index;
   } else if (abits < power_two) {
     /* make end_index have all 1s in the last (power_two - abits) bits */
-    end_index = ((start_index + 1) << (power_two - abits)) - 1;
-    start_index = (start_index << (power_two - abits));
+    /* e.g. assume abits is 8, power_two 12, delta 4, start/end index 0x17
+       the new end_index is 0x18 << 4 - 1 = 0x180 - 1 = 0x17f
+       the new start_index is 0x17 << 4 = 0x170, or 0x170..0x17f */
+    int delta = power_two - abits;
+    end_index = ((start_index + 1) << delta) - 1;
+    start_index = (start_index << delta);
   }
+printf ("start_index %" PRIx64 ", end %" PRIx64 ", a %d 2^%d, bm %d %02x\n",
+start_index, end_index, abits, power_two, bitmap_bits, bitmap [0]);
   if ((start_index > end_index) ||
       (start_index > bitmap_bits) || (end_index > bitmap_bits)) {
     snprintf (log_buf, LOG_SIZE,
-              "match_bitmap error: index %" PRIu64 "-%" PRIu64 ", %d bits\n",
-              start_index, end_index, bitmap_bits);
+              "match_bitmap error: 2^%d, index %" PRIx64 "-%" PRIx64 ", %d+%d bits, a %02x\n",
+              power_two, start_index, end_index, bitmap_bits, abits,
+              address [0]);
     printf ("%s", log_buf);
     log_print ();
     return 1;
   }
   while (start_index <= end_index) {
-    int byte = bitmap [start_index / 8] & 0xff;
-    int i;
-    for (i = start_index % 8;
-         (i < 8) && (i < (end_index - (start_index / 8) * 8)); i++)
-      if (((i == 7) && (( byte                   & 0x1) == 0x1)) ||
-          ((i <  7) && (((byte >> (8 - (i + 1))) & 0x1) == 0x1)))
-        return 1;
-    start_index = (start_index - (start_index % 8)) + 8;
+    if (get_bit (bitmap, start_index))
+      printf ("bit %" PRIx64 " is set\n", start_index);
+    if (get_bit (bitmap, start_index))
+      return 1;
+    start_index++;
   }
   return 0;  /* did not match any bit in the bitmap */
 }
@@ -840,8 +868,8 @@ static int source_get_next (int fd, int max, int pos, unsigned char * source,
 }
 
 static int64_t list_next_matching (int fd, int max_size, int64_t position,
-                                   struct request_details * rd, char ** message,
-                                   int * msize)
+                                   struct request_details * rd,
+                                   char ** message, int * msize)
 {
   if (position < 0)
     return -1;
@@ -854,13 +882,16 @@ static int64_t list_next_matching (int fd, int max_size, int64_t position,
                             message, msize, NULL, NULL, NULL);
   int64_t index = position >> 32;
   int64_t count = position & 0xffffffff;
-  int64_t use_count = count;
+  if (index >= hash_size)
+    return -1;
   struct hash_entry * entry = message_hash_table [index];
-  for ( ; index < hash_size; index++) {
-    while ((entry != NULL) && (count > 0)) {
-      entry = entry->next_by_hash;
-      count--;
-    }
+  /* get to the right entry, as specified by count */
+  while ((entry != NULL) && (count > 0)) {
+    entry = entry->next_by_hash;
+    count--;
+  }  /* should now have the entry indicated by position -- may be null */
+  int64_t use_count = count;
+  while (index < hash_size) {
     while ((entry != NULL) && (! (hash_matches (rd, entry)))) {
       entry = entry->next_by_hash;
       use_count++;   /* skip over this one when looking next time */
@@ -873,6 +904,8 @@ static int64_t list_next_matching (int fd, int max_size, int64_t position,
     /* not found at this hash index, continue with the next */
     use_count = 0;
     count = 0;
+    index++;
+    entry = message_hash_table [index];
   }
   return -1;  /* nothing found */
 }
@@ -1054,7 +1087,7 @@ static void remove_cached_message (int fd, int max_size, char * id,
   buffer_to_string (id, MESSAGE_ID_SIZE, "removing cached", MESSAGE_ID_SIZE, 1,
                     log_buf, LOG_SIZE);
   log_print ();
-  /* mark it as erased, but keep the size, so we can later skip */
+  /* mark it as erased, but keep the size so we can later skip */
   bzero (buffer, fsize);
   writeb16 (buffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET, msize);
   write_at_pos (fd, buffer, fsize, position);
@@ -1121,10 +1154,64 @@ static unsigned long long int limit_resources (int local_request)
   unsigned long long int start = allnet_time_ms ();
   if (local_request)
     return start + 1000;   /* up to 1s for local requests */
-  if ((last_response != 0) && (start <= last_response + 200))
+  if ((last_response != 0) && (start <= last_response + 1000))
     return 0;              /* too many requests */
 
   return start + 10;       /* allow 10ms */
+}
+
+static int send_ack (struct allnet_header * hp, int msize, int sock)
+{
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) == 0)
+    return 0;
+  int index = ack_found (ALLNET_MESSAGE_ID (hp, hp->transport, msize));
+  if (index == 0)
+    return 0;
+  index--;   /* the actual index is one less than the return value */
+
+  int send_size;
+  struct allnet_header * reply =
+    create_packet (MESSAGE_ID_SIZE, ALLNET_TYPE_ACK, hp->hops + 1,
+                   ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
+                   hp->source, hp->src_nbits, NULL, NULL, &send_size);
+  char * send = (char *) reply;
+  char * data = send + ALLNET_SIZE (hp->transport);
+  memcpy (data, acks [index].message_ack, MESSAGE_ID_SIZE);
+  int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
+  send_pipe_message (sock, send, send_size, priority);
+  return 1;
+}
+
+static int send_outstanding_acks (struct allnet_header * hp, int sock)
+{
+  char packet [ALLNET_MTU];
+  struct allnet_header * reply =
+    init_packet (packet, sizeof (packet), ALLNET_TYPE_ACK, hp->hops + 1,
+                 ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
+                 hp->source, hp->src_nbits, NULL, NULL);
+  int hsize = ALLNET_SIZE (reply->transport);
+  char * message_acks = packet + hsize;
+  /* for now, simply stuff it with the latest acks (in sequence).  Later,
+   * maybe, keep track of ack time and source and destination address */
+  char zero [MESSAGE_ID_SIZE];
+  bzero (zero, sizeof (zero));
+  int i = save_ack_pos;
+  int count;
+  int saved = 0;
+  for (count = 0; (saved < ALLNET_MAX_ACKS) && (count < ack_space); count++) {
+    i = i - 1;
+    if (i < 0)
+      i = ack_space - 1;
+    if (memcmp (acks [i].message_ack, zero, MESSAGE_ID_SIZE) != 0) {
+      memcpy (message_acks + saved * MESSAGE_ID_SIZE, acks [i].message_ack,
+              MESSAGE_ID_SIZE);
+      saved++;
+    }
+  }
+  int send_size = hsize + saved * MESSAGE_ID_SIZE;
+  int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
+  send_pipe_message (sock, packet, send_size, priority);
+  return saved;
 }
 
 static void resend_message (char * message, int msize, int64_t position,
@@ -1167,14 +1254,20 @@ static int respond_to_request (int fd, int max_size, char * in_message,
   char * message;
   int msize = 0;
   int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
-  /* limit responses to 10ms.  There is probably a better way to do this */
+  /* limit responses as specified by limit_resources */
   while ((local_request || (allnet_time_ms () < limit)) &&
          ((position = list_next_matching (fd, max_size, position, &rd,
                                           &message, &msize)) > 0)) {
-    resend_message (message, msize, position, &priority, local_request, sock);
-    count++;
+    if (msize > 0) {
+      resend_message (message, msize, position, &priority, local_request, sock);
+      count++;
+    }
   }
-  snprintf (log_buf, LOG_SIZE, "respond_to_request: sent %d\n", count);
+  int num_acks = 0;
+  if (allnet_time_ms () < limit)
+    num_acks = send_outstanding_acks (hp, sock);
+  snprintf (log_buf, LOG_SIZE, "respond_to_request: sent %d packets, %d acks\n",
+            count, num_acks);
   log_print ();
   return count;
 }
@@ -1421,7 +1514,7 @@ static void main_loop (int sock, pd p)
           snprintf (log_buf, LOG_SIZE, "responded to id request packet\n");
         else
           snprintf (log_buf, LOG_SIZE, "no response to id request packet\n");
-      } else {   /* not a data request */
+      } else {   /* not a data request and not a mgmt packet */
         if (hp->message_type == ALLNET_TYPE_ACK) {
           /* erase the message and save the ack */
           ack_packets (msg_fd, max_msg_size, ack_fd, message, result);
@@ -1429,6 +1522,13 @@ static void main_loop (int sock, pd p)
           snprintf (log_buf, LOG_SIZE, "not saving local packet\n");
         } else if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) {
           snprintf (log_buf, LOG_SIZE, "did not save non-cacheable packet\n");
+        } else if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
+                   (ack_found (ALLNET_MESSAGE_ID (hp, hp->transport,
+                                                  result)))) {
+          if (send_ack (hp, result, sock))
+            snprintf (log_buf, LOG_SIZE, "resent ack, did not save\n");
+          else
+            snprintf (log_buf, LOG_SIZE, "did not save acked packet\n");
         } else if (save_packet (msg_fd, max_msg_size,
                                 message, result, priority)) {
           mfree = 0;   /* saved, so do not free */
