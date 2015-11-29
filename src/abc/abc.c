@@ -204,7 +204,6 @@ static int receive_until (struct timeval * t, char ** message,
     msize = receive_pipe_message_fd (p, timeout_ms, message,
                                      iface->iface_sockfd,
                                      sap, &al, from_fd, priority);
-printf ("receive_pipe_message_fd returned %d\n", msize);
     if ((msize > 0) && (al > 0) && (! iface->accept_sender_cb (sap))) {
       /* message from myself, ignore */
       free (*message);
