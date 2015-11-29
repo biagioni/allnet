@@ -234,6 +234,18 @@ extern void print_usage (int argc, char ** argv, int user_callable,
 /* returns (from - subtract) if from >= subtract, otherwise returns 0 */
 extern int minz (int from, int subtract);
 
+/* returns the number of bits needed to represent the number in binary,
+ * and 0 for 0 */
+/* e.g. returns
+   0 for 0
+   1 for 1
+   2 for 2 or 3
+   3 for 4-7
+   4 for 8-15
+   etc
+ */
+extern int binary_log (unsigned long long int value);
+
 /* in case of error on iOS, don't kill the process, only the thread (since
  * in iOS, we only have one process */
 #ifdef __IPHONE_OS_VERSION_MIN_REQUIRED

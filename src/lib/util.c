@@ -71,6 +71,23 @@ int minz (int from, int subtract)
   return 0;
 }
 
+/* returns the number of bits needed to represent the number in binary,
+ * and 0 for 0 */
+/* e.g. returns
+   0 for 0
+   1 for 1
+   2 for 2 or 3
+   3 for 4-7
+   4 for 8-15
+   etc
+ */
+int binary_log (unsigned long long int value)
+{
+  if (value <= 1)
+    return value;
+  return 1 + binary_log (value / 2);
+}
+
 /* same as print_buffer, but prints to the given string */
 int buffer_to_string (const char * buffer, int count, char * desc,
                       int max, int print_eol, char * to, int tsize)
