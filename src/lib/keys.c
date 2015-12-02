@@ -936,6 +936,8 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   new.members = NULL;
   new.has_symmetric_key = 0;
   bzero (new.symmetric_key, SYMMETRIC_KEY_SIZE);
+  new.has_state = 0;
+  bzero (&(new.state), sizeof (struct allnet_stream_encryption_state));
 
   if ((contact_key != NULL) && (contact_ksize > 0) &&
       (do_set_contact_pubkey (&new, contact_key, contact_ksize) == 0)) {
