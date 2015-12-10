@@ -120,6 +120,10 @@ static void stop_all ();
  *    sudo chown root:root astart astop; sudo chmod u+s astart astop; ./astart
  * in the first case, both user IDs will be 0 (root).  In the second
  * case, only the effective user ID (euid) will be 0 */
+/* setuid is complicated, see
+   http://www.cs.berkeley.edu/~daw/papers/setuid-usenix02.pdf
+ * however, we only use setuid if we are root, which should be widely portable.
+ */
 #define ROOT_USER_ID	0
 static void make_root_other (int verbose)
 {
@@ -127,13 +131,14 @@ static void make_root_other (int verbose)
     return;   /* not root, nothing to do, and cannot change uids anyway */
   int real_uid = getuid ();
   if (real_uid != geteuid ()) {   /* setuid executable, chmod u+s */
+    /* setgid first, before dropping uid priviliges */
+    int real_gid = getgid ();
+    if (real_gid != getegid ()) { /* set group ID as well */
+      if ((setgid (real_gid) == 0) && (verbose))
+        printf ("set gids %d %d\n", getgid (), getegid ());
+    }
     if (setuid (real_uid) == 0) {
       if (verbose) printf ("set uids %d %d\n", getuid (), geteuid ());
-      int real_gid = getgid ();
-      if (real_gid != getegid ()) { /* set group ID as well */
-        if ((setuid (real_gid) == 0) && (verbose))
-          printf ("set gids %d %d\n", getgid (), getegid ());
-      }
       return;
     }
     perror ("setuid/real");   /* and still try to become someone else */
