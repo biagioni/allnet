@@ -76,7 +76,7 @@ static struct hash_entry * message_hash_table [HASH_SIZE];
 /* entries sorted by source address */
 static struct hash_entry * message_source_table [HASH_SIZE];
 
-#else /* SMALL_FIXED_SIZE */
+#else /* ! SMALL_FIXED_SIZE */
 
 static int hash_pool_size = 0;
 static int hash_size = 0;
@@ -337,6 +337,16 @@ static int get_bit (unsigned char * bits, uint64_t pos)
   return (byte >> offset) & 0x1;
 }
 
+static void set_bit (unsigned char * bits, uint64_t pos)
+{
+  uint64_t index = pos / 8;
+  unsigned int offset = pos % 8;
+  int mask = 1;
+  if (offset != 0)
+    mask = mask << offset;
+  bits [index] |= mask;
+}
+
 /* returns 1 if the address is (or may be) in the bitmap, 0 otherwise */
 static int match_bitmap (int power_two, int bitmap_bits, unsigned char * bitmap,
                          unsigned char * address, int abits)
@@ -382,6 +392,7 @@ start_index, end_index, abits, power_two, bitmap_bits, bitmap [0]);
   return 0;  /* did not match any bit in the bitmap */
 }
 
+/* returns 1 if the message matches the request, 0 otherwise */
 static int packet_matches (struct request_details * req,
                            char * message, int msize, char * rcvd_time)
 {
@@ -405,33 +416,6 @@ static int packet_matches (struct request_details * req,
   if ((req->sbits > 0) && (req->sbitmap != NULL) &&
       (! match_bitmap (req->spower_two, req->sbits, req->sbitmap,
                        hp->source, hp->src_nbits)))
-    return 0;
-  return 1;
-}
-
-static int hash_matches (struct request_details * req,
-                         struct hash_entry * entry)
-{
-  if (req->empty) {
-    if (matches (req->source, req->src_nbits,
-                 entry->destination, entry->dst_nbits))
-      return 1;
-    return 0;
-  }
-  /* anything not matching leads to the packet being excluded */
-  if (req->since != NULL) {
-    uint64_t since = readb64u (req->since);
-    uint64_t rcvd_at = readb64u (entry->received_at);
-    if (since > rcvd_at)
-      return 0;
-  }
-  if ((req->dbits > 0) && (req->dbitmap != NULL) &&
-      (! match_bitmap (req->dpower_two, req->dbits, req->dbitmap,
-                       entry->destination, entry->dst_nbits)))
-    return 0;
-  if ((req->sbits > 0) && (req->sbitmap != NULL) &&
-      (! match_bitmap (req->spower_two, req->sbits, req->sbitmap,
-                       entry->source, entry->src_nbits)))
     return 0;
   return 1;
 }
@@ -557,7 +541,7 @@ static int round_up (int n)
 static void init_hash_table (int max_msg_size)
 {
 #ifdef SMALL_FIXED_SIZE
-#else /* SMALL_FIXED_SIZE */
+#else /* ! SMALL_FIXED_SIZE */
   hash_pool_size = round_up ((max_msg_size / sizeof (struct hash_entry)) / 10);
   if (hash_pool_size < 16)
     hash_pool_size = 16;
@@ -642,6 +626,7 @@ static void print_stats (int exit_if_none_free, int must_match)
     snprintf (log_buf, LOG_SIZE,
               "%d in hash, %d in message list, %d free, should have %d\n",
               hcount, mcount, fcount, must_match);
+    printf ("%s", log_buf);
     log_print ();
     exit (1);
   }
@@ -649,8 +634,10 @@ static void print_stats (int exit_if_none_free, int must_match)
   if ((must_match >= 0) && (must_match != hcount)) {
     snprintf (log_buf, LOG_SIZE, "%d in hash, %d free, should have %d\n",
               hcount, fcount, must_match);
+    printf ("%s", log_buf);
     log_print ();
-    exit (1);
+    if (exit_if_none_free)
+      exit (1);
   }
 #endif /* USING_MESSAGE_LIST */
 }
@@ -799,32 +786,45 @@ static void remove_from_hash_table (char * id)
   }
 }
 
-static int assign_matching (struct hash_entry * matching, int fd,
-                            char ** message, int * msize, int * id_off,
-                            int * priority, char * time)
+/* return the next position, or -1 if it fails */
+static int64_t assign_matching (struct hash_entry * matching, int fd, int fsize,
+                                char ** message, int * msize, int * id_off,
+                                int * priority, char * time)
 {
-  if (matching != NULL) {
-    static char data [MAX_MESSAGE_ENTRY_SIZE];
-    int r = read_at_pos (fd, data, sizeof (data), matching->file_position);
-    if (r <= MESSAGE_ENTRY_HEADER_SIZE)
-      return -1;
-    int found_msize = readb16 (data + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET);
-    int found_id_off = readb16 (data + MESSAGE_ENTRY_HEADER_IDOFF_OFFSET);
-    if (message != NULL) *message = data + MESSAGE_ENTRY_HEADER_SIZE;
-    if (msize != NULL) *msize = found_msize;
-    if (id_off != NULL) *id_off = found_id_off;
-    if (priority != NULL) *priority =
-      readb32 (data + MESSAGE_ENTRY_HEADER_PRIORITY_OFFSET);
-    if (time != NULL)
-      memcpy (time, data + MESSAGE_ENTRY_HEADER_TIME_OFFSET, ALLNET_TIME_SIZE);
-    return matching->file_position + found_msize + MESSAGE_ENTRY_HEADER_SIZE;
-  }
-  return -1;
+  if (message != NULL) *message = NULL;
+  if (msize != NULL) *msize = 0;
+  if (id_off != NULL) *id_off = 0;
+  if (priority != NULL) *priority = 0;
+  if (time != NULL) bzero (time, ALLNET_TIME_SIZE);
+  if (matching == NULL)
+    return -1;
+  /* static makes it OK to set message to point into here */
+  static char data [MAX_MESSAGE_ENTRY_SIZE];
+  if (matching->file_position >= fsize)
+    return -1;
+  size_t rsize = sizeof (data);
+  if (matching->file_position + rsize > fsize)
+    rsize = fsize - matching->file_position;
+  int r = read_at_pos (fd, data, rsize, matching->file_position);
+  if (r <= MESSAGE_ENTRY_HEADER_SIZE)
+    return -1;
+  int found_msize = readb16 (data + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET);
+  if (r < MESSAGE_ENTRY_HEADER_SIZE + found_msize)
+    return -1;
+  int found_id_off = readb16 (data + MESSAGE_ENTRY_HEADER_IDOFF_OFFSET);
+  if (message != NULL) *message = data + MESSAGE_ENTRY_HEADER_SIZE;
+  if (msize != NULL) *msize = found_msize;
+  if (id_off != NULL) *id_off = found_id_off;
+  if (priority != NULL)
+    *priority = readb32 (data + MESSAGE_ENTRY_HEADER_PRIORITY_OFFSET);
+  if (time != NULL)
+    memcpy (time, data + MESSAGE_ENTRY_HEADER_TIME_OFFSET, ALLNET_TIME_SIZE);
+  return matching->file_position + found_msize + MESSAGE_ENTRY_HEADER_SIZE;
 }
 
-static int hash_get_next (int fd, int max, int pos, char * hash,
-                          char ** message, int * msize, int * id_off,
-                          int * priority, char * time)
+static int64_t hash_get_next (int fd, int max, int pos, char * hash,
+                              char ** message, int * msize, int * id_off,
+                              int * priority, char * time)
 {
   if (pos < 0)
     return -1;
@@ -842,9 +842,11 @@ static int hash_get_next (int fd, int max, int pos, char * hash,
     }
     entry = entry->next_by_hash;
   }
-  return assign_matching (matching, fd, message, msize, id_off, priority, time);
+  return assign_matching (matching, fd, max, message, msize,
+                          id_off, priority, time);
 }
 
+#ifdef USE_LIST_NEXT_MATCHING
 static int source_get_next (int fd, int max, int pos, unsigned char * source,
                             char ** message, int * msize, int * id_off,
                             int * priority, char * time)
@@ -864,7 +866,35 @@ static int source_get_next (int fd, int max, int pos, unsigned char * source,
     }
     entry = entry->next_by_source;
   }
-  return assign_matching (matching, fd, message, msize, id_off, priority, time);
+  return assign_matching (matching, fd, max, message, msize,
+                          id_off, priority, time);
+}
+
+static int hash_matches (struct request_details * req,
+                         struct hash_entry * entry)
+{
+  if (req->empty) {
+    if (matches (req->source, req->src_nbits,
+                 entry->destination, entry->dst_nbits))
+      return 1;
+    return 0;
+  }
+  /* anything not matching leads to the packet being excluded */
+  if (req->since != NULL) {
+    uint64_t since = readb64u (req->since);
+    uint64_t rcvd_at = readb64u (entry->received_at);
+    if (since > rcvd_at)
+      return 0;
+  }
+  if ((req->dbits > 0) && (req->dbitmap != NULL) &&
+      (! match_bitmap (req->dpower_two, req->dbits, req->dbitmap,
+                       entry->destination, entry->dst_nbits)))
+    return 0;
+  if ((req->sbits > 0) && (req->sbitmap != NULL) &&
+      (! match_bitmap (req->spower_two, req->sbits, req->sbitmap,
+                       entry->source, entry->src_nbits)))
+    return 0;
+  return 1;
 }
 
 static int64_t list_next_matching (int fd, int max_size, int64_t position,
@@ -877,7 +907,7 @@ static int64_t list_next_matching (int fd, int max_size, int64_t position,
       ((rd->empty) && (rd->src_nbits < bits_in_hash_table)))
     return get_next_message (fd, max_size, (int) position, NULL,
                              message, msize, NULL, NULL, NULL);
-  if (rd->empty)
+  if (rd->empty)   /* rd->src_nbits >= bits_in_hash_table */
     return source_get_next (fd, max_size, (int) position, rd->source,
                             message, msize, NULL, NULL, NULL);
   int64_t index = position >> 32;
@@ -897,7 +927,7 @@ static int64_t list_next_matching (int fd, int max_size, int64_t position,
       use_count++;   /* skip over this one when looking next time */
     }
     if (entry != NULL) {  /* hash must match */
-      assign_matching (entry, fd, message, msize, NULL, NULL, NULL);
+      assign_matching (entry, fd, max_size, message, msize, NULL, NULL, NULL);
       /* return same index, use_count + 1 */
       return (index << 32) | (use_count + 1);
     }
@@ -909,6 +939,119 @@ static int64_t list_next_matching (int fd, int max_size, int64_t position,
   }
   return -1;  /* nothing found */
 }
+#endif /* USE_LIST_NEXT_MATCHING */
+
+#ifdef HASH_RANDOM_MATCH
+/* returns 1 if successful, 0 otherwise.  Can always call again. */
+/* not uniformly random -- (1) selects a random hash table index, then a
+ * random entry at that index.  Some indices will have more entries,
+ * and entries are less likely to be selected, and
+ * (2) after the first call, continues with the next index */
+/* bf_bits gives the number of bits in the bloom filter */
+static int hash_random_match (int fd, int max_size,
+                              unsigned char * bf, int bf_bits,
+                              struct request_details * rd,
+                              char ** message, int * msize)
+{
+  static int initialized = 0;
+  static int persistent_index = 0;
+  if (! initialized)
+    persistent_index = random_int (0, hash_size - 1);
+  else
+    persistent_index = (persistent_index + 1) % hash_size;
+  initialized = 1;
+  struct hash_entry * entry = message_hash_table [persistent_index];
+  int loop_count = 0;
+  while ((entry == NULL) && (loop_count++ < hash_size))
+    persistent_index = (persistent_index + 1) % hash_size;
+  int count = 0;
+  while (entry != NULL) {
+    entry = entry->next_by_hash;
+    count++;
+  }
+  if (count <= 0)
+    return 0;
+  entry = message_hash_table [persistent_index];
+  int at = random_int (0, count - 1);
+  uint64_t position = (((uint64_t) persistent_index) << 32) | ((uint64_t) at);
+  uint64_t bf_index = position % bf_bits;
+  if (get_bit (bf, bf_index))
+  /* assume already sent -- may not be true, due to false positives */
+    return 0;
+  /* find the randomly selected entry */
+  while ((at-- > 0) && /* defensive programming */ (entry != NULL))
+    entry = entry->next_by_hash;
+  if (entry == NULL) /* defensive programming!!! */
+    return 0;
+  char ptime [ALLNET_TIME_SIZE];
+  int res = assign_matching (entry, fd, max_size, message, msize,
+                             NULL, NULL, ptime);
+  if (res < 0)
+    return 0;
+  if ((msize != NULL) && (*msize <= 0))
+    return 0;
+  int match = packet_matches (rd, *message, *msize, ptime);
+  if (match == 0)
+    return 0;
+  set_bit (bf, bf_index);   /* mark it as sent */
+  return 1;
+}
+
+#else /* ! HASH_RANDOM_MATCH */
+
+/* returns 1 if successful, 0 if we already returned all matching entries. */
+/* first_call should only be set on the first call in a loop */
+static int hash_next_match (int fd, int max_size, int first_call,
+                            struct request_details * rd,
+                            char ** message, int * msize)
+{
+  static int persistent_index = -1;
+  static struct hash_entry * persistent_entry = NULL;
+  static int first_index = -1;
+  if (first_call) {
+    persistent_index = random_int (0, hash_size - 1);
+    persistent_entry = message_hash_table [persistent_index];
+    first_index = persistent_index;
+  } else if (persistent_index < 0) { /* already done */
+    return 0;
+  }
+  while (1) {
+    if (persistent_entry == NULL) { /* find the next available entry, if any */
+      persistent_index = (persistent_index + 1) % hash_size;
+      while ((persistent_index != first_index) &&
+             (message_hash_table [persistent_index] == NULL))
+        persistent_index = (persistent_index + 1) % hash_size;
+      if (persistent_index == first_index) {  /* nothing found */
+        persistent_index = -1;
+        persistent_entry = NULL;
+        return 0;
+      }
+      persistent_entry = message_hash_table [persistent_index];
+    }
+    if (persistent_entry == NULL) { /* this is an error! */
+      snprintf (log_buf, LOG_SIZE,
+                "error: persistent_entry is NULL, %d %d %p\n",
+                persistent_index, first_index, persistent_entry);
+      printf ("%s", log_buf);
+      log_print ();
+      return 0;
+    }
+    struct hash_entry * entry = persistent_entry;
+    persistent_entry = entry->next_by_hash;   /* may be null */
+    char ptime [ALLNET_TIME_SIZE];
+    int found = assign_matching (entry, fd, max_size, message, msize,
+                                 NULL, NULL, ptime);
+    if ((found < 0) || ((msize != NULL) && (*msize <= 0)))
+      continue;   /* try again with the next entry */
+    int match = packet_matches (rd, *message, *msize, ptime);
+    if (match == 0)
+      continue;   /* try again with the next entry */
+    return 1;  /* found */
+  }
+  printf ("control flow error in acache\n");
+  return 0;  /* should never be executed */
+}
+#endif /* HASH_RANDOM_MATCH */
 
 /* returns 1 if this message is ready to be deleted, 0 otherwise */
 static int delete_gc_message (char * message, int msize,
@@ -1037,8 +1180,10 @@ static void cache_message (int fd, int max_size,
     snprintf (log_buf, LOG_SIZE, "gc'ing to make space for hash: %d\n",
               ++count);
     log_print ();
-    if (count > 10)
+    if (count > 10) {
+      printf ("count is 10 in acache.c cache_message, aborting\n");
       exit (1);
+    }
     gc (fd, max_size);
   }
   int write_position = fd_size_or_zero (fd);
@@ -1147,17 +1292,19 @@ static int save_packet (int fd, int max_size, char * message, int msize,
 }
 
 /* to limit resource consumption, only respond to requests that are
- * local, or to at most 5 requests per second */
+ * local, or to at most 1 outside request per second */
 static unsigned long long int limit_resources (int local_request) 
 {
   static unsigned long long int last_response = 0;
   unsigned long long int start = allnet_time_ms ();
+  if ((! local_request) && (last_response != 0) &&
+      (start <= last_response + 1000))
+    return 0;         /* responded to another request in the past second */
+  last_response = start;
+  unsigned long long int result = start + 10;              /* allow 10ms */
   if (local_request)
-    return start + 1000;   /* up to 1s for local requests */
-  if ((last_response != 0) && (start <= last_response + 1000))
-    return 0;              /* too many requests */
-
-  return start + 10;       /* allow 10ms */
+    result = start + 1000;                /* up to 1s for local requests */
+  return result;
 }
 
 static int send_ack (struct allnet_header * hp, int msize, int sock)
@@ -1184,34 +1331,51 @@ static int send_ack (struct allnet_header * hp, int msize, int sock)
 
 static int send_outstanding_acks (struct allnet_header * hp, int sock)
 {
+  if (ack_space <= 0)
+    return 0;
   char packet [ALLNET_MTU];
+  bzero (packet, sizeof (packet));
   struct allnet_header * reply =
     init_packet (packet, sizeof (packet), ALLNET_TYPE_ACK, hp->hops + 1,
                  ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
                  hp->source, hp->src_nbits, NULL, NULL);
   int hsize = ALLNET_SIZE (reply->transport);
   char * message_acks = packet + hsize;
-  /* for now, simply stuff it with the latest acks (in sequence).  Later,
-   * maybe, keep track of ack time and source and destination address */
-  char zero [MESSAGE_ID_SIZE];
+  /* add as many acks as possible, randomly selected.  We use a simple
+   * bloom filter to avoid sending an ack more than once */
+#define BF_SIZE		(ALLNET_MAX_ACKS * 4)
+#define BF_BITS		(BF_SIZE * 8)
+  unsigned char bloom_filter [BF_SIZE];
+  bzero (bloom_filter, BF_SIZE);
+  unsigned char zero [MESSAGE_ID_SIZE];
   bzero (zero, sizeof (zero));
-  int i = save_ack_pos;
-  int count;
-  int saved = 0;
-  for (count = 0; (saved < ALLNET_MAX_ACKS) && (count < ack_space); count++) {
-    i = i - 1;
-    if (i < 0)
-      i = ack_space - 1;
-    if (memcmp (acks [i].message_ack, zero, MESSAGE_ID_SIZE) != 0) {
-      memcpy (message_acks + saved * MESSAGE_ID_SIZE, acks [i].message_ack,
+  int outer_loop;
+  int count = 0;
+  for (outer_loop = 0; outer_loop < ALLNET_MAX_ACKS; outer_loop++) {
+#define MAX_LOOPS		20
+    int loops;
+    /* in most cases, we expect this loop to be executed only once */
+    for (loops = 0; loops < MAX_LOOPS; loops++) {
+      int index = random_int (0, ack_space - 1);
+      if (memcmp (acks [index].message_ack, zero, MESSAGE_ID_SIZE) == 0)
+        continue;  /* zero ack, try again with new index */
+      uint32_t first = readb32 (acks [index].message_ack) % BF_BITS;
+      if (get_bit (bloom_filter, first))
+        continue;  /* likely already selected, try again with new index */
+      set_bit (bloom_filter, first);  /* don't add this ack again */
+      memcpy (message_acks + count * MESSAGE_ID_SIZE, acks [index].message_ack,
               MESSAGE_ID_SIZE);
-      saved++;
+      count++;
+      break;   /* exit the for loop, go onto the next ack */
     }
   }
-  int send_size = hsize + saved * MESSAGE_ID_SIZE;
+#undef MAX_LOOPS
+#undef BF_SIZE
+#undef BF_BITS
+  int send_size = hsize + count * MESSAGE_ID_SIZE;
   int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
   send_pipe_message (sock, packet, send_size, priority);
-  return saved;
+  return count;
 }
 
 static void resend_message (char * message, int msize, int64_t position,
@@ -1219,7 +1383,7 @@ static void resend_message (char * message, int msize, int64_t position,
 {
   int priority = *priorityp;
   snprintf (log_buf, LOG_SIZE,
-            "sending %d-byte cached response at [%" PRId64 "]\n",
+            "sending %d-byte cached response at [%" PRIx64 "\n",
             msize, position);
   log_print ();
   struct allnet_header * send_hp = (struct allnet_header *) message;
@@ -1243,33 +1407,49 @@ static int respond_to_request (int fd, int max_size, char * in_message,
   if (hp->hops == 0)   /* local request, do not forward elsewhere */
     local_request = 1;
   
+  /* limit responses as specified by limit_resources */
   unsigned long long int limit = limit_resources (local_request);
-  if (limit == 0)
+  if ((limit == 0) || (limit <= allnet_time_ms ()))
     return 0;
+/* use up to 90% of the time to send messages, and 10% of the time for acks */
+  unsigned long long int limit_messages = limit -
+                                          (limit - allnet_time_ms ()) / 10;
 
   struct request_details rd;
   build_request_details (in_message, in_msize, &rd);
+  int sent = 0;
   int count = 0;
-  int64_t position = 0;
-  char * message;
-  int msize = 0;
-  int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
-  /* limit responses as specified by limit_resources */
-  while ((local_request || (allnet_time_ms () < limit)) &&
-         ((position = list_next_matching (fd, max_size, position, &rd,
-                                          &message, &msize)) > 0)) {
-    if (msize > 0) {
-      resend_message (message, msize, position, &priority, local_request, sock);
-      count++;
+#ifdef HASH_RANDOM_MATCH
+#define BF_SIZE 		10000
+  unsigned char bloom [BF_SIZE];
+  bzero (bloom, BF_SIZE);
+  int bbits = BF_SIZE * 8;
+#undef BF_SIZE
+#endif /* HASH_RANDOM_MATCH */
+  /* keep track of the number of calls that fail.  If more than 100 fail
+   * without any success, give up, no need to keep trying. */
+  while (allnet_time_ms () < limit_messages) {
+    char * message;
+    int msize = 0;
+    int first_call = (count++ == 0);
+#ifdef HASH_RANDOM_MATCH
+    if (hash_random_match (fd, max_size, bloom, bbits, &rd, &message, &msize)) {
+#else /* ! HASH_RANDOM_MATCH */
+    if (hash_next_match (fd, max_size, first_call, &rd, &message, &msize)) {
+#endif /* HASH_RANDOM_MATCH */
+      sent++;
+      int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
+      resend_message (message, msize, 0, &priority, local_request, sock);
     }
   }
   int num_acks = 0;
   if (allnet_time_ms () < limit)
     num_acks = send_outstanding_acks (hp, sock);
   snprintf (log_buf, LOG_SIZE, "respond_to_request: sent %d packets, %d acks\n",
-            count, num_acks);
+            sent, num_acks);
   log_print ();
-  return count;
+printf ("sent %d messages, %d acks\n", sent, num_acks);
+  return sent;
 }
 
 /* returns the number of responses sent, or 0 */
@@ -1310,7 +1490,7 @@ static int respond_to_id_request (int fd, int max_size, char * in_message,
     char *id = (char *) (amirp->ids + i * MESSAGE_ID_SIZE);
     char * message;
     int msize = 0;
-    int position = 0;
+    int64_t position = 0;
     if ((! local_request) && (allnet_time_ms () < limit) &&
         ((position = hash_get_next (fd, max_size, 0, id, &message, &msize,
                                     NULL, NULL, NULL)) >= 0)) {
@@ -1554,7 +1734,8 @@ static void main_loop (int sock, pd p)
   }
 }
 
-static void print_message (int fd, struct hash_entry * entry, int print_level,
+static void print_message (int fd, int max_size,
+                           struct hash_entry * entry, int print_level,
                            int count, int h_index)
 {
   if (print_level == 1) {
@@ -1586,10 +1767,11 @@ static void print_message (int fd, struct hash_entry * entry, int print_level,
   int priority;
   int id_off;
   char ptime [ALLNET_TIME_SIZE];
-  int assigned = assign_matching (entry, fd, &message, &msize,
+  int assigned = assign_matching (entry, fd, max_size, &message, &msize,
                                   &id_off, &priority, ptime);
   if (assigned < 0) {
-    printf ("error getting the actual message\n");
+    printf ("error getting the actual message at position %d, max %d\n",
+            entry->file_position, max_size);
     return;
   }
   if (memcmp (ptime, entry->received_at, ALLNET_TIME_SIZE) != 0) {
@@ -1658,7 +1840,8 @@ void print_caches (int print_msgs, int print_acks)
         ecount++;
       while (entry != NULL) {
         if (memcmp (zero, entry->id, MESSAGE_ID_SIZE) != 0) {
-          print_message (msg_fd, entry, print_msgs, count, h_index);
+          print_message (msg_fd, max_msg_size, entry,
+                         print_msgs, count, h_index);
           count++;
         }
         entry = entry->next_by_hash;
