@@ -340,6 +340,7 @@ static int get_bit (unsigned char * bits, uint64_t pos)
   return (byte >> offset) & 0x1;
 }
 
+#ifdef USING_SET_BIT  /* currently unused, might be useful in the future */
 static void set_bit (unsigned char * bits, uint64_t pos)
 {
   uint64_t index = pos / 8;
@@ -349,6 +350,7 @@ static void set_bit (unsigned char * bits, uint64_t pos)
     mask = mask << offset;
   bits [index] |= mask;
 }
+#endif /* USING_SET_BIT */
 
 /* returns 1 if the address is (or may be) in the bitmap, 0 otherwise */
 static int match_bitmap (int power_two, int bitmap_bits, unsigned char * bitmap,
@@ -1301,18 +1303,26 @@ static int save_packet (int fd, int max_size, char * message, int msize,
 
 /* to limit resource consumption, only respond to requests that are
  * local, or to at most 1 outside request per second */
-static unsigned long long int limit_resources (int local_request) 
+static void limit_resources (int local_request,
+                             unsigned long long int * overall,
+                             unsigned long long int * acks) 
 {
-  static unsigned long long int last_response = 0;
+  static unsigned long long int next_external = 0;
   unsigned long long int start = allnet_time_ms ();
-  if ((! local_request) && (last_response != 0) &&
-      (start <= last_response + 1000))
-    return 0;         /* responded to another request in the past second */
-  last_response = start;
-  unsigned long long int result = start + 10;              /* allow 10ms */
-  if (local_request)
-    result = start + 1000;                /* up to 1s for local requests */
-  return result;
+  if (overall != NULL) *overall = start - 1;
+  if (acks    != NULL) *acks    = start - 1;
+  if ((! local_request) && (next_external != 0) &&
+      (start <= next_external))
+    return;               /* responded to another request in the past second */
+  next_external = start + 1000; /* respond to external requests once per sec */
+  unsigned long long int first = start + 1;     /* allow 1ms for acks */
+  unsigned long long int final = start + 10;    /* allow 9 more ms for msgs */
+  if (local_request) {                  /* allow much more time */
+    first = start + 100;                /* up to .1s for acks */
+    final = start + 1000;               /* up to 1s for local requests */
+  }
+  if (overall != NULL) *overall = final;
+  if (acks    != NULL) *acks    = first;
 }
 
 static int send_ack (struct allnet_header * hp, int msize, int sock)
@@ -1337,7 +1347,8 @@ static int send_ack (struct allnet_header * hp, int msize, int sock)
   return 1;
 }
 
-static int send_outstanding_acks (struct allnet_header * hp, int sock)
+static int send_outstanding_acks (struct allnet_header * hp, int sock,
+                                  unsigned long long int time_limit)
 {
   if (ack_space <= 0)
     return 0;
@@ -1349,40 +1360,33 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock)
                  hp->source, hp->src_nbits, NULL, NULL);
   int hsize = ALLNET_SIZE (reply->transport);
   char * message_acks = packet + hsize;
-  /* add as many acks as possible, randomly selected.  We use a simple
-   * bloom filter to avoid sending an ack more than once */
-#define BF_SIZE		(ALLNET_MAX_ACKS * 4)
-#define BF_BITS		(BF_SIZE * 8)
-  unsigned char bloom_filter [BF_SIZE];
-  bzero (bloom_filter, BF_SIZE);
+  /* add as many acks as possible, beginning from a random starting point. */
   unsigned char zero [MESSAGE_ID_SIZE];
   bzero (zero, sizeof (zero));
-  int outer_loop;
   int count = 0;
-  for (outer_loop = 0; outer_loop < ALLNET_MAX_ACKS; outer_loop++) {
-#define MAX_LOOPS		20
-    int loops;
-    /* in most cases, we expect this loop to be executed only once */
-    for (loops = 0; loops < MAX_LOOPS; loops++) {
-      int index = random_int (0, ack_space - 1);
-      if (memcmp (acks [index].message_ack, zero, MESSAGE_ID_SIZE) == 0)
-        continue;  /* zero ack, try again with new index */
-      uint32_t first = readb32 (acks [index].message_ack) % BF_BITS;
-      if (get_bit (bloom_filter, first))
-        continue;  /* likely already selected, try again with new index */
-      set_bit (bloom_filter, first);  /* don't add this ack again */
-      memcpy (message_acks + count * MESSAGE_ID_SIZE, acks [index].message_ack,
-              MESSAGE_ID_SIZE);
-      count++;
-      break;   /* exit the for loop, go onto the next ack */
+  int ack_index = random_int (0, ack_space - 1); /* index into ack table */
+  int initial_ack_index = ack_index;
+  int msg_index = 0;                             /* index into ack message */
+  int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
+  /* finished means we ran out of time or sent all available acks */
+  int finished = (allnet_time_ms () >= time_limit);
+  while (! finished) {
+    if (memcmp (acks [ack_index].message_ack, zero, MESSAGE_ID_SIZE) != 0) {
+      memcpy (message_acks + msg_index * MESSAGE_ID_SIZE,
+              acks [ack_index].message_ack, MESSAGE_ID_SIZE);
+      msg_index++;
+    }
+    ack_index = (ack_index + 1) % ack_space;
+    finished = ((ack_index == initial_ack_index) ||
+                (allnet_time_ms () >= time_limit));
+    /* if we are done, or if we have max_acks to send, send what we have */
+    if ((msg_index > 0) && (finished || (msg_index == ALLNET_MAX_ACKS))) {
+      int send_size = hsize + msg_index * MESSAGE_ID_SIZE;
+      send_pipe_message (sock, packet, send_size, priority);
+      count += msg_index;
+      msg_index = 0;
     }
   }
-#undef MAX_LOOPS
-#undef BF_SIZE
-#undef BF_BITS
-  int send_size = hsize + count * MESSAGE_ID_SIZE;
-  int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
-  send_pipe_message (sock, packet, send_size, priority);
   return count;
 }
 
@@ -1416,13 +1420,9 @@ static int respond_to_request (int fd, int max_size, char * in_message,
     local_request = 1;
   
   /* limit responses as specified by limit_resources */
-  unsigned long long int limit = limit_resources (local_request);
-  if ((limit == 0) || (limit <= allnet_time_ms ()))
-    return 0;
-/* use up to 90% of the time to send messages, and 10% of the time for acks */
-  unsigned long long int limit_messages = limit -
-                                          (limit - allnet_time_ms ()) / 10;
-
+  unsigned long long int overall_limit, ack_limit;
+  limit_resources (local_request, &overall_limit, &ack_limit);
+  int num_acks = send_outstanding_acks (hp, sock, ack_limit);
   struct request_details rd;
   build_request_details (in_message, in_msize, &rd);
   int sent = 0;
@@ -1436,7 +1436,7 @@ static int respond_to_request (int fd, int max_size, char * in_message,
 #endif /* HASH_RANDOM_MATCH */
   /* keep track of the number of calls that fail.  If more than 100 fail
    * without any success, give up, no need to keep trying. */
-  while (allnet_time_ms () < limit_messages) {
+  while (allnet_time_ms () < overall_limit) {
     char * message;
     int msize = 0;
     int first_call = (count++ == 0);
@@ -1450,9 +1450,6 @@ static int respond_to_request (int fd, int max_size, char * in_message,
       resend_message (message, msize, 0, &priority, local_request, sock);
     }
   }
-  int num_acks = 0;
-  if (allnet_time_ms () < limit)
-    num_acks = send_outstanding_acks (hp, sock);
   snprintf (log_buf, LOG_SIZE, "respond_to_request: sent %d packets, %d acks\n",
             sent, num_acks);
   log_print ();
@@ -1484,9 +1481,8 @@ static int respond_to_id_request (int fd, int max_size, char * in_message,
     local_request = 1;
     sent_locally = (in_hp->max_hops == 0);
   }
-  unsigned long long int limit = limit_resources (local_request);
-  if (limit == 0)
-    return 0;
+  unsigned long long int limit;
+  limit_resources (local_request, &limit, NULL);
 
   int forward_missing = (! local_request) || sent_locally;
   int nmissing = 0;
