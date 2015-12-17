@@ -26,10 +26,58 @@
 
 /* #define DEBUG_PRINT */
 
+/* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
+ * and power_two must be less than 32.
+ * if local_addrs, uses local adresses, otherwise remote addresses
+ * returns the number of bits filled, or -1 for errors */
+static int fill_bits (unsigned char * bitmap, int power_two, int local_addrs)
+{
+  if ((power_two < 0) || (power_two >= 32))
+    return -1;
+  if (power_two == 0)
+    return 0;
+  int res = 0;
+  int bsize = 1;
+  if (power_two > 3)
+    bsize = 1 << (power_two - 3);
+  bzero (bitmap, bsize);
+  char ** contacts;
+  int ncontacts = all_contacts (&contacts);
+  int icontact;
+  for (icontact = 0; icontact < ncontacts; icontact++) {
+    keyset * keysets;
+    int nkeysets = all_keys (contacts [icontact], &keysets);
+    int ikeyset;
+    for (ikeyset = 0; ikeyset < nkeysets; ikeyset++) {
+      unsigned char addr [ADDRESS_SIZE];
+      int nbits = -1;
+      if (local_addrs)
+        nbits = get_local (keysets [ikeyset], addr);
+      else
+        nbits = get_remote (keysets [ikeyset], addr);
+      if (nbits >= power_two) {
+        uint32_t bits = (readb32u (addr)) >> (32 - power_two);
+        int mask = (1 << (bits % 8));
+        if ((bitmap [bits / 8] & mask) == 0) {
+          bitmap [bits / 8] |= mask;
+          res++;  /* the point of the if is to increment this correctly */
+        }
+      } else if (nbits >= 0) {
+printf ("nbits %d for contact %s key %d, power two %d, returning -1\n",
+nbits, contacts [icontact], keysets [ikeyset], power_two);
+        return -1;
+      }
+    }
+  }
+printf ("returning %d\n", res);
+  return res;
+}
+
 static void request_cached_data (int sock, int hops)
 {
   int size;
-  int adr_size = sizeof (struct allnet_data_request);
+  /* adr_size has 32 bytes for each of the 256-bit bitmaps */
+  int adr_size = sizeof (struct allnet_data_request) + 32 + 32;
   struct allnet_header * hp =
     create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
                    NULL, 0, NULL, 0, NULL, NULL, &size);
@@ -37,9 +85,16 @@ static void request_cached_data (int sock, int hops)
     (struct allnet_data_request *) (ALLNET_DATA_START (hp, hp->transport,
                                                        size));
   bzero (adr->since, sizeof (adr->since));
-  adr->dst_bits_power_two = 0;
-  adr->src_bits_power_two = 0;
+  adr->dst_bits_power_two = 8;
+  adr->src_bits_power_two = 8;
   random_bytes ((char *) (adr->padding), sizeof (adr->padding));
+  unsigned char * dst = adr->dst_bitmap;
+  unsigned char * src = dst + 32;
+  if ((fill_bits (src, 8, 1) < 0) || (fill_bits (dst, 8, 0) < 0)) {
+    size -= 32 + 32;
+    adr->dst_bits_power_two = 0;
+    adr->src_bits_power_two = 0;
+  }
   int priority = ALLNET_PRIORITY_LOCAL_LOW;
   if (! send_pipe_message_free (sock, (char *) (hp), size, priority))
     printf ("unable to request cached data\n");
