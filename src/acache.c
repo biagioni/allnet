@@ -1448,7 +1448,7 @@ static int respond_to_request (int fd, int max_size, char * in_message,
   snprintf (log_buf, LOG_SIZE, "respond_to_request: sent %d packets, %d acks\n",
             sent, num_acks);
   log_print ();
-printf ("sent %d messages, %d acks\n", sent, num_acks);
+/* printf ("sent %d messages, %d acks\n", sent, num_acks); */
   return sent;
 }
 
