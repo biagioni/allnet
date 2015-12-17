@@ -63,13 +63,10 @@ static int fill_bits (unsigned char * bitmap, int power_two, int local_addrs)
           res++;  /* the point of the if is to increment this correctly */
         }
       } else if (nbits >= 0) {
-printf ("nbits %d for contact %s key %d, power two %d, returning -1\n",
-nbits, contacts [icontact], keysets [ikeyset], power_two);
         return -1;
       }
     }
   }
-printf ("returning %d\n", res);
   return res;
 }
 
