@@ -311,19 +311,22 @@ static void build_request_details (char * message, int msize,
 #endif /* DEBUG_PRINT */
 }
 
-/* return the first n bits of the array, shifted all the way to the left */
-static uint64_t get_nbits (unsigned char * bits, int nbits)
+/* return the first n bits of the array, shifted all the way to the right */
+static uint64_t get_nbits (unsigned char * bits, unsigned int nbits)
 {
-printf ("result of get_nbits (%u, %d) is ", *bits, nbits);
-  uint64_t result = 0;
-  while (nbits >= 8) {
-    result = ((result << 8) | ((*bits) & 0xff));
-    nbits = nbits - 8;
-    bits++;
-  }
-  if (nbits > 0)
-    result = ((result << nbits) | (((*bits) & 0xff) >> (8 - nbits)));
-printf ("%" PRIx64 "\n", result);
+#ifdef DEBUG_PRINT
+printf ("result of get_nbits (%02x.%02x.%02x.%02x.%02x.%02x.%02x.%02x %d) is ",
+bits [0] & 0xff, bits [1] & 0xff, bits [2] & 0xff, bits [3] & 0xff,
+bits [4] & 0xff, bits [5] & 0xff, bits [6] & 0xff, bits [7] & 0xff, nbits);
+#endif /* DEBUG_PRINT */
+  if (nbits > 64)
+    nbits = 64;
+  uint64_t result = readb64u (bits);
+  if (nbits < 64)
+    result = result >> (64 - nbits);
+#ifdef DEBUG_PRINT
+  printf ("%" PRIx64 "\n", result);
+#endif /* DEBUG_PRINT */
   return result;
 }
 
@@ -370,8 +373,11 @@ static int match_bitmap (int power_two, int bitmap_bits, unsigned char * bitmap,
     end_index = ((start_index + 1) << delta) - 1;
     start_index = (start_index << delta);
   }
-printf ("start_index %" PRIx64 ", end %" PRIx64 ", a %d 2^%d, bm %d %02x\n",
-start_index, end_index, abits, power_two, bitmap_bits, bitmap [0]);
+#ifdef DEBUG_PRINT
+  printf ("start %" PRIx64 ", end %" PRIx64 ", a %d 2^%d %02x, bm %d %02x\n",
+          start_index, end_index, abits, power_two, address [0],
+          bitmap_bits, bitmap [start_index / 8]);
+#endif /* DEBUG_PRINT */
   if ((start_index > end_index) ||
       (start_index > bitmap_bits) || (end_index > bitmap_bits)) {
     snprintf (log_buf, LOG_SIZE,
@@ -383,8 +389,10 @@ start_index, end_index, abits, power_two, bitmap_bits, bitmap [0]);
     return 1;
   }
   while (start_index <= end_index) {
+#ifdef DEBUG_PRINT
     if (get_bit (bitmap, start_index))
       printf ("bit %" PRIx64 " is set\n", start_index);
+#endif /* DEBUG_PRINT */
     if (get_bit (bitmap, start_index))
       return 1;
     start_index++;
