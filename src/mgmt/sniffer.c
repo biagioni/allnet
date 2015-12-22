@@ -44,14 +44,15 @@ static char * hms (char * time_string)
 }
 
 static int handle_packet (char * message, int msize, int * rcvd, int debug,
-                          int verify, int types)
+                          int verify, int types, int full_payloads)
 {
   *rcvd = 0;
   struct timeval receive_time;
   gettimeofday (&receive_time, NULL);
+  int max = (full_payloads ? msize : 40);
 
   if (! is_valid_message (message, msize)) {
-    print_buffer (message, msize, "got invalid message", 32, 1);
+    print_buffer (message, msize, "got invalid message", max, 1);
     return 0;
   }
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -65,7 +66,7 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug,
   print_packet (message, msize, "received: ", 1);
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
   int dsize = msize - (data - message);
-  print_buffer (data, dsize, "   payload:", 40, 1);
+  print_buffer (data, dsize, "   payload:", max, 1);
   if (verify) {
     if (hp->message_type == ALLNET_TYPE_DATA) {
       char * contact;
@@ -172,7 +173,7 @@ static int received_before (char * message, int mlen)
 }
 
 static void main_loop (int sock, pd p, int debug,
-                       int max, int verify, int unique, int types)
+                       int max, int verify, int unique, int types, int full)
 {
   while (1) {
     int pipe;
@@ -186,7 +187,7 @@ static void main_loop (int sock, pd p, int debug,
     }
     if ((! unique) || (! received_before (message, found))) {
       int received = 0;
-      if (handle_packet (message, found, &received, debug, verify, types))
+      if (handle_packet (message, found, &received, debug, verify, types, full))
         return;
       if ((max > 0) && (received)) {
         max--;
@@ -231,15 +232,17 @@ int main (int argc, char ** argv)
   int debug = 0;
   int verify = 0;
   int unique = 0;
+  int full_payloads = 0;
   int types = ALL_PACKET_TYPES;
   int type;
   int opt;
-  while ((opt = getopt (argc, argv, "vdyut:")) != -1) {
+  while ((opt = getopt (argc, argv, "vdyuft:")) != -1) {
     switch (opt) {
     case 'd': debug = 1; break;
     case 'v': verbose = 1; break;
     case 'y': verify = 1; break;
     case 'u': unique = 1; break;
+    case 'f': full_payloads = 1; break;
     case 't':
       type = atoi (optarg);
       if ((type != 0) && (type <= MAX_PACKET_TYPE)) {  /* valid parameter */
@@ -256,9 +259,10 @@ int main (int argc, char ** argv)
         break;
       }  /* else print usage */
     default:
-      printf ("usage: %s [-v] [-d] [-y] [-u] [-t type]* [number-of-messages]\n",
+      printf ("usage: %s [-v] [-d] [-y] [-u] [-f] [-t type]* [number-of-messages]\n",
               argv [0]);
       printf ("       -v: verbose, -d: debug, -y: verify sig, -u: unique only");
+      printf ("       -f: print full message payloads, not abbreviated");
       printf ("       -t n: only show messages of type n -- may be repeated\n");
       printf ("       (repeating the SAME type, toggles it)\n");
       exit (1);
@@ -277,7 +281,7 @@ int main (int argc, char ** argv)
   if (argc > optind)
     max = atoi (argv [optind]);
 
-  main_loop (sock, p, debug, max, verify, unique, types);
+  main_loop (sock, p, debug, max, verify, unique, types, full_payloads);
   return 0;
 }
 
