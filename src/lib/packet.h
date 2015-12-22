@@ -377,9 +377,11 @@ struct allnet_data_request {
   unsigned char since [ALLNET_TIME_SIZE];
   unsigned char dst_bits_power_two;  /* bitmap has 2^this bits */
   unsigned char src_bits_power_two;  /* bitmap has 2^this bits */
-  unsigned char padding [6];	     /* sent as random, ignored on receipt */
+  unsigned char mid_bits_power_two;  /* bitmap has 2^this bits */
+  unsigned char padding [5];	     /* sent as random, ignored on receipt */
   unsigned char dst_bitmap [0];
   unsigned char src_bitmap [0];
+  unsigned char mid_bitmap [0];      /* message ID for messages */
 };
 
 #endif /* PACKET_H */
