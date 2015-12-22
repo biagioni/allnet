@@ -40,17 +40,30 @@ static void find_path (char * arg, char ** path, char ** program)
   }
 }
 
+/* changes the contents of the argument string, iff the substring is found */
+static void del_string (char * string, char * substring)
+{
+  char * found = strstr (string, substring);
+  if (found == NULL)
+    return;
+  int slen = strlen (substring);
+  int len = strlen (found) - slen;
+  memmove (found, found + slen, len + 1);
+}
+
 /* returned value is malloc'd. */
 static char * make_program_path (char * path, char * program)
 {
-  int size = strlen (path) + 1 + strlen (program) + 1;
-  char * result = malloc (size);
-  if (result == NULL) {
-    printf ("error: unable to allocate %d bytes for %s/%s, aborting\n",
-            size, path, program);
-    exit (1);
+  char * result = strcat3_malloc (path, "/", program,
+                                  "app_util/make_program_path");
+  int size = strlen (result) + 1;
+  del_string (result, "/.libs"); /* not sure why "/.libs" gets added to path */
+  if (access (result, X_OK) != 0) {
+    printf ("error: unable to find executable %s/%s or %s, aborting\n",
+            path, program, result);
+    free (result);
+    return NULL;
   }
-  snprintf (result, size, "%s/%s", path, program);
   return result;
 }
 
@@ -67,7 +80,7 @@ static void exec_allnet (char * arg)
     char * pname;
     find_path (arg, &path, &pname);
     char * astart = make_program_path (path, "allnet");
-    if (access (astart, X_OK) != 0) {
+    if ((astart == NULL) || (access (astart, X_OK) != 0)) {
       perror ("access, unable to find allnet executable");
       printf ("unable to start AllNet daemon %s\n", astart);
       exit (1);   /* only exits the child */

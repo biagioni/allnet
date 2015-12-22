@@ -283,6 +283,7 @@ static char * find_java_path ()
       if (access (result, X_OK) == 0)
         return result;
       free (result);
+      result = NULL;
     }
     if (colon == NULL)
       path = NULL;
@@ -323,6 +324,18 @@ static pid_t exec_java_ui (char * arg)
 /* printf ("exec_java_ui: path is %s\n", path); */
   char * jarfile = make_program_path (path, JAR_FILE_NAME);
 /* printf ("exec_java_ui: jarfile is %s\n", jarfile); */
+  if (access (jarfile, R_OK) != 0) {
+    int plen = strlen (path);
+    if ((plen > 1) && (path [plen - 1] == '/'))
+      path [--plen] = '\0';   /* eliminate any trailing slash */
+    if ((plen > 6) && (strcmp (path + plen - 6, "/.libs") == 0)) {
+      /* try without .libs */
+      path [plen - 6] = '\0';
+/*     printf ("exec_java_ui: new path is %s\n", path); */
+      jarfile = make_program_path (path, JAR_FILE_NAME);
+/*     printf ("exec_java_ui: new jarfile is %s\n", jarfile); */
+    }
+  }
   if (access (jarfile, R_OK) != 0) {
     perror ("access");
     printf ("unable to start Java gui %s\n", jarfile);
