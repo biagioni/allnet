@@ -385,8 +385,9 @@ System.out.println ("resending subscription for " + ahra);
                 break;
             case MorePanel.TRACE_COMMAND:
                 System.out.println ("trace command called");
+                morePanel.setTraceText (" ");
                 if (XchatSocket.sendTrace(5)) {
-                    System.out.println("resent trace request");
+                    System.out.println("sent trace request");
                 }
                 break;
         }
