@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <assert.h>
+#include <pthread.h>
 
 #include "chat.h"
 #include "xcommon.h"
@@ -30,7 +31,7 @@
  * and power_two must be less than 32.
  * if local_addrs, uses local adresses, otherwise remote addresses
  * returns the number of bits filled, or -1 for errors */
-static int fill_bits (unsigned char * bitmap, int power_two, int local_addrs)
+static int fill_bits (unsigned char * bitmap, int power_two, int selector)
 {
   if ((power_two < 0) || (power_two >= 32))
     return -1;
@@ -49,52 +50,125 @@ static int fill_bits (unsigned char * bitmap, int power_two, int local_addrs)
     int nkeysets = all_keys (contacts [icontact], &keysets);
     int ikeyset;
     for (ikeyset = 0; ikeyset < nkeysets; ikeyset++) {
-      unsigned char addr [ADDRESS_SIZE];
-      int nbits = -1;
-      if (local_addrs)
-        nbits = get_local (keysets [ikeyset], addr);
-      else
-        nbits = get_remote (keysets [ikeyset], addr);
-      if (nbits >= power_two) {
-        uint32_t bits = (readb32u (addr)) >> (32 - power_two);
-        int mask = (1 << (bits % 8));
-        if ((bitmap [bits / 8] & mask) == 0) {
-          bitmap [bits / 8] |= mask;
-          res++;  /* the point of the if is to increment this correctly */
+      if (selector == 2) {   /* fill bitmap with outstanding acks */
+        int singles, ranges;
+        char * unacked = get_unacked (contacts [icontact], keysets [ikeyset],
+                                      &singles, &ranges);
+        char * ptr = unacked;
+        int i;
+        for (i = 0; i < singles + ranges; i++) {
+          uint64_t seq = readb64 (ptr);
+          ptr += COUNTER_SIZE;
+          uint64_t last = seq;
+          if (i >= singles) {   /* it's a range */
+            last = readb64 (ptr);
+            ptr += COUNTER_SIZE;
+          }
+          while (seq <= last) {
+            char ack [MESSAGE_ID_SIZE];
+            char * message = get_outgoing (contacts [icontact],
+                                           keysets [ikeyset], seq,
+                                           NULL, NULL, ack);
+            if (message != NULL) {
+              free (message); /* we only use the ack, not the message */
+              char mid [MESSAGE_ID_SIZE];  /* message id, hash of the ack */
+              sha512_bytes (ack, MESSAGE_ID_SIZE, mid, MESSAGE_ID_SIZE);
+              uint32_t bits = (readb32 (mid)) >> (32 - power_two);
+              int mask = (1 << (bits % 8));
+              if ((bitmap [bits / 8] & mask) == 0) {
+                bitmap [bits / 8] |= mask;
+                res++; /* the point of the if is to increment this correctly */
+              }
+            }
+            seq++;
+          }
         }
-      } else if (nbits >= 0) {
-        return -1;
+        free (unacked);
+      } else {   /* 0 for remote address, 1 for local address
+                  * most of the logic is the same */
+        unsigned char addr [ADDRESS_SIZE];
+        int nbits = -1;
+        if (selector == 1)
+          nbits = get_local (keysets [ikeyset], addr);
+        else
+          nbits = get_remote (keysets [ikeyset], addr);
+        if (nbits >= power_two) {
+          uint32_t bits = (readb32u (addr)) >> (32 - power_two);
+          int mask = (1 << (bits % 8));
+          if ((bitmap [bits / 8] & mask) == 0) {
+            bitmap [bits / 8] |= mask;
+            res++;  /* the point of the if is to increment this correctly */
+          }
+        } else if (nbits >= 0) {
+          return -1;
+        }
       }
     }
   }
   return res;
 }
 
-static void request_cached_data (int sock, int hops)
+/* return a number between 1 and 10, with 1 twice as likely as 2,
+ * 2 twice as likely as 3, and so on. */
+static int random_hop_count ()
 {
-  int size;
-  /* adr_size has 32 bytes for each of the 256-bit bitmaps */
-  int adr_size = sizeof (struct allnet_data_request) + 32 + 32;
-  struct allnet_header * hp =
-    create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
-                   NULL, 0, NULL, 0, NULL, NULL, &size);
-  struct allnet_data_request * adr =
-    (struct allnet_data_request *) (ALLNET_DATA_START (hp, hp->transport,
-                                                       size));
-  bzero (adr->since, sizeof (adr->since));
-  adr->dst_bits_power_two = 8;
-  adr->src_bits_power_two = 8;
-  random_bytes ((char *) (adr->padding), sizeof (adr->padding));
-  unsigned char * dst = adr->dst_bitmap;
-  unsigned char * src = dst + 32;
-  if ((fill_bits (src, 8, 1) < 0) || (fill_bits (dst, 8, 0) < 0)) {
-    size -= 32 + 32;
-    adr->dst_bits_power_two = 0;
-    adr->src_bits_power_two = 0;
+  int n = random_int (0, 511);
+  int hops = 1;
+  /* set hops to 1 + the number of final 1 bits in n */
+  while ((n & 1) != 0) {
+    hops++;
+    n = n >> 1;
   }
-  int priority = ALLNET_PRIORITY_LOCAL_LOW;
-  if (! send_pipe_message_free (sock, (char *) (hp), size, priority))
-    printf ("unable to request cached data\n");
+  return hops;
+}
+
+static void * request_cached_data (void * arg)
+{
+  int sock = * (int *) arg;
+  int sleep_time = random_int (30, 90);/* initial sleep, slowly grow to ~1hr */
+  while (1) {  /* loop forever, unless the socket is closed */
+#define BITMAP_BITS_LOG	8  /* 11 or less to keep packet size below 1K */
+#define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
+#define BITMAP_BYTES	(BITMAP_BITS / 8)
+    int size;
+    /* adr_size has room for each of the bitmaps */
+    int adr_size = sizeof (struct allnet_data_request) + BITMAP_BYTES * 3;
+    int hops = random_hop_count ();
+    struct allnet_header * hp =
+      create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
+                     NULL, 0, NULL, 0, NULL, NULL, &size);
+    struct allnet_data_request * adr =
+      (struct allnet_data_request *) (ALLNET_DATA_START (hp, hp->transport,
+                                                         size));
+    bzero (adr->since, sizeof (adr->since));
+    adr->dst_bits_power_two = BITMAP_BITS_LOG;
+    adr->src_bits_power_two = BITMAP_BITS_LOG;
+    adr->mid_bits_power_two = BITMAP_BITS_LOG;
+    random_bytes ((char *) (adr->padding), sizeof (adr->padding));
+    unsigned char * dst = adr->dst_bitmap;
+    unsigned char * src = dst + BITMAP_BYTES;
+    unsigned char * ack = src + BITMAP_BYTES;
+    if ((fill_bits (src, BITMAP_BITS_LOG, 1) < 0) ||
+        (fill_bits (dst, BITMAP_BITS_LOG, 0) < 0) ||
+        (fill_bits (ack, BITMAP_BITS_LOG, 2) < 0)) {
+      size -= BITMAP_BYTES * 3;
+      adr->dst_bits_power_two = 0;
+      adr->src_bits_power_two = 0;
+      adr->mid_bits_power_two = 0;
+    }
+    int priority = ALLNET_PRIORITY_LOCAL_LOW;
+    if (! send_pipe_message_free (sock, (char *) (hp), size, priority)) {
+      snprintf (log_buf, LOG_SIZE,
+                "unable to request cached data on %d, ending request thread\n",
+                sock);
+      return NULL;
+    }
+    sleep (sleep_time);
+    if (sleep_time >= 3600)
+      sleep_time = random_int (2400, 3600);
+    else
+      sleep_time = random_int (sleep_time + 30, (sleep_time * 12) / 10 + 30);
+  }
 }
 
 /* returns the socket if successful, -1 otherwise */
@@ -103,7 +177,11 @@ int xchat_init (char * arg0, pd p)
   int sock = connect_to_local ("xcommon", arg0, p);
   if (sock < 0)
     return -1;
-  request_cached_data (sock, 10);
+  pthread_t thread;
+  static int arg = 0;
+  arg = sock;
+  /* can be slow */
+  pthread_create (&thread, NULL, request_cached_data, (void *)(&arg));
   return sock;
 }
 
