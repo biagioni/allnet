@@ -478,16 +478,16 @@ printf ("found group %s\n", basename);
       result = allnet_rsa_read_pubkey (name, contact_pubkey);
       free (name);
     }
-    if (result && (local != NULL) && (loc_nbits != NULL)) {
-      char * name = strcat_malloc (basename, "/local", "local name");
-      result = read_address_file (name, local, loc_nbits);
-      free (name);
-    }
-    if (result && (remote != NULL) && (rem_nbits != NULL)) {
-      char * name = strcat_malloc (basename, "/remote", "remote name");
-      result = read_address_file (name, remote, rem_nbits);
-      free (name);
-    }
+  }
+  if (result && (local != NULL) && (loc_nbits != NULL)) {
+    char * name = strcat_malloc (basename, "/local", "local name");
+    result = read_address_file (name, local, loc_nbits);
+    free (name);
+  }
+  if (result && (remote != NULL) && (rem_nbits != NULL)) {
+    char * name = strcat_malloc (basename, "/remote", "remote name");
+    result = read_address_file (name, remote, rem_nbits);
+    free (name);
   }
   if (symmetric_key != NULL) {
     char * name = strcat_malloc (basename, "/symmetric_key", "symmetric name");
@@ -562,6 +562,8 @@ static void init_from_file ()
   }
   int i = 0;
   while ((dep = readdir (dir)) != NULL) {
+    kip [i].local.nbits = ADDRESS_SIZE * 8;
+    kip [i].remote.nbits = ADDRESS_SIZE * 8;
     if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* key directory */
         (read_key_info (dirname, dep->d_name, &(kip [i].contact_name),
                         &(kip [i].my_key), &(kip [i].contact_pubkey),
