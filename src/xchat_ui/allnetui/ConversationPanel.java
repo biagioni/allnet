@@ -278,6 +278,11 @@ class ConversationPanel extends JPanel {
         return (panel);
     }
 
+    public void clearMsgs() {
+        messagePanel.removeAll();
+        messagePanel.validate();
+    }
+
     void removeAllMsgs() {
         messagePanel.removeAll();
         validate();

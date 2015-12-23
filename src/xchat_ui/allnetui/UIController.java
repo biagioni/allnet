@@ -739,12 +739,15 @@ System.out.println ("resending subscription for " + ahra);
             if (addedAtEnd) {
                 cp.addMsg(formatMessage(msg, maxLineLength), msg);
             } else {
-System.out.println("unable to add out-of-order message " + msg);
-System.out.println("might (a) create a new cp to replace replace the old,");
-System.out.println("      (b) clear the cp and re-insert all the messages,");
-System.out.println("   or (c) insert at the right position");
-System.out.println("all three look nontrivial, so still on the to-do list");
-System.out.println("for now, please restart xchat");
+          // out of order, so delete everything, then add everything back
+// System.out.println ("received out-of-order message");
+                cp.clearMsgs();
+                Iterator<Message> it = conv.getIterator();
+                Message savedMsg;
+                while (it.hasNext()) {
+                    savedMsg = it.next();
+                    cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
+                }
             }
             // if the tab is currently selected, then mark message as read
             String selectedName = myTabbedPane.getSelectedID();
