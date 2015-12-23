@@ -30,8 +30,28 @@ class Conversation {
         return (count);
     }
 
-    void add(Message message) {
-        messages.add(message);
+    // add in the proper position
+    // return true if added to the end, false if added earlier
+    boolean add(Message message) {
+        int length = messages.size();
+        if ((length <= 0) ||
+            (message.compareTo(messages.get(length - 1)) >= 0)) {
+            messages.add(message);   // add at the end
+            return true;
+        } else {                     // insert before the end
+            boolean added = false;
+            for (int i = length - 2; i >= 0; i--) {
+                if (message.compareTo(messages.get(i)) >= 0) {
+                    messages.add(i + 1, message);   // add after this element
+		    added = true;
+                    break;
+                }
+            }
+            if (! added) {   // didn't find any message less than this one, so
+                messages.add(0, message);   // add at the beginning
+            }
+        }
+        return false;
     }
 
     long getLastRxMessageTime() {
