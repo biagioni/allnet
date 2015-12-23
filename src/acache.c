@@ -246,7 +246,8 @@ struct request_details {
 
 /* all the pointers point into message */
 static void build_request_details (char * message, int msize, 
-                                   struct request_details * result)
+                                   struct request_details * result,
+                                   char ** ack_bitset, int * ack_bits)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
   int hsize = ALLNET_SIZE (hp->transport);
@@ -277,12 +278,16 @@ static void build_request_details (char * message, int msize,
     result->spower_two = 0;
     result->sbits = 0;
     result->sbitmap = NULL;
+    *ack_bits = 0;
+    *ack_bitset = NULL;
     int dbits = 0;
     int dbytes = 0;
     int sbits = 0;
     int sbytes = 0;
+    int abits = 0;
+    int abytes = 0;
     if ((drp->dst_bits_power_two > 0) &&
-        (drp->dst_bits_power_two <= 20) &&
+        (drp->dst_bits_power_two <= 12) &&
         ((dbits = (1 << (drp->dst_bits_power_two))) <= max_bits)) {
       dbytes = (dbits + 7) / 8;
       if (hsize + drsize + dbytes <= msize) {
@@ -293,7 +298,7 @@ static void build_request_details (char * message, int msize,
       }
     }
     if ((drp->src_bits_power_two > 0) &&
-        (drp->src_bits_power_two <= 20) &&
+        (drp->src_bits_power_two <= 12) &&
         ((sbits = (1 << (drp->src_bits_power_two))) <= max_bits)) {
       sbytes = (sbits + 7) / 8;
       if (hsize + drsize + dbytes + sbytes <= msize) {
@@ -301,6 +306,17 @@ static void build_request_details (char * message, int msize,
         result->sbits = sbits;
         result->sbitmap =
           (unsigned char *) (message + (hsize + drsize + dbytes));
+        max_bits = minz (max_bits, sbytes * 8);
+      }
+    }
+    if ((drp->mid_bits_power_two > 0) &&
+        (drp->mid_bits_power_two <= 12) &&
+        ((abits = (1 << (drp->mid_bits_power_two))) <= max_bits)) {
+      abytes = (abits + 7) / 8;
+      if (hsize + drsize + dbytes + sbytes + abytes <= msize) {
+        *ack_bits = drp->mid_bits_power_two;
+        *ack_bitset = (message + (hsize + drsize + dbytes + sbytes));
+        max_bits = minz (max_bits, abytes * 8);
       }
     }
   }
@@ -1347,8 +1363,26 @@ static int send_ack (struct allnet_header * hp, int msize, int sock)
   return 1;
 }
 
+/* return 1 if no acks are specified (NULL bits or zero nbits)
+ * return 1 if the bit corresponding to the first bits of the array is set,
+ *        0 otherwise (or if nbits >= 32) */
+static int requested_ack (char * message_id, char * bits, int nbits)
+{
+  if ((bits == NULL) || (nbits <= 0))
+    return 1;
+  if (nbits >= 32)
+    return 0;
+  uint32_t pos = (readb32 (message_id) >> (32 - nbits));
+if (get_bit (bits, pos)) {
+printf ("%d bits of message %lx found in ", nbits, readb32 (message_id));
+print_buffer (bits, (1 << nbits) / 8, NULL, 1000, 1);
+}
+  return get_bit ((unsigned char *) bits, pos);
+}
+
 static int send_outstanding_acks (struct allnet_header * hp, int sock,
-                                  unsigned long long int time_limit)
+                                  unsigned long long int time_limit,
+                                  char * ack_bitset, int ack_bits)
 {
   if (ack_space <= 0)
     return 0;
@@ -1371,7 +1405,10 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
   /* finished means we ran out of time or sent all available acks */
   int finished = (allnet_time_ms () >= time_limit);
   while (! finished) {
-    if (memcmp (acks [ack_index].message_ack, zero, MESSAGE_ID_SIZE) != 0) {
+    /* if the ack was requested (or all were requested), return this ack
+     * as long as it is nonzero */
+    if ((requested_ack (acks [ack_index].message_id, ack_bitset, ack_bits)) &&
+        (memcmp (acks [ack_index].message_ack, zero, MESSAGE_ID_SIZE) != 0)) {
       memcpy (message_acks + msg_index * MESSAGE_ID_SIZE,
               acks [ack_index].message_ack, MESSAGE_ID_SIZE);
       msg_index++;
@@ -1422,9 +1459,14 @@ static int respond_to_request (int fd, int max_size, char * in_message,
   /* limit responses as specified by limit_resources */
   unsigned long long int overall_limit, ack_limit;
   limit_resources (local_request, &overall_limit, &ack_limit);
-  int num_acks = send_outstanding_acks (hp, sock, ack_limit);
   struct request_details rd;
-  build_request_details (in_message, in_msize, &rd);
+  char * ack_bitset = NULL;
+  int ack_bits = 0;
+  build_request_details (in_message, in_msize, &rd, &ack_bitset, &ack_bits);
+
+  int num_acks =
+    send_outstanding_acks (hp, sock, ack_limit, ack_bitset, ack_bits);
+
   int sent = 0;
   int count = 0;
 #ifdef HASH_RANDOM_MATCH
