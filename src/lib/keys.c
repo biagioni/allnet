@@ -552,34 +552,34 @@ static void init_from_file ()
   closedir (dir);
 
   set_kip_size (0);  /* get rid of anything that was previously there */
-  set_kip_size (num_keys);  /* create new array */
+  if (num_keys > 0) {
+    set_kip_size (num_keys);  /* create new array */
 
-  /* now load the keys */
-  dir = opendir (dirname);
-  if (dir == NULL) {
-    printf ("directory %s no longer accessible\n", dirname);
-    exit (1);
+    /* now load the keys */
+    dir = opendir (dirname);
+    if (dir == NULL) {
+      printf ("directory %s no longer accessible\n", dirname);
+      exit (1);
+    }
+    int i = 0;
+    while ((dep = readdir (dir)) != NULL) {
+      kip [i].local.nbits = ADDRESS_SIZE * 8;
+      kip [i].remote.nbits = ADDRESS_SIZE * 8;
+      if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* key directory */
+          (read_key_info (dirname, dep->d_name, &(kip [i].contact_name),
+                          &(kip [i].my_key), &(kip [i].contact_pubkey),
+                          kip [i].local.address, &(kip [i].local.nbits),
+                          kip [i].remote.address, &(kip [i].remote.nbits),
+                          &(kip [i].dir_name),
+                          &(kip [i].members), &(kip [i].num_members),
+                          &(kip [i].has_symmetric_key), kip [i].symmetric_key,
+                          &(kip [i].has_state), &(kip [i].state))))
+        i++;
+    }
+    closedir (dir);
   }
-  int i = 0;
-  while ((dep = readdir (dir)) != NULL) {
-    kip [i].local.nbits = ADDRESS_SIZE * 8;
-    kip [i].remote.nbits = ADDRESS_SIZE * 8;
-    if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* key directory */
-        (read_key_info (dirname, dep->d_name, &(kip [i].contact_name),
-                        &(kip [i].my_key), &(kip [i].contact_pubkey),
-                        kip [i].local.address, &(kip [i].local.nbits),
-                        kip [i].remote.address, &(kip [i].remote.nbits),
-                        &(kip [i].dir_name),
-                        &(kip [i].members), &(kip [i].num_members),
-                        &(kip [i].has_symmetric_key), kip [i].symmetric_key,
-                        &(kip [i].has_state), &(kip [i].state))))
-      i++;
-  }
-  closedir (dir);
   free (dirname);
   generate_contacts ();
-/* int debug = 0;
-printf ("time for div0 %d\n", 5 / debug) */
 }
 
 /*************** operations on contacts ********************/
