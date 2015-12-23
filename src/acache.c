@@ -1373,10 +1373,6 @@ static int requested_ack (char * message_id, char * bits, int nbits)
   if (nbits >= 32)
     return 0;
   uint32_t pos = (readb32 (message_id) >> (32 - nbits));
-if (get_bit (bits, pos)) {
-printf ("%d bits of message %lx found in ", nbits, readb32 (message_id));
-print_buffer (bits, (1 << nbits) / 8, NULL, 1000, 1);
-}
   return get_bit ((unsigned char *) bits, pos);
 }
 
