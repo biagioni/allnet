@@ -57,8 +57,8 @@ __ALLNET_BINDIR__allnet_print_caches_SOURCES = print_caches.c acache.c
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
 		rm -f astop && \
-		$(LN_S) astart astop && \
-		$(LN_S) astart allnet;
+		$(LN_S) -f astart astop && \
+		$(LN_S) -f astart allnet;
 
 uninstall-hook:
 	rm -f $(DESTDIR)$(bindir)/astop && \
