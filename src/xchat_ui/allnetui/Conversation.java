@@ -44,11 +44,13 @@ class Conversation {
                 if (message.compareTo(messages.get(i)) >= 0) {
                     messages.add(i + 1, message);   // add after this element
 		    added = true;
+// System.out.println ("added message at position " + (i + 1) + ", max " + length);
                     break;
                 }
             }
             if (! added) {   // didn't find any message less than this one, so
                 messages.add(0, message);   // add at the beginning
+// System.out.println ("added message at start, max " + length);
             }
         }
         return false;
@@ -68,13 +70,7 @@ class Conversation {
     void setReadAll() {
         Message msg;
         for (int i = messages.size() - 1; i >= 0; i--) {
-            msg = messages.get(i);
-            if (msg.from.equals(otherParty)) {
-                if (!msg.isNewMessage()) {
-                    return;
-                }
-                msg.setRead();
-            }
+            messages.get(i).setRead();
         }
     }
 
