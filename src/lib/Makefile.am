@@ -38,11 +38,13 @@ libsrc = \
 	sha.c \
 	stream.c \
 	table.c \
-	util.c \
-	asn1.c \
-	wp_aes.c \
-	wp_arith.c \
-	wp_rsa.c
+	util.c
+
+# only included if ! HAVE_OPENSSL
+#	asn1.c \
+#	wp_aes.c \
+#	wp_arith.c \
+#	wp_rsa.c
 
 DEPS_LIBS = ${openssl_LIBS}
 
