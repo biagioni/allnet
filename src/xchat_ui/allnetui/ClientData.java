@@ -98,8 +98,8 @@ class ClientData {
         Conversation conv;
         while (it.hasNext()) {
             conv = getConversation(it.next());
-            if (conv.getNumNewMsgs() > 0)
-                count++;
+            if (contact.equals(conv.getOtherParty()))
+                count += conv.getNumNewMsgs();
         }
         return (count);
     }
