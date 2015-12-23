@@ -111,22 +111,19 @@ public class Message implements java.lang.Comparable<Message> {
 
     public int compareTo(Message m) {
       if (m == null)
-        return 0;
-      if ((this.sequence < 0) || (m.sequence < 0) ||
-          (this.sentNotReceived != m.sentNotReceived)) { // compare by date
-        if (this.sentTime < m.sentTime)
+        return 0;   // unknown
+      if ((this.sequence >= 0) && (m.sequence >= 0)) { // compare seq numbers
+          if (this.sequence < m.sequence)
+            return -1;
+          else if (this.sequence > m.sequence)
+            return 1;
+      }   // else, compare dates
+      if (this.sentTime < m.sentTime)
           return -1;
-        else if (this.sentTime > m.sentTime)
+      else if (this.sentTime > m.sentTime)
           return 1;
-        else 
-          return 0;
-      }
-      if (this.sequence < m.sequence)
-        return -1;
-      else if (this.sequence > m.sequence)
-        return 1;
       else 
-        return 0;
+          return 0;
     }
 
     // always returns false if file time is null
