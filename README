@@ -21,29 +21,33 @@ Any available binary releases are on https://alnt.org/
 
 ======================== BUILD ==================================
 
-to build this release from source, run these programs:
-        ./autogen.sh
-        ./configure --disable-shared
-        make
-
-if you either don't have Java installed, or don't plan to use the
-Graphical User Interface (GUI) that comes with xchat, replace
-the second line with:
-        ./configure --disable-shared --disable-gui
-
-you can also set specific CFLAGS with, e.g.:
-        ./configure --disable-shared CFLAGS="-Wall -g"
-(additional CFLAGS you might want to use include: -Werror -Wextra
--Wuninitialized -Winit-self)
-
-Before doing any of this, you may need to install libtool and autoconf.
-On debian/ubuntu and derived systems this requires:
+Before building, you may need to install libtool and autoconf.
+On debian/ubuntu and similar systems this requires:
   sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev pkg-config
 On other systems, use the native package manager to install these packages.
 On Windows under cygwin, you will need at least automake and pkg-config.
 
+to build this release from source, run these programs:
+        ./autogen.sh
+        ./configure
+        make
+optionally, follow this with  "sudo make install".  If you do install,
+make sure that /usr/local/lib is in your LD_LIBRARY_PATH, e.g.
+export LD_LIBRARY_PATH="/usr/local/lib"
+
+if you either don't have Java installed, or don't plan to use the
+Graphical User Interface (GUI) that comes with xchat, replace
+the second line with:
+        ./configure --disable-gui
+
+you can also set specific CFLAGS with, e.g.:
+        ./configure CFLAGS="-Wall -g"
+(additional CFLAGS you might want to use include: -Werror -Wextra
+-Wuninitialized -Winit-self)
+
 additional packages you may need to install:
 	GIT and SSL: git libssl-dev
+              (libressl may be better than openssl if you can get it)
 	Java: openjdk-7-jre openjdk-7-jdk
         for Voice-over-Allnet (voa): libgstreamer-plugins-base1.0-dev
               gstreamer1.0-plugins-base gstreamer1.0-plugins-bad
