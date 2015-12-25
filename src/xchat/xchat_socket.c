@@ -68,7 +68,7 @@
 
 /* protocol: s (server) = xchat_socket, c (client) = ui
  * data:        s -> c: message received from peer (server replies with seq #)
- *              c -> s: message sent to peer
+ *              c -> s: message sent to peer (server returns seq to client)
  * broadcast:   s -> c: broadcast received
  *              c -> s: currently not supported (should be: send broadcast)
  * new contact: s -> c: send own key
@@ -516,14 +516,14 @@ int main (int argc, char ** argv)
     int len = recv_message (forwarding_socket, &code, &rtime, peer, to_send,
                             extra);
     if (len > 0) {
-      if (code == 0) {
+      if (code == CODE_DATA_MESSAGE) {
         long long int seq =
           send_data_message (sock, peer, to_send, strlen (to_send));
         add_to_unacked (seq, peer);
         send_seq_ack (forwarding_socket,
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
                       CODE_SEQ, time (NULL), peer, seq);
-      } else if (code == 2) {
+      } else if (code == CODE_NEW_CONTACT) {
         snprintf (kbuf1, sizeof (kbuf1), "%s", peer);
         snprintf (kbuf2, sizeof (kbuf2), "%s", to_send);
         key_contact = kbuf1;
@@ -540,7 +540,7 @@ peer, key_contact, to_send, key_secret, key_secret2, num_hops);
         create_contact_send_key (sock, key_contact, key_secret, key_secret2,
                                  kaddr, &kabits, num_hops);
         check_for_key = 1;
-      } else if (code == 3) {   /* subscribe message -- peer is only field */
+      } else if (code == CODE_AHRA) { /* subscribe -- peer is only field */
         snprintf (sbuf, sizeof (sbuf), "%s", peer);
 printf ("sending subscription to %s/%s\n", peer, sbuf);
         if (subscribe_broadcast (sock, sbuf, saddr, &sbits))
