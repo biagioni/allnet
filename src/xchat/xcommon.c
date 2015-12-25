@@ -387,7 +387,9 @@ static int handle_data (int sock, struct allnet_header * hp,
                         time_t * sent, int * duplicate, int * broadcast)
 {
   if (hp->sig_algo == ALLNET_SIGTYPE_NONE) {
+#ifdef DEBUG_PRINT
     printf ("handle_data ignoring unsigned message\n");
+#endif /* DEBUG_PRINT */
     return 0;
   }
   int verif = 0;
