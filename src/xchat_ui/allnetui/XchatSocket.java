@@ -30,6 +30,8 @@ public class XchatSocket extends Thread {
   static final int codeAck = 5;
   static final int codeTrace = 6;
   static final int codeTraceReply = 7;
+  static final java.nio.charset.Charset charset =
+                   java.nio.charset.Charset.forName("UTF-8");
 
   static java.util.concurrent.LinkedBlockingQueue<Long> seqQueue =
     new java.util.concurrent.LinkedBlockingQueue<Long>();
@@ -160,9 +162,11 @@ public class XchatSocket extends Thread {
   }
 
   private static int wString (byte [] data, int start, String s) {
-    byte [] sbytes = s.getBytes();
-    System.arraycopy(sbytes, 0, data, start, s.length());
-    int endIndex = start + s.length();
+    byte [] sbytes = s.getBytes(charset);
+    int length = sbytes.length;
+System.out.println("length for " + s + " is " + length + " in " + charset);
+    System.arraycopy(sbytes, 0, data, start, length);
+    int endIndex = start + length;
     data [endIndex] = 0;   // null byte, to terminate the string
     return endIndex + 1;   // return the next index after the null byte
   }
@@ -244,7 +248,7 @@ public class XchatSocket extends Thread {
 
   private static DatagramPacket makeMessagePacket(String peer, String text,
                                                   LongRef time, boolean bc) {
-    int size = peer.length() + text.length() + 2 + 11;
+    int size = peer.length() + text.getBytes(charset).length + 2 + 11;
     byte [] buf = new byte [size];
     DatagramPacket packet =
       new DatagramPacket (buf, size, local, xchatSocketPort);
@@ -262,9 +266,9 @@ public class XchatSocket extends Thread {
 
   private static DatagramPacket makeKeyPacket(String peer, String s1,
                                               String s2, int hops) {
-    int size = peer.length() + s1.length() + 2 + 11;
-    if ((s2 != null) && (s2.length() > 0))
-      size += s2.length() + 1;
+    int size = peer.length() + s1.getBytes(charset).length + 2 + 11;
+    if ((s2 != null) && (s2.getBytes(charset).length > 0))
+      size += s2.getBytes(charset).length + 1;
     byte [] buf = new byte [size];
     DatagramPacket packet =
       new DatagramPacket (buf, size, local, xchatSocketPort);
@@ -273,13 +277,13 @@ public class XchatSocket extends Thread {
     buf [10] = codeNewContact;
     int newIndex = wString(buf, 11, peer);
     newIndex = wString(buf, newIndex, s1);
-    if ((s2 != null) && (s2.length() > 0))
+    if ((s2 != null) && (s2.getBytes().length > 0))
       wString(buf, newIndex, s2);
     return packet;
   }
 
   private static DatagramPacket makeSubPacket(String ahra) {
-    int size = ahra.length() + 1 + 11;
+    int size = ahra.getBytes().length + 1 + 11;
     byte [] buf = new byte [size];
     DatagramPacket packet =
       new DatagramPacket (buf, size, local, xchatSocketPort);
