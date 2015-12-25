@@ -719,8 +719,8 @@ static void hash_add_message (char * message, int msize, char * id,
   if (entry->src_nbits > 16) entry->src_nbits = 16;
   entry->dst_nbits = hp->dst_nbits;
   if (entry->dst_nbits > 16) entry->dst_nbits = 16;
-  memcpy (entry->source,      hp->source,      (hp->src_nbits + 7) / 8);
-  memcpy (entry->destination, hp->destination, (hp->dst_nbits + 7) / 8);
+  memcpy (entry->source,      hp->source,      (entry->src_nbits + 7) / 8);
+  memcpy (entry->destination, hp->destination, (entry->dst_nbits + 7) / 8);
   memcpy (entry->received_at, time, ALLNET_TIME_SIZE);
   /* add the entry to the chain in the hash table */
   int h_index = hash_index (id);
