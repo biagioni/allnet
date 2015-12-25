@@ -56,7 +56,6 @@ static char * make_program_path (char * path, char * program)
 {
   char * result = strcat3_malloc (path, "/", program,
                                   "app_util/make_program_path");
-  int size = strlen (result) + 1;
   del_string (result, "/.libs"); /* not sure why "/.libs" gets added to path */
   if (access (result, X_OK) != 0) {
     printf ("error: unable to find executable %s/%s or %s, aborting\n",
