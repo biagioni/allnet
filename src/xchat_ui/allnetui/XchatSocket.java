@@ -164,7 +164,7 @@ public class XchatSocket extends Thread {
   private static int wString (byte [] data, int start, String s) {
     byte [] sbytes = s.getBytes(charset);
     int length = sbytes.length;
-System.out.println("length for " + s + " is " + length + " in " + charset);
+// System.out.println("length for " + s + " is " + length + " in " + charset);
     System.arraycopy(sbytes, 0, data, start, length);
     int endIndex = start + length;
     data [endIndex] = 0;   // null byte, to terminate the string
