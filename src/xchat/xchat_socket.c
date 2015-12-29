@@ -100,7 +100,7 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
   buf [10] = code;
   memcpy (buf + 11, peer, plen);
   memcpy (buf + 11 + plen, message, mlen);
-  n = sendto (sock, buf, length, MSG_DONTWAIT, sap, slen);
+  n = sendto (sock, buf, length, MSG_DONTWAIT | MSG_NOSIGNAL, sap, slen);
   if ((n != length) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
     return;  /* socket is busy -- should never be, but who knows */
   if (n != length) {

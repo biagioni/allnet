@@ -340,7 +340,7 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
   snprintf (log_buf, LOG_SIZE, "sendto (%d, %p, %d, 0, %p, %d)\n",
             udp, message, msize, sa, (int) addr_len);
   log_print ();
-  int s = sendto (udp, message, msize, 0, sa, addr_len);
+  int s = sendto (udp, message, msize, MSG_NOSIGNAL, sa, addr_len);
   int saved_errno = errno;
   if (s != msize) {
     int n = snprintf (log_buf, LOG_SIZE,
