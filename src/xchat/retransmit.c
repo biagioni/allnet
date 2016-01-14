@@ -110,17 +110,17 @@ static char * create_chat_control_request (char * contact, char * missing,
 #ifdef DEBUG_PRINT
   printf ("retransmit request for %s has %d singles, %d ranges, last %lld\n",
           contact, ccrp->num_singles, ccrp->num_ranges,
-          readb64 (ccrp->last_received));
+          readb64u (ccrp->last_received));
   ptr = ccrp->counters;
   for (i = 0; i < num_singles; i++)
-    print_buffer (ptr + i * COUNTER_SIZE, COUNTER_SIZE,
+    print_buffer ((char *)(ptr + i * COUNTER_SIZE), COUNTER_SIZE,
                   "single retransmit", 15, 1);
   ptr = ccrp->counters + (num_singles * COUNTER_SIZE);
   for (i = 0; i < num_ranges; i++) {
-    print_buffer (ptr + i * COUNTER_SIZE * 2,                COUNTER_SIZE,
-                  "range from", 15, 1);
-    print_buffer (ptr + i * COUNTER_SIZE * 2 + COUNTER_SIZE, COUNTER_SIZE,
-                  "        to", 15, 1);
+    print_buffer ((char *)(ptr + i * COUNTER_SIZE * 2),
+                  COUNTER_SIZE, "range from", 15, 1);
+    print_buffer ((char *)(ptr + i * COUNTER_SIZE * 2 + COUNTER_SIZE),
+                  COUNTER_SIZE, "        to", 15, 1);
   }
 #endif /* DEBUG_PRINT */
   *rsize = size;
@@ -173,8 +173,8 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
   uint64_t last = readb64u (hp->last_received);
   if (counter >= last)
     return;
-  printf ("error: counter %" PRIu64 " < last_received %" PRIu64 "\n",
-          counter, last);
+  printf ("error: counter %ju < last_received %ju\n",
+          (uintmax_t)counter, (uintmax_t)last);
   /* resend the last message, but using all the missing sequence numbers */
   uint64_t seq, time, rtime;
   char ack [MESSAGE_ID_SIZE];
@@ -216,7 +216,7 @@ static uint64_t get_prev (uint64_t last,
                           unsigned char * singles, unsigned int num_singles,
                           unsigned char * ranges, unsigned int num_ranges)
 {
-  /* printf ("maxLL is %" PRIx64 "\n", MAXLL); */
+  /* printf ("maxLL is %jx\n", (uintmax_t)MAXLL); */
   uint64_t result = MAXLL;
   if (last <= 0)
     return result;
@@ -243,8 +243,9 @@ static uint64_t get_prev (uint64_t last,
       result = n;
   }
 #ifdef DEBUG_PRINT
-  printf ("get_prev (%" PRIu64 ", %p/%d, %p/%d) ==> %" PRIu64 "\n",
-          last, singles, num_singles, ranges, num_ranges, result);
+  printf ("get_prev (%ju, %p/%d, %p/%d) ==> %ju\n",
+          (uintmax_t)last, singles, num_singles, ranges, num_ranges,
+          (uintmax_t)result);
 #endif /* DEBUG_PRINT */
   return result;
 }
@@ -320,13 +321,14 @@ static void resend_message (uint64_t seq, char * contact,
                             keyset k, int sock, int hops, int priority)
 {
 #ifdef DEBUG_PRINT
-  printf ("resending message with sequence %" PRIu64 " to %s\n", seq, contact);
+  printf ("resending message with sequence %ju to %s\n",
+          (uintmax_t)seq, contact);
 #endif /* DEBUG_PRINT */
   init_resent ();
   if (was_recently_resent (seq, contact, k)) {
 #ifdef DEBUG_PRINT
-    printf ("recently resent seq %" PRIu64 " %s/%d, not sending again\n",
-            seq, contact, k);
+    printf ("recently resent seq %ju %s/%d, not sending again\n",
+            (uintmax_t)seq, contact, k);
 #endif /* DEBUG_PRINT */
     return;
   }
@@ -336,8 +338,8 @@ static void resend_message (uint64_t seq, char * contact,
   char * text = get_outgoing (contact, k, seq, &size, &time, message_ack);
   if ((text == NULL) || (size <= 0)) {
 #ifdef DEBUG_PRINT
-    printf ("resend_message %s %d: no outgoing %" PRIu64 ", %p %d\n",
-            contact, k, seq, text, size);
+    printf ("resend_message %s %d: no outgoing %ju, %p %d\n",
+            contact, k, (uintmax_t)seq, text, size);
 #endif /* DEBUG_PRINT */
     return;
   }
@@ -354,8 +356,8 @@ static void resend_message (uint64_t seq, char * contact,
   memcpy (message + CHAT_DESCRIPTOR_SIZE, text, size);
   free (text);
 #ifdef DEBUG_PRINT
-  printf ("rexmit outgoing %s, seq %" PRIu64 ", t %" PRIu64 "/0x%" PRIx64 "\n",
-          contact, seq, time, time);
+  printf ("rexmit outgoing %s, seq %ju, t %ju/0x%jx\n",
+          contact, (uintmax_t)seq, (uintmax_t)time, (uintmax_t)time);
   print_buffer ((char *) cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
 #endif /* DEBUG_PRINT */
   resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
@@ -404,13 +406,13 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
 #ifdef DEBUG_PRINT
   printf ("rcvd rexmit request for %s, %d singles, %d ranges, last %lld\n",
           contact, hp->num_singles, hp->num_ranges,
-          readb64 (hp->last_received));
-  char * ptr = hp->counters;
+          readb64 ((char *)(hp->last_received)));
+  char * ptr = (char *)(hp->counters);
   int i;
   for (i = 0; i < hp->num_singles; i++)
     print_buffer (ptr + i * COUNTER_SIZE, COUNTER_SIZE,
                   "single retransmit", 15, 1);
-  ptr = hp->counters + (hp->num_singles * COUNTER_SIZE);
+  ptr = (char *)(hp->counters + (hp->num_singles * COUNTER_SIZE));
   for (i = 0; i < hp->num_ranges; i++) {
     print_buffer (ptr + i * COUNTER_SIZE * 2,                COUNTER_SIZE,
                   "range from", 15, 1);
@@ -469,7 +471,7 @@ void resend_unacked (char * contact, keyset k, int sock,
   for (i = 0; (i < singles) && (send_count < max_send); i++) {
     uint64_t seq = readb64 (p);
 #ifdef DEBUG_PRINT
-    printf ("seq %" PRIu64 " at %p\n", seq, p);
+    printf ("seq %ju at %p\n", (uintmax_t)seq, p);
 #endif /* DEBUG_PRINT */
     p += sizeof (uint64_t);
     resend_message (seq, contact, k, sock, hops, priority);

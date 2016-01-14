@@ -183,8 +183,9 @@ printf ("debug time: %d\n", 5 / debug);  /* crash */
                                          &(iter->current_file), 1);
   iter->current_pos = iter->current_size;  /* decremented before use */
 /*
-printf ("loaded file %s, size %" PRIu64 ", pos %" PRI64 "\n",
-        iter->current_fname, iter->current_size, iter->current_pos);
+printf ("loaded file %s, size %ju, pos %ju\n",
+        iter->current_fname, (uintmax_t)(iter->current_size),
+        (uintmax_t)(iter->current_pos));
 */
   return 1;
 }
@@ -555,7 +556,7 @@ static void store_save_64 (int fd, uint64_t value)
 {
   /* 2^64 < 10^20, so 30 bytes are more than needed for the digits */
   char buffer [30];
-  snprintf (buffer, sizeof (buffer), "%" PRIu64, value);
+  snprintf (buffer, sizeof (buffer), "%ju", (uintmax_t)value);
   store_save_string (fd, buffer);
 }
 
@@ -710,23 +711,23 @@ int main (int argc, char ** argv)
   char * msg;
   int type = most_recent_record (argv [1], keys [k], MSG_TYPE_ANY,
                                  &seq, &time, &tz, ack, &msg);
-  printf ("latest message type %d %s, seq %" PRIu64 ", time %" PRIu64 "%+d\n",
-          type, msg, seq, time, tz);
+  printf ("latest message type %d %s, seq %ju, time %ju%+d\n",
+          type, msg, (uintmax_t)seq, (uintmax_t)time, tz);
   print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
   type = most_recent_record (argv [1], keys [k], MSG_TYPE_SENT,
                              &seq, &time, &tz, ack, &msg);
-  printf ("latest sent type %d %s, seq %" PRIu64 ", time %" PRIu64 "%+d\n",
-          type, msg, seq, time, tz);
+  printf ("latest sent type %d %s, seq %ju, time %ju%+d\n",
+          type, msg, (uintmax_t)seq, (uintmax_t)time, tz);
   print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
   type = most_recent_record (argv [1], keys [k], MSG_TYPE_RCVD,
                              &seq, &time, &tz, ack, &msg);
-  printf ("latest rcvd type %d %s, seq %" PRIu64 ", time %" PRIu64 "%+d\n",
-          type, msg, seq, time, tz);
+  printf ("latest rcvd type %d %s, seq %ju, time %ju%+d\n",
+          type, msg, (uintmax_t)seq, (uintmax_t)time, tz);
   print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
   type = most_recent_record (argv [1], keys [k], MSG_TYPE_ACK,
                              &seq, &time, &tz, ack, &msg);
-  printf ("latest ack type %d %s, seq %" PRIu64 ", time %" PRIu64 "%+d\n",
-          type, msg, seq, time, tz);
+  printf ("latest ack type %d %s, seq %ju, time %ju%+d\n",
+          type, msg, (uintmax_t)seq, (uintmax_t)time, tz);
   print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
   printf ("\n");
 
@@ -739,8 +740,9 @@ int main (int argc, char ** argv)
   int msize;
   while ((type = prev_message (iter, &seq, &time, &tz, &rcvd_time,
                                ack, &msg, &msize)) != MSG_TYPE_DONE) {
-    printf ("message %i, %d bytes type %d, %s, seq %" PRIu64 ", time %" PRIu64 "%+d/%" PRIu64 "\n",
-            ++i, msize, type, msg, seq, time, tz, rcvd_time);
+    printf ("message %i, %d bytes type %d, %s, seq %ju, time %ju%+d/%ju\n",
+            ++i, msize, type, msg, (uintmax_t)seq, (uintmax_t)time, tz,
+            (uintmax_t)rcvd_time);
     print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
   }
   return 0;

@@ -332,11 +332,13 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
   static int cache_used = 0;
 #ifdef DEBUG_PRINT
   if ((cache_used > 0) && (cached_contact != NULL)) {
-    printf ("contact '%s'/'%s', seq %" PRIu64 ", add %d, used %d, k %d/%d",
-            cached_contact, contact, seq, add, cache_used, cached_k, k);
+    printf ("contact '%s'/'%s', seq %ju, add %d, used %d, k %d/%d",
+            cached_contact, contact, (uintmax_t) seq, add, cache_used,
+            cached_k, k);
     int x;
     for (x = 0; x < cache_used; x++)
-      printf (", %" PRIu64 "..%" PRIu64 "", cache [x].first, cache [x].last);
+      printf (", %ju..%ju", (uintmax_t) (cache [x].first),
+              (uintmax_t) (cache [x].last));
     printf ("\n");
   }
 #endif /* DEBUG_PRINT */
@@ -344,7 +346,7 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
       (k != cached_k)) {  /* not found */
     if (add) {  /* initialize or reinitialize */
 #ifdef DEBUG_PRINT
-      printf ("adding %s, keyset %d, seq %" PRIu64 "\n", contact, k, seq);
+      printf ("adding %s, keyset %d, seq %ju\n", contact, k, (uintmax_t) seq);
 #endif /* DEBUG_PRINT */
       if (cached_contact != NULL)
         free (cached_contact);
@@ -414,10 +416,11 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
     }
 #ifdef DEBUG_PRINT
     if (cache_used > 0) {
-      printf (" added '%s' %" PRIu64 "", contact, seq);
+      printf (" added '%s' %ju", contact, (uintmax_t)seq);
     int x;
     for (x = 0; x < cache_used; x++)
-      printf (", %" PRIu64 "..%" PRIu64 "", cache [x].first, cache [x].last);
+      printf (", %ju..%ju", (uintmax_t) (cache [x].first),
+              (uintmax_t) (cache [x].last));
     printf ("\n");
     }
 #endif /* DEBUG_PRINT */

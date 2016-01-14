@@ -891,7 +891,7 @@ long long int send_data_message (int sock, char * peer,
   uint64_t seq = readb64u (cp->counter);
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
 #ifdef DEBUG_PRINT
-  printf ("sending seq %" PRIu64 ":\n", seq);
+  printf ("sending seq %ju:\n", (uintmax_t)seq);
   print_buffer (data_with_cd, dsize, "sending", 64, 1);
 #endif /* DEBUG_PRINT */
   /* send_to_contact initializes the message ack in data_with_cd/cp */
