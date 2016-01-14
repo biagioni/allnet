@@ -43,7 +43,7 @@ the second line with:
 you can also set specific CFLAGS with, e.g.:
         ./configure CFLAGS="-Wall -g"
 (additional CFLAGS you might want to use include: -Werror -Wextra
--Wuninitialized -Winit-self)
+-Wuninitialized -Winit-self -Wshadow -Wstrict-overflow)
 
 additional packages you may need to install:
 	GIT and SSL: git libssl-dev
