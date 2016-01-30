@@ -340,7 +340,13 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
   snprintf (log_buf, LOG_SIZE, "sendto (%d, %p, %d, 0, %p, %d)\n",
             udp, message, msize, sa, (int) addr_len);
   log_print ();
-  int s = sendto (udp, message, msize, MSG_NOSIGNAL, sa, addr_len);
+  int flags = 0;
+#ifdef MSG_NOSIGNAL   /* some OSs don't define MSG_NOSIGNAL.  To handle this,
+                       * astart requests ignoring SIGPIPE.  But this is more
+                       * fine-grained and therefore better in principle */
+  flags = MSG_NOSIGNAL;
+#endif /* MSG_NOSIGNAL */
+  int s = sendto (udp, message, msize, flags, sa, addr_len);
   int saved_errno = errno;
   if (s != msize) {
     int n = snprintf (log_buf, LOG_SIZE,
