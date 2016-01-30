@@ -278,8 +278,11 @@ static char * pid_file_name ()
 #endif /* _WIN32 || _WIN64 || __CYGWIN__ */
   if (temp != NULL)
     result = strcat3_malloc (temp, "/", PIDS_FILE_NAME, "pids file name");
-  printf ("new pid temp file name is %s (from %s)\n", result, temp);
 #ifdef DEBUG
+  static int printed = 0;
+  if (! printed)
+    printf ("new pid temp file name is %s (from %s)\n", result, temp);
+  printed = 1;
 #endif /* DEBUG */
   return result;
 }
