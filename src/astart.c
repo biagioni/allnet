@@ -39,6 +39,8 @@ extern void traced_main (char * pname);
 extern void keyd_main (char * pname);
 extern void keyd_generate (char * pname);
 
+#define AIP_UNIX_SOCKET		"/tmp/allnet-addrs"
+
 #ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
 #define USE_FORK  /* sane systems allow fork, iOS doesn't */
 #else /* __IPHONE_OS_VERSION_MIN_REQUIRED  */
@@ -107,11 +109,25 @@ static int noop_fork ()
 
 #define fork  noop_fork
 
+/* stop all of the other threads */
+void stop_allnet_threads ()
+{
+  int i;
+  for (i = free_thread_arg - 1; i >= 0; i--) {
+    if (! pthread_equal (thread_args [i].id, pthread_self ())) {
+      pthread_kill (thread_args [i].id, SIGINT);
+    }
+  }
+}
+
+
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 static const char * daemon_name = "allnet";
 
+#ifdef USE_FORK
 static void stop_all ();
+#endif /* USE_FORK */
 /* if astart is called as root, abc should run as root, and everything
  * else should be run as the calling user, if any, and otherwise,
  * user "allnet" (if it exists) or user "nobody" otherwise */
@@ -127,6 +143,7 @@ static void stop_all ();
 #define ROOT_USER_ID	0
 static void make_root_other (int verbose)
 {
+#ifdef USE_FORK   /* on iOS, no point in becoming root */
   if (geteuid () != ROOT_USER_ID)
     return;   /* not root, nothing to do, and cannot change uids anyway */
   int real_uid = getuid ();
@@ -170,6 +187,7 @@ static void make_root_other (int verbose)
     stop_all ();
   }
   if (verbose) printf ("set uids to %d %d\n", getuid (), geteuid ());
+#endif /* USE_FORK */
 }
 
 static void set_nonblock (int fd)
@@ -224,6 +242,7 @@ static void replace_command (char * old, int olen, char * new)
 #endif /* USE_FORK */
 }
 
+#ifdef USE_FORK
 static char * pid_file_name ()
 {
 #define PIDS_FILE_NAME	"allnet-pids"
@@ -259,8 +278,8 @@ static char * pid_file_name ()
 #endif /* _WIN32 || _WIN64 || __CYGWIN__ */
   if (temp != NULL)
     result = strcat3_malloc (temp, "/", PIDS_FILE_NAME, "pids file name");
-#ifdef DEBUG
   printf ("new pid temp file name is %s (from %s)\n", result, temp);
+#ifdef DEBUG
 #endif /* DEBUG */
   return result;
 }
@@ -294,8 +313,6 @@ static int read_pid (int fd)
   }
   return -1;
 }
-
-#define AIP_UNIX_SOCKET		"/tmp/allnet-addrs"
 
 static void stop_all_on_signal (int signal)
 {
@@ -382,6 +399,13 @@ static void setup_signal_handler (int set)
     }
   }
 }
+#else /* !USE_FORK */  /* signal handler for iOS to ignore sigpipe */
+
+static void setup_signal_handler (int set)
+{
+  signal (SIGPIPE, SIG_IGN);
+}
+#endif /* USE_FORK */
 
 #ifdef USE_FORK
 static void child_return (char * executable, pid_t parent, int stop_allnet)
@@ -792,8 +816,10 @@ int astart_main (int argc, char ** argv)
   char * pname;
   find_path (argv [0], &path, &pname);
   if (strstr (pname, "stop") != NULL) {
+#ifdef USE_FORK
     daemon_name = "astop";
     stop_all ();   /* just stop */
+#endif /* USE_FORK */
     return 0;
   }
   /* printf ("astart path is %s\n", path); */
