@@ -42,31 +42,6 @@ struct msg_iter {
   int64_t current_pos;
 };
 
-static char * string_replace (char * original, char * pattern, char * repl)
-{
-  char * p = strstr (original, pattern);
-  if (p == NULL) {
-    printf ("error: string %s does not contain '%s'\n", original, pattern);
-    /* this is a serious error -- need to figure out what is going on */
-    exit (1);
-  }
-  int olen = strlen (original);
-  int plen = strlen (pattern);
-  int rlen = strlen (repl);
-  int size = olen + 1 + rlen - plen;
-  char * result = malloc_or_fail (size, "string_replace");
-  int prelen = p - original;
-  memcpy (result, original, prelen);
-  memcpy (result + prelen, repl, rlen);
-  char * postpos = p + plen;
-  int postlen = olen - (postpos - original);
-  memcpy (result + prelen + rlen, postpos, postlen);
-  result [size - 1] = '\0';
-/*  printf ("replacing %s with %s in %s gives %s\n",
-          pattern, repl, original, result); */
-  return result;
-}
-
 struct msg_iter * start_iter (const char * contact, keyset k)
 {
   if ((contact == NULL) || (k < 0))
@@ -78,7 +53,7 @@ struct msg_iter * start_iter (const char * contact, keyset k)
                                              "start_iter struct");
   result->contact = strcpy_malloc (contact, "start_iter contact");
   result->k = k;
-  result->dirname = string_replace (directory, "contacts", "xchat");
+  result->dirname = string_replace_once (directory, "contacts", "xchat", 1);
   result->current_fname = NULL;
   result->current_file = NULL;
   result->current_size = 0;

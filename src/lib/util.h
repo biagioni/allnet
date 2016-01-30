@@ -148,15 +148,23 @@ extern void set_time_random (const struct timeval * start,
 extern void sleep_time_random_us (unsigned long long us);
 
 /* if malloc is not successful, exit after printing */
-extern void * malloc_or_fail (int bytes, const char * desc);
+extern void * malloc_or_fail (size_t bytes, const char * desc);
 /* copy a string to new storage, using malloc_or_fail to get the memory */
 extern char * strcpy_malloc (const char * string, const char * desc);
 extern char * strcat_malloc (const char * s1, const char * s2,
                              const char * desc);
 extern char * strcat3_malloc (const char * s1, const char * s2,
                               const char * s3, const char * desc);
+/* returns the new string with the first occurrence of pattern replaced
+ * by repl.
+ * If the pattern is not found in the original, the new string is a copy
+ * of the old, and optionally an error message is printed
+ * result is malloc'd, must be free'd (unless the original was NULL) */
+extern char * string_replace_once (char * original, char * pattern, char * repl,
+                                   int print_not_found);
 /* copy memory to new storage, using malloc_or_fail to get the memory */
 extern void * memcpy_malloc (const void * bytes, int bsize, const char * desc);
+
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.

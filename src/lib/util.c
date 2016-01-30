@@ -949,11 +949,11 @@ void sleep_time_random_us (unsigned long long us)
 }
 
 /* if malloc is not successful, exit after printing */
-void * malloc_or_fail (int bytes, const char * desc)
+void * malloc_or_fail (size_t bytes, const char * desc)
 {
   void * result = malloc (bytes);
   if (result == NULL) {
-    printf ("unable to allocate %d bytes for %s\n", bytes, desc);
+    printf ("unable to allocate %zd bytes for %s\n", bytes, desc);
     assert (0);               /* cause a crash and core dump */
     /* if NDEBUG is set, assert will do nothing.  segfault instead */
     * ((int *) result) = 3;   /* cause a segmentation fault */
@@ -985,6 +985,42 @@ char * strcat3_malloc (const char * s1, const char * s2, const char * s3,
   int size = strlen (s1) + strlen (s2) + strlen (s3) + 1;
   char * result = malloc_or_fail (size, desc);
   snprintf (result, size, "%s%s%s", s1, s2, s3);
+  return result;
+}
+
+/* returns the new string with the first occurrence of pattern replaced
+ * by repl.
+ * If the pattern is not found in the original, the new string is a copy
+ * of the old, and optionally an error message is printed
+ * result is malloc'd, must be free'd (unless the original was NULL) */
+char * string_replace_once (char * original, char * pattern, char * repl,
+                            int print_not_found)
+{
+  if (original == NULL) {
+    if (print_not_found)
+      printf ("error: empty string does not contain '%s'\n", pattern);
+    return NULL;
+  }
+  char * p = strstr (original, pattern);
+  if (p == NULL) {
+    if (print_not_found)
+      printf ("error: string %s does not contain '%s'\n", original, pattern);
+    return strcpy_malloc (original, "string_replace_one copy");
+  }
+  size_t olen = strlen (original);
+  size_t plen = strlen (pattern);
+  size_t rlen = strlen (repl);
+  size_t size = olen + 1 + rlen - plen;
+  char * result = malloc_or_fail (size, "string_replace_one");
+  size_t prelen = p - original;
+  memcpy (result, original, prelen);
+  memcpy (result + prelen, repl, rlen);
+  char * postpos = p + plen;
+  size_t postlen = olen - (postpos - original);
+  memcpy (result + prelen + rlen, postpos, postlen);
+  result [size - 1] = '\0';
+/*  printf ("replacing %s with %s in %s gives %s\n",
+          pattern, repl, original, result); */
   return result;
 }
 
