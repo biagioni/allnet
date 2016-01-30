@@ -363,9 +363,14 @@ void log_packet (char * desc, char * packet, int plen)
    is in the buffer */
 void log_error (char * syscall)
 {
-  static char local_buf [LOG_SIZE + LOG_SIZE];
-  snprintf (local_buf, sizeof (local_buf), "%s: %s\n    ",
-            syscall, strerror (errno));
+  char err_string [1000];  /* hopefully error messages are shorter than this! */
+  strerror_r (errno, err_string, sizeof (err_string));
+  size_t len = strlen (err_string);
+  if (err_string [len - 1] == '\n')
+    err_string [len - 1] = '\0';  /* no newline in error message */
+  char local_buf [LOG_SIZE + LOG_SIZE + sizeof (err_string)];
+  snprintf (local_buf, sizeof (local_buf),
+            "%s: %s\n    ", syscall, err_string);
   log_print_str (local_buf);
   log_print_str (log_buf);
 }

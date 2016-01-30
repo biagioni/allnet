@@ -347,6 +347,7 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
                       "error sending %d (sent %d, error %d) on udp %d to ",
                       msize, s, saved_errno, udp);
     print_sockaddr_str (sa, 0, 0, log_buf + n, LOG_SIZE - n);
+    errno = saved_errno;
     log_error ("sendto");
   } else {
 #ifdef LOG_PACKETS
