@@ -156,6 +156,7 @@ static void * listen_loop (void * arg)
   }
   perror ("accept");
   printf ("error calling accept (%d)\n", ra->fd);
+  free (ra);
   pthread_cleanup_pop (1);
   return NULL;
 }
