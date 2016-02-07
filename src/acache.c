@@ -437,12 +437,14 @@ static int packet_matches (struct request_details * req,
   }
   if ((req->dbits > 0) && (req->dbitmap != NULL) &&
       (! match_bitmap (req->dpower_two, req->dbits, req->dbitmap,
-                       hp->destination, hp->dst_nbits)))
+                       hp->destination, hp->dst_nbits))) {
     return 0;
+  }
   if ((req->sbits > 0) && (req->sbitmap != NULL) &&
       (! match_bitmap (req->spower_two, req->sbits, req->sbitmap,
-                       hp->source, hp->src_nbits)))
+                       hp->source, hp->src_nbits))) {
     return 0;
+  }
   return 1;
 }
 
@@ -1329,13 +1331,13 @@ static void limit_resources (int local_request,
   if (acks    != NULL) *acks    = start - 1;
   if ((! local_request) && (next_external != 0) &&
       (start <= next_external))
-    return;               /* responded to another request in the past second */
-  next_external = start + 1000; /* respond to external requests once per sec */
-  unsigned long long int first = start + 1;     /* allow 1ms for acks */
-  unsigned long long int final = start + 10;    /* allow 9 more ms for msgs */
+    return;               /* responded to another request in the past 10s */
+  next_external = start + 10000;/* respond to external requests once every 10s*/
+  unsigned long long int first = start + 10;     /* allow 10ms for acks */
+  unsigned long long int final = start + 100;    /* allow 90 more ms for msgs */
   if (local_request) {                  /* allow much more time */
-    first = start + 100;                /* up to .1s for acks */
-    final = start + 1000;               /* up to 1s for local requests */
+    first = start + 1000;               /* up to 1s for acks */
+    final = start + 10000;              /* up to 10s for local requests */
   }
   if (overall != NULL) *overall = final;
   if (acks    != NULL) *acks    = first;
@@ -1472,8 +1474,6 @@ static int respond_to_request (int fd, int max_size, char * in_message,
   int bbits = BF_SIZE * 8;
 #undef BF_SIZE
 #endif /* HASH_RANDOM_MATCH */
-  /* keep track of the number of calls that fail.  If more than 100 fail
-   * without any success, give up, no need to keep trying. */
   while (allnet_time_ms () < overall_limit) {
     char * message;
     int msize = 0;
