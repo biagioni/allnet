@@ -27,6 +27,10 @@
 
 /* #define DEBUG_PRINT */
 
+#define FILL_LOCAL_ADDRESS	1
+#define FILL_REMOTE_ADDRESS	0
+#define FILL_ACK		2
+
 /* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
  * and power_two must be less than 32.
  * if local_addrs, uses local adresses, otherwise remote addresses
@@ -50,7 +54,7 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
     int nkeysets = all_keys (contacts [icontact], &keysets);
     int ikeyset;
     for (ikeyset = 0; ikeyset < nkeysets; ikeyset++) {
-      if (selector == 2) {   /* fill bitmap with outstanding acks */
+      if (selector == FILL_ACK) {   /* fill bitmap with outstanding acks */
         int singles, ranges;
         char * unacked = get_unacked (contacts [icontact], keysets [ikeyset],
                                       &singles, &ranges);
@@ -88,7 +92,7 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
                   * most of the logic is the same */
         unsigned char addr [ADDRESS_SIZE];
         int nbits = -1;
-        if (selector == 1)
+        if (selector == FILL_LOCAL_ADDRESS)
           nbits = get_local (keysets [ikeyset], addr);
         else
           nbits = get_remote (keysets [ikeyset], addr);
@@ -148,9 +152,9 @@ static void * request_cached_data (void * arg)
     unsigned char * dst = adr->dst_bitmap;
     unsigned char * src = dst + BITMAP_BYTES;
     unsigned char * ack = src + BITMAP_BYTES;
-    if ((fill_bits (src, BITMAP_BITS_LOG, 1) < 0) ||
-        (fill_bits (dst, BITMAP_BITS_LOG, 0) < 0) ||
-        (fill_bits (ack, BITMAP_BITS_LOG, 2) < 0)) {
+    if ((fill_bits (dst, BITMAP_BITS_LOG, FILL_LOCAL_ADDRESS ) < 0) ||
+        (fill_bits (src, BITMAP_BITS_LOG, FILL_REMOTE_ADDRESS) < 0) ||
+        (fill_bits (ack, BITMAP_BITS_LOG, FILL_ACK           ) < 0)) {
       size -= BITMAP_BYTES * 3;
       adr->dst_bits_power_two = 0;
       adr->src_bits_power_two = 0;
