@@ -1308,15 +1308,15 @@ static int save_packet (int fd, int max_size, char * message, int msize,
   log_print ();
 #endif /* DEBUG_PRINT */
   if (hash_find (id) != NULL) {
+#ifdef LOG_PACKETS
     buffer_to_string (id, MESSAGE_ID_SIZE, "save_packet: found",
                       MESSAGE_ID_SIZE, 1, log_buf, LOG_SIZE);
     log_print ();
-#ifdef DEBUG_PRINT
-#endif /* DEBUG_PRINT */
+#endif /* LOG_PACKETS */
     return 0;
   }
   cache_message (fd, max_size, id - message, message, msize, priority);
-  return 0;
+  return 1;
 }
 
 /* to limit resource consumption, only respond to requests that are
@@ -1430,7 +1430,7 @@ static void resend_message (char * message, int msize, int64_t position,
 {
   int priority = *priorityp;
   snprintf (log_buf, LOG_SIZE,
-            "sending %d-byte cached response at [%" PRIx64 "\n",
+            "sending %d-byte cached response at [%" PRIx64 "]\n",
             msize, position);
   log_print ();
   struct allnet_header * send_hp = (struct allnet_header *) message;
@@ -1858,7 +1858,7 @@ static void print_message (int fd, int max_size,
   }
 }
 
-/* intented to be called by an outside program, for debugging */
+/* intended to be called by an outside program, for debugging */
 /* each print variable is 0 to not print, 1 to print short, 2 for long */
 void print_caches (int print_msgs, int print_acks)
 {
