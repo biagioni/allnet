@@ -48,7 +48,7 @@ struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
 /* 0 before initialization, -1 during initialization, 1 after initialization */
 static int dns_init = 0;
 
-/* if the address in ~/.allnet/adht/peers begins with '-', generate a
+/* if the address in ~/.allnet/adht/my_id begins with '-', generate a
  * new address on every invocation (and perhaps more frequently?) */
 static int save_my_own_address = 1;
 
@@ -223,14 +223,14 @@ static int entry_to_file (int fd, struct addr_info * entry, int index)
 }
 
 /* save_id_peers_or_both is 1 for id, 2 for peers, 3 for both */
-static void save_peers (int save_id_peers)
+static void save_peers (int save_id_peers_or_both)
 {
 #ifdef DEBUG_PRINT
-  printf ("save_peers (%d):\n", save_id_peers);
+  printf ("save_peers (%d):\n", save_id_peers_or_both);
   print_dht (0);
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
-  if ((save_my_own_address) && (save_id_peers & SAVE_ID)) {
+  if ((save_my_own_address) && (save_id_peers_or_both & SAVE_ID)) {
     int fd = open_write_config ("adht", "my_id", 1);
     if (fd >= 0) {
       char line [300];  /* write my address first */
@@ -243,7 +243,7 @@ static void save_peers (int save_id_peers)
   }
   int cpeer = 0;
   int cping = 0;
-  if (save_id_peers & SAVE_PEERS) {
+  if (save_id_peers_or_both & SAVE_PEERS) {
     int fd = open_write_config ("adht", "peers", 1);
     int i;
     for (i = 0; i < MAX_PEERS; i++)
