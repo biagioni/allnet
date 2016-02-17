@@ -18,7 +18,9 @@
 #include <pwd.h>
 #include <ifaddrs.h>
 #include <dirent.h>
+#include <unistd.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -811,6 +813,38 @@ static void find_path (char * arg, char ** path, char ** program)
   }
 }
 
+static void set_world_readable (const char * file)
+{
+  struct stat stats;
+  if (stat (file, &stats) != 0) {
+    snprintf (log_buf, LOG_SIZE, "unable to stat for chmod o+r %s\n", file);
+    log_print ();
+  } else if ((stats.st_mode & S_IROTH) == 0) {
+    int mode = stats.st_mode | S_IROTH;
+    if (chmod (file, mode) != 0) {
+      snprintf (log_buf, LOG_SIZE, "unable to change mode for %s\n", file);
+      log_print ();
+    }
+  }
+}
+
+/* miscellaneous things to do while we are still root */
+static void do_root_init ()
+{
+  if (geteuid () != ROOT_USER_ID)
+    return;   /* not root or not using fork, nothing to do */
+  /* on some systems, /dev/random exists, but is not accessible to non-root
+   * processes.  Set it to be accessible. */
+  char * set_world_readable_files [] = { "/dev/random", NULL };
+  int i;
+  for (i = 0; set_world_readable_files [i] != NULL; i++)
+    set_world_readable (set_world_readable_files [i]);
+#ifdef __linux__ 
+  /* on some systems, ipv6 is a module to be added via modprobe */
+  system ("modprobe ipv6");
+#endif /* __linux__ */
+}
+
 int astart_main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
@@ -827,6 +861,7 @@ int astart_main (int argc, char ** argv)
   }
   /* printf ("astart path is %s\n", path); */
   pid_t astart_pid = getpid ();
+  do_root_init ();
 
   /* two pipes from ad to alocal and back, plus */
   /* two pipes from ad to aip and back */
