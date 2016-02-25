@@ -52,9 +52,8 @@ static int dns_init = 0;
  * new address on every invocation (and perhaps more frequently?) */
 static int save_my_own_address = 1;
 
-/* what to save when calling save_peers.  Could be either or both */
-#define SAVE_ID		1
-#define SAVE_PEERS	2
+/* save addresses every day (86400s) even if there are no new ones */
+#define PEER_SAVE_TIME		86400
 
 void print_dht (int to_log)
 {
@@ -222,37 +221,41 @@ static int entry_to_file (int fd, struct addr_info * entry, int index)
   return 0;
 }
 
-/* save_id_peers_or_both is 1 for id, 2 for peers, 3 for both */
-static void save_peers (int save_id_peers_or_both)
+static void save_id ()
 {
 #ifdef DEBUG_PRINT
-  printf ("save_peers (%d):\n", save_id_peers_or_both);
-  print_dht (0);
-  print_ping_list (0);
+  printf ("save_id()\n");
 #endif /* DEBUG_PRINT */
-  if ((save_my_own_address) && (save_id_peers_or_both & SAVE_ID)) {
+  if (save_my_own_address) {
     int fd = open_write_config ("adht", "my_id", 1);
     if (fd >= 0) {
       char line [300];  /* write my address first */
       buffer_to_string (my_address, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 1,
                         line, sizeof (line));
       if (write (fd, line, strlen (line)) != strlen (line))
-        perror ("save_peers write");  /* report, but continue */
+        perror ("save_id write");  /* report, but continue */
       close (fd);
     }
   }
+}
+
+static void save_peers ()
+{
+#ifdef DEBUG_PRINT
+  printf ("save_peers():\n");
+  print_dht (0);
+  print_ping_list (0);
+#endif /* DEBUG_PRINT */
   int cpeer = 0;
   int cping = 0;
-  if (save_id_peers_or_both & SAVE_PEERS) {
-    int fd = open_write_config ("adht", "peers", 1);
-    int i;
-    for (i = 0; i < MAX_PEERS; i++)
-      cpeer += entry_to_file (fd, &(peers [i].ai), i);
-    for (i = 0; i < MAX_PINGS; i++)
-      cping += entry_to_file (fd, &(pings [i].ai), -1);
-    close (fd);
-    peers_file_time = time (NULL);  /* no need to re-read in load_peers (1) */
-  }
+  int fd = open_write_config ("adht", "peers", 1);
+  int i;
+  for (i = 0; i < MAX_PEERS; i++)
+    cpeer += entry_to_file (fd, &(peers [i].ai), i);
+  for (i = 0; i < MAX_PINGS; i++)
+    cping += entry_to_file (fd, &(pings [i].ai), -1);
+  close (fd);
+  peers_file_time = time (NULL);  /* no need to re-read in load_peers (1) */
 #ifdef DEBUG_PRINT
   printf ("saved %d peers and %d pings, time is %ld\n",
           cpeer, cping, peers_file_time);
@@ -369,7 +372,7 @@ static void init_defaults ()
   buffer_to_string (my_address, ADDRESS_SIZE, "new random address",
                     ADDRESS_SIZE, 1, log_buf, LOG_SIZE);
   log_print ();
-  save_peers (SAVE_ID);
+  save_id ();
 }
 
 static void load_peers (int only_if_newer)
@@ -690,6 +693,10 @@ int routing_add_dht (struct addr_info * addr)
       result = 0; /* not new */
       limit = found;
     }
+#ifdef DEBUG_PRINT
+    if (result != 0)
+      printf ("found %d, limit %d, result %d\n", found, limit, result);
+#endif /* DEBUG_PRINT */
     int i;
     /* move any addresses in front of this one back one position */
     /* if found < 0 (limit is PEERS_PER_BIT - 1), drop the last address */
@@ -700,8 +707,17 @@ int routing_add_dht (struct addr_info * addr)
     if (found < 0)   /* if it is in the ping list, delete it from there */
       delete_ping (addr);
   }
-  if (result >= 0)
-    save_peers (SAVE_PEERS);
+  static unsigned long long int last_saved = 0;
+  int save = result > 0;
+  /* if result is zero, there are no new addresses but the order of
+   * addresses has changed, so save less frequently */
+  if ((result == 0) &&
+      ((last_saved == 0) || (last_saved + PEER_SAVE_TIME < allnet_time ())))
+    save = 1;
+  if (save) {
+    save_peers ();
+    last_saved = allnet_time ();
+  }
   pthread_mutex_unlock (&mutex);
   return result;
 }
@@ -807,7 +823,7 @@ void routing_expire_dht ()
     peers [i].refreshed = 0;
   }
   if (changed)
-    save_peers (SAVE_PEERS);
+    save_peers ();
   pthread_mutex_unlock (&mutex);
 #ifdef DEBUG_PRINT
   printf ("routing_expire_dht () finished, %s, expired %d pings, %d peers\n",
@@ -880,7 +896,7 @@ int routing_add_ping (struct addr_info * addr)
   init_peers (0);
   int result = routing_add_ping_locked (addr);
   if (result >= 0)
-    save_peers (SAVE_PEERS);
+    save_peers ();
   pthread_mutex_unlock (&mutex);
   return result;
 }
