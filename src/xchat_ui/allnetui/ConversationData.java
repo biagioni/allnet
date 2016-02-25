@@ -29,7 +29,7 @@ public class ConversationData {
 
     // returns all messages such that:
     // if (limit), number of messages <= max, and
-    // if (unread), message time is newer than last_read time
+    // if (unreadOnly), message time is newer than last_read time
     private static Message[] getLatest(String contact, boolean limit, int max,
                                        boolean unreadOnly)
     {
