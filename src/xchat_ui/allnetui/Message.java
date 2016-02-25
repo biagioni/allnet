@@ -135,4 +135,10 @@ public class Message implements java.lang.Comparable<Message> {
 // System.out.println ("Message.java/newer: comparing " + ft + " to " + receivedTime);
         return ft <= this.receivedTime;
     }
+
+    // only meaningful for received packets
+    public long receivedAt() {
+        return this.receivedTime;
+    }
+
 }

@@ -24,6 +24,8 @@ class ConversationPanel extends JPanel {
     public static final String CONTACTS_COMMAND = "CONTACTS";
     public static final String EXCHANGE_KEYS_COMMAND = "EXCHANGE_KEYS";
     //
+    private static final long DAY = 86400 * 1000;
+    //
     // message bubble border params
     private int borderWidth = 1;
     private int borderRadius = 10;
@@ -173,11 +175,13 @@ class ConversationPanel extends JPanel {
         return (panel);
     }
 
-    void addMsg(String text, Message msg) {
-        boolean left = msg.to.equals(Message.SELF);
+    public void addMsg(String text, Message msg) {
+        boolean isReceived = msg.to.equals(Message.SELF);
         boolean broadcast = msg.isBroadcast();
         boolean acked = msg.acked();
-        boolean isNew = msg.isNewMessage();
+        boolean isNew = (msg.isNewMessage() ||
+                         (isReceived &&
+                          msg.receivedAt() + DAY > System.currentTimeMillis()));
         String[] lines = text.split("\n");
         Color bg = broadcast ? broadcastColor : acked ? ackedColor
                 : isNew ? newColor : Color.WHITE;
@@ -186,11 +190,11 @@ class ConversationPanel extends JPanel {
             labels = unackedL;
         }
 
-        JPanel bubble = makeBubble(left, bg, labels, lines);
+        JPanel bubble = makeBubble(isReceived, bg, labels, lines);
         JPanel inner = new JPanel();
         inner.setBackground(background);
         inner.setLayout(new BoxLayout(inner, BoxLayout.X_AXIS));
-        if (left) {
+        if (isReceived) {
             inner.add(bubble);
             inner.add(Box.createHorizontalGlue());
         }
