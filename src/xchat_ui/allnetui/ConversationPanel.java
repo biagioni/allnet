@@ -175,16 +175,38 @@ class ConversationPanel extends JPanel {
         return (panel);
     }
 
+    private Color getMsgColor (Message msg, boolean isReceived) {
+        if (msg.acked()) {
+            return ackedColor;
+        }
+        if (msg.isBroadcast()) {
+            return broadcastColor;
+        }
+        if (msg.isNewMessage()) {
+            return newColor;
+        }
+        if (isReceived) {
+            long now = System.currentTimeMillis();
+            if (msg.receivedAt() + DAY > now) {
+                double scale = ((double) (msg.receivedAt() + DAY - now)) / DAY;
+                float r = (float) (newColor.getRed() / 255.0);
+                float g = (float) (newColor.getGreen() / 255.0);
+                float b = (float) (newColor.getBlue() / 255.0);
+                float a = (float) (newColor.getAlpha() / 255.0);
+                r = (float) (1.0 - ((1.0 - r) * scale));
+                g = (float) (1.0 - ((1.0 - g) * scale));
+                b = (float) (1.0 - ((1.0 - b) * scale));
+                return new Color (r, g, b, a);
+            }
+        }
+        return Color.WHITE;
+    }
+
     public void addMsg(String text, Message msg) {
         boolean isReceived = msg.to.equals(Message.SELF);
-        boolean broadcast = msg.isBroadcast();
         boolean acked = msg.acked();
-        boolean isNew = (msg.isNewMessage() ||
-                         (isReceived &&
-                          msg.receivedAt() + DAY > System.currentTimeMillis()));
         String[] lines = text.split("\n");
-        Color bg = broadcast ? broadcastColor : acked ? ackedColor
-                : isNew ? newColor : Color.WHITE;
+        Color bg = getMsgColor(msg, isReceived);
         java.util.LinkedList<java.util.Vector<JLabel>> labels = null;
         if (!acked) {
             labels = unackedL;
