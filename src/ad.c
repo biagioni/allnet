@@ -197,9 +197,8 @@ static void send_all (char * packet, int psize, int priority,
 /* runs forever, and only returns in case of error. */
 /* the first read_pipe and the first write_pipe are from/to alocal.
  * the second read_pipe and write_pipe are from/to aip
- * there may or may not be more pipes, but they should generally be the
- * same number, even though the code only explicitly refers to the first
- * three and doesn't require the same number of read and write pipes
+ * there may or may not be more pipes.  If there are, there should be
+ * as many read as write pipes.
  */
 static void main_loop (int npipes, int * read_pipes, int * write_pipes,
                        int update_seconds, int max_social_bytes, int max_checks)
