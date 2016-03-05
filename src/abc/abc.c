@@ -412,7 +412,7 @@ static void send_pending (enum abc_send_type type, int size, char * message)
 }
 
 /** Returns 1 if message is a beacon (not a regular packet), 0 otherwise.
- * Does no work, expect identifying packet type, when quiet is set.
+ * Does no work, except identifying packet type, when quiet is set.
  *
  * Sets *send_type to ABC_SEND_TYPE_REPLY, *send_size to the message size, and
  * send_message (which must have size ALLNET_MTU) to the message to send, if
@@ -429,15 +429,18 @@ static int handle_beacon (const char * message, int msize,
                           char * send_message, int quiet)
 {
   const struct allnet_header * hp = (const struct allnet_header *) message;
-  *send_type = 0;  /* don't send anything unless we say otherwise */
+  if (send_type != NULL)
+    *send_type = ABC_SEND_TYPE_NONE;  /* send nothing unless we say otherwise */
   if (hp->message_type != ALLNET_TYPE_MGMT)
     return 0;
   if (msize < ALLNET_MGMT_HEADER_SIZE (hp->transport))
     return 0;
-  if (quiet)
-    return 1;
   const struct allnet_mgmt_header * mp =
     (const struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
+  if (quiet)
+    return ((mp->mgmt_type == ALLNET_MGMT_BEACON) ||
+            (mp->mgmt_type == ALLNET_MGMT_BEACON_REPLY) ||
+            (mp->mgmt_type == ALLNET_MGMT_BEACON_GRANT));
   const char * beaconp = message + ALLNET_MGMT_HEADER_SIZE (hp->transport);
 
   switch (mp->mgmt_type) {
