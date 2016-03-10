@@ -660,8 +660,8 @@ static void handle_quiet (struct timeval * quiet_end, pd p,
     int msize = receive_until (quiet_end, &message, p, &from_fd, &priority);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
-        printf ("abc.c handle_quiet: %d-byte message from %d (ad is %d)\n",
-                msize, from_fd, rpipe);
+        /* printf ("abc.c handle_quiet: %d-byte message from %d (ad is %d)\n",
+                msize, from_fd, rpipe); */
         if (from_fd == rpipe)
           handle_ad_message (message, msize, priority);
         else
