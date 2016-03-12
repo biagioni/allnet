@@ -208,6 +208,7 @@ static void init_pipes (int * pipes, int num_pipes)
   int i;
   for (i = 0; i < num_pipes; i++) {
     int pipefd [2];
+#ifdef USE_FORK
     if (pipe (pipefd) < 0) {
       perror ("pipe");
       printf ("error creating pipe set %d\n", i);
@@ -217,6 +218,22 @@ static void init_pipes (int * pipes, int num_pipes)
     }
     set_nonblock (pipefd [0]);
     set_nonblock (pipefd [1]);
+#else /* USE_FORK -- create queues instead */
+    if (allnet_queues == NULL)
+      allnet_queus = malloc_or_fail (100 * sizeof (struct allnet_queue *),
+                                     "allnet_queues in init_pipes");
+#define PACKETS		20    		  /* packets per queue */
+#define BYTES		PACKETS * 1500    /* bytes per queue */
+    char name [1000];
+    snprintf (name, sizeof (name), "astart pipe %d/1", i);
+    allnet_queues [2 * i] = allnet_queue_new (name, PACKETS, BYTES);
+    pipefd [0] = - (2 * i + 1);
+    snprintf (name, sizeof (name), "astart pipe %d/2", i);
+    allnet_queues [2 * i + 1] = allnet_queue_new (name, PACKETS, BYTES);
+    pipefd [1] = - (2 * i + 1 + 1);
+#undef PACKETS
+#undef BYTES
+#endif /* USE_FORK */
     pipes [i] = pipefd [0];
     pipes [i + num_pipes] = pipefd [1];
 /*  printf ("pipes [%d] is %d, pipes [%d] is %d\n",

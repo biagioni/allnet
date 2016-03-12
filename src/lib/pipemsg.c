@@ -21,6 +21,7 @@
 #include "pipemsg.h"
 #include "util.h"
 #include "log.h"
+#include "allnet_queue.h"
 
 #define MAGIC_STRING	"MAGICPIE"  /* magic pipe, squeezed into 8 chars */
 
@@ -48,12 +49,15 @@ static struct allnet_pipe_info * buffers = NULL;
 struct pipedesc {
   int num_pipes;
   struct allnet_pipe_info buffers [MAX_PIPES];
+  int num_queues;
+  int queues [MAX_PIPES];  /* negative integers -x, at index x - 1 */
 };
 
 pd init_pipe_descriptor ()
 {
   pd result = malloc_or_fail (sizeof (struct pipedesc), "init pipe descriptor");
   result->num_pipes = 0;
+  result->num_queues = 0;
   return result;
 }
 
@@ -78,6 +82,15 @@ static void print_pipes (pd p, const char * desc, int pipe)
               p->buffers [i].filled, p->buffers [i].bsize);
    log_print ();
   }
+  for (i = 0; i < p->num_queues; i++) {
+    int index = (- (p->queues [i])) - 1;
+    if (allnet_queues != NULL) {
+      struct allnet_queue * q = allnet_queues [index];
+      snprintf (log_buf, LOG_SIZE, "  [%d/%d]: queue '%s', %d packets\n",
+                i, index, allnet_queue_info (q), allnet_queue_size (q)); 
+      log_print ();
+    }
+  }
 }
 
 /* returns the pipe index if present, -1 otherwise */
@@ -90,48 +103,84 @@ static int pipe_index (pd p, int pipe)
   return -1;
 }
 
+/* returns the queue index if present, -1 otherwise */
+static int queue_index (pd p, int queue)
+{
+  int i;
+  for (i = 0; i < p->num_queues; i++)
+    if (p->queues [i] == queue)
+      return i;
+  return -1;
+}
+
 void add_pipe (pd p, int pipe)
 {
-  if (pipe_index (p, pipe) != -1) {
-    snprintf (log_buf, LOG_SIZE,
-              "adding pipe %d already in data structure [%d]\n",
-              pipe, pipe_index (p, pipe));
-    log_print ();
-    return;
+  if (pipe >= 0) {
+    if (pipe_index (p, pipe) != -1) {
+      snprintf (log_buf, LOG_SIZE,
+                "adding pipe %d already in data structure [%d]\n",
+                pipe, pipe_index (p, pipe));
+      log_print ();
+      return;
+    }
+    if (p->num_pipes >= MAX_PIPES) {
+      snprintf (log_buf, LOG_SIZE,
+                "too many (%d) pipes, not adding %d\n", p->num_pipes, pipe);
+      log_print ();
+      return;
+    }
+    struct allnet_pipe_info * api = p->buffers + p->num_pipes;
+    p->num_pipes = p->num_pipes + 1;
+    api->pipe_fd = pipe;
+    api->in_header = 1;  /* always start by reading the header */
+    api->buffer = api->header;
+    api->bsize = HEADER_SIZE;
+    api->filled = 0;
+  } else {  /* negative, so it's a queue */
+    if (queue_index (p, pipe) != -1) {
+      snprintf (log_buf, LOG_SIZE,
+                "adding queue %d already in data structure [%d]\n",
+                pipe, queue_index (p, pipe));
+      log_print ();
+      return;
+    }
+    if (p->num_queues >= MAX_PIPES) {
+      snprintf (log_buf, LOG_SIZE,
+                "too many (%d) queues, not adding %d\n", p->num_queues, pipe);
+      log_print ();
+      return;
+    }
+    p->queues [p->num_queues] = pipe;
+    p->num_queues = p->num_queues + 1;
   }
-  if (p->num_pipes >= MAX_PIPES) {
-    snprintf (log_buf, LOG_SIZE,
-              "too many (%d) pipes, not adding %d\n", p->num_pipes, pipe);
-    log_print ();
-    return;
-  }
-  struct allnet_pipe_info * api = p->buffers + p->num_pipes;
-  p->num_pipes = p->num_pipes + 1;
-  api->pipe_fd = pipe;
-  api->in_header = 1;  /* always start by reading the header */
-  api->buffer = api->header;
-  api->bsize = HEADER_SIZE;
-  api->filled = 0;
   print_pipes (p, "added", pipe);
 }
 
 void remove_pipe (pd p, int pipe)
 {
-  int index = pipe_index (p, pipe);
+  int is_pipe = (pipe >= 0);
+  int index = (is_pipe) ? (pipe_index (p, pipe)) : (queue_index (p, pipe));
   if (index == -1)  /* nothing to delete */
     return;
   snprintf (log_buf, LOG_SIZE,
-            "removing pipe %d from data structure [%d]\n", pipe, index);
+            "removing %s %d from data structure [%d]\n",
+            (is_pipe) ? "pipe" : "queue", pipe, index);
   log_print ();
-  struct allnet_pipe_info * api = p->buffers + index;
-  if ((! api->in_header) && (api->buffer != NULL))
-    free (api->buffer);
-  if (index + 1 < p->num_pipes) {
-    p->buffers [index] = p->buffers [p->num_pipes - 1];
-    if (p->buffers [index].in_header)  /* update the pointer */
-      p->buffers [index].buffer = p->buffers [index].header;
+  if (is_pipe) {
+    struct allnet_pipe_info * api = p->buffers + index;
+    if ((! api->in_header) && (api->buffer != NULL))
+      free (api->buffer);
+    if (index + 1 < p->num_pipes) {
+      p->buffers [index] = p->buffers [p->num_pipes - 1];
+      if (p->buffers [index].in_header)  /* update the pointer */
+        p->buffers [index].buffer = p->buffers [index].header;
+    }
+    p->num_pipes = p->num_pipes - 1;
+  } else {
+    if (index + 1 < p->num_queues)
+      p->queues [index] = p->queues [p->num_queues - 1];
+    p->num_queues = p->num_queues - 1;
   }
-  p->num_pipes = p->num_pipes - 1;
   print_pipes (p, "removed", pipe);
 }
 
@@ -290,6 +339,14 @@ static int send_header_data (int pipe, const char * message, int mlen,
 
 int send_pipe_message (int pipe, const char * message, int mlen, int priority)
 {
+  if (pipe < 0) {
+    if (allnet_queues != NULL)
+      return allnet_enqueue (allnet_queues [-pipe - 1],
+                             (const unsigned char *) message,
+                             (unsigned int) mlen, (unsigned int) priority);
+    else
+      return 0;
+  }
   /* avoid SIGPIPE signals when writing to a closed pipe */
   struct sigaction sa;
   sa.sa_handler = SIG_IGN;
@@ -350,6 +407,20 @@ int send_pipe_multiple (int pipe, int num_messages,
                         const char ** messages, const int * mlens,
                         const int * priorities)
 {
+  if (pipe < 0) {
+    if (allnet_queues != NULL) {
+      int i;
+      int success = 1;
+      for (i = 0; i < num_messages; i++)
+        success = success &&
+                  allnet_enqueue (allnet_queues [-pipe - 1],
+                                  (const unsigned char *) (messages [i]),
+                                  (unsigned int) (mlens [i]),
+                                  (unsigned int) (priorities [i]));
+      return success;
+    } else
+      return 0;
+  }
   /* avoid SIGPIPE signals when writing to a closed pipe */
   struct sigaction sa;
   sa.sa_handler = SIG_IGN;
@@ -367,9 +438,11 @@ int send_pipe_multiple (int pipe, int num_messages,
 
 /* same, but messages are freed */
 int send_pipe_multiple_free (int pipe, int num_messages,
-                             char ** messages, const int * mlens, const int * priorities)
+                             char ** messages, const int * mlens,
+                             const int * priorities)
 {
-  int r = send_pipe_multiple (pipe, num_messages, (const char **)messages, mlens, priorities);
+  int r = send_pipe_multiple (pipe, num_messages, (const char **)messages,
+                              mlens, priorities);
   int i;
   for (i = 0; i < num_messages; i++)
     free (messages [i]);
@@ -657,10 +730,47 @@ static int receive_pipe_message_poll (pd p, int pipe,
   return 0;
 }
 
+static int receive_queue_message (int pipe, char ** message, int * priority)
+{
+  if (allnet_queues == NULL) {  /* error */
+    snprintf (log_buf, LOG_SIZE,
+              "receive_queue_message %d, but allnet_queues == NULL\n", pipe);
+    log_print ();
+    printf ("receive_queue_message %d, but allnet_queues == NULL\n", pipe);
+    exit (1);
+  }
+  while (1) {  /* loop in case we need to try again */
+    unsigned char result [ALLNET_MTU];
+    unsigned int nqueue = 1;
+    unsigned int plen = sizeof (result);
+    /* timeout is -1, so wait forever */
+    int call = allnet_dequeue (&(allnet_queues [-pipe - 1]), &nqueue, result,
+                               &plen, (unsigned int *)priority,
+                               (unsigned int) (-1));
+    if (call == 1) {
+      *message = malloc_or_fail (plen, "receive_queue_message");
+      memcpy (*message, result, plen);
+      return plen;
+    }
+    if (call == -2) { /* should never happen, but inevitably will. Discard */
+      printf ("receive_queue_message %d error: received %d, MTU %d, ignoring\n",
+              -pipe, plen, ALLNET_MTU);
+      allnet_queue_discard_first (allnet_queues [-pipe - 1]);
+      /* and repeat */
+    } else {
+      if (call == 0) /* should never happen with a timeout of -1 */
+        printf ("error in receive_queue_message: dequeue timed out\n");
+      return 0;
+    }
+  }
+}
+
 /* receives the message into a buffer it allocates for the purpose. */
 /* the caller is responsible for freeing the buffer. */
 int receive_pipe_message (pd p, int pipe, char ** message, int * priority)
 {
+  if (pipe < 0)
+    return receive_queue_message (pipe, message, priority);
   char header [HEADER_SIZE];
 
   int wanted = HEADER_SIZE;
@@ -807,7 +917,10 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
   while ((timeout == PIPE_MESSAGE_WAIT_FOREVER) ||
          (tv_compare (&now, &finish) <= 0)) {
     int pipe;
-    pipe = next_available (p, fd, timeout);
+    int effective_timeout = timeout;
+    if ((timeout == PIPE_MESSAGE_WAIT_FOREVER) && (p->num_queues > 0))
+      effective_timeout = 10 * 1000LL;    /* look at the queues every 10ms */
+    pipe = next_available (p, fd, effective_timeout);
     if (pipe >= 0) { /* can read pipe */
       if (from_pipe != NULL) *from_pipe = pipe;
       int r;
@@ -826,6 +939,37 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
       }
       /* else read a partial or no buffer, repeat until timeout */
       if (from_pipe != NULL) *from_pipe = -1;
+    }
+    if ((allnet_queues != NULL) && (p->num_queues > 0)) {
+      struct allnet_queue ** queues =
+        malloc (p->num_queues * sizeof (struct allnet_queue *));
+      if (queues != NULL) {
+        int i;
+        for (i = 0; i < p->num_queues; i++)
+          queues [i] = allnet_queues [(- (p->queues [i])) - 1];
+        unsigned char buffer [ALLNET_MTU];
+        unsigned int nqueue = p->num_queues;
+        unsigned int plen = sizeof (buffer); /* timeout 0 to just poll */
+        int result = allnet_dequeue (queues, &nqueue, buffer, &plen,
+                                     (unsigned int *) priority, 0);
+        if ((result == 1) && (plen > 0)) {
+          if (from_pipe != NULL) {
+            for (i = 0; i < p->num_queues; i++) {
+              if (queues [nqueue] == allnet_queues [(- (p->queues [i])) - 1]) {
+                *from_pipe = -(i + 1);
+                break;
+              }
+            }
+          }
+          free (queues);  /* no longer needed */
+          *message = malloc_or_fail (plen, "receive_pipe_message_fd queue");
+          memcpy (*message, buffer, plen);
+          return plen;
+        }
+        free (queues);  /* no longer needed */
+        if ((result == -2) && (plen > 0))
+          allnet_queue_discard_first (queues [nqueue]);
+      }
     }
     gettimeofday (&now, NULL);
   }
@@ -858,35 +1002,6 @@ static void print_split_message_error (int code, int n1, int n2, int n3)
 #endif /* DEBUG_PRINT */
   log_print ();
 }
-
-#if 0
-static int next_char2 (char** first, int* nfirst, char** second, int* nsecond)
-{
-  if ((*nfirst <= 0) && (*nsecond <= 0))
-    return -1;
-  if (*nfirst > 0) {
-    int result = **first;
-    *first = *first + 1;
-    *nfirst = *nfirst - 1;
-    return result;
-  }
-  assert (*nsecond > 0);
-  int result = **second;
-  *second = *second + 1;
-  *nsecond = *nsecond - 1;
-  return result;
-}
-
-static int next_char (char** buf, int* n)
-{
-  if (*n <= 0)
-    return -1;
-  int result = **buf;
-  *buf = *buf + 1;
-  *n = *n - 1;
-  return result;
-}
-#endif /* 0 */
 
 static void extend_results (char * data, int len, int prio,
                             int * index,  /* incremented by this call */

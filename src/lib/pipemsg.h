@@ -17,6 +17,7 @@ extern pd init_pipe_descriptor();
  * the receive functions return the number of bytes received, 0
  * in case of timeout, and -1 in case of error, including the pipe
  * no longer being usable. */
+/* pipe numbers n < 0 give index = -n - 1 in allnet_queues */
 
 extern int send_pipe_message (int pipe,
                               const char * message, int mlen, int priority);
