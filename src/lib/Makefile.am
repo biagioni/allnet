@@ -1,5 +1,6 @@
 libincludes = \
 	ai.h \
+	allnet_queue.h \
 	app_util.h \
 	cipher.h \
 	configfiles.h \
@@ -24,6 +25,7 @@ libincludes = \
 
 libsrc = \
 	ai.c \
+	allnet_queue.c \
 	app_util.c \
 	cipher.c \
 	configfiles.c \
@@ -46,7 +48,7 @@ libsrc = \
 #	wp_arith.c \
 #	wp_rsa.c
 
-DEPS_LIBS = ${openssl_LIBS}
+DEPS_LIBS = ${openssl_LIBS} -lpthread
 
 if !HAVE_OPENSSL
 libincludes += ${wpincludes}
