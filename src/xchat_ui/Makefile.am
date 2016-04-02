@@ -34,7 +34,7 @@ all: $(ALLNETUI_TARGET)
 
 $(ALLNETUI_TARGET): $(JAVASOURCELIST)
 if PRECOMP_GUI
-	cp precompiled/$(ALLNETUI_JAR) $(ALLNETUI_TARGET)
+	cp -a precompiled/$(ALLNETUI_JAR) $(ALLNETUI_TARGET)
 endif
 if ENABLE_GUI
 	$(JAVAC) */*.java */*/*.java
