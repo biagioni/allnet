@@ -55,7 +55,7 @@
 
 /* a compound data in AllNet format is a sequence of entries, each of format: */
 struct allnet_compound_data {
-  /* the media field may be ALLNET_MEDIA_COMPOUND_ALLNET, allowing recursion */
+  /* the media field may be ALLNET_MEDIA_COMPOUND, allowing recursion */
   unsigned char media [ALLNET_MEDIA_ID_SIZE];
   /* if 1, the field is terminated by the string.  If 0, the field has
    * length given by the string (interpreted in binary big-endian) */
