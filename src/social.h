@@ -4,6 +4,7 @@
 #define SOCIAL_H
 
 #include <time.h>
+#include "lib/allnet_log.h"
 
 /* these constants are now defined in priority.h */
 /* keep track of people up to distance 3, friends of friends of friends */
@@ -17,7 +18,8 @@
 /* max bytes is the maximum size for the data structure.
  * max_checks is the maximum number of times signature verification
  * should be attempted per call to social_connection */
-extern struct social_info * init_social (int max_bytes, int max_checks);
+extern struct social_info * init_social (int max_bytes, int max_checks,
+                                         struct allnet_log * log);
 
 extern time_t update_social (struct social_info * soc, int update_seconds);
 

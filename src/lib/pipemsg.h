@@ -6,11 +6,16 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#include "allnet_log.h"
+
 /* pipedesc is defined in pipemsg.c, and only used for receiving */
 /* should be initialized to NULL before the first call */
 typedef struct pipedesc * pd;
 
-extern pd init_pipe_descriptor();
+extern pd init_pipe_descriptor(struct allnet_log * log);
+
+/* convenience function to get the log from the pd */
+extern struct allnet_log * pipemsg_log (pd p);
 
 /* the send functions return 1 in case of success and 0 in case of failure.
  * if 0 is returned, it means the pipe is no longer valid.
@@ -20,22 +25,26 @@ extern pd init_pipe_descriptor();
 /* pipe numbers n < 0 give index = -n - 1 in allnet_queues */
 
 extern int send_pipe_message (int pipe,
-                              const char * message, int mlen, int priority);
+                              const char * message, int mlen, int priority,
+                              struct allnet_log * log);
 
 /* same as send_pipe_message, but frees the memory referred to by message */
 extern int send_pipe_message_free (int pipe, char * message, int mlen,
-                                   int priority);
+                                   int priority,
+                                   struct allnet_log * log);
 
 /* send multiple messages at once, again to avoid the mysterious system
  * delay when sending multiple times in close succession on a socket.
  * messages are not freed */
 extern int send_pipe_multiple (int pipe, int num_messages,
                                const char ** messages, const int * mlens,
-                               const int * priorities);
+                               const int * priorities,
+                               struct allnet_log * log);
 /* same, but messages are freed */
 extern int send_pipe_multiple_free (int pipe, int num_messages,
                                     char ** messages, const int * mlens,
-                                    const int * priorities);
+                                    const int * priorities,
+                                    struct allnet_log * log);
 
 /* receives the message into a buffer it allocates for the purpose. */
 /* the caller is responsible for freeing the message buffer. */

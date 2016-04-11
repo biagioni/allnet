@@ -11,7 +11,6 @@
 #include "packet.h"
 #include "util.h"
 #include "sha.h"
-#include "log.h"
 #include "keys.h"
 #include "cipher.h"
 
@@ -185,10 +184,8 @@ int allnet_decrypt (const char * cipher, int csize,
   print_buffer (result, rsize, "decrypted", 16, 1);
 #endif /* DEBUG_PRINT */
   unsigned long long int time_delta = allnet_time_us () - start;
-  snprintf (log_buf, LOG_SIZE,
-            "successful decryption took %lld.%06lld seconds\n",
-            time_delta / 1000000, time_delta % 1000000);
-  log_print ();
+  printf ("successful decryption took %lld.%06lld seconds\n",
+          time_delta / 1000000, time_delta % 1000000);
   return rsize;
 }
 
@@ -310,7 +307,9 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
                     char * sender, int sbits, char * dest, int dbits,
                     int maxcontacts)
 {
+#ifdef DEBUG_PRINT
   unsigned long long int start = allnet_time_us ();
+#endif /* DEBUG_PRINT */
   *contact = NULL;
   *kset = -1;
   *text = NULL;
@@ -377,12 +376,12 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
         if (res) {
           *contact = strcpy_malloc (contacts [i], "verify contact");
           *kset = keys [j];
+#ifdef DEBUG_PRINT
           unsigned long long int time_delta = allnet_time_us () - start;
-          snprintf (log_buf, LOG_SIZE,
-                    "%ssuccess: %d ver + %d dec took %lld.%06lld seconds\n",
-                    (sig_algo != ALLNET_SIGTYPE_NONE) ? "" : "unsigned ", count,
-                    decrypt_count, time_delta / 1000000, time_delta % 1000000);
-                    log_print ();
+          printf ("%ssuccess: %d ver + %d dec took %lld.%06lld seconds\n",
+                  (sig_algo != ALLNET_SIGTYPE_NONE) ? "" : "unsigned ", count,
+                  decrypt_count, time_delta / 1000000, time_delta % 1000000);
+#endif /* DEBUG_PRINT */
           free (keys);
           if (free_contacts) free (contacts);
           if (sig_algo != ALLNET_SIGTYPE_NONE)
@@ -400,12 +399,10 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   if (free_contacts) free (contacts);
 #ifdef DEBUG_PRINT
   printf ("unable to decrypt packet, dropping\n");
-#endif /* DEBUG_PRINT */
   unsigned long long int time_delta = allnet_time_us () - start;
-  snprintf (log_buf, LOG_SIZE,
-            "%d verifications+%d decryptions took %lld.%06lld seconds\n",
-            count, decrypt_count, time_delta / 1000000, time_delta % 1000000);
   if (count + decrypt_count > 0)
-    log_print ();
+    printf ("%d verifications+%d decryptions took %lld.%06lld seconds\n",
+            count, decrypt_count, time_delta / 1000000, time_delta % 1000000);
+#endif /* DEBUG_PRINT */
   return 0;
 }

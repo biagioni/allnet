@@ -1,3 +1,4 @@
+
 /* adht.c: maintain a Distributed Hash Table of connected nodes
  * every allnet daemon runs a DHT node.
  * nodes that are externally reachable cooperate to build the distributed
@@ -44,7 +45,7 @@
 #include "lib/packet.h"
 #include "lib/mgmt.h"
 #include "lib/ai.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/app_util.h"
 #include "lib/util.h"
 #include "lib/pipemsg.h"
@@ -63,6 +64,8 @@
 #define EXPIRATION_MULT	3    /* for debugging */
 
 #endif /* DEBUG_SPEED */
+
+static struct allnet_log * alog = NULL;
 
 static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
 {
@@ -104,10 +107,10 @@ static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
     memcpy (hp->destination, ai.destination, ADDRESS_SIZE);
     hp->dst_nbits = ai.nbits;
     packet_to_string (message, msize, "ping_all_pending sending", 1,
-                      log_buf, LOG_SIZE);
-    log_print ();
+                      alog->b, alog->s);
+    log_print (alog);
     if (! send_pipe_message (sock, message, msize,
-                             ALLNET_PRIORITY_LOCAL_LOW)) {
+                             ALLNET_PRIORITY_LOCAL_LOW, alog)) {
       printf ("unable to send dht ping packet to socket %d\n", sock);
       exit (1);
     }
@@ -118,8 +121,6 @@ static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
 /* sends parts of my DHT routing table to all my DHT peers */
 static void * send_loop (void * a)
 {
-  pthread_cleanup_push (close_log, NULL);
-  init_log ("adht send_loop");
   int sock = *((int *) a);
   char packet [ADHT_MAX_PACKET_SIZE];
   unsigned char dest [ADDRESS_SIZE];
@@ -141,12 +142,12 @@ static void * send_loop (void * a)
     struct addr_info * entries = 
       (struct addr_info *)
         (((char *) dhtp) + sizeof (struct allnet_mgmt_dht));
-    int total_header_bytes = (((char *) entries) - ((char *) hp));
-    int possible = (sizeof (packet) - total_header_bytes)
-                 / sizeof (struct addr_info);
+    size_t total_header_bytes = (((char *) entries) - ((char *) hp));
+    size_t possible = (sizeof (packet) - total_header_bytes)
+                    / sizeof (struct addr_info);
     int self = init_own_routing_entries (entries, 2, dest, ADDRESS_BITS);
     if (self > 0) {  /* only send if we have one or more public IP addresses */
-      int added = routing_table (entries + self, possible - self);
+      int added = routing_table (entries + self, (int)(possible - self));
 #ifdef DEBUG_PRINT
       if (added <= 0)
         printf ("adht: routing table returned %d\n", added);
@@ -158,12 +159,12 @@ static void * send_loop (void * a)
       dhtp->num_sender = self;
       dhtp->num_dht_nodes = added;
       writeb64u (dhtp->timestamp, allnet_time ());
-      int send_size = total_header_bytes + actual * sizeof (struct addr_info);
-      packet_to_string ((char *) hp, send_size, "send_loop sending", 1,
-                        log_buf, LOG_SIZE);
-      log_print ();
-      if (! send_pipe_message (sock, (char *) hp, send_size,
-                               ALLNET_PRIORITY_LOCAL_LOW)) {
+      size_t send_size = total_header_bytes + actual * sizeof (struct addr_info);
+      packet_to_string ((char *) hp, (int)send_size, "send_loop sending", 1,
+                        alog->b, alog->s);
+      log_print (alog);
+      if (! send_pipe_message (sock, (char *) hp, (int)send_size,
+                               ALLNET_PRIORITY_LOCAL_LOW, alog)) {
         printf ("unable to send dht packet\n");
         exit (1);
       }
@@ -171,9 +172,9 @@ static void * send_loop (void * a)
       print_packet (packet, send_size, "sent packet", 1);
 #endif /* DEBUG_PRINT */
     } else {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (alog->b, alog->s,
                 "no publically routable IP address, not sending\n");
-      log_print ();
+      log_print (alog);
       print_dht (1);
       print_ping_list (1);
 #ifdef DEBUG_PRINT
@@ -182,8 +183,8 @@ static void * send_loop (void * a)
     ping_time = time (NULL);
     ping_all_pending (sock, dest, ADDRESS_BITS);
     ping_time = time (NULL) - ping_time; /* num seconds it took to ping */
-    snprintf (log_buf, LOG_SIZE, "    expiration count %d\n", expire_count);
-    log_print ();
+    snprintf (alog->b, alog->s, "    expiration count %d\n", expire_count);
+    log_print (alog);
     if (expire_count++ >= EXPIRATION_MULT) {
       routing_expire_dht ();
       expire_count = 0;
@@ -194,9 +195,8 @@ static void * send_loop (void * a)
 #ifdef DEBUG_PRINT
     printf ("sleep interval %ld\n", interval);
 #endif /* DEBUG_PRINT */
-    sleep (interval);
+    sleep ((int)interval);
   }
-  pthread_cleanup_pop (1);
   return NULL;
 }
 
@@ -211,11 +211,11 @@ static void respond_to_dht (int sock, char * message, int msize)
                sizeof (struct allnet_mgmt_dht) +
                sizeof (struct addr_info)))  /* only process if >= 1 entry */
     return;
-/* snprintf (log_buf, LOG_SIZE, "survived msize %d/%zd\n", msize,
+/* snprintf (alog->b, alog->s, "survived msize %d/%zd\n", msize,
              ALLNET_MGMT_HEADER_SIZE(hp->transport) +
              sizeof (struct allnet_mgmt_dht) +
              sizeof (struct addr_info));
-  log_print (); */
+  log_print (alog); */
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   if (mp->mgmt_type != ALLNET_MGMT_DHT)
@@ -224,9 +224,9 @@ static void respond_to_dht (int sock, char * message, int msize)
     (struct allnet_mgmt_dht *)
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
 
-  int off = snprintf (log_buf, LOG_SIZE, "got %d byte DHT packet: ", msize);
-  packet_to_string (message, msize, NULL, 1, log_buf + off, LOG_SIZE - off);
-  log_print ();
+  int off = snprintf (alog->b, alog->s, "got %d byte DHT packet: ", msize);
+  packet_to_string (message, msize, NULL, 1, alog->b + off, alog->s - off);
+  log_print (alog);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
 
@@ -234,8 +234,8 @@ static void respond_to_dht (int sock, char * message, int msize)
   int n_dht = (dhtp->num_dht_nodes & 0xff);
   int n = n_sender + n_dht;
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "packet has %d entries, size %d\n", n, msize);
-  log_print ();
+  snprintf (alog->b, alog->s, "packet has %d entries, size %d\n", n, msize);
+  log_print (alog);
 #endif /* DEBUG_PRINT */
   int expected_size = ALLNET_MGMT_HEADER_SIZE(hp->transport) + 
                       sizeof (struct allnet_mgmt_dht) + 
@@ -262,11 +262,21 @@ static void respond_to_dht (int sock, char * message, int msize)
 #endif /* DEBUG_PRINT */
 }
 
+/* used for systems that don't support multiple processes */
+void adht_thread (char * pname, int rpipe, int wpipe)
+{
+  /* no need to receive, queues discard when full */
+  alog = init_log ("adht-thread");
+  send_loop (&wpipe);
+}
+
 void adht_main (char * pname)
 {
   /* connect to alocal */
-  pd p = init_pipe_descriptor ();
-  int sock = connect_to_local ("adht", pname, p);
+  alog = init_log ("adht");
+  pd p = init_pipe_descriptor (alog);
+  static int sock;   /* must be static to pass its addr to send_loop */
+  sock = connect_to_local ("adht", pname, p);
   if (sock < 0)
     return;
 

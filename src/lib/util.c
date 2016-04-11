@@ -18,7 +18,7 @@
 
 #include "packet.h"
 #include "mgmt.h"
-#include "log.h"
+#include "allnet_log.h"
 #include "util.h"
 #include "ai.h"
 #include "sha.h"
@@ -84,7 +84,7 @@ int minz (int from, int subtract)
 int binary_log (unsigned long long int value)
 {
   if (value <= 1)
-    return value;
+    return (int)value;
   return 1 + binary_log (value / 2);
 }
 
@@ -378,7 +378,8 @@ void packet_to_string (const char * buffer, int bsize, char * desc,
   if ((desc != NULL) && (strlen (desc) > 0))
     off = snprintf (to, tsize, "%s ", desc);
   if (! is_valid_message (buffer, bsize)) {
-    snprintf (to + off, minz (tsize, off), "invalid message of size %d", bsize);
+    snprintf (to + off, minz (tsize, off), "invalid message of size %d%s",
+              bsize, (print_eol) ? "\n" : "");
     return;
   }
   struct allnet_header * hp = (struct allnet_header *) buffer;
@@ -910,10 +911,6 @@ static unsigned long long int random_mod (unsigned long long int mod)
   if (nbytes > sizeof (rbytes)) {
     printf ("unable to compute random number > 8 bytes (%d %zd)\n", nbytes,
             sizeof (rbytes));
-    snprintf (log_buf, LOG_SIZE,
-              "unable to compute random number > 8 bytes (%d %zd)\n", nbytes,
-              sizeof (rbytes));
-    log_print ();
     exit (1); /* long long ints greater than 8 bytes? might break many things */
   }
   while (1) {  /* loop until random value <= rand_max - rand_excess */
@@ -965,7 +962,7 @@ void * malloc_or_fail (size_t bytes, const char * desc)
 /* copy a string to new storage, using malloc_or_fail to get the memory */
 char * strcpy_malloc (const char * string, const char * desc)
 {
-  int size = strlen (string) + 1;
+  size_t size = strlen (string) + 1;
   char * result = malloc_or_fail (size, desc);
   snprintf (result, size, "%s", string);
   return result;
@@ -973,7 +970,7 @@ char * strcpy_malloc (const char * string, const char * desc)
 
 char * strcat_malloc (const char * s1, const char * s2, const char * desc)
 {
-  int size = strlen (s1) + strlen (s2) + 1;
+  size_t size = strlen (s1) + strlen (s2) + 1;
   char * result = malloc_or_fail (size, desc);
   snprintf (result, size, "%s%s", s1, s2);
   return result;
@@ -982,7 +979,7 @@ char * strcat_malloc (const char * s1, const char * s2, const char * desc)
 char * strcat3_malloc (const char * s1, const char * s2, const char * s3,
                        const char * desc)
 {
-  int size = strlen (s1) + strlen (s2) + strlen (s3) + 1;
+  size_t size = strlen (s1) + strlen (s2) + strlen (s3) + 1;
   char * result = malloc_or_fail (size, desc);
   snprintf (result, size, "%s%s%s", s1, s2, s3);
   return result;
@@ -1069,11 +1066,11 @@ static int read_fd_malloc_noclose (int fd, char ** content_p, int print_errors,
               size, file_name);
     return 0;
   }
-  int n = read (fd, result, size);
+  ssize_t n = read (fd, result, size);
   if (n != size) {
     if (print_errors) {
       perror ("read");
-      printf ("unable to read %d bytes from %s, got %d\n",
+      printf ("unable to read %d bytes from %s, got %zd\n",
               size, file_name, n);
     }
     free (result);
@@ -1131,11 +1128,11 @@ static int write_to_fd (int fd, const char * contents, int len,
     }
     return 0;
   }
-  int n = write (fd, contents, len);
+  ssize_t n = write (fd, contents, len);
   if (n < 0) {
     if (print_errors) {
       perror ("write in write_to_fd");
-      printf ("attempted to write %d bytes to %s, wrote %d\n", len, fname, n);
+      printf ("attempted to write %d bytes to %s, wrote %zd\n", len, fname, n);
     }
     return 0;
   }
@@ -1164,7 +1161,7 @@ static void computed_random_bytes (char * buffer, int bsize)
   if (! initialized) {  /* not very random, but better than nothing */
     struct timeval now;
     gettimeofday (&now, NULL);
-    srandom (now.tv_sec ^ now.tv_usec);
+    srandom ((unsigned)now.tv_sec ^ (unsigned)now.tv_usec);
     initialized = 1;
   }
   int i;
@@ -1180,7 +1177,7 @@ static int dev_urandom_bytes (char * buffer, int bsize)
     perror ("open /dev/urandom in lib/util.c");
     return 0;
   }
-  int r = read (fd, buffer, bsize);
+  ssize_t r = read (fd, buffer, bsize);
   if (r < bsize) {
     perror ("read /dev/urandom");
     close (fd);
@@ -1404,10 +1401,8 @@ void writeb64u (unsigned char * p, unsigned long long int value)
 int is_valid_message (const char * packet, int size)
 {
   if (size < ALLNET_HEADER_SIZE) {
-    snprintf (log_buf, LOG_SIZE, 
-              "received a packet with %d bytes, %zd required\n",
-              size, ALLNET_HEADER_SIZE);
-    log_print ();
+    printf ("received a packet with %d bytes, %zd required\n",
+            size, ALLNET_HEADER_SIZE);
     return 0;
   }
 /* received a message with a header */
@@ -1416,44 +1411,40 @@ int is_valid_message (const char * packet, int size)
   if ((ah->version != ALLNET_VERSION) ||
       (ah->src_nbits > ADDRESS_BITS) || (ah->dst_nbits > ADDRESS_BITS) ||
       (ah->hops > ah->max_hops)) {
-    snprintf (log_buf, LOG_SIZE, 
-              "received version %d addr sizes %d, %d (max %d), hops %d, %d\n",
-              ah->version, ah->src_nbits, ah->dst_nbits, ADDRESS_BITS,
-              ah->hops, ah->max_hops);
-    log_print ();
+/* printf ("received version %d addr sizes %d %d / %d, hops %d/%d, pid %d\n",
+            ah->version, ah->src_nbits, ah->dst_nbits, ADDRESS_BITS,
+            ah->hops, ah->max_hops, getpid ());
+    print_buffer (packet, size, "received bytes", size, 1); */
+/* sleep (60);
+ah->version = 0;
+printf ("time to crash %d\n", 1000 / ah->version); */
     return 0;
   }
 /* check the validity of the packet, as defined in packet.h */
   if (((ah->message_type == ALLNET_TYPE_ACK) ||
        (ah->message_type == ALLNET_TYPE_DATA_REQ)) &&
       (ah->transport != 0)) {
-    snprintf (log_buf, LOG_SIZE, 
-              "received message type %d, transport 0x%x != 0\n",
-              ah->message_type, ah->transport);
-    log_print ();
+    printf ("received message type %d, transport 0x%x != 0\n",
+            ah->message_type, ah->transport);
     return 0;
   }
   int payload_size = size - ALLNET_AFTER_HEADER (ah->transport, size);
   if ((ah->message_type == ALLNET_TYPE_ACK) &&
       ((payload_size % MESSAGE_ID_SIZE) != 0)) {
-    snprintf (log_buf, LOG_SIZE, 
-              "received ack message, but size %d(%d) mod %d == %d != 0\n",
-              payload_size, size, MESSAGE_ID_SIZE,
-              payload_size % MESSAGE_ID_SIZE);
-    log_print ();
+    printf ("received ack message, but size %d(%d) mod %d == %d != 0\n",
+            payload_size, size, MESSAGE_ID_SIZE,
+            payload_size % MESSAGE_ID_SIZE);
     return 0;
   }
   if (((ah->transport & ALLNET_TRANSPORT_ACK_REQ) != 0) &&
       (payload_size < MESSAGE_ID_SIZE)) {
-    snprintf (log_buf, LOG_SIZE, "message has size %d (%d), min %d\n",
-              payload_size, size, MESSAGE_ID_SIZE);
-    log_print ();
+    printf ("message has size %d (%d), min %d\n",
+            payload_size, size, MESSAGE_ID_SIZE);
     return 0;
   }
   if (((ah->transport & ALLNET_TRANSPORT_ACK_REQ) == 0) &&
       ((ah->transport & ALLNET_TRANSPORT_LARGE) != 0)) {
-    snprintf (log_buf, LOG_SIZE, "large message missing ack bit\n");
-    log_print ();
+    printf ("large message missing ack bit\n");
     return 0;
   }
   if (((ah->transport & ALLNET_TRANSPORT_EXPIRATION) != 0)) {
@@ -1461,44 +1452,59 @@ int is_valid_message (const char * packet, int size)
     char * ep = ALLNET_EXPIRATION (ah, ah->transport, size);
     if ((now <= ALLNET_Y2K_SECONDS_IN_UNIX) || (ep == NULL) ||
         (readb64 (ep) < (now - ALLNET_Y2K_SECONDS_IN_UNIX))) {
-      snprintf (log_buf, LOG_SIZE, "expired packet, %lld < %ld (ep %p)\n",
-                readb64 (ep), now - ALLNET_Y2K_SECONDS_IN_UNIX, ep);
-      log_print ();
+      printf ("expired packet, %lld < %ld (ep %p)\n",
+              readb64 (ep), now - ALLNET_Y2K_SECONDS_IN_UNIX, ep);
       return 0;
     }
   }
   return 1;
 }
 
-void print_gethostbyname_error (char * hostname)
+void print_gethostbyname_error (const char * hostname, struct allnet_log * log)
 {
   switch (h_errno) {
   case HOST_NOT_FOUND:
-    snprintf (log_buf, LOG_SIZE,
-              "error resolving host name %s: host not found\n", hostname);
+    if (log != NULL)
+      snprintf (log->b, log->s,
+                "error resolving host name %s: host not found\n", hostname);
+    else
+      printf ("error resolving host name %s: host not found\n", hostname);
     break;
 #if defined NO_ADDRESS
   case NO_ADDRESS:  /* same as NO_DATA */
 #else
   case NO_DATA:
 #endif
-    snprintf (log_buf, LOG_SIZE,
-              "error resolving host name %s: no address/no data\n", hostname);
+    if (log != NULL)
+      snprintf (log->b, log->s,
+                "error resolving host name %s: no address/no data\n", hostname);
+    else
+      printf ("error resolving host name %s: no address/no data\n", hostname);
     break;
   case NO_RECOVERY:
-    snprintf (log_buf, LOG_SIZE,
-              "error resolving host name %s: unrecoverable error\n", hostname);
+    if (log != NULL)
+      snprintf (log->b, log->s,
+                "error resolving host name %s: unrecoverable\n", hostname);
+    else
+      printf ("error resolving host name %s: unrecoverable error\n", hostname);
     break;
   case TRY_AGAIN:
-    snprintf (log_buf, LOG_SIZE,
-              "error resolving host name %s: try again\n", hostname);
+    if (log != NULL)
+      snprintf (log->b, log->s,
+                "error resolving host name %s: try again\n", hostname);
+    else
+      printf ("error resolving host name %s: try again\n", hostname);
     break;
   default:
-    snprintf (log_buf, LOG_SIZE,
-              "error resolving host name %s: unknown %d\n", hostname, h_errno);
+    if (log != NULL)
+      snprintf (log->b, log->s,
+                "error resolving host name %s: %d\n", hostname, h_errno);
+    else
+      printf ("error resolving host name %s: unknown %d\n", hostname, h_errno);
     break;
   }
-  log_print ();
+  if (log != NULL)
+    log_print (log);
 }
 
 /* assuming option_letter is 'v', returns 1 if argv has '-v', 0 otherwise

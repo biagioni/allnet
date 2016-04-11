@@ -16,10 +16,11 @@
 #include "lib/cipher.h"
 #include "lib/keys.h"
 #include "lib/mapchar.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 
 /* source must be ADDRESS_SIZE, and here will be filled in with random data */
-static int send_key_request (int sock, char * phrase, char * source, int slen)
+static int send_key_request (int sock, char * phrase, char * source, int slen,
+                             struct allnet_log * alog)
 {
   /* compute the destination address from the phrase */
   unsigned char destination [ADDRESS_SIZE];
@@ -53,7 +54,8 @@ static int send_key_request (int sock, char * phrase, char * source, int slen)
   random_bytes (r, KEY_RANDOM_PAD_SIZE);
 
 /* printf ("sending %d-byte key request\n", psize); */
-  if (! send_pipe_message_free (sock, packet, psize, ALLNET_PRIORITY_LOCAL)) {
+  if (! send_pipe_message_free (sock, packet, psize,
+                                ALLNET_PRIORITY_LOCAL, alog)) {
     printf ("unable to send key request message\n");
     return 0;
   }
@@ -162,7 +164,8 @@ int main (int argc, char ** argv)
   if (! parse_ahra (argv [1], &phrase, NULL, NULL, NULL, NULL, &reason))
     usage (argv [0], reason);
 
-  pd p = init_pipe_descriptor ();
+  struct allnet_log * alog = init_log ("subscribe");
+  pd p = init_pipe_descriptor (alog);
   int sock = connect_to_local (argv [0], argv [0], p);
   if (sock < 0)
     return 1;
@@ -170,7 +173,7 @@ int main (int argc, char ** argv)
   /* create a random source address */
   char source [ADDRESS_SIZE];
   random_bytes (source, sizeof (source));
-  if (send_key_request (sock, phrase, source, sizeof (source))) 
+  if (send_key_request (sock, phrase, source, sizeof (source), alog)) 
     wait_for_response (sock, p, phrase, argv [1],
                        source, sizeof (source), debug);
   return 0;

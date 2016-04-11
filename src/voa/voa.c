@@ -40,6 +40,7 @@
 #include "lib/priority.h"
 #include "lib/stream.h"   /* allnet_stream_* */
 #include "lib/util.h"     /* create_packet, random_bytes, add_us, delta_us */
+#include "lib/allnet_log.h" /* struct allnet_log */
 
 #include "voa.h"
 
@@ -380,7 +381,8 @@ accept_stream:
 
 /** Send an acceptance to a received stream request (decoder) */
 static int send_accept_response (allnet_rsa_prvkey prvkey,
-                                 allnet_rsa_pubkey pubkey)
+                                 allnet_rsa_pubkey pubkey,
+                                 struct allnet_log * alog)
 {
   unsigned int amhsize = sizeof (struct allnet_app_media_header);
   unsigned int avhhsize = sizeof (struct allnet_voa_hs_ack_header);
@@ -429,6 +431,9 @@ static int send_accept_response (allnet_rsa_prvkey prvkey,
   assert (sigsize + 2 == estsigsize);
   if (sigsize == 0) {
     fprintf (stderr, "voa: WARNING could not sign outgoing acceptance response\n");
+    snprintf (alog->b, alog->s,
+              "WARNING could not sign outgoing acceptance response\n");
+    log_print (alog);
     ((struct allnet_header *)pak)->sig_algo = ALLNET_SIGTYPE_NONE;
   } else {
     memcpy (payload + encbufsize, sig, sigsize);
@@ -437,7 +442,8 @@ static int send_accept_response (allnet_rsa_prvkey prvkey,
     writeb16 (payload + encbufsize + sigsize, sigsize);
   }
 
-  if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT)) {
+  if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size,
+                          ALLNET_PRIORITY_DEFAULT, alog)) {
     fprintf (stderr, "voa: error sending stream accept\n");
     return 0;
   }
@@ -497,7 +503,8 @@ static int check_voa_reply (const char * payload, int psize)
  *        -1 an error happened while processing an expected packet
  *           like failure to decrypt a packet
  */
-static int handle_packet (const char * message, int msize, int reply_only)
+static int handle_packet (const char * message, int msize, int reply_only,
+                          struct allnet_log * alog)
 {
   if (! is_valid_message (message, msize)) {
     print_buffer (message, msize, "got invalid message", 32, 1);
@@ -587,7 +594,7 @@ static int handle_packet (const char * message, int msize, int reply_only)
 
     /* new stream, check if we're interested */
     if (accept_stream (hp, decbuf + amhsize, bufsize - amhsize))
-      return send_accept_response (prvkey, pubkey);
+      return send_accept_response (prvkey, pubkey, alog);
     return 0;
   }
 
@@ -742,7 +749,9 @@ static int voa_receive (pd p, int timeout)
     int size = receive_pipe_message_any (p, timeout,
                                          &message, &pipe, &priority);
     if (size > 0) {
-      ret = handle_packet ((const char *)message, size, timeout != PIPE_MESSAGE_WAIT_FOREVER);
+      ret = handle_packet ((const char *)message, size,
+                           timeout != PIPE_MESSAGE_WAIT_FOREVER,
+                           pipemsg_log (p));
       free (message);
     }
 
@@ -766,7 +775,7 @@ static int voa_receive (pd p, int timeout)
  * The key and secret are chosen the first time the function is called
  * @return 1 on success, 0 on failure
  */
-static int send_voa_request ()
+static int send_voa_request (struct allnet_log * alog)
 {
   static int init_key = 1;
   static char key [ALLNET_STREAM_KEY_SIZE];
@@ -783,7 +792,7 @@ static int send_voa_request ()
     return 0;
   }
   if (!send_pipe_message (data.allnet_socket, (const char *)pak, paksize,
-                          ALLNET_PRIORITY_DEFAULT)) {
+                          ALLNET_PRIORITY_DEFAULT, alog)) {
     fprintf (stderr, "voa: error sending stream packet\n");
     return 0;
   }
@@ -899,7 +908,7 @@ static void cb_message (GstBus * bus, GstMessage * msg, VOAData * data)
  * Main loop for the encoder after the stream has been initialized.
  * Terminates when global term is set. Sets term = -1 on error.
  */
-static void enc_main_loop ()
+static void enc_main_loop (struct allnet_log * alog)
 {
   gst_element_set_state (data.pipeline, GST_STATE_PLAYING);
   /* poll samples (blocking) */
@@ -924,7 +933,8 @@ static void enc_main_loop ()
 #ifdef SIMULATE_LOSS
         if (random () % 100 > loss_pct) {
 #endif /* SIMULATE_LOSS */
-        if (!send_pipe_message (data.allnet_socket, (const char *)pak, pak_size, ALLNET_PRIORITY_DEFAULT_HIGH))
+        if (!send_pipe_message (data.allnet_socket, (const char *)pak,
+                                pak_size, ALLNET_PRIORITY_DEFAULT_HIGH, alog))
           fprintf (stderr, "voa: error sending stream packet\n");
 #if DEBUG > 1
         printf ("voa: size: %d (%lu)\n", pak_size, info.size);
@@ -954,7 +964,8 @@ static void enc_main_loop ()
     fprintf (stderr, "voa: failed to create EOS packet\n");
     term = -1;
   } else if (!send_pipe_message (data.allnet_socket, (const char *)pak,
-                                 pak_size, ALLNET_PRIORITY_DEFAULT_HIGH)) {
+                                 pak_size, ALLNET_PRIORITY_DEFAULT_HIGH,
+                                 alog)) {
     fprintf (stderr, "voa: error sending EOS packet\n");
   }
 }
@@ -1186,7 +1197,8 @@ int main (int argc, char ** argv)
             argv [0]);
     return 0;
   }
-  pd p = init_pipe_descriptor ();
+  struct allnet_log * alog = init_log ("voa (voice-over-allnet)");
+  pd p = init_pipe_descriptor (alog);
   int socket = connect_to_local (argv [0], argv [0], p);
   if (socket < 0) {
     fprintf (stderr, "Could not connect to AllNet\n");
@@ -1286,19 +1298,19 @@ int main (int argc, char ** argv)
     int i = 0;
     if (nowait) {
       /* send stream without waiting for acceptance */
-      if (send_voa_request ())
-        enc_main_loop ();
+      if (send_voa_request (alog))
+        enc_main_loop (alog);
 
     } else {
       /* retry 10x every 2s */
       do {
         printf (".");
         fflush (stdout);
-        if (!send_voa_request ())
+        if (!send_voa_request (alog))
           break;
         if (voa_receive (p, 2000)) {
           printf ("\n");
-          enc_main_loop ();
+          enc_main_loop (alog);
           break;
         }
       } while (++i < 10);

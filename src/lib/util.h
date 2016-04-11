@@ -6,6 +6,8 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 
+#include "allnet_log.h"
+
 /* print up to max of the count characters in the buffer.
  * desc is printed first unless it is null
  * a newline is printed after if print_eol
@@ -229,7 +231,8 @@ extern void writeb64u (unsigned char * p, unsigned long long int value);
 /* returns 1 if the message is valid, 0 otherwise */
 extern int is_valid_message (const char * packet, int size);
 
-extern void print_gethostbyname_error (char * hostname);
+extern void print_gethostbyname_error (const char * hostname,
+                                       struct allnet_log * log);
 
 /* assuming option_letter is 'v', returns 1 if argv has '-v', 0 otherwise
  * if it returns 1, removes the -v from the argv, and decrements *argcp.

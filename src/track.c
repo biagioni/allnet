@@ -6,7 +6,6 @@
 #include "lib/packet.h"
 #include "lib/priority.h"
 #include "lib/util.h"
-#include "lib/log.h"
 
 #define SAVED_ADDRESSES	128
 

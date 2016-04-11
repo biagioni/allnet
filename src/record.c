@@ -13,7 +13,6 @@
 #include <time.h>
 
 #include "record.h"
-#include "lib/log.h"
 
 #define ENTRIES_PER_TABLE		(64 * 1024)
 
@@ -80,10 +79,10 @@ static int get_hash_time (struct hash_entry * entry, int hash, time_t now)
           entry->hash, entry->last_seen, hash, now); */
   if ((entry->hash != hash) || (entry->last_seen == 0))
     return 0;
-  int hash_time = now - entry->last_seen;
+  time_t hash_time = now - entry->last_seen;
   if (hash_time == 0)
     hash_time = 1;
-  return hash_time;
+  return (int)hash_time;
 }
 
 static void init ()

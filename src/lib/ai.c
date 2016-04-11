@@ -7,7 +7,6 @@
 #include "packet.h"
 #include "ai.h"
 #include "util.h"
-#include "log.h"
 
 /* buffer parameter must have at least size 42 */
 /* returns the number of buffer characters used */
@@ -157,10 +156,8 @@ int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
                sin6->sin6_port, ia);
     return 1;
   } else {
-    snprintf (log_buf, LOG_SIZE,
-              "error: unable to create address info with family %d, size %d\n",
-              sap->sa_family, addr_size);
-    log_print ();
+    printf ("error: unable to create address info with family %d, size %d\n",
+            sap->sa_family, addr_size);
     return 0;
   }
 }
@@ -241,9 +238,8 @@ void standardize_ip (struct sockaddr * ap, socklen_t asize)
       (asize >= sizeof (struct sockaddr_in6)) &&
       (memcmp (ap6->sin6_addr.s6_addr, ipv4_in_ipv6_prefix, 12) == 0)) {
 #ifdef DEBUG_PRINT
-    int off = snprintf (log_buf, LOG_SIZE, "converting IPv6 address: ");
-    print_sockaddr_str (ap, asize, 1, log_buf + off, LOG_SIZE - off);
-    log_print ();
+    printf ("converting IPv6 address: ");
+    print_sockaddr (ap, asize, 1);
 #endif /* DEBUG_PRINT */
     int port = ap6->sin6_port;
     uint32_t ip4; 
@@ -252,17 +248,13 @@ void standardize_ip (struct sockaddr * ap, socklen_t asize)
     ap4->sin_port = port;
     ap4->sin_addr.s_addr = ip4;
 #ifdef DEBUG_PRINT
-    off = snprintf (log_buf, LOG_SIZE, "converted to IPv4 address: ");
-    print_sockaddr_str (ap, asize, 1, log_buf + off, LOG_SIZE - off);
-    log_print ();
+    printf ("converted to IPv4 address: ");
+    print_sockaddr (ap, asize, 1);
 #endif /* DEBUG_PRINT */
   }
 #ifdef DEBUG_PRINT
-  else {
-    snprintf (log_buf, LOG_SIZE,
-              "standardize_ip not converted, af %d\n", ap->sa_family);
-    log_print ();
-  }
+  else
+    printf ("standardize_ip not converted, af %d\n", ap->sa_family);
 #endif /* DEBUG_PRINT */
 }
 

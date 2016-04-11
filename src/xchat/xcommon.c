@@ -21,7 +21,7 @@
 #include "lib/pipemsg.h"
 #include "lib/cipher.h"
 #include "lib/priority.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/sha.h"
 #include "lib/mapchar.h"
 
@@ -30,6 +30,8 @@
 #define FILL_LOCAL_ADDRESS	1
 #define FILL_REMOTE_ADDRESS	0
 #define FILL_ACK		2
+
+static struct allnet_log * alog = NULL;
 
 /* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
  * and power_two must be less than 32.
@@ -77,7 +79,7 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
               free (message); /* we only use the ack, not the message */
               char mid [MESSAGE_ID_SIZE];  /* message id, hash of the ack */
               sha512_bytes (ack, MESSAGE_ID_SIZE, mid, MESSAGE_ID_SIZE);
-              uint32_t bits = (readb32 (mid)) >> (32 - power_two);
+              uint32_t bits = (((uint32_t)readb32 (mid))) >> (32 - power_two);
               int mask = (1 << (bits % 8));
               if ((bitmap [bits / 8] & mask) == 0) {
                 bitmap [bits / 8] |= mask;
@@ -97,7 +99,7 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
         else
           nbits = get_remote (keysets [ikeyset], addr);
         if (nbits >= power_two) {
-          uint32_t bits = (readb32u (addr)) >> (32 - power_two);
+          uint32_t bits = (((uint32_t)readb32u (addr))) >> (32 - power_two);
           int mask = (1 << (bits % 8));
           if ((bitmap [bits / 8] & mask) == 0) {
             bitmap [bits / 8] |= mask;
@@ -116,7 +118,7 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
  * 2 twice as likely as 3, and so on. */
 static int random_hop_count ()
 {
-  int n = random_int (0, 511);
+  int n = (int)random_int (0, 511);
   int hops = 1;
   /* set hops to 1 + the number of final 1 bits in n */
   while ((n & 1) != 0) {
@@ -129,7 +131,8 @@ static int random_hop_count ()
 static void * request_cached_data (void * arg)
 {
   int sock = * (int *) arg;
-  int sleep_time = random_int (30, 90);/* initial sleep, slowly grow to ~1hr */
+  /* initial sleep is 30s-90s, slowly grow to ~1hr */
+  int sleep_time = (int)random_int (30, 90);
   while (1) {  /* loop forever, unless the socket is closed */
 #define BITMAP_BITS_LOG	8  /* 11 or less to keep packet size below 1K */
 #define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
@@ -161,23 +164,27 @@ static void * request_cached_data (void * arg)
       adr->mid_bits_power_two = 0;
     }
     int priority = ALLNET_PRIORITY_LOCAL_LOW;
-    if (! send_pipe_message_free (sock, (char *) (hp), size, priority)) {
-      snprintf (log_buf, LOG_SIZE,
+    if (! send_pipe_message_free (sock, (char *) (hp), size, priority, alog)) {
+      snprintf (alog->b, alog->s,
                 "unable to request cached data on %d, ending request thread\n",
                 sock);
+      log_print (alog);
       return NULL;
     }
     sleep (sleep_time);
     if (sleep_time >= 3600)
-      sleep_time = random_int (2400, 3600);
-    else
-      sleep_time = random_int (sleep_time + 30, (sleep_time * 12) / 10 + 30);
+      sleep_time = (int)random_int (2400, 3600);
+    else  /* increase sleep time by 1.2 plus 30 seconds */
+      sleep_time = (int)random_int (sleep_time + 30,
+                                    (sleep_time * 12) / 10 + 30);
   }
 }
 
 /* returns the socket if successful, -1 otherwise */
 int xchat_init (char * arg0, pd p)
 {
+  if (alog == NULL)
+    alog = init_log ("xchat/xcommon");
   int sock = connect_to_local ("xcommon", arg0, p);
   if (sock < 0)
     return -1;
@@ -232,7 +239,8 @@ static void send_ack (int sock, struct allnet_header * hp,
 #ifdef DEBUG_PRINT
   print_packet ((char *) ackp, size, "sending ack", 1);
 #endif /* DEBUG_PRINT */
-  send_pipe_message_free (sock, (char *) ackp, size, ALLNET_PRIORITY_LOCAL);
+  send_pipe_message_free (sock, (char *) ackp, size,
+                          ALLNET_PRIORITY_LOCAL, alog);
 /* after sending the ack, see if we can get any outstanding
  * messages from the peer */
   if (send_resend_request)
@@ -321,9 +329,9 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) data;
   char * verif = data;
-  int media = 0;
+  unsigned long int media = 0;
   if (dsize >= sizeof (struct allnet_app_media_header) + 2)
-    media = readb32u (amhp->media);
+    media = (int)readb32u (amhp->media);
   if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
       (media != ALLNET_MEDIA_TIME_TEXT_BIN)) {
 #ifdef DEBUG_PRINT
@@ -431,7 +439,7 @@ static int handle_data (int sock, struct allnet_header * hp,
 #endif /* DEBUG_PRINT */
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
 
-  int app = readb32u (cdp->app_media.app);
+  unsigned long int app = readb32u (cdp->app_media.app);
   if (app != XCHAT_ALLNET_APP_ID) {
 #ifdef DEBUG_PRINT
     printf ("handle_data ignoring unknown app %08x\n", app);
@@ -439,7 +447,7 @@ static int handle_data (int sock, struct allnet_header * hp,
 #endif /* DEBUG_PRINT */
     return 0;
   }
-  int media = readb32u (cdp->app_media.media);
+  unsigned long int media = readb32u (cdp->app_media.media);
   long long int seq = readb64u (cdp->counter);
   if (seq == COUNTER_FLAG) {
     if (media == ALLNET_MEDIA_DATA) {
@@ -485,7 +493,7 @@ static int handle_data (int sock, struct allnet_header * hp,
 
   if (media == ALLNET_MEDIA_PUBLIC_KEY) {
     cleartext = "received a key for an additional device";
-    msize = strlen (cleartext);
+    msize = (int)strlen (cleartext);
   }
 
   *desc = chat_descriptor_to_string (cdp, 0, 0);
@@ -521,7 +529,7 @@ static int handle_sub (int sock, struct allnet_header * hp,
       (struct allnet_app_media_header *) data;
     assert (ALLNET_APP_ID_SIZE == 4);
     assert (ALLNET_MEDIA_ID_SIZE == 4);
-    int media = 0;
+    unsigned long int media = 0;
     if (dsize >=
         sizeof (struct allnet_app_media_header) + 2 + KEY_RANDOM_PAD_SIZE)
       media = readb32u (amhp->media);
@@ -571,13 +579,14 @@ static int send_key (int sock, const char * contact, keyset kset,
 
   char * data = message + ALLNET_SIZE (hp->transport);
   memcpy (data, my_public_key, pub_ksize);
-  sha512hmac (my_public_key, pub_ksize, secret, strlen (secret),
+  sha512hmac (my_public_key, pub_ksize, secret, (int)strlen (secret),
               /* hmac is written directly into the packet */
               data + pub_ksize);
   random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
 
 /* printf ("sending key of size %d\n", size); */
-  if (! send_pipe_message_free (sock, message, size, ALLNET_PRIORITY_LOCAL)) {
+  if (! send_pipe_message_free (sock, message, size,
+                                ALLNET_PRIORITY_LOCAL, alog)) {
     printf ("unable to send %d-byte key exchange packet to %s\n",
             size, contact);
     return 0;
@@ -706,11 +715,11 @@ static int handle_key (int sock, struct allnet_header * hp,
   }
   char * received_hmac = data + ksize;
   char hmac [SHA512_SIZE];
-  sha512hmac (received_key, ksize, secret1, strlen (secret1), hmac);
+  sha512hmac (received_key, ksize, secret1, (int)strlen (secret1), hmac);
   int found1 = (memcmp (hmac, received_hmac, SHA512_SIZE) == 0);
   int found2 = 0;
   if ((! found1) && (secret2 != NULL)) {
-    sha512hmac (received_key, ksize, secret2, strlen (secret2), hmac);
+    sha512hmac (received_key, ksize, secret2, (int)strlen (secret2), hmac);
     found2 = (memcmp (hmac, received_hmac, SHA512_SIZE) == 0);
   }
 #ifdef DEBUG_PRINT
@@ -1050,7 +1059,8 @@ static int send_key_request (int sock, char * phrase,
 #ifdef DEBUG_PRINT
   printf ("sending %d-byte key request\n", psize);
 #endif /* DEBUG_PRINT */
-  if (! send_pipe_message_free (sock, packet, psize, ALLNET_PRIORITY_LOCAL)) {
+  if (! send_pipe_message_free (sock, packet, psize,
+                                ALLNET_PRIORITY_LOCAL, alog)) {
     printf ("unable to send key request message\n");
     return 0;
   }

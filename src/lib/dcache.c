@@ -7,7 +7,6 @@
 
 #include "util.h"
 #include "dcache.h"
-#include "log.h"
 
 /* When getting rid of the data, the release function is called.  If
  * the data was malloc'd, the release function might be "free". */
@@ -44,11 +43,9 @@ void * cache_init  (int max_entries, release_function f)
            + max_entries * sizeof (struct dcache_entry);
   struct dcache * result = malloc_or_fail (size, "cache_init");
 /*
-  snprintf (log_buf, LOG_SIZE,
-            "allocated %p, %d bytes = %zd + %d * %zd\n", result,
-            size, sizeof (struct dcache), max_entries,
-            sizeof (struct dcache_entry));
-  log_print ();
+  printf ("allocated %p, %d bytes = %zd + %d * %zd\n", result,
+          size, sizeof (struct dcache), max_entries,
+          sizeof (struct dcache_entry));
 */
   result->f = f;
   result->max_entries = max_entries;
@@ -70,9 +67,8 @@ static void release_entry (struct dcache * cache, int index)
   cache->busy = 0;
   cache->entries [index].data = NULL;
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "released entry %d of %d (max %d)\n",
-            index, cache->num_entries, cache->max_entries);
-  log_print ();
+  printf ("released entry %d of %d (max %d)\n",
+          index, cache->num_entries, cache->max_entries);
 #endif /* DEBUG_PRINT */
 }
 
@@ -86,9 +82,6 @@ void cache_close (void * cp)
       release_entry (cache, i);
   /* do not unlock!!!   Prevents further use of the cache */
   printf ("closing cache, lock still held, will never use again\n");
-  snprintf (log_buf, LOG_SIZE,
-            "closing cache, lock still held, will never use again\n");
-  log_print ();
   /* pthread_mutex_unlock (&(cache->mutex)); */
 }
 
@@ -172,18 +165,11 @@ count - found - 1, i, cache->entries [i].data); */
         result [found] = cache->entries [i].data;
         found++;
         if (found > count) {   /* found should never exceed count */
-          snprintf (log_buf, LOG_SIZE,
-                    "coding error in dcache.c, %d/%d, min %d, %d entries\n",
-                    found, count, min, cache->num_entries);
-          log_print ();
-          int offset = 0;
+          printf ("coding error in dcache.c, %d/%d, min %d, %d entries\n",
+                  found, count, min, cache->num_entries);
           for (j = 0; j < cache->num_entries; j++)
-            offset += snprintf (log_buf + offset, LOG_SIZE - offset,
-                                "%d ", matches [j]);
-          offset += snprintf (log_buf + offset, LOG_SIZE - offset, "\n");
-          log_print ();
-          snprintf (log_buf, LOG_SIZE, "error, exiting\n");
-          log_print ();
+            printf ("%d ", matches [j]);
+          printf ("\nerror, exiting\n");
           exit (1);
         }
       }
@@ -241,11 +227,9 @@ void cache_record_usage (void * cp, void * data)
   if (cache->busy) return;
   pthread_mutex_lock (&(cache->mutex));
   int index = find_data (cache, data);
-  if (index == -1) {
-    snprintf (log_buf, LOG_SIZE,
-              "unable to record usage for data %p, not found\n", data);
-    log_print ();
-  } else
+  if (index == -1)
+    printf ("unable to record usage for data %p, not found\n", data);
+  else
     record_usage (cache, index);
   pthread_mutex_unlock (&(cache->mutex));
 }
@@ -254,8 +238,7 @@ void cache_record_usage (void * cp, void * data)
 /* may close the least recently active entry */
 void cache_add (void * cp, void * data)
 {
-/* snprintf (log_buf, LOG_SIZE, "cache_add, cache %p, data %p\n", cp, data);
-  log_print (); */
+/* printf ("cache_add, cache %p, data %p\n", cp, data); */
   struct dcache * cache = (struct dcache *) cp;
   if (cache->busy) return;
   pthread_mutex_lock (&(cache->mutex));
@@ -270,14 +253,13 @@ void cache_add (void * cp, void * data)
 
   /* not in the cache */
   int index = cache->num_entries;
-/* snprintf (log_buf, LOG_SIZE, "not in cache, index %d, max_entries %d\n",
-            index, cache->max_entries);
-  log_print (); */
+/* printf ("not in cache, index %d, max_entries %d\n", index,
+          cache->max_entries);
+  */
   if (index == cache->max_entries) {
     index--;
 #ifdef DEBUG_PRINT
-    snprintf (log_buf, LOG_SIZE, "calling release_entry (%d)\n", index);
-    log_print ();
+    printf ("calling release_entry (%d)\n", index);
 #endif /* DEBUG_PRINT */
     release_entry (cache, index);   /* release it as needed */
   } else {    /* new entry, no need to release */
@@ -285,10 +267,8 @@ void cache_add (void * cp, void * data)
   }
   cache->entries [index].data = data;
   record_usage (cache, index);    /* move it to the front */
-/* snprintf (log_buf, LOG_SIZE,
-            "now in cache, num_entries %d, max_entries %d\n",
-            cache->num_entries, cache->max_entries);
-  log_print (); */
+/* printf ("now in cache, num_entries %d, max_entries %d\n",
+          cache->num_entries, cache->max_entries); */
   pthread_mutex_unlock (&(cache->mutex));
 }
 
@@ -297,13 +277,10 @@ static void actual_remove (struct dcache * cache, int index)
 {
   if ((cache->num_entries <= 0) || (index < 0) ||
       (index >= cache->num_entries)) {
-    snprintf (log_buf, LOG_SIZE, "cache unable to remove %d from %d\n",
-              index, cache->num_entries);
-    log_print ();
+    printf ("cache unable to remove %d from %d\n", index, cache->num_entries);
     return;
   }
-  snprintf (log_buf, LOG_SIZE, "remove calling release_entry (%d)\n", index);
-  log_print ();
+  printf ("remove calling release_entry (%d)\n", index);
   release_entry (cache, index);
   cache->num_entries--;
   int i;
@@ -320,11 +297,9 @@ void cache_remove (void * cp, void * data)
   if (cache->busy) return;
   pthread_mutex_lock (&(cache->mutex));
   int index = find_data (cache, data);
-  if (index == -1) {
-    snprintf (log_buf, LOG_SIZE, "unable to remove data %p, not found\n",
-              data);
-    log_print ();
-  } else
+  if (index == -1)
+    printf ("unable to remove data %p, not found\n", data);
+  else
     actual_remove (cache, index);
   pthread_mutex_unlock (&(cache->mutex));
 }

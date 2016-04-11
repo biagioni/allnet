@@ -20,7 +20,7 @@
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 
 struct thread_arg {
   int sock;
@@ -32,8 +32,6 @@ struct thread_arg {
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
-  pthread_cleanup_push (close_log, NULL);
-  init_log ("xtime.c receive_ignore");
   struct thread_arg * tap = (struct thread_arg *) arg;
   int sock = tap->sock;
   pd p = tap->p;
@@ -46,7 +44,6 @@ static void * receive_ignore (void * arg)
     else          /* some error -- quit */
       break;
   }
-  pthread_cleanup_pop (1);
   return NULL;
 }
 
@@ -149,7 +146,8 @@ static int make_announcement (char * buffer, int n,
                               time_t send, time_t expiration, int hops,
                               allnet_rsa_prvkey key,
                               unsigned char * source, int sbits,
-                              unsigned char * dest, int dbits)
+                              unsigned char * dest, int dbits,
+                              struct allnet_log * log)
 {
   int hsize = ALLNET_SIZE (ALLNET_TRANSPORT_EXPIRATION);
   int h2size = sizeof (struct allnet_app_media_header);
@@ -163,8 +161,8 @@ static int make_announcement (char * buffer, int n,
     init_packet (buffer, n, ALLNET_TYPE_CLEAR, hops, ALLNET_SIGTYPE_NONE,
                  source, sbits, dest, dbits, NULL, NULL);
   if (hp == NULL) {
-    snprintf (log_buf, LOG_SIZE, "error: unable to create announcement\n");
-    log_print ();
+    snprintf (log->b, log->s, "error: unable to create announcement\n");
+    log_print (log);
     return -1;
   }
   hp->transport |= ALLNET_TRANSPORT_EXPIRATION;
@@ -173,9 +171,9 @@ static int make_announcement (char * buffer, int n,
   if (n < hsize + h2size + ALLNET_TIME_SIZE) {
     printf ("error2: n %d should be at least %d + %d + %d\n",
             n, hsize, h2size, ALLNET_TIME_SIZE);
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, log->s,
               "error: sizes %d + %d, buffer size %d\n", hsize, h2size, n);
-    log_print ();
+    log_print (log);
     return -1;
   }
   char * dp = buffer + hsize;
@@ -211,7 +209,8 @@ static int make_announcement (char * buffer, int n,
 static void announce (time_t interval, int sock,
                       int hops, allnet_rsa_prvkey key,
                       unsigned char * source, int sbits,
-                      unsigned char * dest, int dbits)
+                      unsigned char * dest, int dbits,
+                      struct allnet_log * log)
 {
   static int called_before = 0;
   struct timeval now;
@@ -227,19 +226,19 @@ static void announce (time_t interval, int sock,
                                 announce_time - ALLNET_Y2K_SECONDS_IN_UNIX,
                                 announce_time + interval -
                                   ALLNET_Y2K_SECONDS_IN_UNIX,
-                                hops, key, source, sbits, dest, dbits);
+                                hops, key, source, sbits, dest, dbits, log);
   if (blen <= 0) {
     printf ("unknown error: make_announcement returned %d\n", blen);
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, log->s,
               "make_announcement returned %d, aborting\n", blen);
-    log_print ();
+    log_print (log);
     exit (1);
   }
 
   wait_until (announce_time);
 
   /* send with fairly low priority */
-  send_pipe_message (sock, buffer, blen, ALLNET_PRIORITY_LOCAL_LOW);
+  send_pipe_message (sock, buffer, blen, ALLNET_PRIORITY_LOCAL_LOW, log);
 
   struct timeval tv;
   gettimeofday (&tv, NULL);
@@ -257,6 +256,7 @@ static int init_xtime (char * arg0, pd p)
 
 int main (int argc, char ** argv)
 {
+  struct allnet_log * log = init_log ("xtime");
   log_to_output (get_option ('v', &argc, argv));
   int hops = 10;
   if (argc < 2) {
@@ -277,10 +277,10 @@ int main (int argc, char ** argv)
   printf ("xtime: got public + private key, address %02x.%02x\n",
           key->address [0] & 0xff, key->address [1] & 0xff);
   
-  pd p = init_pipe_descriptor ();
+  pd p = init_pipe_descriptor (log);
   int sock = init_xtime (argv [0], p);
   pthread_t receive_thread;
-  struct thread_arg arg;
+  static struct thread_arg arg;
   arg.sock = sock;
   arg.p = p;
   if (pthread_create (&receive_thread, NULL, receive_ignore, &arg) != 0) {
@@ -290,5 +290,5 @@ int main (int argc, char ** argv)
 
   while (1)
     announce (interval, sock, hops, key->prv_key,
-              key->address, ADDRESS_BITS, key->address, ADDRESS_BITS);
+              key->address, ADDRESS_BITS, key->address, ADDRESS_BITS, log);
 }

@@ -16,7 +16,7 @@
 #include "lib/mgmt.h"
 #include "lib/util.h"
 #include "lib/ai.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/configfiles.h"
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -52,6 +52,8 @@ static int dns_init = 0;
  * new address on every invocation (and perhaps more frequently?) */
 static int save_my_own_address = 1;
 
+static struct allnet_log * alog = NULL;
+
 /* save addresses every day (86400s) even if there are no new ones */
 #define PEER_SAVE_TIME		86400
 
@@ -62,15 +64,15 @@ void print_dht (int to_log)
   for (i = 0; i < MAX_PEERS; i++)
     if (peers [i].ai.nbits != 0)
       npeers++;
-  int n = snprintf (log_buf, LOG_SIZE, "%d peers: ", npeers);
+  int n = snprintf (alog->b, alog->s, "%d peers: ", npeers);
   n += buffer_to_string (my_address, ADDRESS_SIZE, "my address is",
-                         ADDRESS_SIZE, 1, log_buf + n, LOG_SIZE - n);
-  if (to_log) log_print (); else printf ("%s", log_buf);
+                         ADDRESS_SIZE, 1, alog->b + n, alog->s - n);
+  if (to_log) log_print (alog); else printf ("%s", alog->b);
   for (i = 0; i < MAX_PEERS; i++) {
     if (peers [i].ai.nbits != 0) {
-      n = snprintf (log_buf, LOG_SIZE, "%3d (%d): ", i, peers [i].refreshed);
-      addr_info_to_string (&(peers [i].ai), log_buf + n, LOG_SIZE - n);
-      if (to_log) log_print (); else printf ("%s", log_buf);
+      n = snprintf (alog->b, alog->s, "%3d (%d): ", i, peers [i].refreshed);
+      addr_info_to_string (&(peers [i].ai), alog->b + n, alog->s - n);
+      if (to_log) log_print (alog); else printf ("%s", alog->b);
     }
   }
 }
@@ -82,13 +84,13 @@ void print_ping_list (int to_log)
   for (i = 0; i < MAX_PINGS; i++)
     if (pings [i].ai.nbits > 0)
       count++;
-  snprintf (log_buf, LOG_SIZE, "pings: %d\n", count);
-  if (to_log) log_print (); else printf ("%s", log_buf);
+  snprintf (alog->b, alog->s, "pings: %d\n", count);
+  if (to_log) log_print (alog); else printf ("%s", alog->b);
   for (i = 0; i < MAX_PINGS; i++) {
     if (pings [i].ai.nbits > 0) {
-      n = snprintf (log_buf, LOG_SIZE, "%3d (%d): ", i, pings [i].refreshed);
-      addr_info_to_string (&(pings [i].ai), log_buf + n, LOG_SIZE - n);
-      if (to_log) log_print (); else printf ("%s", log_buf);
+      n = snprintf (alog->b, alog->s, "%3d (%d): ", i, pings [i].refreshed);
+      addr_info_to_string (&(pings [i].ai), alog->b + n, alog->s - n);
+      if (to_log) log_print (alog); else printf ("%s", alog->b);
     }
   }
 }
@@ -113,7 +115,6 @@ static int not_already_listed (struct sockaddr_storage * sap,
 /* run as a thread since getaddrinfo can be extremely slow (10's of seconds) */
 static void * init_default_dns (void * arg)
 {
-  init_log ("routing.c init_default_dns");
   int * initialized = (int *) arg;
   char service [10];
   snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
@@ -148,9 +149,9 @@ static void * init_default_dns (void * arg)
 #ifndef DEBUG_PRINT
       if (code != EAI_NONAME)
 #endif /* ! DEBUG_PRINT */
-      snprintf (log_buf, LOG_SIZE, "getaddrinfo (%s): %s\n", default_dns [i],
+      snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n", default_dns [i],
                 gai_strerror (code));
-      log_print ();
+      log_print (alog);
     }
   }
 #ifdef DEBUG_PRINT
@@ -165,8 +166,8 @@ static void * init_default_dns (void * arg)
   }
 #endif /* DEBUG_PRINT */
   *initialized = 1;
-  snprintf (log_buf, LOG_SIZE, "init_default_dns is complete\n");
-  log_print ();
+  snprintf (alog->b, alog->s, "init_default_dns is complete\n");
+  log_print (alog);
   dns_init = 1;  /* done initializing addresses from dns */
   return NULL;
 }
@@ -292,7 +293,7 @@ static char * read_buffer (char * in, int nbytes, char * buf, int bsize)
     if ((*in == '.') || (*in == ' '))
       in++;
     char * end;
-    buf [0] = strtol (in, &end, 16);
+    buf [0] = (int)strtol (in, &end, 16);
     if (end == in) {
       return in;
     }
@@ -313,13 +314,13 @@ static void load_peer (struct addr_info * peer, char * line, int real_peer)
   if ((end [0] != ' ') || (end [1] != '('))
     return;
   line = end + 2;
-  int nbits = strtol (line, &end, 10);
+  int nbits = (int)strtol (line, &end, 10);
   if (end == line)
     return;
   if ((end [0] != ')') || (end [1] != ' '))
     return;
   line = end + 2;
-  int num_bytes = strtol (line, &end, 10);
+  int num_bytes = (int)strtol (line, &end, 10);
   if ((num_bytes > 8) || (end == line) || (memcmp (end, " bytes: ", 8) != 0))
     return;
   line = end + 8;
@@ -329,7 +330,7 @@ static void load_peer (struct addr_info * peer, char * line, int real_peer)
   if (memcmp (line, ", v ", 4) != 0)
     return;
   line += 4;
-  int ipversion = strtol (line, &end, 10);
+  int ipversion = (int)strtol (line, &end, 10);
   if (end == line)
     return;
   if ((ipversion != 4) && (ipversion != 6)) {
@@ -340,7 +341,7 @@ static void load_peer (struct addr_info * peer, char * line, int real_peer)
   if (memcmp (line, ", port ", 7) != 0)
     return;
   line += 7;
-  int port = strtol (line, &end, 10);
+  int port = (int)strtol (line, &end, 10);
   if (end == line)
     return;
   line = end;
@@ -370,8 +371,8 @@ static void init_defaults ()
 {
   random_bytes (my_address, ADDRESS_SIZE);
   buffer_to_string (my_address, ADDRESS_SIZE, "new random address",
-                    ADDRESS_SIZE, 1, log_buf, LOG_SIZE);
-  log_print ();
+                    ADDRESS_SIZE, 1, alog->b, alog->s);
+  log_print (alog);
   save_id ();
 }
 
@@ -402,7 +403,7 @@ printf ("unable to open .allnet/adht/my_id\n");
       random_bytes (my_address, ADDRESS_SIZE);
       printf ("~/.allnet/adht/my_id begins with '-', not saving\n");
     } else {   /* line >= 30 bytes long, beginning with "8 bytes: " */
-      read_buffer (line + 9, strlen (line + 9), my_address, ADDRESS_SIZE);
+      read_buffer (line + 9, (int)strlen (line + 9), my_address, ADDRESS_SIZE);
     }
     close (fd);
   }
@@ -413,7 +414,7 @@ printf ("unable to open .allnet/adht/my_id\n");
   while (read_line (fd, line, sizeof (line))) {
     if (strncmp (line, "p: ", 3) != 0) {
       char * end;
-      int peer = strtol (line, &end, 10);
+      int peer = (int)strtol (line, &end, 10);
       if ((end != line) && (peer >= 0) && (peer < MAX_PEERS)) {
         load_peer (&(peers [peer].ai), end, 1);
         peers [peer].refreshed = 1;
@@ -441,6 +442,8 @@ printf ("unable to open .allnet/adht/my_id\n");
 /* always called with lock held */
 static int init_peers (int always)
 {
+  if (alog == NULL)
+    alog = init_log ("routing");
   static int initialized = 0;
   int result = 1 - initialized;  /* return 1 if this is the first call */
   if ((! initialized) || (always)) {
@@ -557,8 +560,8 @@ static void exact_match_print (char * description, int found,
   print_dht (0);
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
-  snprintf (log_buf, LOG_SIZE, "%s returns %d\n", description, found);
-  log_print ();
+  snprintf (alog->b, alog->s, "%s returns %d\n", description, found);
+  log_print (alog);
 }
 
 /* returns 1 if found (and fills in result if not NULL), otherwise returns 0 */

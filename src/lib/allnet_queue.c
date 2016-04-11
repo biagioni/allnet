@@ -158,14 +158,15 @@ int allnet_enqueue (struct allnet_queue * queue,
       memcpy (storage, packet + initial, plen - initial);
     }
     free->priority = priority;
+/* printf ("added %d-byte message, queue has %d messages\n", plen, queue->count); */
     pthread_mutex_unlock (&(queue->mutex));
     return 1;
-  }
+  }  /* else invalid queue, no need to unlock */
   printf ("error %s: invalid queue in allnet_enqueue\n", queue->debug_info);
   return 0;
 }
 
-static void sleep_ms (unsigned int ms)
+static void sleep_ms (unsigned long ms)
 {
   if (ms > 0) {
     struct timespec time;
@@ -182,10 +183,10 @@ static void sleep_ms (unsigned int ms)
  * if no queue has a packet, returns -1 (and no lock is held) */
 static int queue_has (struct allnet_queue ** queues, unsigned int n)
 {
-  int restart;
+  int restart = 0;
   int loop_count = 0;
   int start = random () % n;
-  do {
+  while ((restart) && (loop_count++ < 3)) {
     restart = 0;
     int counter;
     for (counter = 0; counter < n; counter++) {
@@ -196,14 +197,14 @@ static int queue_has (struct allnet_queue ** queues, unsigned int n)
           if ((queues [i]->valid) && (queues [i]->count > 0))
              /* count is still nonzero, we found one */
             return i;   /* returning with lock held */
-          /* count reached zero while trying the lock, release the lock */
+          /* count became zero while trying the lock, release the lock */
           pthread_mutex_unlock (&(queues [i]->mutex));
         } else { /* mutex is locked by someone else, allow searching again */
           restart = 1;
         }
       }
     }
-  } while ((restart) && (loop_count++ < 3));
+  }
   return -1;
 }
 
@@ -219,12 +220,12 @@ static int dequeue_unlock (struct allnet_queue * queue, unsigned char * packet,
   }
   struct queue_entry * e = queue->packets + queue->first;
   int buffer_length = *plen;
-  *plen = e->length;
-  if (buffer_length < *plen) {
+  int packet_length = e->length;
+  *plen = packet_length;
+  if (buffer_length < packet_length) {
     pthread_mutex_unlock (&(queue->mutex));
-    return -2;
+    return -2;   /* we set *plen, so record the size */
   }
-  int packet_length = *plen;
   int copy_length = packet_length;
   unsigned char * storage = allnet_queue_buf (queue);
   unsigned char * start_ptr = storage + e->start_offset;
@@ -234,6 +235,7 @@ static int dequeue_unlock (struct allnet_queue * queue, unsigned char * packet,
   if (copy_length < packet_length)    /* data wraps around in storage */
     memcpy (packet + copy_length, storage, packet_length - copy_length);
   *priority = e->priority;
+    
   queue->first = (queue->first + 1) % queue->max_packets;
   queue->count = queue->count - 1;
   pthread_mutex_unlock (&(queue->mutex));
@@ -270,10 +272,11 @@ int allnet_dequeue (struct allnet_queue ** queues, unsigned int * nqueue,
     return 0;
   }
   /* simple implementation: loop, checking the queues
-   * and sleeping 10ms until timeout */
+   * and sleeping 1ms until timeout */
   while (1) {
     int index = queue_has (queues, n);
     if (index >= 0) { /* the lock for queues [index] is held */
+printf ("found index %d, queue %s\n", index, queues [index]->debug_info);
       *nqueue = index;
       return dequeue_unlock (queues [index], packet, plen, priority);
     }

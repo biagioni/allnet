@@ -12,7 +12,7 @@
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/sha.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
@@ -271,8 +271,9 @@ int main (int argc, char ** argv)
   if (verbose)
     debug = 1;
   log_to_output (verbose);
+  struct allnet_log * log = init_log ("allnet_sniffer");
 
-  pd p = init_pipe_descriptor ();
+  pd p = init_pipe_descriptor (log);
   int sock = connect_to_local (argv [0], argv [0], p);
   if (sock < 0)
     return 1;

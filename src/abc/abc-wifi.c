@@ -16,7 +16,6 @@
 
 #include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */
 #include "lib/util.h"         /* delta_us */
-#include "lib/log.h"         /* delta_us */
 
 #include "abc-iface.h"        /* sockaddr_t, abc_iface_* */
 
@@ -39,7 +38,7 @@ const char * abc_wifi_config_type_strings[] = {
 };
 
 /* forward declarations */
-static int abc_wifi_init (const char * interface);
+static int abc_wifi_init (const char * interface, struct allnet_log * log);
 static int abc_wifi_is_enabled ();
 static int abc_wifi_set_enabled (int state);
 static int abc_wifi_cleanup ();
@@ -72,6 +71,8 @@ static abc_wifi_config_iface * wifi_config_types[] = {
 };
 static abc_wifi_config_iface * wifi_config_iface = NULL;
 
+static struct allnet_log * alog = NULL;
+
 static int abc_wifi_is_enabled ()
 {
   return wifi_config_iface->iface_is_enabled_cb () &&
@@ -82,15 +83,15 @@ static int abc_wifi_set_enabled (int state)
 {
 #ifdef DEBUG_PRINT
   char * pstate = state ? "enable" : "disable";
-  snprintf (log_buf, LOG_SIZE, "abc-wifi: %s wifi\n", pstate);
-  log_print ();
+  snprintf (alog->b, alog->s, "abc-wifi: %s wifi\n", pstate);
+  log_print (alog);
   printf ("abc-wifi: %s wifi\n", pstate);
 #endif /* DEBUG_PRINT */
   int ret = wifi_config_iface->iface_set_enabled_cb (state);
   if (ret == 1 && state) {
 #ifdef DEBUG_PRINT
-    snprintf (log_buf, LOG_SIZE, "abc-wifi: connecting\n");
-    log_print ();
+    snprintf (alog->b, alog->s, "abc-wifi: connecting\n");
+    log_print (alog);
     printf ("abc-wifi: connecting\n");
 #endif /* DEBUG_PRINT */
     return wifi_config_iface->iface_connect_cb ();
@@ -138,23 +139,24 @@ static int init_socket (struct ifaddrs * ifa)
   abc_iface_wifi.bc_address.ll.sll_pkttype = 0; /* packet(7) says to set to 0 */
   if (abc_iface_wifi.bc_address.ll.sll_ifindex !=
       abc_iface_wifi.if_address.ll.sll_ifindex) { /* does thie ever happen? */
-    snprintf (log_buf, LOG_SIZE, "abc-wifi error: indices %d != %d\n",
+    snprintf (alog->b, alog->s, "abc-wifi error: indices %d != %d\n",
               abc_iface_wifi.bc_address.ll.sll_ifindex,
               abc_iface_wifi.if_address.ll.sll_ifindex);
-    log_print ();
+    log_print (alog);
     abc_iface_wifi.bc_address.ll.sll_ifindex =
       abc_iface_wifi.if_address.ll.sll_ifindex;
   }
   abc_iface_print_sll_addr (&abc_iface_wifi.if_address.ll,
-                            "interface address", 0);
+                            "interface address", 0, alog);
   abc_iface_print_sll_addr (&abc_iface_wifi.bc_address.ll,
-                            "broadcast address", 0);
+                            "broadcast address", 0, alog);
   return 1;
 }
 
 /* returns 0 if the interface is not found, 1 otherwise */
-static int abc_wifi_init (const char * interface)
+static int abc_wifi_init (const char * interface, struct allnet_log * log)
 {
+  alog = log;
   if (abc_iface_wifi.iface_type_args != NULL) {
     int i;
     for (i = 0; i < sizeof (wifi_config_types); ++i) {
@@ -168,7 +170,7 @@ static int abc_wifi_init (const char * interface)
   if (! wifi_config_iface)
     wifi_config_iface = wifi_config_types [0];
 
-  if (! wifi_config_iface->init_iface_cb (interface))
+  if (! wifi_config_iface->init_iface_cb (interface, alog))
     return 0;
 
   struct ifaddrs * ifa;
@@ -184,10 +186,10 @@ static int abc_wifi_init (const char * interface)
       gettimeofday (&start, NULL);
       int is_up = wifi_config_iface->iface_is_enabled_cb ();
       int in_use = (is_up == 2);
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (alog->b, alog->s,
                 "abc-wifi: interface %s is enabled: %s (%d)\n", interface,
                 in_use ? "yes, but busy" : (is_up > 0 ? "yes" : "no"), is_up);
-      log_print ();
+      log_print (alog);
 #ifdef DEBUG_PRINT
       printf ("abc-wifi: interface %s is enabled: %s (%d)\n", interface,
               in_use ? "yes, but busy" : (is_up > 0 ? "yes" : "no"), is_up);
@@ -210,11 +212,11 @@ static int abc_wifi_init (const char * interface)
         printf ("(%lld.%03lld ms to turn on)\n",
                 mtime / 1000LL, mtime % 1000LL);
 #endif /* DEBUG_PRINT */
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (alog->b, alog->s,
                   "%s: %lld.%03lld ms on, %lld.%03lld ms on+connect",
                   interface, mtime / 1000LL, mtime % 1000LL,
                   time / 1000LL, time % 1000LL);
-        log_print ();
+        log_print (alog);
         abc_iface_wifi.iface_on_off_ms = time;
       }
       /* create the socket and initialize the address */

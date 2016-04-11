@@ -27,7 +27,7 @@
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -100,7 +100,7 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
   buf [10] = code;
   memcpy (buf + 11, peer, plen);
   memcpy (buf + 11 + plen, message, mlen);
-  n = sendto (sock, buf, length, MSG_DONTWAIT | MSG_NOSIGNAL, sap, slen);
+  n = sendto (sock, buf, length, MSG_DONTWAIT /* | MSG_NOSIGNAL */, sap, slen);
   if ((n != length) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
     return;  /* socket is busy -- should never be, but who knows */
   if (n != length) {
@@ -388,16 +388,12 @@ static pid_t exec_java_ui (char * arg)
 
 static void * child_wait_thread (void * arg)
 {
-  pthread_cleanup_push (close_log, NULL);
-  init_log ("xchat_socket child_wait_thread");
   pid_t pid = * ((int *) arg);
   int status;
   waitpid (pid, &status, 0);
   /* child has terminated, exit the entire program */
   /* printf ("shutting down\n"); */
   exit (0);
-  pthread_cleanup_pop (1);
-  return NULL;
 }
 
 struct unacked {
@@ -419,9 +415,7 @@ static void add_to_unacked (long long int seq, char * contact)
     if (strcmp (contact, contacts [i]) == 0)
       contact_index = i;
   if (contact_index < 0) {
-    snprintf (log_buf, LOG_SIZE, "xchat_socket: contact %s not found\n",
-              contact);
-    log_print ();
+    printf ("xchat_socket: contact %s not found\n", contact);
     return;
   }
   for (i = 0; i < unacked_count; i++)
@@ -474,7 +468,8 @@ int main (int argc, char ** argv)
   int forwarding_socket = atoi (argv [1]);
 */
 
-  pd p = init_pipe_descriptor ();
+  struct allnet_log * log = init_log ("xchat_socket");
+  pd p = init_pipe_descriptor (log);
   int sock = xchat_init (argv [0], p);
   if (sock < 0)
     return 1;

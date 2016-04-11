@@ -10,7 +10,7 @@
 #include <unistd.h>             /* sleep */
 
 #include "lib/util.h"           /* random_bytes */
-#include "lib/log.h"            /* log_buf, LOG_SIZE, log_print */
+#include "lib/allnet_log.h"     /* struct allnet_log, log_print */
 #include "abc-wifi.h"           /* abc_wifi_config_iface */
 #include "abc-networkmanager.h"
 
@@ -50,6 +50,8 @@ abc_wifi_config_iface abc_wifi_config_nm_wlan = {
 };
 
 static abc_nm_settings self;
+
+static struct allnet_log * alog = NULL;
 
 static dbus_bool_t append_variant (DBusMessageIter * iter, int type, void * val)
 {
@@ -700,8 +702,9 @@ int abc_wifi_config_nm_is_wireless_on ()
   return wlan_enabled;
 }
 
-int abc_wifi_config_nm_init (const char * iface)
+int abc_wifi_config_nm_init (const char * iface, struct allnet_log * use_log)
 {
+  alog = use_log;
   self.conn = NULL;
   self.iface = iface;
   self.nm_iface_obj = NULL;
@@ -712,9 +715,9 @@ int abc_wifi_config_nm_init (const char * iface)
     return 0;
 
   if (!get_device_path ()) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "abc-nm: network manager not found (probably not running)\n");
-    log_print ();
+    log_print (alog);
     return 0;
   }
 

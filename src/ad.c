@@ -13,13 +13,15 @@
 #include "record.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/util.h"
 
 #define PROCESS_PACKET_DROP	1
 #define PROCESS_PACKET_LOCAL	2  /* only forward to alocal */
 #define PROCESS_PACKET_OUT	3  /* only forward to aip and the abc's */
 #define PROCESS_PACKET_ALL	4  /* forward to alocal, aip, and the abc's */
+
+static struct allnet_log * alog = NULL;
 
 /* compute a forwarding priority for non-local packets */
 static int packet_priority (char * packet, struct allnet_header * hp, int size,
@@ -40,10 +42,10 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
        social_connection (soc, verify, vsize, hp->source, hp->src_nbits,
                           hp->sig_algo, sig, sig_size, &valid);
   } else if (sig_size > 0) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "invalid sigsize: %d, %d + %d + 2 = %d <? %d\n",
               hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size);
-    log_print ();
+    log_print (alog);
   }
   if (valid)
     rate_fraction = track_rate (hp->source, hp->src_nbits, size);
@@ -103,9 +105,9 @@ static int process_mgmt (char * message, int msize, int is_local,
       return PROCESS_PACKET_OUT;          /* local packet, forward out */
     }
   default:
-    snprintf (log_buf, LOG_SIZE, "unknown management message type %d\n",
+    snprintf (alog->b, alog->s, "unknown management message type %d\n",
               ahm->mgmt_type);
-    log_print ();
+    log_print (alog);
     *priority = ALLNET_PRIORITY_EPSILON;
     return PROCESS_PACKET_ALL;   /* forward unknown management packets */
   }
@@ -117,6 +119,9 @@ static int process_mgmt (char * message, int msize, int is_local,
 static int process_packet (char * packet, int size, int is_local,
                            struct social_info * soc, int * priority)
 {
+/* if (! is_valid_message (packet, size))
+printf ("got invalid %s packet of size %d, priority %d\n",
+        (is_local) ? "local" : "remote", size, *priority); */
   if (! is_valid_message (packet, size))
     return PROCESS_PACKET_DROP;
 
@@ -127,9 +132,9 @@ static int process_packet (char * packet, int size, int is_local,
   if ((! is_local) && (time > 0)) {
    /* we have received this packet before, so drop it */
 #ifdef LOG_PACKETS
-    snprintf (log_buf, LOG_SIZE, 
+    snprintf (alog->b, alog->s, 
               "packet received in the last %d seconds, dropping\n", time);
-    log_print ();
+    log_print (alog);
 #endif /* LOG_PACKETS */
     return PROCESS_PACKET_DROP;     /* duplicate, ignore */
   }
@@ -145,9 +150,9 @@ static int process_packet (char * packet, int size, int is_local,
       ah->hops++;
   }
 #ifdef LOG_PACKETS
-  snprintf (log_buf, LOG_SIZE, "forwarding %s packet with %d/%d hops\n",
+  snprintf (alog->b, alog->s, "forwarding %s packet with %d/%d hops\n",
             (is_local ? "local" : "received"), ah->hops, ah->max_hops);
-  log_print ();
+  log_print (alog);
 #endif /* LOG_PACKETS */
 
   if (ah->message_type == ALLNET_TYPE_MGMT) {     /* AllNet management */
@@ -177,19 +182,19 @@ static void send_all (char * packet, int psize, int priority,
 {
   int i;
 #ifdef LOG_PACKETS
-  int n = snprintf (log_buf, LOG_SIZE,
+  int n = snprintf (alog->b, alog->s,
                     "send_all (%s) sending %d bytes priority %d to %d pipes: ",
                     desc, psize, priority, nwrite);
   for (i = 0; i < nwrite; i++)
-    n += snprintf (log_buf + n, LOG_SIZE - n, "%d%s", write_pipes [i],
+    n += snprintf (alog->b + n, alog->s - n, "%d%s", write_pipes [i],
                    (((i + 1) < nwrite) ? ", " : "\n"));
-  log_print ();
+  log_print (alog);
 #endif /* LOG_PACKETS */
   for (i = 0; i < nwrite; i++) {
-    if (! send_pipe_message (write_pipes [i], packet, psize, priority)) {
-      snprintf (log_buf, LOG_SIZE, "write_pipes [%d] = %d is no longer valid\n",
+    if (! send_pipe_message (write_pipes [i], packet, psize, priority, alog)) {
+      snprintf (alog->b, alog->s, "write_pipes [%d] = %d is no longer valid\n",
                 i, write_pipes [i]);
-      log_print ();
+      log_print (alog);
     }
   }
 }
@@ -203,15 +208,15 @@ static void send_all (char * packet, int psize, int priority,
 static void main_loop (int npipes, int * read_pipes, int * write_pipes,
                        int update_seconds, int max_social_bytes, int max_checks)
 {
-  pd p = init_pipe_descriptor ();
+  pd p = init_pipe_descriptor (alog);
   int i;
   for (i = 0; i < npipes; i++)
     add_pipe (p, read_pipes [i]);
-/* snprintf (log_buf, LOG_SIZE, "ad calling init_social\n"); log_print (); */
-  struct social_info * soc = init_social (max_social_bytes, max_checks);
-/* snprintf (log_buf, LOG_SIZE, "ad calling update_social\n"); log_print (); */
+/* snprintf (alog->b, alog->s, "ad calling init_social\n"); log_print (alog); */
+  struct social_info * soc = init_social (max_social_bytes, max_checks, alog);
+/*snprintf (alog->b, alog->s, "ad calling update_social\n"); log_print (alog);*/
   time_t next_update = update_social (soc, update_seconds);
-/* snprintf (log_buf, LOG_SIZE, "ad finished update_social\n"); log_print ();*/
+/*snprintf (alog->b, alog->s, "ad finished update_social\n");log_print (alog);*/
 
   while (1) {
     /* read messages from each of the pipes */
@@ -222,20 +227,23 @@ static void main_loop (int npipes, int * read_pipes, int * write_pipes,
     int psize = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
                                           &packet, &from_pipe, &priority);
 #ifdef LOG_PACKETS
-    snprintf (log_buf, LOG_SIZE, "ad received %d, fd %d\n", psize, from_pipe);
-    log_print ();
+    snprintf (alog->b, alog->s, "ad received %d, fd %d\n", psize, from_pipe);
+    log_print (alog);
 #endif /* LOG_PACKETS */
     if (psize <= 0) { /* for now exit */
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (alog->b, alog->s,
                 "error: received %d from receive_pipe_message_any, pipe %d",
                 psize, from_pipe);
-      log_print ();
+      log_print (alog);
       int abc_pipe = 0;
       for (i = 2; i < npipes; i++)
         if (read_pipes [i] == from_pipe)
           abc_pipe = i;
       if (abc_pipe) {  /* abc may fail, we should not die */
 printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes [abc_pipe]);
+        snprintf (alog->b, alog->s, "ad closing [%d] %d %d\n",
+                  abc_pipe, read_pipes [abc_pipe], write_pipes [abc_pipe]);
+        log_print (alog);
         remove_pipe (p, read_pipes [abc_pipe]);
         close (read_pipes [abc_pipe]);
         close (write_pipes [abc_pipe]);
@@ -246,8 +254,8 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
         npipes--;
         continue;   /* read again */
       } else {  /* some other pipe */
-        snprintf (log_buf, LOG_SIZE, "  exiting\n");
-        log_print ();
+        snprintf (alog->b, alog->s, "  exiting\n");
+        log_print (alog);
         return;
       }
     }
@@ -297,23 +305,23 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
  */
 void ad_main (int npipes, int * rpipes, int * wpipes)
 {
-  init_log ("ad");
+  alog = init_log ("ad");
   if (npipes < 2) {
     printf ("%d pipes, at least 2 needed\n", npipes);
     return;
   }
-  snprintf (log_buf, LOG_SIZE, "AllNet (ad) version %d\n", ALLNET_VERSION);
-  log_print ();
+  snprintf (alog->b, alog->s, "AllNet (ad) version %d\n", ALLNET_VERSION);
+  log_print (alog);
   int i;
   for (i = 0; i < npipes; i++) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "read_pipes [%d] = %d, write_pipes [%d] = %d\n",
               i, rpipes [i], i, wpipes [i]);
-    log_print ();
+    log_print (alog);
   }
   main_loop (npipes, rpipes, wpipes, 30, 30000, 5);
-  snprintf (log_buf, LOG_SIZE, "ad error: main loop returned, exiting\n");
-  log_print ();
+  snprintf (alog->b, alog->s, "ad error: main loop returned, exiting\n");
+  log_print (alog);
 }
 
 #ifdef DAEMON_MAIN_FUNCTION
@@ -323,8 +331,6 @@ void ad_main (int npipes, int * rpipes, int * wpipes)
  */
 int main (int argc, char ** argv)
 {
-  log_to_output (get_option ('v', &argc, argv));
-  init_log ("ad");
   if (argc < 2) {
     printf ("need to have at least the number of read and write pipes\n");
     print_usage (argc, argv, 0, 1);
@@ -347,8 +353,8 @@ int main (int argc, char ** argv)
     print_usage (argc, argv, 0, 1);
     return -1;
   }
-  snprintf (log_buf, LOG_SIZE, "AllNet (ad) version %d\n", ALLNET_VERSION);
-  log_print ();
+  snprintf (alog->b, alog->s, "AllNet (ad) version %d\n", ALLNET_VERSION);
+  log_print (alog);
   int * all_pipes  = malloc (sizeof (int) * npipes * 2);
   if (all_pipes == NULL) {
     printf ("allocation error in ad main\n");
@@ -362,8 +368,8 @@ int main (int argc, char ** argv)
     all_pipes [npipes + i] = atoi (argv [2 + 2 * i + 1]);
   }
   for (i = 0; i < 2 * npipes; i++) {
-    snprintf (log_buf, LOG_SIZE, "all_pipes [%d] = %d\n", i, all_pipes [i]);
-    log_print ();
+    snprintf (alog->b, alog->s, "all_pipes [%d] = %d\n", i, all_pipes [i]);
+    log_print (alog);
   }
   ad_main (npipes, all_pipes, all_pipes + npipes);
   return 1;

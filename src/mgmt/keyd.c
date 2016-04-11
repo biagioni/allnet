@@ -18,11 +18,13 @@
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/sha.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
 
 #define CONFIG_DIR	"~/.allnet/keys"
+
+static struct allnet_log * alog = NULL;
 
 static void send_key (int sock, struct bc_key_info * key, char * return_key,
                       int rksize, unsigned char * address, int abits, int hops)
@@ -34,8 +36,8 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   char * data = malloc_or_fail (dlen, "keyd send_key");
   int klen = allnet_pubkey_to_raw (key->pub_key, data, dlen);
   if ((klen > dlen) || (klen == 0)) {
-    snprintf (log_buf, LOG_SIZE, "error in send_key: %d, %d\n", klen, dlen);
-    log_print ();
+    snprintf (alog->b, alog->s, "error in send_key: %d, %d\n", klen, dlen);
+    log_print (alog);
     return;
   }
   int type = ALLNET_TYPE_CLEAR;
@@ -61,7 +63,7 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
 
   /* send with relatively low priority */
   char * message = (char *) hp;
-  send_pipe_message (sock, message, bytes, ALLNET_PRIORITY_DEFAULT);
+  send_pipe_message (sock, message, bytes, ALLNET_PRIORITY_DEFAULT, alog);
 }
 
 #ifdef DEBUG_PRINT
@@ -76,8 +78,8 @@ static void handle_packet (int sock, char * message, int msize)
 #ifdef DEBUG_PRINT
   print_packet (message, msize, "key request", 1);
 #endif /* DEBUG_PRINT */
-  packet_to_string (message, msize, "key request", 1, log_buf, LOG_SIZE);
-  log_print ();
+  packet_to_string (message, msize, "key request", 1, alog->b, alog->s);
+  log_print (alog);
   char * kp = message + ALLNET_SIZE (hp->transport);
 #ifdef DEBUG_PRINT
   keyd_debug = ((void **) (&kp));
@@ -86,16 +88,16 @@ static void handle_packet (int sock, char * message, int msize)
   int offset = (nbits + 7) / 8;
   /* ignore the fingerprint for now -- not implemented */
   kp += offset + 1;
-  int ksize = msize - (kp - message);
+  size_t ksize = msize - (kp - message);
 #ifdef DEBUG_PRINT
   printf ("kp is %p\n", kp);
 #endif /* DEBUG_PRINT */
   if (((msize - (kp - message)) != 513) ||
       (*kp != KEY_RSA4096_E65537)) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "msize %d - (%p - %p = %zd) =? 513, *kp %d\n",
               msize, kp, message, kp - message, *kp);
-    log_print ();
+    log_print (alog);
     kp = NULL;
     ksize = 0;
   }
@@ -109,8 +111,8 @@ static void handle_packet (int sock, char * message, int msize)
   printf (" ==> kp %p, %d keys %p\n", kp, nkeys, keys);
 #endif /* DEBUG_PRINT */
   if (nkeys <= 0) {
-    snprintf (log_buf, LOG_SIZE, "no keys found\n");
-    log_print ();
+    snprintf (alog->b, alog->s, "no keys found\n");
+    log_print (alog);
     return;
   }
 
@@ -124,16 +126,16 @@ static void handle_packet (int sock, char * message, int msize)
             hp->destination [0] & 0xff, keys [i].address [0] & 0xff,
             keys [i].identifier, matching_bits, hp->dst_nbits);
 #endif /* DEBUG_PRINT */
-    snprintf (log_buf, LOG_SIZE, "%02x <> %02x: %d matching bits, %d needed\n",
+    snprintf (alog->b, alog->s, "%02x <> %02x: %d matching bits, %d needed\n",
               hp->destination [0] & 0xff,
               keys [i].address [0] & 0xff, matching_bits, hp->dst_nbits);
-    log_print ();
+    log_print (alog);
     if (matching_bits >= hp->dst_nbits) {  /* send the key */
 #ifdef DEBUG_PRINT
       printf ("sending key %d, kp %p, %d bytes to %x/%d\n", i, kp, ksize,
               hp->source [0] & 0xff, hp->src_nbits);
 #endif /* DEBUG_PRINT */
-      send_key (sock, keys + i, kp, ksize,
+      send_key (sock, keys + i, kp, (int)ksize,
                 hp->source, hp->src_nbits, hp->hops + 4);
     }
   }
@@ -179,7 +181,7 @@ perror ("gather_random_and_wait read /dev/random");
     printf ("graw, time %ld, until %ld\n", time (NULL), until);
 #endif /* DEBUG_PRINT_SPARES */
     time_t interval = until - now;
-    if (sleep (interval)) {  /* interrupted */
+    if (sleep ((int)interval)) {  /* interrupted */
 #ifdef DEBUG_PRINT_SPARES
       printf ("graw killed\n");
 #endif /* DEBUG_PRINT_SPARES */
@@ -201,10 +203,12 @@ perror ("gather_random_and_wait read /dev/random");
 /* run from astart as a separate process */
 void keyd_generate (char * pname)
 {
+  if (alog == NULL)
+    alog = init_log ("keyd_generate");
   if (setpriority (PRIO_PROCESS, 0, 15) != 0) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "keyd unable to lower process priority, continuing anyway\n");
-    log_print ();
+    log_print (alog);
   }
   /* sleep 10 min, or 100 * the time to generate a key, whichever is longer */
   time_t sleep_time = 60 * 10;  /* 10 minutes, in seconds */
@@ -247,7 +251,7 @@ void keyd_generate (char * pname)
       time_t done = time (NULL);
       time_t delta = done - start;
       /* sleep time is 100 * generation time or 10min, whichever is more */
-      int sleep_time_from_key_gen = delta * 100;
+      time_t sleep_time_from_key_gen = delta * 100;
       if (sleep_time < sleep_time_from_key_gen)
         sleep_time = sleep_time_from_key_gen;
 #ifdef DEBUG_PRINT_SPARES
@@ -260,9 +264,37 @@ void keyd_generate (char * pname)
   }
 }
 
+void keyd_thread (char * pname, int rpipe, int wpipe)
+{
+  struct allnet_log * private_log = init_log ("keyd_thread");
+  pd p = init_pipe_descriptor (private_log);
+    printf ("keyd_thread adding pipe %d\n", rpipe);
+  add_pipe(p, rpipe);
+    
+  while (1) {  /* loop forever */
+    int pipe;
+    int pri;
+    char * message;                      /* sleep for up to a minute */
+    int found = receive_pipe_message_any (p, 60 * 1000, &message, &pipe, &pri);
+    if (found < 0) {
+      snprintf (private_log->b, private_log->s, "keyd pipe closed, exiting\n");
+      log_print (private_log);
+      exit (1);
+    }
+    if ((found > 0) && (is_valid_message (message, found)))
+      handle_packet (wpipe, message, found);
+    if (found > 0)
+      free (message);
+  }
+  snprintf (private_log->b, private_log->s,
+            "keyd thread infinite loop ended, exiting\n");
+  log_print (private_log);
+}
+
 void keyd_main (char * pname)
 {
-  pd p = init_pipe_descriptor ();
+  alog = init_log ("keyd");
+  pd p = init_pipe_descriptor (alog);
   int sock = connect_to_local (pname, pname, p);
   if (sock < 0)
     return;
@@ -273,8 +305,8 @@ void keyd_main (char * pname)
     char * message;                      /* sleep for up to a minute */
     int found = receive_pipe_message_any (p, 60 * 1000, &message, &pipe, &pri);
     if (found < 0) {
-      snprintf (log_buf, LOG_SIZE, "keyd pipe closed, exiting\n");
-      log_print ();
+      snprintf (alog->b, alog->s, "keyd pipe closed, exiting\n");
+      log_print (alog);
       exit (1);
     }
     if ((found > 0) && (is_valid_message (message, found)))
@@ -282,8 +314,8 @@ void keyd_main (char * pname)
     if (found > 0)
       free (message);
   }
-  snprintf (log_buf, LOG_SIZE, "keyd infinite loop ended, exiting\n");
-  log_print ();
+  snprintf (alog->b, alog->s, "keyd infinite loop ended, exiting\n");
+  log_print (alog);
 }
 
 #ifdef DAEMON_MAIN_FUNCTION

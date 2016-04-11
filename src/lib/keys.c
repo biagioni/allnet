@@ -27,7 +27,6 @@
 #include "cipher.h"
 #include "keys.h"
 #include "util.h"
-#include "log.h"
 #include "configfiles.h"
 #include "sha.h"
 #include "mapchar.h"
@@ -193,7 +192,7 @@ static int write_bytes_file (char * fname, char * bytes, int nbytes)
   print_buffer [0] = '\0';
   int i;
   for (i = 0; i < nbytes; i++) {
-    int slen = strlen (print_buffer);  /* print after the current string */
+    int slen = (int)strlen (print_buffer);  /* print after the current string */
     char * p = print_buffer + slen;
     char * post = ":";
     if (i + 1 == nbytes)
@@ -201,7 +200,7 @@ static int write_bytes_file (char * fname, char * bytes, int nbytes)
     snprintf (p, size - slen, "%02x%s", bytes [i] & 0xff, post);
   }
   int result = 0;
-  if (write_file (fname, print_buffer, strlen (print_buffer), 1))
+  if (write_file (fname, print_buffer, (int)strlen (print_buffer), 1))
     result = 1;
   else
     printf ("write_bytes_file: unable to write %d bytes to %s\n", size, fname);
@@ -261,7 +260,7 @@ static int read_address_file (char * fname, char * address, int * nbits)
   if (size <= 0)
     return 0;
   char * p;
-  int n = strtol (bytes, &p, 10);
+  int n = (int)strtol (bytes, &p, 10);
   if (p != bytes) {
     int count = (n + 7) / 8;
     int i;
@@ -360,7 +359,7 @@ static int get_members (const char * members_content, int mlen,
     int slen = plen;
     char * nl = index (p, '\n');
     if (nl != NULL)
-      slen = (nl - p);
+      slen = (int)(nl - p);
     if (s + slen > ((char *) result) + size) {
       printf ("group members error: %p + %d > %p + %d\n",
               s, slen, result, size);
@@ -678,7 +677,7 @@ static void write_member_file (const char * fname, char ** members,
       p += strlen (members [i]) + 1;
     }
   }
-  write_file (fname, buffer, strlen (buffer), 1);
+  write_file (fname, buffer, (int)strlen (buffer), 1);
 }
 
 static void save_contact (struct key_info * k)
@@ -698,8 +697,7 @@ static void save_contact (struct key_info * k)
  
     int dirnamesize = config_file_name ("contacts", fname, &dirname);
     if (dirnamesize < 0) {
-      snprintf (log_buf, LOG_SIZE, "unable to get config file name");
-      log_print ();
+      printf ("unable to get config file name");
       return;
     }
     k->dir_name = dirname;
@@ -707,7 +705,7 @@ static void save_contact (struct key_info * k)
   create_dir (dirname);
   if (k->contact_name != NULL) {
     char * name_fname = strcat3_malloc (dirname, "/", "name", "name file");
-    write_file (name_fname, k->contact_name, strlen (k->contact_name), 1);
+    write_file (name_fname, k->contact_name, (int)strlen (k->contact_name), 1);
     free (name_fname);
   }
   if (! allnet_rsa_prvkey_is_null (k->my_key)) {
@@ -789,8 +787,7 @@ static int save_spare_key (allnet_rsa_prvkey key)
   char * fname;
   int fnamesize = config_file_name ("own_spare_keys", now_printed, &fname);
   if (fnamesize < 0) {
-    snprintf (log_buf, LOG_SIZE, "unable to get config file name for spare");
-    log_print ();
+    printf ("unable to get config file name for spare");
     return 0;
   }
   if (! allnet_rsa_write_prvkey (fname, key)) {
@@ -1069,7 +1066,7 @@ int group_membership (const char * group, char *** members)
     char * p = ((char *) result) + ptr_size;
     for (i = 0; i < kip [index].num_members; i++) {
       result [i] = p;
-      int len = strlen (kip [index].members [i]) + 1;
+      int len = (int)strlen (kip [index].members [i]) + 1;
       memcpy (p, kip [index].members [i], len);
       p += len;
     }
@@ -1123,7 +1120,7 @@ int add_to_group (const char * group, const char * contact)
   char * fname = strcat_malloc (kip [index].dir_name, "/members",
                                 "add_to_group members-name");
   char * copy = strcat_malloc (contact, "\n", "add_to_group");
-  if (append_file (fname, copy, strlen (copy), 1))
+  if (append_file (fname, copy, (int)strlen (copy), 1))
     result = 1;
   free (copy);
   free (fname);
@@ -1151,10 +1148,10 @@ int remove_from_group (const char * group, const char * contact)
     return 0;
   }
   char * match = members_content;
-  int clen = strlen (contact);
+  int clen = (int)strlen (contact);
   int found = 0;
   while ((! found) && ((match = strstr (match, contact)) != NULL)) {
-    int remlen = mlen - (match - members_content);  /* remaining length */
+    int remlen = mlen - (int)(match - members_content);  /* remaining length */
     /* check for newline at beginning (or at start of file) */
     /* it is safe to use the -1 index iff match != members_content */
     if (((match == members_content) || (match [-1] == '\n')) &&
@@ -1539,7 +1536,7 @@ int save_key_state (const char * contact,
             state->hash_size, state->counter, state->block_offset);
   char * fname = strcat_malloc (kip [ki].dir_name, "/send_state",
                                 "save_key_state");
-  int result = write_file (fname, print_buffer, strlen (print_buffer), 1);
+  int result = write_file (fname, print_buffer, (int)strlen (print_buffer), 1);
   free (fname);
   return result;
 
@@ -1782,7 +1779,7 @@ static void assign_lang_bits (char * p, int length,
     }
   } else if (isdigit (*p)) {
     char * end;
-    int value = strtol (p, &end, 10);
+    int value = (int)strtol (p, &end, 10);
     if ((matching_bits != NULL) && (end != p))
       *matching_bits = value;
   }
@@ -1791,15 +1788,15 @@ static void assign_lang_bits (char * p, int length,
 /* returns the number of characters parsed */
 static int parse_position (char * p, int * result)
 {
-  int length = strlen (p);
+  int length = (int)strlen (p);
   char * end = strchr (p, '.');
   if (end != NULL) {
     end++;   /* point after the '.' */
-    length = end - p;
+    length = (int)(end - p);
   } else {
     end = strchr (p, ',');
     if (end != NULL)
-      length = end - p;
+      length = (int)(end - p);
   }
   int value = aaddr_decode_value (p, length);
   if ((value >= 0) && (result != NULL))
@@ -1822,7 +1819,7 @@ int parse_ahra (char * ahra,
     return 0;
   }
   if (phrase != NULL) {
-    int len = (middle - ahra) + 1;
+    int len = (int)(middle - ahra) + 1;
     *phrase = memcpy_malloc (ahra, len, "parse_ahra phrase");
     (*phrase) [len - 1] = '\0';
   }
@@ -1857,11 +1854,11 @@ int parse_ahra (char * ahra,
   p++;
   char * next_comma = strchr (p, ',');
   if (next_comma == NULL) {
-    assign_lang_bits (p, strlen (p), language, matching_bits);
+    assign_lang_bits (p, (int)strlen (p), language, matching_bits);
   } else {
-    assign_lang_bits (p, next_comma - p, language, matching_bits);
+    assign_lang_bits (p, (int)(next_comma - p), language, matching_bits);
     p = next_comma + 1;
-    assign_lang_bits (p, strlen (p), language, matching_bits);
+    assign_lang_bits (p, (int)strlen (p), language, matching_bits);
   }
   return 1;
 }
@@ -1939,7 +1936,7 @@ static char * make_address (allnet_rsa_pubkey key, int key_bits,
   if (nmatches < min_bitstrings)
     return NULL;
 
-  int rsize = strlen (phrase) + 50 /* @.lang.bits\0 + margin */ +
+  int rsize = (int)strlen (phrase) + 50 /* @.lang.bits\0 + margin */ +
               max_pair_len (lang) * nmatches;
   char * result = malloc_or_fail (rsize, "make_address result");
   char * p = result;
@@ -1949,7 +1946,7 @@ static char * make_address (allnet_rsa_pubkey key, int key_bits,
   int map = map_char (phrase, &next);
 /* convert the blanks and other unprintables in the phrase to underscores */
   while ((map != MAPCHAR_EOS) && (map != MAPCHAR_UNKNOWN_CHAR)) {
-    int clen = next - phrase;    /* length of a character */
+    int clen = (int)(next - phrase);    /* length of a character */
     /* printf ("clen is %d\n", clen); */
     if (map == MAPCHAR_IGNORE_CHAR)
       *p = '_';
@@ -1960,7 +1957,7 @@ static char * make_address (allnet_rsa_pubkey key, int key_bits,
     map = map_char (phrase, &next);
   }
 /*  *p = '\0';  printf ("phrase is '%s'\n", result); */
-  int off = (p - result);
+  int off = (int)(p - result);
   off += snprintf (result + off, rsize - off, "@");
   for (i = 0; i < nmatches; i++) {
     if (i > 0)
@@ -2033,7 +2030,7 @@ void delete_lang (char * ahra)
   char * second = strchr (comma + 1, ',');
   if (isalpha (comma [1])) {
     if (second != NULL) {
-      int lsize = strlen (second + 1);
+      int lsize = (int)strlen (second + 1);
       /* move lsize + 1 to copy the null character at the end */
       memmove (comma + 1, second + 1, lsize + 1);
     } else {  /* no second, just remove */
@@ -2052,7 +2049,7 @@ void delete_bits (char * ahra)
   char * second = strchr (comma + 1, ',');
   if (isdigit (comma [1])) {
     if (second != NULL) {
-      int lsize = strlen (second + 1);
+      int lsize = (int)strlen (second + 1);
       /* move lsize + 1 to copy the null character at the end */
       memmove (comma + 1, second + 1, lsize + 1);
     } else {  /* no second, just remove */

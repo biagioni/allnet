@@ -15,7 +15,7 @@ extern const char * abc_wifi_config_type_strings[];
 /** public wifi config interface */
 typedef struct abc_wifi_config_iface {
   abc_wifi_config_t config_type;
-  int (* init_iface_cb) (const char * interface);
+  int (* init_iface_cb) (const char * interface, struct allnet_log * log);
   int (* iface_is_enabled_cb) ();
   int (* iface_set_enabled_cb) (int state);
   int (* iface_is_connected_cb) ();

@@ -20,7 +20,7 @@
 #include "priority.h"
 #include "pipemsg.h"
 #include "util.h"
-#include "log.h"
+#include "allnet_log.h"
 #include "allnet_queue.h"
 
 #define MAGIC_STRING	"MAGICPIE"  /* magic pipe, squeezed into 8 chars */
@@ -51,14 +51,29 @@ struct pipedesc {
   struct allnet_pipe_info buffers [MAX_PIPES];
   int num_queues;
   int queues [MAX_PIPES];  /* negative integers -x, at index x - 1 */
+  struct allnet_log * log;
 };
 
-pd init_pipe_descriptor ()
+pd init_pipe_descriptor (struct allnet_log * log)
 {
   pd result = malloc_or_fail (sizeof (struct pipedesc), "init pipe descriptor");
   result->num_pipes = 0;
   result->num_queues = 0;
+  result->log = log;
   return result;
+}
+
+struct allnet_log * pipemsg_log (pd p)
+{
+  return p->log;
+}
+
+static void die (const char * msg)
+{
+  int x = 0;
+  printf ("%s\n", msg);
+  int y = 10 / x;
+  x = y;
 }
 
 static int do_not_print = 1;
@@ -67,28 +82,30 @@ static void print_pipes (pd p, const char * desc, int pipe)
   if (do_not_print)
     return;
   if (pipe != -1)
-    snprintf (log_buf, LOG_SIZE, "%s pipe %d, total %d:\n",
-              desc, pipe, p->num_pipes);
+    snprintf (p->log->b, p->log->s, "%s pipe %d, total %d/%d\n",
+              desc, pipe, p->num_pipes, p->num_queues);
   else
-    snprintf (log_buf, LOG_SIZE, "%s %d pipes:\n", desc, p->num_pipes);
-  log_print ();
+    snprintf (p->log->b, p->log->s, "%s %d/%d pipes\n",
+              desc, p->num_pipes, p->num_queues);
+  log_print (p->log);
+if ((pipe > 1000) || (pipe < -1000)) die ("illegal pipe number");
   int i;
   for (i = 0; i < p->num_pipes; i++) {
     char * inhdr = ((p->buffers [i].in_header) ? "" : "not ");
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (p->log->b, p->log->s,
               "  [%d]: pipe %d, %shdr, h %p b %p, filled %d bsize %d\n", i,
               p->buffers [i].pipe_fd, inhdr,
               p->buffers [i].header, p->buffers [i].buffer,
               p->buffers [i].filled, p->buffers [i].bsize);
-   log_print ();
+   log_print (p->log);
   }
   for (i = 0; i < p->num_queues; i++) {
     int index = (- (p->queues [i])) - 1;
     if (allnet_queues != NULL) {
       struct allnet_queue * q = allnet_queues [index];
-      snprintf (log_buf, LOG_SIZE, "  [%d/%d]: queue '%s', %d packets\n",
+      snprintf (p->log->b, p->log->s, "  [%d/%d]: queue '%s', %d packets\n",
                 i, index, allnet_queue_info (q), allnet_queue_size (q)); 
-      log_print ();
+      log_print (p->log);
     }
   }
 }
@@ -117,16 +134,16 @@ void add_pipe (pd p, int pipe)
 {
   if (pipe >= 0) {
     if (pipe_index (p, pipe) != -1) {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (p->log->b, p->log->s,
                 "adding pipe %d already in data structure [%d]\n",
                 pipe, pipe_index (p, pipe));
-      log_print ();
+      log_print (p->log);
       return;
     }
     if (p->num_pipes >= MAX_PIPES) {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (p->log->b, p->log->s,
                 "too many (%d) pipes, not adding %d\n", p->num_pipes, pipe);
-      log_print ();
+      log_print (p->log);
       return;
     }
     struct allnet_pipe_info * api = p->buffers + p->num_pipes;
@@ -138,16 +155,16 @@ void add_pipe (pd p, int pipe)
     api->filled = 0;
   } else {  /* negative, so it's a queue */
     if (queue_index (p, pipe) != -1) {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (p->log->b, p->log->s,
                 "adding queue %d already in data structure [%d]\n",
                 pipe, queue_index (p, pipe));
-      log_print ();
+      log_print (p->log);
       return;
     }
     if (p->num_queues >= MAX_PIPES) {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (p->log->b, p->log->s,
                 "too many (%d) queues, not adding %d\n", p->num_queues, pipe);
-      log_print ();
+      log_print (p->log);
       return;
     }
     p->queues [p->num_queues] = pipe;
@@ -162,10 +179,10 @@ void remove_pipe (pd p, int pipe)
   int index = (is_pipe) ? (pipe_index (p, pipe)) : (queue_index (p, pipe));
   if (index == -1)  /* nothing to delete */
     return;
-  snprintf (log_buf, LOG_SIZE,
+  snprintf (p->log->b, p->log->s,
             "removing %s %d from data structure [%d]\n",
             (is_pipe) ? "pipe" : "queue", pipe, index);
-  log_print ();
+  log_print (p->log);
   if (is_pipe) {
     struct allnet_pipe_info * api = p->buffers + index;
     if ((! api->in_header) && (api->buffer != NULL))
@@ -200,9 +217,9 @@ static inline int read_big_endian32 (char * array)
 
 #if 0  /* dead code, but might be useful in the future */
 static int send_pipe_message_orig (int pipe, const char * message, int mlen,
-                                   int priority)
+                                   int priority, struct allnet_log * log)
 {
-  snprintf (log_buf, LOG_SIZE, "warning: send_pipe_message_orig\n");
+  snprintf (log->b, log->s, "warning: send_pipe_message_orig\n");
   log_print ();  /* normally should not happen */
   char header [HEADER_SIZE];
   memcpy (header, MAGIC_STRING, MAGIC_SIZE);
@@ -212,7 +229,7 @@ static int send_pipe_message_orig (int pipe, const char * message, int mlen,
   int w = write (pipe, header, HEADER_SIZE); 
   if (w != HEADER_SIZE) {
     perror ("send_pipe_msg(1) write");
-    snprintf (log_buf, LOG_SIZE, "(1) pipe number %d, result %d\n", pipe, w);
+    snprintf (log->b, log->s, "(1) pipe number %d, result %d\n", pipe, w);
     log_print ();
     return 0;
   }
@@ -220,7 +237,7 @@ static int send_pipe_message_orig (int pipe, const char * message, int mlen,
   w = write (pipe, message, mlen); 
   if (w != mlen) {
     perror ("send_pipe_msg(2) write");
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, log->s,
               "(2) pipe number %d, wrote %d instead of %d\n", pipe, w, mlen);
     log_print ();
     return 0;
@@ -229,10 +246,11 @@ static int send_pipe_message_orig (int pipe, const char * message, int mlen,
 }
 #endif /* 0 */
 
-static int send_buffer (int pipe, char * buffer, int blen, int do_free)
+static int send_buffer (int pipe, char * buffer, int blen, int do_free,
+                        struct allnet_log * log)
 {
   int result = 1;
-  int w = send (pipe, buffer, blen, MSG_DONTWAIT); 
+  ssize_t w = send (pipe, buffer, blen, MSG_DONTWAIT); 
   int save_errno = errno;
   int is_send = 1;
 /* If it was a partial send, we just want to discard the packet,
@@ -249,10 +267,10 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free)
   if (is_partial_send) {
     static int partial_printed = -1;
     if (partial_printed != pipe) {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (log->b, log->s,
                 "pipe %d, result %d, wanted %d, original errno %d\n",
-                pipe, w, blen, save_errno);
-      log_error ("send_pipe_msg partial send");
+                pipe, (int)w, blen, save_errno);
+      log_error (log, "send_pipe_msg partial send");
       partial_printed = pipe;
     }
     result = 0;
@@ -262,8 +280,8 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free)
 static int notsock_printed = -1;
 static int print_count = 0;
 if ((print_count++ < 100) && (notsock_printed != pipe)) {
-snprintf (log_buf, LOG_SIZE, "trying write instead of send on fd %d\n", pipe);
-log_print ();
+snprintf (log->b, log->s, "trying write instead of send on fd %d\n", pipe);
+log_print (log);
 notsock_printed = pipe;
 }
       w = write (pipe, buffer, blen); 
@@ -280,10 +298,10 @@ notsock_printed = pipe;
         if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
           perror (name);
 #endif /* DEBUG_PRINT */
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (log->b, log->s,
                   "pipe %d, result %d, wanted %d, original errno %d\n",
-                  pipe, w, blen, save_errno);
-        log_error (name);
+                  pipe, (int)w, blen, save_errno);
+        log_error (log, name);
       }
 /* 2014/08/11 not sure if this is correct: should return 0 even if pipe is
  * busy, because we did not write.  But if we do this, daemons think their
@@ -293,7 +311,7 @@ notsock_printed = pipe;
     }
   }
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "send_buffer sent %d/%d bytes on %s %d\n",
+  snprintf (log->b, log->s, "send_buffer sent %d/%d bytes on %s %d\n",
             blen, w, ((is_send) ? "socket" : "pipe"), pipe);
   log_print ();
 #endif /* DEBUG_PRINT */
@@ -303,22 +321,22 @@ notsock_printed = pipe;
 }
 
 static int send_header_data (int pipe, const char * message, int mlen,
-                             int priority)
+                             int priority, struct allnet_log * log)
 {
   char packet [HEADER_SIZE + ALLNET_MTU];
   if (mlen > ALLNET_MTU) {
 /* I think this should never happen.  If it does, print it to log and screen */
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, log->s,
               "send_header_data warning: mlen %d > ALLNET_MTU %d\n",
               mlen, ALLNET_MTU);
-    printf ("%s", log_buf);
-    log_print ();
-    buffer_to_string (message, mlen, "message is", 64, 1, log_buf, LOG_SIZE);
-    printf ("%s", log_buf);
-    log_print ();
-    packet_to_string (message, mlen, NULL, 1, log_buf, LOG_SIZE);
-    printf ("%s", log_buf);
-    log_print ();
+    printf ("%s", log->b);
+    log_print (log);
+    buffer_to_string (message, mlen, "message is", 64, 1, log->b, log->s);
+    printf ("%s", log->b);
+    log_print (log);
+    packet_to_string (message, mlen, NULL, 1, log->b, log->s);
+    printf ("%s", log->b);
+    log_print (log);
     return 0; /* and return as an error */
   }
 #ifdef PACKET_DECLARED_AS_POINTER_IN_SEND_HEADER_DATA  /* never NULL */
@@ -334,10 +352,11 @@ static int send_header_data (int pipe, const char * message, int mlen,
   write_big_endian32 (header + MAGIC_SIZE + 4, mlen);
   memcpy (header + HEADER_SIZE, message, mlen);
 
-  return send_buffer (pipe, packet, HEADER_SIZE + mlen, 0);
+  return send_buffer (pipe, packet, HEADER_SIZE + mlen, 0, log);
 }
 
-int send_pipe_message (int pipe, const char * message, int mlen, int priority)
+int send_pipe_message (int pipe, const char * message, int mlen, int priority,
+                       struct allnet_log * log)
 {
   if (pipe < 0) {
     if (allnet_queues != NULL)
@@ -355,7 +374,7 @@ int send_pipe_message (int pipe, const char * message, int mlen, int priority)
   struct sigaction old_sa;
   sigaction (SIGPIPE, &sa, &old_sa);
 
-  int result = send_header_data (pipe, message, mlen, priority);
+  int result = send_header_data (pipe, message, mlen, priority, log);
 
   sigaction (SIGPIPE, &old_sa, NULL);
   return result;
@@ -366,7 +385,8 @@ int send_pipe_message (int pipe, const char * message, int mlen, int priority)
  * (Nagle's delay?).  Each message gets its own header */
 static int send_multiple_packets (int pipe, int num_messages,
                                   const char ** messages, const int * mlens,
-                                  const int * priorities)
+                                  const int * priorities,
+                                  struct allnet_log * log)
 {
   if (num_messages <= 0)
     return 0;
@@ -378,12 +398,13 @@ static int send_multiple_packets (int pipe, int num_messages,
 
   char * packet = malloc (total);
   if (packet == NULL) {  /* unable to malloc, use the slow strategy */
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, log->s,
               "unable to malloc %d bytes for %d packets, falling back\n",
               total, num_messages);
-    log_print ();
+    log_print (log);
     for (i = 0; i < num_messages; i++) {
-      if (! send_pipe_message (pipe, messages [i], mlens [i], priorities [i]))
+      if (! send_pipe_message (pipe, messages [i], mlens [i],
+                               priorities [i], log))
         result = 0;
     }
     return result;
@@ -397,7 +418,7 @@ static int send_multiple_packets (int pipe, int num_messages,
     header += HEADER_SIZE + mlens [i];
   }
 
-  return send_buffer (pipe, packet, total, 1);
+  return send_buffer (pipe, packet, total, 1, log);
 }
 
 /* send multiple messages at once, again to avoid the mysterious system
@@ -405,18 +426,20 @@ static int send_multiple_packets (int pipe, int num_messages,
  * messages are not freed */
 int send_pipe_multiple (int pipe, int num_messages,
                         const char ** messages, const int * mlens,
-                        const int * priorities)
+                        const int * priorities, struct allnet_log * log)
 {
   if (pipe < 0) {
     if (allnet_queues != NULL) {
       int i;
       int success = 1;
-      for (i = 0; i < num_messages; i++)
+      for (i = 0; i < num_messages; i++) {
         success = success &&
                   allnet_enqueue (allnet_queues [-pipe - 1],
                                   (const unsigned char *) (messages [i]),
                                   (unsigned int) (mlens [i]),
                                   (unsigned int) (priorities [i]));
+printf ("enqueued message of size %d on pipe %d, success %d (total %d)\n", mlens [i], pipe, success, num_messages);
+      }
       return success;
     } else
       return 0;
@@ -430,7 +453,7 @@ int send_pipe_multiple (int pipe, int num_messages,
   sigaction (SIGPIPE, &sa, &old_sa);
 
   int result = send_multiple_packets (pipe, num_messages, messages, mlens,
-                                      priorities);
+                                      priorities, log);
 
   sigaction (SIGPIPE, &old_sa, NULL);
   return result;
@@ -439,10 +462,10 @@ int send_pipe_multiple (int pipe, int num_messages,
 /* same, but messages are freed */
 int send_pipe_multiple_free (int pipe, int num_messages,
                              char ** messages, const int * mlens,
-                             const int * priorities)
+                             const int * priorities, struct allnet_log * log)
 {
   int r = send_pipe_multiple (pipe, num_messages, (const char **)messages,
-                              mlens, priorities);
+                              mlens, priorities, log);
   int i;
   for (i = 0; i < num_messages; i++)
     free (messages [i]);
@@ -450,10 +473,11 @@ int send_pipe_multiple_free (int pipe, int num_messages,
 }
 
 /* same as send_pipe_message, but frees the memory referred to by message */
-int send_pipe_message_free (int pipe, char * message, int mlen, int priority)
+int send_pipe_message_free (int pipe, char * message, int mlen, int priority,
+                            struct allnet_log * log)
 {
-  int result = send_pipe_message (pipe, message, mlen, priority);
-/* snprintf (log_buf, LOG_SIZE, "send_pipe_message_free freeing %p (%d)\n",
+  int result = send_pipe_message (pipe, message, mlen, priority, log);
+/* snprintf (log->b, log->s, "send_pipe_message_free freeing %p (%d)\n",
             message, mlen);
   log_print (); */
   free (message);
@@ -466,7 +490,7 @@ static void add_fd_to_bitset (fd_set * set, int fd, int * max)
   if (fd > *max)
     *max = fd;
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "selecting pipe %d, max %d\n", fd, *max);
+  snprintf (log->b, log->s, "selecting pipe %d, max %d\n", fd, *max);
   log_print ();
 #endif /* DEBUG_PRINT */
 }
@@ -475,7 +499,7 @@ static struct timeval * set_timeout (int timeout, struct timeval * tvp)
 {
   if (timeout == PIPE_MESSAGE_WAIT_FOREVER) {
 #ifdef DEBUG_PRINT
-    snprintf (log_buf, LOG_SIZE, "set_timeout returning NULL\n");
+    snprintf (log->b, log->s, "set_timeout returning NULL\n");
     log_print ();
 #endif /* DEBUG_PRINT */
     return NULL; /* no timeout to select */
@@ -484,8 +508,8 @@ static struct timeval * set_timeout (int timeout, struct timeval * tvp)
   tvp->tv_sec = timeout / 1000;
   tvp->tv_usec = (timeout % 1000) * 1000;
 #ifdef DEBUG_PRINT
-  int x = snprintf (log_buf, LOG_SIZE, "set_timeout returning %p", tvp);
-  x += snprintf (log_buf + x, LOG_SIZE - x, " = %d.%06d\n",
+  int x = snprintf (log->b, log->s, "set_timeout returning %p", tvp);
+  x += snprintf (log->b + x, log->s - x, " = %d.%06d\n",
                  (int) tvp->tv_sec, (int) tvp->tv_usec);
   log_print ();
 #endif /* DEBUG_PRINT */
@@ -505,23 +529,25 @@ static int find_fd (pd p, fd_set * set, int extra,
     if (FD_ISSET (p->buffers [i].pipe_fd, set))
       return p->buffers [i].pipe_fd;
   /* we hope not to hit the rest of this code -- mostly debugging */
-  int x = snprintf (log_buf, LOG_SIZE,
+  int x = snprintf (p->log->b, p->log->s,
                     "find_fd: strange, s is %d but no pipes found\n",
                     select_result);
   for (i = 0; i < p->num_pipes; i++) {
     if (FD_ISSET (p->buffers [i].pipe_fd, set))
-      x += snprintf (log_buf + x, LOG_SIZE - x, " +%d", p->buffers [i].pipe_fd);
+      x += snprintf (p->log->b + x, p->log->s - x, " +%d",
+                     p->buffers [i].pipe_fd);
     else
-      x += snprintf (log_buf + x, LOG_SIZE - x, " -%d", p->buffers [i].pipe_fd);
+      x += snprintf (p->log->b + x, p->log->s - x, " -%d",
+                     p->buffers [i].pipe_fd);
   }
-  snprintf (log_buf + x, LOG_SIZE - x, "\n");
-  log_print ();
+  snprintf (p->log->b + x, p->log->s - x, "\n");
+  log_print (p->log);
   int found_set = -1;
   for (i = 0; i < max_pipe + 1; i++) {
     if (FD_ISSET (i, set)) {
       found_set = i;
-      snprintf (log_buf, LOG_SIZE, "found fd %d\n", found_set);
-      log_print ();
+      snprintf (p->log->b, p->log->s, "found fd %d\n", found_set);
+      log_print (p->log);
     }
   }
   print_pipes (p, "not found", found_set);
@@ -534,11 +560,14 @@ static int find_fd (pd p, fd_set * set, int extra,
 static int next_available (pd p, int extra, int timeout)
 {
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "next_available (%d, %d)\n", extra, timeout);
-  log_print ();
+  snprintf (log->b, log->s "next_available (%d, %d)\n", extra, timeout);
+  log_print (log);
 #endif /* DEBUG_PRINT */
   /* set up the readfd bitset */
   int i;
+for (i = 0; i < p->num_pipes; i++)
+if ((p->buffers [i].pipe_fd > 1000) || (p->buffers [i].pipe_fd < -1000))
+printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);
   int max_pipe = 0;
   fd_set receiving;
   FD_ZERO (&receiving);
@@ -550,11 +579,15 @@ static int next_available (pd p, int extra, int timeout)
   /* set up the timeout, if any */
   struct timeval tv;
   struct timeval * tvp = set_timeout (timeout, &tv);
+  if ((timeout > 0) && (timeout != PIPE_MESSAGE_WAIT_FOREVER) &&
+      (p->num_pipes == 0) && (extra == -1) && (p->num_queues > 0))
+    /* set timeout to zero for the select call */
+    tvp = set_timeout (0, &tv);
 
   /* call select */
   int s = select (max_pipe + 1, &receiving, NULL, NULL, tvp);
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "select done, pipe %d/%d\n", s, num_pipes);
+  snprintf (log->b, log->s "select done, pipe %d/%d\n", s, num_pipes);
   log_print ();
 #endif /* DEBUG_PRINT */
   if (s < 0) {
@@ -563,8 +596,8 @@ static int next_available (pd p, int extra, int timeout)
     if (! do_not_print)
       perror ("next_available/select");
     print_pipes (p, "current", max_pipe);
-    snprintf (log_buf, LOG_SIZE, "some error in select, aborting\n");
-    log_print ();
+    snprintf (p->log->b, p->log->s, "some error in select, aborting\n");
+    log_print (p->log);
     exit (1);
   }
   if (s == 0)
@@ -572,7 +605,7 @@ static int next_available (pd p, int extra, int timeout)
   /* s > 0 */
   int found = find_fd (p, &receiving, extra, s, max_pipe);
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "next_available returning %d\n", found);
+  snprintf (log->b, log->s "next_available returning %d\n", found);
   log_print ();
 #endif /* DEBUG_PRINT */
   return found;
@@ -594,9 +627,7 @@ static int fd_can_recv (int fd, int wait_forever)
     return 1;
   if (s < 0) { 
     perror ("fd_can_recv/select");
-    snprintf (log_buf, LOG_SIZE,
-              "fd_can_recv (%d): select returned %d\n", fd, s);
-    log_error ("fd_can_recv/select");
+    printf ("fd_can_recv (%d): select returned %d\n", fd, s);
   }
   return 0;
 }
@@ -604,26 +635,27 @@ static int fd_can_recv (int fd, int wait_forever)
 /* returns the number of characters received, or -1 in case of error */
 /* if may_block is true, only returns -1 or blen. */
 /* if may_block is false, may return any value between -1 and blen */
-static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
+static int receive_bytes (int pipe, char * buffer, int blen, int may_block,
+                          struct allnet_log * log)
 {
   int recvd = 0;
   while (recvd < blen) {
     if ((! may_block) && (! fd_can_recv (pipe, 0)))
       return recvd;   /* not ready to receive, and should not block */
     /* if we did not call fd_can_recv, the call to read may block */
-    int new_recvd = read (pipe, buffer + recvd, blen - recvd);
+    int new_recvd = (int)read (pipe, buffer + recvd, blen - recvd);
     if (new_recvd <= 0) {
       if (new_recvd == 0) {
-        snprintf (log_buf, LOG_SIZE, "receive_bytes: pipe %d closed\n", pipe);
-        log_print ();
+        snprintf (log->b, log->s, "receive_bytes: pipe %d closed\n", pipe);
+        log_print (log);
       }
 #ifdef DEBUG_PRINT
       else perror ("pipemsg.c receive_bytes read");
 #endif /* DEBUG_PRINT */
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (log->b, log->s,
                 "receive_bytes: %d/%d bytes on pipe %d, expected %d/%d\n",
                 new_recvd, recvd, pipe, blen - recvd, blen);
-      log_print ();
+      log_print (log);
       return recvd > 0 ? recvd : -1 /* error */;
     }
     recvd += new_recvd;
@@ -634,23 +666,33 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block)
 /* returns -1 if the header is not valid, and the data size otherwise */
 /* note: does not work for buffers of size 2^32 - 1 -- but any buffer
  * larger than 2^31 - 1 is likely to cause problems due to signed ints anyway */
-static int parse_header (char * header, int pipe, int * priority)
+static int parse_header (char * header, int pipe, int * priority,
+                         struct allnet_log * log)
 {
   static int printed = 0;
   if (memcmp (header, MAGIC_STRING, MAGIC_SIZE) != 0) {
     if (printed == 0) {
-      snprintf (log_buf, LOG_SIZE, "error: unsynchronized pipe %d\n", pipe);
-      log_print ();
-      buffer_to_string (header, HEADER_SIZE, " header:", 20, 1,
-                        log_buf, LOG_SIZE);
-      log_print ();
+      if (log != NULL) {
+        snprintf (log->b, log->s, "error: unsynchronized pipe %d\n", pipe);
+        log_print (log);
+        buffer_to_string (header, HEADER_SIZE, " header:", 20, 1,
+                          log->b, log->s);
+        log_print (log);
+      } else {
+        printf ("error: unsynchronized pipe %d\n", pipe);
+        print_buffer (header, HEADER_SIZE, " header:", 20, 1);
+      }
     }
     printed++;
     return -1;
   }
   if (printed != 0) {
-    snprintf (log_buf, LOG_SIZE, "  (%dx)\n", printed);
-    log_print ();
+    if (log != NULL) {
+      snprintf (log->b, log->s, "  (%dx)\n", printed);
+      log_print (log);
+    } else {
+      printf ("  (%dx)\n", printed);
+    }
   }
   printed = 0;
   if (priority != NULL)
@@ -676,9 +718,9 @@ static int receive_pipe_message_poll (pd p, int pipe,
   if (index < 0) {
     do_not_print = 0;
     print_pipes (p, "not found", pipe);
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (p->log->b, p->log->s,
               "pipe %d not found, aborting and dumping core\n", pipe);
-    log_print ();
+    log_print (p->log);
     assert (0);  /* cause a core dump so we can debug this */
     /* if NDEBUG is set, assert will not end the program, so return -1 */
     return -1;
@@ -686,7 +728,8 @@ static int receive_pipe_message_poll (pd p, int pipe,
   struct allnet_pipe_info * bp = (p->buffers) + index;
 
   int offset = bp->filled;
-  int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0);
+  int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0,
+                            p->log);
   if (read < 0)
     return -1;
   if (read == 0)
@@ -695,14 +738,14 @@ static int receive_pipe_message_poll (pd p, int pipe,
   if (offset == bp->bsize) {
    /* received all we were looking for, either allocate new buffer or return */
     if (bp->in_header) {
-      int received_len = parse_header (bp->header, pipe, priority);
+      int received_len = parse_header (bp->header, pipe, priority, p->log);
       if (received_len != -1) {  /* successfully read a header */
         bp->buffer = malloc (received_len);
         if (bp->buffer == NULL) {
-          snprintf (log_buf, LOG_SIZE,
+          snprintf (p->log->b, p->log->s,
                     "failed to allocate %d for receive_pipe_message_poll\n",
                     received_len);
-          log_print ();
+          log_print (p->log);
           return -1;
         }
         bp->bsize = received_len;
@@ -730,32 +773,35 @@ static int receive_pipe_message_poll (pd p, int pipe,
   return 0;
 }
 
-static int receive_queue_message (int pipe, char ** message, int * priority)
+static int receive_queue_message (int pipe, char ** message, int * priority,
+                                  struct allnet_log * log)
 {
   if (allnet_queues == NULL) {  /* error */
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, log->s,
               "receive_queue_message %d, but allnet_queues == NULL\n", pipe);
-    log_print ();
+    log_print (log);
     printf ("receive_queue_message %d, but allnet_queues == NULL\n", pipe);
     exit (1);
   }
   while (1) {  /* loop in case we need to try again */
+    int index = -pipe - 1;
     unsigned char result [ALLNET_MTU];
     unsigned int nqueue = 1;
     unsigned int plen = sizeof (result);
     /* timeout is -1, so wait forever */
-    int call = allnet_dequeue (&(allnet_queues [-pipe - 1]), &nqueue, result,
+    int call = allnet_dequeue (&(allnet_queues [index]), &nqueue, result,
                                &plen, (unsigned int *)priority,
                                (unsigned int) (-1));
     if (call == 1) {
       *message = malloc_or_fail (plen, "receive_queue_message");
       memcpy (*message, result, plen);
+printf ("receive_queue_message got %d-byte message on queue %d\n", plen, index);
       return plen;
     }
     if (call == -2) { /* should never happen, but inevitably will. Discard */
       printf ("receive_queue_message %d error: received %d, MTU %d, ignoring\n",
               -pipe, plen, ALLNET_MTU);
-      allnet_queue_discard_first (allnet_queues [-pipe - 1]);
+      allnet_queue_discard_first (allnet_queues [index]);
       /* and repeat */
     } else {
       if (call == 0) /* should never happen with a timeout of -1 */
@@ -770,21 +816,22 @@ static int receive_queue_message (int pipe, char ** message, int * priority)
 int receive_pipe_message (pd p, int pipe, char ** message, int * priority)
 {
   if (pipe < 0)
-    return receive_queue_message (pipe, message, priority);
+    return receive_queue_message (pipe, message, priority, p->log);
   char header [HEADER_SIZE];
 
   int wanted = HEADER_SIZE;
   int received_len = 0;
   while (1) {
     /* read the header */
-    int r = receive_bytes (pipe, header + (HEADER_SIZE - wanted), wanted, 1);
+    int r = receive_bytes (pipe, header + (HEADER_SIZE - wanted), wanted, 1,
+                           p->log);
     if (r < 0)
       return -1;
     if (r == 0)
       return 0;
     /* first part of header should be MAGIC_STRING.  If not, it is an error,
        report it and keep looking */
-    received_len = parse_header (header, pipe, priority);
+    received_len = parse_header (header, pipe, priority, p->log);
     if (received_len != -1)   /* successfully received the header */
       break;
     shift_header (header);    /* no match, shift the header and try again */
@@ -794,15 +841,15 @@ int receive_pipe_message (pd p, int pipe, char ** message, int * priority)
   /* allocate the result buffer */
   char * buffer = malloc (received_len);
   if (buffer == NULL) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (p->log->b, p->log->s,
               "unable to allocate %d bytes for receive_pipe_message buffer\n",
               received_len);
-    log_print ();
+    log_print (p->log);
     return -1;
   }
   /* printf ("receive_pipe_message allocated buffer %p\n", buffer); */
 
-  if (receive_bytes (pipe, buffer, received_len, 1) < 0) {
+  if (receive_bytes (pipe, buffer, received_len, 1, p->log) < 0) {
     free (buffer);
     return -1;
   }
@@ -830,17 +877,18 @@ static int tv_compare (struct timeval * t1, struct timeval * t2)
 }
 
 static int receive_dgram (int fd, char ** message, 
-                          struct sockaddr * sa, socklen_t * salen)
+                          struct sockaddr * sa, socklen_t * salen,
+                          struct allnet_log * log)
 {
   *message = malloc (ALLNET_MTU);
   if (*message == NULL) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, log->s,
               "unable to allocate %d bytes for receive_dgram", ALLNET_MTU);
-    log_print ();
+    log_print (log);
     return -1;
   }
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "ready to receive datagram on fd %d\n", fd);
+  snprintf (log->b, log->s, "ready to receive datagram on fd %d\n", fd);
   log_print ();
 #endif /* DEBUG_PRINT */
   int old_salen = -3;  /* a value unlikely to be in *salen */
@@ -851,7 +899,8 @@ static int receive_dgram (int fd, char ** message,
   if ((sa != NULL) && (old_salen > 0))
     buffer_to_string ((char *) sa, old_salen, NULL, 10, 0,
                       old_sa, sizeof (old_sa));
-  int result = recvfrom (fd, *message, ALLNET_MTU, MSG_DONTWAIT, sa, salen);
+  int result = (int)recvfrom (fd, *message, ALLNET_MTU, MSG_DONTWAIT,
+                              sa, salen);
   if (result < 0) {
     if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {
       perror ("recvfrom");
@@ -872,9 +921,9 @@ static int receive_dgram (int fd, char ** message,
     return 0;   /* EAGAIN or EWOULDBLOCK, no message ready at this time */
   }
   if ((sa->sa_family != AF_INET) && (sa->sa_family != AF_INET6)) { /* strange */
-    snprintf (log_buf, LOG_SIZE, "receive_dgram got %d bytes, family %d\n",
+    snprintf (log->b, log->s, "receive_dgram got %d bytes, family %d\n",
               result, sa->sa_family);
-    log_print ();
+    log_print (log);
   }
   return result;
 }
@@ -918,8 +967,9 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
          (tv_compare (&now, &finish) <= 0)) {
     int pipe;
     int effective_timeout = timeout;
-    if ((timeout == PIPE_MESSAGE_WAIT_FOREVER) && (p->num_queues > 0))
-      effective_timeout = 10 * 1000LL;    /* look at the queues every 10ms */
+    if (((timeout == PIPE_MESSAGE_WAIT_FOREVER) || (timeout > 100)) &&
+        (p->num_queues > 0))
+      effective_timeout = 100;    /* look at the queues every 10ms */
     pipe = next_available (p, fd, effective_timeout);
     if (pipe >= 0) { /* can read pipe */
       if (from_pipe != NULL) *from_pipe = pipe;
@@ -932,7 +982,7 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
           return r;
         }
       } else {         /* UDP or raw socket */
-        r = receive_dgram (pipe, message, sa, salen);
+        r = receive_dgram (pipe, message, sa, salen, p->log);
 /* if (r < 0) printf ("receive_dgram returned %d\n", r); */
         if (r != 0)
           return r;
@@ -941,6 +991,11 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
       if (from_pipe != NULL) *from_pipe = -1;
     }
     if ((allnet_queues != NULL) && (p->num_queues > 0)) {
+/*extern int debug_print_fd;
+int debug_index = ((- p->queues[0]) - 1);
+struct allnet_queue * debug_q = allnet_queues [debug_index];
+if (fd == debug_print_fd)
+printf ("checking %d queues, first @ %d/%d is %s, has %d packets\n", p->num_queues, debug_index, p->queues[0], allnet_queue_info(debug_q), allnet_queue_size(debug_q));*/
       struct allnet_queue ** queues =
         malloc (p->num_queues * sizeof (struct allnet_queue *));
       if (queues != NULL) {
@@ -950,13 +1005,32 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
         unsigned char buffer [ALLNET_MTU];
         unsigned int nqueue = p->num_queues;
         unsigned int plen = sizeof (buffer); /* timeout 0 to just poll */
+/*
+unsigned int debug_alocal = 0;
+if ((debug_alocal == 0) && (strncmp (p->log->debug_info, "alocal", 6) == 0))
+debug_alocal = (unsigned int) pthread_self ();
+if (debug_alocal == (unsigned int) pthread_self ())
+printf ("receive_pipe_message_fd %3d (%s) looking at %d queues, plen %d\n",
+(unsigned int)pthread_self () % 1000, p->log->debug_info, p->num_queues, plen);
+if (debug_alocal == (unsigned int) pthread_self ())
+for (i = 0; i < p->num_queues; i++) printf ("queue %d is %d\n", i, p->queues [i]);
+*/
         int result = allnet_dequeue (queues, &nqueue, buffer, &plen,
                                      (unsigned int *) priority, 0);
+/*
+if (debug_alocal == (unsigned int) pthread_self ())
+printf ("receive_pipe_message_fd %3d (%s) got %d/%d, %d\n",
+(unsigned int)pthread_self () % 1000, p->log->debug_info, result, nqueue, plen);
+*/
         if ((result == 1) && (plen > 0)) {
-          if (from_pipe != NULL) {
+          if (from_pipe != NULL) {  /* find out the fd we got it on */
             for (i = 0; i < p->num_queues; i++) {
               if (queues [nqueue] == allnet_queues [(- (p->queues [i])) - 1]) {
-                *from_pipe = -(i + 1);
+                *from_pipe = p->queues [i];
+/* printf ("receive_pipe_message_fd got %d-byte message on queue %d @ %d\n",
+plen, p->queues [i], i); */
+                /*if (fd == debug_print_fd)
+                  printf ("set from_pipe to %d, p->queues [%d] is %d\n", *from_pipe, i, p->queues [i]);*/
                 break;
               }
             }
@@ -971,7 +1045,8 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
           allnet_queue_discard_first (queues [nqueue]);
       }
     }
-    gettimeofday (&now, NULL);
+    if (timeout != PIPE_MESSAGE_WAIT_FOREVER)
+      gettimeofday (&now, NULL);
   }
   return 0;    /* timed out */
 }
@@ -995,12 +1070,7 @@ int receive_pipe_message_any (pd p, int timeout, char ** message,
 #define DEBUG_PRINT
 static void print_split_message_error (int code, int n1, int n2, int n3)
 {
-  snprintf (log_buf, LOG_SIZE, "split_messages %d: error %d %d %d\n",
-            code, n1, n2, n3);
-#ifdef DEBUG_PRINT
-  printf ("%s\n", log_buf);
-#endif /* DEBUG_PRINT */
-  log_print ();
+  printf ("split_messages %d: error %d %d %d\n", code, n1, n2, n3);
 }
 
 static void extend_results (char * data, int len, int prio,
@@ -1094,7 +1164,7 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
     }
     if (bp->filled < HEADER_SIZE)   /* dlen is zero, incomplete header */
       return 0;   /* finished */
-    msize = parse_header (bp->data, -1, &priority);
+    msize = parse_header (bp->data, -1, &priority, NULL);
     if ((msize < 0) || (msize > ALLNET_MTU)) {
       if (msize > ALLNET_MTU)
         print_split_message_error (1, msize, ALLNET_MTU, bp->filled);
@@ -1137,7 +1207,7 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
 
   while (dlen >= HEADER_SIZE) {
     int priority;
-    int msize = parse_header (data, -1, &priority);
+    int msize = parse_header (data, -1, &priority, NULL);
     if ((msize < 0) || (msize > ALLNET_MTU)) {
       /* bad header, try again with next char */
       if (msize > ALLNET_MTU)

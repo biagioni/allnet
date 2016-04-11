@@ -15,7 +15,7 @@
 #include "lib/util.h"
 #include "lib/table.h"
 #include "lib/configfiles.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/keys.h"
 #include "lib/cipher.h"
 #include "lib/priority.h"
@@ -32,28 +32,28 @@ struct social_one_tier {
 };
 
 static void print_social_tier (int tier, struct social_one_tier * soc,
-                               int only_if_modified)
+                               int only_if_modified, struct allnet_log * log)
 {
   static int already_printed [MAX_SOCIAL_TIER] [3 /* contacts, slots, size */];
   if ((! only_if_modified) || (tier >= 6) ||
       (already_printed [tier] [0] != soc->connections.num_entries) ||
       (already_printed [tier] [1] != soc->connections.num_slots) ||
       (already_printed [tier] [2] != soc->connections.storage_size)) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, LOG_SIZE,
               "social tier %d: %d contacts, %d slots, total size %d\n", tier,
               soc->connections.num_entries, soc->connections.num_slots,
               soc->connections.storage_size);
-    log_print ();
+    log_print (log);
     already_printed [tier] [0] = soc->connections.num_entries;
     already_printed [tier] [1] = soc->connections.num_slots;
     already_printed [tier] [2] = soc->connections.storage_size;
   }
 /*
-  snprintf (log_buf, LOG_SIZE,
+  snprintf (log->b, LOG_SIZE,
             "  %d entries with %d user bytes give %d bytes, total %d bytes\n",
             soc->connections.num_entries, soc->connections.bytes_per_entry,
             soc->address_bytes_per_entry, soc->connections.storage_size);
-  log_print ();
+  log_print (log->b);
   int i;
   for (i = 0; i < soc->connections.num_slots; i++)
     print_table_entry (i, soc->connections.table [i],
@@ -65,20 +65,23 @@ struct social_info {
   struct social_one_tier info [MAX_SOCIAL_TIER];
   int max_bytes;    /* should not use more than max_bytes of storage */
   int max_check;    /* should not check more than max_check sigs per call */
+  struct allnet_log * log;
 };
 
-struct social_info * init_social (int max_bytes, int max_check)
+struct social_info * init_social (int max_bytes, int max_check,
+                                  struct allnet_log * log)
 {
   struct social_info * result = malloc (sizeof (struct social_info));
   if (result == NULL) {
     perror ("init_social(0) malloc");
-    snprintf (log_buf, LOG_SIZE, "unable to allocate %zd bytes for social\n",
+    snprintf (log->b, log->s, "unable to allocate %zd bytes for social\n",
               sizeof (struct social_info));
-    log_print ();
+    log_print (log);
     exit (1);
   }
   result->max_bytes = max_bytes;
   result->max_check = max_check;
+  result->log = log;
   int bytes = ADDRESS_SIZE;
   int i;
   for (i = 0; i < MAX_SOCIAL_TIER; i++) {
@@ -95,13 +98,13 @@ struct social_info * init_social (int max_bytes, int max_check)
 /* return the number of bytes in the updated social tier, and in
  * any case never more than free_bytes */
 static int update_social_tier (int tier, struct social_one_tier * st,
-                               int free_bytes)
+                               int free_bytes, struct allnet_log * log)
 {
   if ((tier > MAX_SOCIAL_TIER) || (tier > 99)) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (log->b, LOG_SIZE,
               "error, using social tier %d, maximum tier is %d/99\n",
               tier, MAX_SOCIAL_TIER);
-    log_print ();
+    log_print (log);
     if (st->connections.storage != NULL)
       free (st->connections.storage);
     init_table (&(st->connections));
@@ -115,18 +118,18 @@ static int update_social_tier (int tier, struct social_one_tier * st,
     char * path;
     int result = config_file_name ("ad", file_name, &path);
     if (result < 0) {
-      snprintf (log_buf, LOG_SIZE, "unable to get config file name\n");
-      log_print ();
+      snprintf (log->b, LOG_SIZE, "unable to get config file name\n");
+      log_print (log);
       return 0;
     }
     if (! printed) {
       if (fd == -1)   /* no such file */
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (log->b, LOG_SIZE,
                   "no social info file %s for ad, continuing\n", path);
       else
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (log->b, LOG_SIZE,
                   "error reading social info file %s for ad\n", path);
-      log_print ();
+      log_print (log);
     }
     printed = 1;
     free (path);
@@ -147,8 +150,8 @@ time_t update_social (struct social_info * soc, int update_seconds)
   int free_bytes = soc->max_bytes;
   int i;
   for (i = 1; i < MAX_SOCIAL_TIER; i++) {  /* skip social level 0 */
-    free_bytes -= update_social_tier (i, soc->info + i, free_bytes);
-    print_social_tier (i, soc->info + i, only_print_if_new);
+    free_bytes -= update_social_tier (i, soc->info + i, free_bytes, soc->log);
+    print_social_tier (i, soc->info + i, only_print_if_new, soc->log);
   }
   only_print_if_new = 1;
   return (time (NULL) + update_seconds);
@@ -157,7 +160,8 @@ time_t update_social (struct social_info * soc, int update_seconds)
 /* returns 1 if this message is from my contact, and 0 otherwise */
 static int is_my_contact (char * message, int msize,
                           unsigned char * sender, int bits,
-                          int algo, char * sig, int ssize)
+                          int algo, char * sig, int ssize,
+                          struct allnet_log * log)
 {
   char ** contacts;
   int nc = all_contacts (&contacts);
@@ -173,8 +177,8 @@ static int is_my_contact (char * message, int msize,
       int ksize = get_contact_pubkey (keysets [ink], &key);
       if ((ksize > 0) && (matches (sender, bits, address, na_bits) > 0) &&
           (allnet_verify (message, msize, sig, ssize, key))) {
-        snprintf (log_buf, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
-        log_print ();
+        snprintf (log->b, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
+        log_print (log);
         free (keysets);
         return 1;
       }
@@ -189,8 +193,8 @@ static int is_my_contact (char * message, int msize,
     if ((matches (sender, bits,
                   (unsigned char *) (bc [ibc].address), ADDRESS_BITS) > 0) &&
         (allnet_verify (message, msize, sig, ssize, bc [ibc].pub_key))) {
-      snprintf (log_buf, LOG_SIZE, "verified from bc contact %d\n", ibc);
-      log_print ();
+      snprintf (log->b, LOG_SIZE, "verified from bc contact %d\n", ibc);
+      log_print (log);
       return 1;
     }
   }
@@ -203,12 +207,10 @@ int social_connection (struct social_info * soc, char * vmessage, int vsize,
                        unsigned char * src, int sbits, int algo,
                        char * sig, int ssize, int * valid)
 {
-snprintf (log_buf, LOG_SIZE, "social_connection (%d) called\n", algo);
-log_print ();
   if (algo == ALLNET_SIGTYPE_NONE)
     return UNKNOWN_SOCIAL_TIER;
   *valid = 0;
-  if (is_my_contact (vmessage, vsize, src, sbits, algo, sig, ssize)) {
+  if (is_my_contact (vmessage, vsize, src, sbits, algo, sig, ssize, soc->log)) {
     *valid = 1;
     return 1;
   }

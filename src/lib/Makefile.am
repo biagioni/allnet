@@ -7,7 +7,7 @@ libincludes = \
 	crypt_sel.h \
 	dcache.h \
 	keys.h \
-	log.h \
+	allnet_log.h \
 	mapchar.h \
 	media.h \
 	mgmt.h \
@@ -32,7 +32,7 @@ libsrc = \
 	crypt_sel.c \
 	dcache.c \
 	keys.c \
-	log.c \
+	allnet_log.c \
 	mapchar.c \
 	pipemsg.c \
 	pqueue.c \

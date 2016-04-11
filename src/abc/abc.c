@@ -80,7 +80,7 @@
 #include "abc-wifi.h"         /* abc_iface_wifi */
 #include "../social.h"        /* UNKNOWN_SOCIAL_TIER */
 #include "lib/mgmt.h"         /* struct allnet_mgmt_header */
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/packet.h"       /* struct allnet_header */
 #include "lib/pipemsg.h"      /* receive_pipe_message_fd, receive_pipe_message_any */
 #include "lib/priority.h"     /* ALLNET_PRIORITY_FRIENDS_LOW */
@@ -151,10 +151,12 @@ static const char * iface_type_strings[] = {
 };
 static abc_iface * iface = NULL; /* used interface ptr */
 
+static struct allnet_log * alog = NULL;
+
 static void term_handler (int sig) {
   terminate = 1;
-  snprintf (log_buf, LOG_SIZE, "terminating on signal %d\n", sig);
-  log_print ();
+  snprintf (alog->b, alog->s, "terminating on signal %d\n", sig);
+  log_print (alog);
 }
 
 static void clear_nonces (int mine, int other)
@@ -224,9 +226,9 @@ printf ("receive_pipe_message_any returned %d\n", msize);
 #endif /* DEBUG_PRINT */
   if (msize < 0) {
     terminate = 1;
-    snprintf (log_buf, LOG_SIZE, "receive_until msize %d on fd %d\n", msize,
+    snprintf (alog->b, alog->s, "receive_until msize %d on fd %d\n", msize,
               iface->iface_sockfd);
-    log_print ();
+    log_print (alog);
   }
   return msize;  /* -1 (error), zero (timeout) or positive, the value is correct */
 }
@@ -588,9 +590,9 @@ static void handle_ad_message (const char * message, int msize, int priority)
 {
   if (! queue_add (message, msize, priority)) {
 #ifdef LOG_PACKETS
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "queue full, unable to add new message of size %d\n", msize);
-    log_print ();
+    log_print (alog);
 #endif /* LOG_PACKETS */
   }
   remove_acks (message, message + msize);
@@ -602,11 +604,11 @@ static void unmanaged_handle_network_message (const char * message,
   /* struct allnet_header * hp = (struct allnet_header *) message; */
   /* send the message to ad */
   int sent = send_pipe_message (ad_pipe, message, msize,
-                                ALLNET_PRIORITY_EPSILON);
+                                ALLNET_PRIORITY_EPSILON, alog);
   if (sent <= 0) {
-    snprintf (log_buf, LOG_SIZE, "u sent to ad %d bytes, message %d bytes\n",
+    snprintf (alog->b, alog->s, "u sent to ad %d bytes, message %d bytes\n",
               sent, msize);
-    log_print ();
+    log_print (alog);
     terminate = 1;
   }
   /* remove any messages that this message acks */
@@ -635,11 +637,11 @@ static void handle_network_message (const char * message, int msize,
 
     /* send the message to ad */
     int sent = send_pipe_message (ad_pipe, message, msize,
-                                  ALLNET_PRIORITY_EPSILON);
+                                  ALLNET_PRIORITY_EPSILON, alog);
     if (sent <= 0) {
-      snprintf (log_buf, LOG_SIZE, "sent to ad %d bytes, message %d bytes\n",
+      snprintf (alog->b, alog->s, "sent to ad %d bytes, message %d bytes\n",
                 sent, msize);
-      log_print ();
+      log_print (alog);
       terminate = 1;
     }
     /* remove any messages that this message acks */
@@ -808,10 +810,10 @@ static void one_cycle (const char * interface, pd p, int rpipe, int wpipe,
     unsigned long long dms = dus / 1000LLU;
     if_cycles_skipped = (int) (dms / (1000 * BASIC_CYCLE_SEC));
 #if defined(LOG_PACKETS) || defined(DEBUG_PRINT)
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "took %lluus, skipped %d cycle(s), priority %d\n",
               dus, if_cycles_skipped, high_priority);
-    log_print ();
+    log_print (alog);
 #endif /* LOG_PACKETS */
 #ifdef DEBUG_PRINT
     printf ("took %lluus, skipped %d cycle(s), priority %d\n",
@@ -847,24 +849,25 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
 {
   struct timeval quiet_end;   /* should we keep quiet? */
   gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
-  if (!iface->init_iface_cb (interface)) {
-    snprintf (log_buf, LOG_SIZE, "unable to init interface %s\n", interface);
-    log_print ();
+  if (!iface->init_iface_cb (interface, alog)) {
+    snprintf (alog->b, alog->s, "unable to init interface %s\n", interface);
+    log_print (alog);
     iface->iface_cleanup_cb ();
     return;
   }
   int is_on = iface->iface_is_enabled_cb ();
   if ((is_on < 0) || ((is_on == 0) && (iface->iface_set_enabled_cb (1) != 1))) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "abc: unable to bring up interface %s\n", interface);
-    log_print ();
+    log_print (alog);
     iface->iface_cleanup_cb ();
     return;
   }
-  snprintf (log_buf, LOG_SIZE,
+  snprintf (alog->b, alog->s,
             "interface '%s' on fd %d\n", interface, iface->iface_sockfd);
-  log_print ();
-  pd p = init_pipe_descriptor ();
+  log_print (alog);
+  pd p = init_pipe_descriptor (alog);
+/* printf ("abc adding pipe %d\n", rpipe); */
   add_pipe (p, rpipe);      /* tell pipemsg that we want to receive from ad */
   if (iface->iface_is_managed)
     bzero (zero_nonce, NONCE_SIZE);
@@ -883,7 +886,7 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
   snprintf (log_string, sizeof (log_string), "abc (%s)", ifopts);
   while (strchr (log_string, '/') != NULL)  /* init_log thinks '/' means dir */
     *(strchr (log_string, '/')) = '_';
-  init_log (log_string);
+  alog = init_log (log_string);
   queue_init (16 * 1024 * 1024);  /* 16MBi */
 
   const char * interface = ifopts;
@@ -910,17 +913,17 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
       }
     }
     if (iface == NULL) {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (alog->b, alog->s,
                 "No interface driver `%s' found. Using default\n", iface_type);
-      log_print ();
+      log_print (alog);
     }
   }
   if (iface == NULL)
     iface = iface_types [0];
 
-  snprintf (log_buf, LOG_SIZE, "read pipe is fd %d, write pipe fd %d\n",
+  snprintf (alog->b, alog->s, "read pipe is fd %d, write pipe fd %d\n",
             rpipe, wpipe);
-  log_print ();
+  log_print (alog);
   struct sigaction sa;
   sa.sa_handler = term_handler;
   sa.sa_flags = 0;
@@ -928,8 +931,8 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
   sigaction (SIGINT, &sa, NULL);
   sigaction (SIGTERM, &sa, NULL);
   main_loop (interface, rpipe, wpipe);
-  snprintf (log_buf, LOG_SIZE, "end of abc (%s) main thread\n", interface);
-  log_print ();
+  snprintf (alog->b, alog->s, "end of abc (%s) main thread\n", interface);
+  log_print (alog);
 }
 
 #ifdef DAEMON_MAIN_FUNCTION

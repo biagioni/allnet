@@ -6,6 +6,8 @@
 #include <netinet/in.h>        /* struct sockaddr_in on some systems */
 #include <netinet/ip.h>        /* struct sockaddr_in on other systems */
 
+#include "lib/allnet_log.h"    /* struct allnet_log */
+
 #ifndef __APPLE__
 #ifndef __CYGWIN__
 #ifndef _WIN32
@@ -64,7 +66,7 @@ typedef struct abc_iface {
    * @param bc The interface's default broadcast address
    * @return 1 if successful, 0 on failure.
    */
-  int (* init_iface_cb) (const char * interface);
+  int (* init_iface_cb) (const char * interface, struct allnet_log * log);
   /**
    * Time in ms it takes to turn on the interface.
    * The initial value provides a guideline and should be pretty conservative.
@@ -101,10 +103,11 @@ typedef struct abc_iface {
 extern void
   abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc);
 /* mode 0: print to screen and log ifdef DEBUG_PRINT, to log only otherwise
- * mode & 1 (i.e. 1, 3): print to log
+ * mode & 1 (i.e. 1, 3): print to log  (unless log is NULL)
  * mode & 2 (i.e. 2, 3): print to screen */
 extern void
-  abc_iface_print_sll_addr (struct sockaddr_ll * a, char * desc, int mode);
+  abc_iface_print_sll_addr (struct sockaddr_ll * a, char * desc, int mode,
+                            struct allnet_log * log);
 #else /* ALLNET_NETPACKET_SUPPORT */
 /* not sure what replaces the sll addresses for systems that don't have them */
 #endif /* ALLNET_NETPACKET_SUPPORT */

@@ -21,7 +21,9 @@
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
+
+static struct allnet_log * log = NULL;
 
 static int init_broadcast (char * arg0, pd p)
 {
@@ -41,8 +43,6 @@ struct thread_arg {
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
-  pthread_cleanup_push (close_log, NULL);
-  init_log ("xtime/broadcast receive_ignore");
   struct thread_arg * tap = (struct thread_arg *) arg;
   int sock = tap->sock;
   pd p = tap->p;
@@ -55,14 +55,14 @@ static void * receive_ignore (void * arg)
     else          /* some error -- quit */
       break;
   }
-  pthread_cleanup_pop (1);
   return NULL;
 }
 
 static void broadcast (int sock, char * data, int dsize, int hops,
                        allnet_rsa_prvkey key,
                        unsigned char * source, int sbits,
-                       unsigned char * dest, int dbits)
+                       unsigned char * dest, int dbits,
+                       struct allnet_log * log)
 {
   static char buffer [ALLNET_MTU];
   bzero (buffer, sizeof (buffer));
@@ -107,7 +107,7 @@ static void broadcast (int sock, char * data, int dsize, int hops,
 printf ("sending %d = %d + %d + %d + %d bytes\n",
 send_size, hsize, h2size, dsize, ssize);
   /* send with relatively low priority */
-  send_pipe_message (sock, buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW);
+  send_pipe_message (sock, buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW, log);
 }
 
 int main (int argc, char ** argv)
@@ -134,10 +134,11 @@ printf ("sending using key %s\n", key->identifier);
           key->address [1] & 0xff);
 */
   
-  pd p = init_pipe_descriptor ();
+  log = init_log ("xtime/broadcast");
+  pd p = init_pipe_descriptor (log);
   int sock = init_broadcast (argv [0], p);
   pthread_t receive_thread;
-  struct thread_arg arg;
+  static struct thread_arg arg;
   arg.sock = sock;
   arg.p = p;
   if (pthread_create (&receive_thread, NULL, receive_ignore, &arg) != 0) {
@@ -151,7 +152,8 @@ printf ("sending using key %s\n", key->identifier);
     if ((eol != NULL) && (strlen (buffer) == 1 + (eol - buffer)))
        *eol = '\0';
     broadcast (sock, buffer, strlen (buffer), hops, key->prv_key,
-               key->address, ADDRESS_BITS, key->address, ADDRESS_BITS);
+               key->address, ADDRESS_BITS, key->address, ADDRESS_BITS,
+               pipemsg_log (p));
   }
   return 0;
 }

@@ -20,7 +20,7 @@
 #include "lib/priority.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "lib/configfiles.h"
 #include "lib/sha.h"
 #include "lib/cipher.h" /* for print_caches, in case we want to decrypt */
@@ -54,7 +54,7 @@ struct hash_entry {
   struct hash_entry * next_by_source;
   unsigned char id [MESSAGE_ID_SIZE];
   unsigned char received_at [ALLNET_TIME_SIZE];
-  int file_position;
+  int64_t file_position;
   unsigned char src_nbits;           /* limited to not more than 16 */
   unsigned char dst_nbits;           /* limited to not more than 16 */
   unsigned char source [2];
@@ -90,62 +90,64 @@ static struct hash_entry * * message_hash_table;
 static struct hash_entry * * message_source_table;
 #endif /* SMALL_FIXED_SIZE */
 
+static struct allnet_log * alog = NULL;
+
 static int fd_size_or_zero (int fd)
 {
   /* fd_size in util.[ch] returns -1 in case of errors.  We want to return 0 */
   return minz (fd_size (fd), 0);
 }
 
-static int read_at_pos (int fd, char * data, int max, off_t position)
+static int read_at_pos (int fd, char * data, int64_t max, int64_t position)
 {
   if (lseek (fd, position, SEEK_SET) != position) {
     /* perror ("acache read_at_pos lseek"); */
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "acache unable to lseek to position %d for %d/%d\n",
-              (int) position, max, fd_size (fd));
-    log_error ("acache read_at_pos lseek");
+              (int)position, (int)max, fd_size (fd));
+    log_error (alog, "acache read_at_pos lseek");
     return 0;
   }
-  int r = read (fd, data, max);
+  ssize_t r = read (fd, data, (int)max);
   if (r < 0) {
     /* perror ("acache read_at_pos read"); */
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "acache unable to read data at %d: %d %d %d %d\n",
-              (int) position, fd, r, max, fd_size (fd));
-    log_error ("acache read_at_pos read");
+              (int)position, fd, (int)r, (int)max, fd_size (fd));
+    log_error (alog, "acache read_at_pos read");
     r = 0;
   }
-  return r;
+  return (int)r;
 }
 
-static void write_at_pos (int fd, char * data, int dsize, int position)
+static void write_at_pos (int fd, char * data, int dsize, int64_t position)
 {
   if (lseek (fd, position, SEEK_SET) != position) {
     /* perror ("acache write_at_pos lseek"); */
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "acache unable to lseek to pos %d for %d %d\n",
-              position, dsize, fd_size (fd));
-    log_error ("acache write_at_pos lseek");
+              (int)position, dsize, fd_size (fd));
+    log_error (alog, "acache write_at_pos lseek");
     return;
   }
-  int w = write (fd, data, dsize);
+  ssize_t w = write (fd, data, dsize);
   if (w != dsize) {
     /* perror ("acache write_at_pos write"); */
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "acache unable to save data at %d: %d %d %d\n",
-              position, w, dsize, fd_size (fd));
-    log_error ("acache write_at_pos write");
+              (int)position, (int)w, dsize, fd_size (fd));
+    log_error (alog, "acache write_at_pos write");
     return;
   }
 }
 
-static void truncate_to_size (int fd, int max_size, char * caller)
+static void truncate_to_size (int fd, int64_t max_size, char * caller)
 {
   if (fd_size (fd) > max_size) {
     if (ftruncate (fd, max_size) != 0)
       perror ("ftruncate");
-    snprintf (log_buf, LOG_SIZE, "%s truncated to %d\n", caller, max_size);
-    log_print ();
+    snprintf (alog->b, alog->s, "%s truncated to %d\n", caller, (int)max_size);
+    log_print (alog);
   }
 }
 
@@ -177,7 +179,7 @@ static void init_acks (int fd, int max_acks)
   bzero (&empty, sizeof (struct ack_entry));
   read_ack_data (fd);
   /* if all filled, we start at random */
-  save_ack_pos = random_int (0, max_acks - 1);
+  save_ack_pos = (int)random_int (0, max_acks - 1);
   int i = max_acks;
   while (i-- > 0) {
     if (memcmp (acks [i].message_id, empty.message_id, MESSAGE_ID_SIZE) == 0)
@@ -398,12 +400,12 @@ static int match_bitmap (int power_two, int bitmap_bits, unsigned char * bitmap,
 #endif /* DEBUG_PRINT */
   if ((start_index > end_index) ||
       (start_index > bitmap_bits) || (end_index > bitmap_bits)) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "match_bitmap error: 2^%d, index %" PRIx64 "-%" PRIx64 ", %d+%d bits, a %02x\n",
               power_two, start_index, end_index, bitmap_bits, abits,
               address [0]);
-    printf ("%s", log_buf);
-    log_print ();
+    printf ("%s", alog->b);
+    log_print (alog);
     return 1;
   }
   while (start_index <= end_index) {
@@ -449,41 +451,41 @@ static int packet_matches (struct request_details * req,
 }
 
 /* see get_next_message */
-static int next_prev_position (int next_position, int msize)
+static int64_t next_prev_position (int64_t next_position, int msize)
 {
   return next_position - (MESSAGE_ENTRY_HEADER_SIZE + msize);
 }
 
 /* note that the return value is the position of the NEXT message, if any.
  * the position of this message is given by next_prev_position */
-static int get_next_message (int fd, int max_size, int position,
-                             struct request_details *rd,
-                             char ** message, int * msize, int * id_off,
-                             int * priority, char * received_time)
+static int64_t get_next_message (int fd, int max_size, int64_t position,
+                                 struct request_details *rd,
+                                 char ** message, int * msize, int * id_off,
+                                 int * priority, char * received_time)
 {
   if (position < 0)
     return -1;
   while (position < max_size) {
     static char buffer [MAX_MESSAGE_ENTRY_SIZE];
-    int rsize = MAX_MESSAGE_ENTRY_SIZE;
+    int64_t rsize = MAX_MESSAGE_ENTRY_SIZE;
     if (rsize > (max_size - position))
       rsize = max_size - position;
     int r = read_at_pos (fd, buffer, rsize, position);
     if (r <= 0) { /* unable to read */
 #ifdef DEBUG_PRINT
-      snprintf (log_buf, LOG_SIZE, "get_next_message r %d\n", r); log_print ();
+      snprintf (alog->b, alog->s, "get_next_message r %d\n", r); log_print (alog);
 #endif /* DEBUG_PRINT */
       return -1;
     }
     int found_size = readb16 (buffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET);
     if ((found_size <= 0) || (found_size > ALLNET_MTU)) { /* unknown size */
 #ifdef DEBUG_PRINT
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (alog->b, alog->s,
                 "get_next_message found %d at %d (%d/%zd)\n",
                 found_size, position, r, fd_size (fd));
-      log_print ();
-      buffer_to_string (buffer, r, "data", 16, 0, log_buf, LOG_SIZE);
-      log_print ();
+      log_print (alog);
+      buffer_to_string (buffer, r, "data", 16, 0, alog->b, alog->s);
+      log_print (alog);
 #endif /* DEBUG_PRINT */
       return -1;
     }
@@ -497,23 +499,24 @@ static int get_next_message (int fd, int max_size, int position,
       if (message != NULL) *message = found_message;
       if (msize != NULL) *msize = found_size;
       if (id_off != NULL) *id_off = found_id_off;
-      if (priority != NULL) *priority =
-        readb32 (buffer + MESSAGE_ENTRY_HEADER_PRIORITY_OFFSET);
+      if (priority != NULL)
+        *priority = (int)readb32 (buffer +
+                                  MESSAGE_ENTRY_HEADER_PRIORITY_OFFSET);
       if (received_time != NULL)
         memcpy (received_time, found_time, ALLNET_TIME_SIZE);
 #ifdef DEBUG_PRINT
-      snprintf (log_buf, LOG_SIZE, "get_next_message: %d %d ok\n",
+      snprintf (alog->b, alog->s, "get_next_message: %d %d ok\n",
                 found_size, position);
-      log_print ();
+      log_print (alog);
 #endif /* DEBUG_PRINT */
       return position;
     }
 #ifdef DEBUG_PRINT
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "get_next_message found %d id_off %d p %d %d\n", found_size,
               found_id_off, position - (MESSAGE_ENTRY_HEADER_SIZE + found_size),
               position);
-    log_print ();
+    log_print (alog);
 #endif /* DEBUG_PRINT */
   }
   return -1;  /* reached the end */
@@ -548,8 +551,8 @@ static void list_remove_message (char * id)
     }
   }
   if (from == to) {
-    buffer_to_string (id, MESSAGE_ID_SIZE, "id not found, unable to delete from list", 16, 0, log_buf, LOG_SIZE);
-    log_print ();
+    buffer_to_string (id, MESSAGE_ID_SIZE, "id not found, unable to delete from list", 16, 0, alog->b, alog->s);
+    log_print (alog);
   }
 }
 #endif /* USING_MESSAGE_LIST */
@@ -602,15 +605,15 @@ static int count_list (struct hash_entry * entry, int index)
 #ifdef DEBUG_PRINT
   int off = 0;
   if (index != -1)
-    off = snprintf (log_buf, LOG_SIZE, "%d: ", index);
+    off = snprintf (alog->b, alog->s, "%d: ", index);
 #endif /* DEBUG_PRINT */
   while (entry != NULL) {
 #ifdef DEBUG_PRINT
     if (index != -1) {
       off += buffer_to_string ((char *) (entry->id), MESSAGE_ID_SIZE, " ",
-                               16, 0, log_buf + off, LOG_SIZE - off);
-      off += snprintf (log_buf + off, LOG_SIZE - off, " @ %d, ",
-                       entry->file_position);
+                               16, 0, alog->b + off, alog->s - off);
+      off += snprintf (alog->b + off, alog->s - off, " @ %d, ",
+                       (int)entry->file_position);
     }
 #endif /* DEBUG_PRINT */
     result++;
@@ -618,7 +621,7 @@ static int count_list (struct hash_entry * entry, int index)
   }
 #ifdef DEBUG_PRINT
   if (index != -1)
-  log_print ();
+  log_print (alog);
 #endif /* DEBUG_PRINT */
   return result;
 }
@@ -633,37 +636,37 @@ static void print_stats (int exit_if_none_free, int must_match)
   int mcount = message_list_used;
 #endif /* USING_MESSAGE_LIST */
   int fcount = count_list (message_hash_free, -1);
-  int off = strlen (log_buf);
+  int off = (int)strlen (alog->b);
 #ifdef USING_MESSAGE_LIST
   if (hcount == mcount)
-    snprintf (log_buf + off, LOG_SIZE - off, "%d in hash/list, %d free\n",
+    snprintf (alog->b + off, alog->s - off, "%d in hash/list, %d free\n",
               hcount, fcount);
   else
-    snprintf (log_buf + off, LOG_SIZE - off,
+    snprintf (alog->b + off, alog->s - off,
               "%d in hash, %d in message list, %d free\n",
               hcount, mcount, fcount);
 #else /* ! USING_MESSAGE_LIST */
-    snprintf (log_buf + off, LOG_SIZE - off, "%d in hash, %d free\n",
+    snprintf (alog->b + off, alog->s - off, "%d in hash, %d free\n",
               hcount, fcount);
 #endif /* USING_MESSAGE_LIST */
-  log_print ();
+  log_print (alog);
   if (exit_if_none_free && (fcount == 0))
     exit (1);
 #ifdef USING_MESSAGE_LIST
   if ((must_match >= 0) && ((must_match != mcount) || (must_match != hcount))) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "%d in hash, %d in message list, %d free, should have %d\n",
               hcount, mcount, fcount, must_match);
-    printf ("%s", log_buf);
-    log_print ();
+    printf ("%s", alog->b);
+    log_print (alog);
     exit (1);
   }
 #else /* USING_MESSAGE_LIST */
   if ((must_match >= 0) && (must_match != hcount)) {
-    snprintf (log_buf, LOG_SIZE, "%d in hash, %d free, should have %d\n",
+    snprintf (alog->b, alog->s, "%d in hash, %d free, should have %d\n",
               hcount, fcount, must_match);
-    printf ("%s", log_buf);
-    log_print ();
+    printf ("%s", alog->b);
+    log_print (alog);
     if (exit_if_none_free)
       exit (1);
   }
@@ -688,7 +691,7 @@ static uint32_t hash_index (char * id)
             hash_div, hash_size, hash_pool_size, bits_in_hash_table);
 #endif /* DEBUG_PRINT */
   }
-  return (readb32 (id) / hash_div);
+  return ((uint32_t)readb32 (id) / hash_div);
 }
 
 static int hash_has_space ()
@@ -697,15 +700,15 @@ static int hash_has_space ()
 }
 
 static void hash_add_message (char * message, int msize, char * id,
-                              int position, char * time)
+                              int64_t position, char * time)
 {
   /* allocate an entry from the pool */
   if (message_hash_free == NULL) {
     /* caller should have made sure we have at least one entry available */
     printf ("error in hash_add_message: no free entries\n");
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "error in hash_add_message: no free entries\n");
-    log_print ();
+    log_print (alog);
     exit (1);
   }
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -734,7 +737,7 @@ static void hash_add_message (char * message, int msize, char * id,
   message_source_table [s_index] = entry;
 }
 
-static void update_hash_position (char * id, int position)
+static void update_hash_position (char * id, int64_t position)
 {
   int index = hash_index (id);
   struct hash_entry * entry = message_hash_table [index];
@@ -809,8 +812,8 @@ static void remove_from_hash_table (char * id)
   } else {
     buffer_to_string (id, MESSAGE_ID_SIZE,
                       "id not found, unable to delete from list",
-                      16, 0, log_buf, LOG_SIZE);
-    log_print ();
+                      16, 0, alog->b, alog->s);
+    log_print (alog);
   }
 }
 
@@ -830,7 +833,7 @@ static int64_t assign_matching (struct hash_entry * matching, int fd, int fsize,
   static char data [MAX_MESSAGE_ENTRY_SIZE];
   if (matching->file_position >= fsize)
     return -1;
-  size_t rsize = sizeof (data);
+  int64_t rsize = sizeof (data);
   if (matching->file_position + rsize > fsize)
     rsize = fsize - matching->file_position;
   int r = read_at_pos (fd, data, rsize, matching->file_position);
@@ -844,20 +847,20 @@ static int64_t assign_matching (struct hash_entry * matching, int fd, int fsize,
   if (msize != NULL) *msize = found_msize;
   if (id_off != NULL) *id_off = found_id_off;
   if (priority != NULL)
-    *priority = readb32 (data + MESSAGE_ENTRY_HEADER_PRIORITY_OFFSET);
+    *priority = (int)readb32 (data + MESSAGE_ENTRY_HEADER_PRIORITY_OFFSET);
   if (time != NULL)
     memcpy (time, data + MESSAGE_ENTRY_HEADER_TIME_OFFSET, ALLNET_TIME_SIZE);
   return matching->file_position + found_msize + MESSAGE_ENTRY_HEADER_SIZE;
 }
 
-static int64_t hash_get_next (int fd, int max, int pos, char * hash,
+static int64_t hash_get_next (int fd, int max, int64_t pos, char * hash,
                               char ** message, int * msize, int * id_off,
                               int * priority, char * time)
 {
   if (pos < 0)
     return -1;
   int h_index = hash_index (hash);
-  int least_not_less_than = -1;
+  int64_t least_not_less_than = -1;
   struct hash_entry * entry = message_hash_table [h_index];
   struct hash_entry * matching = NULL;
   while (entry != NULL) {
@@ -875,9 +878,10 @@ static int64_t hash_get_next (int fd, int max, int pos, char * hash,
 }
 
 #ifdef USE_LIST_NEXT_MATCHING
-static int source_get_next (int fd, int max, int pos, unsigned char * source,
-                            char ** message, int * msize, int * id_off,
-                            int * priority, char * time)
+static int64_t source_get_next (int fd, int max, int pos,
+                                unsigned char * source,
+                                char ** message, int * msize, int * id_off,
+                                int * priority, char * time)
 {
   if (pos < 0)
     return -1;
@@ -984,7 +988,7 @@ static int hash_random_match (int fd, int max_size,
   static int initialized = 0;
   static int persistent_index = 0;
   if (! initialized)
-    persistent_index = random_int (0, hash_size - 1);
+    persistent_index = (int)random_int (0, hash_size - 1);
   else
     persistent_index = (persistent_index + 1) % hash_size;
   initialized = 1;
@@ -1012,8 +1016,8 @@ static int hash_random_match (int fd, int max_size,
   if (entry == NULL) /* defensive programming!!! */
     return 0;
   char ptime [ALLNET_TIME_SIZE];
-  int res = assign_matching (entry, fd, max_size, message, msize,
-                             NULL, NULL, ptime);
+  int64_t res = assign_matching (entry, fd, max_size, message, msize,
+                                 NULL, NULL, ptime);
   if (res < 0)
     return 0;
   if ((msize != NULL) && (*msize <= 0))
@@ -1037,7 +1041,7 @@ static int hash_next_match (int fd, int max_size, int first_call,
   static struct hash_entry * persistent_entry = NULL;
   static int first_index = -1;
   if (first_call) {
-    persistent_index = random_int (0, hash_size - 1);
+    persistent_index = (int)random_int (0, hash_size - 1);
     persistent_entry = message_hash_table [persistent_index];
     first_index = persistent_index;
   } else if (persistent_index < 0) { /* already done */
@@ -1057,18 +1061,18 @@ static int hash_next_match (int fd, int max_size, int first_call,
       persistent_entry = message_hash_table [persistent_index];
     }
     if (persistent_entry == NULL) { /* this is an error! */
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (alog->b, alog->s,
                 "error: persistent_entry is NULL, %d %d %p\n",
                 persistent_index, first_index, persistent_entry);
-      printf ("%s", log_buf);
-      log_print ();
+      printf ("%s", alog->b);
+      log_print (alog);
       return 0;
     }
     struct hash_entry * entry = persistent_entry;
     persistent_entry = entry->next_by_hash;   /* may be null */
     char ptime [ALLNET_TIME_SIZE];
-    int found = assign_matching (entry, fd, max_size, message, msize,
-                                 NULL, NULL, ptime);
+    int64_t found = assign_matching (entry, fd, max_size, message, msize,
+                                     NULL, NULL, ptime);
     if ((found < 0) || ((msize != NULL) && (*msize <= 0)))
       continue;   /* try again with the next entry */
     int match = packet_matches (rd, *message, *msize, ptime);
@@ -1076,27 +1080,27 @@ static int hash_next_match (int fd, int max_size, int first_call,
       continue;   /* try again with the next entry */
     return 1;  /* found */
   }
-  printf ("control flow error in acache\n");
-  return 0;  /* should never be executed */
+  /* printf ("control flow error in acache\n");
+  return 0; */  /* should never be executed */
 }
 #endif /* HASH_RANDOM_MATCH */
 
 /* returns 1 if this message is ready to be deleted, 0 otherwise */
 static int delete_gc_message (char * message, int msize,
                               int id_off, int priority, char * time,
-                              int end_pos, int file_max)
+                              int64_t end_pos, int file_max)
 {
   if ((msize <= ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE) || (msize > ALLNET_MTU) ||
       (id_off < ALLNET_HEADER_SIZE) || (id_off + MESSAGE_ID_SIZE > msize))
     return 1;  /* bad message, no need to keep */
-  int file_pos = next_prev_position (end_pos, msize);
+  int file_pos = (int)next_prev_position (end_pos, msize);
   struct allnet_header * hp = (struct allnet_header *) message;
   /* we should delete something, so at least the first 6% of the file */
   int min_delete = (file_max / 16);
 #ifdef DEBUG_PRINT
   int off = buffer_to_string (message + id_off, MESSAGE_ID_SIZE, "id",
-                              MESSAGE_ID_SIZE, 0, log_buf, LOG_SIZE);
-  off += snprintf (log_buf + off, LOG_SIZE - off, ", pos %d/%d, transport %x",
+                              MESSAGE_ID_SIZE, 0, alog->b, alog->s);
+  off += snprintf (alog->b + off, alog->s - off, ", pos %d/%d, transport %x",
                    file_pos, min_delete, hp->transport);
 #endif /* DEBUG_PRINT */
   if (file_pos <= min_delete)
@@ -1108,7 +1112,7 @@ static int delete_gc_message (char * message, int msize,
   /* for example, priority 1/5 should be deleted unless fof >= 4/5 */
   int fraction_of_file = allnet_divide (file_pos, file_max);
 #ifdef DEBUG_PRINT
-  off += snprintf (log_buf + off, LOG_SIZE - off,
+  off += snprintf (alog->b + off, alog->s - off,
                    ", %x<>%x (%d)", fraction_of_file,
                    ALLNET_PRIORITY_MAX - priority, priority);
 #endif /* DEBUG_PRINT */
@@ -1121,7 +1125,7 @@ static int delete_gc_message (char * message, int msize,
       uint64_t exp_time = readb64 (exp);
       if (exp_time < allnet_time ()) {
 #ifdef DEBUG_PRINT
-        off += snprintf (log_buf + off, LOG_SIZE - off, ", expired");
+        off += snprintf (alog->b + off, alog->s - off, ", expired");
 #endif /* DEBUG_PRINT */
         return 1;
       }
@@ -1137,8 +1141,8 @@ static void gc (int fd, int max_size)
   if (gc_size > actual_size)
     gc_size = actual_size;
   int copied = 0, deleted = 0;
-  int read_position = 0;
-  int write_position = 0;
+  int64_t read_position = 0;
+  int64_t write_position = 0;
   char * message;
   int msize;
   int id_off;
@@ -1150,9 +1154,9 @@ static void gc (int fd, int max_size)
     int delete = delete_gc_message (message, msize, id_off, priority, time,
                                     read_position, gc_size);
 #ifdef DEBUG_PRINT
-    snprintf (log_buf + strlen (log_buf), LOG_SIZE - strlen (log_buf),
+    snprintf (alog->b + strlen (alog->b), alog->s - strlen (alog->b),
               "  ==> delete %d\n", delete);
-    log_print ();
+    log_print (alog);
 #endif /* DEBUG_PRINT */
     if (! delete) {
       char buffer [MAX_MESSAGE_ENTRY_SIZE];
@@ -1177,7 +1181,7 @@ static void gc (int fd, int max_size)
   }
   truncate_to_size (fd, write_position, "gc");
   fsync (fd);
-  snprintf (log_buf, LOG_SIZE, "%d copied, %d deleted, ", copied, deleted);
+  snprintf (alog->b, alog->s, "%d copied, %d deleted, ", copied, deleted);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
   print_stats (1, copied);
@@ -1191,10 +1195,10 @@ static void cache_message (int fd, int max_size,
   char mbuffer [MAX_MESSAGE_ENTRY_SIZE];
   int fsize = MESSAGE_ENTRY_HEADER_SIZE + msize;
   if ((fsize > max_size) || (fsize > MAX_MESSAGE_ENTRY_SIZE) || (fsize < 0)) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "unable to save message of size %d/%d, max %d/%d\n",
               msize, fsize, max_size, MAX_MESSAGE_ENTRY_SIZE);
-    log_print ();
+    log_print (alog);
     return;
   }
   writeb16 (mbuffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET, msize);
@@ -1205,9 +1209,9 @@ static void cache_message (int fd, int max_size,
   memcpy (mbuffer + MESSAGE_ENTRY_HEADER_SIZE, message, msize);
   int count = 0;
   while (! hash_has_space ()) { /* delete some entries in the hash table */
-    snprintf (log_buf, LOG_SIZE, "gc'ing to make space for hash: %d\n",
+    snprintf (alog->b, alog->s, "gc'ing to make space for hash: %d\n",
               ++count);
-    log_print ();
+    log_print (alog);
     if (count > 10) {
       printf ("count is 10 in acache.c cache_message, aborting\n");
       exit (1);
@@ -1222,44 +1226,44 @@ static void cache_message (int fd, int max_size,
 #ifdef USING_MESSAGE_LIST
   list_add_message (message + id_off);
 #endif /* USING_MESSAGE_LIST */
-snprintf (log_buf, LOG_SIZE, "saved message at position %d, hash index %d, ", (int) write_position, hash_index (message + id_off)); log_print (); print_stats (0, -1);
+snprintf (alog->b, alog->s, "saved message at position %d, hash index %d, ", (int) write_position, hash_index (message + id_off)); log_print (alog); print_stats (0, -1);
   count = 0;
   while (fd_size (fd) > max_size) {
-    snprintf (log_buf, LOG_SIZE, "gc'ing to reduce space from %d to %d: %d\n",
+    snprintf (alog->b, alog->s, "gc'ing to reduce space from %d to %d: %d\n",
               fd_size (fd), max_size, ++count);
-    log_print ();
+    log_print (alog);
     gc (fd, max_size);
   }
 }
 
 static void remove_cached_message (int fd, int max_size, char * id,
-                                   int position, int msize)
+                                   int64_t position, int msize)
 {
   static char buffer [MAX_MESSAGE_ENTRY_SIZE];
   int fsize = MESSAGE_ENTRY_HEADER_SIZE + msize;
   if (fsize > MAX_MESSAGE_ENTRY_SIZE) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "remove_cached_message error: size %d, max %d\n",
               fsize, MAX_MESSAGE_ENTRY_SIZE);
-    log_print ();
+    log_print (alog);
     return;   /* invalid call */
   }
   /* read the entry, make sure the size matches */
-  int next = get_next_message (fd, max_size, position, NULL,
-                               NULL, NULL, NULL, NULL, NULL);
+  int64_t next = get_next_message (fd, max_size, position, NULL,
+                                   NULL, NULL, NULL, NULL, NULL);
   if ((next != 0) && (next - position != fsize)) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "warning in acache: next %d - pos %d != fsize %d (%d)\n",
-              next, position, fsize, fd_size (fd));
-    log_print ();
+              (int)next, (int)position, fsize, fd_size (fd));
+    log_print (alog);
     buffer_to_string (id, MESSAGE_ID_SIZE, "id", MESSAGE_ID_SIZE, 1,
-                      log_buf, LOG_SIZE);
-    log_print ();
+                      alog->b, alog->s);
+    log_print (alog);
     print_stats (0, -1);
   }
   buffer_to_string (id, MESSAGE_ID_SIZE, "removing cached", MESSAGE_ID_SIZE, 1,
-                    log_buf, LOG_SIZE);
-  log_print ();
+                    alog->b, alog->s);
+  log_print (alog);
   /* mark it as erased, but keep the size so we can later skip */
   bzero (buffer, fsize);
   writeb16 (buffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET, msize);
@@ -1296,26 +1300,26 @@ static int save_packet (int fd, int max_size, char * message, int msize,
                         int priority)
 {
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "save_packet: size %d\n", msize);
-  log_print ();
+  snprintf (alog->b, alog->s, "save_packet: size %d\n", msize);
+  log_print (alog);
 #endif /* DEBUG_PRINT */
   char * id = get_id (message, msize);
   if (id == NULL)   /* no sort of message or packet ID found */
     return 0;
 #ifdef DEBUG_PRINT
   buffer_to_string (id, MESSAGE_ID_SIZE, "id", MESSAGE_ID_SIZE, 1,
-                    log_buf, LOG_SIZE);
-  log_print ();
+                    alog->b, alog->s);
+  log_print (alog);
 #endif /* DEBUG_PRINT */
   if (hash_find (id) != NULL) {
 #ifdef LOG_PACKETS
     buffer_to_string (id, MESSAGE_ID_SIZE, "save_packet: found",
-                      MESSAGE_ID_SIZE, 1, log_buf, LOG_SIZE);
-    log_print ();
+                      MESSAGE_ID_SIZE, 1, alog->b, alog->s);
+    log_print (alog);
 #endif /* LOG_PACKETS */
     return 0;
   }
-  cache_message (fd, max_size, id - message, message, msize, priority);
+  cache_message (fd, max_size, (int)(id - message), message, msize, priority);
   return 1;
 }
 
@@ -1361,7 +1365,7 @@ static int send_ack (struct allnet_header * hp, int msize, int sock)
   char * data = send + ALLNET_SIZE (hp->transport);
   memcpy (data, acks [index].message_ack, MESSAGE_ID_SIZE);
   int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
-  send_pipe_message (sock, send, send_size, priority);
+  send_pipe_message (sock, send, send_size, priority, alog);
   return 1;
 }
 
@@ -1374,7 +1378,7 @@ static int requested_ack (char * message_id, char * bits, int nbits)
     return 1;
   if (nbits >= 32)
     return 0;
-  uint32_t pos = (readb32 (message_id) >> (32 - nbits));
+  uint32_t pos = (((uint32_t)(readb32 (message_id))) >> (32 - nbits));
   return get_bit ((unsigned char *) bits, pos);
 }
 
@@ -1396,7 +1400,7 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
   unsigned char zero [MESSAGE_ID_SIZE];
   bzero (zero, sizeof (zero));
   int count = 0;
-  int ack_index = random_int (0, ack_space - 1); /* index into ack table */
+  int ack_index = (int)random_int (0, ack_space - 1); /* index into ack table */
   int initial_ack_index = ack_index;
   int msg_index = 0;                             /* index into ack message */
   int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
@@ -1417,7 +1421,7 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
     /* if we are done, or if we have max_acks to send, send what we have */
     if ((msg_index > 0) && (finished || (msg_index == ALLNET_MAX_ACKS))) {
       int send_size = hsize + msg_index * MESSAGE_ID_SIZE;
-      send_pipe_message (sock, packet, send_size, priority);
+      send_pipe_message (sock, packet, send_size, priority, alog);
       count += msg_index;
       msg_index = 0;
     }
@@ -1429,16 +1433,16 @@ static void resend_message (char * message, int msize, int64_t position,
                             int *priorityp, int local_request, int sock)
 {
   int priority = *priorityp;
-  snprintf (log_buf, LOG_SIZE,
+  snprintf (alog->b, alog->s,
             "sending %d-byte cached response at [%" PRIx64 "]\n",
             msize, position);
-  log_print ();
+  log_print (alog);
   struct allnet_header * send_hp = (struct allnet_header *) message;
   int saved_max = send_hp->max_hops;
   if (local_request)  /* only forward locally */
     send_hp->max_hops = send_hp->hops;
   /* send, no need to even check the return value of send_pipe_message */
-  send_pipe_message (sock, message, msize, priority);
+  send_pipe_message (sock, message, msize, priority, alog);
   if (local_request)  /* restore the packet as it was */
     send_hp->max_hops = saved_max;
   if (priority > ALLNET_PRIORITY_EPSILON)
@@ -1488,9 +1492,9 @@ static int respond_to_request (int fd, int max_size, char * in_message,
       resend_message (message, msize, 0, &priority, local_request, sock);
     }
   }
-  snprintf (log_buf, LOG_SIZE, "respond_to_request: sent %d packets, %d acks\n",
+  snprintf (alog->b, alog->s, "respond_to_request: sent %d packets, %d acks\n",
             sent, num_acks);
-  log_print ();
+  log_print (alog);
 /* printf ("sent %d messages, %d acks\n", sent, num_acks); */
   return sent;
 }
@@ -1548,7 +1552,7 @@ static int respond_to_id_request (int fd, int max_size, char * in_message,
     writeb16u (amirp->n, nmissing);
     int send_size = ALLNET_ID_REQ_SIZE (in_hp->transport, nmissing);
   /* send, no need to even check the return value of send_pipe_message */
-    send_pipe_message (sock, in_message, send_size, priority);
+    send_pipe_message (sock, in_message, send_size, priority, alog);
   }
   return nsent;
 }
@@ -1567,17 +1571,18 @@ static void ack_packets (int msg_fd, int msg_size, int ack_fd,
     sha512_bytes (ack, MESSAGE_ID_SIZE, hash, MESSAGE_ID_SIZE);
     ack_add (ack, hash, ack_fd);
     /* delete any message corresponding to this ack */
-    int position = 0;
+    int64_t position = 0;
     char * message;
     int msize;
     int id_off;
     while ((position =
               hash_get_next (msg_fd, msg_size, position, hash,
                              &message, &msize, &id_off, NULL, NULL)) > 0) {
-      int current_pos = next_prev_position (position, msize);
-      snprintf (log_buf, LOG_SIZE,
-                "acking %d-byte cached response at [%d]\n", msize, current_pos);
-      log_print ();
+      int64_t current_pos = next_prev_position (position, msize);
+      snprintf (alog->b, alog->s,
+                "acking %d-byte cached response at [%d]\n",
+                msize, (int)current_pos);
+      log_print (alog);
       char * id = message + id_off;
       remove_cached_message (msg_fd, msg_size, id, current_pos, msize);
       count++;
@@ -1585,14 +1590,14 @@ static void ack_packets (int msg_fd, int msg_size, int ack_fd,
     ack += MESSAGE_ID_SIZE;
     in_msize -= MESSAGE_ID_SIZE;
   }
-  snprintf (log_buf, LOG_SIZE, "acked %d packets\n", count);
-  log_print ();
+  snprintf (alog->b, alog->s, "acked %d packets\n", count);
+  log_print (alog);
 }
 
 static void init_msgs (int msg_fd, int max_msg_size)
 {
   init_hash_table (max_msg_size);
-  int read_position = 0;
+  int64_t read_position = 0;
   int count = 0;
   char * message;
   int msize;
@@ -1614,17 +1619,17 @@ static void init_msgs (int msg_fd, int max_msg_size)
       count++;
     }
   }
-  snprintf (log_buf, LOG_SIZE, "init almost done, %d %d %d, ",
+  snprintf (alog->b, alog->s, "init almost done, %d %d %d, ",
             msg_fd, fd_size (msg_fd), max_msg_size);
-  log_print ();
+  log_print (alog);
   print_stats (0, count);
   while (fd_size (msg_fd) > max_msg_size) {
-    snprintf (log_buf, LOG_SIZE, "message file %d, max %d, gc'ing",
+    snprintf (alog->b, alog->s, "message file %d, max %d, gc'ing",
               fd_size (msg_fd), max_msg_size);
-    log_print ();
+    log_print (alog);
     gc (msg_fd, max_msg_size);
   }
-  snprintf (log_buf, LOG_SIZE, "after init, saving at %d, ", save_ack_pos);
+  snprintf (alog->b, alog->s, "after init, saving at %d, ", save_ack_pos);
   print_stats (0, -1);
 }
 
@@ -1641,24 +1646,24 @@ static void init_acache (int * msg_fd, int * max_msg_size,
   /* create ~/.allnet/acache/sizes */
     fd = open_write_config ("acache", "sizes", 1);
     if (fd < 0) {
-      snprintf (log_buf, LOG_SIZE, "unable to create ~/.allnet/acache/sizes\n");
-      log_error ("create ~/.allnet/acache/sizes");
+      snprintf (alog->b, alog->s, "unable to create ~/.allnet/acache/sizes\n");
+      log_error (alog, "create ~/.allnet/acache/sizes");
       printf ("unable to create ~/.allnet/acache/sizes\n");
       /* not a fatal error: exit (1); */
     } else {
       char string [] = "1000000\n5000\nno\n";
-      int len = strlen (string);
+      int len = (int)strlen (string);
       if (write (fd, string, len) != len) {
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (alog->b, alog->s,
                   "unable to write ~/.allnet/acache/sizes\n");
-        log_error ("write ~/.allnet/acache/sizes");
+        log_error (alog, "write ~/.allnet/acache/sizes");
         printf ("unable to write ~/.allnet/acache/sizes\n");
         /* also not a fatal error: exit (1); */
       }
     }
   } else {     /* read input from ~/.allnet/acache/sizes */
     static char buffer [1000];
-    int n = read (fd, buffer, sizeof (buffer));
+    ssize_t n = read (fd, buffer, sizeof (buffer));
     if ((n > 0) && (n < sizeof (buffer))) {
       char yesno [10] = "no";
       buffer [n] = '\0';
@@ -1667,14 +1672,14 @@ static void init_acache (int * msg_fd, int * max_msg_size,
       if (tolower (yesno [0]) == 'n')
         *local_caching = 0;
 #ifdef DEBUG_PRINT
-      snprintf (log_buf, LOG_SIZE, "local caching is %d\n", *local_caching);
-      log_print ();
+      snprintf (alog->b, alog->s, "local caching is %d\n", *local_caching);
+      log_print (alog);
 #endif /* DEBUG_PRINT */
     } else {
-      snprintf (log_buf, LOG_SIZE,
-                "unable to read ~/.allnet/acache/sizes (%d)\n", n);
-      log_error ("read ~/.allnet/acache/sizes");
-      printf ("unable to read ~/.allnet/acache/sizes (%d)\n", n);
+      snprintf (alog->b, alog->s,
+                "unable to read ~/.allnet/acache/sizes (%d)\n", (int)n);
+      log_error (alog, "read ~/.allnet/acache/sizes");
+      printf ("unable to read ~/.allnet/acache/sizes (%d)\n", (int)n);
     }
   }
   close (fd);
@@ -1682,9 +1687,9 @@ static void init_acache (int * msg_fd, int * max_msg_size,
   *msg_fd = open_rw_config ("acache", "messages", 1);
   *ack_fd = open_rw_config ("acache", "acks", 1);
   if ((*msg_fd < 0) || (*ack_fd < 0)) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "error, message FD %d, ack FD %d\n", *msg_fd, *ack_fd);
-    log_print ();
+    log_print (alog);
     printf ("error, message FD %d, ack FD %d\n", *msg_fd, *ack_fd);
   }
   if (*ack_fd >= 0)
@@ -1693,7 +1698,7 @@ static void init_acache (int * msg_fd, int * max_msg_size,
     init_msgs (*msg_fd, *max_msg_size);
 }
 
-static void main_loop (int sock, pd p)
+static void main_loop (int rsock, int wsock, pd p)
 {
   int msg_fd;
   int max_msg_size;
@@ -1704,71 +1709,71 @@ static void main_loop (int sock, pd p)
   while (1) {
     char * message;
     int priority;
-    int result = receive_pipe_message (p, sock, &message, &priority);
+    int result = receive_pipe_message (p, rsock, &message, &priority);
     struct allnet_header * hp = (struct allnet_header *) message;
     /* unless we save it, free the message */
     int mfree = 1;
     if (result <= 0) {
-      snprintf (log_buf, LOG_SIZE, "ad pipe %d closed, result %d\n",
-                sock, result);
-      log_print ();
+      snprintf (alog->b, alog->s, "ad pipe %d closed, result %d\n",
+                rsock, result);
+      log_print (alog);
       /* mfree = 0;  not useful */
       break;
     } else if ((result >= ALLNET_HEADER_SIZE) &&
                (result >= ALLNET_SIZE (hp->transport))) {
       if (priority == 0) {
 #ifdef LOG_PACKETS
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (alog->b, alog->s,
                   "received message with priority %d, %d hops\n", priority,
                   hp->hops);
-        log_print ();
+        log_print (alog);
 #endif /* LOG_PACKETS */
         priority = ALLNET_PRIORITY_EPSILON;
       }
       /* valid message from ad: save, respond, or ignore */
       if (hp->message_type == ALLNET_TYPE_DATA_REQ) { /* respond */
-        if (respond_to_request (msg_fd, max_msg_size, message, result, sock))
-          snprintf (log_buf, LOG_SIZE, "responded to data request packet\n");
+        if (respond_to_request (msg_fd, max_msg_size, message, result, wsock))
+          snprintf (alog->b, alog->s, "responded to data request packet\n");
         else
-          snprintf (log_buf, LOG_SIZE, "no response to data request packet\n");
+          snprintf (alog->b, alog->s, "no response to data request packet\n");
       } else if (hp->message_type == ALLNET_TYPE_MGMT) {
-        if (respond_to_id_request (msg_fd, max_msg_size, message, result, sock))
-          snprintf (log_buf, LOG_SIZE, "responded to id request packet\n");
+        if (respond_to_id_request (msg_fd, max_msg_size, message, result, wsock))
+          snprintf (alog->b, alog->s, "responded to id request packet\n");
         else
-          snprintf (log_buf, LOG_SIZE, "no response to id request packet\n");
+          snprintf (alog->b, alog->s, "no response to id request packet\n");
       } else {   /* not a data request and not a mgmt packet */
         if (hp->message_type == ALLNET_TYPE_ACK) {
           /* erase the message and save the ack */
           ack_packets (msg_fd, max_msg_size, ack_fd, message, result);
         } else if ((! local_caching) && (hp->hops == 0)) {
-          snprintf (log_buf, LOG_SIZE, "not saving local packet\n");
+          snprintf (alog->b, alog->s, "not saving local packet\n");
         } else if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) {
-          snprintf (log_buf, LOG_SIZE, "did not save non-cacheable packet\n");
+          snprintf (alog->b, alog->s, "did not save non-cacheable packet\n");
         } else if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
                    (ack_found (ALLNET_MESSAGE_ID (hp, hp->transport,
                                                   result)))) {
-          if (send_ack (hp, result, sock))
-            snprintf (log_buf, LOG_SIZE, "resent ack, did not save\n");
+          if (send_ack (hp, result, wsock))
+            snprintf (alog->b, alog->s, "resent ack, did not save\n");
           else
-            snprintf (log_buf, LOG_SIZE, "did not save acked packet\n");
+            snprintf (alog->b, alog->s, "did not save acked packet\n");
         } else if (save_packet (msg_fd, max_msg_size,
                                 message, result, priority)) {
           mfree = 0;   /* saved, so do not free */
-          snprintf (log_buf, LOG_SIZE, "saved packet type %d size %d pr %d\n",
+          snprintf (alog->b, alog->s, "saved packet type %d size %d pr %d\n",
                     hp->message_type, result, priority);
         } else {
-          snprintf (log_buf, LOG_SIZE,
+          snprintf (alog->b, alog->s,
                     "did not save packet, type %d, size %d, priority %d\n",
                     hp->message_type, result, priority);
         }
       }
 #ifdef LOG_PACKETS
-      log_print ();
+      log_print (alog);
 #endif /* LOG_PACKETS */
     } else {
 #ifdef LOG_PACKETS
-      snprintf (log_buf, LOG_SIZE, "ignoring packet of size %d\n", result);
-      log_print ();
+      snprintf (alog->b, alog->s, "ignoring packet of size %d\n", result);
+      log_print (alog);
 #endif /* LOG_PACKETS */
     }
     if (mfree)
@@ -1809,20 +1814,20 @@ static void print_message (int fd, int max_size,
   int priority;
   int id_off;
   char ptime [ALLNET_TIME_SIZE];
-  int assigned = assign_matching (entry, fd, max_size, &message, &msize,
-                                  &id_off, &priority, ptime);
+  int64_t assigned = assign_matching (entry, fd, max_size, &message, &msize,
+                                      &id_off, &priority, ptime);
   if (assigned < 0) {
     printf ("error getting the actual message at position %d, max %d\n",
-            entry->file_position, max_size);
+            (int)entry->file_position, max_size);
     return;
   }
   if (memcmp (ptime, entry->received_at, ALLNET_TIME_SIZE) != 0) {
     allnet_localtime_string (readb64 (ptime), time_str);
     printf ("   @%d, %d bytes, received at %s, prio %d, id %d\n",
-            assigned, msize, time_str, priority, id_off);
+            (int)assigned, msize, time_str, priority, id_off);
   } else {
     printf ("   @%d, %d bytes, prio %d, id %d\n",
-            assigned, msize, priority, id_off);
+            (int)assigned, msize, priority, id_off);
   }
   print_packet (message, msize, NULL, 1);
   if (print_level <= 3)
@@ -1831,7 +1836,7 @@ static void print_message (int fd, int max_size,
   struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type == ALLNET_TYPE_DATA) {
     char * data = ALLNET_DATA_START (hp, hp->transport, msize);
-    int dsize = msize - (data - message);
+    int dsize = msize - (int)(data - message);
     char * contact;
     char * text;
     keyset k;
@@ -1911,16 +1916,25 @@ void print_caches (int print_msgs, int print_acks)
   close (msg_fd);
   close (ack_fd);
 }
+    
+/* used for systems that don't support multiple processes */
+void acache_thread (char * pname, int rpipe, int wpipe)
+{
+  alog = init_log ("acache_thread");
+  pd p = init_pipe_descriptor (alog);
+  main_loop (rpipe, wpipe, p);
+}
 
 void acache_main (char * pname)
 {
   /* printf ("sizeof struct hash_entry = %zd\n", sizeof (struct hash_entry));
               sizeof struct hash_entry = 56 */
-  pd p = init_pipe_descriptor ();
+  alog = init_log ("acache");
+  pd p = init_pipe_descriptor (alog);
   int sock = connect_to_local ("acache", pname, p);
-  main_loop (sock, p);
-  snprintf (log_buf, LOG_SIZE, "end of acache\n");
-  log_print ();
+  main_loop (sock, sock, p);
+  snprintf (alog->b, alog->s, "end of acache\n");
+  log_print (alog);
 }
 
 #ifdef DAEMON_MAIN_FUNCTION

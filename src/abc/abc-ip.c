@@ -12,14 +12,13 @@
 
 #include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */
 #include "lib/util.h"         /* delta_us */
-#include "lib/log.h"          /* log_error, log_print, log_buf, LOG_SIZE */
 
 #include "abc-iface.h"        /* sockaddr_t */
 
 #include "abc-ip.h"
 
 /* forward declarations */
-static int abc_ip_init (const char * interface);
+static int abc_ip_init (const char * interface, struct allnet_log * log);
 static int abc_ip_is_enabled ();
 static int abc_ip_set_enabled (int state);
 static int abc_ip_cleanup ();
@@ -46,6 +45,9 @@ abc_iface abc_iface_ip = {
   .priv = NULL
 };
 
+/* 2016/04/10 -- not in use yet, but good to have */
+static struct allnet_log * alog = NULL;
+
 static int abc_ip_is_enabled ()
 {
   return 1;
@@ -61,8 +63,9 @@ static int abc_ip_set_enabled (int state)
  * @param interface Interface string of iface to init
  * @return 1 on success, 0 otherwise
  */
-static int abc_ip_init (const char * interface)
+static int abc_ip_init (const char * interface, struct allnet_log * use_log)
 {
+  alog = use_log;
   abc_iface_ip.priv = &abc_iface_ip_priv;
   struct ifaddrs * ifa;
   if (getifaddrs (&ifa) != 0) {
@@ -99,7 +102,7 @@ static int abc_ip_init (const char * interface)
       int flag = 1;
       if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BROADCAST,
                       &flag, sizeof (flag)) != 0)
-        log_error ("abc-ip: error setting broadcast flag");
+        printf ("abc-ip: error setting broadcast flag\n");
 #ifdef SO_BINDTODEVICE
       /* we bind to the device to only send to and receive from that device.
        * SO_BINDTODEVICE is reserved for the superuser (for no obvious reason),
@@ -108,8 +111,10 @@ static int abc_ip_init (const char * interface)
        * interfaces, which is not a problem!!!
        * some systems do not define SO_BINDTODEVICE, hence the ifdef */
       if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_BINDTODEVICE,
-                      interface, strlen (interface)) != 0)
-        log_error ("abc-ip: error binding to device");
+                      interface, strlen (interface)) != 0) {
+        if (geteuid () == 0)
+          printf ("abc-ip: error binding to device\n");
+      }
 #endif /* SO_BINDTODEVICE */
       struct sockaddr_in sa;
       sa.sin_family = AF_INET;
@@ -118,8 +123,8 @@ static int abc_ip_init (const char * interface)
       memset (&sa.sin_zero, 0, sizeof (sa.sin_zero));
       if (bind (abc_iface_ip.iface_sockfd,
                 (struct sockaddr *)&sa, sizeof (sa)) == -1) {
-        snprintf (log_buf, LOG_SIZE, "error binding interface %s\n", interface);
-        log_error ("abc-ip: error binding interface");
+        perror ("abc-ip bind interface");
+        printf ("abc-ip: error binding interface %s\n", interface);
 #ifdef DEBUG_PRINT
         perror ("abc-ip: error binding interface");
         printf ("error binding interface %s\n", interface);

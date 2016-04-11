@@ -15,7 +15,7 @@
 #include "lib/priority.h"
 #include "lib/keys.h"
 #include "lib/cipher.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "chat.h"
 #include "cutil.h"
 #include "message.h"
@@ -128,6 +128,9 @@ static int send_to_one (keyset k, char * data, int dsize,
                         int hops, int priority, int do_ack,
                         unsigned char * ack, int do_save)
 {
+  static struct allnet_log * log = NULL;
+  if (log == NULL) /* initialize */
+    log = init_log ("cutil send_to_one");
 /* printf ("sending to contact %s, keyset %d\n", contact, k); */
   int sksize = has_symmetric_key (contact, NULL, 0);
   struct allnet_stream_encryption_state sym_state;
@@ -246,7 +249,7 @@ static int send_to_one (keyset k, char * data, int dsize,
   print_packet (message, msize, "sending", 1);
 #endif /* DEBUG_PRINT */
   int result = 1;
-  if (! send_pipe_message_free (sock, message, msize, priority)) {
+  if (! send_pipe_message_free (sock, message, msize, priority, log)) {
     perror ("send_pipe_message_free");
     printf ("unable to send packet to %s, key %d, socket %d\n",
             contact, k, sock);
@@ -319,7 +322,7 @@ char * chat_time_to_string (unsigned char * t, int static_result)
   localtime_r (&time_t_time, &time_tm);
   asctime_r (&time_tm, result);
   /* delete the final \n by overwriting it with the null character */
-  int eol_index = strlen (result) - 1;
+  int eol_index = (int)strlen (result) - 1;
   if (result [eol_index] == '\n')
     result [eol_index] = '\0';
   if (time_offset == my_time_offset) { /* easy case, we are almost finished */
@@ -335,7 +338,7 @@ char * chat_time_to_string (unsigned char * t, int static_result)
 #ifdef DEBUG_PRINT
   printf ("time offset %d, my time offset %d\n", time_offset, my_time_offset);
 #endif /* DEBUG_PRINT */
-  int print_offset = strlen (result);
+  int print_offset = (int)strlen (result);
   int delta = time_offset - my_time_offset;
   while (delta < 0)
     delta += 0x10000;

@@ -9,7 +9,6 @@
 #include <sys/types.h> /* pid_t */
 #include <sys/wait.h>  /* waitpid */
 
-#include "lib/log.h"
 #include "abc-wifi.h" /* abc_wifi_config_iface */
 #include "abc-iw.h"
 #ifdef USE_NETWORK_MANAGER
@@ -19,7 +18,7 @@ static int nm_init = 0;
 #endif
 
 /* forward declarations */
-static int abc_wifi_config_iw_init (const char * iface);
+static int abc_wifi_config_iw_init (const char * iface, struct allnet_log * l);
 static int abc_wifi_config_iw_is_connected ();
 static int abc_wifi_config_iw_connect ();
 static int abc_wifi_config_iw_is_wireless_on ();
@@ -45,6 +44,8 @@ abc_wifi_config_iface abc_wifi_config_iw = {
 
 static abc_wifi_config_iw_settings self;
 
+static struct allnet_log * alog = NULL;
+
 /**
  * similar to system(3), but more control over what gets printed
  * Destructive on input
@@ -54,8 +55,8 @@ static int my_system (char * command)
   pid_t pid = fork ();
   if (pid < 0) {
     perror ("fork");
-    snprintf (log_buf, LOG_SIZE, "error forking command '%s'\n", command);
-    log_print ();
+    snprintf (alog->b, alog->s, "error forking command '%s'\n", command);
+    log_print (alog);
     printf ("error forking command '%s'\n", command);
     return -1;
   }
@@ -79,8 +80,8 @@ static int my_system (char * command)
       p++;
     }
     if (num_args >= sizeof (argv) / sizeof (char *)) {
-      snprintf (log_buf, LOG_SIZE, "error: reading beyond argv %d\n", num_args);
-      log_print ();
+      snprintf (alog->b, alog->s, "error: reading beyond argv %d\n", num_args);
+      log_print (alog);
       argv [sizeof (argv) / sizeof (char *) - 1] = NULL;
     } else {
       argv [num_args] = NULL;
@@ -135,13 +136,13 @@ static int if_command (const char * basic_command, const char * interface,
   char command [1000];
   int ilen = 0;
   if (interface != NULL)
-    ilen = strlen (interface);
+    ilen = (int)strlen (interface);
   if (strlen (basic_command) + ilen + 1 >= sizeof (command)) {
-    snprintf (log_buf, LOG_SIZE, "abc-iw: command %d+interface %d + 1 >= %d\n",
+    snprintf (alog->b, alog->s, "abc-iw: command %d+interface %d + 1 >= %d\n",
               (int) (strlen (basic_command)), ilen, (int) (sizeof (command)));
-    log_print ();
-    snprintf (log_buf, LOG_SIZE, basic_command, interface);
-    log_print ();
+    log_print (alog);
+    snprintf (alog->b, alog->s, basic_command, interface);
+    log_print (alog);
     return 0;
   }
   if (interface != NULL)
@@ -157,10 +158,10 @@ static int if_command (const char * basic_command, const char * interface,
     printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
   if (sys_result != 0) {
     if (sys_result != -1) {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (alog->b, alog->s,
                 "abc-iw: program exit status for %s was %d\n",
                 command, sys_result);
-      log_print ();
+      log_print (alog);
 #ifdef DEBUG_PRINT
       printf ("abc-iw: program exit status for %s was %d, ws %d\n", command,
               sys_result, wireless_status);
@@ -168,12 +169,12 @@ static int if_command (const char * basic_command, const char * interface,
     }
     if (sys_result != wireless_status) {
       if (fail_other != NULL)
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (alog->b, alog->s,
                   "abc-iw: call to '%s' failed, %s\n", command, fail_other);
       else
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (alog->b, alog->s,
                   "abc-iw: call to '%s' failed\n", command);
-      log_print ();
+      log_print (alog);
       if (fail_other == NULL)
         printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
       else if (strlen (fail_other) > 0)
@@ -182,9 +183,9 @@ static int if_command (const char * basic_command, const char * interface,
       if (fail_wireless == NULL) {
         printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
       } else if (strlen (fail_wireless) > 0) {
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (alog->b, alog->s,
                   "abc-iw: call to '%s' failed, %s\n", command, fail_wireless);
-        log_print ();
+        log_print (alog);
         printf ("%s\n", fail_wireless);
       }
       return 2;
@@ -194,20 +195,22 @@ static int if_command (const char * basic_command, const char * interface,
   return 1;
 }
 
-static int abc_wifi_config_iw_init (const char * iface)
+static int abc_wifi_config_iw_init (const char * iface,
+                                    struct allnet_log * use_log)
 {
+  alog = use_log;
 #ifdef USE_NETWORK_MANAGER
-  if (abc_wifi_config_nm_init (iface)) {
+  if (abc_wifi_config_nm_init (iface, use_log)) {
     nm_init = abc_wifi_config_nm_is_wireless_on ();
     if (nm_init) {
-      snprintf (log_buf, LOG_SIZE,
+      snprintf (alog->b, alog->s,
                 "abc-iw: disabling NetworkManager on iface `%s'\n", iface);
-      log_print ();
+      log_print (alog);
       printf ("abc-iw: disabling NetworkManager on iface `%s'\n", iface);
       if (abc_wifi_config_nm_enable_wireless (0)) {
-        snprintf (log_buf, LOG_SIZE,
+        snprintf (alog->b, alog->s,
                   "abc-iw: NetworkManager disabled on iface `%s'\n", iface);
-        log_print ();
+        log_print (alog);
       }
     }
     /* disabling an iface in NM sets soft RFKILL which needs to be cleared for
@@ -248,8 +251,8 @@ static int abc_wifi_config_iw_connect ()
   if (self.is_connected)
     return 1;
 #ifdef DEBUG_PRINT
-  snprintf (log_buf, LOG_SIZE, "abc: opening interface %s\n", self.iface);
-  log_print ();
+  snprintf (alog->b, alog->s, "abc: opening interface %s\n", self.iface);
+  log_print (alog);
 #endif /* DEBUG_PRINT */
   char * mess = NULL;
   if (geteuid () != 0)
@@ -343,9 +346,9 @@ static int abc_wifi_config_iw_connect ()
   } while ((strncmp (command_result, "Not connected.", 14) == 0) &&
            (slept < 14000L));
   if (slept >= 14000L) {
-    snprintf (log_buf, LOG_SIZE,
+    snprintf (alog->b, alog->s,
               "abc-iw: timeout hit, cell still not associated\n");
-    log_print ();
+    log_print (alog);
     return 0;
   }
   self.is_connected = 1;

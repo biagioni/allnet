@@ -23,7 +23,6 @@
 #include "util.h"
 #include "sha.h"
 #include "priority.h"
-#include "log.h"
 #include "crypt_sel.h"
 
 #ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
@@ -111,14 +110,11 @@ extern int astart_main (int, char **);
 
 static void * call_allnet_main (void * unused_arg)
 {
-  pthread_cleanup_push (close_log, NULL);
-  init_log ("app_util call_allnet_main");
   if (unused_arg != NULL)  /* check arg to prevent warnings */
     printf ("error: argument to call_allnet_main should be NULL\n");
   char * args [] = { "allnet", NULL };
   /* could be: char * args [] = { "allnet", "-v", "def", NULL }; */
   astart_main (2, args);
-  pthread_cleanup_pop (1);
   return NULL;
 }
 
@@ -140,11 +136,9 @@ static int connect_once (int print_error)
    * successive sends and, since the communication is local, doesn't
    * substantially improve performance anyway */
   int option = 1;  /* disable Nagle algorithm */
-  if (setsockopt (sock, IPPROTO_TCP, TCP_NODELAY, &option, sizeof (option))
-      != 0) {
-    snprintf (log_buf, LOG_SIZE, "unable to set nodelay TCP socket option\n");
-    log_print ();
-  }
+  if (setsockopt (sock, IPPROTO_TCP, TCP_NODELAY,
+                  &option, sizeof (option)) != 0)
+    printf ("unable to set nodelay TCP socket option\n");
   struct sockaddr_in sin;
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
@@ -185,7 +179,7 @@ static void weak_seed_rng (char * buffer, int bsize)
   struct timeval tv;
   gettimeofday (&tv, NULL);
   /* usually overflows, and the low-order 32 bits should be random */
-  int rt = tv.tv_sec * 1000 * 1000 + tv.tv_usec;
+  int rt = (int)(tv.tv_sec * 1000 * 1000 + tv.tv_usec);
   writeb32 (results, rt);
 
   /* it would be good to have additional entropy (true randomness).
@@ -196,7 +190,7 @@ static void weak_seed_rng (char * buffer, int bsize)
    * one or maybe a few bits of randomness.
    */
   int i;
-  int old_clock = 0;
+  clock_t old_clock = 0;
   for (i = 0; i < SHA512_SIZE - sizeof (results); i++) {
     do {
       memcpy (rcopy, results, sizeof (results));
@@ -228,7 +222,7 @@ static void seed_rng ()
   }
   /* seed standard rng */
   static char state [128];
-  unsigned int seed = readb32 (buffer);
+  unsigned int seed = (unsigned int)readb32 (buffer);
   initstate (seed, state, sizeof (state));
 }
 
@@ -238,19 +232,18 @@ static void seed_rng ()
  * and so close the socket. */
 static void * receive_ignore (void * arg)
 {
-  pthread_cleanup_push (close_log, NULL);
-  init_log ("app_util receive_ignore");
-  int * sockp = (int *) arg;
+  int sockp = * (int *) arg;
+  pd p = init_pipe_descriptor (init_log ("app_util.c receive_ignore thread"));
   while (1) {
     char * message;
     int priority;
-    int n = receive_pipe_message (*sockp, &message, &priority);
+    int n = receive_pipe_message (p, sockp, &message, &priority);
     /* ignore the message and recycle the storage */
-    free (message);
+    if (n > 0)
+      free (message);
     if (n < 0)
       break;
   }
-  pthread_cleanup_pop (1);
   return NULL;  /* returns if the pipe is closed */
 }
 #endif /* CREATE_READ_IGNORE_THREAD */
@@ -293,10 +286,6 @@ int connect_to_local (char * program_name, char * arg0, pd p)
   struct timespec left;
   while ((nanosleep (&sleep, &left)) != 0)
     sleep = left;
-  /* finally we can register with the log module.  We do this only
-   * after we are sure that allnet is running, since starting allnet
-   * might create a new log file. */
-  init_log (program_name);
   return sock;
 }
 

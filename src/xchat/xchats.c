@@ -10,7 +10,7 @@
 #include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
-#include "lib/log.h"
+#include "lib/allnet_log.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -70,7 +70,8 @@ int main (int argc, char ** argv)
     return 1;
   }
 
-  pd p = init_pipe_descriptor ();
+  struct allnet_log * log = init_log ("xchats");
+  pd p = init_pipe_descriptor (log);
   int sock = xchat_init (argv [0], p);
   if (sock < 0)
     return 1;

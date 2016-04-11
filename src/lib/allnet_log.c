@@ -13,7 +13,7 @@
 #include <sys/types.h>
 
 #include "packet.h"
-#include "log.h"
+#include "allnet_log.h"
 #include "util.h"
 #include "configfiles.h"
 
@@ -24,8 +24,6 @@
 /* ios doesn't give the user any reasonable way to read or
  * manage log files, so no use printing to file under iOS */
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-
-char log_buf [LOG_SIZE];    /* global */
 
 #ifndef PATH_MAX	/* defined in a different place in some OS's */
 #include <sys/syslimits.h>
@@ -42,113 +40,18 @@ static char log_dir [PATH_MAX] = LOG_DIR;
 static char log_file_name [PATH_MAX] = "";
 #endif /* LOG_TO_FILE */
 
-struct thread_info {
-  char * name;
-  pthread_t id;
-};
-#define MAX_THREAD_INFO		100
-static struct thread_info ti [MAX_THREAD_INFO];
-static int num_threads = 0;
-static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pid_t process_id = 0;
-
-static void log_thread_id (const char * name)
-{
-  pthread_mutex_lock (&log_mutex);
-  pthread_t id = pthread_self ();
-  pid_t pid = getpid ();
-  if ((process_id == 0) || (process_id != pid)) {
-  /* if process_id != pid, we have been called after a fork.  The only
-   * sensible thing to do is to overwrite any existing entries */
-    process_id = pid;
-    num_threads = 0;
-  }
-  if (num_threads < MAX_THREAD_INFO) {
-    ti [num_threads].name = strcpy_malloc (name, "log_thread_id");
-    ti [num_threads].id = id;
-#ifdef DEBUG_PRINT
-    printf ("ti [%d] (%04x) = {%p (%s), %04x}\n", num_threads,
-            ((unsigned int) pid) & 0xffff, ti [num_threads].name, name,
-            ((unsigned int) id) & 0xffff);
-#endif /* DEBUG_PRINT */
-    num_threads++;
-  } else {
-    printf ("reached MAX_THREAD_INFO %d\n", MAX_THREAD_INFO);
-  }
-  pthread_mutex_unlock (&log_mutex);
-}
-
-static void unlog_thread_id ()
-{
-  pthread_mutex_lock (&log_mutex);
-  pthread_t id = pthread_self ();
-  int i = 0;
-  while (i < num_threads) {
-    if (id == ti [i].id) {
-#ifdef DEBUG_PRINT
-      printf ("freeing name [%d] (%d) = { %p", i, getpid (), ti [i].name);
-      printf (" (%s), ", ti [i].name);
-      printf ("%04x}\n", ((unsigned int) ti [i].id) & 0xffff);
-#endif /* DEBUG_PRINT */
-      free (ti [i].name);
-      ti [i].name = NULL;
-      ti [i] = ti [num_threads - 1];
-      num_threads--;
-    } else {
-      i++;
-    }
-  }
-  pthread_mutex_unlock (&log_mutex);
-}
-
-const char * module_name ()
-{
-  if (num_threads <= 0)
-    return "unknown module -- have main call init_log ()";
-  pthread_t id = pthread_self ();
-  int i;
-  for (i = 0; i < num_threads; i++) {
-    if (ti [i].id == id)
-      return ti [i].name;
-  }
-/* printf ("unknown thread ID %u\n", me); */
-  return "allnet";
-}
-
 static int allnet_global_debugging = 0;
-
-static int make_string ()
-{
-  int i;
-  int eol = -1;
-  for (i = 0; i < LOG_SIZE; i++) {
-    if (log_buf [i] == '\n')
-      eol = i;
-    if (log_buf [i] == '\0') {
-      if ((eol >= 0) && (eol + 1 == i))  /* terminated and newline, done */
-        return i;
-      if (i + 1 >= LOG_SIZE)
-        i = i - 1;
-      log_buf [i] = '\n';   /* add a newline if needed */
-      log_buf [i + 1] = '\0';     /* and restore the null character */
-      return i + 1;
-    }
-  }
-  log_buf [LOG_SIZE - 2] = '\n';
-  log_buf [LOG_SIZE - 1] = '\0';
-  return LOG_SIZE - 1;
-}
 
 #ifdef LOG_TO_FILE 
 /* returns 1 if the file exists by the end of the call, and 0 otherwise. */
-static int create_if_needed ()
+static int create_if_needed (const char * name)
 {
   char original [PATH_MAX];  /* for debugging */
   strncpy (original, log_file_name, sizeof (original));
   int fd = open (log_file_name, O_WRONLY | O_APPEND | O_CREAT, 0644);
   if (fd < 0) {
     perror ("creat");
-    printf ("%s: unable to create %s(%zd)/%s(%zd)\n", module_name (),
+    printf ("%s: unable to create %s(%zd)/%s(%zd)\n", name,
             log_file_name, strlen (log_file_name), original, strlen (original));
     /* clear the name */
     log_file_name [0] = '\0';
@@ -162,7 +65,7 @@ static int create_if_needed ()
 /* fills in log_file_name with a name corresponding to the time.
  * creates the file if necessary.
  * returns 1 if the file exists by the end of the call, and 0 otherwise. */
-static int file_name (time_t seconds)
+static int file_name (const char * name, time_t seconds)
 {
   struct tm n;
   localtime_r (&seconds, &n);
@@ -170,11 +73,11 @@ static int file_name (time_t seconds)
             "%s/%04d%02d%02d-%02d%02d%02d", log_dir,
             n.tm_year + 1900, n.tm_mon + 1, n.tm_mday,
             n.tm_hour, n.tm_min, n.tm_sec);
-  return create_if_needed ();
+  return create_if_needed (name);
 }
 
 /* put the latest log file name in log_file_name */
-static void latest_file (time_t seconds)
+static void latest_file (const char * name, time_t seconds)
 {
   DIR * dir = opendir (log_dir);
   if (dir == NULL) {
@@ -200,19 +103,18 @@ static void latest_file (time_t seconds)
     snprintf (log_file_name, sizeof (log_file_name),
               "%s/%s", log_dir, latest);
     free (latest);
-    file_exists = create_if_needed ();
+    file_exists = create_if_needed (name);
 /* printf ("log.c: checked %s, result is %d\n", log_file_name, file_exists); */
   }
   if (! file_exists)
-    file_name (seconds);  /* create new log file */
+    file_name (name, seconds);  /* create new log file */
 }
 #endif /* LOG_TO_FILE */
 
-void init_log (char * name)
+struct allnet_log * init_log (const char * name)
 {
-  log_thread_id (name);  /* acquires log_mutex, so call before acquiring */
 #ifdef LOG_TO_FILE   /* create a log file */
-  pthread_mutex_lock (&log_mutex);
+  // pthread_mutex_lock (&log_mutex);
   snprintf (log_dir, sizeof (log_dir), "/tmp/.allnet-log/");
   char * home = getenv (HOME_ENV);
   if (home != NULL)
@@ -225,21 +127,29 @@ void init_log (char * name)
   time_t now = time (NULL);
   /* only open a new log file if this is the astart or allnet module */
   if ((strcasecmp (name, "astart") == 0) || (strcasecmp (name, "allnet") == 0))
-    file_name (now); /* create a new file */
+    file_name (name, now); /* create a new file */
   else /* use the latest available file, only create new if none are present */
-    latest_file (now);
-  pthread_mutex_unlock (&log_mutex);
+    latest_file (name, now);
+  // pthread_mutex_unlock (&log_mutex);
 #endif /* LOG_TO_FILE */
+  size_t count = sizeof (struct allnet_log) + strlen (name) + 1;
+  struct allnet_log * result = malloc_or_fail (count, "init_log");
+  result->debug_info = ((char *) result) + sizeof (struct allnet_log);
+  strcpy (result->debug_info, name);
+  result->b [0] = '\0';  /* clear the buffer */
+  result->s = LOG_SIZE;
+  result->log_to_output = 0;
+  return result;
 }
 
 /* call at the very end of a thread or a process, if possible */
 /* argument is ignored, used to make usable with pthread_cleanup_push */
-void close_log (void * ignored)
+void close_log (struct allnet_log * log)
 {
-  unlog_thread_id ();
+  free (log);
 }
 
-static void log_print_buffer (char * buffer, int blen)
+static void log_print_buffer (char * buffer, int blen, int out)
 {
 #ifdef LOG_TO_FILE 
   int fd = open (log_file_name, O_WRONLY | O_APPEND);
@@ -271,11 +181,11 @@ static void log_print_buffer (char * buffer, int blen)
     perror ("unable to unlock log file");
   close (fd);
 #endif /* LOG_TO_FILE  */
-  if (allnet_global_debugging)
+  if ((allnet_global_debugging) || (out))
     printf ("%s", buffer);
 }
 
-void log_print_str_locked (char * string)
+void log_print_str (struct allnet_log * log, char * string)
 {
   char time_str [100];
   char buffer [LOG_SIZE + LOG_SIZE];
@@ -288,31 +198,23 @@ void log_print_str_locked (char * string)
     snprintf (time_str, sizeof (time_str), "%02d/%02d %02d:%02d:%02d.%06ld",
               n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec,
               (long int) (now.tv_usec));
-  int len = snprintf (buffer, sizeof (buffer), "%s %s: %s",
-                      time_str, module_name (), string);
   /* add a newline if it is not already at the end of the string */
-  if ((len + 1 < sizeof (buffer)) && (len > 0) && (buffer [len - 1] != '\n')) {
-    buffer [len++] = '\n';
-    buffer [len] = '\0';
-  }
-  log_print_buffer (buffer, len);
+  char * last_nl = rindex (string, '\n');
+  char * add_nl = "\n";
+  if ((last_nl != NULL) && (last_nl - string + 1 == strlen (string)))
+    add_nl = "";   /* already present */
+  int len = snprintf (buffer, sizeof (buffer), "%s %s: %s%s",
+                      time_str, log->debug_info, string, add_nl);
+  log_print_buffer (buffer, len, log->log_to_output);
 }
 
-
-void log_print_str (char * string)
+void log_print (struct allnet_log * log)
 {
-  pthread_mutex_lock (&log_mutex);
-  log_print_str_locked (string);
-  pthread_mutex_unlock (&log_mutex);
-}
-
-void log_print ()
-{
-  pthread_mutex_lock (&log_mutex);
-  make_string ();   /* make sure it is terminated with newline and \0 */
-  log_print_str_locked (log_buf);
-  bzero (log_buf, sizeof (log_buf));
-  pthread_mutex_unlock (&log_mutex);
+/* if (log == NULL) printf ("start of NULL log_print\n");
+else printf ("start of log_print %s\n", log->debug_info); */
+  log_print_str (log, log->b);
+/* printf ("end of log_print %s\n", log->debug_info); */
+  log->b [0] = '\0';
 }
 
 #ifdef ADDRS_TO_STR_USED
@@ -351,17 +253,17 @@ static char * pck_str (char * packet, int plen)
 }
 
 /* log desc followed by a description of the packet (packet type, ID, etc) */
-void log_packet (char * desc, char * packet, int plen)
+void log_packet (struct allnet_log * log, char * desc, char * packet, int plen)
 {
   static char local_buf [LOG_SIZE];
   snprintf (local_buf, sizeof (local_buf), "%s %s",
             desc, pck_str (packet, plen));
-  log_print_str (local_buf);
+  log_print_str (log, local_buf);
 }
 
 /* log the error number for the given system call, followed by whatever
    is in the buffer */
-void log_error (char * syscall)
+void log_error (struct allnet_log * log, char * syscall)
 {
   int err_number = errno;  /* so it doesn't change */
   const char * err_string = "unknown error";
@@ -369,8 +271,8 @@ void log_error (char * syscall)
     err_string = sys_errlist [err_number];
   char local_buf [LOG_SIZE + LOG_SIZE];
   snprintf (local_buf, sizeof (local_buf), "%s: %s\n    ", syscall, err_string);
-  log_print_str (local_buf);
-  log_print_str (log_buf);
+  log_print_str (log, local_buf);
+  log_print (log);
 }
 
 /* output everything to stdout as well as the log file if on != 0.

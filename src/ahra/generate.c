@@ -12,7 +12,6 @@
 
 #include "lib/util.h"
 #include "lib/keys.h"
-#include "lib/log.h"
 #include "lib/app_util.h"
 
 #define KEY_LENGTH	4096		/* in bits */
@@ -41,7 +40,6 @@ static void usage (char * pname, char * reason)
 
 int main (int argc, char ** argv)
 {
-  log_to_output (get_option ('v', &argc, argv));
   if (argc < 2)
     usage (argv [0],
            "did not provide at least one argument, the personal phrase");
