@@ -646,6 +646,7 @@ static void my_call_abc (char * argv, int alen, char * program,
     close (ppipe1);
     close (ppipe2);
     abc_main (rpipe, wpipe, ifopts);
+    exit (0);   /* abc can return without us having to disable the rest */
     child_return (program, parent, 0);
   }  /* parent, close the child pipes */
   *pid = child;
