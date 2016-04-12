@@ -1227,13 +1227,17 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
 printf ("rpipe is %d, wpipe is %d, udp is %d\n", rpipe, wpipe, udp);*/
     int result = receive_pipe_message_fd (p, 1000, &message, udp, sap, &sasize,
                                           &fd, &priority);
-if ((result > 0) && (fd == udp) && (sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (alog->b, alog->s, "00: fd %d/%d, result %d/%d/%zd, bad afamily %d\n",
-udp, fd, result, sasize, sizeof (sockaddr), sap->sa_family); log_print (alog); }
+    int valid = ((result > 0) && (is_valid_message (message, result)));
+    if ((result > 0) && (! valid)) {
+      int off =
+        snprintf (alog->b, alog->s,
+                  "aip invalid packet from %d/udp %d ad %d, size %d pri %d\n",
+                  fd, udp, rpipe, result, priority);
+      off += buffer_to_string (message, result, "aip invalid packet", 100, 1,
+                               alog->b + off, alog->s - off);
+      log_print (alog);
+    }
     if (result < 0) {
-if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (alog->b, alog->s, "0/%d: fd %d/%d/%d, bad address family %d\n",
- result, rpipe, udp, fd, sap->sa_family); log_print (alog); }
       if ((fd == rpipe) || (fd == udp)) {
         snprintf (alog->b, alog->s, "aip %s %d closed (%d)\n",
                   ((fd == rpipe) ? "ad pipe" : "udp socket"), fd, result);
@@ -1248,13 +1252,9 @@ snprintf (alog->b, alog->s, "0/%d: fd %d/%d/%d, bad address family %d\n",
       log_print (alog);
       remove_listener (fd, info, addr_cache);
       removed_listener = 1;
-    } else if (result > 0) {
-if ((fd == udp)&&(sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (alog->b, alog->s,
-"1/%d: fd %d/%d/%d, result %d/%d, bad addr family %d\n",
-result, rpipe, udp, fd, result, sasize, sap->sa_family); log_print (alog); }
+    } else if ((result > 0) && valid) {
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
-/* printf ("aip: got %d-byte message from ad on fd %d\n", result, fd); */
+     /* printf ("aip: got %d-byte message from ad on fd %d\n", result, fd); */
 #ifdef LOG_PACKETS
         snprintf (alog->b, alog->s, "got %d-byte message from ad\n", result);
         log_print (alog);
@@ -1262,19 +1262,13 @@ result, rpipe, udp, fd, result, sasize, sap->sa_family); log_print (alog); }
         forward_message (info->fds + 1, info->num_fds - 1, udp, udp_cache,
                          addr_cache, message, result, priority, 10);
       } else {
-/* printf ("aip: got %d-byte message from Internet on fd %d (ad is %d)\n",
-           result, fd, rpipe); */
+/*      printf ("aip: %d-byte message from Internet on fd %d (ad %d, udp %d)\n",
+                result, fd, rpipe, udp); */
         int off = snprintf (alog->b, alog->s,
                             "got %d bytes from Internet on fd %d",
                             result, fd);
         if (fd == udp) {
-if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (alog->b, alog->s, "2: fd %d/%d, bad address family %d\n", udp, fd,
-sap->sa_family); log_print (alog); off = 0; }
           standardize_ip (sap, sasize);
-if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (alog->b, alog->s, "3: fd %d/%d, bad address family %d\n", udp, fd,
-sap->sa_family); log_print (alog); off = 0; }
 #ifdef DEBUG_PRINT
           off += snprintf (alog->b + off, alog->s - off, "/udp, saving ");
           off += print_sockaddr_str (sap, sasize, 0,
@@ -1283,9 +1277,6 @@ sap->sa_family); log_print (alog); off = 0; }
           off += snprintf (alog->b + off, alog->s - off, "/udp\n");
 #endif /* DEBUG_PRINT */
           log_print (alog);
-if ((sap->sa_family != AF_INET) && (sap->sa_family != AF_INET6)) {
-snprintf (alog->b, alog->s, "4: fd %d/%d, bad address family %d\n", udp, fd,
-sap->sa_family); log_print (alog); off = 0; }
           add_sockaddr_to_cache (udp_cache, sap, sasize);
         } else {   /* received on TCP, not UDP */
           struct addr_info * ai = listen_fd_addr (info, fd);
@@ -1318,7 +1309,7 @@ sap->sa_family); log_print (alog); off = 0; }
         listen_record_usage (info, fd);   /* this fd was used */
       }
       free (message);   /* allocated by receive_pipe_message_fd */
-    }   /* else result is zero, timed out, try again */
+    }   /* else result is zero, timed out, or packet is invalid, try again */
   }
 }
 

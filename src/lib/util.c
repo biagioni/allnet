@@ -1411,11 +1411,12 @@ int is_valid_message (const char * packet, int size)
   if ((ah->version != ALLNET_VERSION) ||
       (ah->src_nbits > ADDRESS_BITS) || (ah->dst_nbits > ADDRESS_BITS) ||
       (ah->hops > ah->max_hops)) {
-/* printf ("received version %d addr sizes %d %d / %d, hops %d/%d, pid %d\n",
+/*
+    printf ("received version %d addr sizes %d %d / %d, hops %d/%d, pid %d\n",
             ah->version, ah->src_nbits, ah->dst_nbits, ADDRESS_BITS,
             ah->hops, ah->max_hops, getpid ());
-    print_buffer (packet, size, "received bytes", size, 1); */
-/* sleep (60);
+    print_buffer (packet, size, "received bytes", size, 1);
+sleep (60);
 ah->version = 0;
 printf ("time to crash %d\n", 1000 / ah->version); */
     return 0;
