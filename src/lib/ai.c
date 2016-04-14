@@ -208,6 +208,10 @@ int sockaddr_to_ai (struct sockaddr * sap, int addr_size,
 /* returns 1 if the two addresses are the same, 0 otherwise */
 int same_ai (struct addr_info * a, struct addr_info * b)
 {
+  if ((a == NULL) && (b == NULL))
+    return 1;
+  if ((a == NULL) || (b == NULL))
+    return 0;
   if (a->ip.ip_version == b->ip.ip_version) {
     if (memcmp (a->ip.ip.s6_addr, b->ip.ip.s6_addr, 16) == 0)
       return 1;

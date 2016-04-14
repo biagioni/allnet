@@ -28,6 +28,7 @@ struct dcache {
   release_function f;
   int last_match;
   int busy;   /* 0, except when calling f */
+  char * name;
 /* the entries are kept in order of last usage, most recently used first */
   struct dcache_entry entries [0];
 };
@@ -37,7 +38,8 @@ struct dcache {
  * the release function is used when data is removed to make room for
  * newer data.  data is new when first inserted, or whenever
  * record_usage is called */
-void * cache_init  (int max_entries, release_function f)
+void * cache_init  (int max_entries, release_function f,
+                    const char * caller_name)
 {
   int size = sizeof (struct dcache)
            + max_entries * sizeof (struct dcache_entry);
@@ -52,6 +54,7 @@ void * cache_init  (int max_entries, release_function f)
   result->num_entries = 0;
   result->last_match = 0;
   result->busy = 0;
+  result->name = strcpy_malloc (caller_name, "dcache cache_init name");
   pthread_mutex_init (&(result->mutex), NULL);
   int i;
   for (i = 0; i < max_entries; i++)
@@ -298,7 +301,7 @@ void cache_remove (void * cp, void * data)
   pthread_mutex_lock (&(cache->mutex));
   int index = find_data (cache, data);
   if (index == -1)
-    printf ("unable to remove data %p, not found\n", data);
+    printf ("%s: unable to remove data %p, not found\n", cache->name, data);
   else
     actual_remove (cache, index);
   pthread_mutex_unlock (&(cache->mutex));

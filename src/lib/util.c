@@ -1401,8 +1401,10 @@ void writeb64u (unsigned char * p, unsigned long long int value)
 int is_valid_message (const char * packet, int size)
 {
   if (size < ALLNET_HEADER_SIZE) {
+/*
     printf ("received a packet with %d bytes, %zd required\n",
             size, ALLNET_HEADER_SIZE);
+*/
     return 0;
   }
 /* received a message with a header */

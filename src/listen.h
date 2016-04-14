@@ -27,6 +27,9 @@ struct listen_info {
   int add_remove_pipe;   /* call add_pipe and remove_pipe */
   /* if the ip version of a peer is 0, that fd does not have a peer address */
   struct addr_info * peers;  /* handled similar to fds, holds peer addrs */
+  struct addr_info * reserved;  /* same size (max_num_fds) as peers,
+                                   holds pending connections */
+  unsigned long long int * reservation_times;  /* matches with reserved */
   /* for testing, make counter a char.  Normally, unsigned int */
   unsigned char counter;  /* cycle counter for least recently used */
   unsigned int * used;   /* array of most recent access times */
@@ -61,8 +64,14 @@ extern void listen_remove_fd (struct listen_info * info, int fd);
  * do not modify in any way.  Returns NULL for no match */
 extern struct addr_info * listen_fd_addr (struct listen_info * info, int fd);
 
-/* returns the socket number if already listening, and -1 otherwise */
+/* returns the socket number if already listening,
+   returns -1 and reserves the address if nobody else had reserved it,
+   returns -2 if someone had reserved the address already. */
 extern int already_listening (struct addr_info * ai,
                               struct listen_info * info);
+
+/* clears a reservation that was set when already_listening returned -1 */
+extern void listen_clear_reservation (struct addr_info * ai,
+                                      struct listen_info * info);
 
 #endif /* LISTEN_H */

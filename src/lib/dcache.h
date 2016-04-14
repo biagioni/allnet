@@ -17,7 +17,8 @@ typedef void (* release_function) (void * data);
  * the release function is used when data is removed to make room for
  * newer data.  data is new when first inserted, or whenever
  * record_usage is called */
-extern void * cache_init  (int max_entries, release_function f);
+extern void * cache_init  (int max_entries, release_function f,
+                           const char * caller_name);
 
 extern void cache_close (void * cache);
 

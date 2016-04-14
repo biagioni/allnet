@@ -181,8 +181,13 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
   info->num_fds = 0;
   info->max_num_fds = max_fds;
   info->fds = malloc_or_fail (max_fds * sizeof (int), "listen thread fds");
-  info->peers = malloc_or_fail (max_fds * sizeof (struct addr_info),
-                                "listen thread peers");
+  int asize = max_fds * sizeof (struct addr_info);
+  int atsize = max_fds * sizeof (unsigned long long int);
+  info->peers = malloc_or_fail (asize, "listen thread peers");
+  info->reserved = malloc_or_fail (asize, "listen reserved peers");
+  info->reservation_times = malloc_or_fail (atsize, "listen reservation times");
+  memset (info->reserved, 0, asize);
+  memset (info->reservation_times, 0, atsize);
   info->used = malloc_or_fail (max_fds * sizeof (int), "listen thread used");
   info->callback = callback;
   info->pipe_descriptor = p;
@@ -328,6 +333,56 @@ static int close_oldest_fd (struct listen_info * info)
   return min_index;
 }
 
+static void listen_get_reservation_with_lock_held (struct addr_info * ai,
+                                                   struct listen_info * info)
+{
+  int i;
+  unsigned long long int now = allnet_time_us ();
+  unsigned long long int oldest = now; /* should be nothing older than now */
+  int use_index = 0;
+  struct addr_info zero;
+  bzero (&zero, sizeof (zero));
+  for (i = 0; i < info->max_num_fds; i++) {
+    if (same_ai (info->reserved + i, &zero)) {
+      use_index = i;
+      break;
+    }
+    if (info->reservation_times [i] < oldest) {
+      oldest = info->reservation_times [i];
+      use_index = i;
+    }
+  }
+  info->reserved [use_index] = *ai;
+  info->reservation_times [use_index] = now;
+}
+
+static void listen_clear_reservation_with_lock_held (struct addr_info * ai,
+                                                     struct listen_info * info)
+{
+  int i;
+  for (i = 0; i < info->max_num_fds; i++) {
+    if (same_ai (info->reserved + i, ai)) {
+      bzero (info->reserved + i, sizeof (struct addr_info));
+      info->reservation_times [i] = 0;
+    }
+  }
+}
+
+static void listen_add_fd_with_lock_held (struct listen_info * info,
+                                          int fd, struct addr_info * addr)
+{
+  if (addr != NULL)
+    listen_clear_reservation_with_lock_held (addr, info);
+  int index = close_oldest_fd (info);
+  info->fds [index] = fd;
+  if (addr != NULL)
+    info->peers [index] = *addr;
+  else
+    info->peers [index].ip.ip_version = 0;
+  if (info->add_remove_pipe)
+    add_pipe (info->pipe_descriptor, fd);
+}
+
 /* if closing connection, send the list of peers before closing */
 void listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr)
 {
@@ -337,14 +392,7 @@ void listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr)
     close (fd);  /* never added the pipe, so no need to remove it */
   }
   pthread_mutex_lock (&(info->mutex));
-  int index = close_oldest_fd (info);
-  info->fds [index] = fd;
-  if (addr != NULL)
-    info->peers [index] = *addr;
-  else
-    info->peers [index].ip.ip_version = 0;
-  if (info->add_remove_pipe)
-    add_pipe (info->pipe_descriptor, fd);
+  listen_add_fd_with_lock_held (info, fd, addr);
   pthread_mutex_unlock (&(info->mutex));
 }
 
@@ -382,18 +430,32 @@ struct addr_info * listen_fd_addr (struct listen_info * info, int fd)
   return result;
 }
 
-/* returns the socket number if already listening, and -1 otherwise */
+/* returns the socket number if already listening,
+   returns -1 and reserves the address if nobody else had reserved it,
+   returns -2 if someone had reserved the address already. */
 int already_listening (struct addr_info * ai, struct listen_info * info)
 {
-  int result = -1;
+  int32_t result = -1;
   pthread_mutex_lock (&(info->mutex));
   int i;
   for (i = 0; (i < info->num_fds) && (result == -1); i++) {
     if (same_ai (info->peers + i, ai))
       result = info->fds [i];
   }
+  for (i = 0; (i < info->max_num_fds) && (result == -1); i++) {
+    if (same_ai (info->reserved + i, ai))
+      result = -2;   /* reserved by someone else */
+  }
+  if (result == -1)  /* reserve, return -1 */
+    listen_get_reservation_with_lock_held (ai, info);
   pthread_mutex_unlock (&(info->mutex));
   return result;
 }
 
+void listen_clear_reservation (struct addr_info * ai, struct listen_info * info)
+{
+  pthread_mutex_lock (&(info->mutex));
+  listen_clear_reservation_with_lock_held (ai, info);
+  pthread_mutex_unlock (&(info->mutex));
+}
 

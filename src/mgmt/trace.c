@@ -541,7 +541,7 @@ static void main_loop (int wsock, pd p,
                        unsigned char * my_address, int nbits,
                        int match_only, int forward_only)
 {
-  void * cache = cache_init (100, free);
+  void * cache = cache_init (100, free, "traced main loop");
   while (1) {
     char * message;
     int pipe, pri;

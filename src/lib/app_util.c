@@ -51,14 +51,15 @@ static void del_string (char * string, char * substring)
 }
 
 /* returned value is malloc'd. */
-static char * make_program_path (char * path, char * program)
+static char * make_program_path (char * path, char * program, char * debug)
 {
   char * result = strcat3_malloc (path, "/", program,
                                   "app_util/make_program_path");
-  del_string (result, "/.libs"); /* not sure why "/.libs" gets added to path */
+  del_string (result, "/.libs"); /* /.libs added to path by dynamic linking */
   if (access (result, X_OK) != 0) {
-    printf ("error: unable to find executable %s/%s or %s, aborting\n",
-            path, program, result);
+    char pwdbuf [10000];
+    printf ("error: unable to find executable %s/%s or %s (pwd %s, arg %s), aborting\n",
+            path, program, result, getcwd (pwdbuf, sizeof (pwdbuf)), debug);
     free (result);
     return NULL;
   }
@@ -77,7 +78,7 @@ static void exec_allnet (char * arg)
     char * path;
     char * pname;
     find_path (arg, &path, &pname);
-    char * astart = make_program_path (path, "allnet");
+    char * astart = make_program_path (path, "allnet", arg);
     if ((astart == NULL) || (access (astart, X_OK) != 0)) {
       perror ("access, unable to find allnet executable");
       printf ("unable to start AllNet daemon %s\n", astart);

@@ -64,6 +64,29 @@ static struct allnet_log * alog = NULL;
 /* UDPv4 messages are limited to less than 2^16 bytes */
 #define MAX_RECEIVE_BUFFER	ALLNET_MAX_UDP_SIZE
 
+static int debug_always_match (void * a1, void * a2)
+{
+  return 1;
+}
+
+static void debug_print_addr_cache (void * addr_cache)
+{
+printf ("in debug_print_addr_cache (%p)\n", addr_cache);
+  void ** result;
+  int n = cache_all_matches (addr_cache, debug_always_match, NULL, &result);
+  if (n <= 0) {
+    printf ("cache is empty: %d\n", n);
+    return;
+  }
+  int i;
+  for (i = 0; i < n; i++) {
+    printf ("%d/%d: %p ", i, n, result [i]);
+    if (result [i] != NULL)
+      print_addr_info (result [i]);
+  }
+  free (result);
+}
+
 #ifdef ALLNET_ADDRS
 static int init_unix_socket (char * addr_socket_name)
 {
@@ -292,19 +315,19 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
     struct udp_cache_record * record = (struct udp_cache_record *) found;
     record->last_received = time (NULL);
   } else { /* add to cache */
-    int off = snprintf (alog->b, alog->s, "adding sockaddr to cache: "); 
-    print_sockaddr_str (addr, sasize, -1, alog->b + off, alog->s - off);
     struct udp_cache_record * record =
       malloc_or_fail (sizeof (struct udp_cache_record), "add_sockaddr_cache");
     memcpy (&(record->sas), addr, sasize);
     record->salen = sasize;
     record->last_received = time (NULL);
+    int off =
+      snprintf (alog->b, alog->s, "adding sockaddr %p to cache: ", record); 
+    print_sockaddr_str (addr, sasize, -1, alog->b + off, alog->s - off);
     cache_add (cache, record);
   }
-#ifdef DEBUG_PRINT
+/* if (found == NULL) printf ("%s\n", alog->b); */
   log_print (alog);
-#else /* ! DEBUG_PRINT */
-  alog->b [0] = '\0';
+#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
 }
 
@@ -680,13 +703,23 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         salen = sizeof (struct sockaddr_in);
       else if (af == AF_INET6)
         salen = sizeof (struct sockaddr_in6);
-      /* check to see if we are already connected */
-      struct addr_info local_ai;
+      /* check to see if we are already connected or connecting */
+      int size = sizeof (struct addr_info);
+      struct addr_info * ai = malloc_or_fail (size, "connect_listener ai");
       if ((salen == 0) ||
-          (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, &local_ai)))
+          (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, ai))) {
+        free (ai);
         continue;   /* invalid address, ignore */
-      int prev_fd = already_listening (&local_ai, info);
-      if (prev_fd >= 0) {  /* already listening */
+      }
+      int prev_fd = already_listening (ai, info);
+      while (prev_fd == -2) {
+/* printf ("prev_fd = %d in thread %ud proc %d for ", prev_fd, (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
+        sleep_time_random_us (2000);  /* sleep for 0-2ms */
+        prev_fd = already_listening (ai, info);  /* and try again */
+      }
+/* printf ("prev_fd = %d in thread %ud proc %d for ", prev_fd, (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
+      if (prev_fd >= 0) {  /* already listening for this address, done */
+        free (ai);
         result = prev_fd;
         break;
       }
@@ -695,6 +728,9 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       int s = socket (af, SOCK_STREAM, 0);
       if (s < 0) {
         perror ("listener socket");
+/* printf ("thread %ud proc %d unable to open socket, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
+        listen_clear_reservation (ai, info);
+        free (ai);
         continue;
       }
       struct sockaddr * sap = (struct sockaddr *) (sas + k);
@@ -703,16 +739,18 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         print_sockaddr_str (sap, salen, 1, alog->b + n, alog->s - n);
         log_error (alog, "listener connect");
         close (s);
+/* printf ("thread %ud proc %d unable to connect, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
+        listen_clear_reservation (ai, info);
+        free (ai);
         continue;   /* return to the top of the loop and try the next addr */
       }
       /* success! */
-      /* ai now needs to be malloc'd, to make it good even after we return */
-      int size = sizeof (struct addr_info);
-      struct addr_info * ai = malloc_or_fail (size, "connect_listener");
-      *ai = local_ai;
       result = s;
       cache_add (addr_cache, ai);
-      listen_add_fd (info, s, ai);
+/* printf ("added %p: ", ai);
+print_addr_info (ai);
+debug_print_addr_cache (addr_cache); */
+      listen_add_fd (info, s, ai);   /* clears the reservation */
       int offset = snprintf (alog->b, alog->s,
                              "listening for %x/%d on socket %d at ",
                              address [0] & 0xff, LISTEN_BITS, s);
@@ -749,6 +787,7 @@ static void * connect_thread (void * a)
   } else {   /* undo connect */
     close (fd);       /* remove from kernel */
     /* remove from cache, info, and pipemsg */
+printf ("0: removing %p from address cache\n", listen_fd_addr (arg->info, fd));
     cache_remove (arg->addr_cache, listen_fd_addr (arg->info, fd));
     listen_remove_fd (arg->info, fd);
     pthread_mutex_unlock (&listener_mutex);
@@ -780,8 +819,8 @@ static void remove_listener (int fd, struct listen_info * info,
 {
 #ifdef DEBUG_PRINT
   printf ("remove_listener (fd %d)\n", fd);
-  int removed = 0;
 #endif /* DEBUG_PRINT */
+  int removed = 0;
   pthread_mutex_lock (&listener_mutex);
   int i;
   for (i = 0; i < NUM_LISTENERS; i++) {
@@ -789,12 +828,14 @@ static void remove_listener (int fd, struct listen_info * info,
       listener_fds [i] = -1;
       if (active_listeners > 0)
         active_listeners--;
-#ifdef DEBUG_PRINT
       removed = 1;
-#endif /* DEBUG_PRINT */
     }
   }
-  cache_remove (addr_cache, listen_fd_addr (info, fd)); /* remove from cache */
+  struct addr_info * cached = listen_fd_addr (info, fd);
+printf ("1: removing %p from address cache, removed %d\n", cached, removed);
+if (cached != NULL) print_addr_info (cached);
+debug_print_addr_cache (addr_cache);
+  cache_remove (addr_cache, cached); /* remove from cache */
   listen_remove_fd (info, fd); /* remove from info and pipemsg */
   close (fd);       /* remove from kernel */
   pthread_mutex_unlock (&listener_mutex);
@@ -1196,7 +1237,7 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
 {
   int udp = udp_socket ();
   void * udp_cache = NULL;
-  udp_cache = cache_init (128, free);
+  udp_cache = cache_init (128, free, "aip UPD cache");
   int removed_listener = 0;
   time_t last_listen = 0;
   time_t last_keepalive = 0;
@@ -1323,8 +1364,8 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
 
   static struct receive_arg ra;
   ra.socket_name = addr_socket_name;
-  ra.rp_cache = cache_init (128, free);
-  ra.dht_cache = cache_init (256, free);
+  ra.rp_cache = cache_init (128, free, "aip RP cache");
+  ra.dht_cache = cache_init (256, free, "aip DHT cache");
 #ifdef ALLNET_ADDRS
   pthread_t addr_thread;
   if (pthread_create (&addr_thread, NULL, receive_addrs, &ra) != 0) {
