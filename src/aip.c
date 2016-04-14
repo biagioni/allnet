@@ -64,6 +64,7 @@ static struct allnet_log * alog = NULL;
 /* UDPv4 messages are limited to less than 2^16 bytes */
 #define MAX_RECEIVE_BUFFER	ALLNET_MAX_UDP_SIZE
 
+#ifdef DEBUG_PRINT
 static int debug_always_match (void * a1, void * a2)
 {
   return 1;
@@ -71,7 +72,6 @@ static int debug_always_match (void * a1, void * a2)
 
 static void debug_print_addr_cache (void * addr_cache)
 {
-printf ("in debug_print_addr_cache (%p)\n", addr_cache);
   void ** result;
   int n = cache_all_matches (addr_cache, debug_always_match, NULL, &result);
   if (n <= 0) {
@@ -86,6 +86,7 @@ printf ("in debug_print_addr_cache (%p)\n", addr_cache);
   }
   free (result);
 }
+#endif /* DEBUG_PRINT */
 
 #ifdef ALLNET_ADDRS
 static int init_unix_socket (char * addr_socket_name)
@@ -265,6 +266,7 @@ static int same_sockaddr_udp (void * arg1, void * arg2)
   struct sockaddr_in6 * a2 = (struct sockaddr_in6 *) (&(ucr2->sas));
   if (a1->sin6_family != a2->sin6_family)
     return 0;
+  /* try to compare IPv6 first */
   if (a1->sin6_family == AF_INET6) {
     if ((a1->sin6_port == a2->sin6_port) &&
         (memcmp (a1->sin6_addr.s6_addr, a2->sin6_addr.s6_addr,
@@ -272,6 +274,7 @@ static int same_sockaddr_udp (void * arg1, void * arg2)
       return 1;
     return 0;
   }
+  /* not IPv6, now try to compare IPv4 */
   if (a1->sin6_family == AF_INET) {
     struct sockaddr_in * sin1 = (struct sockaddr_in  *) arg1;
     struct sockaddr_in * sin2 = (struct sockaddr_in  *) arg2;
@@ -280,6 +283,7 @@ static int same_sockaddr_udp (void * arg1, void * arg2)
       return 1;
     return 0;
   }
+  /* neither IPv6 nor IPv4 -- what is it? */
   printf ("same_sockaddr: unknown address family %d\n", a1->sin6_family);
   return 0;
 }
@@ -290,7 +294,8 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
 {
   if ((addr->sa_family != AF_INET) && (addr->sa_family != AF_INET6)) {
     snprintf (alog->b, alog->s,
-              "add_sockaddr error: unexpected family %d (not %d or %d), sasize %d (maybe %zd or %zd?)\n", 
+              "%s %d (not %d or %d), sasize %d (maybe %zd or %zd?)\n", 
+              "add_sockaddr error: unexpected family",
               addr->sa_family, AF_INET, AF_INET6, sasize,
               sizeof (struct sockaddr_in), sizeof (struct sockaddr_in6));
     log_print (alog);
@@ -747,9 +752,11 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       /* success! */
       result = s;
       cache_add (addr_cache, ai);
-/* printf ("added %p: ", ai);
-print_addr_info (ai);
-debug_print_addr_cache (addr_cache); */
+#ifdef DEBUG_PRINT
+      printf ("added %p: ", ai);
+      print_addr_info (ai);
+      debug_print_addr_cache (addr_cache);
+#endif /* DEBUG_PRINT */
       listen_add_fd (info, s, ai);   /* clears the reservation */
       int offset = snprintf (alog->b, alog->s,
                              "listening for %x/%d on socket %d at ",
@@ -787,7 +794,6 @@ static void * connect_thread (void * a)
   } else {   /* undo connect */
     close (fd);       /* remove from kernel */
     /* remove from cache, info, and pipemsg */
-printf ("0: removing %p from address cache\n", listen_fd_addr (arg->info, fd));
     cache_remove (arg->addr_cache, listen_fd_addr (arg->info, fd));
     listen_remove_fd (arg->info, fd);
     pthread_mutex_unlock (&listener_mutex);
@@ -819,8 +825,8 @@ static void remove_listener (int fd, struct listen_info * info,
 {
 #ifdef DEBUG_PRINT
   printf ("remove_listener (fd %d)\n", fd);
+  int debug_removed = 0;
 #endif /* DEBUG_PRINT */
-  int removed = 0;
   pthread_mutex_lock (&listener_mutex);
   int i;
   for (i = 0; i < NUM_LISTENERS; i++) {
@@ -828,20 +834,29 @@ static void remove_listener (int fd, struct listen_info * info,
       listener_fds [i] = -1;
       if (active_listeners > 0)
         active_listeners--;
-      removed = 1;
+#ifdef DEBUG_PRINT
+      debug_removed = 1;
+#endif /* DEBUG_PRINT */
     }
   }
-  struct addr_info * cached = listen_fd_addr (info, fd);
-printf ("1: removing %p from address cache, removed %d\n", cached, removed);
-if (cached != NULL) print_addr_info (cached);
-debug_print_addr_cache (addr_cache);
-  cache_remove (addr_cache, cached); /* remove from cache */
+  struct addr_info * ai = listen_fd_addr (info, fd);
+  struct addr_info * cached =
+    cache_get_match (addr_cache, (match_function)(&same_ai), ai);
+#ifdef DEBUG_PRINT
+  printf ("1: removing %p (%p) from address cache\n", cached, ai);
+  if (ai != NULL) print_addr_info (ai);
+  if (cached != NULL) print_addr_info (cached);
+  debug_print_addr_cache (addr_cache);
+  if (cached != NULL) debug_removed += 2;
+#endif /* DEBUG_PRINT */
+  if (cached != NULL)
+    cache_remove (addr_cache, cached); /* remove from cache */
   listen_remove_fd (info, fd); /* remove from info and pipemsg */
   close (fd);       /* remove from kernel */
   pthread_mutex_unlock (&listener_mutex);
 #ifdef DEBUG_PRINT
-  if (removed)
-    printf ("removed fd %d\n", fd);
+  if (debug_removed)
+    printf ("removed fd %d, status %d\n", fd, debug_removed);
   else
     printf ("fd %d not found, not removed\n", fd);
 #endif /* DEBUG_PRINT */
@@ -1076,9 +1091,9 @@ static int dht_filter_senders (struct sockaddr * sap, socklen_t sasize,
   struct sockaddr_in * sin = (struct sockaddr_in *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
 #ifdef DEBUG_PRINT
+  printf ("removing from DHT packet senders that do not match: ");
   print_sockaddr (sap, sasize, -1);
   printf ("\n");
-  print_packet (message, msize, "original packet", 1); 
 #endif /* DEBUG_PRINT */
   static const char ipv4_in_ipv6 [] =
                      { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff }; 
@@ -1133,8 +1148,8 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
                         struct sockaddr * sap, socklen_t sasize)
 {
 #ifdef DEBUG_PRINT
-  int off = snprintf (alog->b, alog->s, "handle_mgmt (%d, %d, %p, %d, ",
-                      *listener, peer, message, *msizep);
+  int off = snprintf (alog->b, alog->s, "handle_mgmt (%d, %d, %d, %p, %d, ",
+                      *listeners, num_listeners, peer, message, *msizep);
   if (sasize > 0)
     print_sockaddr_str (sap, sasize, 0, alog->b + off, alog->s - off);
   else
