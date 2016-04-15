@@ -283,7 +283,9 @@ static void actual_remove (struct dcache * cache, int index)
     printf ("cache unable to remove %d from %d\n", index, cache->num_entries);
     return;
   }
+#ifdef DEBUG_PRINT
   printf ("remove calling release_entry (%d)\n", index);
+#endif /* DEBUG_PRINT */
   release_entry (cache, index);
   cache->num_entries--;
   int i;
