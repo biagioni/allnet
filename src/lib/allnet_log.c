@@ -5,10 +5,12 @@
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <pwd.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <errno.h>
 #include <dirent.h>
+#include <syslog.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 
@@ -35,12 +37,33 @@
 #ifdef LOG_TO_FILE 
 #define LOG_DIR		"log"
 
-static char log_dir [PATH_MAX] = LOG_DIR;
+static char log_dir [PATH_MAX] = "";
 
 static char log_file_name [PATH_MAX] = "";
 #endif /* LOG_TO_FILE */
 
 static int allnet_global_debugging = 0;
+
+#ifdef CHECK_USERNAME  /* not currently in use */
+static int username_matches (const char * user)
+{
+  static pthread_mutex_t one_at_a_time = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock (&one_at_a_time);
+  int result = 0;     /* uid not found or not matching */
+  uid_t my_id = getuid ();
+  struct passwd * p;
+  setpwent ();   /* start at the beginning */
+  while ((p = getpwent ()) != NULL) {
+    if (p->pw_uid == my_id) {  /* uid found */
+      if (strcmp (user, p->pw_name) == 0)
+        result = 1;  /* uid found and matching */
+      break;         /* uid found, whether or not matching */
+    }
+  }
+  pthread_mutex_unlock (&one_at_a_time);
+  return result;
+}
+#endif /* CHECK_USERNAME */
 
 #ifdef LOG_TO_FILE 
 /* returns 1 if the file exists by the end of the call, and 0 otherwise. */
@@ -115,12 +138,14 @@ struct allnet_log * init_log (const char * name)
 {
 #ifdef LOG_TO_FILE   /* create a log file */
   // pthread_mutex_lock (&log_mutex);
-  snprintf (log_dir, sizeof (log_dir), "/tmp/.allnet-log/");
-  char * home = getenv (HOME_ENV);
-  if (home != NULL)
-    snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
-  else if (geteuid () == 0)  /* root user, keep the log in /var/log/allnet/ */
-    snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
+  if (log_dir [0] == '\0') {   /* log_dir uninitialized, initialize it */
+    snprintf (log_dir, sizeof (log_dir), "/tmp/.allnet-log/");
+    char * home = getenv (HOME_ENV);
+    if (home != NULL)
+      snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
+    else if (geteuid () == 0)  /* root user, keep log in /var/log/allnet/ */
+      snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
+  }
 
   if (! create_dir (log_dir))
     printf ("%s: unable to create directory %s\n", name, log_dir);
@@ -132,6 +157,7 @@ struct allnet_log * init_log (const char * name)
     latest_file (name, now);
   // pthread_mutex_unlock (&log_mutex);
 #endif /* LOG_TO_FILE */
+  
   size_t count = sizeof (struct allnet_log) + strlen (name) + 1;
   struct allnet_log * result = malloc_or_fail (count, "init_log");
   result->debug_info = ((char *) result) + sizeof (struct allnet_log);
@@ -181,6 +207,9 @@ static void log_print_buffer (char * buffer, int blen, int out)
     perror ("unable to unlock log file");
   close (fd);
 #endif /* LOG_TO_FILE  */
+  int syslog_option = LOG_DAEMON | LOG_WARNING;
+  /* use buffer + 12 to skip over most of the date (04/14 03:13:) */
+  syslog (syslog_option, "%s", buffer + 12);
   if ((allnet_global_debugging) || (out))
     printf ("%s", buffer);
 }
@@ -265,12 +294,10 @@ void log_packet (struct allnet_log * log, char * desc, char * packet, int plen)
    is in the buffer */
 void log_error (struct allnet_log * log, char * syscall)
 {
-  int err_number = errno;  /* so it doesn't change */
-  const char * err_string = "unknown error";
-  if ((err_number >= 0) && (err_number < sys_nerr))
-    err_string = sys_errlist [err_number];
+  char ebuf [1000];
+  strerror_r (errno, ebuf, sizeof (ebuf));
   char local_buf [LOG_SIZE + LOG_SIZE];
-  snprintf (local_buf, sizeof (local_buf), "%s: %s\n    ", syscall, err_string);
+  snprintf (local_buf, sizeof (local_buf), "%s: %s\n    ", syscall, ebuf);
   log_print_str (log, local_buf);
   log_print (log);
 }
