@@ -183,7 +183,7 @@ static void sleep_ms (unsigned long ms)
  * if no queue has a packet, returns -1 (and no lock is held) */
 static int queue_has (struct allnet_queue ** queues, unsigned int n)
 {
-  int restart = 0;
+  int restart = 1;
   int loop_count = 0;
   int start = random () % n;
   while ((restart) && (loop_count++ < 3)) {
@@ -276,7 +276,6 @@ int allnet_dequeue (struct allnet_queue ** queues, unsigned int * nqueue,
   while (1) {
     int index = queue_has (queues, n);
     if (index >= 0) { /* the lock for queues [index] is held */
-printf ("found index %d, queue %s\n", index, queues [index]->debug_info);
       *nqueue = index;
       return dequeue_unlock (queues [index], packet, plen, priority);
     }
@@ -402,10 +401,20 @@ static void * remove_thread (void * arg)
                                  &priority, 3000);
     time_t end = time (NULL);
     int check = (result > 0) ? (check_buffer (packet, plen)) : 0;
-    printf ("dequeue %d [%d..%d]=>%d %d, n %d, p %d/%d, len %d, pri %d, %ds\n",
+    printf ("deq %d [%d..%d]=>%d %d, n %d, p %d/%d, len %d, pri %d, %ds, sizes %d %d %d %d %d %d %d %d %d %d\n",
             x, (int)first_queue, (int)(first_queue + num_queues - 1), result,
             check, nqueue + (int)first_queue, packet [0], packet [1],
-            plen, priority, (int) (end - start));
+            plen, priority, (int) (end - start),
+            allnet_queue_size(q [0]),
+            allnet_queue_size(q [1]),
+            allnet_queue_size(q [2]),
+            allnet_queue_size(q [3]),
+            allnet_queue_size(q [4]),
+            allnet_queue_size(q [5]),
+            allnet_queue_size(q [6]),
+            allnet_queue_size(q [7]),
+            allnet_queue_size(q [8]),
+            allnet_queue_size(q [9]));
     if (result == 0)
       break;
     if (check == 0)
