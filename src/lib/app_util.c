@@ -115,7 +115,7 @@ static void * call_allnet_main (void * unused_arg)
     printf ("error: argument to call_allnet_main should be NULL\n");
   char * args [] = { "allnet", NULL };
   /* could be: char * args [] = { "allnet", "-v", "def", NULL }; */
-  astart_main (2, args);
+  astart_main (1, args);
   return NULL;
 }
 
