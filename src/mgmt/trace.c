@@ -462,9 +462,9 @@ static void respond_to_trace (int sock, char * message, int msize,
   int nmatch = matches (my_address, abits, hp->destination, hp->dst_nbits);
 #ifdef DEBUG_PRINT
   printf ("matches (");
-  print_buffer (my_address, abits, NULL, (abits + 7) / 8, 0);
+  print_buffer ((char *)my_address, abits, NULL, (abits + 7) / 8, 0);
   printf (", ");
-  print_buffer (hp->destination, hp->dst_nbits, NULL,
+  print_buffer ((char *)hp->destination, hp->dst_nbits, NULL,
                 (hp->dst_nbits + 7) / 8, 0);
   printf (") => %d (%d needed)\n", nmatch, mbits);
 #endif /* DEBUG_PRINT */
@@ -526,6 +526,17 @@ static void respond_to_trace (int sock, char * message, int msize,
   }
   if (rsize > 0)
     count += 1;
+#ifdef LOG_PACKETS
+  off = snprintf (alog->b, alog->s, "respond_to_trace sending %d messages\n",
+                  count);
+  packet_to_string (messages [first], mlens [first], "first message", 1,
+                    alog->b + off, alog->s - off); 
+  off = strlen (alog->b);
+  if (count > 1)
+    packet_to_string (messages [first + 1], mlens [first + 1], "second message",
+                      1, alog->b + off, alog->s - off); 
+  log_print (alog);
+#endif /* LOG_PACKETS */
   if (! send_pipe_multiple_free (sock, count, messages + first,
                                  mlens + first, priorities + first, alog))
     snprintf (alog->b, alog->s, "unable to send trace request+reply\n");
@@ -938,7 +949,7 @@ printf ("traced_thread (%s), sockets %d %d\n", pname, rpipe, wpipe);
   if (alog == NULL)
     alog = init_log ("traced_thread");
   pd p = init_pipe_descriptor (alog);
-    printf ("traced_thread adding pipe %d\n", rpipe);
+    printf ("traced_thread adding pipe %d, wpipe %d\n", rpipe, wpipe);
   add_pipe(p, rpipe);
   printf ("trace thread for %d bits: ", abits);
   print_bitstring (address, 0, abits, 1);
