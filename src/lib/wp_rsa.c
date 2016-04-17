@@ -158,7 +158,7 @@ static int read_all_or_none (char * fname, char * buffer, int bsize)
       perror ("open /dev/urandom");
     return 0;
   }
-  int n;
+  ssize_t n;
   int total = 0;
   do {
     n = read (fd, buffer + total, bsize - total);
@@ -736,9 +736,10 @@ int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
     wp_multiply (nbits, phi, nhalf, qmin1, pmin1);
 #endif /* FASTER_PHI_COMPUTATION */
     rsa_half ehalf;
-    wp_init (nhalf, ehalf, e);
+    int eint = (int)e;
+    wp_init (nhalf, ehalf, eint);
     rsa_int efull;
-    wp_init (nbits, efull, e);
+    wp_init (nbits, efull, eint);
     if (mod_is_zero (nbits, phi, nhalf, ehalf)) {
       printf ("e %ld is a factor of phi %s, no inverse\n",
               e, wp_itox (nbits, phi));
@@ -1623,7 +1624,7 @@ printf ("\n");
 static int test_encrypt_decrypt (wp_rsa_key_pair * key, int padding)
 {
   char text [WP_RSA_MAX_KEY_BYTES + 100] = "hello";
-  int tsize = strlen (text);
+  int tsize = (int)strlen (text);
   if (tsize >= WP_RSA_MAX_KEY_BYTES)
     tsize = WP_RSA_MAX_KEY_BYTES - 1;
   char cipher [WP_RSA_MAX_KEY_BYTES];
@@ -1693,7 +1694,7 @@ printf ("\n");
 static int test_sign_verify (wp_rsa_key_pair * key, int sig_encoding)
 {
   char text [WP_RSA_MAX_KEY_BYTES * 2] = "hello world, please sign me today!";
-  int tsize = strlen (text);
+  int tsize = (int)strlen (text);
   char hash [SHA512_SIZE];
   sha512 (text, tsize, hash);
   char sig [WP_RSA_MAX_KEY_BYTES];
@@ -1727,7 +1728,7 @@ void rsa_test_padding ()
   int padding;
   for (padding = WP_RSA_PADDING_NONE; padding <= WP_RSA_PADDING_PKCS1_OAEP;
        padding++) {
-    int dlen = strlen (data);
+    int dlen = (int)strlen (data);
     int plen = 0;
     if (padding == WP_RSA_PADDING_NONE) {
       dlen = WP_RSA_MAX_KEY_BYTES;

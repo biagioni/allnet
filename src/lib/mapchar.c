@@ -116,7 +116,7 @@ static long long int get_next_char (char * string, char ** next)
   }
 }
 
-static int prefix_match (char * s1, char * s2, int length)
+static int prefix_match (char * s1, char * s2, size_t length)
 {
   int i;
   for (i = 0; i < length; i++)
@@ -134,7 +134,7 @@ static int string_length (char * s)
 }
 
 /* return 1 if the substring is found in string, 0 otherwise */
-static int string_in_string (char * substring, int substring_length,
+static int string_in_string (char * substring, size_t substring_length,
                              char * string)
 {
   if (substring_length == 1) {   /* optimization for common case */

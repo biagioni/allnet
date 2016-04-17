@@ -584,7 +584,7 @@ static int b64_encode (char * buffer, int dsize, int bsize)
 static const char * find_in_string (const char * haystack, int hsize,
                                     const char * needle)
 {
-  int nsize = strlen (needle);
+  size_t nsize = strlen (needle);
   int i;
   for (i = 0; i + nsize <= hsize; i++)
     if (strncmp (haystack + i, needle, nsize) == 0) 
@@ -606,7 +606,7 @@ int wp_rsa_read_key_from_bytes (const char * bytes, int bsize,
   }
   const char * start = find_in_string (bytes, bsize, "-----BEGIN");
   if (start != NULL)
-    start = find_in_string (start, bsize - (start - bytes), "\n");
+    start = find_in_string (start, bsize - (int)(start - bytes), "\n");
   if (start != NULL)
     start++;  /* point to the first char after the BEGIN line */
   const char * end   = find_in_string (bytes, bsize, "-----END");
@@ -615,7 +615,7 @@ int wp_rsa_read_key_from_bytes (const char * bytes, int bsize,
     end--;
   if ((start == NULL) || (end == NULL))
     return 0;
-  int b64bytes = (end - start) + 1;
+  int b64bytes = (int)(end - start) + 1;
 /* if called from wp_rsa_read_key_from_file, start and wp_buffer cover the
  * same area of memory, but start >= wp_buffer -- which is all
  * that b64_decode needs */
@@ -634,7 +634,7 @@ int wp_rsa_read_key_from_file (const char * fname, int * nbits,
     printf ("wp_rsa_read_key_from_file unable to open file %s\n", fname);
     return 0;
   }
-  int nread = read (fd, wp_buffer, sizeof (wp_buffer));
+  ssize_t nread = read (fd, wp_buffer, sizeof (wp_buffer));
   if (nread < 0) {
     perror ("read key file");
     return 0;
@@ -647,7 +647,7 @@ int wp_rsa_read_key_from_file (const char * fname, int * nbits,
 #ifdef DEBUG_PRINT
   printf ("wp_rsa_read_key_from_file read %d bytes\n", nread);
 #endif /* DEBUG_PRINT */
-  return wp_rsa_read_key_from_bytes (wp_buffer, nread, nbits, key);
+  return wp_rsa_read_key_from_bytes (wp_buffer, (int)nread, nbits, key);
 }
 
 int wp_rsa_write_key_to_file (const char * fname, const wp_rsa_key_pair * key)
@@ -671,7 +671,7 @@ int wp_rsa_write_key_to_file (const char * fname, const wp_rsa_key_pair * key)
     prefix  = "-----BEGIN RSA PRIVATE KEY-----\n";
     postfix = "-----END RSA PRIVATE KEY-----\n";
   }
-  int nwrite = write (fd, prefix, strlen (prefix));
+  ssize_t nwrite = write (fd, prefix, strlen (prefix));
   if (nwrite != strlen (prefix)) {
     perror ("write");
     return 0;

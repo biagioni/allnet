@@ -188,7 +188,7 @@ static int countlines (int fd, int maxlen)
     return 0;
   }
   int result = 0;
-  int r;   /* result from reading */
+  ssize_t r;   /* result from reading */
   int this_line = 0;   /* how many bytes in this line */
   do {
     char buf [1];
@@ -238,7 +238,7 @@ static int readline_bytes (int fd, char * data, int dsize)
   char line [MAX_ENTRY * 2 + 1];
   int chars = 0;
   while (chars < sizeof (line)) {
-    int r = read (fd, line + chars, 1);
+    ssize_t r = read (fd, line + chars, 1);
     if ((r == 1) && (line [chars] == '\n'))
       break;       /* done!  Convert the hex to binary */
     chars++;

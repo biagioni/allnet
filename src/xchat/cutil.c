@@ -147,19 +147,6 @@ static int send_to_one (keyset k, char * data, int dsize,
     save_key_state (contact, &sym_state);
     has_sym_state = 1;
   }
-  int priv_ksize = 0;
-  int ksize = 0;
-  allnet_rsa_prvkey priv_key;
-  allnet_rsa_pubkey key;
-  if (! has_sym_state) {  /* use public key, if any */
-    priv_ksize = get_my_privkey (k, &priv_key);
-    ksize = get_contact_pubkey (k, &key);
-    if ((priv_ksize == 0) || (ksize == 0)) {
-      printf ("unable to locate key %d for contact %s (%d, %d)\n",
-              k, contact, priv_ksize, ksize);
-      return 1;  /* skip to the next key */
-    }
-  }
   /* if not already specified, get the addresses for the specific key */
   unsigned char a1 [ADDRESS_SIZE];
   if (src == NULL) {
@@ -186,6 +173,10 @@ static int send_to_one (keyset k, char * data, int dsize,
   } /* else message_ack is null, to make sure we don't ack, below */
 
   /* encrypt */
+  int priv_ksize = 0;
+  int ksize = 0;
+  allnet_rsa_prvkey priv_key;
+  allnet_rsa_pubkey key;
   char * encrypted = NULL;
   char * signature = NULL;
   int esize = 0;
@@ -201,6 +192,13 @@ static int send_to_one (keyset k, char * data, int dsize,
     sigtype = ALLNET_SIGTYPE_NONE;  /* the hash provides the authentication */
     sendsize = esize;
   } else {
+    priv_ksize = get_my_privkey (k, &priv_key);
+    ksize = get_contact_pubkey (k, &key);
+    if ((priv_ksize == 0) || (ksize == 0)) {
+      printf ("unable to locate key %d for contact %s (%d, %d)\n",
+              k, contact, priv_ksize, ksize);
+      return 1;  /* skip to the next key */
+    }
     esize = allnet_encrypt (data, dsize, key, &encrypted);
     if (esize > 0) {
       /* sign */

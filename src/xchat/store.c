@@ -81,7 +81,7 @@ static int end_ndigits (char * path, int ndigits, char * ext)
   char * name = path;
   if (slash != NULL)
     name = slash + 1;
-  int elen = 0;
+  size_t elen = 0;
   if (ext != NULL)
     elen = strlen (ext);
   if ((strlen (name) != ndigits) && (strlen (name) != ndigits + elen)) {
@@ -339,7 +339,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
     }
   }
   if (msize != NULL)
-    *msize = strlen (record);
+    *msize = (int)strlen (record);
   if (message != NULL)
     *message = record;
   return type;

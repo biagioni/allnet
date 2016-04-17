@@ -65,7 +65,7 @@ int config_file_name (char * program, char * file, char ** name)
     *name = NULL;  /* in case we return error, make sure it is initialized */
   char * root = ROOT;
   int free_root = 0;    /* in case root points to allocated memory */
-  int root_length = strlen (root);
+  size_t root_length = strlen (root);
   /* if the iOS root exists, use that */
   DIR * d = opendir (IOS_ROOT);
   if (d != NULL) {  /* exists, use this */
@@ -88,11 +88,11 @@ int config_file_name (char * program, char * file, char ** name)
         return -1;
       }
       /* printf ("no ALLNET_CONFIG, home is %s\n", home_env); */
-      int size = strlen (home_env) + strlen (HOME_EXT) + 1;
+      size_t size = strlen (home_env) + strlen (HOME_EXT) + 1;
       if (name != NULL) {
         char * home = malloc (size);
         if (home == NULL) {
-          printf ("unable to allocate %d bytes for home\n", size);
+          printf ("unable to allocate %zd bytes for home\n", size);
           return -1;
         }
         snprintf (home, size, "%s%s", home_env, HOME_EXT);
@@ -107,8 +107,8 @@ int config_file_name (char * program, char * file, char ** name)
   /* printf ("root is %s of length %d (free %d)\n",
           root, root_length, free_root); */
 
-  int total_length = root_length + strlen ("/") + strlen (program)
-                   + strlen ("/") + strlen (file) + 1;
+  int total_length = (int)(root_length + strlen ("/") + strlen (program) +
+                           strlen ("/") + strlen (file) + 1);
   if (name == NULL) {
     if (free_root) free (root);
     return total_length;
