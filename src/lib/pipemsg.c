@@ -438,7 +438,8 @@ int send_pipe_multiple (int pipe, int num_messages,
                                   (const unsigned char *) (messages [i]),
                                   (unsigned int) (mlens [i]),
                                   (unsigned int) (priorities [i]));
-printf ("enqueued message of size %d on pipe %d, success %d (total %d)\n", mlens [i], pipe, success, num_messages);
+printf ("enqueued message of size %d on pipe %d, success %d (%d/%d)\n",
+mlens [i], pipe, success, i, num_messages);
       }
       return success;
     } else
