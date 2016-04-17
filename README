@@ -356,6 +356,15 @@ bin/trace 2d.5c
 Now, the other two allnet daemons have been identified as local and
 forward, respectively.
 
+To simulate conventional ping, run trace with -m -i and the destination,
+and either -f (to run forever), or -r x, to repeat x times.  Use -t 1
+to get one ping per second (trace by default waits 5s for replies).
+
+bin/trace -f -t 1 -m -i 43
+   1:              406.760ms timestamp,     725.329ms rtt,  1 43.c2/16
+   2:              428.699ms timestamp,     778.383ms rtt,  1 43.c2/16
+   3:              424.119ms timestamp,     758.286ms rtt,  1 43.c2/16
+
 trace supports several options.  Run trace with an invalid option (e.g.
 bin/trace -q) to find out more.
 
