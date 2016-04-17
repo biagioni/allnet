@@ -329,13 +329,13 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) data;
   char * verif = data;
-  unsigned long int media = 0;
+  uint32_t media = 0;
   if (dsize >= sizeof (struct allnet_app_media_header) + 2)
-    media = (int)readb32u (amhp->media);
+    media = (uint32_t)readb32u (amhp->media);
   if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
       (media != ALLNET_MEDIA_TIME_TEXT_BIN)) {
 #ifdef DEBUG_PRINT
-    printf ("handle_clear ignoring unknown media type %08x, dsize %d\n",
+    printf ("handle_clear ignoring unknown media type %08" PRIx32 ", dsize %d\n",
             media, dsize);
 #endif /* DEBUG_PRINT */
     return 0;
