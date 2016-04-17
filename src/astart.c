@@ -49,11 +49,17 @@ static struct allnet_log * alog = NULL;
 
 #ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
 #define USE_FORK  /* sane systems allow fork, iOS doesn't */
-#else /* __IPHONE_OS_VERSION_MIN_REQUIRED  */
 
-/* global variables used by xchat */
-int xchat_rpipe = -9999999;
-int xchat_wpipe = -9999999;
+static int debug_close (int fd, char * loc)
+{
+  /* printf ("%s: process %d closing fd %d\n", loc, (int)(getpid ()), fd); */
+  close (fd);
+  return 0;
+}
+
+static const char * daemon_name = "allnet";
+
+#else /* __IPHONE_OS_VERSION_MIN_REQUIRED  */
 
 /* fork is not supported under iOS, but threads are */
 #include <pthread.h>
@@ -88,6 +94,16 @@ struct thread_arg {
 static struct thread_arg thread_args [100];
 static int free_thread_arg = 0;
 
+static int print_n_rw (int num, int * rpipes, int * wpipes, char * buf, int s)
+{
+  int off = snprintf (buf, s, "%d pipe pairs: ", num);
+  int i;
+  for (i = 0; i < num; i++)
+    off += snprintf (buf + off, s - off, "%d %d%s",
+                     rpipes [i], wpipes [i], (i + 1 < num) ? ", " : "");
+  return off;
+}
+
 static void * generic_thread (void * arg)
 {
   if (arg == NULL) {
@@ -98,15 +114,33 @@ static void * generic_thread (void * arg)
   if (ta->call_type == CALL_STRING) {
     ta->string_function (ta->string_arg);
   } else if (ta->call_type == CALL_ALOCAL) {
+    char buf [1000];
+    int off = snprintf (buf, sizeof (buf), "calling alocal_main (%d, %d): ",
+                        ta->rpipe, ta->wpipe);
+    off += print_n_rw (ta->num_pipes, ta->rpipes, ta->wpipes,
+                       buf + off, sizeof (buf) - off);
+    printf ("%s\n", buf);
     alocal_main (ta->rpipe, ta->wpipe,
                  ta->num_pipes, ta->rpipes, ta->wpipes);
   } else if (ta->call_type == CALL_THREAD) {
+    printf ("calling thread %s (%d, %d)\n",
+            ta->string_arg, ta->rpipe, ta->wpipe);
     ta->thread_function (ta->string_arg, ta->rpipe, ta->wpipe);
   } else if (ta->call_type == CALL_AIP) {
+    printf ("calling aip_main (%d, %d, %s)\n",
+            ta->rpipe, ta->wpipe, ta->extra);
     aip_main (ta->rpipe, ta->wpipe, ta->extra);
   } else if (ta->call_type == CALL_ABC) {
+    printf ("calling abc_main (%d, %d, %s)\n", ta->rpipe, ta->wpipe,
+            ta->ifopts);
     abc_main (ta->rpipe, ta->wpipe, ta->ifopts);
   } else if (ta->call_type == CALL_AD) {
+    char buf [1000];
+    int off = snprintf (buf, sizeof (buf), "calling ad_main (%d, %d): ",
+                        ta->rpipe, ta->wpipe);
+    off += print_n_rw (ta->num_pipes, ta->rpipes, ta->wpipes,
+                       buf + off, sizeof (buf) - off);
+    printf ("%s\n", buf);
     ad_main (ta->num_pipes, ta->rpipes, ta->wpipes);
   } else {
     printf ("astart generic_thread: unknown call type %d for %s\n",
@@ -138,9 +172,8 @@ void stop_allnet_threads ()
 }
 
 
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-
-static const char * daemon_name = "allnet";
+#endif /* __IPHONE_OS_
+VERSION_MIN_REQUIRED */
 
 #ifdef USE_FORK
 static void stop_all ();
@@ -251,8 +284,10 @@ static void init_pipes (int * pipes, int num_pipes)
 #endif /* USE_FORK */
     pipes [i] = pipefd [0];
     pipes [i + num_pipes] = pipefd [1];
-/*  printf ("pipes [%d] is %d, pipes [%d] is %d\n",
-            i, pipes [i], i + num_pipes, pipes [i + num_pipes]); */
+#ifdef DEBUG_PRINT
+    printf ("pipes [%d] is %d, pipes [%d] is %d\n",
+            i, pipes [i], i + num_pipes, pipes [i + num_pipes]);
+#endif /* DEBUG_PRINT */
   }
 }
 
@@ -264,7 +299,8 @@ static void print_pid (int fd, int pid)
   int len = snprintf (buffer, sizeof (buffer), "%d\n", pid);
   if (write (fd, buffer, len) != len) {
     perror ("pid file write");
-    printf ("writing to fd %d, original %d\n", fd, original_fd);
+    printf ("writing %d bytes to fd %d, original %d, process id %d\n",
+            len, fd, original_fd, (int)(getpid ()));
   } else {
     original_fd = fd;
   }
@@ -372,7 +408,7 @@ static void stop_all_on_signal (int signal)
       if (pid != my_pid)       /* do not kill myself */
         pids [count++] = pid;
     }
-    close (fd);
+    debug_close (fd, "stop_all_on_signal");
     /* deleting the pid file keeps others from doing what we are doing */
     unlink (fname);
     /* now stop all the other processes */
@@ -507,7 +543,7 @@ static void my_call_thread (char * argv, int alen, char * program,
   tap->name = strcpy_malloc (program, "astart my_call_thread");
   tap->call_type = CALL_THREAD;
   tap->thread_function = run_function;
-  tap->string_arg = strcpy_malloc (argv, "astart my_call_thread");
+  tap->string_arg = strcpy_malloc (program, "astart my_call_thread");
   tap->rpipe = rpipe;
   tap->wpipe = wpipe;
   if (pthread_create (&(tap->id), NULL, generic_thread, (void *) tap)) {
@@ -525,7 +561,7 @@ static int connect_to_local ()
   sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
   sin.sin_port = ALLNET_LOCAL_PORT;
   int success = (connect (sock, (struct sockaddr *) &sin, sizeof (sin)) == 0);
-  close (sock);
+  debug_close (sock, "connect_to_local");
   return success;
 }
 #endif /* USE_FORK */
@@ -552,8 +588,8 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
     child_return (program, parent, 1);
   }
   /* else parent, close the child pipes */
-  close (rpipe);
-  close (wpipe);
+  debug_close (rpipe, "my_call_alocal");
+  debug_close (wpipe, "my_call_alocal wpipe");
   print_pid (fd, child);
   snprintf (alog->b, alog->s, "parent called %s %d %d, closed %d %d\n",
             program, rpipe, wpipe, rpipe, wpipe);
@@ -595,6 +631,7 @@ static void my_call_aip (char * argv, int alen, char * program,
                          int rpipe, int wpipe, char * extra, int fd,
                          pid_t parent)
 {
+#ifdef USE_FORK
   pid_t child = fork ();
   if (child == 0) {
     replace_command (argv, alen, program);
@@ -602,29 +639,26 @@ static void my_call_aip (char * argv, int alen, char * program,
               program, rpipe, wpipe, extra);
     log_print (alog);
     daemon_name = "aip";
-#ifdef USE_FORK
     aip_main (rpipe, wpipe, extra);
     child_return (program, parent, 1);
-#else /* ! USE_FORK */
-    struct thread_arg * tap = thread_args + (free_thread_arg++);
-    tap->name = "aip";
-    tap->call_type = CALL_AIP;
-    tap->rpipe = rpipe;
-    tap->wpipe = wpipe;
-    tap->extra = extra;
-    if (pthread_create (&(tap->id), NULL, generic_thread, (void *) tap)) {
-      printf ("pthread_create failed for aip\n");
-      exit (1);
-    }
-#endif /* USE_FORK */
   }  /* parent, close the child pipes */
-#ifdef USE_FORK
-  close (rpipe);
-  close (wpipe);
+  debug_close (rpipe, "my_call_aip");
+  debug_close (wpipe, "my_call_aip wpipe");
   print_pid (fd, child);
   snprintf (alog->b, alog->s, "parent called %s %d %d %s, closed %d %d\n",
             program, rpipe, wpipe, extra, rpipe, wpipe);
   log_print (alog);
+#else /* ! USE_FORK */
+  struct thread_arg * tap = thread_args + (free_thread_arg++);
+  tap->name = "aip";
+  tap->call_type = CALL_AIP;
+  tap->rpipe = rpipe;
+  tap->wpipe = wpipe;
+  tap->extra = extra;
+  if (pthread_create (&(tap->id), NULL, generic_thread, (void *) tap)) {
+    printf ("pthread_create failed for aip\n");
+    exit (1);
+  }
 #endif /* USE_FORK */
 }
 
@@ -636,23 +670,24 @@ static void my_call_abc (char * argv, int alen, char * program,
   pid_t child = fork ();
   if (child == 0) {
     replace_command (argv, alen, program);
-    /* printf ("calling %s %d %d %d %d %s\n", program, rpipe, wpipe,
-               ppipe1, ppip2, ifopts); */
+#ifdef DEBUG_PRINT
+    printf ("calling %s %d %d %d %d %s\n", program, rpipe, wpipe,
+               ppipe1, ppipe2, ifopts);
+#endif /* DEBUG_PRINT */
     daemon_name = "abc";
     setup_signal_handler (0);  /* abc has its own signal handler */
     usleep (10 * 1000);        /* wait for parent to create log file */
     /* close the pipes used by the parent -- my_call_ad will close them
      * again, which is no big deal */
-    close (ppipe1);
-    close (ppipe2);
+    debug_close (ppipe1, "my_call_abc");
+    debug_close (ppipe2, "my_call_abc wpipe");
     abc_main (rpipe, wpipe, ifopts);
     exit (0);   /* abc can return without us having to disable the rest */
     child_return (program, parent, 0);
   }  /* parent, close the child pipes */
   *pid = child;
-  /* print_pid (fd, child); -- running as root, do not create pid file */
-  close (rpipe);
-  close (wpipe);
+  debug_close (rpipe, "my_call_abc parent rpipe");
+  debug_close (wpipe, "my_call_abc parent wpipe");
 /* snprintf (alog->b, alog->s, "parent called %s %d %d %s, closed %d %d\n",
             program, rpipe, wpipe, ifopts, rpipe, wpipe);
   log_print (alog); */
@@ -686,8 +721,8 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
     /* close the pipes we don't use in the child */
     /* and compress the rest to the start of the respective arrays */
     for (i = 0; i < num_pipes / 2; i++) {
-      close (rpipes [2 * i    ]);
-      close (wpipes [2 * i + 1]);
+      debug_close (rpipes [2 * i    ], "my_call_ad rpipes");
+      debug_close (wpipes [2 * i + 1], "my_call_ad wpipes");
       rpipes [i] = rpipes [2 * i + 1];
       wpipes [i] = wpipes [2 * i    ];  /* may be the same */
     }
@@ -703,8 +738,8 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
   }  /* parent, close the child pipes */
   print_pid (fd, child);
   for (i = 0; i < num_pipes / 2; i++) {
-    close (rpipes [2 * i + 1]);
-    close (wpipes [2 * i    ]);
+    debug_close (rpipes [2 * i + 1], "my_call_ad parent rpipe");
+    debug_close (wpipes [2 * i    ], "my_call_ad parent wpipe");
     rpipes [i] = rpipes [2 * i    ];  /* the same if i is 0 */
     wpipes [i] = wpipes [2 * i + 1];
   }
@@ -720,6 +755,8 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
   for (i = 0; i < num_pipes / 2; i++) {
     rcopy [i] = rpipes [2 * i + 1];
     wcopy [i] = wpipes [2 * i    ];
+    rpipes [i] = rpipes [2 * i    ];  /* the same if i is 0 */
+    wpipes [i] = wpipes [2 * i + 1];
   }
   struct thread_arg * tap = thread_args + (free_thread_arg++);
   tap->name = "ad";
@@ -983,8 +1020,10 @@ int astart_main (int argc, char ** argv)
     int wpipe =  wpipes [2 * i + NUM_FIXED_PIPES + 1];
     int ppipe1 = rpipes [2 * i + NUM_FIXED_PIPES + 1];
     int ppipe2 = wpipes [2 * i + NUM_FIXED_PIPES];
-/*  printf ("calling abc %s, pipes %d %d %d %d\n", interface,
-            rpipe, wpipe, ppipe1, ppipe2); */
+#ifdef DEBUG_PRINT
+    printf ("calling abc %s, pipes %d %d %d %d\n", interface,
+            rpipe, wpipe, ppipe1, ppipe2);
+#endif /* DEBUG_PRINT */
     my_call_abc (argv [0], alen, "abc", rpipe, wpipe, ppipe1, ppipe2,
                  interface, abc_pids + i, astart_pid);
   }
@@ -994,9 +1033,9 @@ int astart_main (int argc, char ** argv)
   if (! verbose) {
     /* to go into the background, close all standard file descriptors.
      * use -v or comment this out if trying to debug to stdout/stderr */
-    close (0);
-    close (1);
-    close (2);
+    debug_close (0, "astart_main stdin");
+    debug_close (1, "astart_main stdout");
+    debug_close (2, "astart_main stderr");
   }
 #endif /* PRODUCTION_CODE */
 
@@ -1033,8 +1072,8 @@ int astart_main (int argc, char ** argv)
   int alocal_numpipes = 0;
   int * alocal_rpipes = NULL;
   int * alocal_wpipes = NULL;
-#ifndef USE_FORK  /* create queues for 4 of the 5 daemons and xchat */
-  alocal_numpipes = NUM_DAEMON_PIPES + 1;
+#ifndef USE_FORK  /* create queues for 4 of the 5 daemons */
+  alocal_numpipes = NUM_DAEMON_PIPES;
   alocal_rpipes = rpipes + ad_pipes;
   alocal_wpipes = wpipes + ad_pipes;
 #endif /* USE_FORK */
@@ -1045,6 +1084,7 @@ int astart_main (int argc, char ** argv)
   num_pipes = num_pipes / 2;
 
   /* start all the other programs */
+#ifdef USE_FORK  /* daemons connect through sockets */
   /* note: receive pipes for alocal are write pipes for everyone else */
   /* also note that after my_call_ad, pipes are in [rw]pipes [0,1] */
   my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd, astart_pid,
@@ -1052,28 +1092,39 @@ int astart_main (int argc, char ** argv)
   my_call_aip (argv [0], alen, "aip", rpipes [1], wpipes [1],
                AIP_UNIX_SOCKET, pid_fd, astart_pid);
 
-  /* ad, alocal, aip, and the abc's don't need signal handlers -- if any
+  /* ad, alocal, and aip don't need signal handlers -- if any
    * of them goes down, the pipes are closed and everyone else goes down too
    * but if the other daemons go down, they should explicitly shut
    * down all the processes listed in the pid file */
   setup_signal_handler (1);
-#ifdef USE_FORK  /* daemons connect through sockets */
   my_call1 (argv [0], alen, "adht", adht_main, pid_fd, astart_pid);
   my_call1 (argv [0], alen, "acache", acache_main, pid_fd, astart_pid);
   my_call1 (argv [0], alen, "traced", traced_main, pid_fd, astart_pid);
   my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd, astart_pid);
 #else /* ! USE_FORK -- daemons use queues to communicate */
-  int base = (NUM_INTERFACE_PIPES * num_interfaces + NUM_FIXED_PIPES) / 2;
+  printf ("calling alocal with pipes %d %d\n", rpipes [0], wpipes [0]);
+  my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd, astart_pid,
+                  alocal_numpipes, alocal_wpipes, alocal_rpipes);
+  printf ("calling aip with pipes %d %d\n", rpipes [1], wpipes [1]);
+  my_call_aip (argv [0], alen, "aip", rpipes [1], wpipes [1],
+               AIP_UNIX_SOCKET, pid_fd, astart_pid);
+  setup_signal_handler (1);
+  printf ("calling adht with pipes %d %d\n",
+          alocal_rpipes [0], alocal_wpipes [1]);
   my_call_thread (argv [0], alen, "adht", adht_thread, pid_fd, astart_pid,
-                  rpipes [base    ], wpipes [base    ]);
+                  alocal_rpipes [0], alocal_wpipes [1]);
+  printf ("calling acache with pipes %d, %d\n",
+          alocal_rpipes [2], alocal_wpipes [3]);
   my_call_thread (argv [0], alen, "acache", acache_thread, pid_fd, astart_pid,
-                  rpipes [base + 1], wpipes [base + 1]);
+                  alocal_rpipes [2], alocal_wpipes [3]);
+  printf ("calling traced with pipes %d, %d\n",
+          alocal_rpipes [4], alocal_wpipes [5]);
   my_call_thread (argv [0], alen, "traced", traced_thread, pid_fd, astart_pid,
-                  rpipes [base + 2], wpipes [base + 2]);
+                  alocal_rpipes [4], alocal_wpipes [5]);
+  printf ("calling keyd with pipes %d, %d\n",
+          alocal_rpipes [6], alocal_wpipes [7]);
   my_call_thread (argv [0], alen, "keyd", keyd_thread, pid_fd, astart_pid,
-                  rpipes [base + 3], wpipes [base + 3]);
-  xchat_rpipe = rpipes [base + 4];
-  xchat_wpipe = wpipes [base + 4];
+                  alocal_rpipes [6], alocal_wpipes [7]);
 #endif /* USE_FORK */
   my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd, astart_pid);
 
