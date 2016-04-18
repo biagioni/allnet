@@ -566,9 +566,9 @@ static int next_available (pd p, int extra, int timeout)
 #endif /* DEBUG_PRINT */
   /* set up the readfd bitset */
   int i;
-for (i = 0; i < p->num_pipes; i++)
+/* for (i = 0; i < p->num_pipes; i++)
 if ((p->buffers [i].pipe_fd > 1000) || (p->buffers [i].pipe_fd < -1000))
-printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);
+printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
   int max_pipe = 0;
   fd_set receiving;
   FD_ZERO (&receiving);
@@ -582,8 +582,8 @@ printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);
   struct timeval * tvp = set_timeout (timeout, &tv);
   if ((timeout > 0) && (timeout != PIPE_MESSAGE_WAIT_FOREVER) &&
       (p->num_pipes == 0) && (extra == -1) && (p->num_queues > 0))
-    /* set timeout to zero for the select call */
-    tvp = set_timeout (0, &tv);
+    /* set timeout to 10ms for the select call */
+    tvp = set_timeout (10, &tv);
 
   /* call select */
   int s = select (max_pipe + 1, &receiving, NULL, NULL, tvp);
@@ -796,7 +796,6 @@ static int receive_queue_message (int pipe, char ** message, int * priority,
     if (call == 1) {
       *message = malloc_or_fail (plen, "receive_queue_message");
       memcpy (*message, result, plen);
-printf ("receive_queue_message got %d-byte message on queue %d\n", plen, index);
       return plen;
     }
     if (call == -2) { /* should never happen, but inevitably will. Discard */
@@ -968,9 +967,9 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
          (tv_compare (&now, &finish) <= 0)) {
     int pipe;
     int effective_timeout = timeout;
-    if (((timeout == PIPE_MESSAGE_WAIT_FOREVER) || (timeout > 100)) &&
+    if (((timeout == PIPE_MESSAGE_WAIT_FOREVER) || (timeout > 10)) &&
         (p->num_queues > 0))
-      effective_timeout = 100;    /* look at the queues every 10ms */
+      effective_timeout = 10;    /* look at the queues every 10ms */
     pipe = next_available (p, fd, effective_timeout);
     if (pipe >= 0) { /* can read pipe */
       if (from_pipe != NULL) *from_pipe = pipe;
