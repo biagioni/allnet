@@ -193,13 +193,13 @@ static void stop_all ();
 #define ROOT_USER_ID	0
 static void make_root_other (int verbose)
 {
-#ifdef USE_FORK   /* on iOS, no point in becoming root */
+#ifdef USE_FORK   /* on iOS, no point in doing any of this */
   if (geteuid () != ROOT_USER_ID)
     return;   /* not root, nothing to do, and cannot change uids anyway */
-  int real_uid = getuid ();
+  uid_t real_uid = getuid ();
   if (real_uid != geteuid ()) {   /* setuid executable, chmod u+s */
     /* setgid first, before dropping uid priviliges */
-    int real_gid = getgid ();
+    gid_t real_gid = getgid ();
     if (real_gid != getegid ()) { /* set group ID as well */
       if ((setgid (real_gid) == 0) && (verbose))
         printf ("set gids %d %d\n", getgid (), getegid ());
@@ -210,8 +210,8 @@ static void make_root_other (int verbose)
     }
     perror ("setuid/real");   /* and still try to become someone else */
   }
-/* try to find out who we might be, and otherwise, try to find root */
-/* note: there is a secure_getenv, but it only really matters for setuid
+/* find out who we might be, and if not, try to find allnet or nobody */
+/* note: linux has a secure_getenv, but it only really matters for setuid
  * programs, which are handled above -- see "man getenv" on a linux system */
   char * home = getenv (HOME_ENV);
   pid_t caller = -1;
