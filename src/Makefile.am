@@ -44,7 +44,7 @@ __ALLNET_BINDIR__astart_SOURCES = astart.c \
 				  record.c \
 				  social.c \
 				  track.c \
-				  mgmt/trace.c \
+				  mgmt/traced.c \
 				  mgmt/keyd.c \
 				  ${includes}
 __ALLNET_BINDIR__astart_LDFLAGS = -lpthread

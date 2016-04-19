@@ -1,5 +1,6 @@
 AM_CFLAGS = -I$(ALLNET_SRCDIR)
 libincludes = \
+	lib/ai.h \
 	lib/app_util.h \
 	lib/dcache.h \
 	lib/log.h \
@@ -8,6 +9,7 @@ libincludes = \
 	lib/packet.h \
 	lib/pipemsg.h \
 	lib/priority.h \
+	lib/trace_util.h \
 	lib/util.h
 
 keydlibincludes = \
@@ -21,8 +23,7 @@ LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/trace \
 	$(ALLNET_BINDIR)/allnet-sniffer
-__ALLNET_BINDIR__trace_SOURCES = trace.c ${libincludes} lib/ai.h
-__ALLNET_BINDIR__trace_CFLAGS = -DTRACE_MAIN_FUNCTION $(AM_CFLAGS)
+__ALLNET_BINDIR__trace_SOURCES = trace.c ${libincludes}
 __ALLNET_BINDIR__allnet_sniffer_SOURCES = sniffer.c ${libincludes} lib/ai.h
 
 # Hooks to link traced to trace. Uncomment when not separately recompiled above.

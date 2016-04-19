@@ -18,6 +18,7 @@ libincludes = \
 	sha.h \
 	stream.h \
 	table.h \
+	trace_util.h \
 	util.h \
 	wp_aes.h \
 	wp_arith.h \
@@ -40,6 +41,7 @@ libsrc = \
 	sha.c \
 	stream.c \
 	table.c \
+	trace_util.c \
 	util.c
 
 # only included if ! HAVE_OPENSSL

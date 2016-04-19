@@ -28,6 +28,7 @@
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
+#include "lib/trace_util.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -541,20 +542,12 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         if (subscribe_broadcast (sock, sbuf, saddr, &sbits))
           subscription = sbuf;
       } else if (code == CODE_TRACE) {
-/*
-        extern char * trace_string (const char * tmp_dir, int sleep,
-                                    const char * dest, int nhops,
-                                    int no_intermediates, int match_only,
-                                    int wide);
         char * result = trace_string ("/tmp", 30, NULL, len, 1, 0, 1);
 printf ("result of trace was %s\n", result);
-        free (result);
-*/
-        char * result = "trace requested, but not implemented";
-printf ("trace result: %s\n", result);
         send_message (forwarding_socket,
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
                       CODE_TRACE_RESPONSE, 0, "trace", result);
+        free (result);
       } else
         printf ("received message with code %d\n", code);
     }
