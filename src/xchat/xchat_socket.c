@@ -166,7 +166,7 @@ static int recv_message (int sock, int * code, time_t * time,
   }
   if (*code == CODE_TRACE) {
     int hops = buf [11];
-    printf ("requested trace with hop count %d\n", hops);
+    /* printf ("requested trace with hop count %d\n", hops); */
     return hops;
   }
   plen = strlen (buf + 11);
@@ -452,6 +452,72 @@ static void thread_for_child_completion (pid_t pid)
     perror ("pthread_create");
 }
 
+struct trace_thread_arg {
+  int pipefd;
+  int forwarding_socket;
+  struct sockaddr * fwd_addr;
+  socklen_t slen;
+  pid_t * running;
+};
+
+static void * trace_thread (void * a)
+{
+  struct trace_thread_arg * arg = (struct trace_thread_arg *) a;
+  pid_t initial_running = *(arg->running);
+  char buffer [10000];
+  int n;
+  while ((n = read (arg->pipefd, buffer, sizeof (buffer) - 1)) > 0) {
+    buffer [n] = '\0';
+/* printf ("partial result of trace was '%s'\n", buffer); */
+    send_message (arg->forwarding_socket, arg->fwd_addr, arg->slen,
+                  CODE_TRACE_RESPONSE, 0, "trace", buffer);
+  }  /* weak synchronization, but better than nothing */
+  if (*(arg->running) == initial_running)
+    *arg->running = -1;
+  free (a);
+  return NULL;
+}
+
+static void do_trace (int time, int hops,
+                      int forwarding_socket,
+                      struct sockaddr * fwd_addr, socklen_t slen)
+{ 
+  static pid_t running = -1;  /* create a process for this trace */
+  if (running > 0) {
+    kill (running, SIGINT);
+    usleep (10000);  /* wait for the process to really die */
+  }
+  running = -1;
+  waitpid (-1, NULL, WNOHANG);  /* harvest any pending children */
+  int pipefd [2];  /* 0 is the read (parent) end, 1 is the child end */
+  if ((pipe (pipefd) == 0) && ((running = fork ()) != -1)) {
+    if (running == 0) {  /* child, run the trace process forever until killed */
+      close (pipefd [0]);
+      trace_pipe (pipefd [1], -1, NULL, hops, 1, 0, 1);
+      exit (0);
+    } /* else parent, return the results to xchat */
+    close (pipefd [1]);
+    struct trace_thread_arg * a =
+      malloc_or_fail (sizeof (struct trace_thread_arg), "trace_thread_arg");
+    a->pipefd = pipefd [0];
+    a->forwarding_socket = forwarding_socket;
+    a->fwd_addr = fwd_addr;
+    a->slen = slen;
+    a->running = &running;
+    pthread_attr_t attributes;
+    pthread_attr_init (&attributes);
+    pthread_attr_setdetachstate (&attributes, PTHREAD_CREATE_DETACHED);
+    pthread_t thread;
+    pthread_create (&thread, &attributes, trace_thread, (void *) a);
+  } else {  /* no pipes or no fork, use trace_string */
+    char * result = trace_string ("/tmp", time, NULL, hops, 1, 0, 1);
+/* printf ("result of trace was '%s'\n", result); */
+    send_message (forwarding_socket, fwd_addr, slen,
+                  CODE_TRACE_RESPONSE, 0, "trace", result);
+    free (result);
+  }
+}
+
 int main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
@@ -542,14 +608,11 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         if (subscribe_broadcast (sock, sbuf, saddr, &sbits))
           subscription = sbuf;
       } else if (code == CODE_TRACE) {
-        char * result = trace_string ("/tmp", 30, NULL, len, 1, 0, 1);
-printf ("result of trace was %s\n", result);
-        send_message (forwarding_socket,
-                      (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                      CODE_TRACE_RESPONSE, 0, "trace", result);
-        free (result);
-      } else
+        do_trace (30, 5, forwarding_socket, (struct sockaddr *) (&fwd_addr),
+                  fwd_addr_size);
+      } else {
         printf ("received message with code %d\n", code);
+      }
     }
     char * packet;
     int pipe, pri;

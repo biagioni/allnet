@@ -16,6 +16,9 @@ extern char * trace_string (const char * tmp_dir, int sleep,
                             const char * dest, int nhops,
                             int no_intermediates, int match_only, int wide);
 
+extern void trace_pipe (int pipe, int sleep, const char * dest, int nhops,
+                        int no_intermediates, int match_only, int wide);
+
 /* see if adht has an address, if so, use that */
 extern void get_my_addr (unsigned char * my_addr, int my_addr_size,
                          struct allnet_log * alog);

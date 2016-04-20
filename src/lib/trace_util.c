@@ -482,12 +482,12 @@ static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
                                 int fd_out, struct allnet_log * alog)
 {
   num_arrivals = 0;   /* not received anything yet */
-  unsigned long long int max_ms = sec * 1000;
+  unsigned long long int max_ms = ((sec <= 0) ? 1 : sec) * 1000;
   unsigned long long int time_spent = 0;
   unsigned long long int start = allnet_time_ms ();
   struct timeval tv_start;
   gettimeofday (&tv_start, NULL);
-  while (time_spent < max_ms) {
+  while ((sec < 0) || (time_spent < max_ms)) {
     int pipe;
     int pri;
     char * message;

@@ -384,10 +384,10 @@ System.out.println ("resending subscription for " + ahra);
                 myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
                 break;
             case MorePanel.TRACE_COMMAND:
-                System.out.println ("trace command called");
-                morePanel.setTraceText (" ");
+//              System.out.println ("trace command called");
+                morePanel.setTraceText ("");
                 if (XchatSocket.sendTrace(5)) {
-                    System.out.println("sent trace request");
+//                  System.out.println("sent trace request");
                 }
                 break;
         }

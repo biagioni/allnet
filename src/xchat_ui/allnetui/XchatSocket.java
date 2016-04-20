@@ -239,7 +239,7 @@ public class XchatSocket extends Thread {
       api.messageAcked (peer, ack);
     } else if (code == codeTraceReply) {
       String message = bString (data, nextIndex.value, dlen, nextIndex);
-      System.out.println ("trace response '" + message + "'");
+      // System.out.println ("trace response '" + message + "'");
       api.traceReceived (message);
     } else {
       System.out.println ("unknown code " + code);
@@ -346,7 +346,7 @@ public class XchatSocket extends Thread {
 
   // start a trace with the given number of hops
   public static boolean sendTrace(int hops) {
-System.out.println ("send_trace (" + hops + ")");
+// System.out.println ("send_trace (" + hops + ")");
     DatagramPacket packet = makeTracePacket(hops);
     debugOutgoing (packet, codeTrace, "trace");
     return sendPacket(packet);

@@ -46,7 +46,7 @@ class MorePanel extends JPanel {
         traceButton = new JButton("trace");
         traceButton.setBackground(foreground);
         traceButton.setActionCommand(commandPrefix + ":" + TRACE_COMMAND);
-        traceText = " \n \n \n \n \n \n ";
+        traceText = "<html><br>\n<br>\n<br>\n<br>\n<br>\n<br></html>\n ";
         traceLabel = new JLabel(traceText);
         traceLabel.setOpaque(true);
         traceLabel.setBackground(Color.WHITE);
@@ -82,17 +82,19 @@ class MorePanel extends JPanel {
     // like the name says
     void setTraceText(String text) {
         traceText = text;
-        traceLabel.setText(traceText);
+// System.out.println ("trace text is " + traceText);
+        traceLabel.setText("<html><pre>" + traceText + "</pre></html>");
     }
 
     void addTraceText(String text) {
-        traceText = traceText + "\n" + text;
-        traceLabel.setText(traceText);
+        traceText = traceText + text;
+// System.out.println ("add trace text gives " + traceText);
+        traceLabel.setText("<html><pre>" + traceText + "</pre></html>");
     }
 
     static String addAndTruncateToNlines (String text,
                                           String previousText, int n) {
-        String result = text + "\n" + previousText;
+        String result = text + "\n<br>" + previousText;
         int count = 0;
         int index = 0;
         while ((index = result.indexOf("\n", index)) >= 0) {
@@ -100,6 +102,7 @@ class MorePanel extends JPanel {
                 return result.substring(0, index);
             index++;  // start looking at the next character position
         }
+// System.out.println ("addAndTruncateToNLines (" + n + ") gives " + result);
         return result;
     }
 
