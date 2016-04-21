@@ -283,7 +283,7 @@ static char * find_java_path ()
     }
     char * entry = path;
     char * test = strcat_malloc (entry, "/java", "find_java_path 2");
-printf ("looking for java in %s\n", test);
+/* printf ("looking for java in %s\n", test); */
     if (access (test, X_OK) == 0) {
       free (free_path);
       return test;   /* found! */
@@ -300,7 +300,13 @@ printf ("looking for java in %s\n", test);
         strcat_malloc (drive, test + CYGDRIVE_LEN + 1, "find_java_path 3");
       free (test);
       test = test2;
-printf ("looking for java in %s\n", test);
+      char * cp = test;
+      while (*cp != '\0') {
+        if (*cp == '/')
+          *cp = '\\';
+        cp++;
+      }
+/* printf ("looking for java in %s\n", test); */
       if (access (test, X_OK) == 0) {
         free (free_path);
         return test;   /* found! */
