@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -271,27 +272,41 @@ static char * find_java_path ()
   static char * result = NULL;
   if (result != NULL)   /* found it before */
     return result;
-  char * path = getenv ("PATH");
+  char * path = strcpy_malloc (getenv ("PATH"), "find_java_path 1");
+  char * free_path = path;   /* for calls to free, free the original */
   char * colon = strchr (path, ':');
   do {
-    int len = strlen (path);
-    if (colon != NULL)
-      len = colon - path;
-    if (len > 0) {
-        /* len+6 because   "/java" + null character   take 6 bytes*/
-      char * result = malloc_or_fail (len + 6, "find_java_path");
-      snprintf (result, len + 6, "%s/java", path);
-      if (access (result, X_OK) == 0)
-        return result;
-      free (result);
-      result = NULL;
+    char * next = NULL;
+    if (colon != NULL) {
+      next = colon + 1;
+      *colon = '\0';  /* terminate the path at the first colon */
     }
-    if (colon == NULL)
-      path = NULL;
-    else {
-      path = colon + 1;
-      colon = strchr (path, ':');
+    char * entry = path;
+    char * test = strcat_malloc (entry, "/java", "find_java_path 2");
+printf ("looking for java in %s\n", test);
+    if (access (test, X_OK) == 0) {
+      free (free_path);
+      return test;   /* found! */
     }
+
+/* windows compiled under cygwin has a path of the form "/cygdrive/c/..."  
+   We would like to rewrite it to "C:\...", replacing all / with \ */
+#define CYGDRIVE_STR	"/cygdrive/"
+#define CYGDRIVE_LEN	(strlen (CYGDRIVE_STR))
+    if (strncmp (test, CYGDRIVE_STR, CYGDRIVE_LEN) == 0) {
+      char drive [2] = "C:";  /* usually the C drive, but you never know */
+      drive [0] = toupper (test [CYGDRIVE_LEN]);
+      char * test2 =
+        strcat_malloc (drive, test + CYGDRIVE_LEN + 1, "find_java_path 3");
+      free (test);
+      test = test2;
+printf ("looking for java in %s\n", test);
+      if (access (test, X_OK) == 0) {
+        free (free_path);
+        return test;   /* found! */
+      }
+    }
+    path = next;
   } while (path != NULL);
   return NULL;
 }
