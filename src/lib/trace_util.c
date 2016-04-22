@@ -21,8 +21,6 @@
 #include "allnet_log.h"
 #include "trace_util.h"
 
-static int print_details = 1;
-
 static int get_nybble (const char * string, int * offset)
 {
   const char * p = string + *offset;
@@ -293,7 +291,7 @@ static void record_rtt (unsigned long long us)
 
 static void print_times (struct allnet_mgmt_trace_entry * entry,
                          struct timeval * start, struct timeval * now,
-                         int save_to_intermediate, int fd_out)
+                         int save_to_intermediate, int details, int fd_out)
 {
   char buf [1000] = "";
   int off = 0;
@@ -318,7 +316,7 @@ static void print_times (struct allnet_mgmt_trace_entry * entry,
   /* printf ("%ld.%06ld - %ld.%06ld = %lld\n",
           timestamp.tv_sec, timestamp.tv_usec,
           start->tv_sec, start->tv_usec, delta); */
-    if (print_details) {
+    if (details) {
       if (delta > 0)
         off += snprintf (buf + off, sizeof (buf) - off,
                          " %3lld.%06llds timestamp, ", delta / 1000000LL,
@@ -371,7 +369,7 @@ static void print_entry (struct allnet_mgmt_trace_entry * entry,
 static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                                 struct timeval start, struct timeval finish,
                                 int seq, int match_only, int no_intermediates,
-                                int fd_out)
+                                int details, int fd_out)
 {
   unsigned long long us = delta_us (&finish, &start);
   /* put the unix times into allnet format */
@@ -392,7 +390,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
         write_string_to_fd ("trace to matching destination:\n", fd_out);
       int i;
       for (i = first; i < trp->num_entries; i++) {
-        if (print_details) {
+        if (details) {
           char buf [1000];
           int off = 0;
           if (i + 1 == trp->num_entries)
@@ -402,7 +400,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
           snprintf (buf + off, sizeof (buf) - off, "         ");
           write_string_to_fd (buf, fd_out);
         }
-        print_times (trp->trace + i, &start, &finish, 1, fd_out);
+        print_times (trp->trace + i, &start, &finish, 1, details, fd_out);
         print_entry (trp->trace + i, &start, &finish, 1, fd_out);
       }
     }
@@ -411,14 +409,14 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
   } else if (trp->num_entries == 2) {
     /* generally two trace entries for intermediate replies */
     write_string_to_fd ("forward: ", fd_out);
-    print_times (trp->trace + 1, &start, &finish, 1, fd_out);
+    print_times (trp->trace + 1, &start, &finish, 1, details, fd_out);
     print_entry (trp->trace + 0, NULL, NULL, 0, fd_out);
     write_string_to_fd ("  to", fd_out);
     print_entry (trp->trace + 1, &start, &finish, 1, fd_out);
   } else if (trp->num_entries == 1) {
     /* generally only one trace entry, so always print the first */
     write_string_to_fd ("local:   ", fd_out);
-    print_times (trp->trace, &start, &finish, 1, fd_out);
+    print_times (trp->trace, &start, &finish, 1, details, fd_out);
     print_entry (trp->trace, &start, &finish, 1, fd_out);
   } else {
     char buf [1000];
@@ -430,8 +428,8 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
 
 static void handle_packet (char * message, int msize, char * seeking,
                            struct timeval start, int seq,
-                           int match_only, int no_intermediates, int fd_out,
-                           struct allnet_log * alog)
+                           int match_only, int no_intermediates, int details,
+                           int fd_out, struct allnet_log * alog)
 {
 /* print_packet (message, msize, "handle_packet got", 1); */
   if (! is_valid_message (message, msize))
@@ -474,12 +472,13 @@ static void handle_packet (char * message, int msize, char * seeking,
   snprintf (alog->b, alog->s, "matching trace response of size %d\n", msize);
   log_print (alog);
   print_trace_result (trp, start, now, seq, match_only,
-                      no_intermediates, fd_out);
+                      no_intermediates, details, fd_out);
 }
 
 static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
                                 int seq, int match_only, int no_intermediates,
-                                int fd_out, struct allnet_log * alog)
+                                int details, int fd_out,
+                                struct allnet_log * alog)
 {
   num_arrivals = 0;   /* not received anything yet */
   unsigned long long int max_ms = ((sec <= 0) ? 1 : sec) * 1000;
@@ -501,7 +500,7 @@ static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
       exit (1);
     }
     handle_packet (message, found, trace_id, tv_start, seq,
-                   match_only, no_intermediates, fd_out, alog);
+                   match_only, no_intermediates, details, fd_out, alog);
     if (found > 0)
       free (message);
     time_spent = allnet_time_ms () - start;
@@ -516,7 +515,6 @@ void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
                     int no_intermediates, int wide, int fd_out,
                     struct allnet_log * alog)
 {
-  print_details = wide;
 #ifdef DEBUG_PRINT
   printf ("tracing %d bits to %d hops: ", abits, nhops);
   print_bitstring (address, 0, abits, 1);
@@ -531,10 +529,9 @@ void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
     send_trace (sock, address, abits, trace_id, my_addr, 5, nhops, alog);
     sent_count++;
     wait_for_responses (sock, p, trace_id, sleep, count,
-                        match_only, no_intermediates, fd_out, alog);
+                        match_only, no_intermediates, wide, fd_out, alog);
   }
   print_summary_file (0, fd_out);
-  print_details = 1;
 }
 
 /* returns a (malloc'd) string representation of the trace result */
