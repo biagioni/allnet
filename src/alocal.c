@@ -137,6 +137,7 @@ void alocal_main (int rpipe, int wpipe,
   /* printf ("read pipe is fd %d, write pipe is fd %d\n", rpipe, wpipe); */
   pd p = init_pipe_descriptor (alog);
   if ((npipes > 0) && (rpipes != NULL)) {
+      
     int i;
     for (i = 0; i < npipes; i++)
       add_pipe (p, rpipes [i]);
@@ -155,8 +156,8 @@ void alocal_main (int rpipe, int wpipe,
 /* int i; for (i = 0; i < npipes; i++)
    printf ("wpipes [%d] is %d\n", i, wpipes [i]); */
   main_loop (p, rpipe, wpipe, &info, npipes, wpipes);
-  pthread_cancel (info.thread4);
-  pthread_cancel (info.thread6);
+
+  listen_shutdown (&info);
   snprintf (alog->b, alog->s, "end of alocal main thread\n");
   log_print (alog);
 }
