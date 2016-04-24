@@ -515,7 +515,7 @@ static void do_trace (int time, int hops,
   if ((pipe (pipefd) == 0) && ((running = fork ()) != -1)) {
     if (running == 0) {  /* child, run the trace process forever until killed */
       close (pipefd [0]);
-      trace_pipe (pipefd [1], -1, NULL, hops, 1, 0, 0);
+      trace_pipe (pipefd [1], NULL, -1, NULL, hops, 1, 0, 0);
       exit (0);
     } /* else parent, return the results to xchat */
     close (pipefd [1]);
