@@ -4,11 +4,13 @@
 #define ALLNET_TRACE_UTIL_H
 
 #include "allnet_log.h"
+#include "allnet_queue.h"
 
 /* returns the output incrementally on fd_out */
 extern void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
                            int repeat, int sleep, int nhops, int match_only,
-                           int no_intermediates, int wide, int fd_out,
+                           int no_intermediates, int wide, int null_term,
+                           int fd_out, struct allnet_queue * queue,
                            struct allnet_log * alog);
 
 /* returns a (malloc'd) string representation of the trace result */
@@ -16,8 +18,10 @@ extern char * trace_string (const char * tmp_dir, int sleep,
                             const char * dest, int nhops,
                             int no_intermediates, int match_only, int wide);
 
-extern void trace_pipe (int pipe, int sleep, const char * dest, int nhops,
-                        int no_intermediates, int match_only, int wide);
+/* either queue is not null, or pipe is a valid file descriptor */
+void trace_pipe (int pipe, struct allnet_queue * queue,
+                 int sleep, const char * dest, int nhops, int no_intermediates,
+                 int match_only, int wide);
 
 /* see if adht has an address, if so, use that */
 extern void get_my_addr (unsigned char * my_addr, int my_addr_size,
