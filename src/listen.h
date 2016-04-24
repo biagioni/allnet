@@ -48,6 +48,9 @@ extern void listen_init_info (struct listen_info * info, int max_fds,
                               int add_remove_pipe, int nodelay,
                               void (* callback) (int), pd p);
 
+/* call to close all connections and free the allocated memory */
+extern void listen_shutdown (struct listen_info * info);
+
 /* call to record that this fd was active at this time */
 extern void listen_record_usage (struct listen_info * info, int fd);
 
