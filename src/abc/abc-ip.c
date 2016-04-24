@@ -116,6 +116,11 @@ static int abc_ip_init (const char * interface, struct allnet_log * use_log)
           printf ("abc-ip: error binding to device\n");
       }
 #endif /* SO_BINDTODEVICE */
+#ifdef SO_NOSIGPIPE
+      int option = 1;
+      if (setsockopt (abc_iface_ip.iface_sockfd, SOL_SOCKET, SO_NOSIGPIPE, &option, sizeof (int)) != 0)
+        perror ("abc-ip setsockopt nosigpipe");
+#endif /* SO_NOSIGPIPE */
       struct sockaddr_in sa;
       sa.sin_family = AF_INET;
       sa.sin_addr.s_addr = htonl (INADDR_ANY);
