@@ -39,7 +39,12 @@ static int init_listen_socket (int version, int port, int local)
   /* allow us to reuse the port number immediately, rather than wait */
   int option = 1;
   if (setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, &option, sizeof (int)) != 0)
-    perror ("setsockopt");
+    perror ("listen setsockopt reuseaddr");
+#ifdef SO_NOSIGPIPE
+  option = 1;
+  if (setsockopt (fd, SOL_SOCKET, SO_NOSIGPIPE, &option, sizeof (int)) != 0)
+    perror ("listen setsockopt nosigpipe");
+#endif /* SO_NOSIGPIPE */
 
   struct sockaddr_storage address;
   struct sockaddr     * ap  = (struct sockaddr     *) &address;
@@ -237,6 +242,27 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
       exit (1);
     }
   }
+}
+
+#define FREE_NULL(p)	{ free (p); p = NULL; }
+
+void listen_shutdown (struct listen_info * info)
+{
+  while (info->num_fds > 0)
+   listen_remove_fd (info, info->fds [0]);
+  if (info->listen_fd6 >= 0) {
+    close (info->listen_fd6);
+    pthread_cancel (info->thread6);
+  }
+  if (info->listen_fd4 >= 0) {
+    close (info->listen_fd4);
+    pthread_cancel (info->thread4);
+  }
+  FREE_NULL (info->fds);
+  FREE_NULL (info->peers);
+  FREE_NULL (info->reserved);
+  FREE_NULL (info->reservation_times);
+  FREE_NULL (info->used);
 }
 
 void listen_record_usage (struct listen_info * info, int fd)

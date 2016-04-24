@@ -369,7 +369,8 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
   log_print (alog);
   int flags = 0;
 #ifdef MSG_NOSIGNAL   /* some OSs don't define MSG_NOSIGNAL.  To handle this,
-                       * astart requests ignoring SIGPIPE.  But this is more
+                       * astart requests ignoring SIGPIPE.  But using
+                       * MSG_NOSIGNAL, where available, is more
                        * fine-grained and therefore better in principle */
   flags = MSG_NOSIGNAL;
 #endif /* MSG_NOSIGNAL */
@@ -611,6 +612,11 @@ static int udp_socket ()
     exit (1);
   }
 #endif /* __OpenBSD__ */
+#ifdef SO_NOSIGPIPE
+  int option = 1;
+  if (setsockopt (udp, SOL_SOCKET, SO_NOSIGPIPE, &option, sizeof (int)) != 0)
+    perror ("aip setsockopt nosigpipe");
+#endif /* SO_NOSIGPIPE */
   struct sockaddr_storage address;
   struct sockaddr     * ap  = (struct sockaddr     *) &address;
   /* struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap; */
@@ -625,6 +631,13 @@ static int udp_socket ()
     perror ("aip UDP bind");
     printf ("aip unable to bind to UDP %d/%x, probably already running\n",
             ntohs (ALLNET_PORT), ntohs (ALLNET_PORT));
+#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+/* keep trying -- we may be waking up from sleep */
+    while (bind (udp, ap, addr_size) < 0) {
+      perror ("aip UDP repeated bind");
+      sleep (2);
+    }
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
     exit (1);
   }
   snprintf (alog->b, alog->s, "opened UDP socket %d\n", udp);
@@ -1251,8 +1264,9 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
                        void * addr_cache, void * dht_cache)
 {
   int udp = udp_socket ();
-  void * udp_cache = NULL;
-  udp_cache = cache_init (128, free, "aip UPD cache");
+  static void * udp_cache = NULL;
+  if (udp_cache == NULL)
+    udp_cache = cache_init (128, free, "aip UPD cache");
   int removed_listener = 0;
   time_t last_listen = 0;
   time_t last_keepalive = 0;
@@ -1367,6 +1381,7 @@ printf ("rpipe is %d, wpipe is %d, udp is %d\n", rpipe, wpipe, udp);*/
       free (message);   /* allocated by receive_pipe_message_fd */
     }   /* else result is zero, timed out, or packet is invalid, try again */
   }
+  close (udp);  /* on iOS we may get restarted later */
 }
 
 void aip_main (int rpipe, int wpipe, char * addr_socket_name)
@@ -1405,9 +1420,13 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
   main_loop (p, rpipe, wpipe, &info, ra.rp_cache, ra.dht_cache);
 
   snprintf (alog->b, alog->s,
+            "end of aip main thread, shutting down listen info");
+  log_print (alog);
+  listen_shutdown (&info);
+#ifdef ALLNET_ADDRS
+  snprintf (alog->b, alog->s,
             "end of aip main thread, deleting %s\n", addr_socket_name);
   log_print (alog);
-#ifdef ALLNET_ADDRS
   if (unlink (addr_socket_name) < 0)
     perror ("aip unlink addr_socket");
 #endif /* ALLNET_ADDRS */
