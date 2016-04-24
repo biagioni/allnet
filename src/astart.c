@@ -148,7 +148,7 @@ static void * generic_thread (void * arg)
   }
   printf ("astart generic_thread: error termination of %s, call type %d\n",
           ta->name, ta->call_type);
-  exit (1);  /* debugging */
+  /* exit (1);  debugging */
   return NULL;
 }
 
@@ -481,6 +481,10 @@ static void setup_signal_handler (int set)
 
 static void setup_signal_handler (int set)
 {
+  /* note that xcode still catches this signal.  It is safe to
+   * ignore it, but that is the reason for setsockopt (..SO_NOSIGPIPE)
+   * when we create a socket */
+  printf ("setting up signal handler to ignore sigpipe\n");
   signal (SIGPIPE, SIG_IGN);
 }
 #endif /* USE_FORK */
