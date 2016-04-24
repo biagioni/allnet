@@ -257,14 +257,14 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
  * no need to try again with write. */
   int is_partial_send =
     ((w > 0) && (w < blen) &&
-#if 0
-     ((errno == EAGAIN) || (errno == EWOULDBLOCK)));
-#else   /* I am not sure why we get enotsock on partial sends, but we do */
+/* I am not sure why we get enotsock on partial sends, but we do */
      ((errno == EAGAIN) || (errno == EWOULDBLOCK) || (errno == ENOTSOCK)));
-#endif /* 0 */
   if ((w < 0) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
     is_partial_send = 1;
-  if (is_partial_send) {
+  if ((w < 0) && (errno == SIGPIPE)) {
+      result = 0;
+      printf ("sigpipe on fd %d\n", pipe);
+  } else if (is_partial_send) {
     static int partial_printed = -1;
     if (partial_printed != pipe) {
       snprintf (log->b, log->s,
@@ -275,7 +275,7 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
     }
     result = 0;
   } else {
-    /* try to send with write -- I don't think this has ever been used */
+    /* try to send with write */
     if ((w < 0) && (errno == ENOTSOCK)) {
 static int notsock_printed = -1;
 static int print_count = 0;
