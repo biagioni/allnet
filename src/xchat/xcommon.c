@@ -188,6 +188,11 @@ int xchat_init (char * arg0, pd p)
   int sock = connect_to_local ("xcommon", arg0, p);
   if (sock < 0)
     return -1;
+#ifdef SO_NOSIGPIPE
+  int option = 1;
+  if (setsockopt (sock, SOL_SOCKET, SO_NOSIGPIPE, &option, sizeof (int)) != 0)
+    perror ("xchat_init setsockopt nosigpipe");
+#endif /* SO_NOSIGPIPE */
   pthread_t thread;
   static int arg = 0;
   arg = sock;
