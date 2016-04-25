@@ -395,7 +395,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                      null_term, fd_out, queue);
     return;
   }
-  char buf [1000];  /* used by print_times */
+  char buf [10000] = "";
   int off = 0;
   if (trp->intermediate_reply == 0) {      /* final reply */
     record_rtt (us);
@@ -408,24 +408,30 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                          "trace to matching destination:\n");
       int i;
       for (i = first; i < trp->num_entries; i++) {
+        int initial_off = off;
         if (print_details) {
           if (i + 1 == trp->num_entries)
-            off += snprintf (buf, sizeof (buf), "%4d: ", seq + 1);
+            off += snprintf (buf + off, sizeof (buf) - off, "%4d: ", seq + 1);
           else
-            off += snprintf (buf, sizeof (buf), "      ");
-          snprintf (buf + off, sizeof (buf) - off, "         ");
+            off += snprintf (buf + off, sizeof (buf) - off, "      ");
+          off += snprintf (buf + off, sizeof (buf) - off, "   ");
         }
+        int indented_off = off;
         off += print_times (trp->trace + i, &start, &finish, 1,
                             buf + off, sizeof (buf) - off);
         off += print_entry (trp->trace + i, &start, &finish, 1,
                             buf + off, sizeof (buf) - off);
+        if (indented_off == off) {
+          off = initial_off;
+          buf [off] = '\0';
+        }
       }
     }
   } else if ((no_intermediates) || (match_only)) {  /* skip intermediates */
                                                     /* and not exact match */
   } else if (trp->num_entries == 2) {
     /* generally two trace entries for intermediate replies */
-    off = snprintf (buf, sizeof (buf), "forward: ");
+    off += snprintf (buf + off, sizeof (buf) - off, "forward: ");
     off += print_times (trp->trace + 1, &start, &finish, 1,
                         buf + off, sizeof (buf) - off);
     off += print_entry (trp->trace + 0, NULL, NULL, 0,
@@ -435,7 +441,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                         buf + off, sizeof (buf) - off);
   } else if (trp->num_entries == 1) {
     /* generally only one trace entry, so always print the first */
-    off = snprintf (buf, sizeof (buf), "local:   ");
+    off += snprintf (buf + off, sizeof (buf) - off, "local:   ");
     off += print_times (trp->trace, &start, &finish, 1,
                         buf + off, sizeof (buf) - off);
     off += print_entry (trp->trace, &start, &finish, 1,
