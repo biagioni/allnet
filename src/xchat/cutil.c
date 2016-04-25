@@ -172,6 +172,10 @@ static int send_to_one (keyset k, char * data, int dsize,
     message_ack = (unsigned char *) data;
   } /* else message_ack is null, to make sure we don't ack, below */
 
+  if (do_ack && do_save)
+    save_outgoing (contact, k, (struct chat_descriptor *) data,
+                   data + CHAT_DESCRIPTOR_SIZE, dsize - CHAT_DESCRIPTOR_SIZE);
+
   /* encrypt */
   int priv_ksize = 0;
   int ksize = 0;
@@ -254,9 +258,11 @@ static int send_to_one (keyset k, char * data, int dsize,
     result = 0;  /* still save if possible */
   } /* else
     printf ("sent packet to %s\n", peer); */
+/*
   if (do_ack && do_save)
     save_outgoing (contact, k, (struct chat_descriptor *) data,
                    data + CHAT_DESCRIPTOR_SIZE, dsize - CHAT_DESCRIPTOR_SIZE);
+*/
   return result;
 }
 
