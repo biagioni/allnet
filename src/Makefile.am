@@ -25,14 +25,12 @@ adlink = social.c record.c track.c
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la \
         $(ALLNET_ABCDIR)/liballnet-abc-$(ALLNET_API_VERSION).la
-# eventually, phase out astart
 bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/allnet \
-	$(ALLNET_BINDIR)/astart \
 	$(ALLNET_BINDIR)/astop \
 	$(ALLNET_BINDIR)/allnet-print-caches
 
-__ALLNET_BINDIR__astart_SOURCES = astart.c \
+__ALLNET_BINDIR__allnet_SOURCES = astart.c \
 				  ad.c \
 				  alocal.c \
 				  listen.c \
@@ -47,18 +45,15 @@ __ALLNET_BINDIR__astart_SOURCES = astart.c \
 				  mgmt/traced.c \
 				  mgmt/keyd.c \
 				  ${includes}
-__ALLNET_BINDIR__astart_LDFLAGS = -lpthread
-__ALLNET_BINDIR__astop_SOURCES = ${__ALLNET_BINDIR__astart_SOURCES}
-__ALLNET_BINDIR__astop_LDFLAGS = -lpthread
-__ALLNET_BINDIR__allnet_SOURCES = ${__ALLNET_BINDIR__astart_SOURCES}
 __ALLNET_BINDIR__allnet_LDFLAGS = -lpthread
+__ALLNET_BINDIR__astop_SOURCES = ${__ALLNET_BINDIR__allnet_SOURCES}
+__ALLNET_BINDIR__astop_LDFLAGS = -lpthread
 __ALLNET_BINDIR__allnet_print_caches_SOURCES = print_caches.c acache.c
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
 		rm -f astop && \
-		$(LN_S) -f astart astop && \
-		$(LN_S) -f astart allnet;
+		$(LN_S) -f allnet astop
 
 uninstall-hook:
 	rm -f $(DESTDIR)$(bindir)/astop && \
