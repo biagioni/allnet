@@ -303,9 +303,9 @@ int is_acked_one (const char * contact, keyset k, uint64_t wanted)
 /* this is the first (most recent) message sent with this sequence number.
  * we simply report whether this one has been acked -- the others are not
  * so important */
-      uint64_t seq = find_ack (contact, k, ack, MSG_TYPE_ACK);
+      uint64_t result_seq = find_ack (contact, k, ack, MSG_TYPE_ACK);
       free_iter (iter);
-      return (seq > 0);
+      return (result_seq > 0);
     }
   }
   free_iter (iter);

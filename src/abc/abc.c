@@ -381,23 +381,23 @@ static void send_pending (enum abc_send_type type, int size, char * message)
     case ABC_SEND_TYPE_QUEUE:
     {
       int total_sent = 0;
-      char * message = NULL;
+      char * queue_message = NULL;
       int nsize;
       int priority;
       int backoff;
       queue_iter_start ();
-      while ((queue_iter_next (&message, &nsize, &priority, &backoff)) &&
+      while ((queue_iter_next (&queue_message, &nsize, &priority, &backoff)) &&
              (total_sent + nsize <= size)) {
         if (cycle % (1 << backoff) != 0)
           continue;
-        if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
+        if (sendto (iface->iface_sockfd, queue_message, nsize, MSG_DONTWAIT,
                     BC_ADDR (iface), iface->sockaddr_size) < nsize) {
           perror ("abc: sendto (queue)");
           continue;
         }
         total_sent += nsize;
 
-        struct allnet_header * hp = (struct allnet_header *) message;
+        struct allnet_header * hp = (struct allnet_header *) queue_message;
         if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE)
           queue_iter_remove ();
         else

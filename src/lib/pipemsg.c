@@ -1206,20 +1206,20 @@ int split_messages (char * data, int dlen, char *** messages, int ** lengths,
   assert (bp->filled == 0);
 
   while (dlen >= HEADER_SIZE) {
-    int priority;
-    int msize = parse_header (data, -1, &priority, NULL);
-    if ((msize < 0) || (msize > ALLNET_MTU)) {
+    int my_priority;
+    int my_msize = parse_header (data, -1, &my_priority, NULL);
+    if ((my_msize < 0) || (my_msize > ALLNET_MTU)) {
       /* bad header, try again with next char */
-      if (msize > ALLNET_MTU)
-        print_split_message_error (2, msize, ALLNET_MTU, dlen);
+      if (my_msize > ALLNET_MTU)
+        print_split_message_error (2, my_msize, ALLNET_MTU, dlen);
       data++;
       dlen--;
-    } else if (dlen >= HEADER_SIZE + msize) {
-      extend_results (data + HEADER_SIZE, msize, priority,
+    } else if (dlen >= HEADER_SIZE + my_msize) {
+      extend_results (data + HEADER_SIZE, my_msize, my_priority,
                       &mi, &mbuf, &lbuf, &pbuf);
-      data += HEADER_SIZE + msize;
-      dlen -= HEADER_SIZE + msize;
-    } else {      /* dlen < msize, end loop, save in bp->data */
+      data += HEADER_SIZE + my_msize;
+      dlen -= HEADER_SIZE + my_msize;
+    } else {      /* dlen < my_msize, end loop, save in bp->data */
       break;
     }
   }

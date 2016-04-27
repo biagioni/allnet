@@ -1327,24 +1327,25 @@ static int save_packet (int fd, int max_size, char * message, int msize,
  * local, or to at most 1 outside request per second */
 static void limit_resources (int local_request,
                              unsigned long long int * overall,
-                             unsigned long long int * acks) 
+                             unsigned long long int * ack_limit) 
 {
   static unsigned long long int next_external = 0;
   unsigned long long int start = allnet_time_ms ();
-  if (overall != NULL) *overall = start - 1;
-  if (acks    != NULL) *acks    = start - 1;
+  if (overall   != NULL) *overall   = start - 1;
+  if (ack_limit != NULL) *ack_limit = start - 1;
   if ((! local_request) && (next_external != 0) &&
       (start <= next_external))
     return;               /* responded to another request in the past 10s */
-  next_external = start + 10000;/* respond to external requests once every 10s*/
+  next_external = start + 10000; /* respond to external requests
+                                    once every 10s*/
   unsigned long long int first = start + 10;     /* allow 10ms for acks */
   unsigned long long int final = start + 100;    /* allow 90 more ms for msgs */
   if (local_request) {                  /* allow much more time */
     first = start + 1000;               /* up to 1s for acks */
     final = start + 10000;              /* up to 10s for local requests */
   }
-  if (overall != NULL) *overall = final;
-  if (acks    != NULL) *acks    = first;
+  if (overall   != NULL) *overall   = final;
+  if (ack_limit != NULL) *ack_limit = first;
 }
 
 static int send_ack (struct allnet_header * hp, int msize, int sock)

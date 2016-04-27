@@ -913,7 +913,6 @@ static int rsa_pad (int nbits, uint64_t * result, int rsize,
   int nbytes = nbits / 8;
   if ((nbytes > rsize) || (dsize < 0))
     return 0;
-  int i;
   if (padding == WP_RSA_PADDING_NONE) {   /* do nothing (but check sizes) */
     if (nbytes != dsize) {
       printf ("error: WP_RSA_PADDING_NONE requires data size %d = key size %d\n",
@@ -940,6 +939,7 @@ static int rsa_pad (int nbits, uint64_t * result, int rsize,
     /* write the 1 byte */
     set_byte (nbits, result, byte_offset - 1, 1);
     /* write the data bytes */
+    int i;
     for (i = 0; i < dsize; i++)
       set_byte (nbits, result, byte_offset + i, data [i]);
     return nbytes;

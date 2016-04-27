@@ -629,18 +629,18 @@ int ping_exact_match (const unsigned char * addr, struct addr_info * result)
 }
 
 /* returns -1 if not found, the index if found */
-static int find_peer (struct peer_info * peers, int max,
+static int find_peer (struct peer_info * peers_data, int max,
                       struct addr_info * addr)
 {
   int i;
   for (i = 0; i < max; i++) {
-    if ((peers [i].ai.nbits > 0) &&
-        (matches (peers [i].ai.destination, ADDRESS_BITS,
+    if ((peers_data [i].ai.nbits > 0) &&
+        (matches (peers_data [i].ai.destination, ADDRESS_BITS,
                   addr->destination, ADDRESS_BITS) >= ADDRESS_BITS) &&
   /* allow same destination if different IP version, i.e. ipv4 and ipv6 */
   /* this makes sure we don't automatically default to IPv6, and lets us
    * keep track of IPv4 addresses for DHT hosts as well as IPv6 addresses */
-        (peers [i].ai.ip.ip_version == addr->ip.ip_version))
+        (peers_data [i].ai.ip.ip_version == addr->ip.ip_version))
       return i;
   } 
   return -1;
