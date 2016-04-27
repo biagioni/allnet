@@ -962,7 +962,8 @@ static void do_root_init ()
     set_world_readable (set_world_readable_files [i]);
 #ifdef __linux__ 
   /* on some systems, ipv6 is a module to be added via modprobe */
-  system ("modprobe ipv6");
+  if (system ("modprobe ipv6") == -1)
+    printf ("unable to modprobe\n");
 #endif /* __linux__ */
 }
 
