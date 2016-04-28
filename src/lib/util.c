@@ -1455,8 +1455,9 @@ printf ("time to crash %d\n", 1000 / ah->version); */
     char * ep = ALLNET_EXPIRATION (ah, ah->transport, size);
     if ((now <= ALLNET_Y2K_SECONDS_IN_UNIX) || (ep == NULL) ||
         (readb64 (ep) < (now - ALLNET_Y2K_SECONDS_IN_UNIX))) {
+   /* fairly common, no need to print
       printf ("expired packet, %lld < %ld (ep %p)\n",
-              readb64 (ep), now - ALLNET_Y2K_SECONDS_IN_UNIX, ep);
+              readb64 (ep), now - ALLNET_Y2K_SECONDS_IN_UNIX, ep); */
       return 0;
     }
   }
