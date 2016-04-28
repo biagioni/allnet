@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-m4_define([allnet_api_version], [3.2])
+m4_define([allnet_api_version], [3.2.1])
 
 AC_PREREQ([2.68])
 AC_INIT([allnet],[allnet_api_version],[esb@hawaii.edu])
@@ -23,7 +23,9 @@ ALLNET_BINDIR=\$\(top_srcdir\)/bin
 ALLNET_SRCDIR=\$\(top_srcdir\)/src
 ALLNET_LIBDIR=\$\(top_builddir\)/src/lib
 ALLNET_ABCDIR=\$\(top_builddir\)/src/abc
-LDVERSION=$(echo allnet_api_version | sed 's/\./:/g'):0
+# turn a two-numbered version number, e.g. 3.2, into 3.2.0 before replacing
+# dots with colons.  3-numbered versions such as 3.2.1 are unaffected
+LDVERSION=$(echo allnet_api_version | sed 's/\([0-9][0-9]*.[0-9][0-9]*\)$/&.0/' | tr . :)
 AC_SUBST(ALLNET_API_VERSION)
 AC_SUBST(ALLNET_BINDIR)
 AC_SUBST(ALLNET_LIBDIR)
