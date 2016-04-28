@@ -230,29 +230,32 @@ public class ConversationData {
                                           boolean unreadOnly,
                                           java.nio.file.attribute.FileTime lr)
     {
-        // java.io.BufferedReader inFile = null;
         java.nio.charset.Charset charset =
             java.nio.charset.Charset.forName("UTF-8");
         java.util.Vector<Message> messages =
             new java.util.Vector<Message>(10000, 10000);
         try (java.io.BufferedReader inFile =
              java.nio.file.Files.newBufferedReader(path, charset)) {
-        // try {
             long fileSize = java.nio.file.Files.size(path);
             int maxLine = ((fileSize > Integer.MAX_VALUE) ? Integer.MAX_VALUE :
                              ((int) fileSize));
+            int messageCount = 1;
             Message newMessage = readMessage(contact, inFile, acks, maxLine,
-                                             unreadOnly, lr, path.toString());
+                                             unreadOnly, lr, path.toString(),
+                                             messageCount);
             while (newMessage != null) {
                 messages.add(newMessage);
                 newMessage = readMessage(contact, inFile, acks, maxLine,
-                                         unreadOnly, lr, path.toString());
+                                         unreadOnly, lr, path.toString(),
+                                         messageCount);
+                messageCount++;
             }
             inFile.close();
             // inFile = null;
             Message[] result = new Message[0];    // needed to set the type
             return messages.toArray(result);
         } catch (java.io.IOException e) {
+            System.out.println ("exception " + e + " opening file " + path);
             return new Message[0];
         }
     }
@@ -272,7 +275,8 @@ public class ConversationData {
                result = result + cs[0];
            }
        } catch (java.io.IOException e) {   // reached EOF, text is good
-System.out.println ("myReadLine exception " + e + ", already read " + result);
+          System.out.println ("myReadLine exception " + e +
+                              ", already read " + result);
        }
        if (result.length() <= 0)
            return null;
@@ -286,7 +290,8 @@ System.out.println ("myReadLine exception " + e + ", already read " + result);
                                        int maxLine,
                                        boolean unreadOnly,
                                        java.nio.file.attribute.FileTime lr,
-                                       String fname)  // fname for debugging
+                                       // fname and messageCount for debugging
+                                       String fname, int messageCount)
     {
         String firstLine = "no first line read yet";
         String secondLine = "no second line read yet";
@@ -299,7 +304,7 @@ System.out.println ("myReadLine exception " + e + ", already read " + result);
             if (start.equals("got ack:")) {  
                 acks.add(firstLine.substring(9));
                 return readMessage(contact, in, acks, maxLine,
-                                   unreadOnly, lr, fname);
+                                   unreadOnly, lr, fname, messageCount + 1);
             }   // there should be three or more lines for either sent or rcvd
             String messageId = firstLine.substring(9);
             boolean sentMessage = start.equals ("sent id:");
@@ -367,7 +372,7 @@ System.out.println ("myReadLine exception " + e + ", already read " + result);
             if (unreadOnly) {
                 if (sentMessage || (! isUnread))
                     return readMessage(contact, in, acks, maxLine,
-                                       unreadOnly, lr, fname);
+                                       unreadOnly, lr, fname, messageCount + 1);
             }
             if (sentMessage)
                 return new Message(Message.SELF, contact, time * 1000, seq,
@@ -377,6 +382,7 @@ System.out.println ("myReadLine exception " + e + ", already read " + result);
                                    rcvdTime * 1000, text, false, isUnread);
         } catch (java.io.IOException e) {
             System.out.println ("I/O error " + e + " on file " + fname +
+                                " message number " + messageCount +
                                 " in ReadMessage for contact " + contact);
             System.out.println ("line 1: " + firstLine);
             System.out.println ("line 2: " + secondLine);
