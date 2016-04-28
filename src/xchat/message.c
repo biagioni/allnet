@@ -92,6 +92,16 @@ static uint64_t find_ack (const char * contact, keyset k, const char * wanted,
   return 0;  /* not found */
 }
 
+/* putting null characters in files makes it hard for Java to read the file. */
+static void eliminate_nulls (char * text, int tsize)
+{
+  int i;
+  for (i = 0; i < tsize; i++) {
+    if (text [i] == '\0')
+      text [i] = '_';
+  }
+}
+
 /* save an outgoing message to a specific directory for this contact.
  * the directory is specific because the message ack is different for
  * each copy of the message */
@@ -101,6 +111,7 @@ void save_outgoing (const char * contact, keyset k, struct chat_descriptor * cp,
   uint64_t time;
   int tz;
   get_time_tz (readb64u (cp->timestamp), &time, &tz);
+  eliminate_nulls (text, tsize);
   save_record (contact, k, MSG_TYPE_SENT, readb64u (cp->counter), time, tz,
                allnet_time (), (char *) (cp->message_ack), text, tsize);
 }
