@@ -98,6 +98,8 @@ static void eliminate_nulls (char * text, int tsize)
   int i;
   for (i = 0; i < tsize; i++) {
     if (text [i] == '\0')
+print_buffer (text, tsize, "found null characters in message", tsize, 1);
+    if (text [i] == '\0')
       text [i] = '_';
   }
 }
@@ -154,10 +156,12 @@ void save_incoming (const char * contact, keyset k,
   uint64_t time;
   int tz;
   get_time_tz (readb64 ((char *) (cp->timestamp)), &time, &tz);
-  if (find_ack (contact, k, (char *) (cp->message_ack), MSG_TYPE_RCVD) == 0)
+  if (find_ack (contact, k, (char *) (cp->message_ack), MSG_TYPE_RCVD) == 0) {
+    eliminate_nulls (text, tsize);
     save_record (contact, k, MSG_TYPE_RCVD, readb64u (cp->counter),
                  time, tz, allnet_time (),
                  (char *) (cp->message_ack), text, tsize);
+  }
 }
 
 /* mark a previously sent message as acknowledged
