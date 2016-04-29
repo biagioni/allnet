@@ -28,6 +28,7 @@
 #include "cutil.h"
 #include "lib/util.h"
 #include "lib/keys.h"
+#include "lib/sha.h"
 
 /* return the lowest unused counter, used as sequence number when sending
  * messages to this contact.  returns 0 if the contact cannot be found */
@@ -95,13 +96,16 @@ static uint64_t find_ack (const char * contact, keyset k, const char * wanted,
 /* putting null characters in files makes it hard for Java to read the file. */
 static void eliminate_nulls (char * text, int tsize)
 {
+int replaced = 0;
   int i;
   for (i = 0; i < tsize; i++) {
     if (text [i] == '\0')
-print_buffer (text, tsize, "found null characters in message", tsize, 1);
+      replaced = 1;
     if (text [i] == '\0')
       text [i] = '_';
   }
+if (replaced)
+print_buffer (text, tsize, "found null characters in message", tsize, 1);
 }
 
 /* save an outgoing message to a specific directory for this contact.
@@ -455,8 +459,8 @@ int was_received (const char * contact, keyset k, uint64_t wanted)
   int type;
   uint64_t seq;
   int result = 0;
-  while ((type = prev_message (iter, &seq, NULL, NULL, NULL, NULL, NULL, NULL))
-         != MSG_TYPE_DONE) {
+  while ((type = prev_message (iter, &seq, NULL, NULL, NULL, NULL,
+                               NULL, NULL)) != MSG_TYPE_DONE) {
     if (type == MSG_TYPE_RCVD) {
       is_in_cache (contact, k, seq, 1);  /* add to cache */
       if (seq == wanted)
@@ -466,3 +470,78 @@ int was_received (const char * contact, keyset k, uint64_t wanted)
   free_iter (iter);
   return result;
 }
+
+#ifndef MESSAGE_ID_CACHE_SIZE   /* may be defined at compilation time */
+#define MESSAGE_ID_CACHE_SIZE		65536  /* 1MiB */
+#endif /* MESSAGE_ID_CACHE_SIZE */
+static char message_id_cache [MESSAGE_ID_CACHE_SIZE] [MESSAGE_ID_SIZE];
+int current_message_id = 0;
+
+/* returns 1 if this message ID has been saved before, 0 otherwise */
+void fill_message_id_cache ()
+{
+unsigned long long int start = allnet_time_us ();
+  char ** contacts = NULL;
+  int ncontacts = all_contacts (&contacts);
+  int icontacts;
+  for (icontacts = 0; icontacts < ncontacts; icontacts++) {
+    keyset * keys = NULL;
+    int nkeys = all_keys (contacts [icontacts], &keys);
+    int ikeys;
+    for (ikeys = 0; ikeys < nkeys; ikeys++) {
+      struct msg_iter * iter = start_iter (contacts [icontacts], keys [ikeys]);
+      if (iter != NULL) {
+        int type;
+        char ack [MESSAGE_ID_SIZE];
+        while ((type = prev_message (iter, NULL, NULL, NULL, NULL, ack,
+                                     NULL, NULL)) != MSG_TYPE_DONE) {
+          if (type == MSG_TYPE_RCVD) {
+            char message_id [MESSAGE_ID_SIZE];
+            sha512_bytes (ack, MESSAGE_ID_SIZE, message_id, MESSAGE_ID_SIZE);
+            if (current_message_id < MESSAGE_ID_CACHE_SIZE) {
+              memcpy (message_id_cache [current_message_id],
+                      message_id, MESSAGE_ID_SIZE);
+              current_message_id++;
+            }
+          }
+        }
+        free_iter (iter);
+      }
+    }
+    if ((nkeys > 0) && (keys != NULL))
+      free (keys);
+  }
+printf ("fill_message_id_cache took %lluus, %d/%d saved\n",
+allnet_time_us () - start, current_message_id, MESSAGE_ID_CACHE_SIZE);
+}
+
+static int is_in_message_id_cache (const char * message_id)
+{
+unsigned long long int start = allnet_time_us ();
+  int i;
+  for (i = 0; i < current_message_id; i++) {
+    if (memcmp (message_id_cache [i], message_id, MESSAGE_ID_SIZE) == 0) {
+printf ("call to is_in_message_id_cache took %lluus, result 1/%d\n",
+        allnet_time_us () - start, current_message_id);
+      return 1;
+    }
+  }
+printf ("call to is_in_message_id_cache took %lluus, result 0/%d\n",
+        allnet_time_us () - start, current_message_id);
+  return 0;
+}
+
+/* returns 1 if this message ID is in the (limited size) saved cache,
+ * 0 otherwise
+ * in other words, may return 0 even though the message was saved,
+ * just because it is not in the cache */
+int message_id_is_in_saved_cache (const char * message_id)
+{
+  static int initialized = 0;
+  if (! initialized) {
+    fill_message_id_cache ();
+    initialized = 1;
+  }
+  return (is_in_message_id_cache (message_id));
+}
+

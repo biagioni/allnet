@@ -398,7 +398,7 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   return 0;   /* did not match */
 }
 
-static int handle_data (int sock, struct allnet_header * hp,
+static int handle_data (int sock, struct allnet_header * hp, int psize,
                         char * data, int dsize, char ** contact, keyset * kset,
                         char ** message, char ** desc, int * verified,
                         time_t * sent, int * duplicate, int * broadcast)
@@ -409,16 +409,28 @@ static int handle_data (int sock, struct allnet_header * hp,
 #endif /* DEBUG_PRINT */
     return 0;
   }
+  char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, psize);
+/* relatively quick check to see if we may have gotten this message before */
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
+      (message_id_is_in_saved_cache (message_id))) {
+    printf ("handle_data ignoring message that was already saved\n");
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
   int verif = 0;
   char * text = NULL;
   int max_contacts = 0;  /* try all contacts */
   if (hp->src_nbits + hp->dst_nbits < 4)
     /* addresses are not very selective, don't try too many contacts */
     max_contacts = 30;  /* if we have a lot of contacts, don't try all */
+unsigned long long int start = allnet_time_us ();
   int tsize = decrypt_verify (hp->sig_algo, data, dsize, contact, kset, &text,
                               (char *) (hp->source), hp->src_nbits,
                               (char *) (hp->destination), hp->dst_nbits,
                               max_contacts);
+printf ("decrypt_verify took %lluus, result %d, transport 0x%x, %d hops\n",
+        allnet_time_us () - start, tsize, hp->transport, hp->hops);
   if (tsize < 0) {
     printf ("no signature to verify, but decrypted from %s\n", *contact);
     tsize = -tsize;
@@ -877,7 +889,7 @@ int handle_packet (int sock, char * packet, int psize,
   }
 
   if (hp->message_type == ALLNET_TYPE_DATA) /* an encrypted data packet */
-    return handle_data (sock, hp, packet + hsize, psize - hsize,
+    return handle_data (sock, hp, psize, packet + hsize, psize - hsize,
                         contact, kset, message, desc, verified, sent,
                         duplicate, broadcast);
 

@@ -90,4 +90,10 @@ extern int is_acked_one (const char * contact, keyset k, uint64_t seq);
 /* returns 1 if this sequence number has been received, 0 otherwise */
 extern int was_received (const char * contact, keyset k, uint64_t seq);
 
+/* returns 1 if this message ID is in the (limited size) saved cache,
+ * 0 otherwise
+ * in other words, may return 0 even though the message was saved,
+ * just because it is not in the cache */
+extern int message_id_is_in_saved_cache (const char * message_id);
+
 #endif /* ALLNET_CHAT_MESSAGE_H */
