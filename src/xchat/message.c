@@ -153,6 +153,9 @@ char * get_outgoing (const char * contact, keyset k, uint64_t seq,
   return NULL;
 }
 
+/* forward declaration, implemented below */
+static void add_to_message_id_cache (char * ack);
+
 /* save a received message */
 void save_incoming (const char * contact, keyset k,
                     struct chat_descriptor * cp, char * text, int tsize)
@@ -160,11 +163,12 @@ void save_incoming (const char * contact, keyset k,
   uint64_t time;
   int tz;
   get_time_tz (readb64 ((char *) (cp->timestamp)), &time, &tz);
-  if (find_ack (contact, k, (char *) (cp->message_ack), MSG_TYPE_RCVD) == 0) {
+  char * ack = (char *) (cp->message_ack);
+  if (find_ack (contact, k, ack, MSG_TYPE_RCVD) == 0) {
     eliminate_nulls (text, tsize);
     save_record (contact, k, MSG_TYPE_RCVD, readb64u (cp->counter),
-                 time, tz, allnet_time (),
-                 (char *) (cp->message_ack), text, tsize);
+                 time, tz, allnet_time (), ack, text, tsize);
+    add_to_message_id_cache (ack);
   }
 }
 
@@ -529,6 +533,16 @@ printf ("call to is_in_message_id_cache took %lluus, result 1/%d\n",
 printf ("call to is_in_message_id_cache took %lluus, result 0/%d\n",
         allnet_time_us () - start, current_message_id);
   return 0;
+}
+
+void add_to_message_id_cache (char * ack)
+{
+  char message_id [MESSAGE_ID_SIZE];
+  sha512_bytes (ack, MESSAGE_ID_SIZE, message_id, MESSAGE_ID_SIZE);
+  if (current_message_id >= MESSAGE_ID_CACHE_SIZE)
+    return;
+  char * dest = message_id_cache [current_message_id++];
+  memcpy (dest, message_id, MESSAGE_ID_SIZE);
 }
 
 /* returns 1 if this message ID is in the (limited size) saved cache,
