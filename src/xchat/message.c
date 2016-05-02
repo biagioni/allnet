@@ -484,7 +484,9 @@ int current_message_id = 0;
 /* returns 1 if this message ID has been saved before, 0 otherwise */
 void fill_message_id_cache ()
 {
-unsigned long long int start = allnet_time_us ();
+#ifdef DEBUG_PRINT
+  unsigned long long int start = allnet_time_us ();
+#endif /* DEBUG_PRINT */
   char ** contacts = NULL;
   int ncontacts = all_contacts (&contacts);
   int icontacts;
@@ -515,23 +517,32 @@ unsigned long long int start = allnet_time_us ();
     if ((nkeys > 0) && (keys != NULL))
       free (keys);
   }
-printf ("fill_message_id_cache took %lluus, %d/%d saved\n",
-allnet_time_us () - start, current_message_id, MESSAGE_ID_CACHE_SIZE);
+#ifdef DEBUG_PRINT
+  printf ("fill_message_id_cache took %lluus, %d/%d saved\n",
+  allnet_time_us () - start, current_message_id, MESSAGE_ID_CACHE_SIZE);
+#endif /* DEBUG_PRINT */
 }
 
 static int is_in_message_id_cache (const char * message_id)
 {
-unsigned long long int start = allnet_time_us ();
+
+#ifdef DEBUG_PRINT
+  unsigned long long int start = allnet_time_us ();
+#endif /* DEBUG_PRINT */
   int i;
   for (i = 0; i < current_message_id; i++) {
     if (memcmp (message_id_cache [i], message_id, MESSAGE_ID_SIZE) == 0) {
-printf ("call to is_in_message_id_cache took %lluus, result 1/%d\n",
-        allnet_time_us () - start, current_message_id);
+#ifdef DEBUG_PRINT
+      printf ("call to is_in_message_id_cache took %lluus, result 1/%d\n",
+              allnet_time_us () - start, current_message_id);
+#endif /* DEBUG_PRINT */
       return 1;
     }
   }
-printf ("call to is_in_message_id_cache took %lluus, result 0/%d\n",
-        allnet_time_us () - start, current_message_id);
+#ifdef DEBUG_PRINT
+  printf ("call to is_in_message_id_cache took %lluus, result 0/%d\n",
+          allnet_time_us () - start, current_message_id);
+#endif /* DEBUG_PRINT */
   return 0;
 }
 

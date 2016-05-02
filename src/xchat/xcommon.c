@@ -413,8 +413,8 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
 /* relatively quick check to see if we may have gotten this message before */
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
       (message_id_is_in_saved_cache (message_id))) {
-    printf ("handle_data ignoring message that was already saved\n");
 #ifdef DEBUG_PRINT
+    printf ("handle_data ignoring message that was already saved\n");
 #endif /* DEBUG_PRINT */
     return 0;
   }
@@ -424,13 +424,17 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
   if (hp->src_nbits + hp->dst_nbits < 4)
     /* addresses are not very selective, don't try too many contacts */
     max_contacts = 30;  /* if we have a lot of contacts, don't try all */
-unsigned long long int start = allnet_time_us ();
+#ifdef DEBUG_PRINT
+  unsigned long long int start = allnet_time_us ();
+#endif /* DEBUG_PRINT */
   int tsize = decrypt_verify (hp->sig_algo, data, dsize, contact, kset, &text,
                               (char *) (hp->source), hp->src_nbits,
                               (char *) (hp->destination), hp->dst_nbits,
                               max_contacts);
-printf ("decrypt_verify took %lluus, result %d, transport 0x%x, %d hops\n",
-        allnet_time_us () - start, tsize, hp->transport, hp->hops);
+#ifdef DEBUG_PRINT
+  printf ("decrypt_verify took %lluus, result %d, transport 0x%x, %d hops\n",
+          allnet_time_us () - start, tsize, hp->transport, hp->hops);
+#endif /* DEBUG_PRINT */
   if (tsize < 0) {
     printf ("no signature to verify, but decrypted from %s\n", *contact);
     tsize = -tsize;
