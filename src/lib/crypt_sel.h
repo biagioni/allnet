@@ -3,10 +3,6 @@
 #ifndef ALLNET_CRYPT_SELECTOR_H
 #define ALLNET_CRYPT_SELECTOR_H
 
-#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
-#undef HAVE_OPENSSL
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-
 #ifdef HAVE_OPENSSL
 #include <openssl/rsa.h>
 #include <openssl/aes.h>
