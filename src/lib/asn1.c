@@ -760,7 +760,7 @@ static void print_element (char * data, int dsize, int indent)
   }
 }
 
-static int testb64_encode ()
+static void testb64_encode ()
 {
   int i;
   char buffer [164];
@@ -770,8 +770,8 @@ static int testb64_encode ()
     for (j = sizeof (buffer) - i; j < sizeof (buffer); j++)
       buffer [j] = j + i;
     int encoded = b64_encode (buffer, i, sizeof (buffer));
-    /* printf ("buffer encoding of %d bytes takes %d bytes: %s\n", i, encoded,
-            buffer); */
+    printf ("buffer encoding of %d bytes takes %d bytes: %s\n", i, encoded,
+            buffer);
     int decoded = b64_decode (buffer, encoded, buffer, sizeof (buffer));
     if (decoded != i) {
       printf ("error: encoded %d bytes via %d bytes, decoded %d bytes\n",
