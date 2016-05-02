@@ -572,8 +572,17 @@ static void init_from_file ()
                           &(kip [i].dir_name),
                           &(kip [i].members), &(kip [i].num_members),
                           &(kip [i].has_symmetric_key), kip [i].symmetric_key,
-                          &(kip [i].has_state), &(kip [i].state))))
+                          &(kip [i].has_state), &(kip [i].state)))) {
+/* printf ("key in %s, my %d-bit, other %d-bit, %s symmetric key\n ",
+dep->d_name, kip [i].my_key.nbits, kip [i].contact_pubkey.nbits,
+(kip [i].has_symmetric_key) ? "has" : "no"); */
         i++;
+      } else {
+        if ((strcmp (dep->d_name, ".") != 0) &&
+            (strcmp (dep->d_name, "..") != 0))
+          printf ("error: unable to load key from .allnet/contacts/%s/\n",
+                  dep->d_name);
+      }
     }
     closedir (dir);
   }
@@ -960,9 +969,17 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   generate_contacts ();
 
 #ifdef DEBUG_PRINT
+#ifdef HAVE_OPENSSL
   printf ("for %s new.keys are %p %p, kip keys are %p %p\n",
-  kip [new_contact].contact_name, new.contact_pubkey, new.my_key,
-  kip [new_contact].contact_pubkey, kip [new_contact].my_key);
+          kip [new_contact].contact_name, new.contact_pubkey, new.my_key,
+          kip [new_contact].contact_pubkey, kip [new_contact].my_key);
+#else /* ! HAVE_OPENSSL */
+  /* this code only works if HAVE_OPENSSL is not defined */
+  printf ("for %s new.keys are %d %d, kip keys are %d %d\n",
+          kip [new_contact].contact_name, new.contact_pubkey.nbits,
+          new.my_key.nbits, kip [new_contact].contact_pubkey.nbits,
+          kip [new_contact].my_key.nbits);
+#endif /* HAVE_OPENSSL */
 #endif /* DEBUG_PRINT */
 
   /* now save to disk */
