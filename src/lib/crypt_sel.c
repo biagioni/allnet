@@ -218,7 +218,7 @@ static int write_RSA_file (const char * fname, RSA * key, int write_priv)
     PEM_write_bio_RSAPublicKey (mbio, key);
   char * keystore;
   long ksize = BIO_get_mem_data (mbio, &keystore);
-  int success = write_file (fname, keystore, ksize, 1);
+  int success = write_file (fname, keystore, (int)ksize, 1);
   BIO_free (mbio);
   return success;
 }
