@@ -447,7 +447,7 @@ static int read_key_info (const char * path, const char * file, char ** contact,
     remove_unprintable (contact_value);
 #ifdef DEBUG_PRINT
     printf ("contact name is now %s\n", contact_value);
-#endif DEBUG_PRINT
+#endif /* DEBUG_PRINT */
     *contact = contact_value;
   }
   /* check to see if this is a group */
