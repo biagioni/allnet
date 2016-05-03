@@ -548,12 +548,10 @@ static int is_in_message_id_cache (const char * message_id)
 
 void add_to_message_id_cache (char * ack)
 {
-  char message_id [MESSAGE_ID_SIZE];
-  sha512_bytes (ack, MESSAGE_ID_SIZE, message_id, MESSAGE_ID_SIZE);
   if (current_message_id >= MESSAGE_ID_CACHE_SIZE)
     return;
-  char * dest = message_id_cache [current_message_id++];
-  memcpy (dest, message_id, MESSAGE_ID_SIZE);
+  char * dest = &(message_id_cache [current_message_id++] [0]);
+  sha512_bytes (ack, MESSAGE_ID_SIZE, dest, MESSAGE_ID_SIZE);
 }
 
 /* returns 1 if this message ID is in the (limited size) saved cache,
