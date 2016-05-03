@@ -251,14 +251,18 @@ static int read_bytes_file (char * fname, char * bytes, int nbytes)
 }
 
 /* returns 1 for success, 0 for failure */
-static int read_address_file (char * fname, char * address, int * nbits)
+static int read_address_file (const char * basename, const char * name,
+                              char * address, int * nbits)
 {
+  char * path = strcat3_malloc (basename, "/", name, "read_address_file name");
   bzero (address, ADDRESS_SIZE);
   *nbits = 0;
   char * bytes = NULL;
-  int size = read_file_malloc (fname, &bytes, 0);
-  if (size <= 0)
+  int size = read_file_malloc (path, &bytes, 0);
+  if (size <= 0) {
+    free (path);
     return 0;
+  }
   char * p;
   int n = (int)strtol (bytes, &p, 10);
   if (p != bytes) {
@@ -274,6 +278,7 @@ static int read_address_file (char * fname, char * address, int * nbits)
     }
     *nbits = n;
   }
+  free (path);
   if (bytes != NULL)
     free (bytes);
   return 1;
@@ -306,18 +311,19 @@ static int read_symmetric_state (char * fname,
   return 1;
 }
 
-static int remove_unprintable (char * s, int len)
+static void remove_unprintable (char * s)
 {
   int offset = 0;
-  int i;
-  for (i = 0; i < len; i++) {
-/* newline is not a graph */
-    if (! (isgraph (s [i]) || isblank (s [i]))) // unprintable, remove
+  int i = 0;
+  do {
+/* the way ASCII works, remove all characters less than space except '\0'
+ * this preserves all UTF characters and the null terminator */
+    if ((s [i] < ' ') && (s [i] != '\0'))
       offset++;
     else
       s [i - offset] = s [i];
-  }
-  return len - offset;
+    i++;
+  } while (s [i - 1] != '\0');
 }
 
 static int get_members (const char * members_content, int mlen,
@@ -389,7 +395,7 @@ static int get_members (const char * members_content, int mlen,
 /* returns 0 if the contact does not exist, 1 if it does, 2 if it is a group.
  * if num_members is not NULL, it is set to -1 for a plain contact, or otherwise
  * the number of members. */
-static int read_key_info (const char * path, char * file, char ** contact,
+static int read_key_info (const char * path, const char * file, char ** contact,
                           allnet_rsa_prvkey * my_key,
                           allnet_rsa_pubkey * contact_pubkey,
                           char * local, int * loc_nbits,
@@ -429,21 +435,20 @@ static int read_key_info (const char * path, char * file, char ** contact,
   char * basename = strcat3_malloc (path, "/", file, "basename");
 
   /* contact name is the path to the file containing the contact name */
-  char * contact_name = strcat_malloc (basename, "/name", "name-path");
-  int found = read_file_malloc (contact_name, contact, 0);
-  free (contact_name);
-  if (found <= 0) {
-    free (basename);
-    return 0;
-  }
-  if (contact != NULL) {  /* null-terminate contact */
-    int slen = remove_unprintable (*contact, found);
-    /* cannot use memcpy_malloc because we copy one less than we allocate */
-    char * cname_mem = malloc_or_fail (slen + 1, "result of read_key_info");
-    memcpy (cname_mem, *contact, slen);
-    free (*contact);
-    cname_mem [slen] = '\0';
-    *contact = cname_mem;
+  if (contact != NULL) {
+    char * contact_name = strcat_malloc (basename, "/name", "name-path");
+    char * contact_value = NULL;
+    int found = read_file_malloc (contact_name, &contact_value, 0);
+    free (contact_name);
+    if ((found <= 0) || (contact_value == NULL)) {
+      free (basename);
+      return 0;
+    } /* read_file_malloc allocates 1 extra byte and null terminates */
+    remove_unprintable (contact_value);
+#ifdef DEBUG_PRINT
+    printf ("contact name is now %s\n", contact_value);
+#endif DEBUG_PRINT
+    *contact = contact_value;
   }
   /* check to see if this is a group */
   char * members_name = strcat_malloc (basename, "/members", "members-name");
@@ -453,7 +458,7 @@ static int read_key_info (const char * path, char * file, char ** contact,
   if (mlen > 0) {
     char ** members_list;
 #ifdef DEBUG_GROUP
-printf ("found group %s\n", basename);
+    printf ("found group %s\n", basename);
 #endif /* DEBUG_GROUP */
     int mcount = get_members (members_content, mlen, &members_list);
     free (members_content);
@@ -479,14 +484,10 @@ printf ("found group %s\n", basename);
     }
   }
   if (result && (local != NULL) && (loc_nbits != NULL)) {
-    char * name = strcat_malloc (basename, "/local", "local name");
-    result = read_address_file (name, local, loc_nbits);
-    free (name);
+    result = read_address_file (basename, "local", local, loc_nbits);
   }
   if (result && (remote != NULL) && (rem_nbits != NULL)) {
-    char * name = strcat_malloc (basename, "/remote", "remote name");
-    result = read_address_file (name, remote, rem_nbits);
-    free (name);
+    result = read_address_file (basename, "remote", remote, rem_nbits);
   }
   if (symmetric_key != NULL) {
     char * name = strcat_malloc (basename, "/symmetric_key", "symmetric name");
@@ -542,11 +543,16 @@ static void init_from_file ()
   int num_keys = 0;
   struct dirent * dep;
   while ((dep = readdir (dir)) != NULL) {
-    if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* key directory */
-        (read_key_info (dirname, dep->d_name, NULL, NULL, NULL,
-                        NULL, NULL, NULL, NULL, NULL,
-                        NULL, NULL, NULL, NULL, NULL, NULL)))
-      num_keys++;
+    if (is_ndigits (dep->d_name, DATE_TIME_LEN)) { /* key directory */
+      if (read_key_info (dirname, dep->d_name, NULL, NULL, NULL,
+                         NULL, NULL, NULL, NULL, NULL,
+                         NULL, NULL, NULL, NULL, NULL, NULL)) {
+        num_keys++;
+      } else {
+        printf ("error: unable to load key from .allnet/contacts/%s/\n",
+                dep->d_name);
+      }
+    }
   }
   closedir (dir);
 
@@ -561,27 +567,20 @@ static void init_from_file ()
       exit (1);
     }
     int i = 0;
-    while ((dep = readdir (dir)) != NULL) {
+    while ((i < num_keys) && ((dep = readdir (dir)) != NULL)) {
+      /* this is only legal as long as i < num_keys */
       kip [i].local.nbits = ADDRESS_SIZE * 8;
       kip [i].remote.nbits = ADDRESS_SIZE * 8;
-      if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* key directory */
+      if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* is a key directory */
           (read_key_info (dirname, dep->d_name, &(kip [i].contact_name),
-                          &(kip [i].my_key), &(kip [i].contact_pubkey),
-                          kip [i].local.address, &(kip [i].local.nbits),
-                          kip [i].remote.address, &(kip [i].remote.nbits),
-                          &(kip [i].dir_name),
-                          &(kip [i].members), &(kip [i].num_members),
-                          &(kip [i].has_symmetric_key), kip [i].symmetric_key,
-                          &(kip [i].has_state), &(kip [i].state)))) {
-/* printf ("key in %s, my %d-bit, other %d-bit, %s symmetric key\n ",
-dep->d_name, kip [i].my_key.nbits, kip [i].contact_pubkey.nbits,
-(kip [i].has_symmetric_key) ? "has" : "no"); */
+                           &(kip [i].my_key), &(kip [i].contact_pubkey),
+                           kip [i].local.address, &(kip [i].local.nbits),
+                           kip [i].remote.address, &(kip [i].remote.nbits),
+                           &(kip [i].dir_name),
+                           &(kip [i].members), &(kip [i].num_members),
+                           &(kip [i].has_symmetric_key), kip [i].symmetric_key,
+                           &(kip [i].has_state), &(kip [i].state)))) {
         i++;
-      } else {
-        if ((strcmp (dep->d_name, ".") != 0) &&
-            (strcmp (dep->d_name, "..") != 0))
-          printf ("error: unable to load key from .allnet/contacts/%s/\n",
-                  dep->d_name);
       }
     }
     closedir (dir);
