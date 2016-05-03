@@ -170,6 +170,7 @@ extern void * memcpy_malloc (const void * bytes, int bsize, const char * desc);
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
+ * one extra byte is allocated at the end to allow null termination.
  * in case of problems, returns 0, and prints the error if print_errors != 0 */
 extern int read_file_malloc (const char * file_name, char ** content_p,
                              int print_errors);
