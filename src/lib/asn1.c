@@ -592,13 +592,12 @@ static const char * find_in_string (const char * haystack, int hsize,
   return NULL;
 }
 
-static char wp_buffer [50000];
-
 /* read the key from the given bytes, returning 1 for success or 0 for error
  * if this is a public key, key->d will be set to zero */
 int wp_rsa_read_key_from_bytes (const char * bytes, int bsize,
                                 int * nbits, wp_rsa_key_pair * key)
 {
+  char wp_buffer [50000];
   if (bsize >= sizeof (wp_buffer)) {
     printf ("wp_rsa_read_key_from_bytes: bsize %d > max %zd\n",
             bsize, sizeof (wp_buffer));
@@ -628,6 +627,7 @@ int wp_rsa_read_key_from_bytes (const char * bytes, int bsize,
 int wp_rsa_read_key_from_file (const char * fname, int * nbits,
                                wp_rsa_key_pair * key)
 {
+  char wp_buffer [50000];
   int fd = open (fname, O_RDONLY);
   if (fd < 0) {
     perror ("open key file");
@@ -652,6 +652,8 @@ int wp_rsa_read_key_from_file (const char * fname, int * nbits,
 
 int wp_rsa_write_key_to_file (const char * fname, const wp_rsa_key_pair * key)
 {
+  char wp_buffer [50000];
+
   int has_private = 0;
   int i;
   for (i = 0; i < NUM_WORDS (key->nbits); i++)
