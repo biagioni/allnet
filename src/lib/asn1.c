@@ -608,16 +608,13 @@ int wp_rsa_read_key_from_bytes (const char * bytes, int bsize,
     start = find_in_string (start, bsize - (int)(start - bytes), "\n");
   if (start != NULL)
     start++;  /* point to the first char after the BEGIN line */
-  const char * end   = find_in_string (bytes, bsize, "-----END");
+  const char * end = find_in_string (bytes, bsize, "-----END");
   while ((end != NULL) && (end > start + 3) &&  /* go back over \n or \r */
          ((* (end - 1) == '\n') || (* (end - 1) == '\r')))
     end--;
   if ((start == NULL) || (end == NULL))
     return 0;
   int b64bytes = (int)(end - start) + 1;
-/* if called from wp_rsa_read_key_from_file, start and wp_buffer cover the
- * same area of memory, but start >= wp_buffer -- which is all
- * that b64_decode needs */
   int dbytes = b64_decode (start, b64bytes, wp_buffer, sizeof (wp_buffer));
   if (dbytes > 0)
     return wp_rsa_read (wp_buffer, dbytes, nbits, key);
