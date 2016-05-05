@@ -58,7 +58,7 @@ class NewContactPanel extends JPanel {
         topLabel.setBackground(foreground);
         topLabel.setLineBorder(Color.BLACK, 1, false);
         //
-        JLabel enterLabel = new JLabel(" contact name or AllNet address:  ");
+        JLabel enterLabel = new JLabel(" name or AllNet address:  ");
         enterLabel.setOpaque(true);
         enterLabel.setBackground(Color.WHITE);
         enterLabel.setBorder(new LineBorder(Color.BLACK, 1, false));
