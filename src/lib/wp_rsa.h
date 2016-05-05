@@ -41,12 +41,12 @@ typedef struct {
 /* get the public key part of the key pair */
 extern wp_rsa_key wp_rsa_get_public_key (wp_rsa_key_pair * key);
 
-/* read the key from the given bytes, returning 1 for success or 0 for error
+/* read the key from the given bytes, returning 1 if read a private
+ * and public key pair, 2 for just the public key, or 0 for error
  * if this is a public key, key->d will be set to zero */
 extern int wp_rsa_read_key_from_bytes (const char * bytes, int bsize,
                                        int * nbits, wp_rsa_key_pair * key);
-/* read the key from the file, returning 1 for success or 0 for error
- * if this is a public key, key->d will be set to zero */
+/* same as wp_rsa_read_key_from_bytes */
 extern int wp_rsa_read_key_from_file (const char * fname, int * nbits,
                                       wp_rsa_key_pair * key);
 /* writes the key to the file, returning 1 for success or 0 for error
