@@ -40,7 +40,14 @@ static struct peer_info pings [MAX_PINGS];
 
 static char my_address [ADDRESS_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0};
 
-static char * default_dns [] = { "alnt.org" };
+/* some of these domain names may not be defined, but at least some should be */
+/* in case DNS is broken, we include the current IPv4 address for alnt.org */
+static char * default_dns [] =
+  { "a0.alnt.org", "108.161.130.251",
+    "a1.alnt.org", "a2.alnt.org", "a3.alnt.org",
+    "a4.alnt.org", "a5.alnt.org", "a6.alnt.org", "a7.alnt.org",
+    "a8.alnt.org", "a9.alnt.org", "aa.alnt.org", "ab.alnt.org",
+    "ac.alnt.org", "ad.alnt.org", "ae.alnt.org", "af.alnt.org" };
 #define NUM_DEFAULTS	((sizeof (default_dns)) / (sizeof (char *)))
 struct sockaddr_storage ip4_defaults [NUM_DEFAULTS];
 struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
@@ -119,11 +126,14 @@ static void * init_default_dns (void * arg)
   char service [10];
   snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
   int i;
+  /* begin connecting at a random position in the DNS array */
+  int random_offset = (int)(random_int (0, NUM_DEFAULTS - 1));
   for (i = 0; i < NUM_DEFAULTS; i++) {
     ip4_defaults [i].ss_family = 0;
     ip6_defaults [i].ss_family = 0;
     struct addrinfo * next;
-    int code = getaddrinfo (default_dns [i], service, NULL, &next);
+    int dns_index = (random_offset + i) % NUM_DEFAULTS;
+    int code = getaddrinfo (default_dns [dns_index], service, NULL, &next);
     if (code == 0) {   /* getaddrinfo succeded */
       struct addrinfo * original = next;  /* so we can free it */
       while (next != NULL) {
@@ -139,7 +149,8 @@ static void * init_default_dns (void * arg)
           sap = (struct sockaddr *) (&(ip6_defaults [i]));
         else if ((next->ai_family != AF_INET) && (next->ai_family != AF_INET6))
           printf ("init_default_dns: unknown address family %d (%d, %d)\n",
-                  next->ai_family, ip4_defaults [i].ss_family, ip6_defaults [i].ss_family);
+                  next->ai_family, ip4_defaults [i].ss_family,
+                  ip6_defaults [i].ss_family);
         if (sap != NULL)
           memcpy ((char *) sap, (char *) (next->ai_addr), next->ai_addrlen);
         next = next->ai_next;
@@ -149,8 +160,8 @@ static void * init_default_dns (void * arg)
 #ifndef DEBUG_PRINT
       if (code != EAI_NONAME)
 #endif /* ! DEBUG_PRINT */
-      snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n", default_dns [i],
-                gai_strerror (code));
+      snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n",
+                default_dns [dns_index], gai_strerror (code));
       log_print (alog);
     }
   }
