@@ -518,7 +518,7 @@ int routing_top_dht_matches (unsigned char * dest, int nbits,
 {
 /* print_buffer (dest, nbits, "routing_top_dht_matches:", (nbits + 7) / 8, 1);
 print_dht (0); */
-  memset (result, 0, max_matches * sizeof (*result));
+  memset (result, 0, max_matches * sizeof (struct sockaddr_storage));
   int peer = 0;
   if (nbits < 0)
     nbits = 0;
