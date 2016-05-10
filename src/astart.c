@@ -1140,7 +1140,7 @@ int astart_main (int argc, char ** argv)
   log_print (alog);
 #endif /* WAIT_FOR_CHILD_TERMINATION */
   /* free (pipes);  not necessary if we fork -- harmful if we don't */
-  return 1;
+  return 0;
 }
 
 #ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
