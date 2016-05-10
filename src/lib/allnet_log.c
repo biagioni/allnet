@@ -21,11 +21,9 @@
 
 #include <pthread.h>
 
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
-#define LOG_TO_FILE
-/* ios doesn't give the user any reasonable way to read or
- * manage log files, so no use printing to file under iOS */
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+/* the default is to NOT create log files.  On development systems,
+ * compile with -DLOG_TO_FILE, or just look in the system logs */
+/* #define LOG_TO_FILE */
 
 #ifndef PATH_MAX	/* defined in a different place in some OS's */
 #include <sys/syslimits.h>
