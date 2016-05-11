@@ -81,6 +81,27 @@
  * trace:       c -> s: trace request
  */
 
+static pid_t xchat_socket_pid = -1;
+static pid_t xchat_ui_pid = -1;
+static pid_t trace_pid = -1;
+
+static void kill_if_not_self (pid_t pid, const char * desc)
+{
+  if ((pid != -1) && (pid != getpid ())) {
+/* printf ("process %d killing %s process %d\n", getpid (), desc, pid); */
+    kill (pid, SIGKILL);
+  }
+}
+
+/* exit code should be 0 for normal exit, 1 for error exit */
+static void stop_chat_and_exit (int exit_code)
+{
+  kill_if_not_self (xchat_socket_pid, "xchat_socket");
+  kill_if_not_self (xchat_ui_pid, "xchat_ui");
+  kill_if_not_self (trace_pid, "trace");
+  exit (exit_code);
+}
+
 static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
                           int code, time_t time, const char * peer,
                           const char * message)
@@ -111,7 +132,7 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
             length, n);
     printf ("sendto (%d, %p, %d, %d, %p, %d)\n",
             sock, buf, length, MSG_DONTWAIT, sap, slen);
-    exit (1);   /* terminate the program */
+    stop_chat_and_exit (0);
   }
 /* print_buffer (buf, length, "sent", 20, 1); */
 }
@@ -144,12 +165,12 @@ static int recv_message (int sock, int * code, time_t * time,
     return 0;
   if (n == 0) {    /* peer closed the socket */
     /* printf ("xchat_socket: received peer shutdown, exiting\n"); */
-    exit (0);
+    stop_chat_and_exit (0);
   }
   if (n < 9) {
     perror ("recv");
     printf ("error: received %d bytes on unix socket\n", n);
-    exit (0);
+    stop_chat_and_exit (1);
   }
   len = readb32 (buf);
   if (len != n) {
@@ -208,7 +229,7 @@ static int get_socket ()
   int result = socket (AF_INET, SOCK_DGRAM, 17);
   if (result < 0) {
     perror ("socket");
-    exit (1);
+    stop_chat_and_exit (1);
   }
   struct sockaddr_in sin;
   sin.sin_family = AF_INET;
@@ -217,7 +238,7 @@ static int get_socket ()
   if (bind (result, (struct sockaddr *) (&sin), sizeof (sin)) < 0) {
     perror ("bind");
     printf ("unable to run xchat, maybe already running?\n");
-    exit (1);
+    stop_chat_and_exit (1);
   }
   return result;
 }
@@ -261,7 +282,7 @@ static char * make_program_path (char * path, char * program)
   if (result == NULL) {
     printf ("error: unable to allocate %d bytes for %s/%s, aborting\n",
             size, path, program);
-    exit (1);
+    stop_chat_and_exit (1);
   }
   snprintf (result, size, "%s/%s", path, program);
   return result;
@@ -362,12 +383,12 @@ static pid_t exec_java_ui (char * arg)
   if (access (jarfile, R_OK) != 0) {
     perror ("access");
     printf ("unable to start Java gui %s\n", jarfile);
-    exit (1);
+    stop_chat_and_exit (1);
   }
   pid_t pid = fork ();
   if (pid < 0) {
     perror ("fork");
-    exit (1);
+    stop_chat_and_exit (1);
   }
   if (pid == 0) {   /* child process */
     char * args [5];
@@ -400,8 +421,9 @@ static pid_t exec_java_ui (char * arg)
       printf ("execv error calling %s %s %s %s\n", args [0], args [1],
               args [2], args [3]);
     }
+/* printf ("java child process exiting and killing parent %d\n", getppid ()); */
     kill (getppid (), SIGKILL);  /* kill the parent process too */
-    exit (1);
+    stop_chat_and_exit (0);
     return 0;  /* should never return */
   } else {
     free (jarfile);
@@ -411,12 +433,13 @@ static pid_t exec_java_ui (char * arg)
 
 static void * child_wait_thread (void * arg)
 {
-  pid_t pid = * ((int *) arg);
   int status;
-  waitpid (pid, &status, 0);
+  if (xchat_ui_pid != -1)
+    waitpid (xchat_ui_pid, &status, 0);
   /* child has terminated, exit the entire program */
-  /* printf ("shutting down\n"); */
-  exit (0);
+/* printf ("child_wait_thread shutting down\n"); */
+  stop_chat_and_exit (0);
+  return NULL;
 }
 
 struct unacked {
@@ -463,13 +486,10 @@ static void add_to_unacked (long long int seq, char * contact)
   unacked_count++;
 }
 
-static void thread_for_child_completion (pid_t pid)
+static void thread_for_child_completion ()
 {
-  static pid_t static_pid;
-  static_pid = pid;
   pthread_t thread;
-  int result = pthread_create (&thread, NULL, child_wait_thread,
-                               ((void *) (&static_pid)));
+  int result = pthread_create (&thread, NULL, child_wait_thread, NULL);
   if (result != 0)
     perror ("pthread_create");
 }
@@ -479,13 +499,12 @@ struct trace_thread_arg {
   int forwarding_socket;
   struct sockaddr * fwd_addr;
   socklen_t slen;
-  pid_t * running;
 };
 
 static void * trace_thread (void * a)
 {
   struct trace_thread_arg * arg = (struct trace_thread_arg *) a;
-  pid_t initial_running = *(arg->running);
+  pid_t initial_trace_pid = trace_pid;
   char buffer [10000];
   int n;
   while ((n = read (arg->pipefd, buffer, sizeof (buffer) - 1)) > 0) {
@@ -494,8 +513,9 @@ static void * trace_thread (void * a)
     send_message (arg->forwarding_socket, arg->fwd_addr, arg->slen,
                   CODE_TRACE_RESPONSE, 0, "trace", buffer);
   }  /* weak synchronization, but better than nothing */
-  if (*(arg->running) == initial_running)
-    *arg->running = -1;
+  if (trace_pid == initial_trace_pid)
+    trace_pid = -1;
+  close (arg->pipefd);
   free (a);
   return NULL;
 }
@@ -504,28 +524,28 @@ static void do_trace (int time, int hops,
                       int forwarding_socket,
                       struct sockaddr * fwd_addr, socklen_t slen)
 { 
-  static pid_t running = -1;  /* create a process for this trace */
-  if (running > 0) {
-    kill (running, SIGINT);
+  if (trace_pid >= 0) {
+    kill (trace_pid, SIGINT);
+    trace_pid = -1;
     usleep (10000);  /* wait for the process to really die */
   }
-  running = -1;
   waitpid (-1, NULL, WNOHANG);  /* harvest any pending children */
   int pipefd [2];  /* 0 is the read (parent) end, 1 is the child end */
-  if ((pipe (pipefd) == 0) && ((running = fork ()) != -1)) {
-    if (running == 0) {  /* child, run the trace process forever until killed */
+  if ((pipe (pipefd) == 0) && ((trace_pid = fork ()) != -1)) {
+    if (trace_pid == 0) {  /* child, run the trace process until killed */
       close (pipefd [0]);
       trace_pipe (pipefd [1], NULL, -1, NULL, hops, 1, 0, 0);
+      close (pipefd [1]);  /* unneeded because we will exit, but logical */
+printf ("trace child exiting\n");
       exit (0);
     } /* else parent, return the results to xchat */
     close (pipefd [1]);
     struct trace_thread_arg * a =
       malloc_or_fail (sizeof (struct trace_thread_arg), "trace_thread_arg");
-    a->pipefd = pipefd [0];
+    a->pipefd = pipefd [0];  /* closed by thread */
     a->forwarding_socket = forwarding_socket;
     a->fwd_addr = fwd_addr;
     a->slen = slen;
-    a->running = &running;
     pthread_attr_t attributes;
     pthread_attr_init (&attributes);
     pthread_attr_setdetachstate (&attributes, PTHREAD_CREATE_DETACHED);
@@ -547,6 +567,7 @@ int main (int argc, char ** argv)
   HWND hwNd = GetConsoleWindow ();
   ShowWindow (hwNd, SW_HIDE);
 #endif /* WINDOWS_ENVIRONMENT */
+  xchat_socket_pid = getpid ();  /* should never change */
 
 /*
   if (argc < 2) {
@@ -568,10 +589,10 @@ int main (int argc, char ** argv)
 
   /* open the socket first, so it is ready when the UI begins execution */
   int forwarding_socket = get_socket ();
-  pid_t child_pid = exec_java_ui (argv [0]);
+  xchat_ui_pid = exec_java_ui (argv [0]);
   wait_for_connection (forwarding_socket, (struct sockaddr *) (&fwd_addr),
                        &fwd_addr_size);
-  thread_for_child_completion (child_pid);
+  thread_for_child_completion ();
 
   int timeout = 100;      /* sleep up to 1/10 second */
   char * old_contact = NULL;
@@ -647,8 +668,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchat_socket pipe closed, exiting\n");
-      kill (child_pid, SIGKILL);
-      exit (1);
+      stop_chat_and_exit (0);
     }
     if ((found == 0) && (found_key == 0)) { 
       if (old_contact != NULL) { /* timed out, request/resend any missing */
