@@ -23,6 +23,7 @@
 #include "lib/configfiles.h"
 #include "lib/sha.h"
 #include "store.h"
+#include "message.h"  /* is_acked */
 
 /* start_iter and prev_message define an iterator over messages.
  * the iterator proceeds backwards, setting type to MSG_TYPE_DONE
@@ -30,7 +31,7 @@
 /* the iterator should be deallocated with free_iter after it is used */
 /* for a single record, use most_recent record. */
 
-#define DATE_LEN 		8	/* strlen("20130327") */
+#define DATE_LEN 		8	/* strlen ("20130327") */
 
 struct msg_iter {
   char * contact;         /* dynamically allocated */
@@ -653,6 +654,187 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
   close (fd);
   free (path);
 }
+
+/* add an individual message, modifying msgs, num_alloc or num_used as needed
+ * 0 <= position <= *num_used
+ * normally call after calling save_record (or internally)
+ * return 1 if successful, 0 if not */
+int add_message (struct message_store_info ** msgs, int * num_alloc,
+                 int * num_used, int position,
+                 int type, uint64_t seq, uint64_t missing,
+                 uint64_t time, int tz_min, uint64_t rcvd_time, int acked,
+                 const char * message, int msize)
+{
+  if ((num_used == NULL) || (num_alloc == NULL) ||
+      (position < 0) || (position > (*num_used) + 1))
+    return 0;
+  if (*num_used < 0)
+    *num_used = 0;
+  if ((msgs == NULL) || (*num_used >= *num_alloc)) {
+    int count = *num_alloc;
+    if (count <= 0)
+      count = 100;
+    /* increase by a factor of 10, to do this as infrequently as possible */
+    int needed_count = count * 10;
+    size_t needed = needed_count * sizeof (struct message_store_info);
+    void * allocated = realloc (*msgs, needed);
+    if (allocated == NULL) {
+      perror ("realloc");
+      printf ("add_message error trying to allocate %zd bytes\n", needed);
+      return 0;
+    }
+    *num_alloc = needed_count;
+    *msgs = allocated;
+  }
+  int index = *num_used;
+  struct message_store_info * p = (*msgs) + index;
+  while (index > position) {
+    index--;
+    p--;
+    *(p + 1) = *p;
+  }
+  *num_used = (*num_used) + 1;
+  p->msg_type = type;
+  p->seq = seq;
+  p->prev_missing = missing;
+  p->time = time;
+  p->tz_min = tz_min;
+  p->rcvd_time = rcvd_time;
+  p->message_has_been_acked = acked;
+  p->message = message;
+  p->msize = msize;
+  return 1;
+}
+
+#define ACK_CACHE_ENTRIES	8	/* should be small */
+static char ack_cache [ACK_CACHE_ENTRIES] [MESSAGE_ID_SIZE];
+static int cache_start_pos = 0;
+
+static int ack_is_cached (const char * ack)
+{
+  int i;
+  for (i = 0; i < ACK_CACHE_ENTRIES; i++)
+    if (memcmp (ack, ack_cache [i], MESSAGE_ID_SIZE) == 0) {
+      cache_start_pos = i;  /* probably no need to reuse this ack */
+      return 1;
+    }
+  return 0;
+}
+
+static void cache_ack (const char * ack)
+{
+  memcpy (ack_cache [cache_start_pos], ack, MESSAGE_ID_SIZE);
+  cache_start_pos = (cache_start_pos + 1) % ACK_CACHE_ENTRIES;
+}
+
+#ifdef DEBUG_PRINT
+static void print_message_ack (int next, const char * ack)
+{
+  char * name = "no name";
+  if (next == MSG_TYPE_ACK)
+    name = "found ack ";
+  else if (next == MSG_TYPE_RCVD)
+    name = "found rcvd";
+  else if (next == MSG_TYPE_SENT)
+    name = "found sent";
+  print_buffer (ack, MESSAGE_ID_SIZE, name, MESSAGE_ID_SIZE, 1);
+}
+#endif /* DEBUG_PRINT */
+
+/* *msgs must be NULL or pointing to num_alloc (malloc'd or realloc'd) records
+ * of type struct message_store_info.  list_all_messages may realloc this if
+ * more space is needed.  Initially, *num_used must be 0.  After returning,
+ * *num_used <= *num_alloc (both numbers may have changed)
+ * if msgs was previously used, its messages should have been freed
+ * by calling free_all_messages.
+ * return 1 if successful, 0 if not */
+int list_all_messages (const char * contact,
+                       struct message_store_info ** msgs,
+                       int * num_alloc, int * num_used)
+{
+  *num_used = 0;
+  keyset * k;
+  int nk = all_keys (contact, &k);
+  if (nk <= 0)  /* no such contact, or this contact has no keys */
+    return 0;
+  int ik;
+  for (ik = 0; ik < nk; ik++) {
+    struct msg_iter * iter = start_iter (contact, k [ik]);
+    if (iter == NULL)
+      return 0;
+    uint64_t seq;
+    uint64_t time = 0;
+    uint64_t rcvd_time = 0;
+    int tz_min;
+    char ack [MESSAGE_ID_SIZE];
+    char * message = NULL;
+    int msize;
+    int next = prev_message (iter, &seq, &time, &tz_min, &rcvd_time,
+                             ack, &message, &msize);
+    while (next != MSG_TYPE_DONE) {
+      int inserted = 0;
+#ifdef DEBUG_PRINT
+      print_message_ack (next, ack);
+#endif /* DEBUG_PRINT */
+      if (((next == MSG_TYPE_RCVD) || (next == MSG_TYPE_SENT)) &&
+          (message != NULL)) {
+        int has_ack = ((next == MSG_TYPE_SENT) &&
+                       (ack_is_cached (ack) || is_acked (contact, seq)));
+/* if messages are mostly ordered, most of the time this loop will be short */
+        int i = (*num_used) - 1;
+        for ( ; ((i >= 0) && (! inserted)); i--) {
+          if (time <= (*msgs) [i].time) {   /* insert here */
+/* for now, set missing always to zero.  Fixed in the loop below. */
+            add_message (msgs, num_alloc, num_used, i + 1,
+                         next, seq, 0, time, tz_min, rcvd_time, has_ack,
+                         message, msize);
+            inserted = 1;
+          }
+        }
+        if (! inserted) {
+          add_message (msgs, num_alloc, num_used, 0,
+                       next, seq, 0, time, tz_min, rcvd_time, has_ack,
+                       message, msize);
+          inserted = 1;
+        }
+      } else if (next == MSG_TYPE_ACK) {
+        cache_ack (ack);
+      }
+      if ((! inserted) && (message != NULL))
+        free (message);
+      message = NULL;
+      next = prev_message (iter, &seq, &time, &tz_min, &rcvd_time,
+                           ack, &message, &msize);
+    }
+    free_iter (iter);
+  }
+  /* now fix prev_missing */
+  int index = *num_used; /* first valid index is *num_used - 1 */
+  struct message_store_info * msg = (*msgs);
+  uint64_t prev_seq = 0; /* the first sequence number (if any) should be 1 */
+  while (--index >= 0) { /* in the loop, index always points to a valid entry */
+    if (msg [index].msg_type == MSG_TYPE_RCVD) {
+      if (msg [index].seq > prev_seq + 1)
+        msg [index].prev_missing = (msg [index].seq - (prev_seq + 1));
+      prev_seq = msg [index].seq;
+    }
+  }
+  return 1;
+}
+
+/* frees the message storage pointed to by each message entry */
+void free_all_messages (struct message_store_info * msgs, int num_used)
+{
+  int i;
+  for (i = 0; i < num_used; i++) {
+    if (((msgs [i].msg_type == MSG_TYPE_RCVD) ||
+         (msgs [i].msg_type == MSG_TYPE_SENT)) &&
+        (msgs [i].message != NULL) &&
+        (msgs [i].msize > 0))
+      free ((void *)(msgs [i].message));
+  }
+}
+
 
 #ifdef TEST_STORE
 /* compile with:
