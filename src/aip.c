@@ -60,6 +60,7 @@ struct udp_cache_record {
 };
 
 static struct allnet_log * alog = NULL;
+static time_t last_successful_udp;
 
 /* UDPv4 messages are limited to less than 2^16 bytes */
 #define MAX_RECEIVE_BUFFER	ALLNET_MAX_UDP_SIZE
@@ -336,7 +337,7 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
 #endif /* DEBUG_PRINT */
 }
 
-static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
+static int send_udp (int udp, char * message, int msize, struct sockaddr * sa)
 {
   socklen_t addr_len = sizeof (struct sockaddr_storage);
   if (sa->sa_family == AF_INET)
@@ -383,13 +384,16 @@ static void send_udp (int udp, char * message, int msize, struct sockaddr * sa)
     print_sockaddr_str (sa, 0, 0, alog->b + n, alog->s - n);
     errno = saved_errno;
     log_error (alog, "sendto");
-  } else {
+    return 0;
+  } else {  /* record successful send */
+    last_successful_udp = time (NULL);
 #ifdef LOG_PACKETS
     int n = snprintf (alog->b, alog->s, "send_udp sent %d bytes to ", msize);
     n += print_sockaddr_str (sa, 0, 0, alog->b + n, alog->s - n);
     log_print (alog);
 #endif /* LOG_PACKETS */
   }
+  return 1;
 }
 
 /* returns 1 for success, 0 for failure */
@@ -415,8 +419,7 @@ static int send_udp_addr (int udp, char * message, int msize,
 #endif /* DEBUG_PRINT */
   log_print (alog);
 
-  send_udp (udp, message, msize, sap);
-  return 1;
+  return send_udp (udp, message, msize, sap);
 }
 
 /* assumed to be an outgoing, so do not check overall packet validity */
@@ -637,8 +640,9 @@ static int udp_socket ()
       perror ("aip UDP repeated bind");
       sleep (2);
     }
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#else  /* not iOS, so probably already running */
     exit (1);
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
   }
   snprintf (alog->b, alog->s, "opened UDP socket %d\n", udp);
   log_print (alog);
@@ -959,7 +963,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
   }
 }
 
-void send_keepalive (void * udp_cache, int fd,
+void send_keepalive (void * udp_cache, int udp,
                      int * listeners, int num_listeners)
 {
   int max_size = ALLNET_MGMT_HEADER_SIZE (0xff);
@@ -990,7 +994,7 @@ void send_keepalive (void * udp_cache, int fd,
     int off = 0;
     /* send keepalives for at most 2 hours. after that, remove from cache */
     if ((time (NULL) - ucr->last_received) < 7200) {
-      send_udp (fd, keepalive, size, sap);
+      send_udp (udp, keepalive, size, sap);
       off = snprintf (alog->b, alog->s, "sent %d-byte keepalive to ", size);
     } else {
       cache_remove (udp_cache, udp_void_ptr);
@@ -1035,7 +1039,7 @@ void send_keepalive (void * udp_cache, int fd,
 }
 
 static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
-                                    struct allnet_header * in_hp, int fd)
+                                    struct allnet_header * in_hp, int udp)
 {
   int off = snprintf (alog->b, alog->s, "send_dht_ping_response ");
 #ifdef DEBUG_PRINT
@@ -1075,7 +1079,7 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
       log_print (alog);
       return;
     }
-    send_udp (fd, (char *) message, ALLNET_DHT_SIZE (hp->transport, n), sap);
+    send_udp (udp, (char *) message, ALLNET_DHT_SIZE (hp->transport, n), sap);
 #ifdef DEBUG_PRINT
     packet_to_string ((char *) message, ALLNET_DHT_SIZE (hp->transport, n),
                       "sent ping response", 1, alog->b, alog->s);
@@ -1270,6 +1274,7 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
   int removed_listener = 0;
   time_t last_listen = 0;
   time_t last_keepalive = 0;
+  /* global */ last_successful_udp = time (NULL);
   while (1) {
     if ((last_listen == 0) ||                 /* if never updated */
         (time (NULL) - last_listen > 300) || /* once every 5min try to update */
@@ -1287,14 +1292,24 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
       send_keepalive (udp_cache, udp, listener_fds, NUM_LISTENERS);
       last_keepalive = time (NULL);
     }
+    if (time (NULL) - last_successful_udp >= 30) {
+      close (udp);
+#ifdef DEBUG_PRINT
+      int old_udp = udp;
+#endif /* DEBUG_PRINT */
+      udp = udp_socket();
+      last_successful_udp = time (NULL);
+#ifdef DEBUG_PRINT
+      printf ("aip: reset udp fd from %d to %d\n", old_udp, udp);
+#endif /* DEBUG_PRINT */
+
+    }
     int fd = -1;
     int priority;
     char * message;
     struct sockaddr_storage sockaddr;
     struct sockaddr * sap = (struct sockaddr *) (&sockaddr);
     socklen_t sasize = sizeof (sockaddr);
-/*debug_print_fd = udp;
-printf ("rpipe is %d, wpipe is %d, udp is %d\n", rpipe, wpipe, udp);*/
     int result = receive_pipe_message_fd (p, 1000, &message, udp, sap, &sasize,
                                           &fd, &priority);
     int valid = ((result > 0) && (is_valid_message (message, result)));
