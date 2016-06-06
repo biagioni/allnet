@@ -1,0 +1,3 @@
+this directory contains files needed to build a release for iOS under XCode.
+The files are generally in .tar format, and labeled by date.  Generally,
+most people will only be interested in the latest date.
