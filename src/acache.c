@@ -1868,6 +1868,8 @@ static void print_message (int fd, int max_size,
 /* each print variable is 0 to not print, 1 to print short, 2 for long */
 void print_caches (int print_msgs, int print_acks)
 {
+  if (alog == NULL)
+    alog = init_log ("print_caches");
   int msg_fd;
   int max_msg_size;
   int ack_fd;
