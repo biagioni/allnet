@@ -1,3 +1,17 @@
 this directory contains files needed to build a release for iOS under XCode.
 The files are generally in .tar format, and labeled by date.  Generally,
 most people will only be interested in the latest date.
+
+other notes for iOS follow.
+
+The main way to submit seems to be:
+compile for "generic iOS device" (under Product/scheme)
+archive (under File) and submit the archive to apple
+log into itunesconnect.apple.com, select "My apps", follow the
+  more-or-less intuitive procedure.
+
+2016/06/06: announcement of the development of the software was done to
+cryp@bis.doc.gov and enc@nsa.gov.  The two websites listed are alnt.org
+and sourceforge.net/project/allnet/ Stated my belief that the software is
+exempt under EAR 740.13(e), which covers open-source software distributed
+through the Internet.
