@@ -596,9 +596,10 @@ printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
     do_not_print = (errno == EINTR);
     if (! do_not_print)
       perror ("next_available/select");
-    print_pipes (p, "current", max_pipe);
-    snprintf (p->log->b, p->log->s, "some error in select, aborting\n");
+    snprintf (p->log->b, p->log->s,
+              "some error in select (errno %d), aborting\n", errno);
     log_print (p->log);
+    print_pipes (p, "current", max_pipe);
     exit (1);
   }
   if (s == 0)
