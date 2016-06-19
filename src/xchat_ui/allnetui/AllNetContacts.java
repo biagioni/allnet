@@ -175,6 +175,7 @@ public class AllNetContacts {
                 // ignore, if it is not there, no need to delete
             }
             java.nio.file.Files.createFile(lrp);
+        } catch (java.nio.file.NoSuchFileException e) { // no chat dir, ignore
         } catch (Exception e) {
             System.out.println ("updateChatTime: exception " + e +
                                 " udpating " + lr);
