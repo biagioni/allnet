@@ -285,14 +285,38 @@ int resend_packet (char * data, int dsize, const char * contact,
 /* the message ACK must be set at the start of the data */
 /* unless ack_and_save is 0, requests an ack, and after the message is sent,
  * calls save_outgoing. */
+/* calls itself recursively for groups -- only works if groups do not include
+ * each other recursively */
 int send_to_contact (char * data, int dsize,
                      const char * contact, int sock,
                      unsigned char * src, int sbits,
                      unsigned char * dst, int dbits,
                      int hops, int priority, int ack_and_save)
 {
+  if (is_group (contact)) {
+    char ** members = NULL;
+    int n = group_membership (contact, &members);
+    if (members != NULL) {
+      static int max_depth = 0;   /* detect likely infinite recursion */
+      if (max_depth++ > 100) {    /* infinite recursion likely */
+        printf ("detected likely infinite recursion in send_to_contact %s\n",
+                contact);
+        max_depth--;
+        return 0;
+      }
+      int success = 1;
+      int i;
+      for (i = 0; ((success) && (i < n)); i++)
+        success = send_to_contact (data, dsize, members [i], sock, src, sbits,
+                                   dst, dbits, hops, priority, ack_and_save);
+      free (members);
+      max_depth--;
+      return success;
+    }
+    return 0;
+  }
   /* get the keys */
-  keyset * keys;
+  keyset * keys = NULL;
   int nkeys = all_keys (contact, &keys);
   if (nkeys <= 0) {
     printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);

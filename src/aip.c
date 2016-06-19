@@ -897,7 +897,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
   int existing = 0;
   for (i = 0; i < num_contacts; i++) {
     int j;
-    keyset * keysets;
+    keyset * keysets = NULL;
     int num_keysets = all_keys (contacts [i], &keysets);
     for (j = 0; j < num_keysets; j++) {
       unsigned char address [ADDRESS_SIZE];
@@ -924,7 +924,8 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
         }
       }
     }
-    free (keysets);
+    if ((num_keysets > 0) && (keysets != NULL))
+      free (keysets);
   }
   for (i = 0; i < NUM_LISTENERS; i++) {
     if (! in_use [i]) {   /* close socket (if any) if it is not in use */

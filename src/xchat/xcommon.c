@@ -52,7 +52,7 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
   int ncontacts = all_contacts (&contacts);
   int icontact;
   for (icontact = 0; icontact < ncontacts; icontact++) {
-    keyset * keysets;
+    keyset * keysets = NULL;
     int nkeysets = all_keys (contacts [icontact], &keysets);
     int ikeyset;
     for (ikeyset = 0; ikeyset < nkeysets; ikeyset++) {
@@ -110,6 +110,8 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
         }
       }
     }
+    if ((nkeysets > 0) && (keysets != NULL))
+      free (keysets);
   }
   return res;
 }
@@ -279,7 +281,7 @@ static void do_request_and_resend (int sock)
       free (keysets);
     }
   }  /* slow the requests down to once every 20 minutes or so (0-40min) */
-  interval = random_int (0, 2000);
+  interval = random_int (0, 2400);
 }
 
 static void handle_ack (int sock, char * packet, int psize, int hsize,
@@ -679,7 +681,7 @@ static int handle_key (int sock, struct allnet_header * hp,
     return 0;
   if (hp->hops > max_hops)
     return 0;
-  keyset * keys;
+  keyset * keys = NULL;
   int nkeys = all_keys (contact, &keys);
   if (nkeys < 1) {
     printf ("error '%s'/%d: create own key before calling handle_key\n",
@@ -707,18 +709,17 @@ static int handle_key (int sock, struct allnet_header * hp,
     }
   }
   if (key_index < 0) {
-    if (nkeys <= 0)
-      printf ("handle_key error: contact '%s' has %d keys\n", contact, nkeys);
-/* it is fairly normal to get multiple copies of the key.  Ignore.
-              contact, nkeys);
-*/
+    free (keys);  /* above we check to make sure nkeys > 0 */
+/* it is fairly normal to get multiple copies of the key.  Ignore. */
     return 0;
   }
 
   char * received_key = data;
   int ksize = dsize - SHA512_SIZE - KEY_RANDOM_PAD_SIZE;
-  if (ksize < 2)
+  if (ksize < 2) {
+    free (keys);  /* above we check to make sure nkeys > 0 */
     return 0;
+  }
   /* check to see if it is my own key */
   for (i = 0; i < nkeys; i++) {
     allnet_rsa_pubkey k;
@@ -730,7 +731,7 @@ static int handle_key (int sock, struct allnet_header * hp,
 #ifdef DEBUG_PRINT
       printf ("handle_key: got my own key\n");
 #endif /* DEBUG_PRINT */
-      free (keys);
+      free (keys);  /* above we check to make sure nkeys > 0 */
       return 0;
     }
   }
@@ -768,17 +769,17 @@ print_buffer ((char *)my_addr, my_bits, "sending from", (my_bits + 7) / 8, 1);
                       hp->source, hp->src_nbits, max_hops))
 */
         printf ("send_key failed for key index %d/%d\n", key_index, nkeys);
-      free (keys);
+      free (keys);  /* above we check to make sure nkeys > 0 */
       return -1;  /* successful key exchange */
     }
     printf ("handle_key error: set_contact_pubkey returned 0\n");
-    free (keys);
+    free (keys);  /* above we check to make sure nkeys > 0 */
     return 0;
   }
 #ifdef DEBUG_PRINT
   printf ("public key does not check with secrets %s %s\n", secret1, secret2);
 #endif /* DEBUG_PRINT */
-  free (keys);
+  free (keys);  /* above we check to make sure nkeys > 0 */
   return 0;
 }
 
@@ -1019,7 +1020,7 @@ int create_contact_send_key (int sock, const char * contact,
       return 0;
     }
   } else {  /* contact already exists, get the keyset and the address */
-    keyset * keysets;
+    keyset * keysets = NULL;
     int n = all_keys (contact, &keysets);
     if (n <= 0) {
       printf ("contact %s already exists, but not found! %d\n", contact, n);

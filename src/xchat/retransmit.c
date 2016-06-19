@@ -148,7 +148,7 @@ int send_retransmit_request (char * contact, keyset k, int sock,
   if (request == NULL)
     return 0;
 
-  keyset * keys;
+  keyset * keys = NULL;
   int nkeys = all_keys (contact, &keys);
   int i;
   int result = 1;
@@ -157,7 +157,8 @@ int send_retransmit_request (char * contact, keyset k, int sock,
                               NULL, 32, NULL, 32, hops, priority, 0))
       result = 0;
   free (request);
-  free (keys);
+  if ((nkeys > 0) && (keys != NULL))
+    free (keys);
   return result;
 }
 

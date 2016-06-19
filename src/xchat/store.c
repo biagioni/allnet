@@ -753,15 +753,17 @@ int list_all_messages (const char * contact,
                        int * num_alloc, int * num_used)
 {
   *num_used = 0;
-  keyset * k;
+  keyset * k = NULL;
   int nk = all_keys (contact, &k);
   if (nk <= 0)  /* no such contact, or this contact has no keys */
     return 0;
   int ik;
   for (ik = 0; ik < nk; ik++) {
     struct msg_iter * iter = start_iter (contact, k [ik]);
-    if (iter == NULL)
+    if (iter == NULL) {
+      free (k);
       return 0;
+    }
     uint64_t seq;
     uint64_t time = 0;
     uint64_t rcvd_time = 0;
@@ -808,6 +810,7 @@ int list_all_messages (const char * contact,
     }
     free_iter (iter);
   }
+  free (k);
   /* now fix prev_missing */
   int index = *num_used; /* first valid index is *num_used - 1 */
   struct message_store_info * msg = (*msgs);
@@ -843,7 +846,7 @@ void free_all_messages (struct message_store_info * msgs, int num_used)
  */
 int main (int argc, char ** argv)
 {
-  keyset * keys;
+  keyset * keys = NULL;
   int n = 0;
   if (argc >= 2) {
     n = all_keys (argv [1], &keys);
@@ -889,6 +892,8 @@ int main (int argc, char ** argv)
   printf ("\n");
 
   struct msg_iter * iter = start_iter (argv [1], keys [k]);
+  if (n > 0)
+    free (keys);
   if (iter == NULL) {
     printf ("null iterator, quitting\n");
     return 0;
@@ -902,6 +907,7 @@ int main (int argc, char ** argv)
             (uintmax_t)rcvd_time);
     print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
   }
+  free_iter (iter);
   return 0;
 }
 #endif /* TEST_STORE */

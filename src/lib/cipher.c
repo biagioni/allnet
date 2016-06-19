@@ -332,7 +332,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
     ncontacts = maxcontacts;
   }
   for (i = 0; ((*contact == NULL) && (i < ncontacts)); i++) {
-    keyset * keys;
+    keyset * keys = NULL;
     int nkeys = all_keys (contacts [i], &keys);
     for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
       int do_decrypt = 1;  /* for now, try to decrypt unsigned messages */
@@ -394,7 +394,8 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
         }
       }
     }
-    free (keys);
+    if ((nkeys > 0) && (keys != NULL))
+      free (keys);
   }
   if (free_contacts) free (contacts);
 #ifdef DEBUG_PRINT
