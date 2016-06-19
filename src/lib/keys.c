@@ -44,13 +44,15 @@ struct key_address {
 /* typedef int keyset;  refers to a key_info or a group_info */
 struct key_info {
   char * contact_name;
-  int num_members;   /* -1 for plain contacts, >= 0 for groups */
+  int num_members;        /* -1 for plain contacts, >= 0 for groups */
   allnet_rsa_pubkey contact_pubkey;  /* only defined if not a group */
   allnet_rsa_prvkey my_key;          /* only defined if not a group */
   struct key_address local;          /* only defined if not a group */
   struct key_address remote;         /* only defined if not a group */
   char * dir_name;
   char ** members;                   /* only defined if num_members > 0 */
+/* symmetric keys are useful for encrypting larger amounts of data,
+ * and for sending to larger groups */
   int has_symmetric_key;
 #ifndef SYMMETRIC_KEY_SIZE
 #define SYMMETRIC_KEY_SIZE AES256_SIZE
@@ -336,7 +338,7 @@ static int get_members (const char * members_content, int mlen,
       num_members++;
   int extra = 0;
   if (members_content [mlen - 1] != '\n') {
-    num_members++;   /* last member name not null-terminated */
+    num_members++;   /* last member name not \n-terminated */
     extra = 1;       /* need room for a null character, not in mlen */
   }
   int ptr_size = num_members * sizeof (char *);
@@ -454,12 +456,13 @@ static int read_key_info (const char * path, const char * file, char ** contact,
   char * members_name = strcat_malloc (basename, "/members", "members-name");
   char * members_content;
   int mlen = read_file_malloc (members_name, &members_content, 0);
-  free (members_name);
-  if (mlen > 0) {
-    char ** members_list;
 #ifdef DEBUG_GROUP
-    printf ("found group %s\n", basename);
+  if ((mlen > 0) && (contact != NULL))
+    printf ("found group %s in %s\n", *contact, members_name);
 #endif /* DEBUG_GROUP */
+  free (members_name);
+  if (mlen > 0) {  /* it's a group */
+    char ** members_list;
     int mcount = get_members (members_content, mlen, &members_list);
     free (members_content);
     if (mcount > 0) {
@@ -470,8 +473,15 @@ static int read_key_info (const char * path, const char * file, char ** contact,
       if (num_members != NULL)
         *num_members = mcount;
       result = 2;  /* found a group */
+#ifdef DEBUG_GROUP
+      if (members != NULL) {
+        int i;
+        for (i = 0; i < mcount; i++)
+          printf ("  %s\n", members_list [i]);
+      }
+#endif /* DEBUG_GROUP */
     }
-  } else {
+  } else {  /* it's not a group */
     if (my_key != NULL) {
       char * name = strcat_malloc (basename, "/my_key", "my key name");
       result = allnet_rsa_read_prvkey (name, my_key);
@@ -482,12 +492,12 @@ static int read_key_info (const char * path, const char * file, char ** contact,
       result = allnet_rsa_read_pubkey (name, contact_pubkey);
       free (name);
     }
-  }
-  if (result && (local != NULL) && (loc_nbits != NULL)) {
-    result = read_address_file (basename, "local", local, loc_nbits);
-  }
-  if (result && (remote != NULL) && (rem_nbits != NULL)) {
-    result = read_address_file (basename, "remote", remote, rem_nbits);
+    if (result && (local != NULL) && (loc_nbits != NULL)) {
+      result = read_address_file (basename, "local", local, loc_nbits);
+    }
+    if (result && (remote != NULL) && (rem_nbits != NULL)) {
+      result = read_address_file (basename, "remote", remote, rem_nbits);
+    }
   }
   if (symmetric_key != NULL) {
     char * name = strcat_malloc (basename, "/symmetric_key", "symmetric name");
@@ -587,6 +597,29 @@ static void init_from_file ()
   }
   free (dirname);
   generate_contacts ();
+#ifdef TEST_GROUP_MEMBERSHIP
+  char ** contacts;   /* do not free or modify */
+  int nc = all_contacts (&contacts);
+  int ic;
+  for (ic = 0; ic < nc; ic++) {
+    char ** simple_groups = NULL;
+    char ** rec_groups = NULL;
+printf ("querying contact %s\n", contacts [ic]);
+    int ngs = member_of_groups (contacts [ic], &simple_groups);
+    int ngr = member_of_groups_recursive (contacts [ic], &rec_groups);
+    printf ("contact %s is in %d groups, recursively %d (%p %p)\n",
+            contacts [ic], ngs, ngr, simple_groups, rec_groups);
+    int ig;
+    for (ig = 0; ig < ngs; ig++)
+      printf ("   %s member of %s\n", contacts [ic], simple_groups [ig]);
+    for (ig = 0; ig < ngr; ig++)
+      printf ("   %s recursive member of %s\n", contacts [ic], rec_groups [ig]);
+    if (ngs > 0)
+      free (simple_groups);
+    if (ngr > 0)
+      free (rec_groups);
+  }
+#endif /* TEST_GROUP_MEMBERSHIP */
 }
 
 /*************** operations on contacts ********************/
@@ -1017,9 +1050,8 @@ int is_group (const char * contact)
 {
   int ki;
   for (ki = 0; ki < num_key_infos; ki++) {
-    if ((strcmp (kip [ki].contact_name, contact) == 0) &&
-        (kip [ki].num_members >= 0))
-      return 1;
+    if (strcmp (kip [ki].contact_name, contact) == 0)
+      return (kip [ki].num_members >= 0);
   }
   return 0;
 }
@@ -1194,7 +1226,246 @@ int remove_from_group (const char * group, const char * contact)
   return 0;
 }
 
+static int groups_for_contact (const char * contact, int * groups, int ngroups)
+{
+  int i;
+  int count = 0;
+  for (i = 0; i < num_key_infos; i++) {
+    if (kip [i].contact_name != NULL) {
+      if (kip [i].num_members > 0) {
+        int m;
+        for (m = 0; m < kip [i].num_members; m++) {
+          if (strcmp (contact, kip [i].members [m]) == 0) {
+            if ((groups != NULL) && (count < ngroups))
+              groups [count] = i;
+            count++;
+          }
+        }
+      }
+    }
+  }
+  return (count);
+}
+
+/* return the count of groups of which this contact or group is a member
+ * 0 if not a member of any group, -1 for errors
+ * if groups is not NULL, also allocates and returns the list of groups */
+int member_of_groups (const char * contact, char *** groups)
+{
+  int count = groups_for_contact (contact, NULL, 0);
+  if ((groups == NULL) || (count <= 0))
+    return count;
+  int * keys = malloc_or_fail (sizeof (int) * count, "member_of_group keys");
+  int recount = groups_for_contact (contact, keys, count);
+  assert (count == recount);
+  int i;
+  size_t size = 0;
+  for (i = 0; i < count; i++)
+    size += strlen (kip [keys [i]].contact_name) + 1 + sizeof (char *);
+  char * memory = malloc_or_fail (size, "member_of_group");
+  char ** names = (char **) memory;
+  memory += (count * sizeof (char *));
+  for (i = 0; i < count; i++) {
+    strcpy (memory, kip [keys [i]].contact_name);
+    names [i] = memory;
+    memory += strlen (memory) + 1;
+  }
+  *groups = names;
+  free (keys);
+  return count;
+}
+
+/* identical to string_in_array, except for the order of parameters
+static int is_in_group (const char * contact, char ** group, int n_group)
+{
+  int i;
+  for (i = 0; i < n_group; i++)
+    if (strcmp (contact, group [i]) == 0)
+      return 1;
+  return 0;
+}
+*/
+
+static int string_in_array (char ** array, int count, const char * string)
+{
+  int i;
+  for (i = 0; i < count; i++)
+    if (strcmp (string, array [i]) == 0)
+      return 1;
+  return 0;
+}
+
+/* doesn't change the allocated memory, but returns the new count */
+static int remove_from_array (char ** array, int count, const char * string)
+{
+  int i = 0;
+  while (i < count) {
+    if (strcmp (string, array [i]) == 0) {
+      count--;
+      array [i] = array [count];  /* replace with the last element */
+    } else {
+      i++;
+    }
+  }
+  return count;
+}
+
+/* assumes it's OK to reorder */
+static int eliminate_duplicates (char ** from, int fcount)
+{
+  int i = 0;
+  while (i < fcount) {             /* each loop, incr i or decr fcount */
+    int j;
+    int increment = 1;             /* increment i if no match found */
+    for (j = i + 1; j < fcount; j++) {
+      if (strcmp (from [i], from [j]) == 0) {
+        increment = 0;
+        fcount--;
+        from [j] = from [fcount];  /* put the last one in position j */
+        break;                     /* and start over with fcount less by 1 */
+      }
+    }
+    i += increment;                /* i++ or no change to i */
+  }
+  return fcount;
+}
+
+/* assumes it's OK to reorder */
+static int merge_no_duplicates (char ** a, int acount, char ** b, int bcount,
+                                char *** result)
+{
+  int i;
+  size_t needed = 0;  /* allocate for the duplicates too -- simpler */
+  int count = acount + bcount;
+  for (i = 0; i < acount; i++)
+    needed += sizeof (char *) + strlen (a [i]) + 1;
+  for (i = 0; i < bcount; i++)
+    needed += sizeof (char *) + strlen (b [i]) + 1;
+  char * memory = malloc_or_fail (needed, "merge_no_duplicates");
+  char ** res = (char **) memory;
+  *result = res;
+  char * strings = memory + (count * sizeof (char *));
+  count = 0;
+  for (i = 0; i < acount; i++) {
+    if (! string_in_array (res, count, a [i])) {
+      strcpy (strings, a [i]);
+      res [count] = strings;
+      strings += (strlen (res [count]) + 1);
+      count++;
+    }
+  }
+  for (i = 0; i < bcount; i++) {
+    if (! string_in_array (res, count, b [i])) {
+      strcpy (strings, b [i]);
+      res [count] = strings;
+      strings += (strlen (res [count]) + 1);
+      count++;
+    }
+  }
+  return count;
+}
+
+/* same as member_of_groups, but also lists the groups of this
+ * contact's groups, and so on recursively */
+int member_of_groups_recursive (const char * contact, char *** groups)
+{
+  char ** first_groups = NULL;
+  *groups = NULL;
+  int first_count = member_of_groups (contact, &first_groups);
+  if ((first_count <= 0) || (first_groups == NULL)) {
+    if (first_groups != NULL)
+      free (first_groups);
+    if (first_count > 0)
+      first_count = -1;   /* first_groups is null, so there was some error */
+    return first_count;
+  }
+  /* if self is in group, remove */
+  first_count = remove_from_array (first_groups, first_count, contact);
+  int i = 0;
+  char ** current_groups = first_groups;
+  int count = eliminate_duplicates (first_groups, first_count);
+  while (i < count) {  /* add any supergroup, but at most once */
+    char ** local_groups = NULL;
+    int local_count = member_of_groups (current_groups [i], &local_groups);
+    if ((local_count > 0) && (local_groups != NULL)) {
+      char ** new_groups = NULL;
+      int new_count = merge_no_duplicates (current_groups, count,
+                                           local_groups, local_count,
+                                           &new_groups);
+      if (new_count > count) {
+        free (current_groups);
+        current_groups = new_groups;
+        count = new_count;
+/* note - relying on groups not disappearing from current_groups.
+   Otherwise should change i and start over again */
+      } else {
+        free (new_groups);
+      }
+      free (local_groups);
+    }
+    i++;
+  }
+  *groups = current_groups;
+  return count;
+}
+
 /*************** operations on keysets and keys ********************/
+
+#ifdef RECURSIVELY_INCLUDE_GROUP_KEYS
+/* recursively (up to max depth) count keysets for groups */
+/* return -1 if a recursive loop is detected, as indicated by max_depth <= 0 */
+/* if keysets is not null, assign up to the first num_keysets */
+static int recursive_num_keysets (const char * contact, int max_depth,
+                                  keyset * keysets, int num_keysets)
+{
+  if (max_depth <= 0)
+    return -1;
+  int i;
+  int count = 0;
+  for (i = 0; i < num_key_infos; i++) {
+    if ((kip [i].contact_name != NULL) &&
+        (strcmp (kip [i].contact_name, contact) == 0)) {
+      if (kip [i].num_members < 0) {
+        if ((keysets != NULL) && (num_keysets > count))
+          keysets [count] = i;
+        count++;
+      } else {  /* recursively count each member's keys */
+        int m;
+        for (m = 0; m < kip [i].num_members; m++) {
+          int result = 
+            recursive_num_keysets (kip [i].members [m], max_depth - 1,
+                                   keysets + count, num_keysets - count);
+          if (result < 0)
+            return result;
+          count += result;
+        }
+      }
+    }
+  }
+  return count;
+}
+
+#else /* ! RECURSIVELY_INCLUDE_GROUP_KEYS */
+
+/* count keysets -- same as above, but returns 0 for groups */
+/* if keysets is not null, assign up to the first num_keysets */
+static int plain_num_keysets (const char * contact,
+                              keyset * keysets, int num_keysets)
+{
+  int i;
+  int count = 0;
+  for (i = 0; i < num_key_infos; i++) {
+    if ((kip [i].contact_name != NULL) &&
+        (strcmp (kip [i].contact_name, contact) == 0) &&
+        (kip [i].num_members < 0)) {
+      if ((keysets != NULL) && (num_keysets > count))
+        keysets [count] = i;
+      count++;
+    }
+  }
+  return count;
+}
+#endif /* RECURSIVELY_INCLUDE_GROUP_KEYS */
 
 /* returns -1 if the contact does not exist, and 0 or more otherwise */
 int num_keysets (const char * contact)
@@ -1202,13 +1473,11 @@ int num_keysets (const char * contact)
   init_from_file ();
   if (! contact_exists (contact))
     return -1;
-  int i;
-  int count = 0;
-  for (i = 0; i < cp_used; i++) {
-    if (strcmp (cpx [i], contact) == 0)
-      count++;
-  }
-  return count;
+#ifdef RECURSIVELY_INCLUDE_GROUP_KEYS
+  return recursive_num_keysets (contact, num_key_infos + 1, NULL, 0);
+#else /* ! RECURSIVELY_INCLUDE_GROUP_KEYS */
+  return plain_num_keysets (contact, NULL, 0);
+#endif /* RECURSIVELY_INCLUDE_GROUP_KEYS */
 }
 
 /* returns the number of keysets.
@@ -1223,26 +1492,23 @@ int all_keys (const char * contact, keyset ** keysets)
 
   if (! contact_exists (contact))
     return -1;
-  int i;
-  int count = 0;
-  for (i = 0; i < num_key_infos; i++) {
-    if ((kip [i].contact_name != NULL) &&
-        (strcmp (kip [i].contact_name, contact) == 0))
-      count++;
-  }
-  if (keysets == NULL)
+#ifdef RECURSIVELY_INCLUDE_GROUP_KEYS
+  int count = recursive_num_keysets (contact, num_key_infos + 1, NULL, 0);
+#else /* ! RECURSIVELY_INCLUDE_GROUP_KEYS */
+  int count = plain_num_keysets (contact, NULL, 0);
+#endif /* RECURSIVELY_INCLUDE_GROUP_KEYS */
+
+  if ((keysets == NULL) || (count < 0))
     return count;
 
   *keysets = malloc_or_fail (count * sizeof (keyset), "all_keys");
-
-  int copied = 0;
-  for (i = 0; i < num_key_infos; i++) {
-    if ((kip [i].contact_name != NULL) &&
-        (strcmp (kip [i].contact_name, contact) == 0))
-      (*keysets) [copied++] = i;
-  }
+#ifdef RECURSIVELY_INCLUDE_GROUP_KEYS
+  int copied = recursive_num_keysets (contact, num_key_infos + 1,
+                                      *keysets, count);
+#else /* ! RECURSIVELY_INCLUDE_GROUP_KEYS */
+  int copied = plain_num_keysets (contact, *keysets, count);
+#endif /* RECURSIVELY_INCLUDE_GROUP_KEYS */
   assert (copied == count);
-
   return count;
 }
 
@@ -2257,10 +2523,12 @@ int main ()
           create_contact ("edo", 8192, 1, NULL, 0, NULL, 0, addr, 18));
   printf ("create_contact (foo) returns %d\n",
           create_contact ("foo", 8192, 1, NULL, 0, NULL, 0, addr, 18));
-  const keyset * ks;
+  const keyset * ks = NULL;
   int nk = all_keys ("edo", &ks);
   char * key;
   int ksize = get_my_privkey (ks [0], &key);
   printf ("private key (edo/%d/%d) is '%s'/%d\n", nk, ks [0], key, ksize);
+  if (nk > 0)
+    free (ks);
 }
 #endif /* TEST_KEYS */

@@ -70,6 +70,15 @@ extern int group_membership (const char * group, char *** members);
 extern int add_to_group (const char * group, const char * contact);
 extern int remove_from_group (const char * group, const char * contact);
 
+/* return the count of groups of which this contact or group is a member
+ * 0 if not a member of any group, -1 for errors
+ * if groups is not NULL, also allocates and returns the list of groups */
+extern int member_of_groups (const char * contact, char *** groups);
+/* same, but also lists the groups of this contact's groups, and so on
+ * recursively */
+extern int member_of_groups_recursive (const char * contact, char *** groups);
+
+
 /*************** operations on keysets and keys ********************/
 
 /* returns -1 if the contact does not exist, and 0 or more otherwise */
