@@ -112,19 +112,26 @@ public class Message implements java.lang.Comparable<Message> {
     public int compareTo(Message m) {
       if (m == null)
         return 0;   // unknown
-      if ((this.sentNotReceived == m.sentNotReceived) &&
-          (this.sequence >= 0) && (m.sequence >= 0)) { // compare seq numbers
-          if (this.sequence < m.sequence)
-            return -1;
-          else if (this.sequence > m.sequence)
-            return 1;
-      }   // else, compare times and dates
+      // originally had this comparison, which is useful to show messages
+      // in sequence order.  However, if we later send
+      // a message with an earlier sequence number, it sorts to be
+      // earlier than sent messages with later sequence numbers,
+      // but later than messages received earlier.  This causes an
+      // inconsistent sort, with Java gets unhappy about
+      // (and throws an exception which is mighty hard to debug)
+      // discovered during a bug when I was sending everything with seq 1
+//      if ((this.sentNotReceived == m.sentNotReceived) &&
+//          (this.sequence >= 0) && (m.sequence >= 0)) { // compare seq numbers
+//          if (this.sequence < m.sequence)
+//            return -1;
+//          else if (this.sequence > m.sequence)
+//            return 1;
+//      }   // just compare times and dates
       if (this.sentTime < m.sentTime)
           return -1;
       else if (this.sentTime > m.sentTime)
           return 1;
-      else 
-          return 0;
+      return 0;  // equal
     }
 
     // always returns false if file time is null
