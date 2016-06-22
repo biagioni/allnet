@@ -153,9 +153,12 @@ class UI extends ApplicationFrame {
                 }
             }); // end of invokeAndWait
         }
-        catch (InterruptedException | InvocationTargetException ex) {
+        catch (InterruptedException ex) {
             // Logger.getLogger(AllnetUI.class.getName()).log(Level.SEVERE, null, ex);
-            System.out.println(ex);
+            System.out.println(ex + " in application entry point");
+        }
+        catch (InvocationTargetException ex) {
+            System.out.println(ex + " with cause " + ex.getCause ());
         }
     }
 }
