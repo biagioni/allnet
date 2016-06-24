@@ -123,8 +123,8 @@ int init_chat_descriptor (struct chat_descriptor * cp, const char * contact)
 /* can only do_save if also do_ack */
 static int send_to_one (keyset k, char * data, int dsize,
                         const char * contact, int sock,
-                        unsigned char * src, int sbits,
-                        unsigned char * dst, int dbits,
+                        unsigned char * src, unsigned int sbits,
+                        unsigned char * dst, unsigned int dbits,
                         int hops, int priority, int do_ack,
                         unsigned char * ack, int do_save)
 {
@@ -279,42 +279,81 @@ int resend_packet (char * data, int dsize, const char * contact,
                       NULL, ADDRESS_BITS, hops, priority, 1, ack, 0);
 }
 
-/* send to the contact, returning 1 if successful, 0 otherwise */
-/* if src is NULL, source address is taken from get_local, likewise for dst */
-/* if so, uses the lesser of s/dbits and the address bits */
-/* the message ACK must be set at the start of the data */
-/* unless ack_and_save is 0, requests an ack, and after the message is sent,
- * calls save_outgoing. */
-/* calls itself recursively for groups -- only works if groups do not include
- * each other recursively */
-int send_to_contact (char * data, int dsize,
-                     const char * contact, int sock,
-                     unsigned char * src, int sbits,
-                     unsigned char * dst, int dbits,
-                     int hops, int priority, int ack_and_save)
+/* send to the contact's specific key, returning 1 if successful, 0 otherwise */
+/* the xchat_descriptor must already have been initialized */
+int send_to_key (char * data, int dsize,
+                 const char * contact, keyset key, int sock,
+                 int hops, int priority, int ack_and_save)
+{
+  unsigned char src [ADDRESS_SIZE];
+  unsigned char dst [ADDRESS_SIZE];
+  unsigned int sbits = get_local (key, src);
+  unsigned int dbits = get_remote (key, dst);
+  return send_to_one (key, data, dsize, contact, sock,
+                      src, sbits, dst, dbits, hops, priority,
+                      ack_and_save, NULL, ack_and_save);
+}
+
+static unsigned long long int send_to_group (int depth, char * data, int dsize,
+                                             const char * contact, int sock,
+                                             int hops, int priority,
+                                             int ack_and_save)
+{
+  if (depth > 100)  /* oo recursion, something wrong */
+    return 0;
+  if (! is_group (contact))
+    return 0;
+  char ** members = NULL;
+  int n = group_contacts (contact, &members);
+  if ((n <=0) || (members == NULL))
+    return 0;
+  unsigned long long int result = 0;
+  int success = 1;
+  int i;
+  for (i = 0; ((success) && (i < n)); i++) {
+    unsigned long long int seq = 0;
+    if (is_group (members [i])) {
+      printf ("error: result %s (%d/%d) from group_contacts (%s) is group\n",
+              members [i], i, n, contact);
+    } else {
+#ifdef DEBUG_PRINT
+      printf ("send_to_group %s sending to contact %s\n",
+              contact, members [i]);
+#endif /* DEBUG_PRINT */
+      seq = send_to_contact (data, dsize, members [i], sock,
+                             hops, priority, ack_and_save);
+    }
+    success = (seq > 0);
+    if (seq > result)
+      result = seq;
+  }
+  free (members);
+  if (! success)
+    return 0;
+  return result;
+}
+
+/* send to the contact, returning the sequence number if successful, else 0 */
+/* the message ACK (if any) must be set at the start of the data */
+/* unless ack_and_save is 0, requests an ack, and calls save_outgoing. */
+/* if contact is a group, sends to each member of the group and returns
+ * the largest sequence number */
+/* the message must include room for the chat descriptor 
+ * and (if ack_and_save) for the ack, both initialized by this call. */
+unsigned long long int send_to_contact (char * data, int dsize,
+                                        const char * contact, int sock,
+                                        int hops, int priority,
+                                        int ack_and_save)
 {
   if (is_group (contact)) {
-    char ** members = NULL;
-    int n = group_membership (contact, &members);
-    if (members != NULL) {
-      static int max_depth = 0;   /* detect likely infinite recursion */
-      if (max_depth++ > 100) {    /* infinite recursion likely */
-        printf ("detected likely infinite recursion in send_to_contact %s\n",
-                contact);
-        max_depth--;
-        return 0;
-      }
-      int success = 1;
-      int i;
-      for (i = 0; ((success) && (i < n)); i++)
-        success = send_to_contact (data, dsize, members [i], sock, src, sbits,
-                                   dst, dbits, hops, priority, ack_and_save);
-      free (members);
-      max_depth--;
-      return success;
-    }
-    return 0;
+      return send_to_group (0, data, dsize, contact, sock,
+                            hops, priority, ack_and_save);
   }
+  if (dsize < sizeof (struct chat_descriptor))
+    return 0;
+  if (! init_chat_descriptor ((struct chat_descriptor *) data, contact))
+    return 0;
+  struct chat_descriptor * cp = (struct chat_descriptor *) data;
   /* get the keys */
   keyset * keys = NULL;
   int nkeys = all_keys (contact, &keys);
@@ -322,14 +361,15 @@ int send_to_contact (char * data, int dsize,
     printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
     return 0;
   }
-  int result = 1;
   int k;
-  for (k = 0; ((result) && (k < nkeys)); k++)
-    result = send_to_one (keys [k], data, dsize, contact, sock, src, sbits,
-                          dst, dbits, hops, priority,
-                          ack_and_save, NULL, ack_and_save);
+  int success = 1;
+  for (k = 0; ((success) && (k < nkeys)); k++)
+    success = send_to_key (data, dsize, contact, keys [k], sock,
+                           hops, priority, ack_and_save);
   free (keys);
-  return result;
+  if (success)
+    return (readb64u (cp->counter));
+  return 0;  /* ! success */
 }
 
 char * chat_time_to_string (unsigned char * t, int static_result)

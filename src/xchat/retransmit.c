@@ -147,18 +147,8 @@ int send_retransmit_request (char * contact, keyset k, int sock,
   free (missing);
   if (request == NULL)
     return 0;
-
-  keyset * keys = NULL;
-  int nkeys = all_keys (contact, &keys);
-  int i;
-  int result = 1;
-  for (i = 0; i < nkeys; i++)
-    if (0 == send_to_contact (request, size, contact, sock,
-                              NULL, 32, NULL, 32, hops, priority, 0))
-      result = 0;
+  int result = send_to_key (request, size, contact, k, sock, hops, priority, 0);
   free (request);
-  if ((nkeys > 0) && (keys != NULL))
-    free (keys);
   return result;
 }
 
@@ -205,8 +195,8 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
   }
   writeb64u (cdp->counter, counter);  /* final sequence number */
   /* since this is sort of a housekeeping message, send with minimum priority */
-  send_to_contact (message, msize, contact, sock, NULL, ADDRESS_BITS,
-                   NULL, ADDRESS_BITS, hops, ALLNET_PRIORITY_EPSILON, 1);
+  send_to_key (message, msize, contact, k, sock,
+               hops, ALLNET_PRIORITY_EPSILON, 1);
   free (message);
 }
 

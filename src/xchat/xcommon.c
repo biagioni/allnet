@@ -133,8 +133,8 @@ static int random_hop_count ()
 static void * request_cached_data (void * arg)
 {
   int sock = * (int *) arg;
-  /* initial sleep is 30s-90s, slowly grow to ~1hr */
-  int sleep_time = (int)random_int (30, 90);
+  /* initial sleep is 3s-10s, slowly grow to ~20min */
+  int sleep_time = (int)random_int (3, 10);
   while (1) {  /* loop forever, unless the socket is closed */
 #define BITMAP_BITS_LOG	8  /* 11 or less to keep packet size below 1K */
 #define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
@@ -174,11 +174,11 @@ static void * request_cached_data (void * arg)
       return NULL;
     }
     sleep (sleep_time);
-    if (sleep_time >= 3600)
-      sleep_time = (int)random_int (2400, 3600);
-    else  /* increase sleep time by 1.2 plus 30 seconds */
-      sleep_time = (int)random_int (sleep_time + 30,
-                                    (sleep_time * 12) / 10 + 30);
+    if (sleep_time >= 900)
+      sleep_time = (int)random_int (900 /* 15min */ , 1200 /* 20min */ );
+    else  /* increase sleep time by 1.2 plus 5 seconds */
+      sleep_time = (int)random_int (sleep_time + 5,
+                                    (sleep_time * 12) / 10 + 5);
   }
 }
 
@@ -917,6 +917,7 @@ long long int send_data_message (int sock, char * peer,
 
   int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
   char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
+#if 0  /* now done in send_to_contact */
   struct chat_descriptor * cp = (struct chat_descriptor *) data_with_cd;
   if (! init_chat_descriptor (cp, peer)) {
     printf ("unknown contact %s\n", peer);
@@ -924,14 +925,16 @@ long long int send_data_message (int sock, char * peer,
     return 0;
   }
   uint64_t seq = readb64u (cp->counter);
+#endif /* 0 */
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
 #ifdef DEBUG_PRINT
   printf ("sending seq %ju:\n", (uintmax_t)seq);
   print_buffer (data_with_cd, dsize, "sending", 64, 1);
 #endif /* DEBUG_PRINT */
   /* send_to_contact initializes the message ack in data_with_cd/cp */
-  send_to_contact (data_with_cd, dsize, peer, sock,
-                   NULL, 16, NULL, 16, 4, ALLNET_PRIORITY_LOCAL, 1);
+  unsigned long long int seq =
+    send_to_contact (data_with_cd, dsize, peer, sock,
+                     6, ALLNET_PRIORITY_LOCAL, 1);
   free (data_with_cd);
   return seq;
 }
@@ -967,8 +970,8 @@ void request_and_resend (int sock, char * contact, keyset kset)
 
   /* request retransmission of any missing messages */
   int hops = 10;
-  send_retransmit_request (contact, kset, sock, hops,
-                           ALLNET_PRIORITY_LOCAL_LOW);
+  send_retransmit_request (contact, kset, sock,
+                           hops, ALLNET_PRIORITY_LOCAL_LOW);
 
   /* resend any unacked messages, but no more than once every hour */
   static time_t last_resend = 0;

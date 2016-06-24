@@ -12,16 +12,22 @@
 extern int init_chat_descriptor (struct chat_descriptor * cp,
                                  const char * contact);
 
-/* send to the contact, returning 1 if successful, 0 otherwise */
-/* if src is NULL, source address is taken from get_source, likewise for dst */
-/* if so, uses the lesser of s/dbits and the address bits */
-/* unless ack_and_save is 0, requests an ack, and after the message is sent,
- * calls save_outgoing. */
-extern int send_to_contact (char * data, int dsize,
-                            const char * contact, int sock,
-                            unsigned char * src, int sbits,
-                            unsigned char * dst, int dbits,
-                            int hops, int priority, int ack_and_save);
+/* send to the contact, returning the sequence number if successful, else 0 */
+/* unless ack_and_save is 0, requests an ack, and calls save_outgoing. */
+/* if contact is a group, sends to each member of the group and returns
+ * the largest sequence number sent */
+/* the message must include room for the chat descriptor
+ * and (if ack_and_save) for the ack, both initialized by this call. */
+extern unsigned long long int send_to_contact (char * data, int dsize,
+                                               const char * contact, int sock,
+                                               int hops, int priority,
+                                               int ack_and_save);
+
+/* send to the contact's specific key, returning 1 if successful, 0 otherwise */
+/* the xchat_descriptor must already have been initialized */
+extern int send_to_key (char * data, int dsize,
+                        const char * contact, keyset key,
+                        int sock, int hops, int priority, int ack_and_save);
 
 /* same as send_to_contact, but only sends to the one key corresponding
  * to key, and does not save outgoing.  Does request ack, and
