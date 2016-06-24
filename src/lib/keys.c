@@ -1310,6 +1310,23 @@ static int remove_from_array (char ** array, int count, const char * string)
   return count;
 }
 
+#if 0 /* not used */
+/* doesn't change the allocated memory, but returns the new count */
+static int remove_groups (char ** array, int count)
+{
+  int i = 0;
+  while (i < count) {
+    if (is_group (array [i])) {
+      count--;
+      array [i] = array [count];  /* replace with the last element */
+    } else {
+      i++;
+    }
+  }
+  return count;
+}
+#endif /* 0 */
+
 /* assumes it's OK to reorder */
 static int eliminate_duplicates (char ** from, int fcount)
 {
@@ -1381,9 +1398,9 @@ int member_of_groups_recursive (const char * contact, char *** groups)
   }
   /* if self is in group, remove */
   first_count = remove_from_array (first_groups, first_count, contact);
-  int i = 0;
-  char ** current_groups = first_groups;
   int count = eliminate_duplicates (first_groups, first_count);
+  char ** current_groups = first_groups;
+  int i = 0;
   while (i < count) {  /* add any supergroup, but at most once */
     char ** local_groups = NULL;
     int local_count = member_of_groups (current_groups [i], &local_groups);
@@ -1407,6 +1424,78 @@ int member_of_groups_recursive (const char * contact, char *** groups)
   }
   *groups = current_groups;
   return count;
+}
+
+static int add_to_array (char *** array, int count, const char * value)
+{
+  int i;
+  char ** strings = *array;
+  size_t size = sizeof (char *) + strlen (value) + 1;
+  if (*array != NULL) {
+    for (i = 0; i < count; i++)
+      size += sizeof (char *) + strlen (strings [i]) + 1;
+  }
+  char * mem = malloc_or_fail (size, "add_to_array");
+  char ** res = (char **) mem;
+  mem += (count + 1) * sizeof (char *);
+  for (i = 0; i < count; i++) {
+    strcpy (mem, strings [i]);
+    res [i] = mem;
+    mem += strlen (strings [i]) + 1;
+  }
+  strcpy (mem, value);
+  res [count] = mem;
+  *array = res;
+  return count + 1;
+}
+
+/* same as group_membership, but (a) recursively examines all groups
+ * and subgroups, and (b) includes one each of all non-group members
+ * of all (sub)groups */
+int group_contacts (const char * group, char *** members)   
+{
+  if (members != NULL)
+    *members = NULL;
+  if (! is_group (group))
+    return 0;
+  char ** all_members = NULL;
+  int nmembers = 0;
+  /* track the groups we add in case they refer to each other recursively */
+  /* begin with ourselves */
+  char ** subgroups = NULL;
+  int ngroups = add_to_array (&subgroups, 0, group);
+  int i = 0;
+  while (i < ngroups) {  /* add the members of each subgroup, at most once */
+    char ** local_members = NULL;
+    int local_count = group_membership (subgroups [i], &local_members);
+    /* add each member to subgroups or all_members, unless already there */
+    int j;
+    for (j = 0; j < local_count; j++) {
+      const char * member = local_members [j];
+      if (is_group (member)) {
+        if (! string_in_array (subgroups, ngroups, member)) {
+          /* increases ngroups, loops longer */
+          ngroups = add_to_array (&subgroups, ngroups, member);
+        }
+      } else {  /* not a group */
+        if (! string_in_array (all_members, nmembers, member)) {
+          nmembers = add_to_array (&all_members, nmembers, member);
+        }
+      }
+    }
+    i++;  /* process next subgroup */
+  }
+  free (subgroups);
+  if (members != NULL)
+    *members = all_members;
+  else
+    free (all_members);
+#ifdef DEBUG_PRINT
+  printf ("end of group_contacts, returning %d members:\n", nmembers);
+  for (i = 0; i < nmembers; i++)
+    printf ("   [%d] %s\n", i, all_members [i]);
+#endif /* DEBUG_PRINT */
+  return nmembers;
 }
 
 /*************** operations on keysets and keys ********************/

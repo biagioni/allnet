@@ -64,6 +64,10 @@ extern int create_group (const char * group);
  * in a dynamically allocated array (if not NULL, must be free'd) */
 extern int group_membership (const char * group, char *** members);   
 
+/* same, but (a) recursively examines all groups and subgroups, and
+ * (b) includes one each of all non-group members of all (sub)groups */
+extern int group_contacts (const char * group, char *** members);   
+
 /* these return 0 for failure, 1 for success.  Reason for failures
  * include non-existence of the group or contact, or the group being
  * an individual contact rather than a group */
