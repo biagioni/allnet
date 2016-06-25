@@ -2,10 +2,15 @@ package allnetui;
 
 import java.awt.*;
 import java.awt.event.*;
+import java.util.ArrayList;
 import javax.swing.*;
 import javax.swing.border.Border;
-import javax.swing.border.LineBorder;
+import javax.swing.text.AbstractDocument;
+import javax.swing.text.AttributeSet;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DocumentFilter;
 import utils.HtmlLabel;
+import utils.MessageBubble;
 import utils.RoundedBorder;
 import utils.ScrollPaneResizeAdapter;
 
@@ -26,6 +31,11 @@ class ConversationPanel extends JPanel {
     //
     private static final long DAY = 86400 * 1000;
     //
+    // max height of input area
+    private static final int MAX_LINES = 10;
+    // assume that N chars will wrap around (a little rough I guess)
+    private static final int CHARS_PER_LINE = 40;
+    //
     // message bubble border params
     private int borderWidth = 1;
     private int borderRadius = 10;
@@ -37,9 +47,9 @@ class ConversationPanel extends JPanel {
     private HtmlLabel topLabel;
     private JScrollPane scrollPane;
     private boolean scrollToBottom;
-    private JTextField msgField;
+    private JTextArea inputArea;
     // the buttons
-    private JButton send;
+    private JButton sendButton;
     // the command prefix will identify which instance of the Class is sending the event
     private String commandPrefix;
     // default colors to use
@@ -47,13 +57,11 @@ class ConversationPanel extends JPanel {
     private static Color broadcastColor = Color.LIGHT_GRAY;
     private static Color ackedColor = Color.GREEN;
     private static Color newColor = Color.CYAN;
-    // everything needed to turn messages green once they are acked
-    private java.util.LinkedList<Message> unackedM = null;
-    private java.util.LinkedList<JPanel> unackedP = null;
-    private java.util.LinkedList<java.util.Vector<JLabel>> unackedL = null;
+    // keep list of the message bubbles that have yet to be acked
+    private ArrayList<MessageBubble<Message>> unackedBubbles;
 
     ConversationPanel(String info, String commandPrefix, String contactName,
-            boolean createDialogBox) {
+        boolean createDialogBox) {
         this.commandPrefix = commandPrefix;
         this.contactName = contactName;
         setBackground(background);
@@ -66,8 +74,8 @@ class ConversationPanel extends JPanel {
         // make the panel to hold the messages
         messagePanel = makeMessagePanel(background);
         scrollPane = new JScrollPane(messagePanel,
-                ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
-                ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
+            ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
+            ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         // must set a min and preferred size for the scroll pane
         // Dimension scrDim = new Dimension(250, 250);
         Dimension scrDim = new Dimension(1, 1);
@@ -81,18 +89,35 @@ class ConversationPanel extends JPanel {
         scrollPane.getVerticalScrollBar().setUnitIncrement(10);
         // make it scroll to the bottom when we add something
         scrollPane.getVerticalScrollBar().addAdjustmentListener(
-                new MyAdjustmentListener());
+            new MyAdjustmentListener());
         // make it scroll to the bottom when resized
         scrollPane.getVerticalScrollBar().addComponentListener(
-                new ScrollPaneResizeAdapter(scrollPane, true));
+            new ScrollPaneResizeAdapter(scrollPane, true));
         //
-        unackedM = new java.util.LinkedList<Message>();
-        unackedP = new java.util.LinkedList<JPanel>();
-        unackedL = new java.util.LinkedList<java.util.Vector<JLabel>>();
-        // make the text input components
-        msgField = new JTextField();
-        msgField.setActionCommand(commandPrefix + ":" + SEND_COMMAND);
-        send = makeButton("Send", SEND_COMMAND);
+        unackedBubbles = new ArrayList<>();
+        //
+        // make the text input stuff
+        // set default height to one line
+        inputArea = new JTextArea(1, 10);
+        // wrap text
+        inputArea.setWrapStyleWord(true);
+        inputArea.setLineWrap(true);
+        // limit number of lines 
+        MyDocumentFilter filter = new MyDocumentFilter(CHARS_PER_LINE, MAX_LINES, true);
+        AbstractDocument doc = (AbstractDocument) inputArea.getDocument();
+        doc.setDocumentFilter(filter);
+        Border inner = BorderFactory.createLineBorder(Color.WHITE, 4);
+        Border outer = BorderFactory.createLineBorder(Color.BLACK, 1);
+        Border textAreaBorder = BorderFactory.createCompoundBorder(outer, inner);
+        inputArea.setBorder(textAreaBorder);
+        //
+        sendButton = makeButton("Send", SEND_COMMAND);
+        JPanel sendPanel = new JPanel();
+        sendPanel.setOpaque(true);
+        sendPanel.setBackground(background);
+        sendPanel.setLayout(new BoxLayout(sendPanel, BoxLayout.Y_AXIS));
+        sendPanel.add(Box.createVerticalGlue());
+        sendPanel.add(sendButton);
         // now add these components to our panel
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
@@ -119,11 +144,11 @@ class ConversationPanel extends JPanel {
             gbc.weighty = 0.0;
             gbc.weightx = 1.0;
             gbc.gridwidth = 2;
-            add(msgField, gbc);
+            add(inputArea, gbc);
             gbc.gridwidth = 1;
             gbc.gridx = 2;
             gbc.weightx = 0.0;
-            add(send, gbc);
+            add(sendPanel, gbc);
         }
     }
 
@@ -143,13 +168,13 @@ class ConversationPanel extends JPanel {
     }
 
     public String getMsgToSend() {
-        String msg = msgField.getText();
-        msgField.setText("");
+        String msg = inputArea.getText();
+        inputArea.setText("");
         return (msg);
     }
 
     static void setDefaultColors(Color background, Color foreground,
-            Color broadcastColor, Color ackedColor) {
+        Color broadcastColor, Color ackedColor) {
         ConversationPanel.background = background;
         ConversationPanel.foreground = foreground;
         ConversationPanel.broadcastColor = broadcastColor;
@@ -157,9 +182,9 @@ class ConversationPanel extends JPanel {
     }
 
     void setListener(ActionListener listener) {
-        send.addActionListener(listener);
-        // send event when return key is entered
-        msgField.addActionListener(listener);
+        sendButton.addActionListener(listener);
+        // no longer want to send event when return key is entered
+        // msgField.addActionListener(listener);
     }
 
     private JButton makeButton(String text, String command) {
@@ -175,7 +200,7 @@ class ConversationPanel extends JPanel {
         return (panel);
     }
 
-    private Color getMsgColor (Message msg, boolean isReceived) {
+    private Color getMsgColor(Message msg, boolean isReceived) {
         if (msg.acked()) {
             return ackedColor;
         }
@@ -196,7 +221,7 @@ class ConversationPanel extends JPanel {
                 r = (float) (1.0 - ((1.0 - r) * scale));
                 g = (float) (1.0 - ((1.0 - g) * scale));
                 b = (float) (1.0 - ((1.0 - b) * scale));
-                return new Color (r, g, b, a);
+                return new Color(r, g, b, a);
             }
         }
         return Color.WHITE;
@@ -204,15 +229,19 @@ class ConversationPanel extends JPanel {
 
     public void addMsg(String text, Message msg) {
         boolean isReceived = msg.to.equals(Message.SELF);
+        boolean broadcast = msg.isBroadcast();
         boolean acked = msg.acked();
+        boolean isNew = (msg.isNewMessage()
+            || (isReceived && (msg.receivedAt() + DAY > System.currentTimeMillis())));
         String[] lines = text.split("\n");
-        Color bg = getMsgColor(msg, isReceived);
-        java.util.LinkedList<java.util.Vector<JLabel>> labels = null;
-        if (!acked) {
-            labels = unackedL;
-        }
 
-        JPanel bubble = makeBubble(isReceived, bg, labels, lines);
+        Color bg = getMsgColor(msg, isReceived);
+
+        // Color bg = broadcast ? broadcastColor : acked ? ackedColor
+        //    : isNew ? newColor : Color.WHITE;
+//
+        MessageBubble<Message> bubble = new MessageBubble<>(msg, isReceived, bg, lines);
+        bubble.setBorder(new RoundedBorder(borderColor, borderWidth, borderRadius, borderInset));
         JPanel inner = new JPanel();
         inner.setBackground(background);
         inner.setLayout(new BoxLayout(inner, BoxLayout.X_AXIS));
@@ -224,11 +253,6 @@ class ConversationPanel extends JPanel {
             inner.add(Box.createHorizontalGlue());
             inner.add(bubble);
         }
-        if (!acked) {  // should parallel what happens in makeBubble
-            // i.e. only add if not acked
-            unackedM.addFirst(msg);
-            unackedP.addFirst(bubble);
-        }
         messagePanel.add(inner);
         messagePanel.add(Box.createRigidArea(new Dimension(0, 4)));
         // tell scroll panel to scroll to the bottom the next time it adjusts,
@@ -236,88 +260,34 @@ class ConversationPanel extends JPanel {
         // apparently no other way to do this 
         scrollToBottom = true;
         messagePanel.revalidate();
+        //
+        // update ack tracking
+        if (!acked) {
+            // i.e. only add if not acked
+            unackedBubbles.add(bubble);
+        }
     }
 
     void ackMsg(Message msg) {
-        for (int i = 0; i < unackedM.size(); i++) {
-            if (unackedM.get(i).equals(msg)) {
-                unackedP.get(i).setBackground(ackedColor);
-                for (JLabel label : unackedL.get(i)) {
-                    label.setBackground(ackedColor);
-                }
-                unackedM.remove(i);
-                unackedP.remove(i);
-                unackedL.remove(i);
-                return;
+        for (MessageBubble<Message> bubble : unackedBubbles) {
+            if (bubble.getMessage().equals(msg)) {
+                unackedBubbles.remove(bubble);
             }
         }
         messagePanel.revalidate();
     }
 
-    private JPanel makeBubble(boolean leftJustified, Color color,
-            java.util.LinkedList<java.util.Vector<JLabel>> labels,
-            String... lines) {
-        JPanel panel = new JPanel();
-        panel.setBackground(color);
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        JLabel label;
-        java.util.Vector<JLabel> labelv = new java.util.Vector<JLabel>();
-        for (int i = 0; i < lines.length; i++) {
-            label = new JLabel(lines[i]);
-            label.setOpaque(true);
-            label.setBackground(color);
-            if (leftJustified) {
-                label.setAlignmentX(Component.LEFT_ALIGNMENT);
-            }
-            else {
-                label.setAlignmentX(Component.RIGHT_ALIGNMENT);
-            }
-            panel.add(label);
-            if (labels != null) {
-                labelv.add(label);
-            }
-        }
-        if (labels != null) {
-            labels.addFirst(labelv);
-        }
-        // Border compound = BorderFactory.createCompoundBorder(new LineBorder(Color.BLACK, 1, true), new LineBorder(color, 2, true));
-        // panel.setBorder(new LineBorder(Color.BLACK, 1, true));
-        // panel.setBorder(compound);
-        panel.setBorder(new RoundedBorder(borderColor, borderWidth, borderRadius, borderInset));
-        return (panel);
-    }
-
-    // not used: text area doesn't size correctly inside a scroll pane
-    private JTextArea makeBubble1(String... lines) {
-        JTextArea panel = new JTextArea();
-        panel.setBackground(Color.WHITE);
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        JLabel label;
-        for (int i = 0; i < lines.length; i++) {
-            label = new JLabel(lines[i]);
-            label.setOpaque(true);
-            label.setBackground(Color.WHITE);
-            panel.add(label);
-        }
-        Border compound = BorderFactory.createCompoundBorder(new LineBorder(Color.BLACK, 1, true), new LineBorder(Color.WHITE, 2, true));
-        panel.setBorder(compound);
-        return (panel);
-    }
-
     public void clearMsgs() {
         messagePanel.removeAll();
         messagePanel.validate();
-    }
-
-    void removeAllMsgs() {
-        messagePanel.removeAll();
-        validate();
+        unackedBubbles.clear();
     }
 
     void setTopLabelText(String... lines) {
         topLabel.setText(lines);
     }
 
+    // used to make scroll pane scroll to the bottom on changes
     private class MyAdjustmentListener implements AdjustmentListener {
 
         private MyAdjustmentListener() {
@@ -329,6 +299,89 @@ class ConversationPanel extends JPanel {
                 scrollToBottom = false;
                 e.getAdjustable().setValue(e.getAdjustable().getMaximum());
             }
+        }
+    }
+
+    // used to limit the growth of the inputArea
+    private class MyDocumentFilter extends DocumentFilter {
+
+        private int charsPerLine, maxLines;
+        private boolean beep;
+
+        private MyDocumentFilter(int charsPerLine, int maxLines, boolean beep) {
+            this.charsPerLine = charsPerLine;
+            this.maxLines = maxLines;
+            this.beep = beep;
+        }
+
+        @Override
+        public void insertString(DocumentFilter.FilterBypass fb, int offs,
+            String str, AttributeSet a)
+            throws BadLocationException {
+            // construct the new text, and then test it
+            String text = fb.getDocument().getText(0, fb.getDocument().getLength());
+            if (offs == 0) {
+                text = str + text;
+            }
+            else if (offs == text.length()) {
+                text = text + str;
+            }
+            else {
+                text = text.substring(0, offs) + str + text.substring(offs, text.length());
+            }
+
+            if (goNoGo(text)) {
+                super.insertString(fb, offs, str, a);
+            }
+            else if (beep) {
+                Toolkit.getDefaultToolkit().beep();
+            }
+        }
+
+        @Override
+        public void replace(DocumentFilter.FilterBypass fb, int offs,
+            int length,
+            String str, AttributeSet a)
+            throws BadLocationException {
+            // construct the new text, and then test it
+            String text = fb.getDocument().getText(0, fb.getDocument().getLength());
+            if (offs == 0) {
+                text = str + text;
+            }
+            else if (offs == text.length()) {
+                text = text + str;
+            }
+            else {
+                text = text.substring(0, offs) + str + text.substring(offs + length, text.length());
+            }
+            // System.out.println(text);
+            if (goNoGo(text)) {
+                super.replace(fb, offs, length, str, a);
+            }
+            else if (beep) {
+                Toolkit.getDefaultToolkit().beep();
+            }
+        }
+
+        private boolean goNoGo(String text) {
+            int lines = 1;
+            int ptr = 0;
+            int charCount = 0;
+            while (ptr < text.length()) {
+                if (text.charAt(ptr) == '\n') {
+                    lines++;
+                    charCount = 0;
+                }
+                else {
+                    charCount++;
+                    if (charCount >= charsPerLine) {
+                        lines++;
+                        charCount = 0;
+                    }
+                }
+                ptr++;
+            }
+            return (lines <= maxLines);
         }
     }
 
