@@ -359,7 +359,14 @@ public class ConversationData {
                     in.mark(maxLine);
                     textLine = in.readLine();
                 }
-                // found a line that is not a text line
+                // finished reading the text.  gracefully handle
+                // empty lines and other weird stuff, whether
+                // caused by bugs or manual editing of the text file
+                while ((textLine != null) && (textLine.length() < 10)) {
+                    in.mark(maxLine);
+                    textLine = in.readLine();
+                }
+                // found a line that is not a text line and length >= 10
                 in.reset();
             } catch (java.io.IOException e) {   // reached EOF, text is good
             }
