@@ -548,9 +548,12 @@ static void store_save_message (int fd, const char * message, int mlen)
   buffer [0] = ' ';
   int to = 1;
   for (from = 0; from < mlen; from++) {
-    buffer [to++] = message [from];
-    if ((from + 1 < mlen) && (buffer [to - 1] == '\n'))
-      buffer [to++] = ' ';
+    if ((from + 1 < mlen) || (message [from] != '\n')) {
+    /* the if is so we don't copy the last \n, if any */
+      buffer [to++] = message [from];
+      if (message [from] == '\n')
+        buffer [to++] = ' ';
+    }
   }
   buffer [to++] = '\n';
   buffer [to] = '\0';
