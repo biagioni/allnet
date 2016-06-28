@@ -33,6 +33,15 @@
 
 static struct allnet_log * alog = NULL;
 
+/* time constants for requesting cached and missing data */
+#define SLEEP_INITIAL_MIN	3  /* seconds */
+#define SLEEP_INITIAL_MAX	10 /* seconds */
+#define SLEEP_INCREASE_NUMERATOR	12  /* 12/10, 20% increase */
+#define SLEEP_INCREASE_DENOMINATOR	10
+#define SLEEP_INCREASE_MIN	5  /* each time increase by at least 5s */
+#define SLEEP_MAX_THRESHOLD	900   /* seconds -- 15min */
+#define SLEEP_MAX		1200  /* seconds -- 20min */
+
 /* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
  * and power_two must be less than 32.
  * if local_addrs, uses local adresses, otherwise remote addresses
@@ -136,7 +145,7 @@ static void * request_cached_data (void * arg)
 {
   int sock = * (int *) arg;
   /* initial sleep is 3s-10s, slowly grow to ~20min */
-  int sleep_time = (int)random_int (3, 10);
+  int sleep_time = (int)random_int (SLEEP_INITIAL_MIN, SLEEP_INITIAL_MAX);
   while (1) {  /* loop forever, unless the socket is closed */
 #define BITMAP_BITS_LOG	8  /* 11 or less to keep packet size below 1K */
 #define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
@@ -176,11 +185,13 @@ static void * request_cached_data (void * arg)
       return NULL;
     }
     sleep (sleep_time);
-    if (sleep_time >= 900)
-      sleep_time = (int)random_int (900 /* 15min */ , 1200 /* 20min */ );
+    if (sleep_time >= SLEEP_MAX_THRESHOLD)
+      sleep_time = (int)random_int (SLEEP_MAX_THRESHOLD, SLEEP_MAX);
     else  /* increase sleep time by 1.2 plus 5 seconds */
-      sleep_time = (int)random_int (sleep_time + 5,
-                                    (sleep_time * 12) / 10 + 5);
+      sleep_time = (int)random_int (sleep_time + SLEEP_INCREASE_MIN,
+                                    ((sleep_time * SLEEP_INCREASE_NUMERATOR) /
+                                     SLEEP_INCREASE_DENOMINATOR) +
+                                    SLEEP_INCREASE_MIN);
   }
 }
 
