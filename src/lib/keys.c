@@ -619,6 +619,8 @@ printf ("querying contact %s\n", contacts [ic]);
     if (ngr > 0)
       free (rec_groups);
   }
+  if ((nc > 0) && (contacts != NULL))
+    free (contacts);
 #endif /* TEST_GROUP_MEMBERSHIP */
 }
 
@@ -631,16 +633,47 @@ int num_contacts ()
   return cp_used;
 }
 
-/* returns the number of contacts, and has contacts point to a statically
- * allocated array of pointers to statically allocated null-terminated
- * contact names (do not modify in any way). */
+static char ** malloc_copy_array_of_strings (char ** array, int count)
+{
+  if ((array == NULL) || (count <= 0))
+    return NULL;
+  int i;
+  size_t size = 0;
+  for (i = 0; i < count; i++) /* room for char * and the string including \0 */
+    size += sizeof (char *) + strlen (array [i]) + 1;
+  char * mem = malloc_or_fail (size, "malloc_copy_array_of_strings");
+  char ** result = (char **) mem;
+  mem += count * sizeof (char *);  /* copy the strings after the pointers */
+  for (i = 0; i < count; i++) {
+    strcpy (mem, array [i]);
+    result [i] = mem;
+    mem += strlen (result [i]) + 1;
+  }
+  return result;
+}
+
+/* returns the number of contacts, and (if not NULL) has contacts point
+ * to a dynamically allocated array of pointers to null-terminated
+ * contact names (to free, call free (*contacts)). */
 int all_contacts (char *** contacts)
 {
   init_from_file ();
+#if 0
+  static int test = 1;
+  if (test) {
+    char * a [] = { "foo", "bar2", "baz" };
+    int i;
+    for (i = 0; i < 3; i++) printf ("a %p [%d] = %p, %s\n", a, i, a [i], a [i]);
+    char ** b = malloc_copy_array_of_strings (a, 3);
+    for (i = 0; i < 3; i++) printf ("b %p [%d] = %p, %s\n", b, i, b [i], b [i]);
+    test = 0;
+  }
+#endif /* 0 */
 #ifdef DEBUG_PRINT
   print_contacts ("entering all_contacts");
 #endif /* DEBUG_PRINT */
-  *contacts = cpx;
+  if (contacts != NULL)
+    *contacts = malloc_copy_array_of_strings (cpx, cp_used);
   return cp_used;
 }
 

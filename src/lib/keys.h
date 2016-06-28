@@ -21,9 +21,9 @@ typedef int keyset;  /* opaque type, do not access directly */
 /* returns 0 or more */
 extern int num_contacts ();
 
-/* returns the number of contacts, and has contacts point to a statically
- * allocated array of pointers to statically allocated null-terminated
- * contact names (do not modify in any way). */
+/* returns the number of contacts, and (if not NULL) has contacts point
+ * to a dynamically allocated array of pointers to null-terminated
+ * contact names (to free, call free (*contacts)). */
 extern int all_contacts (char *** contacts);
 
 /* returns the keyset if successful, -1 if the contact already existed
