@@ -48,7 +48,7 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
   if (power_two > 3)
     bsize = 1 << (power_two - 3);
   bzero (bitmap, bsize);
-  char ** contacts;
+  char ** contacts = NULL;
   int ncontacts = all_contacts (&contacts);
   int icontact;
   for (icontact = 0; icontact < ncontacts; icontact++) {
@@ -113,6 +113,8 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
     if ((nkeysets > 0) && (keysets != NULL))
       free (keysets);
   }
+  if ((ncontacts > 0) && (contacts != NULL))
+    free (contacts);
   return res;
 }
 
@@ -267,7 +269,7 @@ static void do_request_and_resend (int sock)
 
   char * * contacts = NULL;
   int num_contacts = all_contacts (&contacts);
-  if (num_contacts <= 0)
+  if ((num_contacts <= 0) || (contacts == NULL))
     return;
 
   int contact;
@@ -280,7 +282,9 @@ static void do_request_and_resend (int sock)
         request_and_resend (sock, contacts [contact], keysets [keyset]);
       free (keysets);
     }
-  }  /* slow the requests down to once every 20 minutes or so (0-40min) */
+  }
+  free (contacts);
+  /* slow the requests down to once every 20 minutes or so (0-40min) */
   interval = random_int (0, 2400);
 }
 

@@ -299,7 +299,7 @@ static int check_signature (const struct allnet_header * hp,
 
   if (contact == NULL) {
     /* ..try all contact's keys */
-    char ** contacts;
+    char ** contacts = NULL;
     int nc = all_contacts (&contacts);
     int ic;
     for (ic = 0; ic < nc; ic++) {
@@ -310,7 +310,8 @@ static int check_signature (const struct allnet_header * hp,
         return ssize + SIG_LENGTH_SIZE;
       }
     }
-
+    if ((nc > 0) && (contacts != NULL))
+      free (contacts);
   } else {
     if (check_contact_signature (payload, vsize, sig, ssize, contact, prvkey,
                                  pubkey))

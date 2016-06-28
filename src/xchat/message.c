@@ -182,7 +182,7 @@ void save_incoming (const char * contact, keyset k,
  */
 uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
 {
-  char ** contacts;
+  char ** contacts = NULL;
   int nc = all_contacts (&contacts);
   int c;
   for (c = 0; c < nc; c++) {
@@ -201,12 +201,15 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
         if (kset != NULL)
           *kset = ksets [k];
         free (ksets);
+        free (contacts);
         return seq;
       }
     }
     if ((nk > 0) && (ksets != NULL))
       free (ksets);
   }
+  if ((nc > 0) && (contacts != NULL))
+    free (contacts);
   return 0;
 }
 
@@ -518,6 +521,8 @@ void fill_message_id_cache ()
     if ((nkeys > 0) && (keys != NULL))
       free (keys);
   }
+  if ((ncontacts > 0) && (contacts != NULL))
+    free (contacts);
 #ifdef DEBUG_PRINT
   printf ("fill_message_id_cache took %lluus, %d/%d saved\n",
   allnet_time_us () - start, current_message_id, MESSAGE_ID_CACHE_SIZE);

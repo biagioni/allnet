@@ -163,7 +163,7 @@ static int is_my_contact (char * message, int msize,
                           int algo, char * sig, int ssize,
                           struct allnet_log * log)
 {
-  char ** contacts;
+  char ** contacts = NULL;
   int nc = all_contacts (&contacts);
   int ic;
   for (ic = 0; ic < nc; ic++) {
@@ -186,6 +186,8 @@ static int is_my_contact (char * message, int msize,
     if ((nk > 0) && (keysets != NULL))
       free (keysets);
   }
+  if ((nc > 0) && (contacts != NULL))
+    free (contacts);
 
   struct bc_key_info * bc;
   int nbc = get_other_keys (&bc);

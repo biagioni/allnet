@@ -313,9 +313,6 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   *contact = NULL;
   *kset = -1;
   *text = NULL;
-  char ** contacts;
-  int free_contacts = 0;  /* if we randomize, contacts will be malloc'd */
-  int ncontacts = all_contacts (&contacts);
   int ssize = 0;
   if (sig_algo != ALLNET_SIGTYPE_NONE)  /* has signature */
     ssize = readb16 (encrypted + esize - 2) + 2;
@@ -326,9 +323,10 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   int i, j;
   int count = 0;
   int decrypt_count = 0;
+  char ** contacts = NULL;
+  int ncontacts = all_contacts (&contacts);
   if ((maxcontacts > 0) && (maxcontacts < ncontacts)) {
     contacts = randomize_contacts (contacts, ncontacts, maxcontacts);
-    free_contacts = 1;
     ncontacts = maxcontacts;
   }
   for (i = 0; ((*contact == NULL) && (i < ncontacts)); i++) {
@@ -383,7 +381,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
                   decrypt_count, time_delta / 1000000, time_delta % 1000000);
 #endif /* DEBUG_PRINT */
           free (keys);
-          if (free_contacts) free (contacts);
+          if (contacts != NULL) free (contacts);
           if (sig_algo != ALLNET_SIGTYPE_NONE)
             return res;
           else
@@ -397,7 +395,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
     if ((nkeys > 0) && (keys != NULL))
       free (keys);
   }
-  if (free_contacts) free (contacts);
+  if (contacts != NULL) free (contacts);
 #ifdef DEBUG_PRINT
   printf ("unable to decrypt packet, dropping\n");
   unsigned long long int time_delta = allnet_time_us () - start;

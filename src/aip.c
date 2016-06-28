@@ -927,6 +927,8 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
     if ((num_keysets > 0) && (keysets != NULL))
       free (keysets);
   }
+  if ((num_contacts > 0) && (contacts != NULL))
+    free (contacts);
   for (i = 0; i < NUM_LISTENERS; i++) {
     if (! in_use [i]) {   /* close socket (if any) if it is not in use */
       if (listener_fds [i] >= 0)
