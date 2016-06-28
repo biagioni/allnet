@@ -267,11 +267,13 @@ class ConversationPanel extends JPanel {
             unackedBubbles.add(bubble);
         }
     }
-
+ 
     void ackMsg(Message msg) {
         for (MessageBubble<Message> bubble : unackedBubbles) {
             if (bubble.getMessage().equals(msg)) {
                 unackedBubbles.remove(bubble);
+                bubble.setBubbleBackground(ackedColor);
+                break;
             }
         }
         messagePanel.revalidate();
