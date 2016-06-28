@@ -30,6 +30,7 @@
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
 #include "lib/trace_util.h"
+#include "lib/configfiles.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -274,6 +275,13 @@ static void find_path (char * arg, char ** path, char ** program)
   }
 }
 
+/* return 1 if the contact is visible (no file "hidden"), 0 otherwise */
+static int is_visible (const char * contact)
+{
+  printf ("visible %s is %d\n", contact, (config_file_mod_time ("xchat", "hidden") == 0));
+  return (config_file_mod_time ("xchat", "hidden") == 0);
+}
+
 /* returned value is malloc'd. */
 static char * make_program_path (char * path, char * program)
 {
@@ -453,13 +461,15 @@ static int unacked_count = 0;
 
 static void add_to_unacked (long long int seq, char * contact)
 {
-  char ** contacts;
+  char ** contacts = NULL;
   int ncontacts = all_contacts (&contacts);
   int contact_index = -1;
   int i;
   for (i = 0; i < ncontacts; i++)
     if (strcmp (contact, contacts [i]) == 0)
       contact_index = i;
+  if ((ncontacts > 0) && (contacts != NULL))
+    free (contacts);
   if (contact_index < 0) {
     printf ("xchat_socket: contact %s not found\n", contact);
     return;
@@ -693,13 +703,25 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
                               subscription, saddr, sbits);
       if ((mlen > 0) && (verified)) {
         int mtype = CODE_DATA_MESSAGE; /* data */
-        if (broadcast) {
+        if (broadcast)
           mtype = CODE_BROADCAST_MESSAGE;  /* broadcast */
-        }
         if (broadcast || (! duplicate)) {
-          send_message (forwarding_socket,
-                        (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                        mtype, mtime, peer, message);
+          struct sockaddr * sap = (struct sockaddr *) (&fwd_addr);
+          if (is_visible (peer))
+            send_message (forwarding_socket, sap, fwd_addr_size,
+                          mtype, mtime, peer, message);
+          char ** groups = NULL;
+          int ngroups = member_of_groups_recursive (peer, &groups);
+          if (ngroups > 0) {
+            int ig;
+            for (ig = 0; ig < ngroups; ig++) {
+              if (is_visible (groups [ig]))
+                send_message (forwarding_socket, sap, fwd_addr_size,
+                              mtype, mtime, groups [ig], message);
+            }
+          }
+          if (groups != NULL)
+            free (groups);
         }
         if ((! broadcast) &&
             ((old_contact == NULL) ||
