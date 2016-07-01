@@ -1052,6 +1052,88 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   return new_contact;
 }
 
+/* a contact may be marked as invalid/deleted.  Nothing is deleted,
+ * but the contact can no longer be accessed unless undeleted again.
+ * deleted_contacts returns the number of deleted contacts, or 0.
+ * if not 0, the contacts array is malloc'd, should be free'd. */
+int deleted_contacts (char ** contacts)
+{
+  printf ("deleted_contacts not implemented\n");
+  exit (1);
+}
+
+static void move_to_deleted (const char * dirname)
+{
+  /* delete from file system, or rather, move to .allnet/contacts_deleted */
+  char * newname = string_replace_once (dirname, "contacts",
+                                        "contacts_deleted", 0);
+  /* deleted_dir is the destination directory */
+  char * deleted_dir = strcpy_malloc (newname, "dir in delete_contact");
+  char * pos = rindex(deleted_dir, '/');
+  if (pos != NULL)
+    *pos = '\0';  /* delete string from the last slash onwards */
+  /* make sure contacts_deleted exists */
+  create_dir (deleted_dir);
+  free (deleted_dir);
+  int res = rename (dirname, newname);
+  if (res < 0)
+    perror ("rename in move_to_deleted");
+  printf ("moved %s to %s, result %d\n", dirname, newname, res);
+  free (newname);
+}
+
+static void free_key_info (int key)
+{
+  struct key_info * k = kip + key;
+  if (k->contact_name != NULL)
+    free (k->contact_name);
+  if (k->num_members < 0) {
+    if (! allnet_rsa_pubkey_is_null (k->contact_pubkey))
+      allnet_rsa_free_pubkey (k->contact_pubkey);
+    if (! allnet_rsa_prvkey_is_null (k->my_key))
+      allnet_rsa_free_prvkey (k->my_key);
+  }
+  if (k->dir_name != NULL)
+    free (k->dir_name);
+  if ((k->num_members > 0) && (k->members != NULL))
+    free (k->members);
+  /* notice -- moving keys around causes existing keysets to be invalidated
+   * this might cause a race condition if free_key_info is called in one
+   * thread while another thread is working through the keyset for a contact
+   * the only solution I can think of (2016/07/01) is to change the
+   * type of a keyset so it's no longer an int -- not a great solution.
+   * it would also be possible to mark an entry as deleted so keysets
+   * don't change. */
+  if (cp_used > 1)  /* copy the last one in place of this */
+    kip [key] = kip [cp_used - 1];
+  cp_used--;
+}
+
+/* un/delete_contact return 1 for success, 0 if not successful */
+int delete_contact (const char * contact)
+{
+  int key = 0;
+  int deleted = 0;
+  while (key < cp_used) {  /* each loop, key++ or in free_key_info cp_used-- */
+    if (strcmp (cpx [key], contact) == 0) {
+ /* delete from file system, or rather, move to .allnet/contacts_deleted */
+      move_to_deleted (kip [key].dir_name);
+ /* now delete from data structure -- decrements cp_used */
+      free_key_info (key);
+      deleted = 1;
+    } else {
+      key++;
+    }
+  }
+  return deleted;
+}
+
+int undelete_contact (const char * contact)
+{
+  printf ("undelete_contacts not implemented\n");
+  exit (1);
+}
+
 /* create a spare key of the given size, returning the number of spare keys.
  * if random is not NULL and rsize >= keybits / 8, uses the bytes from
  * random to randomize the generated key
