@@ -278,7 +278,10 @@ static void find_path (char * arg, char ** path, char ** program)
 /* return 1 if the contact is visible (no file "hidden"), 0 otherwise */
 static int is_visible (const char * contact)
 {
-  printf ("visible %s is %d\n", contact, (config_file_mod_time ("xchat", "hidden") == 0));
+#ifdef DEBUG_PRINT
+  printf ("visible %s is %d\n", contact,
+          (config_file_mod_time ("xchat", "hidden") == 0));
+#endif /* DEBUG_PRINT */
   return (config_file_mod_time ("xchat", "hidden") == 0);
 }
 
