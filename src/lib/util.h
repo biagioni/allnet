@@ -12,17 +12,17 @@
  * desc is printed first unless it is null
  * a newline is printed after if print_eol
  */
-extern void print_buffer (const char * buffer, int count, char * desc,
+extern void print_buffer (const char * buffer, int count, const char * desc,
                           int max, int print_eol);
 /* same as print_buffer, but prints to the given string */
 /* if all goes well, returns the number of characters printed */
-extern int buffer_to_string (const char * buffer, int count, char * desc,
+extern int buffer_to_string (const char * buffer, int count, const char * desc,
                              int max, int print_eol, char * to, int tsize);
 
-extern void print_packet (const char * buffer, int count, char * desc,
+extern void print_packet (const char * buffer, int count, const char * desc,
                           int print_eol);
 /* same as print_buffer, but prints to the given string */
-extern void packet_to_string (const char * buffer, int count, char * desc,
+extern void packet_to_string (const char * buffer, int count, const char * desc,
                               int print_eol, char * to, int tsize);
 
 /* buffer must be at least ALLNET_SIZE(transport) bytes long
@@ -65,8 +65,8 @@ extern struct allnet_header *
 /* *size is set to the size to send */
 /* if from is NULL, the source address is taken from packet->destination */
 extern struct allnet_header *
-  create_ack (struct allnet_header * packet, unsigned char * ack,
-              unsigned char * from, int nbits, int * size);
+  create_ack (struct allnet_header * packet, const unsigned char * ack,
+              const unsigned char * from, int nbits, int * size);
 
 /* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
  * offset (in bits) within x, nbits the number of bits to print */
@@ -75,12 +75,13 @@ extern void print_bitstring (const unsigned char * x, int xoff, int nbits,
 
 /* print an arbitrary socket address */
 /* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
-extern void print_sockaddr (struct sockaddr * sap, int addr_size, int tcp);
-extern int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
-                               char * string, int string_size);
+extern void print_sockaddr (const struct sockaddr * sap, int addr_size,
+                            int tcp);
+extern int print_sockaddr_str (const struct sockaddr * sap, int addr_size,
+                               int tcp, char * string, int string_size);
 
 /* print a message with the current time */
-extern void print_timestamp (char * message);
+extern void print_timestamp (const char * message);
 
 /* it is a good idea to understand the difference between the next three
  * functions, and use the correct one.
@@ -131,7 +132,8 @@ extern void allnet_localtime_string (unsigned long long int allnet_seconds,
 #define ALLNET_HALF_SECOND_IN_US  (ALLNET_US_PER_S / 2)
 
 /* if t1 < t2, returns 0, otherwise returns t1 - t2 */
-extern unsigned long long delta_us (const struct timeval * t1, const struct timeval * t2);
+extern unsigned long long delta_us (const struct timeval * t1,
+                                    const struct timeval * t2);
 
 extern void add_us (struct timeval * t, unsigned long long us);
 
@@ -162,11 +164,10 @@ extern char * strcat3_malloc (const char * s1, const char * s2,
  * If the pattern is not found in the original, the new string is a copy
  * of the old, and optionally an error message is printed
  * result is malloc'd, must be free'd (unless the original was NULL) */
-extern char * string_replace_once (char * original, char * pattern, char * repl,
-                                   int print_not_found);
+extern char * string_replace_once (const char * original, const char * pattern,
+                                   const char * repl, int print_not_found);
 /* copy memory to new storage, using malloc_or_fail to get the memory */
 extern void * memcpy_malloc (const void * bytes, int bsize, const char * desc);
-
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.

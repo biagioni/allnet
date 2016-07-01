@@ -43,7 +43,7 @@
  * desc is printed first unless it is null
  * a newline is printed after if print_eol
  */
-void print_buffer (const char * buffer, int count, char * desc,
+void print_buffer (const char * buffer, int count, const char * desc,
                    int max, int print_eol)
 {
   int i;
@@ -89,7 +89,7 @@ int binary_log (unsigned long long int value)
 }
 
 /* same as print_buffer, but prints to the given string */
-int buffer_to_string (const char * buffer, int count, char * desc,
+int buffer_to_string (const char * buffer, int count, const char * desc,
                       int max, int print_eol, char * to, int tsize)
 {
   int i;
@@ -371,7 +371,7 @@ static int mgmt_to_string (int mtype, const char * hp, int hsize,
 }
 
 /* same as print_buffer, but prints to the given string */
-void packet_to_string (const char * buffer, int bsize, char * desc,
+void packet_to_string (const char * buffer, int bsize, const char * desc,
                        int print_eol, char * to, int tsize)
 {
   int off = 0;
@@ -470,7 +470,8 @@ void packet_to_string (const char * buffer, int bsize, char * desc,
     off += snprintf (to + off, minz (tsize, off), "\n");
 }
 
-void print_packet (const char * packet, int psize, char * desc, int print_eol)
+void print_packet (const char * packet, int psize, const char * desc,
+                   int print_eol)
 {
   static char buffer [10000];
   packet_to_string (packet, psize, desc, print_eol, buffer, sizeof (buffer));
@@ -567,8 +568,8 @@ struct allnet_header *
 /* *size is set to the size to send */
 /* if from is NULL, the source address is taken from packet->destination */
 struct allnet_header *
-  create_ack (struct allnet_header * packet, unsigned char * ack,
-              unsigned char * from, int nbits, int * size)
+  create_ack (struct allnet_header * packet, const unsigned char * ack,
+              const unsigned char * from, int nbits, int * size)
 {
   *size = 0;   /* in case of early return */
   int alloc_size = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
@@ -594,7 +595,7 @@ struct allnet_header *
   return hp;
 }
 
-int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
+int print_sockaddr_str (const struct sockaddr * sap, int addr_size, int tcp,
                         char * s, int len)
 {
   char * proto = "";
@@ -604,9 +605,9 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
     proto = "/udp";
   if (sap == NULL)
     return snprintf (s, len, "(null %s)", proto);
-  struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
-  struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
-  struct sockaddr_un  * sun  = (struct sockaddr_un  *) sap;
+  const struct sockaddr_in  * sin  = (const struct sockaddr_in  *) sap;
+  const struct sockaddr_in6 * sin6 = (const struct sockaddr_in6 *) sap;
+  const struct sockaddr_un  * sun  = (const struct sockaddr_un  *) sap;
 #ifdef ALLNET_NETPACKET_SUPPORT
   struct sockaddr_ll  * sll  = (struct sockaddr_ll  *) sap;
 #endif /* ALLNET_NETPACKET_SUPPORT */
@@ -676,7 +677,7 @@ int print_sockaddr_str (struct sockaddr * sap, int addr_size, int tcp,
 }
 
 /* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
-void print_sockaddr (struct sockaddr * sap, int addr_size, int tcp)
+void print_sockaddr (const struct sockaddr * sap, int addr_size, int tcp)
 {
   char buffer [1000];
   print_sockaddr_str (sap, addr_size, tcp, buffer, sizeof (buffer));
@@ -684,7 +685,7 @@ void print_sockaddr (struct sockaddr * sap, int addr_size, int tcp)
 }
 
 /* print a message with the current time */
-void print_timestamp (char * message)
+void print_timestamp (const char * message)
 {
   struct timeval now;
   gettimeofday (&now, NULL);
@@ -990,8 +991,8 @@ char * strcat3_malloc (const char * s1, const char * s2, const char * s3,
  * If the pattern is not found in the original, the new string is a copy
  * of the old, and optionally an error message is printed
  * result is malloc'd, must be free'd (unless the original was NULL) */
-char * string_replace_once (char * original, char * pattern, char * repl,
-                            int print_not_found)
+char * string_replace_once (const char * original, const char * pattern,
+                            const char * repl, int print_not_found)
 {
   if (original == NULL) {
     if (print_not_found)
