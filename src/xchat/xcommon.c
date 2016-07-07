@@ -480,7 +480,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
   unsigned long int app = readb32u (cdp->app_media.app);
   if (app != XCHAT_ALLNET_APP_ID) {
 #ifdef DEBUG_PRINT
-    printf ("handle_data ignoring unknown app %08x\n", app);
+    printf ("handle_data ignoring unknown app %08lx\n", app);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
 #endif /* DEBUG_PRINT */
     return 0;
@@ -499,7 +499,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
 #endif /* DEBUG_PRINT */
     } else {
 #ifdef DEBUG_PRINT
-      printf ("chat control media type %08x, only %08x valid, ignoring\n",
+      printf ("chat control media type %08lx, only %08x valid, ignoring\n",
               media, ALLNET_MEDIA_DATA);
       print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
 #endif /* DEBUG_PRINT */
@@ -512,7 +512,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
   if ((media != ALLNET_MEDIA_TEXT_PLAIN) &&
       (media != ALLNET_MEDIA_PUBLIC_KEY)) {
 #ifdef DEBUG_PRINT
-    printf ("handle_data ignoring media type %08x (valid %08x %08x)\n",
+    printf ("handle_data ignoring media type %08lx (valid %08x %08x)\n",
             media, ALLNET_MEDIA_TEXT_PLAIN, ALLNET_MEDIA_PUBLIC_KEY);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
 #endif /* DEBUG_PRINT */
