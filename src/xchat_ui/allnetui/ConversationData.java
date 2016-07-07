@@ -355,7 +355,12 @@ public class ConversationData {
                 while ((textLine != null) && (textLine.length() > 0) &&
                        (textLine.charAt(0) == ' ')) {
                     // get rid of the initial blank
-                    text = text + textLine.substring(1);
+                    String realTextLine = textLine.substring(1);
+                    // add a newline separator if this is not the first line
+                    if (text.equals (""))
+                        text = realTextLine;
+                    else
+                        text = text + "\n" + realTextLine;
                     in.mark(maxLine);
                     textLine = in.readLine();
                 }
