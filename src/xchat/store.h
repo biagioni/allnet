@@ -51,7 +51,8 @@ extern void save_record (const char * contact, keyset k, int type, uint64_t seq,
 
 /* all the information about a message, for list_all_messages */
 struct message_store_info {
-  int msg_type;  /* never includes MSG_TYPE_ACK */
+  keyset keyset;  /* which keyset for this contact */
+  int msg_type;   /* only MSG_TYPE_SENT or MSG_TYPE_RCVD, never MSG_TYPE_ACK */
   uint64_t seq;
   uint64_t prev_missing;        /* only for MSG_TYPE_RCVD, number of sequence
                                  * numbers missing before this one */
@@ -59,6 +60,7 @@ struct message_store_info {
   int tz_min;    /* sender's idea of timezone, in minutes */
   uint64_t rcvd_time;
   int message_has_been_acked;  /* for MSG_TYPE_SENT, 1 if acked, 0 otherwise */
+  char ack [MESSAGE_ID_SIZE];  /* for acked MSG_TYPE_SENT, the ack */
   const char * message;
   size_t msize;
 };
@@ -83,10 +85,10 @@ extern void free_all_messages (struct message_store_info * msgs, int num_used);
  * normally call after calling save_record
  * return 1 if successful, 0 if not */
 extern int add_message (struct message_store_info ** msgs, int * num_alloc,
-                        int * num_used, int position,
+                        int * num_used, int position, keyset keyset,
                         int type, uint64_t seq, uint64_t missing,
-                        uint64_t time, int tz_min,
-                        uint64_t rcvd_time, int acked,
+                        uint64_t time, int tz_min, uint64_t rcvd_time,
+                        int acked, const char * ack,
                         const char * message, int msize);
 
 #endif /* ALLNET_CHAT_STORE_H */
