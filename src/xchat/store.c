@@ -497,7 +497,7 @@ static int prev_message_in_memory
 {
   int index = iter->message_cache_index;
   int pos = iter->last_message_index;
-  if (index >= message_cache_count) /* invalid iterator */
+  if ((index < 0) || (index >= message_cache_count)) /* invalid iterator */
     return MSG_TYPE_DONE;
   if (pos < 0)                      /* iterator completed */
     return MSG_TYPE_DONE;
@@ -519,20 +519,20 @@ static int prev_message_in_memory
                 tz_min, msgs [pos].tz_min, rcvd_time, msgs [pos].rcvd_time,
                 message_ack, msgs [pos].ack,
                 message, msgs [pos].message, msize, msgs [pos].msize);
-    iter->last_message_index = iter->last_message_index - 1;
+    /* do not change last_message_index, just clear ack_returned */
     iter->ack_returned = 0;
     return MSG_TYPE_SENT;
   }
-  /* find the preceding message in this keyset */
+  /* find the preceding message with this keyset */
   while (--pos >= 0) {
     if (msgs [pos].keyset == iter->k) {
       break;
     }
   }
+  iter->last_message_index = pos;
   if (pos < 0)                      /* iterator completed */
     return MSG_TYPE_DONE;
   /* pos >= 0, msgs [pos].keyset == iter->k -- we will return this message */
-  iter->last_message_index = pos;
   if ((msgs [pos].msg_type == MSG_TYPE_SENT) &&
       (msgs [pos].message_has_been_acked)) {  /* return the ack */
     set_result (seq, 0, time, 0, tz_min, 0, rcvd_time, 0,
@@ -727,6 +727,21 @@ static void set_missing (struct message_store_info * msgs, int num_used,
   }
 }
 
+/* set the message_has_been_acked of each sent message acked by this message */
+static void ack_one_message (struct message_store_info * msgs, int num_used,
+                             const char * ack)
+{
+  int i;
+  for (i = 0; i < num_used; i++) {
+    /* acknowledge any sent messages acked by this ack message */
+    if ((msgs [i].msg_type == MSG_TYPE_SENT) &&
+        (! msgs [i].message_has_been_acked) &&
+        (memcmp (msgs [i].ack, ack, MESSAGE_ID_SIZE) == 0)) {
+      msgs [i].message_has_been_acked = 1;
+    }
+  }
+}
+
 /* set the message_has_been_acked of each acked sent message.  quadratic loop */
 static void ack_all_messages (struct message_store_info * msgs, int num_used,
                               const char * contact, keyset k)
@@ -740,19 +755,8 @@ static void ack_all_messages (struct message_store_info * msgs, int num_used,
   char ack [MESSAGE_ID_SIZE];
   int next = prev_message (&iter, NULL, NULL, NULL, NULL, ack, NULL, NULL);
   while (next != MSG_TYPE_DONE) {
-    if (next == MSG_TYPE_ACK) {
-      int i;
-      for (i = 0; i < num_used; i++) {
-        /* acknowledge any sent messages acked by this ack message */
-        if ((msgs [i].msg_type == MSG_TYPE_SENT) &&
-            (msgs [i].msize >= MESSAGE_ID_SIZE) &&
-            (! msgs [i].message_has_been_acked) &&
-            (memcmp (msgs [i].ack, ack, MESSAGE_ID_SIZE) == 0)) {
-          msgs [i].message_has_been_acked = 1;
-          memcpy (msgs [i].ack, ack, MESSAGE_ID_SIZE);
-        }
-      }
-    }
+    if (next == MSG_TYPE_ACK)
+      ack_one_message (msgs, num_used, ack);
     next = prev_message (&iter, NULL, NULL, NULL, NULL, ack, NULL, NULL);
   }
   free_unallocated_iter (&iter);
@@ -919,11 +923,13 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
       if (type == MSG_TYPE_RCVD) /* may change prev_missing */
         set_missing (message_cache [index].msgs,
                      message_cache [index].num_used, k);
+      if (type == MSG_TYPE_SENT) /* may change message_has_been_acked */
+        ack_all_messages (message_cache [index].msgs,
+                          message_cache [index].num_used, contact, k);
+    } else if (type == MSG_TYPE_ACK) {
+      ack_one_message (message_cache [index].msgs,
+                       message_cache [index].num_used, message_ack);
     }
-    /* ack_all_messages uses the saved messages, so this one MUST be
-     * called after saving */
-    ack_all_messages (message_cache [index].msgs,
-                      message_cache [index].num_used, contact, k);
   }
 }
 
@@ -1104,9 +1110,10 @@ int list_all_messages (const char * contact,
     set_missing (*msgs, *num_used, k [ik]);
   }
   free (k);
+#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
   /* test code -- let's see if everything is set correctly */
-  if (strcmp (contact, "test-ios-sim") == 0) {
+  if (strcmp (contact, "edo-on-maru") == 0) {
     int i;
     for (i = 0; i < *num_used; i++) {
       struct message_store_info * msg = (*msgs) + i;
@@ -1124,6 +1131,7 @@ int list_all_messages (const char * contact,
     }
   }
 #endif /* DEBUG_PRINT */
+#undef DEBUG_PRINT
   return 1;
 }
 
