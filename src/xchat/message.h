@@ -55,7 +55,7 @@ extern void save_incoming (const char * contact, keyset k,
  * return 0 if this ack is not recognized
  * if result > 0:
  * if contact is not NULL, the contact is set to point to the
- * contact name (statically allocated, do not modify in any way) and
+ * contact name (dynamically allocated, must be free'd) and
  * if kset is not null, the location it points to is set to the keyset
  */
 extern uint64_t ack_received (const char * message_ack,

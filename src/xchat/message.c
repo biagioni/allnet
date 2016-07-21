@@ -131,6 +131,8 @@ char * get_outgoing (const char * contact, keyset k, uint64_t seq,
                      int * size, uint64_t * time, char * message_ack)
 {
   struct msg_iter * iter = start_iter (contact, k);
+  if (iter == NULL)  /* non-existent contact or no messages */
+    return NULL;
   int type;
   uint64_t mseq;
   uint64_t mtime;
@@ -177,12 +179,16 @@ void save_incoming (const char * contact, keyset k,
  * return 0 if this ack is not recognized
  * if result > 0:
  * if contact is not NULL, the contact is set to point to the
- * contact name (statically allocated, do not modify in any way) and
+ * contact name (dynamically allocated, must be free'd) and
  * if kset is not null, the location it points to is set to the keyset
  */
 uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
 {
   char ** contacts = NULL;
+  if (contact != NULL)
+    *contact = NULL;
+  if (kset != NULL)
+    *kset = -1;
   int nc = all_contacts (&contacts);
   int c;
   for (c = 0; c < nc; c++) {
@@ -193,11 +199,12 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
       uint64_t seq = find_ack (contacts [c], ksets [k], message_ack,
                                MSG_TYPE_SENT);
       if (seq > 0) {
-        if (! find_ack (contacts [c], ksets [k], message_ack, MSG_TYPE_ACK))
+        if (! find_ack (contacts [c], ksets [k], message_ack, MSG_TYPE_ACK)) {
           save_record (contacts [c], ksets [k], MSG_TYPE_ACK, seq,
                        0, 0, 0, message_ack, NULL, 0);
+        }
         if (contact != NULL)
-          *contact = contacts [c];
+          *contact = strcpy_malloc (contacts [c], "ack_received");
         if (kset != NULL)
           *kset = ksets [k];
         free (ksets);

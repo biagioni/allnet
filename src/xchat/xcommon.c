@@ -331,7 +331,8 @@ static void handle_ack (int sock, char * packet, int psize, int hsize,
                     MESSAGE_ID_SIZE, 1); */
     }
     fflush (NULL);
-/* */
+    if (peer != NULL)
+      free (peer);
     ack += MESSAGE_ID_SIZE;
   }
   if (acks != NULL)
