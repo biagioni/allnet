@@ -312,10 +312,12 @@ static void handle_ack (int sock, char * packet, int psize, int hsize,
     char * peer = NULL;
     keyset kset;
     long long int ack_number = ack_received (ack, &peer, &kset);
+    int free_peer = (peer != NULL);
     if ((ack_number > 0) && (peer != NULL)) {
       if ((acks != NULL) && (ack_count < ALLNET_MAX_ACKS)) {
         acks->acks [ack_count] = ack_number;
         acks->peers [ack_count] = peer;
+        free_peer = 0;   /* saving ack, do not free the peer string */
       }
       ack_count++;
 #ifdef DEBUG_PRINT
@@ -331,7 +333,7 @@ static void handle_ack (int sock, char * packet, int psize, int hsize,
                     MESSAGE_ID_SIZE, 1); */
     }
     fflush (NULL);
-    if (peer != NULL)
+    if (free_peer)
       free (peer);
     ack += MESSAGE_ID_SIZE;
   }

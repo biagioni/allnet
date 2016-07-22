@@ -760,10 +760,12 @@ printf ("got subscription\n");
       }
       /* handle_packet may have changed what has and has not been acked */
       int i;
-      for (i = 0; i < acks.num_acks; i++)
+      for (i = 0; i < acks.num_acks; i++) {
         send_seq_ack (forwarding_socket, (struct sockaddr *) (&fwd_addr),
                       fwd_addr_size, CODE_ACK, time (NULL),
                       acks.peers [i], acks.acks [i]);
+        free (acks.peers [i]);
+      }
     }
   }
 }

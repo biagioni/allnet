@@ -231,6 +231,8 @@ int main (int argc, char ** argv)
           ack_seen = 1;
         }
       }
+      for (i = 0; i < acks.num_acks; i++)
+        free (acks.peers [i]);
     }
     if (mlen > 0) {
       free (peer);
