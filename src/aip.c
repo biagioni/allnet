@@ -757,7 +757,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       }
       struct sockaddr * sap = (struct sockaddr *) (sas + k);
       if (connect (s, sap, salen) < 0) {
-        int n = snprintf (alog->b, alog->s, "unable to connect to ");
+        int n = snprintf (alog->b, alog->s, "unable to connect %d to ", s);
         print_sockaddr_str (sap, salen, 1, alog->b + n, alog->s - n);
         log_error (alog, "listener connect");
         close (s);
