@@ -87,8 +87,8 @@ printf ("alocal wpipes [%d] is %d\n", i, wpipes [i]);
       for (i = 0; i < info->num_fds + num_pipes; i++) {
         int xfd = (i < info->num_fds) ? info->fds [i]
                                       : wpipes [i - info->num_fds];
-if ((xfd > 1000) || (xfd < -1000)) { i = 0; xfd
-    = xfd / i; break; }  /* die if bad xfd */
+if ((xfd > 1000) || (xfd < -1000)) { printf ("bad xfd %d\n", xfd);
+i = 0; xfd = xfd / i; break; }  /* die if bad xfd */
         int same = (fd == xfd);
         if (xfd == rpipe)
           xfd = wpipe;
@@ -141,7 +141,7 @@ void alocal_main (int rpipe, int wpipe,
     int i;
     for (i = 0; i < npipes; i++)
       add_pipe (p, rpipes [i]);
-      for (i = 0; i < npipes; i++) printf ("alocal: now added pipe %d (%d total)\n", rpipes [i], npipes);
+for (i = 0; i < npipes; i++) printf ("alocal: now added pipe %d (%d total)\n", rpipes [i], npipes);
   }
   static struct listen_info info;
   snprintf (alog->b, alog->s, "calling listen_init_info\n");

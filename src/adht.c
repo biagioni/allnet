@@ -277,8 +277,10 @@ void adht_main (char * pname)
   pd p = init_pipe_descriptor (alog);
   static int sock;   /* must be static to pass its addr to send_loop */
   sock = connect_to_local ("adht", pname, p);
-  if (sock < 0)
+  if (sock < 0) {
+    printf ("adht unable to connect to alocal, exiting\n");
     return;
+  }
 
   pthread_t send_thread;
   if (pthread_create (&send_thread, NULL, send_loop, &sock) != 0) {
@@ -293,7 +295,7 @@ void adht_main (char * pname)
     if (found < 0) {
       /* printf ("adht: pipe closed, exiting\n"); */
       pthread_cancel (send_thread);
-      exit (1);
+      return;
     }
 #ifdef DEBUG_PRINT
     print_packet (message, found, "received", 1);
