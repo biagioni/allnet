@@ -115,6 +115,8 @@ static void copy_addr (struct sockaddr * to, struct sockaddr * from)
 
 static int init_socket (struct ifaddrs * ifa)
 {
+  if (ifa->ifa_addr == NULL)  /* can happen */
+    return 0;
   abc_iface_wifi.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM,
                                         ALLNET_WIFI_PROTOCOL);
   if (abc_iface_wifi.iface_sockfd == -1) {
@@ -180,7 +182,8 @@ static int abc_wifi_init (const char * interface, struct allnet_log * log)
   }
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
-    if ((ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
+    if ((ifa->ifa_addr != NULL) &&
+        (ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       struct timeval start;
       gettimeofday (&start, NULL);

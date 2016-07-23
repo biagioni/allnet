@@ -75,7 +75,8 @@ static int abc_ip_init (const char * interface, struct allnet_log * use_log)
   int ret = 0;
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
-    if ((ifa_loop->ifa_addr->sa_family == AF_INET) &&
+    if ((ifa_loop->ifa_addr != NULL) &&
+        (ifa_loop->ifa_addr->sa_family == AF_INET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       if (!(ifa_loop->ifa_flags & IFF_UP)) {
         fprintf (stderr, "abc-ip: interface is down\n");

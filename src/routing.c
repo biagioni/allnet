@@ -956,6 +956,8 @@ int init_own_routing_entries (struct addr_info * entry, int max,
 #ifdef DEBUG_PRINT
       printf ("skipping loopback address\n");
 #endif /* DEBUG_PRINT */
+    } else if (next->ifa_addr == NULL) {
+      printf ("null ifa_addr for interface %s, skipping\n", next->ifa_name);
     } else if (next->ifa_addr->sa_family == AF_INET) {
       struct sockaddr_in * sinp = (struct sockaddr_in *) (next->ifa_addr);
       int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
@@ -990,7 +992,7 @@ int init_own_routing_entries (struct addr_info * entry, int max,
         printf ("ignoring address %02x%02x::\n", high_byte, next_bits);
 #endif /* DEBUG_PRINT */
       }
-    } else {
+    } else {  /* unknown address family, ignore */
 #ifdef DEBUG_PRINT
       printf ("interface %s, ignoring address family %d\n", next->ifa_name,
               next->ifa_addr->sa_family);

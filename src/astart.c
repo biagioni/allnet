@@ -856,6 +856,8 @@ static int in_interface_array (char * name, char ** interfaces, int count)
 
 static char * interface_extra (struct ifaddrs * next)
 {
+  if (next->ifa_addr == NULL)  /* can happen */
+    return "";
   if (next->ifa_addr->sa_family == AF_INET) /* || when add ipv6 to abc-ip.c
       (next->ifa_addr->sa_family == AF_INET6)) */
     return "ip";
