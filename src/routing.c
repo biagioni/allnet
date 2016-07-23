@@ -957,7 +957,10 @@ int init_own_routing_entries (struct addr_info * entry, int max,
       printf ("skipping loopback address\n");
 #endif /* DEBUG_PRINT */
     } else if (next->ifa_addr == NULL) {
-      printf ("null ifa_addr for interface %s, skipping\n", next->ifa_name);
+      static int printed = 0;
+      if (! printed)
+        printf ("null ifa_addr for interface %s, skipping\n", next->ifa_name);
+      printed = 1;
     } else if (next->ifa_addr->sa_family == AF_INET) {
       struct sockaddr_in * sinp = (struct sockaddr_in *) (next->ifa_addr);
       int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
