@@ -592,14 +592,22 @@ printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
   log_print ();
 #endif /* DEBUG_PRINT */
   if (s < 0) {
-    /* we are going to exit, so print everything, unless killed on purpose */
-    do_not_print = (errno == EINTR);
+    /* we are going to exit (unless EBADF), so print everything, unless
+     * killed on purpose (EINTR) */
+    do_not_print = ((errno == EINTR) || (errno == EBADF));
+    char * error_string = "some error";
+    if (errno == EINTR)
+      error_string = "interrupted (EINTR)";
+    if (errno == EBADF)
+      error_string = "bad file descriptor (EBADF)";
     if (! do_not_print)
       perror ("next_available/select");
-    snprintf (p->log->b, p->log->s,
-              "some error in select (errno %d), aborting\n", errno);
+    snprintf (p->log->b, p->log->s, "%s in select (errno %d), aborting\n",
+              error_string, errno);
     log_print (p->log);
     print_pipes (p, "current", max_pipe);
+    if (errno == EBADF)  /* usually, FD closed but not (yet) removed from p */
+      return -1;    /* unable to complete */
     exit (1);
   }
   if (s == 0)
