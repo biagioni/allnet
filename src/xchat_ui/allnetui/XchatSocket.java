@@ -213,7 +213,7 @@ public class XchatSocket extends Thread {
     if ((code == codeDataMessage) || (code == codeBroadcastMessage)) {
       String message = bString (data, nextIndex.value, dlen, nextIndex);
       // System.out.println ("message '" + message + "' from " + peer);
-      boolean broadcastReceived = (code == 1);
+      boolean broadcastReceived = (code == codeBroadcastMessage);
       if (broadcastReceived)
         time = System.currentTimeMillis();
       else
