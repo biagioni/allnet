@@ -284,13 +284,22 @@ char * get_unacked (const char * contact, keyset k, int * singles, int * ranges)
   char * result = malloc_or_fail (MAX_UNACKED * COUNTER_SIZE, "get_unacked");
   int unacked = 0;
   uint64_t i;
+  unsigned long long int now = allnet_time ();
   for (i = last; i > 0; i--) {
-    if (! is_acked_one (contact, k, i)) {
-      writeb64 (result + unacked * COUNTER_SIZE, i);
-      unacked++;
-      if (unacked >= MAX_UNACKED) {
-        *singles = unacked;
-        return result;
+    uint64_t mtime = 0;
+    if (! is_acked_one (contact, k, i, &mtime)) {
+      uint64_t age = ((now > mtime) ? (now - mtime) : 0);
+      long long int selected = random_int (0, age);
+#define ONE_WEEK_SECONDS	(60 * 60 * 24 * 7)
+      /* if it's an old message make it less likely we will resend
+       * if the message is less than a week old, always resend */
+      if (selected < ONE_WEEK_SECONDS) {
+         writeb64 (result + unacked * COUNTER_SIZE, i);
+         unacked++;
+         if (unacked >= MAX_UNACKED) {
+           *singles = unacked;
+           return result;
+        }
       }
     }
   }
@@ -312,7 +321,7 @@ int is_acked (const char * contact, uint64_t seq)
     return 0;
   int k;
   for (k = 0; k < nkeys; k++) {
-    if (! is_acked_one (contact, kset [k], seq)) {
+    if (! is_acked_one (contact, kset [k], seq, NULL)) {
       free (kset);
       return 0;
     }
@@ -323,7 +332,10 @@ int is_acked (const char * contact, uint64_t seq)
 
 /* returns 1 if this sequence number has been acked by this specific recipient,
  * 0 otherwise */
-int is_acked_one (const char * contact, keyset k, uint64_t wanted)
+/* if timep is not NULL, it is set to the time of the message with the wanted
+ * sequence number, if any */
+int is_acked_one (const char * contact, keyset k, uint64_t wanted,
+                  uint64_t * timep)
 {
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)
@@ -331,7 +343,7 @@ int is_acked_one (const char * contact, keyset k, uint64_t wanted)
   int type;
   uint64_t seq;
   char ack [MESSAGE_ID_SIZE];
-  while ((type = prev_message (iter, &seq, NULL, NULL, NULL, ack, NULL, NULL))
+  while ((type = prev_message (iter, &seq, timep, NULL, NULL, ack, NULL, NULL))
          != MSG_TYPE_DONE) {
     if ((type == MSG_TYPE_SENT) && (seq == wanted)) {
 /* this is the first (most recent) message sent with this sequence number.

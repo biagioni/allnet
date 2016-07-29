@@ -85,7 +85,10 @@ extern int is_acked (const char * contact, uint64_t seq);
 
 /* returns 1 if this sequence number has been acked by this specific recipient,
  * 0 otherwise */
-extern int is_acked_one (const char * contact, keyset k, uint64_t seq);
+/* if timep is not NULL, it is set to the time of the message with the wanted
+ * sequence number, if any */
+extern int is_acked_one (const char * contact, keyset k, uint64_t seq,
+                         uint64_t * timep);
 
 /* returns 1 if this sequence number has been received, 0 otherwise */
 extern int was_received (const char * contact, keyset k, uint64_t seq);
