@@ -14,6 +14,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <assert.h>
+#include <time.h>
 #include <sys/select.h>
 
 #include "packet.h"
@@ -555,6 +556,52 @@ static int find_fd (pd p, fd_set * set, int extra,
   return -1;
 }
 
+static int make_fdset (pd p, int extra, fd_set * set)
+{
+  int i;
+/* for (i = 0; i < p->num_pipes; i++)
+if ((p->buffers [i].pipe_fd > 1000) || (p->buffers [i].pipe_fd < -1000))
+printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
+  int max_pipe = 0;
+  FD_ZERO (set);
+  for (i = 0; i < p->num_pipes; i++)
+    add_fd_to_bitset (set, p->buffers [i].pipe_fd, &max_pipe);
+  if (extra != -1)
+    add_fd_to_bitset (set, extra, &max_pipe);
+  return max_pipe;
+}
+
+/* we've been called with ebadf.  find out which fd caused the problem */
+/* copies some code from make_fdset */
+static void debug_ebadf (pd p, int extra)
+{
+  int i;
+  for (i = 0; i < p->num_pipes + 1; i++) {
+    /* like make_fdset, but only FD i */
+    fd_set receiving;
+    FD_ZERO (&receiving);
+    int max_pipe = 0;
+    int fd = ((i < p->num_pipes) ? (p->buffers [i].pipe_fd) : (extra));
+    if (fd >= 0) {
+      add_fd_to_bitset (&receiving, fd, &max_pipe);
+      struct timeval tv;
+      struct timeval * tvp = set_timeout (0, &tv);
+      int s = select (fd + 1, &receiving, NULL, NULL, tvp);
+      if ((s < 0) && (errno == EBADF)) {
+        snprintf (p->log->b, p->log->s,
+                  "EBADF: bad fd [%d/%d] = %d\n", i, p->num_pipes, fd);
+        printf ("%s", p->log->b);
+        log_print (p->log);
+      }
+    } else if (i < p->num_pipes) {  /* it's OK if extra is -1 */
+      snprintf (p->log->b, p->log->s,
+                "EBADF: negative bad fd [%d/%d] = %d\n", i, p->num_pipes, fd);
+      printf ("%s", p->log->b);
+      log_print (p->log);
+    }
+  }
+}
+
 /* returns the first available file descriptor, or -1 in case of timeout */
 /* timeout is in milliseconds, or one of PIPE_MESSAGE_WAIT_FOREVER or
  * PIPE_MESSAGE_NO_WAIT */
@@ -564,25 +611,16 @@ static int next_available (pd p, int extra, int timeout)
   snprintf (log->b, log->s "next_available (%d, %d)\n", extra, timeout);
   log_print (log);
 #endif /* DEBUG_PRINT */
-  /* set up the readfd bitset */
-  int i;
-/* for (i = 0; i < p->num_pipes; i++)
-if ((p->buffers [i].pipe_fd > 1000) || (p->buffers [i].pipe_fd < -1000))
-printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
-  int max_pipe = 0;
+  /* set up the fdset for receiving */
   fd_set receiving;
-  FD_ZERO (&receiving);
-  for (i = 0; i < p->num_pipes; i++)
-    add_fd_to_bitset (&receiving, p->buffers [i].pipe_fd, &max_pipe);
-  if (extra != -1)
-    add_fd_to_bitset (&receiving, extra, &max_pipe);
-
+  int max_pipe = make_fdset (p, extra, &receiving);
   /* set up the timeout, if any */
   struct timeval tv;
   struct timeval * tvp = set_timeout (timeout, &tv);
   if ((timeout > 0) && (timeout != PIPE_MESSAGE_WAIT_FOREVER) &&
       (p->num_pipes == 0) && (extra == -1) && (p->num_queues > 0))
-    /* set timeout to 10ms for the select call */
+    /* since we have queues and no pipes, set timeout so we check
+     * the queues after a 10ms timeout */
     tvp = set_timeout (10, &tv);
 
   /* call select */
@@ -596,18 +634,31 @@ printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
      * killed on purpose (EINTR) */
     do_not_print = ((errno == EINTR) || (errno == EBADF));
     char * error_string = "some error";
+    char * q_string = ", shutting down";
     if (errno == EINTR)
       error_string = "interrupted (EINTR)";
     if (errno == EBADF)
       error_string = "bad file descriptor (EBADF)";
+    if (do_not_print)
+      q_string = "";
     if (! do_not_print)
       perror ("next_available/select");
-    snprintf (p->log->b, p->log->s, "%s in select (errno %d), aborting\n",
-              error_string, errno);
-    log_print (p->log);
-    print_pipes (p, "current", max_pipe);
-    if (errno == EBADF)  /* usually, FD closed but not (yet) removed from p */
-      return -1;    /* unable to complete */
+    snprintf (p->log->b, p->log->s, "%s in select (errno %d, extra %d)%s\n",
+              error_string, errno, extra, q_string);
+    static time_t printed_sec = 0;
+    if (printed_sec < time (NULL)) { /* print at most once per second */
+      printed_sec = time (NULL);     /* print at most once per second */
+      log_print (p->log);
+      print_pipes (p, "current", max_pipe);
+      if (errno == EBADF)
+        debug_ebadf (p, extra);
+      if (errno == EBADF) {
+        int i = 0;
+        printf ("this should never be printed: %d\n", 10 / i);
+      }
+    }
+    if (errno == EBADF) /* usually, FD closed but not (yet) removed from p */
+      return -1;        /* unable to complete */
     exit (1);
   }
   if (s == 0)
