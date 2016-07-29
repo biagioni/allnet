@@ -455,6 +455,22 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
   printf ("decrypt_verify took %lluus, result %d, transport 0x%x, %d hops\n",
           allnet_time_us () - start, tsize, hp->transport, hp->hops);
 #endif /* DEBUG_PRINT */
+#ifdef DEBUG_PRINT
+  if (tsize > CHAT_DESCRIPTOR_SIZE) {
+    intmax_t seq = readb64 (text + 24);
+    if (seq == -1) {
+      printf ("from %s received control seq %jd, %d bytes\n",
+              *contact, seq, tsize);
+    } else {
+      int msize = tsize - CHAT_DESCRIPTOR_SIZE;
+      char * debug = malloc_or_fail (msize + 1, "debugging in xcommon.c");
+      memcpy (debug, text + CHAT_DESCRIPTOR_SIZE, msize);
+      debug [msize] = '\0';
+      printf ("from %s received seq %jd, %d bytes, '%s'\n",
+      *contact, seq, msize, debug);
+    }
+  }
+#endif /* DEBUG_PRINT */
   if (tsize < 0) {
     printf ("no signature to verify, but decrypted from %s\n", *contact);
     tsize = -tsize;
@@ -486,6 +502,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
     printf ("handle_data ignoring unknown app %08lx\n", app);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
 #endif /* DEBUG_PRINT */
+    if (text != NULL) free (text);
     return 0;
   }
   unsigned long int media = readb32u (cdp->app_media.media);
@@ -519,6 +536,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
             media, ALLNET_MEDIA_TEXT_PLAIN, ALLNET_MEDIA_PUBLIC_KEY);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
 #endif /* DEBUG_PRINT */
+    if (text != NULL) free (text);
     return 0;
   }
 
