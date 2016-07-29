@@ -37,7 +37,7 @@
 #define XCHAT_SOCKET_PORT 	(htons (0xa11c))  /* ALLnet Chat, 41244 */
 
 /* the chat descriptor is sent before the user text, in the first
- * 32 bytes of the data of the AllNet packet */
+ * 40 bytes of the data of the AllNet packet */
 
 #define COUNTER_SIZE	8
 #define TIMESTAMP_SIZE	8
@@ -49,7 +49,7 @@ struct chat_descriptor {
   unsigned char timestamp   [ TIMESTAMP_SIZE];
 };
 
-#define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor))
+#define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor))   /* 40 */
 
 #define COUNTER_FLAG	0xffffffffffffffffLL
 
