@@ -484,8 +484,12 @@ static void set_result (
     memcpy (message_ackp, ack_value, MESSAGE_ID_SIZE);
   if (messagep != NULL) {
     *messagep = NULL;
-    if ((message != NULL) && (msize > 0))
-      *messagep = memcpy_malloc (message, msize, "store.c set_result");
+    if ((message != NULL) && (msize > 0)) {
+      char * m = malloc_or_fail (msize + 1, "store.c set_result");
+      m [msize] = '\0';  /* so we can print as text, for debugging */
+      memcpy (m, message, msize);
+      *messagep = m;
+    }
   }
   if (msizep != NULL) *msizep = msize;
 }
@@ -506,12 +510,15 @@ static int prev_message_in_memory
    * an invalid message if no messages were returned yet. 
    * if iter->ack_returned, pos refers to the message to be returned now */
 #ifdef DEBUG_PRINT
-  if (strcmp (iter->contact, "test-ios-sim") == 0) {
-    int index = ((iter->ack_returned) ? pos : (pos - 1));
-    printf ("iter has k %d, i %d, m %d (%d), ret %d, ", iter->k,
-            iter->message_cache_index, iter->last_message_index, pos,
-              iter->ack_returned);
-    print_buffer (msgs [index].ack, MESSAGE_ID_SIZE, "ack", 6, 1);
+  if (strcmp (iter->contact, "edo-on-celine") == 0) {
+    int i = ((iter->ack_returned) ? pos : (pos - 1));
+    printf ("iter has k %d, i %d, m %d (%d), ret %d, index %d, ",
+            iter->k, iter->message_cache_index, iter->last_message_index, pos,
+            iter->ack_returned, i);
+    if (i >= 0)
+      printf ("'%s' (%zd), seq %ju ", msgs [i].message, msgs [i].msize,
+              (uintmax_t) msgs [i].seq);
+    print_buffer (msgs [i].ack, MESSAGE_ID_SIZE, "ack", 6, 1);
   }
 #endif /* DEBUG_PRINT */
   if (iter->ack_returned) {  /* msg_type should be MSG_TYPE_SENT */
@@ -985,7 +992,7 @@ int add_message (struct message_store_info ** msgs, int * num_alloc,
     memcpy (p->ack, ack, MESSAGE_ID_SIZE);
   else
     memset (p->ack, 0, MESSAGE_ID_SIZE);
-  p->message = message;
+  p->message = strcpy_malloc (message, "add_message");
   p->msize = msize;
   return 1;
 }
@@ -1110,7 +1117,6 @@ int list_all_messages (const char * contact,
     set_missing (*msgs, *num_used, k [ik]);
   }
   free (k);
-#define DEBUG_PRINT
 #ifdef DEBUG_PRINT
   /* test code -- let's see if everything is set correctly */
   if (strcmp (contact, "edo-on-maru") == 0) {
@@ -1131,7 +1137,6 @@ int list_all_messages (const char * contact,
     }
   }
 #endif /* DEBUG_PRINT */
-#undef DEBUG_PRINT
   return 1;
 }
 
