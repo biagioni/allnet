@@ -438,6 +438,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
 #endif /* DEBUG_PRINT */
     return 0;
   }
+  int hops = hp->hops;
   int verif = 0;
   char * text = NULL;
   int max_contacts = 0;  /* try all contacts */
@@ -453,7 +454,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
                               max_contacts);
 #ifdef DEBUG_PRINT
   printf ("decrypt_verify took %lluus, result %d, transport 0x%x, %d hops\n",
-          allnet_time_us () - start, tsize, hp->transport, hp->hops);
+          allnet_time_us () - start, tsize, hp->transport, hops);
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
   if (tsize > CHAT_DESCRIPTOR_SIZE) {
@@ -512,7 +513,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
 #ifdef DEBUG_PRINT
       printf ("chat control message, responding\n");
 #endif /* DEBUG_PRINT */
-      do_chat_control (*contact, *kset, text, tsize, sock, hp->hops + 4);
+      do_chat_control (*contact, *kset, text, tsize, sock, hops + 4);
       send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
 #ifdef DEBUG_PRINT
       printf ("chat control message response complete\n");
@@ -563,13 +564,12 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
   *message = malloc_or_fail (msize + 1, "handle_data message");
   memcpy (*message, cleartext, msize);
   (*message) [msize] = '\0';   /* null-terminate the message */
-
-  /* printf ("hp->hops = %d\n", hp->hops); */
-
-  send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
-
   free (text);
 
+  send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
+  /* contact may be reachable, resend up to 10 unacked messages */
+  resend_unacked (*contact, *kset, sock, hops + 2,
+                  ALLNET_PRIORITY_LOCAL_LOW, 10);
   return msize;
 }
 
