@@ -352,6 +352,7 @@ static void resend_message (uint64_t seq, char * contact,
 #endif /* DEBUG_PRINT */
   resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
                  hops, priority);
+  free (message);
 }
 
 /* resends the messages requested by the retransmit message */
