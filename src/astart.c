@@ -449,10 +449,10 @@ static void stop_all ()
 
 /* the following should be all the signals that could terminate a process */
 /* list taken from signal(7) */
-/* commented-out signals gave compiler errors */
+/* commented-out signals gave compiler errors, except SIGPIPE which is ignored */
 static int terminating_signals [] =
   { SIGINT, SIGQUIT, SIGILL, SIGABRT, SIGFPE, /* SIGKILL, */
-    SIGSEGV, SIGPIPE, SIGBUS, SIGTERM,
+    SIGSEGV, /* SIGPIPE, ignored */ SIGBUS, SIGTERM,
     SIGSYS, SIGTRAP,
     SIGXCPU, SIGXFSZ,
     /* SIGIOT, SIGEMT, */ SIGIO
@@ -476,6 +476,10 @@ static void setup_signal_handler (int set)
       exit (1);
     }
   }
+  if (set) /* ignore SIGPIPE */
+    signal (SIGPIPE, SIG_IGN);
+  else     /* handle SIGPIPE */
+    signal (SIGPIPE, SIG_DFL);
 }
 #else /* !USE_FORK */  /* signal handler for iOS to ignore sigpipe */
 
