@@ -214,24 +214,28 @@ static void log_print_buffer (char * buffer, int blen, int out)
 
 void log_print_str (struct allnet_log * log, char * string)
 {
-  char time_str [100];
+  char header [100];
   char buffer [LOG_SIZE + LOG_SIZE];
   struct timeval now;
   gettimeofday (&now, NULL);
   struct tm n;
+  int process = (getpid ()) % 100000;
+  int thread = (pthread_self ()) % 100000;
   if (localtime_r (&now.tv_sec, &n) == NULL)
-    snprintf (time_str, sizeof (time_str), "bad time %ld", now.tv_sec);
+    snprintf (header, sizeof (header), "bad time %ld p%05d t%05d",
+              now.tv_sec, process, thread);
   else
-    snprintf (time_str, sizeof (time_str), "%02d/%02d %02d:%02d:%02d.%06ld",
+    snprintf (header, sizeof (header),
+              "%02d/%02d %02d:%02d:%02d.%06ld p%05d t%05d",
               n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec,
-              (long int) (now.tv_usec));
+              (long int) (now.tv_usec), process, thread);
   /* add a newline if it is not already at the end of the string */
   char * last_nl = rindex (string, '\n');
   char * add_nl = "\n";
   if ((last_nl != NULL) && (last_nl - string + 1 == strlen (string)))
     add_nl = "";   /* already present */
   int len = snprintf (buffer, sizeof (buffer), "%s %s: %s%s",
-                      time_str, log->debug_info, string, add_nl);
+                      header, log->debug_info, string, add_nl);
   log_print_buffer (buffer, len, log->log_to_output);
 }
 
