@@ -118,6 +118,16 @@ struct receive_arg {
   void * dht_cache;
 };
 
+static void add_ai_to_cache_or_record_usage (void * cache, 
+                                             struct addr_info * ai)
+{
+  void * found = cache_get_match (cache, (match_function)(&same_ai), ai);
+  if (found == NULL)  /* not already there, so add to cache */
+    cache_add (cache, ai);
+  else /* found, addr different pointers -- record that found is in use */
+    cache_record_usage (cache, found);
+}
+
 #ifdef ALLNET_ADDRS
 #define max(a, b)	(((a) > (b)) ? (a) : (b))
 
@@ -149,11 +159,11 @@ static void * receive_addrs (void * arg)
         printf ("ai type %d, expected 1 or 2\n", ai->type);
       printf ("receive_addrs got %d bytes, ", bytes);
       print_addr_info (ai);
-      if (ai->type == ALLNET_ADDR_INFO_TYPE_RP)
-        cache_add (ra->rp_cache, ai); /* if already in cache, records usage */
-      else if (ai->type == ALLNET_ADDR_INFO_TYPE_DHT)
-        cache_add (ra->dht_cache, ai); /* if already in cache, records usage */
-      else {
+      if (ai->type == ALLNET_ADDR_INFO_TYPE_RP) {
+        add_ai_to_cache_or_record_usage (ra->rp_cache, ai);
+      } else if (ai->type == ALLNET_ADDR_INFO_TYPE_DHT) {
+        add_ai_to_cache_or_record_usage (ra->dht_cache, ai);
+      } else {
         printf ("ai type %d, expected 1 or 2\n", ai->type);
         free (buffer);
       }
@@ -368,13 +378,13 @@ static int send_udp (int udp, char * message, int msize, struct sockaddr * sa)
   snprintf (alog->b, alog->s, "sendto (%d, %p, %d, 0, %p, %d)\n",
             udp, message, msize, sa, (int) addr_len);
   log_print (alog);
-  int flags = 0;
-#ifdef MSG_NOSIGNAL   /* some OSs don't define MSG_NOSIGNAL.  To handle this,
+#ifndef MSG_NOSIGNAL  /* some OSs don't define MSG_NOSIGNAL.  To handle this,
                        * astart requests ignoring SIGPIPE.  But using
                        * MSG_NOSIGNAL, where available, is more
                        * fine-grained and therefore better in principle */
-  flags = MSG_NOSIGNAL;
+#define MSG_NOSIGNAL	0		/* no flag */
 #endif /* MSG_NOSIGNAL */
+  int flags = MSG_NOSIGNAL;
   size_t s = sendto (udp, message, msize, flags, sa, addr_len);
   int saved_errno = errno;
   if (s != msize) {
@@ -725,24 +735,35 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         salen = sizeof (struct sockaddr_in);
       else if (af == AF_INET6)
         salen = sizeof (struct sockaddr_in6);
+      if (salen == 0)
+        continue;   /* invalid address, ignore */
       /* check to see if we are already connected or connecting */
       int size = sizeof (struct addr_info);
       struct addr_info * ai = malloc_or_fail (size, "connect_listener ai");
-      if ((salen == 0) ||
-          (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, ai))) {
+      if (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, ai)) {
         free (ai);
         continue;   /* invalid address, ignore */
       }
       int prev_fd = already_listening (ai, info);
-      while (prev_fd == -2) {
-/* printf ("prev_fd = %d in thread %ud proc %d for ", prev_fd, (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
-        sleep_time_random_us (2000);  /* sleep for 0-2ms */
+/* printf ("initial prev_fd returned %d for ", prev_fd); print_addr_info (ai); */
+      time_t start_time = time (NULL);
+      int wait_time = 2000;   /* 2ms, doubled on each loop */
+      while ((prev_fd == -2) && (time (NULL) < start_time + 2)) {
+/* printf ("prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (ai); */
+        sleep_time_random_us (wait_time);  /* sleep for 0-2ms */
+        wait_time += wait_time;            /* double the wait time */
         prev_fd = already_listening (ai, info);  /* and try again */
+/* printf ("loop prev_fd returned %d for ", prev_fd); print_addr_info (ai);
+sleep (1); */
       }
-/* printf ("prev_fd = %d in thread %ud proc %d for ", prev_fd, (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
+/* printf ("prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (ai); */
       if (prev_fd >= 0) {  /* already listening for this address, done */
         free (ai);
         result = prev_fd;
+        break;
+      }
+      if (prev_fd == -2) {  /* timed out, give up */
+/* printf ("giving up: prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (ai); */
         break;
       }
 
@@ -750,7 +771,7 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       int s = socket (af, SOCK_STREAM, 0);
       if (s < 0) {
         perror ("listener socket");
-/* printf ("thread %ud proc %d unable to open socket, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
+/* printf ("thread %u proc %d unable to open socket, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
         listen_clear_reservation (ai, info);
         free (ai);
         continue;
@@ -766,24 +787,34 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
         free (ai);
         continue;   /* return to the top of the loop and try the next addr */
       }
-      /* success! */
-      result = s;
-      cache_add (addr_cache, ai);
 #ifdef DEBUG_PRINT
-      printf ("added %p: ", ai);
+      printf ("aip added fd %d, %p: ", s, ai);
       print_addr_info (ai);
       debug_print_addr_cache (addr_cache);
 #endif /* DEBUG_PRINT */
-      listen_add_fd (info, s, ai);   /* clears the reservation */
-      int offset = snprintf (alog->b, alog->s,
-                             "listening for %x/%d on socket %d at ",
-                             address [0] & 0xff, LISTEN_BITS, s);
-      offset += addr_info_to_string (ai, alog->b + offset, alog->s - offset);
-/* printf ("%s", alog->b); */
-      log_print (alog);
+      if (listen_add_fd (info, s, ai, 1)) {  /* clears the reservation */
+        /* success! */
+        result = s;
+        add_ai_to_cache_or_record_usage (addr_cache, ai);
+        int offset = snprintf (alog->b, alog->s,
+                               "listening for %x/%d on socket %d at ",
+                               address [0] & 0xff, LISTEN_BITS, s);
+        offset += addr_info_to_string (ai, alog->b + offset, alog->s - offset);
+        log_print (alog);
+      } else {
+        close (s);
+        int offset = snprintf (alog->b, alog->s,
+                               "listen_add_fd => 0 for %x/%d on socket %d at ",
+                               address [0] & 0xff, LISTEN_BITS, s);
+        offset += addr_info_to_string (ai, alog->b + offset, alog->s - offset);
+        log_print (alog);
+      }
+      free (ai);
     }
   }
-  snprintf (alog->b, alog->s, "connect_listener (%d/0x%x, %d, %d) => %d\n",
+  snprintf (alog->b, alog->s,
+            "connect_listener (%d(%d)/0x%x/0x%x, %d, %d) => %d\n",
+            (address [0] & 0xff) >> (8 - LISTEN_BITS), LISTEN_BITS,
             (address [0] & 0xff) >> (8 - LISTEN_BITS), address [0] & 0xff,
             af, num_dhts, result);
   log_print (alog);
@@ -800,6 +831,16 @@ struct connect_thread_arg {
 
 static void * connect_thread (void * a)
 {
+#ifdef DEBUG_PRINT
+  static pthread_mutex_t connect_counter_mutex = PTHREAD_MUTEX_INITIALIZER;
+  static int counter = 0;
+  srandom (time (NULL) + getpid () + pthread_self ());
+  int r = random () % 10000;
+  pthread_mutex_lock (&connect_counter_mutex);
+  counter++;
+  printf ("starting connect thread %d, %d threads alive\n", r, counter);
+  pthread_mutex_unlock (&connect_counter_mutex);
+#endif /* DEBUG_PRINT */
   struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
   routing_init_is_complete (1);   /* wait for routing to complete */
   int fd = connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);
@@ -807,15 +848,20 @@ static void * connect_thread (void * a)
   if (listener_fds [arg->listener_index] == -1) {
     active_listeners++;
     listener_fds [arg->listener_index] = fd;
-    pthread_mutex_unlock (&listener_mutex);
   } else {   /* undo connect */
     close (fd);       /* remove from kernel */
     /* remove from cache, info, and pipemsg */
     cache_remove (arg->addr_cache, listen_fd_addr (arg->info, fd));
     listen_remove_fd (arg->info, fd);
-    pthread_mutex_unlock (&listener_mutex);
   }
+  pthread_mutex_unlock (&listener_mutex);
   free (a);  /* the caller doesn't do it, so we should */
+#ifdef DEBUG_PRINT
+  pthread_mutex_lock (&connect_counter_mutex);
+  counter--;
+  printf ("finished connect thread %d, %d threads alive\n", r, counter);
+  pthread_mutex_unlock (&connect_counter_mutex);
+#endif /* DEBUG_PRINT */
   return NULL;
 }
 
@@ -1350,8 +1396,8 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
         forward_message (info->fds + 1, info->num_fds - 1, udp, udp_cache,
                          addr_cache, message, result, priority, 10);
       } else {
-/*      printf ("aip: %d-byte message from Internet on fd %d (ad %d, udp %d)\n",
-                result, fd, rpipe, udp); */
+/* for debugging of 255-peer peer messages
+if (result == 6160) print_buffer (message, result, NULL, 100, 1); */
         int off = snprintf (alog->b, alog->s,
                             "got %d bytes from Internet on fd %d",
                             result, fd);
@@ -1428,7 +1474,8 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
   listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0,
                     listen_callback, p);
 
-  listen_add_fd (&info, rpipe, NULL);
+  if (! listen_add_fd (&info, rpipe, NULL, 0))
+    printf ("aip_main: listen_add_fd failed\n");
   pthread_mutex_init (&listener_mutex, NULL);
   int i;
   for (i = 0; i < NUM_LISTENERS; i++)
