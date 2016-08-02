@@ -43,6 +43,8 @@ extern int init_ai (int af, unsigned char * addr, int port, int nbits,
 
 /* returns 1 if the two addresses are the same, 0 otherwise */
 extern int same_ai (struct addr_info * a, struct addr_info * b);
+/* returns 1 if the two addresses and ports are the same, 0 otherwise */
+extern int same_aip (struct addr_info * a, struct addr_info * b);
 
 /* if this is an IPv4-encoded-as-IPv6 address, make it an IPv4 address again */
 extern void standardize_ip (struct sockaddr * ap, socklen_t asize);

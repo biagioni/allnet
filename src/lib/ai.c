@@ -23,8 +23,9 @@ static int ip6_to_string (const unsigned char * ip, char * buffer)
 void print_addr_info (struct addr_info * ai)
 {
   printf ("(%d) ", ai->nbits);
-  print_buffer ((char *) (ai->destination), (ai->nbits + 7) / 8, NULL,
-                ADDRESS_SIZE, 0);
+  if (ai->nbits > 0)
+    print_buffer ((char *) (ai->destination), (ai->nbits + 7) / 8, NULL,
+                  ADDRESS_SIZE, 0);
   printf (", v %d, port %d, addr ", ai->ip.ip_version, ntohs (ai->ip.port));
   unsigned char * ap = (unsigned char *) &(ai->ip.ip);
   char ip6_buf [50];
@@ -228,6 +229,18 @@ int same_ai (struct addr_info * a, struct addr_info * b)
       (memcmp (b->ip.ip.s6_addr, ipv4_in_ipv6, 12) == 0))
     return (memcmp (a->ip.ip.s6_addr + 12, b->ip.ip.s6_addr + 12, 4) == 0);
   return 0;  /* different versions, no ipv4 in ipv6 match */
+}
+
+/* returns 1 if the two addresses and ports are the same, 0 otherwise */
+int same_aip (struct addr_info * a, struct addr_info * b)
+{
+  if (same_ai (a, b)) {
+    if ((a != NULL) && (b != NULL) && (a->ip.port != b->ip.port))
+      return 0;
+    return 1;
+  } else {
+    return 0;
+  }
 }
 
 /* if this is an IPv4-encoded-as-IPv6 address, make it an IPv4 address again */
