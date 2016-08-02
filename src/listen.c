@@ -26,6 +26,23 @@
 
 static struct allnet_log * alog = NULL;
 
+#ifdef DEBUG_PRINT
+static void print_listen_info (struct listen_info * info)
+{
+  printf ("listen_info %p", info);
+  printf (" (c %d) has %d fds %p", info->counter, info->num_fds, info->fds);
+  int i;
+  if (info->num_fds > 0) {
+    for (i = 0; i < info->num_fds; i++)
+      printf (", %d", info->fds [i]);
+    printf ("\n");
+    for (i = 0; i < info->num_fds; i++)
+      print_addr_info (&(info->peers [i]));
+  }
+  printf ("\n");
+}
+#endif /* DEBUG_PRINT */
+
 /* returns the fd of the new listen socket, or -1 in case of error */
 static int init_listen_socket (int version, int port, int local)
 {
@@ -140,6 +157,7 @@ static void * listen_loop (void * arg)
     if ((ra->info->localhost_only) && (! is_loopback_ip (ap, addr_size))) {
       snprintf (alog->b, alog->s, "warning: loopback got from nonlocal\n");
       log_print (alog);
+      close (connection);
       continue;   /* skip the rest of the while loop */
     }
     int option = 1;  /* disable Nagle algorithm if nodelay */
@@ -152,10 +170,13 @@ static void * listen_loop (void * arg)
 
     struct addr_info addr;
     sockaddr_to_ai (ap, addr_size, &addr);
-    listen_add_fd (info, connection, &addr);
-
-    if (info->callback != NULL)
-      info->callback (connection);
+    if (listen_add_fd (info, connection, &addr,  /* unique unless local IP */
+                       ! is_loopback_ip (ap, addr_size))) {
+      if (info->callback != NULL)
+        info->callback (connection);
+    } else {
+      close (connection);
+    }
 
     addr_size = sizeof (address);  /* reset for next call to accept */
   }
@@ -296,6 +317,7 @@ static void send_peer_message (int fd, struct listen_info * info, int index)
   int npeers = info->num_fds;
   if (npeers > 255)
     npeers = 255;
+printf ("sending peer message with %d/%d peers\n", npeers, info->num_fds);
   int size = ALLNET_PEER_SIZE (0, npeers);
   int hsize = ALLNET_SIZE (0);
   int dsize = size - hsize;
@@ -332,9 +354,10 @@ static void send_peer_message (int fd, struct listen_info * info, int index)
       memset (iap->pad, 0, sizeof (iap->pad));
     }
   }
-  /* set priority to 0 since ignored on messages from a different machine */
+  /* use priority 0 since ignored on messages from a different machine */
   if (! send_pipe_message (fd, buffer, size, 0, alog))
-    printf ("unable to send peer message for %d peers\n", npeers);
+    printf ("unable to send peer message (%d bytes) for %d peers\n",
+            size, npeers);
 }
 
 /* if some fds are still available, return the next */
@@ -394,11 +417,30 @@ static void listen_clear_reservation_with_lock_held (struct addr_info * ai,
   }
 }
 
-static void listen_add_fd_with_lock_held (struct listen_info * info,
-                                          int fd, struct addr_info * addr)
+/* returns 1 if successfully added, 
+           0 if addr != NULL and add_only_if_unique_ip and
+                a matching address already had an fd */
+static int listen_add_fd_with_lock_held (struct listen_info * info,
+                                         int fd, struct addr_info * addr,
+                                         int add_only_if_unique_ip)
 {
-  if (addr != NULL)
+  if (addr != NULL) {
+    if (add_only_if_unique_ip) {
+      int i;
+      for (i = 0; i < info->num_fds; i++) {
+        if (same_ai (info->peers + i, addr)) {
+#ifdef DEBUG_PRINT
+          printf ("found address at index %d ", i);
+          print_addr_info (info->peers + i);
+          printf ("     ");
+          print_addr_info (addr);
+#endif /* DEBUG_PRINT */
+          return 0;
+        }
+      }
+    }  /* clear any reservation on this address */
     listen_clear_reservation_with_lock_held (addr, info);
+  }
   int index = close_oldest_fd (info);
   info->fds [index] = fd;
   if (addr != NULL)
@@ -407,10 +449,21 @@ static void listen_add_fd_with_lock_held (struct listen_info * info,
     info->peers [index].ip.ip_version = 0;
   if (info->add_remove_pipe)
     add_pipe (info->pipe_descriptor, fd);
+#ifdef DEBUG_PRINT
+  printf ("added %d: ", fd);
+  print_listen_info (info);
+#endif /* DEBUG_PRINT */
+  return 1;
 }
 
-/* if closing connection, send the list of peers before closing */
-void listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr)
+/* call to add an fd to the data structure */
+/* may close the least recently active fd, and if so, */
+/* sends the list of peers before closing */
+/* returns 1 if successfully added, 
+           0 if addr != NULL and add_only_if_unique_ip and
+                a matching address already had an fd */
+int listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr,
+                   int add_only_if_unique_ip)
 {
   if ((info->num_fds >= info->max_num_fds) && (random () >= RAND_MAX / 2)) {
     /* if full, half the time just send a peer message and close the fd */
@@ -418,8 +471,10 @@ void listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr)
     close (fd);  /* never added the pipe, so no need to remove it */
   }
   pthread_mutex_lock (&(info->mutex));
-  listen_add_fd_with_lock_held (info, fd, addr);
+  int result =
+    listen_add_fd_with_lock_held (info, fd, addr, add_only_if_unique_ip);
   pthread_mutex_unlock (&(info->mutex));
+  return result;
 }
 
 void listen_remove_fd (struct listen_info * info, int fd)
@@ -461,21 +516,24 @@ struct addr_info * listen_fd_addr (struct listen_info * info, int fd)
    returns -2 if someone had reserved the address already. */
 int already_listening (struct addr_info * ai, struct listen_info * info)
 {
-  int32_t result = -1;
   pthread_mutex_lock (&(info->mutex));
   int i;
-  for (i = 0; (i < info->num_fds) && (result == -1); i++) {
-    if (same_ai (info->peers + i, ai))
-      result = info->fds [i];
+  for (i = 0; i < info->num_fds; i++) {
+    if (same_ai (info->peers + i, ai)) {
+      pthread_mutex_unlock (&(info->mutex));
+      return info->fds [i];
+    }
   }
-  for (i = 0; (i < info->max_num_fds) && (result == -1); i++) {
-    if (same_ai (info->reserved + i, ai))
-      result = -2;   /* reserved by someone else */
+  for (i = 0; i < info->max_num_fds; i++) {
+    if (same_ai (info->reserved + i, ai)) {
+      pthread_mutex_unlock (&(info->mutex));
+      return -2;   /* reserved by someone else */
+    }
   }
-  if (result == -1)  /* reserve, return -1 */
-    listen_get_reservation_with_lock_held (ai, info);
+  /* reserve, return -1 */
+  listen_get_reservation_with_lock_held (ai, info);
   pthread_mutex_unlock (&(info->mutex));
-  return result;
+  return -1;
 }
 
 void listen_clear_reservation (struct addr_info * ai, struct listen_info * info)

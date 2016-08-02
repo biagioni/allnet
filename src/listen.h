@@ -57,8 +57,11 @@ extern void listen_record_usage (struct listen_info * info, int fd);
 /* call to add an fd to the data structure */
 /* may close the least recently active fd, and if so, */
 /* sends the list of peers before closing */
-extern void listen_add_fd (struct listen_info * info, int fd,
-                           struct addr_info * addr);
+/* returns 1 if successfully added,
+           0 if addr != NULL and add_only_if_unique_ip and
+                a matching address already had an fd */
+extern int listen_add_fd (struct listen_info * info, int fd,
+                          struct addr_info * addr, int add_only_if_unique_ip);
 
 /* call to remove an fd from the data structure */
 extern void listen_remove_fd (struct listen_info * info, int fd);
