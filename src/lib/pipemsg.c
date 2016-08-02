@@ -652,10 +652,6 @@ static int next_available (pd p, int extra, int timeout)
       print_pipes (p, "current", max_pipe);
       if (errno == EBADF)
         debug_ebadf (p, extra);
-      if (errno == EBADF) {
-        int i = 0;
-        printf ("this should never be printed: %d\n", 10 / i);
-      }
     }
     if (errno == EBADF) /* usually, FD closed but not (yet) removed from p */
       return -1;        /* unable to complete */
