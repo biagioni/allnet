@@ -157,12 +157,15 @@ static void * init_default_dns (void * arg)
       }
       freeaddrinfo (original);
     } else {
-#ifndef DEBUG_PRINT
-      if (code != EAI_NONAME)
-#endif /* ! DEBUG_PRINT */
-      snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n",
-                default_dns [dns_index], gai_strerror (code));
-      log_print (alog);
+#ifdef DEBUG_PRINT
+      {   /* print unconditionally */
+#else /* ! DEBUG_PRINT */
+      if (code != EAI_NONAME) {
+#endif /* DEBUG_PRINT */
+        snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n",
+                  default_dns [dns_index], gai_strerror (code));
+        log_print (alog);
+      }
     }
   }
 #ifdef DEBUG_PRINT
