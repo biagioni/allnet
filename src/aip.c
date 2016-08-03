@@ -122,10 +122,12 @@ static void add_ai_to_cache_or_record_usage (void * cache,
                                              struct addr_info * ai)
 {
   void * found = cache_get_match (cache, (match_function)(&same_ai), ai);
-  if (found == NULL)  /* not already there, so add to cache */
+  if (found == NULL) { /* not already there, so add to cache */
     cache_add (cache, ai);
-  else /* found, addr different pointers -- record that found is in use */
+  } else { /* found, addr different pointers -- record that found is in use */
     cache_record_usage (cache, found);
+    free (ai);   /* not saved in the cache */
+  }
 }
 
 #ifdef ALLNET_ADDRS
@@ -764,6 +766,7 @@ sleep (1); */
       }
       if (prev_fd == -2) {  /* timed out, give up */
 /* printf ("giving up: prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (ai); */
+        free (ai);
         break;
       }
 
@@ -803,13 +806,13 @@ sleep (1); */
         log_print (alog);
       } else {
         close (s);
+        free (ai);
         int offset = snprintf (alog->b, alog->s,
                                "listen_add_fd => 0 for %x/%d on socket %d at ",
                                address [0] & 0xff, LISTEN_BITS, s);
         offset += addr_info_to_string (ai, alog->b + offset, alog->s - offset);
         log_print (alog);
       }
-      free (ai);
     }
   }
   snprintf (alog->b, alog->s,
@@ -844,17 +847,19 @@ static void * connect_thread (void * a)
   struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
   routing_init_is_complete (1);   /* wait for routing to complete */
   int fd = connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);
-  pthread_mutex_lock (&listener_mutex);
-  if (listener_fds [arg->listener_index] == -1) {
-    active_listeners++;
-    listener_fds [arg->listener_index] = fd;
-  } else {   /* undo connect */
-    close (fd);       /* remove from kernel */
-    /* remove from cache, info, and pipemsg */
-    cache_remove (arg->addr_cache, listen_fd_addr (arg->info, fd));
-    listen_remove_fd (arg->info, fd);
+  if (fd >= 0) {
+    pthread_mutex_lock (&listener_mutex);
+    if (listener_fds [arg->listener_index] == -1) {
+      active_listeners++;
+      listener_fds [arg->listener_index] = fd;
+    } else {   /* undo connect */
+      close (fd);       /* remove from kernel */
+      /* remove from cache, info, and pipemsg */
+      cache_remove (arg->addr_cache, listen_fd_addr (arg->info, fd));
+      listen_remove_fd (arg->info, fd);
+    }
+    pthread_mutex_unlock (&listener_mutex);
   }
-  pthread_mutex_unlock (&listener_mutex);
   free (a);  /* the caller doesn't do it, so we should */
 #ifdef DEBUG_PRINT
   pthread_mutex_lock (&connect_counter_mutex);
