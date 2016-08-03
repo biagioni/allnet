@@ -1702,8 +1702,10 @@ int all_keys (const char * contact, keyset ** keysets)
   int count = plain_num_keysets (contact, NULL, 0);
 #endif /* RECURSIVELY_INCLUDE_GROUP_KEYS */
 
-  if ((keysets == NULL) || (count < 0))
+  if ((keysets == NULL) || (count <= 0)) {
+    *keysets = NULL;
     return count;
+  }
 
   *keysets = malloc_or_fail (count * sizeof (keyset), "all_keys");
 #ifdef RECURSIVELY_INCLUDE_GROUP_KEYS
