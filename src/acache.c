@@ -50,7 +50,7 @@ static int message_list_used = 0;
 #endif /* USING_MESSAGE_LIST */
 
 struct hash_entry {
-  struct hash_entry * next_by_hash;   /* this one also used for fre list */
+  struct hash_entry * next_by_hash;  /* this one also used for free list */
   struct hash_entry * next_by_source;
   unsigned char id [MESSAGE_ID_SIZE];
   unsigned char received_at [ALLNET_TIME_SIZE];
@@ -1363,7 +1363,7 @@ static int send_ack (struct allnet_header * hp, int msize, int sock)
                    ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
                    hp->source, hp->src_nbits, NULL, NULL, &send_size);
   char * send = (char *) reply;
-  char * data = send + ALLNET_SIZE (hp->transport);
+  char * data = send + ALLNET_SIZE (reply->transport);
   memcpy (data, acks [index].message_ack, MESSAGE_ID_SIZE);
   int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
   send_pipe_message (sock, send, send_size, priority, alog);
@@ -1708,7 +1708,7 @@ static void main_loop (int rsock, int wsock, pd p)
   int local_caching = 0;
   init_acache (&msg_fd, &max_msg_size, &ack_fd, &max_acks, &local_caching);
   while (1) {
-    char * message;
+    char * message = NULL;
     int priority;
     int result = receive_pipe_message (p, rsock, &message, &priority);
     struct allnet_header * hp = (struct allnet_header *) message;
@@ -1718,7 +1718,7 @@ static void main_loop (int rsock, int wsock, pd p)
       snprintf (alog->b, alog->s, "ad pipe %d closed, result %d\n",
                 rsock, result);
       log_print (alog);
-      /* mfree = 0;  not useful */
+      mfree = 0;  /* nothing to free */
       break;
     } else if ((result >= ALLNET_HEADER_SIZE) &&
                (result >= ALLNET_SIZE (hp->transport))) {
@@ -1738,7 +1738,8 @@ static void main_loop (int rsock, int wsock, pd p)
         else
           snprintf (alog->b, alog->s, "no response to data request packet\n");
       } else if (hp->message_type == ALLNET_TYPE_MGMT) {
-        if (respond_to_id_request (msg_fd, max_msg_size, message, result, wsock))
+        if (respond_to_id_request (msg_fd, max_msg_size, message, result,
+                                   wsock))
           snprintf (alog->b, alog->s, "responded to id request packet\n");
         else
           snprintf (alog->b, alog->s, "no response to id request packet\n");
