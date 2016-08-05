@@ -564,12 +564,12 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
   *message = malloc_or_fail (msize + 1, "handle_data message");
   memcpy (*message, cleartext, msize);
   (*message) [msize] = '\0';   /* null-terminate the message */
-  free (text);
 
   send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
   /* contact may be reachable, resend up to 10 unacked messages */
   resend_unacked (*contact, *kset, sock, hops + 2,
                   ALLNET_PRIORITY_LOCAL_LOW, 10);
+  free (text);
   return msize;
 }
 
@@ -953,15 +953,6 @@ long long int send_data_message (int sock, char * peer,
 
   int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
   char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
-#if 0  /* now done in send_to_contact */
-  struct chat_descriptor * cp = (struct chat_descriptor *) data_with_cd;
-  if (! init_chat_descriptor (cp, peer)) {
-    printf ("unknown contact %s\n", peer);
-    free (data_with_cd);
-    return 0;
-  }
-  uint64_t seq = readb64u (cp->counter);
-#endif /* 0 */
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
 #ifdef DEBUG_PRINT
   printf ("sending seq %ju:\n", (uintmax_t)seq);
