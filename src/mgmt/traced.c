@@ -193,22 +193,6 @@ static void debug_prt_trace_id (void * state, void * n)
 }
 #endif /* DEBUG_PRINT_ID */
 
-static int same_trace_id (void * n1, void * n2)
-{
-  int result = (memcmp (n1, n2, MESSAGE_ID_SIZE) == 0);
-#ifdef DEBUG_PRINT_ID
-  int off = snprintf (alog->b, alog->s, "same_trace_id (");
-  off += buffer_to_string (n1, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 0,
-                           alog->b + off, alog->s - off);
-  off += snprintf (alog->b + off, alog->s - off, ", ");
-  off += buffer_to_string (n2, MESSAGE_ID_SIZE, NULL, MESSAGE_ID_SIZE, 0,
-                           alog->b + off, alog->s - off);
-  off += snprintf (alog->b + off, alog->s - off, ") => %d\n", result);
-  log_print (alog);
-#endif /* DEBUG_PRINT_ID */
-  return result;
-}
-
 static void acknowledge_bcast (int sock, char * message, int msize)
 {
   /* ignore any packet other than unencrypted packets requesting an ack */
@@ -240,11 +224,11 @@ static void acknowledge_bcast (int sock, char * message, int msize)
  * old traces that haven't yet been overwritten.
  * trace_id must have MESSAGE_ID_SIZE bytes
  */
-static int is_in_trace_cache (const unsigned char * trace_id /* MESSAGE_ID_SIZE */ )
+static int is_in_trace_cache (const unsigned char * trace_id)
 {
   static time_t last_received = 0;
   static time_t first_received = 0;
-  static int next = 0;
+  static int next = 0;       /* next place to save messages */
 #define TRACE_CACHE_SIZE	10
   static char cache [TRACE_CACHE_SIZE] [MESSAGE_ID_SIZE];
   time_t now = time (NULL);
@@ -273,8 +257,7 @@ static int is_in_trace_cache (const unsigned char * trace_id /* MESSAGE_ID_SIZE 
 static void respond_to_trace (int sock, char * message, int msize,
                               int priority,
                               unsigned char * my_address, int abits,
-                              int match_only, int forward_only,
-                              void * cache)
+                              int match_only, int forward_only)
 {
   /* ignore any packet other than valid trace requests with at least 1 entry */
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -311,28 +294,8 @@ static void respond_to_trace (int sock, char * message, int msize,
   if (is_in_trace_cache (trp->trace_id))
     return;
 
-  /* found a valid trace request */
-  if (cache_get_match (cache, same_trace_id, trp->trace_id) != NULL) {
-#ifdef LOG_PACKETS
-    buffer_to_string ((char *) (trp->trace_id), MESSAGE_ID_SIZE,
-                      "duplicate trace_id", 5, 1, alog->b, alog->s);
-    log_print (alog);
-#endif /* LOG_PACKETS */
-    return;     /* duplicate */
-  }
-  /* else new trace, save it in the cache so we only forward it once */
-  cache_add (cache, memcpy_malloc (trp->trace_id, MESSAGE_ID_SIZE, "trace id"));
-#ifdef DEBUG_PRINT_ID
-  int debug_off = snprintf (alog->b, alog->s, "cache contains: ");
-  printf ("cache contains: ");
-  cache_map (cache, debug_prt_trace_id, &debug_off);
-  debug_off += snprintf (alog->b + debug_off, alog->s - debug_off, "\n");
-  log_print (alog);
-#endif /* DEBUG_PRINT_ID */
-
   struct timeval timestamp;
   gettimeofday (&timestamp, NULL);
-
   /* do two things: forward the trace, and possibly respond to the trace. */
 
   int mbits = abits;
@@ -431,7 +394,6 @@ static void main_loop (int wsock, pd p,
                        unsigned char * my_address, int nbits,
                        int match_only, int forward_only)
 {
-  void * cache = cache_init (100, free, "traced main loop");
   while (1) {
     char * message;
     int pipe, pri;
@@ -449,7 +411,7 @@ static void main_loop (int wsock, pd p,
     if (is_valid_message (message, found)) {
       acknowledge_bcast (wsock, message, found);
       respond_to_trace (wsock, message, found, pri + 1, my_address, nbits,
-                        match_only, forward_only, cache);
+                        match_only, forward_only);
     }
     free (message);
   }
