@@ -21,6 +21,7 @@
 #include "allnet_log.h"
 #include "allnet_queue.h"
 #include "trace_util.h"
+#include "sha.h"
 
 static int print_details = 1;
 
@@ -96,6 +97,38 @@ static int write_string_to (const char * string, int null_term, int fd,
   }
   return result;
 }
+
+#ifdef CHECK_FOR_DUPLICATES
+/* returns 1 if the packet was seen within the last NUM_REMEMBERED packets.
+ * Otherwise, returns 0 and remembers this packet */
+int packet_received_before (char * message, int msize)
+{
+#define NUM_REMEMBERED_HASHES	1000
+  static char remembered_hashes [NUM_REMEMBERED_HASHES] [MESSAGE_ID_SIZE];
+  static int position = -1;
+  if (position < 0) {
+    memset (remembered_hashes, 0, sizeof (remembered_hashes));
+    position = 0;
+  }
+  if (msize <= 4)
+    return 1;  /* should be caught before calling packet_received_before */
+  char hash [MESSAGE_ID_SIZE];
+  /* when hashing, skip the hop counts */
+  sha512_bytes (message + 4, msize - 4, hash, MESSAGE_ID_SIZE);
+  int i;
+  for (i = 0; i < NUM_REMEMBERED_HASHES; i++) {
+    if (memcmp (remembered_hashes [i], hash, MESSAGE_ID_SIZE) == 0)
+      return 1;  /* found */
+  }
+  /* not found, add */
+  if ((position < 0) || (position >= NUM_REMEMBERED_HASHES))
+    position = 0;
+  memcpy (remembered_hashes [position], hash, MESSAGE_ID_SIZE);
+  position++;
+  return 0;   /* not found */
+#undef NUM_REMEMBERED_HASHES
+}
+#endif /* CHECK_FOR_DUPLICATES */
 
 static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
                               int hops, struct timeval * now,
@@ -487,12 +520,20 @@ static void handle_packet (char * message, int msize, char * seeking,
   if (memcmp (trace_id, seeking, MESSAGE_ID_SIZE) != 0) {
 #ifdef DEBUG_PRINT
     printf ("received trace_id does not match expected trace_id\n");
-    print_buffer (seeking , MESSAGE_ID_SIZE, "expected trace_id", 100, 1);
+    print_buffer (seeking, MESSAGE_ID_SIZE, "expected trace_id", 100, 1);
     print_buffer ((char *) trace_id, MESSAGE_ID_SIZE,
                   "received trace_id", 100, 1);
 #endif /* DEBUG_PRINT */
     return;
   }
+#ifdef CHECK_FOR_DUPLICATES
+  if (packet_received_before (message, msize)) {
+#ifdef DEBUG_PRINT
+    print_packet (message, msize, "received duplicate trace packet", 1);
+#endif /* DEBUG_PRINT */
+    return;
+  }  /* if not received before, it is now cached for future packets */
+#endif /* CHECK_FOR_DUPLICATES */
   struct timeval now;
   gettimeofday (&now, NULL);
 /*
