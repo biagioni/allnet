@@ -257,7 +257,8 @@ static void send_ack (int sock, struct allnet_header * hp,
   memcpy (recently_sent_acks [currently_sent_ack], message_ack,
           MESSAGE_ID_SIZE);
 #ifdef DEBUG_PRINT
-  print_packet ((char *) ackp, size, "sending ack", 1);
+  printf ("sending ack to contact %s: ", contact);
+  print_packet ((char *) ackp, size, "ack", 1);
 #endif /* DEBUG_PRINT */
   send_pipe_message_free (sock, (char *) ackp, size,
                           ALLNET_PRIORITY_LOCAL, alog);
@@ -430,12 +431,20 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
     return 0;
   }
   char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, psize);
+  char message_ack [MESSAGE_ID_SIZE];
 /* relatively quick check to see if we may have gotten this message before */
-  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
-      (message_id_is_in_saved_cache (message_id))) {
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_ack != NULL) &&
+      (message_id_is_in_saved_cache (message_id, message_ack))) {
+print_buffer (message_ack, MESSAGE_ID_SIZE,
+              "xcommon handle_data sending quick ack",
+              MESSAGE_ID_SIZE, 0);
+print_buffer (message_id, MESSAGE_ID_SIZE, ", message id", MESSAGE_ID_SIZE, 1);
 #ifdef DEBUG_PRINT
-    printf ("handle_data ignoring message that was already saved\n");
+/* printf ("xcommon handle_data sending quick ack %02x %02x %02x %02x\n",
+            message_ack [0] & 0xff, message_ack [1] & 0xff,
+            message_ack [2] & 0xff, message_ack [3] & 0xff); */
 #endif /* DEBUG_PRINT */
+    send_ack (sock, hp, (unsigned char *)message_ack, 0, "unknown", 0);
     return 0;
   }
   int hops = hp->hops;
@@ -453,6 +462,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
                               (char *) (hp->destination), hp->dst_nbits,
                               max_contacts);
 #ifdef DEBUG_PRINT
+if (tsize > 0)
   printf ("decrypt_verify took %lluus, result %d, transport 0x%x, %d hops\n",
           allnet_time_us () - start, tsize, hp->transport, hops);
 #endif /* DEBUG_PRINT */
@@ -979,22 +989,6 @@ void request_and_resend (int sock, char * contact, keyset kset)
     return;
   }
 /*  printf ("request_and_resend (socket %d, peer %s)\n", sock, peer); */
-#if 0
-  static char * old_contact = NULL;
-
-  /* if it is the same peer as on the last call, we do nothing */
-  if ((old_contact != NULL) && (strcmp (contact, old_contact) == 0)) {
-#ifdef DEBUG_PRINT
-    printf ("request_and_resend (%s), same as old peer\n", contact);
-#endif /* DEBUG_PRINT */
-    return;
-  }
-
-  if (old_contact != NULL)
-    free (old_contact);
-  old_contact = strcpy_malloc (contact, "request_and_resend contact");
-#endif /* 0 */
-
   /* request retransmission of any missing messages */
   int hops = 10;
   send_retransmit_request (contact, kset, sock,

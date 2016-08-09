@@ -127,6 +127,8 @@ void save_outgoing (const char * contact, keyset k, struct chat_descriptor * cp,
  * if there is more than one such message, returns the latest.
  * Also fills in the size, time and message_ack -- message_ack must have
  * at least MESSAGE_ID_SIZE bytes */
+extern int get_outgoing_show_debug;
+int get_outgoing_show_debug = 0;
 char * get_outgoing (const char * contact, keyset k, uint64_t seq,
                      int * size, uint64_t * time, char * message_ack)
 {
@@ -138,9 +140,12 @@ char * get_outgoing (const char * contact, keyset k, uint64_t seq,
   uint64_t mtime;
   int msize;
   int tz;
-  char * result;
+  char * result = NULL;
   while ((type = prev_message (iter, &mseq, &mtime, &tz, NULL, message_ack,
           &result, &msize)) != MSG_TYPE_DONE) {
+if ((get_outgoing_show_debug) && (type == MSG_TYPE_SENT) && (strcmp (contact, "edo-on-celine") == 0))
+printf ("get_outgoing (%" PRIu64 "): type %d, seq %" PRIu64 ", message '%s'\n",
+seq, MSG_TYPE_SENT, mseq, result);
     if ((type == MSG_TYPE_SENT) && (mseq == seq)) { /* found */
       if (time != NULL)
         *time = make_time_tz (mtime, tz);
@@ -149,7 +154,9 @@ char * get_outgoing (const char * contact, keyset k, uint64_t seq,
       free_iter (iter);
       return result;
     }
-    free (result);   /* not found, try again */
+    if (result != NULL)
+      free (result);   /* not found, try again */
+    result = NULL;
   }
   free_iter (iter);
   return NULL;
@@ -511,15 +518,41 @@ int was_received (const char * contact, keyset k, uint64_t wanted)
   return 0;
 }
 
-#ifndef MESSAGE_ID_CACHE_SIZE   /* may be defined at compilation time */
-#define MESSAGE_ID_CACHE_SIZE		65536  /* 1MiB */
-#endif /* MESSAGE_ID_CACHE_SIZE */
-static char message_id_cache [MESSAGE_ID_CACHE_SIZE] [MESSAGE_ID_SIZE];
-int current_message_id = 0;
+static char * message_id_cache = NULL;
+static char * message_ack_cache = NULL;
+static int current_cache_index = 0; /* must multiply by MESSAGE_ID_SIZE */
+static int current_cache_size = 0;  /* in multiples of MESSAGE_ID_SIZE */
 
-/* returns 1 if this message ID has been saved before, 0 otherwise */
-void fill_message_id_cache ()
+static void add_to_message_id_cache (char * ack)
 {
+  if (current_cache_index >= current_cache_size) {
+    int total = ((current_cache_size > 0) ? (current_cache_size * 2) : 500);
+    size_t size = total * MESSAGE_ID_SIZE;
+    char * new_ids = realloc (message_id_cache, size);
+    char * new_acks = realloc (message_ack_cache, size); 
+    if ((new_ids == NULL) || (new_acks == NULL)) {
+      printf ("allocation error in add_to_message_id: %zd %d %p/%p %p/%p\n",
+              size, total, new_ids, message_id_cache,
+              new_acks, message_ack_cache);
+      return;  /* don't add */
+    }
+    message_id_cache = new_ids;
+    message_ack_cache = new_acks;
+    current_cache_size = total;
+  }
+  char * idp = message_id_cache + (current_cache_index * MESSAGE_ID_SIZE);
+  char * ackp = message_ack_cache + (current_cache_index * MESSAGE_ID_SIZE);
+  memcpy (ackp, ack, MESSAGE_ID_SIZE);
+  sha512_bytes (ack, MESSAGE_ID_SIZE, idp, MESSAGE_ID_SIZE);
+  current_cache_index++;
+}
+
+static void fill_message_id_cache ()
+{
+  static int initialized = 0;
+  if (initialized)
+    return;
+  initialized = 1;
 #ifdef DEBUG_PRINT
   unsigned long long int start = allnet_time_us ();
 #endif /* DEBUG_PRINT */
@@ -538,13 +571,7 @@ void fill_message_id_cache ()
         while ((type = prev_message (iter, NULL, NULL, NULL, NULL, ack,
                                      NULL, NULL)) != MSG_TYPE_DONE) {
           if (type == MSG_TYPE_RCVD) {
-            char message_id [MESSAGE_ID_SIZE];
-            sha512_bytes (ack, MESSAGE_ID_SIZE, message_id, MESSAGE_ID_SIZE);
-            if (current_message_id < MESSAGE_ID_CACHE_SIZE) {
-              memcpy (message_id_cache [current_message_id],
-                      message_id, MESSAGE_ID_SIZE);
-              current_message_id++;
-            }
+            add_to_message_id_cache (ack);
           }
         }
         free_iter (iter);
@@ -557,52 +584,48 @@ void fill_message_id_cache ()
     free (contacts);
 #ifdef DEBUG_PRINT
   printf ("fill_message_id_cache took %lluus, %d/%d saved\n",
-  allnet_time_us () - start, current_message_id, MESSAGE_ID_CACHE_SIZE);
+  allnet_time_us () - start, current_cache_index, current_cache_size);
 #endif /* DEBUG_PRINT */
 }
 
-static int is_in_message_id_cache (const char * message_id)
+/* returns 1 if this message ID has been saved before, 0 otherwise
+ * if it returns 1, also fills message_ack with the corresponding ack */
+static int is_in_message_id_cache (const char * message_id, char * message_ack)
 {
-
 #ifdef DEBUG_PRINT
   unsigned long long int start = allnet_time_us ();
 #endif /* DEBUG_PRINT */
   int i;
-  for (i = 0; i < current_message_id; i++) {
-    if (memcmp (message_id_cache [i], message_id, MESSAGE_ID_SIZE) == 0) {
+  for (i = 0; i < current_cache_index; i++) {
+    if (memcmp (message_id_cache + (i * MESSAGE_ID_SIZE),
+                message_id, MESSAGE_ID_SIZE) == 0) {
+      memcpy (message_ack,  /* fill in the message ack */
+              message_ack_cache + (i * MESSAGE_ID_SIZE), MESSAGE_ID_SIZE);
+printf ("is_in_message_id_cache found at %d: ", i);
+print_buffer (message_id, MESSAGE_ID_SIZE, "id", 100, 0);
+print_buffer (message_ack, MESSAGE_ID_SIZE, ", ack", 100, 1);
 #ifdef DEBUG_PRINT
       printf ("call to is_in_message_id_cache took %lluus, result 1/%d\n",
-              allnet_time_us () - start, current_message_id);
+              allnet_time_us () - start, current_cache_index);
 #endif /* DEBUG_PRINT */
       return 1;
     }
   }
 #ifdef DEBUG_PRINT
   printf ("call to is_in_message_id_cache took %lluus, result 0/%d\n",
-          allnet_time_us () - start, current_message_id);
+          allnet_time_us () - start, current_cache_index);
 #endif /* DEBUG_PRINT */
   return 0;
-}
-
-void add_to_message_id_cache (char * ack)
-{
-  if (current_message_id >= MESSAGE_ID_CACHE_SIZE)
-    return;
-  char * dest = &(message_id_cache [current_message_id++] [0]);
-  sha512_bytes (ack, MESSAGE_ID_SIZE, dest, MESSAGE_ID_SIZE);
 }
 
 /* returns 1 if this message ID is in the (limited size) saved cache,
  * 0 otherwise
  * in other words, may return 0 even though the message was saved,
- * just because it is not in the cache */
-int message_id_is_in_saved_cache (const char * message_id)
+ * just because it is not in the cache
+ * if it returns 1, also fills message_ack with the corresponding ack */
+int message_id_is_in_saved_cache (const char * message_id, char * message_ack)
 {
-  static int initialized = 0;
-  if (! initialized) {
-    fill_message_id_cache ();
-    initialized = 1;
-  }
-  return (is_in_message_id_cache (message_id));
+  fill_message_id_cache ();
+  return (is_in_message_id_cache (message_id, message_ack));
 }
 

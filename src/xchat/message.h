@@ -96,7 +96,9 @@ extern int was_received (const char * contact, keyset k, uint64_t seq);
 /* returns 1 if this message ID is in the (limited size) saved cache,
  * 0 otherwise
  * in other words, may return 0 even though the message was saved,
- * just because it is not in the cache */
-extern int message_id_is_in_saved_cache (const char * message_id);
+ * just because it is not in the cache
+ * if it returns 1, also fills message_ack with the corresponding ack */
+extern int message_id_is_in_saved_cache (const char * message_id,
+                                         char * message_ack);
 
 #endif /* ALLNET_CHAT_MESSAGE_H */
