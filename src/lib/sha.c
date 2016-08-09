@@ -303,10 +303,12 @@ void sha512 (const char * input, int bytes, char * result)
   if (padding < 17)
     compute_sha512 (((uint64_t *) last2), &hash, 0);
 #ifdef DEBUG_PRINT
-  printf ("final hash is %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 "\n",
-          hash.i [0], hash.i [1], hash.i [2], hash.i [3],
-          hash.i [4], hash.i [5], hash.i [6], hash.i [7]);
-  print_data (hash.c, 64);
+  if (debugging) {
+    printf ("final hash is %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 " %016" PRIx64 "\n",
+            hash.i [0], hash.i [1], hash.i [2], hash.i [3],
+            hash.i [4], hash.i [5], hash.i [6], hash.i [7]);
+    print_data (hash.c, 64);
+  }
 #endif /* DEBUG_PRINT */
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -484,18 +486,20 @@ void sha1 (const char * data, int dsize, char * result)
   for (i = 0; i < input_blocks; i++) {
     compute_sha1 (((uint32_t *) (data + SHA1_BLOCK_SIZE * i)), &hash, 0);
 #ifdef DEBUG_PRINT
-    printf ("sha1 is %08" PRIx32 " %08" PRIx32 " %08" PRIx32 " %08" PRIx32 " %08" PRIx32 "\n",
-            hash.i [0], hash.i [1], hash.i [2], hash.i [3], hash.i [4]);
-    print_data (hash.c, 20);
+    if (debugging) {
+      printf ("sha1 is %08" PRIx32 " %08" PRIx32 " %08" PRIx32 " %08" PRIx32 " %08" PRIx32 "\n", hash.i [0], hash.i [1], hash.i [2], hash.i [3], hash.i [4]);
+      print_data (hash.c, 20);
+    }
 #endif /* DEBUG_PRINT */
   }
   compute_sha1 (((uint32_t *) last1), &hash, 0);
   if (padding < 9)
     compute_sha1 (((uint32_t *) last2), &hash, 0);
 #ifdef DEBUG_PRINT
-  printf ("final sha1 is %08" PRIx32 " %08" PRIx32 " %08" PRIx32 " %08" PRIx32 " %08" PRIx32 "\n",
-          hash.i [0], hash.i [1], hash.i [2], hash.i [3], hash.i [4]);
-  print_data (hash.c, 20);
+    if (debugging) {
+      printf ("final sha1 is %08" PRIx32 " %08" PRIx32 " %08" PRIx32 " %08" PRIx32 " %08" PRIx32 "\n", hash.i [0], hash.i [1], hash.i [2], hash.i [3], hash.i [4]);
+      print_data (hash.c, 20);
+    }
 #endif /* DEBUG_PRINT */
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
@@ -636,8 +640,43 @@ static void hmac_test (int tlen)
   print_data ((unsigned char *) result, sizeof (result));
 }
 
-int main ()
+static void sha_given_array (char * array)
 {
+  debugging = 0;
+#define DATA_SIZE	10000
+  unsigned char data [DATA_SIZE];
+  int i;
+  for (i = 0; (i < DATA_SIZE) && (i * 2 < strlen (array)); i++) {
+    char two_bytes [3];
+    two_bytes [0] = array [2 * i];
+    two_bytes [1] = array [2 * i + 1];
+    two_bytes [2] = '\0';
+    unsigned int value;
+    if (sscanf (two_bytes, "%2x", &value) != 1) {
+      printf ("unable to parse hex %s at index %d\n", two_bytes, 2 * i);
+      return;
+    }
+    data [i] = value;
+  }
+  char result [SHA512_SIZE];
+  sha512 (data, strlen (array) / 2, result);
+  for (i = 0; (i < DATA_SIZE) && (i * 2 < strlen (array)); i++)
+    printf ("%02x", (data [i] & 0xff));
+  printf ("  ==> \n");
+  for (i = 0; i < SHA512_SIZE; i++)
+    printf ("%02x", (result [i] & 0xff));
+  printf ("\n");
+#undef DATA_SIZE
+}
+
+int main (int argc, char ** argv)
+{
+  if (argc > 1) {
+    int i;
+    for (i = 1; i < argc ; i++)
+      sha_given_array (argv [i]);
+    return 0;
+  }
   char r4 [] = { 0xdd, 0xaf, 0x35, 0xa1, 0x93, 0x61, 0x7a, 0xba,
                  0xcc, 0x41, 0x73, 0x49, 0xae, 0x20, 0x41, 0x31,
                  0x12, 0xe6, 0xfa, 0x4e, 0x89, 0xa9, 0x7e, 0xa2,
