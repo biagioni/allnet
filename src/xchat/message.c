@@ -601,9 +601,11 @@ static int is_in_message_id_cache (const char * message_id, char * message_ack)
                 message_id, MESSAGE_ID_SIZE) == 0) {
       memcpy (message_ack,  /* fill in the message ack */
               message_ack_cache + (i * MESSAGE_ID_SIZE), MESSAGE_ID_SIZE);
-printf ("is_in_message_id_cache found at %d: ", i);
-print_buffer (message_id, MESSAGE_ID_SIZE, "id", 100, 0);
-print_buffer (message_ack, MESSAGE_ID_SIZE, ", ack", 100, 1);
+#ifdef DEBUG_PRINT
+      printf ("is_in_message_id_cache found at %d: ", i);
+      print_buffer (message_id, MESSAGE_ID_SIZE, "id", 100, 0);
+      print_buffer (message_ack, MESSAGE_ID_SIZE, ", ack", 100, 1);
+#endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
       printf ("call to is_in_message_id_cache took %lluus, result 1/%d\n",
               allnet_time_us () - start, current_cache_index);

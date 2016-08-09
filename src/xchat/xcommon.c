@@ -435,14 +435,12 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
 /* relatively quick check to see if we may have gotten this message before */
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_ack != NULL) &&
       (message_id_is_in_saved_cache (message_id, message_ack))) {
-print_buffer (message_ack, MESSAGE_ID_SIZE,
-              "xcommon handle_data sending quick ack",
-              MESSAGE_ID_SIZE, 0);
-print_buffer (message_id, MESSAGE_ID_SIZE, ", message id", MESSAGE_ID_SIZE, 1);
 #ifdef DEBUG_PRINT
-/* printf ("xcommon handle_data sending quick ack %02x %02x %02x %02x\n",
-            message_ack [0] & 0xff, message_ack [1] & 0xff,
-            message_ack [2] & 0xff, message_ack [3] & 0xff); */
+    print_buffer (message_ack, MESSAGE_ID_SIZE,
+                  "xcommon handle_data sending quick ack",
+                  MESSAGE_ID_SIZE, 0);
+    print_buffer (message_id, MESSAGE_ID_SIZE, ", message id",
+                  MESSAGE_ID_SIZE, 1);
 #endif /* DEBUG_PRINT */
     send_ack (sock, hp, (unsigned char *)message_ack, 0, "unknown", 0);
     return 0;
