@@ -311,8 +311,8 @@ static void resend_message (uint64_t seq, char * contact,
                             keyset k, int sock, int hops, int priority)
 {
 #ifdef DEBUG_PRINT
-  printf ("resending message with sequence %ju to %s\n",
-          (uintmax_t)seq, contact);
+  printf ("resending message with sequence %ju to %s/%d\n",
+          (uintmax_t)seq, contact, k);
 #endif /* DEBUG_PRINT */
   init_resent ();
   if (was_recently_resent (seq, contact, k)) {
@@ -328,11 +328,15 @@ static void resend_message (uint64_t seq, char * contact,
   char * text = get_outgoing (contact, k, seq, &size, &time, message_ack);
   if ((text == NULL) || (size <= 0)) {
 #ifdef DEBUG_PRINT
-    printf ("resend_message %s %d: no outgoing %ju, %p %d\n",
+    printf ("  resend_message %s %d: no outgoing %ju, %p %d\n",
             contact, k, (uintmax_t)seq, text, size);
 #endif /* DEBUG_PRINT */
     return;
   }
+#ifdef DEBUG_PRINT
+  printf ("  resending message with sequence %ju to %s: %s\n",
+          (uintmax_t)seq, contact, text);
+#endif /* DEBUG_PRINT */
   record_resend (seq, contact, k);
   char * message = malloc_or_fail (size + CHAT_DESCRIPTOR_SIZE, "resend_msg");
   bzero (message, CHAT_DESCRIPTOR_SIZE);
@@ -344,14 +348,23 @@ static void resend_message (uint64_t seq, char * contact,
   writeb32 ((char *) (cdp->app_media.app), XCHAT_ALLNET_APP_ID);
   writeb32 ((char *) (cdp->app_media.media), ALLNET_MEDIA_TEXT_PLAIN);
   memcpy (message + CHAT_DESCRIPTOR_SIZE, text, size);
-  free (text);
 #ifdef DEBUG_PRINT
-  printf ("rexmit outgoing %s, seq %ju, t %ju/0x%jx\n",
+  printf ("  rexmit outgoing %s, seq %ju, t %ju/0x%jx\n",
           contact, (uintmax_t)seq, (uintmax_t)time, (uintmax_t)time);
   print_buffer ((char *) cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
 #endif /* DEBUG_PRINT */
   resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
                  hops, priority);
+#ifdef DEBUG_PRINT
+  printf ("  resent message with sequence ");
+  if (seq != readb64 ((char *)cdp->counter))
+    printf ("%ju =? %ju ", (uintmax_t)seq,
+            (uintmax_t)readb64 ((char *)cdp->counter));
+  else
+    printf ("%ju ", (uintmax_t)seq);
+  printf ("to %s: '%s'\n", contact, text);
+#endif /* DEBUG_PRINT */
+  free (text);
   free (message);
 }
 
