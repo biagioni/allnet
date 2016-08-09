@@ -33,7 +33,7 @@ static int until_deadline (struct timeval * deadline)
   return result;
 }
 
-static void add_time (struct timeval * time, int ms)
+static void add_time (struct timeval * time, unsigned int ms)
 {
   time->tv_usec += ms * 1000;
   time->tv_sec += time->tv_usec / 1000000;
@@ -89,7 +89,7 @@ int main (int argc, char ** argv)
   char my_secret_buf [MAX_SECRET];
   char peer_secret_buf [200];
   int kmax_hops = 0;
-  int wait_time = 5000;   /* 5 seconds to wait for acks and such */
+  unsigned int wait_time = 5000;   /* 5 seconds to wait for acks and such */
   unsigned long long int start_time = allnet_time_ms ();
 
   int exchanging_key = 0;
