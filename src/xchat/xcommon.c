@@ -433,7 +433,7 @@ static int handle_data (int sock, struct allnet_header * hp, int psize,
   char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, psize);
   char message_ack [MESSAGE_ID_SIZE];
 /* relatively quick check to see if we may have gotten this message before */
-  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_ack != NULL) &&
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
       (message_id_is_in_saved_cache (message_id, message_ack))) {
 #ifdef DEBUG_PRINT
     print_buffer (message_ack, MESSAGE_ID_SIZE,
