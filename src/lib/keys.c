@@ -16,6 +16,7 @@
 #include <time.h>
 #include <ctype.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <assert.h>
@@ -43,6 +44,7 @@ struct key_address {
 
 /* typedef int keyset;  refers to a key_info or a group_info */
 struct key_info {
+  int valid;        /* so we can delete contacts without renumbering keys */
   char * contact_name;
   int num_members;        /* -1 for plain contacts, >= 0 for groups */
   allnet_rsa_pubkey contact_pubkey;  /* only defined if not a group */
@@ -98,7 +100,7 @@ static int contact_exists (const char * contact)
 
 static int valid_keyset (keyset k)
 {
-  return ((k >= 0) && (k < num_key_infos));
+  return ((k >= 0) && (k < num_key_infos) && (kip [k].valid));
 }
 
 static void generate_contacts ()
@@ -397,7 +399,8 @@ static int get_members (const char * members_content, int mlen,
 /* returns 0 if the contact does not exist, 1 if it does, 2 if it is a group.
  * if num_members is not NULL, it is set to -1 for a plain contact, or otherwise
  * the number of members. */
-static int read_key_info (const char * path, const char * file, char ** contact,
+static int read_key_info (const char * path, const char * file,
+                          char ** contact,
                           allnet_rsa_prvkey * my_key,
                           allnet_rsa_pubkey * contact_pubkey,
                           char * local, int * loc_nbits,
@@ -532,12 +535,20 @@ static int read_key_info (const char * path, const char * file, char ** contact,
   return result;
 }
 
-static void init_from_file ()
+static void init_from_file (const char * debug)
 {
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
   static int initialized = 0;
+  /* quick check -- if not initialized, check again after getting mutex */
   if (initialized)
     return;
-  initialized = 1;
+  /* all but one thread blocks here until initialized is set to 1 */
+  pthread_mutex_lock (&mutex);
+  if (initialized) {
+  /* and all but the first thread to get the lock returns here */
+    pthread_mutex_unlock (&mutex);
+    return;
+  }
   /* first count the number of keys */
   char * dirname;
   int dirnamesize = config_file_name ("contacts", "", &dirname);
@@ -547,7 +558,9 @@ static void init_from_file ()
   DIR * dir = opendir (dirname);
   if (dir == NULL) {
     perror ("opendir in init_from_file");
-    printf ("unable to open directory %s\n", dirname);
+    printf ("unable to open directory %s (called by %s)\n", dirname, debug);
+    initialized = 1; /* should we try again on the next call? here we don't */
+    pthread_mutex_unlock (&mutex);
     return;
   }
   int num_keys = 0;
@@ -564,18 +577,13 @@ static void init_from_file ()
       }
     }
   }
-  closedir (dir);
 
   set_kip_size (0);  /* get rid of anything that was previously there */
   if (num_keys > 0) {
     set_kip_size (num_keys);  /* create new array */
 
     /* now load the keys */
-    dir = opendir (dirname);
-    if (dir == NULL) {
-      printf ("directory %s no longer accessible\n", dirname);
-      exit (1);
-    }
+    rewinddir (dir);
     int i = 0;
     while ((i < num_keys) && ((dep = readdir (dir)) != NULL)) {
       /* this is only legal as long as i < num_keys */
@@ -583,18 +591,19 @@ static void init_from_file ()
       kip [i].remote.nbits = ADDRESS_SIZE * 8;
       if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* is a key directory */
           (read_key_info (dirname, dep->d_name, &(kip [i].contact_name),
-                           &(kip [i].my_key), &(kip [i].contact_pubkey),
-                           kip [i].local.address, &(kip [i].local.nbits),
-                           kip [i].remote.address, &(kip [i].remote.nbits),
-                           &(kip [i].dir_name),
-                           &(kip [i].members), &(kip [i].num_members),
-                           &(kip [i].has_symmetric_key), kip [i].symmetric_key,
-                           &(kip [i].has_state), &(kip [i].state)))) {
+                          &(kip [i].my_key), &(kip [i].contact_pubkey),
+                          kip [i].local.address, &(kip [i].local.nbits),
+                          kip [i].remote.address, &(kip [i].remote.nbits),
+                          &(kip [i].dir_name),
+                          &(kip [i].members), &(kip [i].num_members),
+                          &(kip [i].has_symmetric_key), kip [i].symmetric_key,
+                          &(kip [i].has_state), &(kip [i].state)))) {
+        kip [i].valid = 1;
         i++;
       }
     }
-    closedir (dir);
   }
+  closedir (dir);
   free (dirname);
   generate_contacts ();
 #ifdef TEST_GROUP_MEMBERSHIP
@@ -622,6 +631,8 @@ printf ("querying contact %s\n", contacts [ic]);
   if ((nc > 0) && (contacts != NULL))
     free (contacts);
 #endif /* TEST_GROUP_MEMBERSHIP */
+  initialized = 1;
+  pthread_mutex_unlock (&mutex);
 }
 
 /*************** operations on contacts ********************/
@@ -629,7 +640,7 @@ printf ("querying contact %s\n", contacts [ic]);
 /* returns 0 or more */
 int num_contacts ()
 {
-  init_from_file ();
+  init_from_file ("num_contacts");
   return cp_used;
 }
 
@@ -657,7 +668,7 @@ static char ** malloc_copy_array_of_strings (char ** array, int count)
  * contact names (to free, call free (*contacts)). */
 int all_contacts (char *** contacts)
 {
-  init_from_file ();
+  init_from_file ("all_contacts");
 #if 0
   static int test = 1;
   if (test) {
@@ -672,9 +683,25 @@ int all_contacts (char *** contacts)
 #ifdef DEBUG_PRINT
   print_contacts ("entering all_contacts");
 #endif /* DEBUG_PRINT */
-  if (contacts != NULL)
-    *contacts = malloc_copy_array_of_strings (cpx, cp_used);
-  return cp_used;
+  int i;
+  int delta = 0;
+  char ** p = NULL;
+  if (contacts != NULL) {
+    p = malloc_copy_array_of_strings (cpx, cp_used);
+    *contacts = p;
+  }
+  for (i = 0; i < cp_used; i++) {
+    if (kip [i].valid) {
+      if ((delta > 0) && (p != NULL))
+        p [i - delta] = p [i];  /* make p[i-delta] valid */
+         /* note: delta increases at most once per loop,
+            so i >= delta >= 0 and i >= i - delta >= 0 */
+    } else {
+printf ("kip [%d] is not valid\n", i);
+      delta++;
+    }
+  }
+  return cp_used - delta;
 }
 
 #if 0
@@ -756,6 +783,10 @@ static void write_member_file (const char * fname, char ** members,
 
 static void save_contact (struct key_info * k)
 {
+  if (! k->valid) {
+    printf ("not saving invalid contact %s\n", k->contact_name);
+    return;
+  }
   char * dirname = k->dir_name;
 #ifdef DEBUG_PRINT
   printf ("save_contact dirname is %s\n", dirname);
@@ -928,7 +959,7 @@ static int do_set_contact_pubkey (struct key_info * k,
 
 int set_contact_pubkey (keyset k, char * contact_key, int contact_ksize)
 {
-  init_from_file ();
+  init_from_file ("set_contact_pubkey");
   if ((! valid_keyset (k)) ||
       (! allnet_rsa_pubkey_is_null (kip [k].contact_pubkey)) ||
       (contact_key == NULL) || (contact_ksize == 0))
@@ -941,7 +972,7 @@ int set_contact_pubkey (keyset k, char * contact_key, int contact_ksize)
 
 int set_contact_local_addr (keyset k, int nbits, unsigned char * address)
 {
-  init_from_file ();
+  init_from_file ("set_contact_local_addr");
   if (! valid_keyset (k))
     return 0;
   kip [k].local.nbits = nbits;
@@ -952,7 +983,7 @@ int set_contact_local_addr (keyset k, int nbits, unsigned char * address)
 
 int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
 {
-  init_from_file ();
+  init_from_file ("set_contact_remote_addr");
   if (! valid_keyset (k))
     return 0;
   kip [k].remote.nbits = nbits;
@@ -974,7 +1005,7 @@ keyset create_contact (const char * contact, int keybits, int feedback,
                        unsigned char * local, int loc_nbits,
                        unsigned char * remote, int rem_nbits)
 {
-  init_from_file ();
+  init_from_file ("create_contact");
   int index_plus_one = contact_exists (contact);
   if (index_plus_one) {
     struct key_info ki = kip [index_plus_one - 1];
@@ -996,6 +1027,7 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   }
 
   struct key_info new;
+  new.valid = 1;
   new.contact_name = strcpy_malloc (contact, "create_contact");
   new.my_key = my_key;
   /* set defaults for the remaining values, then override them later if given */
@@ -1058,8 +1090,37 @@ keyset create_contact (const char * contact, int keybits, int feedback,
  * returns 1 for success */
 int rename_contact (const char * old, const char * new)
 {
-  printf ("rename_contact %s -> %s not implemented\n", old, new);
-  exit (1);
+  init_from_file ("rename_contact");
+  int key;
+  for (key = 0; key < cp_used; key++) {
+    if ((kip [key].valid) && (strcmp (cpx [key], new) == 0)) {
+      printf ("cannot rename %s to existing contact %s\n", old, new);
+      return 0;
+    }
+  }
+  int renamed = 0;
+  for (key = 0; key < cp_used; key++) {
+    if ((kip [key].valid) && (strcmp (cpx [key], old) == 0)) {
+      char * name_file_name = strcat_malloc (kip [key].dir_name, "/name",
+                                             "rename_contact");
+      size_t newlen = strlen (new);
+      if (write_file (name_file_name, new, newlen, 1)) {
+        char * p = realloc (kip [key].contact_name, newlen + 1);
+        if (p != NULL) {
+          strcpy (p, new);
+          kip [key].contact_name = p;
+          cpx [key] = p;
+          renamed = 1;
+        } else {
+          printf ("unable to realloc %s for %s\n", old, new);
+        }
+      } else {
+        printf ("unable to write to file %s\n", name_file_name);
+      }
+      free (name_file_name);
+    }
+  }
+  return renamed;
 }
 
 /* a contact may be marked as hidden.  Nothing is deleted,
@@ -1067,88 +1128,120 @@ int rename_contact (const char * old, const char * new)
  * hidden_contacts returns the number of hidden contacts, or 0.
  * if not 0 and contacts is not NULL, the contacts array is malloc'd, 
  * should be free'd. */
-
-int hidden_contacts (char ** contacts)
+/* sort of the complement of all_contacts */
+int hidden_contacts (char *** contacts)
 {
-  printf ("hidden_contacts not implemented\n");
-  exit (1);
+  init_from_file ("hidden_contacts");
+#ifdef DEBUG_PRINT
+  print_contacts ("entering hidden_contacts");
+#endif /* DEBUG_PRINT */
+  int i;
+  int delta = 0;
+  char ** p = NULL;
+  if (contacts != NULL) {
+    p = malloc_copy_array_of_strings (cpx, cp_used);
+    *contacts = p;
+  }
+  for (i = 0; i < cp_used; i++) {
+    if (kip [i].valid) {
+      if ((delta > 0) && (p != NULL))  /* make p[i-delta] valid */
+        p [i - delta] = p [i];
+         /* note: delta increases at most once per loop,
+            so i >= delta >= 0 and i >= i - delta >= 0 */
+    } else {
+      delta++;
+    }
+  }
+  return cp_used - delta;
 }
 
-static void move_to_hidden (const char * dirname)
+/* move_to is 1 to move to hidden, 0 to move from hidden */
+/* returns 1 for success, 0 otherwise */
+static int move_hidden (const char * dirname, int move_to)
 {
-  /* delete from file system, or rather, move to .allnet/contacts_deleted */
-  char * newname = string_replace_once (dirname, "contacts",
-                                        "contacts_deleted", 0);
-  /* deleted_dir is the destination directory */
-  char * deleted_dir = strcpy_malloc (newname, "dir in delete_contact");
-  char * pos = rindex(deleted_dir, '/');
+  /* move to/from .allnet/contacts_hidden */
+  /* hidden_dir is the destination or source directory */
+  char * hidden_dir = string_replace_once (dirname, "contacts",
+                                           "contacts_hidden", 0);
+  char * pos = rindex (hidden_dir, '/');
   if (pos != NULL)
     *pos = '\0';  /* delete string from the last slash onwards */
-  /* make sure contacts_deleted exists */
-  create_dir (deleted_dir);
-  free (deleted_dir);
-  int res = rename (dirname, newname);
+printf ("move_hidden: '%s' and '%s'\n", dirname, hidden_dir);
+  const char * source = dirname;
+  const char * destination = hidden_dir;
+  if (! move_to) {
+    source = hidden_dir;
+    destination = dirname;
+  }
+printf ("move_hidden: to %d, '%s' to '%s'\n", move_to, source, destination);
+  return 1;
+  /* make sure contacts_hidden exists */
+  create_dir (destination);
+  int res = rename (source, destination);
   if (res < 0)
     perror ("rename in move_to_hidden");
-  printf ("moved %s to %s, result %d\n", dirname, newname, res);
-  free (newname);
+  printf ("moved %s to %s, result %d\n", source, destination, res);
+  free (hidden_dir);
+  return 1;
 }
 
-static void free_key_info (int key)
-{
-  struct key_info * k = kip + key;
-  if (k->contact_name != NULL)
-    free (k->contact_name);
-  if (k->num_members < 0) {
-    if (! allnet_rsa_pubkey_is_null (k->contact_pubkey))
-      allnet_rsa_free_pubkey (k->contact_pubkey);
-    if (! allnet_rsa_prvkey_is_null (k->my_key))
-      allnet_rsa_free_prvkey (k->my_key);
-  }
-  if (k->dir_name != NULL)
-    free (k->dir_name);
-  if ((k->num_members > 0) && (k->members != NULL))
-    free (k->members);
-  /* notice -- moving keys around causes existing keysets to be invalidated
-   * this might cause a race condition if free_key_info is called in one
-   * thread while another thread is working through the keyset for a contact
-   * the only solution I can think of (2016/07/01) is to change the
-   * type of a keyset so it's no longer an int -- not a great solution.
-   * it would also be possible to mark an entry as deleted so keysets
-   * don't change. */
-  if (cp_used > 1)  /* copy the last one in place of this */
-    kip [key] = kip [cp_used - 1];
-  cp_used--;
-}
+/* notice -- moving keys around causes existing keysets to be invalidated
+ * if we were to actually delete contacts, this would cause a race
+ * condition if free_key_info is called in one thread while another
+ * thread is working through the keyset for a contact
+ * so instead, just mark a key info as invalid */
 
 /* un/hide_contact return 1 for success, 0 if not successful */
 int hide_contact (const char * contact)
 {
-  int key = 0;
-  int deleted = 0;
-  while (key < cp_used) {  /* each loop, key++ or in free_key_info cp_used-- */
-    if (strcmp (cpx [key], contact) == 0) {
- /* delete from file system, or rather, move to .allnet/contacts_deleted */
-      move_to_hidden (kip [key].dir_name);
- /* now delete from data structure -- decrements cp_used */
-      free_key_info (key);
-      deleted = 1;
-    } else {
-      key++;
+  init_from_file ("hide_contact");
+  int key;
+  int hidden = 0;
+  for (key = 0; key < cp_used; key++) {
+    if ((kip [key].valid) && (strcmp (cpx [key], contact) == 0)) {
+ /* move to .allnet/contacts_deleted */
+      move_hidden (kip [key].dir_name, 1);
+ /* now invalidate in data structure */
+      kip [key].valid = 0;
+ /* record success */
+      hidden = 1;
     }
   }
-  return deleted;
+  return hidden;
 }
 
 int unhide_contact (const char * contact)
 {
-  printf ("unhide_contact %s not implemented\n", contact);
-  exit (1);
+  init_from_file ("unhide_contact");
+  int key;
+  for (key = 0; key < cp_used; key++) {
+    if ((kip [key].valid) && (strcmp (cpx [key], contact) == 0)) {
+      printf ("unable to unhide contact %s, name conflict\n", contact);
+      return 0;
+    }
+  }
+  int success = 0;
+  for (key = 0; key < cp_used; key++) {
+    if ((! kip [key].valid) && (strcmp (cpx [key], contact) == 0)) {
+ /* move from .allnet/contacts_deleted */
+      if (move_hidden (kip [key].dir_name, 0)) {
+ /* now re-validate in data structure */
+        kip [key].valid = 1;
+ /* record success */
+        success = 1;
+      } else {
+        printf ("failed to move '%s' @ '%s' from hidden\n",
+                contact, kip [key].dir_name);
+      }
+    }
+  }
+  return success;
 }
 
 /* this is the actual deletion. return 1 for success, 0 otherwise */
 int delete_contact (const char * contact)
 {
+  init_from_file ("delete_contact");
   printf ("delete_contact %s not implemented\n", contact);
   exit (1);
 }
@@ -1195,7 +1288,7 @@ int is_group (const char * contact)
  * returns 1 for success, 0 for failure */
 int create_group (const char * group)
 {
-  init_from_file ();
+  init_from_file ("create_group");
   int index_plus_one = contact_exists (group);
   if (index_plus_one) {  /* found an existing entry */
     printf ("create_group failed, %s already exists\n", group);
@@ -1230,7 +1323,7 @@ int create_group (const char * group)
  * in a dynamically allocated array (if not NULL, must be free'd) */
 int group_membership (const char * group, char *** members)   
 {
-  init_from_file ();
+  init_from_file ("group_membership");
   if (members != NULL)
     *members = NULL;
   int index_plus_one = contact_exists (group);
@@ -1287,7 +1380,7 @@ static int reload_members_from_file (int ki)
  * an individual contact rather than a group */
 int add_to_group (const char * group, const char * contact)
 {
-  init_from_file ();
+  init_from_file ("add_to_group");
   int index_plus_one = contact_exists (group);
   if (index_plus_one <= 0)
     return 0;
@@ -1314,7 +1407,7 @@ int add_to_group (const char * group, const char * contact)
 
 int remove_from_group (const char * group, const char * contact)
 {
-  init_from_file ();
+  init_from_file ("remove_from_group");
   int index_plus_one = contact_exists (group);
   if (index_plus_one <= 0)
     return 0;
@@ -1693,7 +1786,7 @@ static int plain_num_keysets (const char * contact,
 /* returns -1 if the contact does not exist, and 0 or more otherwise */
 int num_keysets (const char * contact)
 {
-  init_from_file ();
+  init_from_file ("num_keysets");
   if (! contact_exists (contact))
     return -1;
 #ifdef RECURSIVELY_INCLUDE_GROUP_KEYS
@@ -1708,7 +1801,7 @@ int num_keysets (const char * contact)
 /* returns -1 if the contact does not exist */
 int all_keys (const char * contact, keyset ** keysets)
 {
-  init_from_file ();
+  init_from_file ("all_keys");
 #ifdef DEBUG_PRINT
   print_contacts ("entering all_keys");
 #endif /* DEBUG_PRINT */
@@ -1742,7 +1835,7 @@ int all_keys (const char * contact, keyset ** keysets)
 /* in case of error, returns NULL */
 char * key_dir (keyset key)
 {
-  init_from_file ();
+  init_from_file ("key_dir");
   if (! valid_keyset (key))
     return NULL;
   return kip [key].dir_name;
@@ -1772,7 +1865,7 @@ static unsigned int get_pubkey (RSA * rsa, char ** bytes,
  * if not successful, returns 0 */
 unsigned int get_contact_pubkey (keyset k, allnet_rsa_pubkey * key)
 {
-  init_from_file ();
+  init_from_file ("get_contact_pubkey");
   if (! valid_keyset (k))
     return 0;
   *key = kip [k].contact_pubkey;
@@ -1781,7 +1874,7 @@ unsigned int get_contact_pubkey (keyset k, allnet_rsa_pubkey * key)
 
 unsigned int get_my_pubkey (keyset k, allnet_rsa_pubkey * key)
 {
-  init_from_file ();
+  init_from_file ("get_my_pubkey");
   if (! valid_keyset (k))
     return 0;
   *key = allnet_rsa_private_to_public (kip [k].my_key);
@@ -1790,7 +1883,7 @@ unsigned int get_my_pubkey (keyset k, allnet_rsa_pubkey * key)
 
 unsigned int get_my_privkey (keyset k, allnet_rsa_prvkey * key)
 {
-  init_from_file ();
+  init_from_file ("get_my_privkey");
   if (! valid_keyset (k))
     return 0;
   *key = kip [k].my_key;
@@ -1801,7 +1894,7 @@ unsigned int get_my_privkey (keyset k, allnet_rsa_prvkey * key)
 /* address must have length at least ADDRESS_SIZE */
 unsigned int get_local (keyset k, unsigned char * address)
 {
-  init_from_file ();
+  init_from_file ("get_local");
   if (! valid_keyset (k))
     return 0;
   if (kip [k].local.nbits == 0)
@@ -1812,7 +1905,7 @@ unsigned int get_local (keyset k, unsigned char * address)
 
 unsigned int get_remote (keyset k, unsigned char * address)
 {
-  init_from_file ();
+  init_from_file ("get_remote");
   if (! valid_keyset (k))
     return 0;
   if (kip [k].remote.nbits == 0)
@@ -1828,7 +1921,7 @@ unsigned int get_remote (keyset k, unsigned char * address)
 /* a keyset is marked as invalid by renaming the my_key to my_key_invalidated */
 int mark_invalid (const char * contact, keyset k)
 {
-  init_from_file ();
+  init_from_file ("mark_invalid");
   if (! valid_keyset (k))
     return 0;
   char * fname = strcat_malloc (kip [k].dir_name, "/my_key",
@@ -1851,7 +1944,7 @@ int mark_invalid (const char * contact, keyset k)
 
 int invalid_keys (const char * contact, keyset ** keysets)
 {
-  init_from_file ();
+  init_from_file ("invalid_keys");
   int ki;
   int count = 0;
   for (ki = 0; ki < num_key_infos; ki++)
@@ -1872,7 +1965,7 @@ int invalid_keys (const char * contact, keyset ** keysets)
 /* mirror image of mark_invalid */
 int mark_valid (const char * contact, keyset k)
 {
-  init_from_file ();
+  init_from_file ("mark_valid");
   if (! valid_keyset (k))
     return 0;
   char * fname = strcat_malloc (kip [k].dir_name, "/my_key",
@@ -1922,7 +2015,7 @@ static int find_symmetric_key (const char * contact)
  * copies the key value into key */
 int has_symmetric_key (const char * contact, char * key, int ksize)
 {
-  init_from_file ();
+  init_from_file ("has_symmetric_key");
   int found = find_symmetric_key (contact);
   if ((found >= 0) && (found < num_key_infos)) {  /* found */
     if ((key != NULL) && (ksize >= SYMMETRIC_KEY_SIZE))
@@ -1937,9 +2030,9 @@ int has_symmetric_key (const char * contact, char * key, int ksize)
  * returns 0 otherwise */
 int set_symmetric_key (const char * contact, char * key, int ksize)
 {
+  init_from_file ("set_symmetric_key");
   if ((ksize < SYMMETRIC_KEY_SIZE) || (key == NULL))
     return 0;
-  init_from_file ();
   int ki = find_symmetric_key (contact);
   if (ki == num_key_infos)  /* contact not found */
     return 0;
@@ -1986,9 +2079,9 @@ static int find_state (const char * contact)
 int symmetric_key_state (const char * contact,
                          struct allnet_stream_encryption_state * state)
 {
+  init_from_file ("symmetric_key_state");
   if (state == NULL)
     return 0;
-  init_from_file ();
   int found = find_state (contact);
   if ((found >= 0) && (found < num_key_infos)) {  /* found */
     if (state != NULL)
@@ -2022,9 +2115,9 @@ static char * array_to_buf (const char * array, int abytes,
 int save_key_state (const char * contact,
                     struct allnet_stream_encryption_state * state)
 {
+  init_from_file ("save_key_state");
   if (state == NULL)
     return 0;
-  init_from_file ();
   int ki = find_state (contact);
   if (ki == num_key_infos)  /* contact not found */
     return 0;
@@ -2054,7 +2147,7 @@ int save_key_state (const char * contact,
  * return 1 for success, 0 if the operation was not done for any reason */
 int invalidate_symmetric_key (const char * contact)
 {
-  init_from_file ();
+  init_from_file ("invalidate_symmetric_key");
   int ki = find_symmetric_key (contact);
   if ((ki < 0) || (ki >= num_key_infos))  /* not found */
     return 0;
@@ -2078,7 +2171,7 @@ int invalidate_symmetric_key (const char * contact)
 
 int revalidate_symmetric_key (const char * contact)
 {
-  init_from_file ();
+  init_from_file ("revalidate_symmetric_key");
   int ki = find_symmetric_key (contact);
   if (ki >= 0)   /* no contact, or contact already has a symmetric key */
     return 0;
@@ -2739,7 +2832,7 @@ struct bc_key_info * get_other_bc_key (char * ahra)
 
 int main ()
 {
-  init_from_file ();
+  init_from_file ("test_keys main");
   char addr [ADDRESS_SIZE];
   addr [0] = 0x01;
   addr [1] = 0x02;
