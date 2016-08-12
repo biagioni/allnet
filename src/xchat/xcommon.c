@@ -144,6 +144,7 @@ static int random_hop_count ()
 static void * request_cached_data (void * arg)
 {
   int sock = * (int *) arg;
+  free (arg);
   /* initial sleep is 3s-10s, slowly grow to ~20min */
   int sleep_time = (int)random_int (SLEEP_INITIAL_MIN, SLEEP_INITIAL_MAX);
   while (1) {  /* loop forever, unless the socket is closed */
@@ -209,10 +210,10 @@ int xchat_init (char * arg0, pd p)
     perror ("xchat_init setsockopt nosigpipe");
 #endif /* SO_NOSIGPIPE */
   pthread_t thread;
-  static int arg = 0;
-  arg = sock;
-  /* can be slow */
-  pthread_create (&thread, NULL, request_cached_data, (void *)(&arg));
+  int * arg = malloc_or_fail (sizeof (int), "xchat_init");
+  *arg = sock;
+  /* request_cached_data loops forever, so do it in a separate thread */
+  pthread_create (&thread, NULL, request_cached_data, (void *)(arg));
   return sock;
 }
 
