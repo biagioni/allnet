@@ -1830,7 +1830,7 @@ int all_keys (const char * contact, keyset ** keysets)
   return count;
 }
 
-/* returns a pointer to a statically allocated (do not modify in any way).
+/* returns a pointer to a dynamically allocated (must be free'd).
  * name for the directory corresponding to this key. */
 /* in case of error, returns NULL */
 char * key_dir (keyset key)
@@ -1838,7 +1838,7 @@ char * key_dir (keyset key)
   init_from_file ("key_dir");
   if (! valid_keyset (key))
     return NULL;
-  return kip [key].dir_name;
+  return strcpy_malloc (kip [key].dir_name, "key_dir");
 }
 
 #if 0

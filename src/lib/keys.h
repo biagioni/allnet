@@ -103,7 +103,7 @@ extern int num_keysets (const char * contact);
 /* returns -1 if the contact does not exist */
 extern int all_keys (const char * contact, keyset ** keysets);
 
-/* returns a pointer to a statically allocated (do not modify in any way).
+/* returns a pointer to a dynamically allocated (must be free'd).
  * name for the directory corresponding to this key. */
 /* in case of error, returns NULL */
 extern char * key_dir (keyset key);
