@@ -91,4 +91,9 @@ extern int add_message (struct message_store_info ** msgs, int * num_alloc,
                         int acked, const char * ack,
                         const char * message, int msize);
 
+/* returns an estimate of the number of bytes used to save the
+ * conversation information for this contact.
+ * returns -1 if the contact does not exist or for other errors */
+extern int64_t conversation_size (const char * contact);
+
 #endif /* ALLNET_CHAT_STORE_H */

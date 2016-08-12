@@ -100,9 +100,8 @@ static int add_message_cache_record (const char * contact,
 static int start_iter_from_file (const char * contact, keyset k,
                                  struct msg_iter * result)
 {
-  char * directory = NULL;
-  directory = key_dir (k);
-  if (directory== NULL)
+  char * directory = key_dir (k);
+  if (directory == NULL)
     return 0;
   result->contact = strcpy_malloc (contact, "start_iter contact");
   result->k = k;
@@ -1151,6 +1150,66 @@ void free_all_messages (struct message_store_info * msgs, int num_used)
         (msgs [i].msize > 0))
       free ((void *)(msgs [i].message));
   }
+}
+
+static int64_t file_storage_size (const char * fname)
+{
+  struct stat st;
+  int result = stat (fname, &st);
+  if (result != 0) {
+    perror ("file_size stat");
+    printf ("store.c file_size unable to stat '%s'\n", fname);
+    return -1;
+  }
+  return st.st_blocks * 512;
+}
+
+extern int64_t conversation_size (const char * contact);
+/* returns an estimate of the number of bytes used to save the
+ * conversation information for this contact
+ * returns -1 if the contact does not exist or for other errors */
+int64_t conversation_size (const char * contact)
+{
+  keyset * k;
+  int n = all_keys (contact, &k);
+  if (n < 0)
+    return -1;
+  if (n == 0)
+    return 0;
+  int success = 0;
+  int i;
+  int64_t result = 0;
+  for (i = 0; i < n; i++) {
+    char * contacts_dir = key_dir (k [i]);
+    if (contacts_dir == NULL)
+      continue;              /* try the next key */
+    char * xchat_dir =
+      string_replace_once (contacts_dir, "contacts", "xchat", 1);
+    free (contacts_dir);
+    DIR * dir = opendir (xchat_dir);
+    if (dir == NULL) {
+      perror ("conversation_size opendir");
+      printf ("unable to open directory %s\n", xchat_dir);
+      free (xchat_dir);
+      continue;              /* try the next key */
+    }
+    struct dirent * dep;
+    while ((dep = readdir (dir)) != NULL) {
+      char * path =
+        strcat3_malloc (xchat_dir, "/", dep->d_name, "conversation_size");
+      int64_t new_result = file_storage_size (path);
+      free (path);
+      if (new_result > 0)
+        result += new_result;
+      if (new_result >= 0)   /* found something, count it */
+        success = 1;
+    }
+    closedir (dir);
+    free (xchat_dir);
+  }
+  if (success)
+    return result;
+  return -1;
 }
 
 #ifdef TEST_STORE
