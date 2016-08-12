@@ -1161,7 +1161,9 @@ static int64_t file_storage_size (const char * fname)
     printf ("store.c file_size unable to stat '%s'\n", fname);
     return -1;
   }
-  return st.st_blocks * 512;
+  if (S_ISREG (st.st_mode))
+    return st.st_blocks * 512;
+  return 0;  /* directory */
 }
 
 extern int64_t conversation_size (const char * contact);
