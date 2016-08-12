@@ -111,6 +111,7 @@ static int start_iter_from_file (const char * contact, keyset k,
   result->current_file = NULL;
   result->current_size = 0;
   result->current_pos = 0;
+  free (directory);
   return 1;
 }
 
@@ -996,35 +997,6 @@ int add_message (struct message_store_info ** msgs, int * num_alloc,
   return 1;
 }
 
-#if 0
-static int ack_is_saved (const char * ack, const char * ack_list, int num_acks)
-{
-  if ((ack_list == NULL) || (num_acks <= 0))
-    return 0;
-  int i;
-  for (i = 0; i < num_acks; i++)
-    if (memcmp (ack, ack_list + (i * MESSAGE_ID_SIZE), MESSAGE_ID_SIZE) == 0)
-      return 1;
-  return 0;
-}
-
-static int ack_save (const char * ack, char ** ack_list, int num_acks)
-{
-  char * initial_ack_list = *ack_list;
-  if (ack_is_saved (ack, initial_ack_list, num_acks)
-    return num_acks;
-  char * result = realloc (initial_ack_list, (num_acks + 1) * MESSAGE_ID_SIZE);
-  if (result == NULL) {
-    printf ("realloc error in ack_save (%d)\n", num_acks + 1);
-    return num_acks;
-  }
-  char * mem = result + (num_acks * MESSAGE_ID_SIZE);
-  memcpy (mem, ack, MESSAGE_ID_SIZE);
-  *ack_list = result;
-  return num_acks + 1;
-}
-#endif /* 0 */
-
 #ifdef DEBUG_PRINT
 static void print_message_ack (int next, const char * ack)
 {
@@ -1161,9 +1133,10 @@ static int64_t file_storage_size (const char * fname)
     printf ("store.c file_size unable to stat '%s'\n", fname);
     return -1;
   }
-  if (S_ISREG (st.st_mode))
-    return st.st_blocks * 512;
-  return 0;  /* directory */
+  size_t len = strlen (fname);
+  if ((len > 3) && (strcmp ("/..", fname + (len - 3)) == 0))
+    return 0;  /* do not count parent directory */
+  return st.st_blocks * 512;
 }
 
 extern int64_t conversation_size (const char * contact);
@@ -1172,19 +1145,24 @@ extern int64_t conversation_size (const char * contact);
  * returns -1 if the contact does not exist or for other errors */
 int64_t conversation_size (const char * contact)
 {
-  keyset * k;
+  keyset * k = NULL;
   int n = all_keys (contact, &k);
   if (n < 0)
     return -1;
-  if (n == 0)
+  if (n == 0) {
+    if (k != NULL)
+      free (k);
     return 0;
+  }
   int success = 0;
   int i;
   int64_t result = 0;
   for (i = 0; i < n; i++) {
     char * contacts_dir = key_dir (k [i]);
-    if (contacts_dir == NULL)
+    if (contacts_dir == NULL) {
+      printf ("no key_dir for contact %s, key [%d] %d\n", contact, i, k [i]);
       continue;              /* try the next key */
+    }
     char * xchat_dir =
       string_replace_once (contacts_dir, "contacts", "xchat", 1);
     free (contacts_dir);
@@ -1209,6 +1187,8 @@ int64_t conversation_size (const char * contact)
     closedir (dir);
     free (xchat_dir);
   }
+  if (k != NULL)
+    free (k);
   if (success)
     return result;
   return -1;
