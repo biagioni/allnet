@@ -148,7 +148,7 @@ time_t config_file_mod_time (const char * program, const char * file)
   return st.st_mtime;
 }
 
-static int open_config (char * program, char * file, int flags,
+static int open_config (const char * program, const char * file, int flags,
                         int print_errors, char * caller)
 {
   char * name;
