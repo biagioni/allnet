@@ -40,26 +40,6 @@ static void add_time (struct timeval * time, unsigned int ms)
   time->tv_usec = time->tv_usec % 1000000;
 }
 
-#if 0
-static int now_hour (time_t time)
-{
-  struct tm * tm = localtime (&time);
-  return tm->tm_hour;
-}
-
-static int now_minute (time_t time)
-{
-  struct tm * tm = localtime (&time);
-  return tm->tm_min;
-}
-
-static int now_second (time_t time)
-{
-  struct tm * tm = localtime (&time);
-  return tm->tm_sec;
-}
-#endif /* 0 */
-
 int main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
