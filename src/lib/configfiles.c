@@ -19,7 +19,7 @@
 /* except chat files are done in xchat/store.c... */
 
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
-int create_dir (char * path)
+int create_dir (const char * path)
 {
   DIR * d = opendir (path);
   if (d != NULL) {  /* exists, done */
@@ -59,7 +59,7 @@ int create_dir (char * path)
 /* returns -1 if the allocation fails or there is some other problem */
 /* if it allocates the name, also checks to make sure the directory exists,
  * and if not, creates it if possible.  Does not create the file. */
-int config_file_name (char * program, char * file, char ** name)
+int config_file_name (const char * program, const char * file, char ** name)
 {
   if (name != NULL)
     *name = NULL;  /* in case we return error, make sure it is initialized */
@@ -130,7 +130,7 @@ int config_file_name (char * program, char * file, char ** name)
 
 /* returns the (system) time of last modification of the config file, or 0
  * if the file does not exist */
-time_t config_file_mod_time (char * program, char * file)
+time_t config_file_mod_time (const char * program, const char * file)
 {
   char * name = NULL;
   int size = config_file_name (program, file, &name);
@@ -170,20 +170,22 @@ static int open_config (char * program, char * file, int flags,
 
 /* returns a file descriptor, -1 if the file does not exist,
  * or -2 in case of errors */
-int open_read_config (char * program, char * file, int print_errors)
+int open_read_config (const char * program, const char * file,
+                      int print_errors)
 {
   return open_config (program, file, O_RDONLY, print_errors,
                       "open_read_config");
 }
 /* returns a file descriptor, or -1 in case of errors */
-int open_write_config (char * program, char * file, int print_errors)
+int open_write_config (const char * program, const char * file,
+                       int print_errors)
 {
   int flags = O_WRONLY | O_CREAT | O_TRUNC;
   return open_config (program, file, flags, print_errors, "open_write_config");
 }
 
 /* returns a file descriptor, or -1 in case of errors */
-int open_rw_config (char * program, char * file, int print_errors)
+int open_rw_config (const char * program, const char * file, int print_errors)
 {
   int flags = O_RDWR | O_CREAT;
   return open_config (program, file, flags, print_errors, "open_write_config");
