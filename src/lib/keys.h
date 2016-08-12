@@ -50,7 +50,7 @@ extern int rename_contact (const char * old, const char * new);
  * hidden_contacts returns the number of deleted contacts, or 0.
  * if not 0 and contacts is not NULL, the contacts array is malloc'd,
  * should be free'd. */
-extern int hidden_contacts (char ** contacts);
+extern int hidden_contacts (char *** contacts);
 /* un/hide_contact return 1 for success, 0 if not successful */
 extern int hide_contact (const char * contact);
 extern int unhide_contact (const char * contact);
