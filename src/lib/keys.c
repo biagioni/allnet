@@ -1052,17 +1052,19 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   return new_contact;
 }
 
-/* a contact may be marked as invalid/deleted.  Nothing is deleted,
- * but the contact can no longer be accessed unless undeleted again.
- * deleted_contacts returns the number of deleted contacts, or 0.
- * if not 0, the contacts array is malloc'd, should be free'd. */
-int deleted_contacts (char ** contacts)
+/* a contact may be marked as hidden.  Nothing is deleted,
+ * but the contact can no longer be accessed unless unhidden again.
+ * hidden_contacts returns the number of hidden contacts, or 0.
+ * if not 0 and contacts is not NULL, the contacts array is malloc'd, 
+ * should be free'd. */
+
+int hidden_contacts (char ** contacts)
 {
-  printf ("deleted_contacts not implemented\n");
+  printf ("hidden_contacts not implemented\n");
   exit (1);
 }
 
-static void move_to_deleted (const char * dirname)
+static void move_to_hidden (const char * dirname)
 {
   /* delete from file system, or rather, move to .allnet/contacts_deleted */
   char * newname = string_replace_once (dirname, "contacts",
@@ -1077,7 +1079,7 @@ static void move_to_deleted (const char * dirname)
   free (deleted_dir);
   int res = rename (dirname, newname);
   if (res < 0)
-    perror ("rename in move_to_deleted");
+    perror ("rename in move_to_hidden");
   printf ("moved %s to %s, result %d\n", dirname, newname, res);
   free (newname);
 }
@@ -1109,15 +1111,15 @@ static void free_key_info (int key)
   cp_used--;
 }
 
-/* un/delete_contact return 1 for success, 0 if not successful */
-int delete_contact (const char * contact)
+/* un/hide_contact return 1 for success, 0 if not successful */
+int hide_contact (const char * contact)
 {
   int key = 0;
   int deleted = 0;
   while (key < cp_used) {  /* each loop, key++ or in free_key_info cp_used-- */
     if (strcmp (cpx [key], contact) == 0) {
  /* delete from file system, or rather, move to .allnet/contacts_deleted */
-      move_to_deleted (kip [key].dir_name);
+      move_to_hidden (kip [key].dir_name);
  /* now delete from data structure -- decrements cp_used */
       free_key_info (key);
       deleted = 1;
@@ -1128,9 +1130,16 @@ int delete_contact (const char * contact)
   return deleted;
 }
 
-int undelete_contact (const char * contact)
+int unhide_contact (const char * contact)
 {
-  printf ("undelete_contacts not implemented\n");
+  printf ("unhide_contact %s not implemented\n", contact);
+  exit (1);
+}
+
+/* this is the actual deletion. return 1 for success, 0 otherwise */
+int delete_contact (const char * contact)
+{
+  printf ("delete_contact %s not implemented\n", contact);
   exit (1);
 }
 

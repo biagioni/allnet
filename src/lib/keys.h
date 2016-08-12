@@ -39,14 +39,18 @@ extern keyset create_contact (const char * contact, int keybits, int feedback,
                               unsigned char * local, int loc_nbits,
                               unsigned char * remote, int rem_nbits);
 
-/* a contact may be marked as invalid/deleted.  Nothing is deleted,
- * but the contact can no longer be accessed unless undeleted again.
- * deleted_contacts returns the number of deleted contacts, or 0.
- * if not 0, the contacts array is malloc'd, should be free'd. */
-extern int deleted_contacts (char ** contacts);
-/* un/delete_contact return 1 for success, 0 if not successful */
+/* a contact may be marked as hidden.  Nothing is deleted,
+ * but the contact can no longer be accessed unless unhidden again.
+ * hidden_contacts returns the number of deleted contacts, or 0.
+ * if not 0 and contacts is not NULL, the contacts array is malloc'd,
+ * should be free'd. */
+extern int hidden_contacts (char ** contacts);
+/* un/hide_contact return 1 for success, 0 if not successful */
+extern int hide_contact (const char * contact);
+extern int unhide_contact (const char * contact);
+
+/* this is the actual deletion. return 1 for success, 0 otherwise */
 extern int delete_contact (const char * contact);
-extern int undelete_contact (const char * contact);
 
 /*************** operations on groups of contacts ******************/
 
