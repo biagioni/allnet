@@ -39,6 +39,12 @@ extern keyset create_contact (const char * contact, int keybits, int feedback,
                               unsigned char * local, int loc_nbits,
                               unsigned char * remote, int rem_nbits);
 
+/* change the name associated with a contact.  Fails and returns 0
+ * if the old name does not exist, or if the new one does, and of
+ * course for other reasons too.
+ * returns 1 for success */
+extern int rename_contact (const char * old, const char * new);
+
 /* a contact may be marked as hidden.  Nothing is deleted,
  * but the contact can no longer be accessed unless unhidden again.
  * hidden_contacts returns the number of deleted contacts, or 0.

@@ -1052,6 +1052,16 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   return new_contact;
 }
 
+/* change the name associated with a contact.  Fails and returns 0
+ * if the old name does not exist, or if the new one does, and of
+ * course for other reasons too.
+ * returns 1 for success */
+int rename_contact (const char * old, const char * new)
+{
+  printf ("rename_contact %s -> %s not implemented\n", old, new);
+  exit (1);
+}
+
 /* a contact may be marked as hidden.  Nothing is deleted,
  * but the contact can no longer be accessed unless unhidden again.
  * hidden_contacts returns the number of hidden contacts, or 0.
