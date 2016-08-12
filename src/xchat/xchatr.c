@@ -15,26 +15,6 @@
 #include "retransmit.h"
 #include "xcommon.h"
 
-#if 0
-static int now_hour (time_t time)
-{
-  struct tm * tm = localtime (&time);
-  return tm->tm_hour;
-}
-
-static int now_minute (time_t time)
-{
-  struct tm * tm = localtime (&time);
-  return tm->tm_min;
-}
-
-static int now_second (time_t time)
-{
-  struct tm * tm = localtime (&time);
-  return tm->tm_sec;
-}
-#endif /* 0 */
-
 int main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
@@ -44,42 +24,11 @@ int main (int argc, char ** argv)
   if (sock < 0)
     return 1;
 
-  char * contact = NULL;
-  char * secret = NULL;
-#define MAX_SECRET	15  /* including a terminating null character */
-  char secret_buf [MAX_SECRET];
-  int key_hops = 0;
   int print_duplicates = 0;
-  int seeking_key = 0;
-  int abits;
-  unsigned char my_addr [ADDRESS_SIZE];
   int i;
   for (i = 1; i < argc; i++) {
     if (strcmp (argv [i], "-a") == 0)
       print_duplicates = 1;
-    if ((i + 1 < argc) && (strcmp (argv [i], "-k") == 0)) {
-      seeking_key = 1;
-      /* -k contact-name [max-hops]: exchange keys for this new contact */
-      contact = argv [i + 1];
-      if (i + 2 < argc) {
-        char * end;
-        int n = strtol (argv [i + 2], &end, 10);
-        if (end != argv [i + 2])
-          key_hops = n;
-      }
-      if (key_hops <= 0)
-        key_hops = 1;
-      int secret_len = sizeof (secret_buf);
-      if (key_hops <= 1)
-        secret_len = 7;  /* including null byte, so only 6 actual chars */
-      random_string (secret_buf, secret_len);
-      secret = secret_buf;
-      printf ("%d hops, my secret string is '%s'", key_hops, secret);
-      normalize_secret (secret);
-      printf (" (or %s)\n", secret);
-      create_contact_send_key (sock, contact, secret, NULL, my_addr, &abits,
-                               key_hops);
-    }
   }
 
   int timeout = PIPE_MESSAGE_WAIT_FOREVER;
@@ -108,8 +57,8 @@ int main (int argc, char ** argv)
       char * message;
       int mlen = handle_packet (sock, packet, found, &peer, &kset, NULL,
                                 &message, &desc, &verified, NULL, &duplicate,
-                                &broadcast, contact, secret, NULL,
-                                my_addr, abits, key_hops, NULL, NULL, 0);
+                                &broadcast, NULL, NULL, NULL,
+                                NULL, 0, 0, NULL, NULL, 0);
       if (mlen > 0) {
         /* time_t rtime = time (NULL); */
         char * ver_mess = "";
@@ -142,9 +91,7 @@ int main (int argc, char ** argv)
         free (message);
         if (! broadcast)
           free (desc);
-      } else if ((mlen == -1) && (seeking_key)) {
-        printf ("success!  got remote key for %s\n", contact);
-      }
+      } 
     }
   }
 }
