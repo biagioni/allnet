@@ -9,9 +9,11 @@
 #include <assert.h>
 #include <errno.h>
 #include <netdb.h>  /* h_errno */
+#include <dirent.h>  /* h_errno */
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 #include <sys/un.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -1031,20 +1033,42 @@ void * memcpy_malloc (const void * bytes, int bsize, const char * desc)
 }
 
 /* returns -1 in case of errors, usually if the file doesn't exist */
-int file_size (const char * file_name)
+long long int file_size (const char * file_name)
 {
   struct stat st;
   if (stat (file_name, &st) < 0)
     return -1;
-  return (int) (st.st_size);
+  return st.st_size;
 }
 
-int fd_size (int fd)
+long long int fd_size (int fd)
 {
   struct stat st;
   if (fstat (fd, &st) < 0)
     return -1;
-  return (int) (st.st_size);
+  return st.st_size;
+}
+
+/* return 1 if successful, 0 in case of errors, e.g. if the dir doesn't exist */
+int rmdir_and_all_files (const char * dirname)
+{
+  DIR * dir = opendir (dirname);
+  if (dir == NULL)  /* cannot open */
+    return 0;
+  struct dirent * de;
+  while ((de = readdir (dir)) != NULL) {
+    if ((strcmp (de->d_name, ".") == 0) || (strcmp (de->d_name, "..") == 0))
+      continue;  /* don't delete current and parent directories */
+    char * name = strcat3_malloc (dirname, "/", de->d_name,
+                                  "rmdir_and_all_files");
+    if (unlink (name) < 0) /* recursively remove it, in case it's a dir */
+      rmdir_and_all_files (name);
+    free (name);
+  }
+  closedir (dir);
+  if (rmdir (dirname) == 0) /* only succeeds if all files and subdirs deleted */
+    return 1;
+  return 0;
 }
 
 static int read_fd_malloc_noclose (int fd, char ** content_p, int print_errors,

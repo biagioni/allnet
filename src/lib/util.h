@@ -184,9 +184,11 @@ extern int write_file (const char * file_name, const char * content, int clen,
                        int print_errors);
 extern int append_file (const char * file_name, const char * content, int clen,
                         int print_errors);
-/* returns -1 in case of errors, usually if the file doesn't exist */
-extern int file_size (const char * file_name);
-extern int fd_size (int fd);
+/* return -1 in case of errors, usually if the file doesn't exist */
+extern long long int file_size (const char * file_name);
+extern long long int fd_size (int fd);
+/* return 1 if successful, 0 in case of errors, e.g. if the dir doesn't exist */
+extern int rmdir_and_all_files (const char * dirname);
 
 /* fill this array with random bytes */
 extern void random_bytes (char * buffer, int bsize);
