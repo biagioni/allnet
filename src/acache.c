@@ -92,10 +92,13 @@ static struct hash_entry * * message_source_table;
 
 static struct allnet_log * alog = NULL;
 
-static int fd_size_or_zero (int fd)
+static long long int fd_size_or_zero (int fd)
 {
+  long long int result = fd_size (fd);
   /* fd_size in util.[ch] returns -1 in case of errors.  We want to return 0 */
-  return minz (fd_size (fd), 0);
+  if (result < 0)
+    return 0;
+  return result;
 }
 
 static int read_at_pos (int fd, char * data, int64_t max, int64_t position)
@@ -104,7 +107,7 @@ static int read_at_pos (int fd, char * data, int64_t max, int64_t position)
     /* perror ("acache read_at_pos lseek"); */
     snprintf (alog->b, alog->s,
               "acache unable to lseek to position %d for %d/%d\n",
-              (int)position, (int)max, fd_size (fd));
+              (int)position, (int)max, (int)fd_size (fd));
     log_error (alog, "acache read_at_pos lseek");
     return 0;
   }
@@ -113,7 +116,7 @@ static int read_at_pos (int fd, char * data, int64_t max, int64_t position)
     /* perror ("acache read_at_pos read"); */
     snprintf (alog->b, alog->s,
               "acache unable to read data at %d: %d %d %d %d\n",
-              (int)position, fd, (int)r, (int)max, fd_size (fd));
+              (int)position, fd, (int)r, (int)max, (int)fd_size (fd));
     log_error (alog, "acache read_at_pos read");
     r = 0;
   }
@@ -126,7 +129,7 @@ static void write_at_pos (int fd, char * data, int dsize, int64_t position)
     /* perror ("acache write_at_pos lseek"); */
     snprintf (alog->b, alog->s,
               "acache unable to lseek to pos %d for %d %d\n",
-              (int)position, dsize, fd_size (fd));
+              (int)position, dsize, (int)fd_size (fd));
     log_error (alog, "acache write_at_pos lseek");
     return;
   }
@@ -135,7 +138,7 @@ static void write_at_pos (int fd, char * data, int dsize, int64_t position)
     /* perror ("acache write_at_pos write"); */
     snprintf (alog->b, alog->s,
               "acache unable to save data at %d: %d %d %d\n",
-              (int)position, (int)w, dsize, fd_size (fd));
+              (int)position, (int)w, dsize, (int)fd_size (fd));
     log_error (alog, "acache write_at_pos write");
     return;
   }
@@ -1230,7 +1233,7 @@ snprintf (alog->b, alog->s, "saved message at position %d, hash index %d, ", (in
   count = 0;
   while (fd_size (fd) > max_size) {
     snprintf (alog->b, alog->s, "gc'ing to reduce space from %d to %d: %d\n",
-              fd_size (fd), max_size, ++count);
+              (int)fd_size (fd), max_size, ++count);
     log_print (alog);
     gc (fd, max_size);
   }
@@ -1254,7 +1257,7 @@ static void remove_cached_message (int fd, int max_size, char * id,
   if ((next != 0) && (next - position != fsize)) {
     snprintf (alog->b, alog->s,
               "warning in acache: next %d - pos %d != fsize %d (%d)\n",
-              (int)next, (int)position, fsize, fd_size (fd));
+              (int)next, (int)position, fsize, (int)fd_size (fd));
     log_print (alog);
     buffer_to_string (id, MESSAGE_ID_SIZE, "id", MESSAGE_ID_SIZE, 1,
                       alog->b, alog->s);
@@ -1621,12 +1624,12 @@ static void init_msgs (int msg_fd, int max_msg_size)
     }
   }
   snprintf (alog->b, alog->s, "init almost done, %d %d %d, ",
-            msg_fd, fd_size (msg_fd), max_msg_size);
+            msg_fd, (int)fd_size (msg_fd), max_msg_size);
   log_print (alog);
   print_stats (0, count);
   while (fd_size (msg_fd) > max_msg_size) {
     snprintf (alog->b, alog->s, "message file %d, max %d, gc'ing",
-              fd_size (msg_fd), max_msg_size);
+              (int)fd_size (msg_fd), max_msg_size);
     log_print (alog);
     gc (msg_fd, max_msg_size);
   }
