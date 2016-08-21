@@ -855,7 +855,10 @@ static void * connect_thread (void * a)
     } else {   /* undo connect */
       close (fd);       /* remove from kernel */
       /* remove from cache, info, and pipemsg */
-      cache_remove (arg->addr_cache, listen_fd_addr (arg->info, fd));
+struct addr_info * ai = listen_fd_addr (arg->info, fd);
+printf ("for now closed fd %d addr is %p, ", fd, ai);
+print_addr_info (ai);
+      cache_remove (arg->addr_cache, ai);
       listen_remove_fd (arg->info, fd);
     }
     pthread_mutex_unlock (&listener_mutex);
