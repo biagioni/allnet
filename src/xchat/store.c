@@ -1154,7 +1154,7 @@ static uint64_t file_mod_time (const char * fname)
 printf ("store.c file_mod_time: '%s' is not a regular file\n", fname);
     return 0;
   }
-  return st.st_mtim.tv_sec * 1000000000 + st.st_mtim.tv_nsec;
+  return st.st_mtime;
 }
 
 extern int64_t conversation_size (const char * contact);
@@ -1282,6 +1282,7 @@ int reduce_conversation (const char * contact, uint64_t max_size)
     }
     free (fname);
   }
+  return 1;  /* success */
 }
 
 /* returns 1 for success, 0 for failure. */
