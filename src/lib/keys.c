@@ -44,14 +44,17 @@ struct key_address {
 
 /* typedef int keyset;  refers to a key_info or a group_info */
 struct key_info {
-  int valid;        /* so we can delete contacts without renumbering keys */
   char * contact_name;
-  int num_members;        /* -1 for plain contacts, >= 0 for groups */
+  int is_group;
+  int is_visible;         /* hidden contacts can still send or receive */
+  int is_deleted;         /* deleted contacts can no longer send or receive */
+  int has_pub_key;                   /* always 0 for groups */
   allnet_rsa_pubkey contact_pubkey;  /* only defined if not a group */
   allnet_rsa_prvkey my_key;          /* only defined if not a group */
   struct key_address local;          /* only defined if not a group */
   struct key_address remote;         /* only defined if not a group */
   char * dir_name;
+  int num_group_members;             /* >= 0, only defined if is_group */
   char ** members;                   /* only defined if num_members > 0 */
 /* symmetric keys are useful for encrypting larger amounts of data,
  * and for sending to larger groups */
@@ -100,7 +103,7 @@ static int contact_exists (const char * contact)
 
 static int valid_keyset (keyset k)
 {
-  return ((k >= 0) && (k < num_key_infos) && (kip [k].valid));
+  return ((k >= 0) && (k < num_key_infos) && (! kip [k].is_deleted));
 }
 
 static void generate_contacts ()
@@ -132,7 +135,7 @@ static void set_kip_size (int size)
   /* free any keys from the old array that don't fit in the new array */
   for (i = size; i < num_key_infos; i++) {
     free (kip [i].contact_name);
-    if (kip [i].num_members < 0) {  /* not a group */
+    if (! kip [i].is_group) {  /* not a group */
       allnet_rsa_free_pubkey (kip [i].contact_pubkey);
       allnet_rsa_free_prvkey (kip [i].my_key);
     }
@@ -143,21 +146,14 @@ static void set_kip_size (int size)
   }
   /* zero out the new entries (if any) in kip */
   for (i = num_key_infos; i < size; i++) {
-    new_kip [i].contact_name = NULL;
-    new_kip [i].num_members = -1;   /* mark it as not a group */
+    memset (new_kip + i, 0, sizeof (new_kip [i]));
     allnet_rsa_null_pubkey (&(new_kip [i].contact_pubkey));
     allnet_rsa_null_prvkey (&(new_kip [i].my_key));
-    new_kip [i].local.nbits = 0;
-    bzero (new_kip [i].local.address, ADDRESS_SIZE);
-    new_kip [i].remote.nbits = 0;
-    bzero (new_kip [i].remote.address, ADDRESS_SIZE);
-    new_kip [i].dir_name = NULL;
-    new_kip [i].members = NULL;
   }
-  /* clear the new entries in cp/cip, generate_contacts will init them */
+  /* clear the new entries in cp/cpx, generate_contacts will init them */
   for (i = 0; i < size; i++)
     new_cp [i] = NULL;
-  /* set kip, cp, cip to point to the new arrays */
+  /* set kip, cp, cpx to point to the new arrays */
   if (kip != NULL)
     free (kip);
   if (cpx != NULL)
@@ -256,11 +252,11 @@ static int read_bytes_file (char * fname, char * bytes, int nbytes)
 
 /* returns 1 for success, 0 for failure */
 static int read_address_file (const char * basename, const char * name,
-                              char * address, int * nbits)
+                              struct key_address * addr)
 {
   char * path = strcat3_malloc (basename, "/", name, "read_address_file name");
-  bzero (address, ADDRESS_SIZE);
-  *nbits = 0;
+  bzero (addr->address, ADDRESS_SIZE);
+  addr->nbits = 0;
   char * bytes = NULL;
   int size = read_file_malloc (path, &bytes, 0);
   if (size <= 0) {
@@ -275,12 +271,12 @@ static int read_address_file (const char * basename, const char * name,
     for (i = 0; (p != NULL) && (i < count) && (i < ADDRESS_SIZE); i++) {
       int value;
       sscanf (p, " %x", &value);
-      address [i] = value;
+      addr->address [i] = value;
       p = strchr (p, ':');
       if (p != NULL)  /* p points to ':' */
         p++;
     }
-    *nbits = n;
+    addr->nbits = n;
   }
   free (path);
   if (bytes != NULL)
@@ -400,47 +396,21 @@ static int get_members (const char * members_content, int mlen,
  * if num_members is not NULL, it is set to -1 for a plain contact, or otherwise
  * the number of members. */
 static int read_key_info (const char * path, const char * file,
-                          char ** contact,
-                          allnet_rsa_prvkey * my_key,
-                          allnet_rsa_pubkey * contact_pubkey,
-                          char * local, int * loc_nbits,
-                          char * remote, int * rem_nbits,
-                          char ** dir_name,
-                          char *** members, int * num_members,
-                          int * has_symmetric_key, char * symmetric_key,
-                          int * has_state,
-                          struct allnet_stream_encryption_state * state)
+                          struct key_info * info)
 {
 /* initialize all the results to NULL/zero defaults, in case we return */
-  if (contact != NULL)
-    *contact = NULL;
-  if (my_key != NULL)
-    allnet_rsa_null_prvkey (my_key);
-  if (contact_pubkey != NULL)
-    allnet_rsa_null_pubkey (contact_pubkey);
-  if ((local != NULL) && (loc_nbits != NULL))
-    bzero (local, (*loc_nbits + 7) / 8);
-  if ((remote != NULL) && (rem_nbits != NULL))
-    bzero (remote, (*rem_nbits + 7) / 8);
-  if (members != NULL)
-    *members = NULL;
-  if (num_members != NULL)
-    *num_members = -1;  /* by default, not a group */
-  if (has_symmetric_key != NULL)
-    *has_symmetric_key = 0;
-  if (symmetric_key != NULL)
-    bzero (symmetric_key, SYMMETRIC_KEY_SIZE);
-  if (has_state != NULL)
-    *has_state = 0;
-  if (state != NULL)
-    bzero (state, sizeof (struct allnet_stream_encryption_state));
+  if (info != NULL) {
+    memset (info, 0, sizeof (struct key_info));
+    allnet_rsa_null_prvkey (&(info->my_key));
+    allnet_rsa_null_pubkey (&(info->contact_pubkey));
+  }
   int result = 1;   /* found individual contact */
 
   /* basename is the name of the directory for the contact information files */
   char * basename = strcat3_malloc (path, "/", file, "basename");
 
   /* contact name is the path to the file containing the contact name */
-  if (contact != NULL) {
+  if (info != NULL) {
     char * contact_name = strcat_malloc (basename, "/name", "name-path");
     char * contact_value = NULL;
     int found = read_file_malloc (contact_name, &contact_value, 0);
@@ -453,7 +423,11 @@ static int read_key_info (const char * path, const char * file,
 #ifdef DEBUG_PRINT
     printf ("contact name is now %s\n", contact_value);
 #endif /* DEBUG_PRINT */
-    *contact = contact_value;
+    info->contact_name = contact_value;
+    char * hidden_name = strcat_malloc (basename, "/hidden", "hidden-path");
+    if  (file_size (hidden_name) < 0)
+      info->is_visible = 1;  /* no "/hidden" file in the directory */
+    free (hidden_name);
   }
   /* check to see if this is a group */
   char * members_name = strcat_malloc (basename, "/members", "members-name");
@@ -468,47 +442,45 @@ static int read_key_info (const char * path, const char * file,
     char ** members_list;
     int mcount = get_members (members_content, mlen, &members_list);
     free (members_content);
-    if (mcount > 0) {
-      if (members != NULL)
-        *members = members_list;
-      else
-        free (members_list);
-      if (num_members != NULL)
-        *num_members = mcount;
-      result = 2;  /* found a group */
 #ifdef DEBUG_GROUP
-      if (members != NULL) {
-        int i;
-        for (i = 0; i < mcount; i++)
-          printf ("  %s\n", members_list [i]);
-      }
+    int i;
+    for (i = 0; i < mcount; i++)
+      printf ("  %s\n", members_list [i]);
 #endif /* DEBUG_GROUP */
+    if (mcount > 0) {
+      if (info != NULL) {
+        info->is_group = 1;
+        info->members = members_list;
+        info->num_group_members = mcount;
+      } else {
+        free (members_list);
+      }
+      result = 2;  /* found a group */
     }
   } else {  /* it's not a group */
-    if (my_key != NULL) {
+    if (info != NULL) {
       char * name = strcat_malloc (basename, "/my_key", "my key name");
-      result = allnet_rsa_read_prvkey (name, my_key);
+      result = allnet_rsa_read_prvkey (name, &(info->my_key));
       free (name);
-    }
-    if (result && (contact_pubkey != NULL)) {
-      char * name = strcat_malloc (basename, "/contact_pubkey", "pub name");
-      result = allnet_rsa_read_pubkey (name, contact_pubkey);
-      free (name);
-    }
-    if (result && (local != NULL) && (loc_nbits != NULL)) {
-      result = read_address_file (basename, "local", local, loc_nbits);
-    }
-    if (result && (remote != NULL) && (rem_nbits != NULL)) {
-      result = read_address_file (basename, "remote", remote, rem_nbits);
+      if (result) {
+        char * name = strcat_malloc (basename, "/contact_pubkey", "pub name");
+        info->has_pub_key =
+          allnet_rsa_read_pubkey (name, &(info->contact_pubkey));
+        free (name);
+        if (info->has_pub_key) {
+          result = read_address_file (basename, "local", &(info->local));
+          result = read_address_file (basename, "remote", &(info->remote));
+        }
+      }
     }
   }
-  if (symmetric_key != NULL) {
+  if (info != NULL) {
     char * name = strcat_malloc (basename, "/symmetric_key", "symmetric name");
-    int n = read_bytes_file (name, symmetric_key, SYMMETRIC_KEY_SIZE);
-    if ((n >= SYMMETRIC_KEY_SIZE) && (has_symmetric_key != NULL)) {
-      *has_symmetric_key = 1;
+    int n = read_bytes_file (name, info->symmetric_key, SYMMETRIC_KEY_SIZE);
+    if (n >= SYMMETRIC_KEY_SIZE) {
+      info->has_symmetric_key = 1;
     } else if (n < SYMMETRIC_KEY_SIZE) {
-      bzero (symmetric_key, SYMMETRIC_KEY_SIZE);
+      bzero (info->symmetric_key, SYMMETRIC_KEY_SIZE);
       if ((n < SYMMETRIC_KEY_SIZE) && (n > 0))
         printf ("found symmetric key in %s, but lenght %d < minimum %d\n",
                 name, n, SYMMETRIC_KEY_SIZE);
@@ -517,19 +489,19 @@ static int read_key_info (const char * path, const char * file,
 #ifdef DEBUG_PRINT
     printf ("symmetric key for %s has size %d/%d\n",
             basename, n, SYMMETRIC_KEY_SIZE);
-    if ((has_symmetric_key != NULL) && (*has_symmetric_key))
+    if (info->has_symmetric_key))
       printf ("%d: %02x:%02x:%02x...\n", *has_symmetric_key,
               symmetric_key [0], symmetric_key [1], symmetric_key [2]);
 #endif /* DEBUG_PRINT */
+    if (info->has_symmetric_key) {
+      char * name = strcat_malloc (basename, "/send_state", "symm state");
+      if (read_symmetric_state (name, &(info->state)))
+        info->has_state = 1;
+      free (name);
+    }
   }
-  if (state != NULL) {
-    char * name = strcat_malloc (basename, "/send_state", "symm state");
-    if ((read_symmetric_state (name, state)) && (has_state != NULL))
-      *has_state = 1;
-    free (name);
-  }
-  if (dir_name != NULL)
-    *dir_name = basename;
+  if (info != NULL)
+    info->dir_name = basename;
   else
     free (basename);
   return result;
@@ -567,9 +539,7 @@ static void init_from_file (const char * debug)
   struct dirent * dep;
   while ((dep = readdir (dir)) != NULL) {
     if (is_ndigits (dep->d_name, DATE_TIME_LEN)) { /* key directory */
-      if (read_key_info (dirname, dep->d_name, NULL, NULL, NULL,
-                         NULL, NULL, NULL, NULL, NULL,
-                         NULL, NULL, NULL, NULL, NULL, NULL)) {
+      if (read_key_info (dirname, dep->d_name, NULL)) {
         num_keys++;
       } else {
         printf ("error: unable to load key from .allnet/contacts/%s/\n",
@@ -590,15 +560,7 @@ static void init_from_file (const char * debug)
       kip [i].local.nbits = ADDRESS_SIZE * 8;
       kip [i].remote.nbits = ADDRESS_SIZE * 8;
       if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* is a key directory */
-          (read_key_info (dirname, dep->d_name, &(kip [i].contact_name),
-                          &(kip [i].my_key), &(kip [i].contact_pubkey),
-                          kip [i].local.address, &(kip [i].local.nbits),
-                          kip [i].remote.address, &(kip [i].remote.nbits),
-                          &(kip [i].dir_name),
-                          &(kip [i].members), &(kip [i].num_members),
-                          &(kip [i].has_symmetric_key), kip [i].symmetric_key,
-                          &(kip [i].has_state), &(kip [i].state)))) {
-        kip [i].valid = 1;
+          (read_key_info (dirname, dep->d_name, kip + i))) {
         i++;
       }
     }
@@ -691,13 +653,12 @@ int all_contacts (char *** contacts)
     *contacts = p;
   }
   for (i = 0; i < cp_used; i++) {
-    if (kip [i].valid) {
+    if ((! kip [i].is_deleted) && (kip [i].is_visible)) {
       if ((delta > 0) && (p != NULL))
         p [i - delta] = p [i];  /* make p[i-delta] valid */
          /* note: delta increases at most once per loop,
             so i >= delta >= 0 and i >= i - delta >= 0 */
     } else {
-printf ("kip [%d] is not valid\n", i);
       delta++;
     }
   }
@@ -783,8 +744,8 @@ static void write_member_file (const char * fname, char ** members,
 
 static void save_contact (struct key_info * k)
 {
-  if (! k->valid) {
-    printf ("not saving invalid contact %s\n", k->contact_name);
+  if (k->is_deleted) {
+    printf ("not saving deleted contact %s\n", k->contact_name);
     return;
   }
   char * dirname = k->dir_name;
@@ -835,9 +796,9 @@ static void save_contact (struct key_info * k)
     write_address_file (remote_fname, k->remote.address, k->remote.nbits);
     free (remote_fname);
   }
-  if (k->num_members >= 0) {
+  if ((k->is_group) && (k->num_group_members > 0)) {
     char * member_fname = strcat3_malloc (dirname, "/", "member", "mfile");
-    write_member_file (member_fname, k->members, k->num_members);
+    write_member_file (member_fname, k->members, k->num_group_members);
     free (member_fname);
   }
   if (k->has_symmetric_key) {
@@ -1007,12 +968,12 @@ keyset create_contact (const char * contact, int keybits, int feedback,
 {
   init_from_file ("create_contact");
   int index_plus_one = contact_exists (contact);
-  if (index_plus_one) {
-    struct key_info ki = kip [index_plus_one - 1];
-    if (allnet_rsa_pubkey_is_null (ki.contact_pubkey) &&
-        ((ki.local.nbits == 0) ||
-         (loc_nbits == ki.local.nbits))) {
-      memcpy (local, ki.local.address, ADDRESS_SIZE);
+  if (index_plus_one > 0) {  /* contact exists */
+    struct key_info * ki = kip + (index_plus_one - 1);
+    if (allnet_rsa_pubkey_is_null (ki->contact_pubkey) &&
+        ((ki->local.nbits == 0) || (loc_nbits == ki->local.nbits))) {
+      if (local != NULL)
+        memcpy (local, ki->local.address, ADDRESS_SIZE);
       return index_plus_one - 1;  /* found an incomplete entry, use that */
     }
     return -1;
@@ -1027,22 +988,13 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   }
 
   struct key_info new;
-  new.valid = 1;
+  memset (&new, 0, sizeof (new));  /* for most fields 0 is a good default */
   new.contact_name = strcpy_malloc (contact, "create_contact");
+  new.is_visible = 1;
+  new.has_pub_key = 1;
   new.my_key = my_key;
   /* set defaults for the remaining values, then override them later if given */
   allnet_rsa_null_pubkey (&(new.contact_pubkey));
-  new.local.nbits = 0;
-  bzero (new.local.address, ADDRESS_SIZE);
-  new.remote.nbits = 0;
-  bzero (new.remote.address, ADDRESS_SIZE);
-  new.dir_name = NULL;
-  new.num_members = -1;  /* not a group */
-  new.members = NULL;
-  new.has_symmetric_key = 0;
-  bzero (new.symmetric_key, SYMMETRIC_KEY_SIZE);
-  new.has_state = 0;
-  bzero (&(new.state), sizeof (struct allnet_stream_encryption_state));
 
   if ((contact_key != NULL) && (contact_ksize > 0) &&
       (do_set_contact_pubkey (&new, contact_key, contact_ksize) == 0)) {
@@ -1093,14 +1045,15 @@ int rename_contact (const char * old, const char * new)
   init_from_file ("rename_contact");
   int key;
   for (key = 0; key < cp_used; key++) {
-    if ((kip [key].valid) && (strcmp (cpx [key], new) == 0)) {
+    if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
+        (strcmp (cpx [key], new) == 0)) {
       printf ("cannot rename %s to existing contact %s\n", old, new);
       return 0;
     }
   }
   int renamed = 0;
   for (key = 0; key < cp_used; key++) {
-    if ((kip [key].valid) && (strcmp (cpx [key], old) == 0)) {
+    if ((! kip [key].is_deleted) && (strcmp (cpx [key], old) == 0)) {
       char * name_file_name = strcat_malloc (kip [key].dir_name, "/name",
                                              "rename_contact");
       size_t newlen = strlen (new);
@@ -1143,46 +1096,16 @@ int hidden_contacts (char *** contacts)
     *contacts = p;
   }
   for (i = 0; i < cp_used; i++) {
-    if (kip [i].valid) {
+    if ((kip [i].is_deleted) || (kip [i].is_visible)) {  /* skip */
+      delta++;
+    } else {
       if ((delta > 0) && (p != NULL))  /* make p[i-delta] valid */
         p [i - delta] = p [i];
          /* note: delta increases at most once per loop,
             so i >= delta >= 0 and i >= i - delta >= 0 */
-    } else {
-      delta++;
     }
   }
   return cp_used - delta;
-}
-
-/* move_to is 1 to move to hidden, 0 to move from hidden */
-/* returns 1 for success, 0 otherwise */
-static int move_hidden (const char * dirname, int move_to)
-{
-  /* move to/from .allnet/contacts_hidden */
-  /* hidden_dir is the destination or source directory */
-  char * hidden_dir = string_replace_once (dirname, "contacts",
-                                           "contacts_hidden", 0);
-  char * pos = rindex (hidden_dir, '/');
-  if (pos != NULL)
-    *pos = '\0';  /* delete string from the last slash onwards */
-printf ("move_hidden: '%s' and '%s'\n", dirname, hidden_dir);
-  const char * source = dirname;
-  const char * destination = hidden_dir;
-  if (! move_to) {
-    source = hidden_dir;
-    destination = dirname;
-  }
-printf ("move_hidden: to %d, '%s' to '%s'\n", move_to, source, destination);
-  return 1;
-  /* make sure contacts_hidden exists */
-  create_dir (destination);
-  int res = rename (source, destination);
-  if (res < 0)
-    perror ("rename in move_to_hidden");
-  printf ("moved %s to %s, result %d\n", source, destination, res);
-  free (hidden_dir);
-  return 1;
 }
 
 /* notice -- moving keys around causes existing keysets to be invalidated
@@ -1198,11 +1121,14 @@ int hide_contact (const char * contact)
   int key;
   int hidden = 0;
   for (key = 0; key < cp_used; key++) {
-    if ((kip [key].valid) && (strcmp (cpx [key], contact) == 0)) {
- /* move to .allnet/contacts_deleted */
-      move_hidden (kip [key].dir_name, 1);
- /* now invalidate in data structure */
-      kip [key].valid = 0;
+    if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
+        (strcmp (cpx [key], contact) == 0)) {
+      char * file_name =
+        strcat_malloc (kip [key].dir_name, "/hidden", "hide_contact");
+      write_file (file_name, "", 0, 0);  /* create the file */
+      free (file_name);
+ /* now hide in the data structure */
+      kip [key].is_visible = 0;
  /* record success */
       hidden = 1;
     }
@@ -1215,35 +1141,66 @@ int unhide_contact (const char * contact)
   init_from_file ("unhide_contact");
   int key;
   for (key = 0; key < cp_used; key++) {
-    if ((kip [key].valid) && (strcmp (cpx [key], contact) == 0)) {
+    if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
+        (strcmp (cpx [key], contact) == 0)) {
       printf ("unable to unhide contact %s, name conflict\n", contact);
       return 0;
     }
   }
   int success = 0;
   for (key = 0; key < cp_used; key++) {
-    if ((! kip [key].valid) && (strcmp (cpx [key], contact) == 0)) {
- /* move from .allnet/contacts_deleted */
-      if (move_hidden (kip [key].dir_name, 0)) {
- /* now re-validate in data structure */
-        kip [key].valid = 1;
+    if ((! kip [key].is_visible) && (! kip [key].is_deleted) &&
+        (strcmp (cpx [key], contact) == 0)) {
+      char * file_name =
+        strcat_malloc (kip [key].dir_name, "/hidden", "hide_contact");
+ /* remove .allnet/contacts/x/hidden */
+      if (unlink (file_name) == 0) {
+ /* now un-hide in the data structure */
+        kip [key].is_visible = 1;
  /* record success */
         success = 1;
       } else {
-        printf ("failed to move '%s' @ '%s' from hidden\n",
-                contact, kip [key].dir_name);
+        printf ("failed to remove '%s'\n", file_name);
       }
+      free (file_name);
     }
   }
   return success;
+}
+
+/* returns 1 if the contact exists and is hidden */
+int is_hidden (const char * contact)
+{
+  int key;
+  for (key = 0; key < cp_used; key++) {
+    if ((! kip [key].is_deleted) && (! kip [key].is_visible) &&
+        (strcmp (cpx [key], contact) == 0)) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 /* this is the actual deletion. return 1 for success, 0 otherwise */
 int delete_contact (const char * contact)
 {
   init_from_file ("delete_contact");
-  printf ("delete_contact %s not implemented\n", contact);
-  exit (1);
+  int result = 0;
+  int key;
+  for (key = 0; key < cp_used; key++) {
+    if ((! kip [key].is_deleted) && (strcmp (cpx [key], contact) == 0)) {
+      /* for now, only actually delete contacts that are hidden */
+      if (! kip [key].is_visible) {
+        rmdir_and_all_files (kip [key].dir_name);
+        kip [key].is_deleted = 1;
+        result = 1;
+      } else {
+printf ("error: deleting contact %s which is not hidden\n", contact);
+        return 0;
+      }
+    }
+  }
+  return result;
 }
 
 /* create a spare key of the given size, returning the number of spare keys.
@@ -1277,8 +1234,10 @@ int is_group (const char * contact)
 {
   int ki;
   for (ki = 0; ki < num_key_infos; ki++) {
-    if (strcmp (kip [ki].contact_name, contact) == 0)
-      return (kip [ki].num_members >= 0);
+    if ((! kip [ki].is_deleted) &&
+        (kip [ki].is_group) &&
+        (strcmp (kip [ki].contact_name, contact) == 0))
+      return 1;
   }
   return 0;
 }
@@ -1296,18 +1255,11 @@ int create_group (const char * group)
   }
 
   struct key_info new;
+  memset (&new, 0, sizeof (new));  /* for most fields 0 is a good default */
   new.contact_name = strcpy_malloc (group, "create_group");
+  new.is_group = 1;
   allnet_rsa_null_prvkey (&(new.my_key));
   allnet_rsa_null_pubkey (&(new.contact_pubkey));
-  new.local.nbits = 0;
-  bzero (new.local.address, ADDRESS_SIZE);
-  new.remote.nbits = 0;
-  bzero (new.remote.address, ADDRESS_SIZE);
-  new.dir_name = NULL;
-  new.has_symmetric_key = 0;
-  bzero (new.symmetric_key, SYMMETRIC_KEY_SIZE);
-  new.num_members = 0;  /* new group, no members */
-  new.members = NULL;   /* new group, no members */
   /* save into the kip data structure */
   int new_contact = num_key_infos;
   set_kip_size (new_contact + 1);   /* make room for the new entry */
@@ -1326,20 +1278,22 @@ int group_membership (const char * group, char *** members)
   init_from_file ("group_membership");
   if (members != NULL)
     *members = NULL;
+  if (! is_group (group))
+    return 0;
   int index_plus_one = contact_exists (group);
   if (index_plus_one <= 0)
     return 0;
   int index = index_plus_one - 1;
-  if ((members != NULL) && (kip [index].members != NULL) &&
-      (kip [index].num_members > 0)) {
-    int size = kip [index].num_members * sizeof (char *);
+  if ((members != NULL) && (kip [index].is_group) &&
+      (kip [index].members != NULL) && (kip [index].num_group_members > 0)) {
+    int size = kip [index].num_group_members * sizeof (char *);
     int ptr_size = size;
     int i;
-    for (i = 0; i < kip [index].num_members; i++)
+    for (i = 0; i < kip [index].num_group_members; i++)
       size += strlen (kip [index].members [i]) + 1;
     char ** result = malloc_or_fail (size, "group_membership");
     char * p = ((char *) result) + ptr_size;
-    for (i = 0; i < kip [index].num_members; i++) {
+    for (i = 0; i < kip [index].num_group_members; i++) {
       result [i] = p;
       int len = (int)strlen (kip [index].members [i]) + 1;
       memcpy (p, kip [index].members [i], len);
@@ -1347,7 +1301,7 @@ int group_membership (const char * group, char *** members)
     }
     *members = result;
   }
-  return kip [index].num_members;
+  return kip [index].num_group_members;
 }
 
 static int reload_members_from_file (int ki)
@@ -1361,12 +1315,12 @@ static int reload_members_from_file (int ki)
     result = 1;
   free (fname);
   if (result && (mlen > 0)) {
-    if ((kip [ki].num_members > 0) && (kip [ki].members != NULL))
+    if ((kip [ki].num_group_members > 0) && (kip [ki].members != NULL))
       free (kip [ki].members); /* throw away the in-memory info */
     char ** members_list;
     int mcount = get_members (members_content, mlen, &members_list);
     free (members_content);
-    kip [ki].num_members = mcount;
+    kip [ki].num_group_members = mcount;
     if (mcount > 0)
       kip [ki].members = members_list;
   }
@@ -1381,13 +1335,16 @@ static int reload_members_from_file (int ki)
 int add_to_group (const char * group, const char * contact)
 {
   init_from_file ("add_to_group");
+  if (! is_group (group))
+    return 0;
   int index_plus_one = contact_exists (group);
   if (index_plus_one <= 0)
     return 0;
   int index = index_plus_one - 1;
-  if ((kip [index].num_members > 0) && (kip [index].members != NULL)) {
+  if ((kip [index].is_group) && (kip [index].num_group_members > 0) &&
+      (kip [index].members != NULL)) {
     int i;
-    for (i = 0; i < kip [index].num_members; i++)
+    for (i = 0; i < kip [index].num_group_members; i++)
       if (strcmp (kip [index].members [i], contact) == 0)
         return 0;  /* already in the group */
   }
@@ -1408,11 +1365,14 @@ int add_to_group (const char * group, const char * contact)
 int remove_from_group (const char * group, const char * contact)
 {
   init_from_file ("remove_from_group");
+  if (! is_group (group))
+    return 0;
   int index_plus_one = contact_exists (group);
   if (index_plus_one <= 0)
     return 0;
   int index = index_plus_one - 1;
-  if ((kip [index].num_members <= 0) || (kip [index].members == NULL))
+  if ((! kip [index].is_group) || (kip [index].num_group_members <= 0) ||
+      (kip [index].members == NULL))
     return 0;  /* cannot remove if the group has no members */
   char * fname = strcat_malloc (kip [index].dir_name, "/members",
                                 "remove_from_group members-name");
@@ -1459,9 +1419,9 @@ static int groups_for_contact (const char * contact, int * groups, int ngroups)
   int count = 0;
   for (i = 0; i < num_key_infos; i++) {
     if (kip [i].contact_name != NULL) {
-      if (kip [i].num_members > 0) {
+      if ((kip [i].is_group) && (kip [i].num_group_members > 0)) {
         int m;
-        for (m = 0; m < kip [i].num_members; m++) {
+        for (m = 0; m < kip [i].num_group_members; m++) {
           if (strcmp (contact, kip [i].members [m]) == 0) {
             if ((groups != NULL) && (count < ngroups))
               groups [count] = i;
@@ -1773,7 +1733,7 @@ static int plain_num_keysets (const char * contact,
   for (i = 0; i < num_key_infos; i++) {
     if ((kip [i].contact_name != NULL) &&
         (strcmp (kip [i].contact_name, contact) == 0) &&
-        (kip [i].num_members < 0)) {
+        (! kip [i].is_group)) {
       if ((keysets != NULL) && (num_keysets > count))
         keysets [count] = i;
       count++;
