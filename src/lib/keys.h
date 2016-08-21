@@ -54,6 +54,8 @@ extern int hidden_contacts (char *** contacts);
 /* un/hide_contact return 1 for success, 0 if not successful */
 extern int hide_contact (const char * contact);
 extern int unhide_contact (const char * contact);
+/* returns 1 if the contact exists and is hidden */
+extern int is_hidden (const char * contact);
 
 /* this is the actual deletion. return 1 for success, 0 otherwise */
 extern int delete_contact (const char * contact);
