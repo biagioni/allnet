@@ -1139,6 +1139,24 @@ static int64_t file_storage_size (const char * fname)
   return st.st_blocks * 512;
 }
 
+/* returns a system time that can be compared,
+ * or 0 in case of non-files (e.g. directories) or errors */
+static uint64_t file_mod_time (const char * fname)
+{
+  struct stat st;
+  int result = stat (fname, &st);
+  if (result != 0) {
+    perror ("file_mod_time stat");
+    printf ("store.c file_mod_time unable to stat '%s'\n", fname);
+    return 0;
+  }
+  if (! S_ISREG (st.st_mode)) {
+printf ("store.c file_mod_time: '%s' is not a regular file\n", fname);
+    return 0;
+  }
+  return st.st_mtim.tv_sec * 1000000000 + st.st_mtim.tv_nsec;
+}
+
 extern int64_t conversation_size (const char * contact);
 /* returns an estimate of the number of bytes used to save the
  * conversation information for this contact
@@ -1168,8 +1186,10 @@ int64_t conversation_size (const char * contact)
     free (contacts_dir);
     DIR * dir = opendir (xchat_dir);
     if (dir == NULL) {
+#ifdef DEBUG_PRINT
       perror ("conversation_size opendir");
       printf ("unable to open directory %s\n", xchat_dir);
+#endif /* DEBUG_PRINT */
       free (xchat_dir);
       continue;              /* try the next key */
     }
@@ -1192,6 +1212,94 @@ int64_t conversation_size (const char * contact)
   if (success)
     return result;
   return -1;
+}
+
+static char * get_xchat_dir (keyset k)
+{
+  char * contact_dir = key_dir (k);
+  if (contact_dir == NULL)
+    return NULL;
+  char * xchat_dir = string_replace_once (contact_dir, "contacts", "xchat", 1);
+  free (contact_dir);
+  return xchat_dir;
+}
+
+static char * oldest_nonempty_file (const char * contact)
+{
+  keyset * k = NULL;
+  int n = all_keys (contact, &k);
+  int i;
+  char * oldest_fname = NULL;
+  uint64_t oldest_time = 0;
+  for (i = 0; i < n; i++) {
+    char * xchat_dir = get_xchat_dir (k [i]);
+    if (xchat_dir == NULL)
+      continue;
+    DIR * dir = opendir (xchat_dir);
+    if (dir != NULL) {
+      struct dirent * de;
+      while ((de = readdir (dir)) != NULL)
+      {
+        char * fname = strcat3_malloc (xchat_dir, "/", de->d_name,
+                                       "oldest_nonemtpy_file");
+        
+        uint64_t ftime = file_mod_time (fname);
+        if ((ftime != 0) && ((oldest_time == 0) || (oldest_time > ftime))) {
+          oldest_time = ftime;
+          if (oldest_fname != NULL)  /* malloc'd, must be free'd */
+            free (oldest_fname);
+          oldest_fname = fname;
+        } else {
+          free (fname);
+        }
+      }
+    }
+    free (xchat_dir);
+  }
+  return oldest_fname;
+}
+
+/* remove older files one by one until the remaining conversation size
+ * is less than or equal to max_size
+ * returns 1 for success, 0 for failure. */
+int reduce_conversation (const char * contact, uint64_t max_size)
+{
+  if (contact == NULL)
+    return 0;
+  while ((conversation_size (contact) > max_size)) {
+    char * fname = oldest_nonempty_file (contact);
+    if (fname == NULL) {
+    /* could be an error, but more likely, no files left and
+       max_size > size of the empty dir */
+      printf ("oldest_nonempty is NULL, %jd remain\n",
+              conversation_size (contact));
+      return 1;      /* success of some kind or other */
+    }
+    if (unlink (fname) != 0) {
+      perror ("unlink");
+      printf ("unable to remove %s\n", fname);
+      return 0;   /* if we continue, we are in an infinite loop */
+    }
+    free (fname);
+  }
+}
+
+/* returns 1 for success, 0 for failure. */
+int delete_conversation (const char * contact)
+{
+  if (contact == NULL)
+    return 0;
+  keyset * k = NULL;
+  int n = all_keys (contact, &k);
+  if (n <= 0)
+    return 0;
+  int i;
+  for (i = 0; i < n; i++) {
+    char * xchat_dir = get_xchat_dir (k [i]);
+    rmdir_and_all_files (xchat_dir);
+    free (xchat_dir);
+  }
+  return 1;
 }
 
 #ifdef TEST_STORE

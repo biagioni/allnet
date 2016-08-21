@@ -96,4 +96,11 @@ extern int add_message (struct message_store_info ** msgs, int * num_alloc,
  * returns -1 if the contact does not exist or for other errors */
 extern int64_t conversation_size (const char * contact);
 
+/* remove older files one by one until the remaining conversation size
+ * is less than or equal to max_size
+ * returns 1 for success, 0 for failure. */
+extern int reduce_conversation (const char * contact, uint64_t max_size);
+/* returns 1 for success, 0 for failure. */
+extern int delete_conversation (const char * contact);
+
 #endif /* ALLNET_CHAT_STORE_H */
