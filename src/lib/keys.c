@@ -1574,7 +1574,8 @@ static int merge_no_duplicates (char ** a, int acount, char ** b, int bcount,
 int member_of_groups_recursive (const char * contact, char *** groups)
 {
   char ** first_groups = NULL;
-  *groups = NULL;
+  if (groups != NULL)
+    *groups = NULL;
   int first_count = member_of_groups (contact, &first_groups);
   if ((first_count <= 0) || (first_groups == NULL)) {
     if (first_groups != NULL)
@@ -1609,7 +1610,10 @@ int member_of_groups_recursive (const char * contact, char *** groups)
     }
     i++;
   }
-  *groups = current_groups;
+  if (groups != NULL)
+    *groups = current_groups;
+  else
+    free (current_groups);
   return count;
 }
 
