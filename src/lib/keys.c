@@ -1258,6 +1258,7 @@ int create_group (const char * group)
   memset (&new, 0, sizeof (new));  /* for most fields 0 is a good default */
   new.contact_name = strcpy_malloc (group, "create_group");
   new.is_group = 1;
+  new.is_visible = 1;
   allnet_rsa_null_prvkey (&(new.my_key));
   allnet_rsa_null_pubkey (&(new.contact_pubkey));
   /* save into the kip data structure */
