@@ -172,8 +172,7 @@ void stop_allnet_threads ()
 }
 
 
-#endif /* __IPHONE_OS_
-VERSION_MIN_REQUIRED */
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 #ifdef USE_FORK
 static void stop_all ();
@@ -449,12 +448,11 @@ static void stop_all ()
 
 /* the following should be all the signals that could terminate a process */
 /* list taken from signal(7) */
-/* commented-out signals gave compiler errors, except SIGPIPE which is ignored */
+/* commented-out signals (except SIGPIPE) gave compiler errors */
 static int terminating_signals [] =
   { SIGINT, SIGQUIT, SIGILL, SIGABRT, SIGFPE, /* SIGKILL, */
-    SIGSEGV, /* SIGPIPE, ignored */ SIGBUS, SIGTERM,
-    SIGSYS, SIGTRAP,
-    SIGXCPU, SIGXFSZ,
+    SIGSEGV, /* SIGPIPE, ignored in astart_main */ SIGBUS, SIGTERM,
+    SIGSYS, SIGTRAP, SIGXCPU, SIGXFSZ,
     /* SIGIOT, SIGEMT, */ SIGIO
   };
 
@@ -476,21 +474,12 @@ static void setup_signal_handler (int set)
       exit (1);
     }
   }
-  if (set) /* ignore SIGPIPE */
-    signal (SIGPIPE, SIG_IGN);
-  else     /* handle SIGPIPE */
-    signal (SIGPIPE, SIG_DFL);
 }
-#else /* !USE_FORK */  /* signal handler for iOS to ignore sigpipe */
-
-static void setup_signal_handler (int set)
-{
-  /* note that xcode still catches this signal.  It is safe to
-   * ignore it, but that is the reason for setsockopt (..SO_NOSIGPIPE)
-   * when we create a socket */
-  printf ("setting up signal handler to ignore sigpipe\n");
-  signal (SIGPIPE, SIG_IGN);
-}
+/* if !USE_FORK, astart_main tells the system to ignore SIGPIPE.
+ * unfortuantely, xcode still catches SIGPIPE.  It is safe to
+ * ignore it, and in fact where defined we use setsockopt (..SO_NOSIGPIPE)
+ * when we create a socket to tell it we aren't interested.  Unfortunately,
+ * not all systems support SO_NOSIGPIPE */
 #endif /* USE_FORK */
 
 #ifdef USE_FORK
@@ -987,6 +976,7 @@ int astart_main (int argc, char ** argv)
 #endif /* USE_FORK */
     return 0;
   }
+  signal (SIGPIPE, SIG_IGN);  /* we are never interested in SIGPIPE */
   /* printf ("astart path is %s\n", path); */
   pid_t astart_pid = getpid ();
   do_root_init ();
@@ -1119,7 +1109,6 @@ int astart_main (int argc, char ** argv)
   printf ("calling aip with pipes %d %d\n", rpipes [1], wpipes [1]);
   my_call_aip (argv [0], alen, "aip", rpipes [1], wpipes [1],
                AIP_UNIX_SOCKET, pid_fd, astart_pid);
-  setup_signal_handler (1);
   printf ("calling adht with pipes %d %d\n",
           alocal_rpipes [0], alocal_wpipes [1]);
   my_call_thread (argv [0], alen, "adht", adht_thread, pid_fd, astart_pid,
