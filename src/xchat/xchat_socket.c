@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <fcntl.h>
 #include <errno.h>
 #include <pthread.h>
 #include <signal.h>
@@ -424,6 +425,25 @@ static pid_t exec_java_ui (char * arg)
     printf ("exec_java_ui: final jarfile is %s, current dir %s\n",
             jarfile, debug);
 #endif /* DEBUG_PRINT */
+#define LOG_FILE_NAME	"/tmp/xchat-java-log.txt"
+
+/* unfortunately, we get lots of messages such as the following:
+        ** (java:14856): CRITICAL **: murrine_scrollbar_get_junction: assertion 'GTK_IS_RANGE (widget)' failed
+        ** (java:14856): CRITICAL **: murrine_scrollbar_visible_steppers: assertion 'GTK_IS_RANGE (widget)' failed
+        (java:14856): Gtk-WARNING **: /build/gtk+2.0-KsZKkB/gtk+2.0-2.24.30/gtk/gtkwidget.c:10000: widget class `GtkSpinButton' has no property named `stepper-size'
+        ** (java:14856): CRITICAL **: murrine_scrollbar_get_stepper: assertion 'GTK_IS_RANGE (widget)' failed
+        (java:14856): Gtk-WARNING **: /build/gtk+2.0-KsZKkB/gtk+2.0-2.24.30/gtk/gtkwidget.c:10000: widget class `GtkSpinButton' has no property named `stepper-size'
+    to avoid these messages, which don't seem to be signaling anything
+    actually important, we redirect the stdout and stderr to a file in /tmp,
+    where they are available if desired. */
+    int log_fd = open (LOG_FILE_NAME, O_CREAT | O_TRUNC, 0644);
+    if (log_fd >= 0) {
+      dup2 (STDOUT_FILENO, log_fd);  /* write stdout to the log file */
+      dup2 (STDERR_FILENO, log_fd);  /* write stderr to the log file */
+      close (log_fd);  /* no longer needed as a separate fd */
+    } else {
+      perror ("unable to create or write to /tmp/xchat-java-log.txt");
+    }
     if (args [0] != NULL) {
       args [1] = "-jar";
       args [2] = jarfile;
