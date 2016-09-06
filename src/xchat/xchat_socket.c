@@ -507,7 +507,7 @@ static void add_to_unacked (long long int seq, char * contact)
   if (unacked_count == unacked_size) {  /* reallocate */
     unacked_size += unacked_size + 2;
     int size = unacked_size * sizeof (struct unacked);
-    if (unacked_seqs == NULL)
+    if (unacked_seqs != NULL)
       unacked_seqs = realloc (unacked_seqs, size);
     else
       unacked_seqs = malloc (size);
