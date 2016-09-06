@@ -950,8 +950,8 @@ static int receive_dgram (int fd, char ** message,
   int old_salen = -3;  /* a value unlikely to be in *salen */
   if (salen != NULL)
     old_salen = *salen;
-  char old_sa [20] = "";
-  char new_sa [20] = "";
+  char old_sa [200] = "";
+  char new_sa [200] = "";
   if ((sa != NULL) && (old_salen > 0))
     buffer_to_string ((char *) sa, old_salen, NULL, 10, 0,
                       old_sa, sizeof (old_sa));
