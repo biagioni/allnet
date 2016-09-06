@@ -951,6 +951,7 @@ void sleep_time_random_us (unsigned long long us)
 /* if malloc is not successful, exit after printing */
 void * malloc_or_fail (size_t bytes, const char * desc)
 {
+if (bytes > 1000000) printf ("malloc_or_fail %zd bytes for %s\n", bytes, desc);
   void * result = malloc (bytes);
   if (result == NULL) {
     printf ("unable to allocate %zd bytes for %s\n", bytes, desc);
