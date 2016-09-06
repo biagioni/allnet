@@ -411,7 +411,8 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
       cached_k = k;
       if ((cache_alloc < 1) || (cache == NULL)) {
         cache_alloc = 10;
-        cache = malloc (sizeof (struct cache_entry) * cache_alloc);
+        cache = malloc_or_fail (sizeof (struct cache_entry) * cache_alloc,
+                                "message.c is_in_cache");
       }
       cache [0].first = seq;
       cache [0].last = seq;

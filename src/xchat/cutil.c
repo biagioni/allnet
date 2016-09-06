@@ -378,7 +378,7 @@ char * chat_time_to_string (unsigned char * t, int static_result)
   int size = sizeof (buffer);
   char * result = buffer;
   if (! static_result)
-    result = malloc (size);
+    result = malloc_or_fail (size, "chat_time_to_string");
 
   uint64_t time;
   int time_offset;
@@ -455,7 +455,7 @@ char * chat_descriptor_to_string (struct chat_descriptor * cdp,
   int size = sizeof (buffer);
   char * result = buffer;
   if (! static_result)
-    result = malloc (size);
+    result = malloc_or_fail (size, "chat_descriptor_to_string");
   char * p = result;
 
   int written = 0;
