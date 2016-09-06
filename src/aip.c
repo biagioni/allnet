@@ -797,21 +797,22 @@ sleep (1); */
 #endif /* DEBUG_PRINT */
       if (listen_add_fd (info, s, ai, 1)) {  /* clears the reservation */
         /* success! */
-        result = s;
-        add_ai_to_cache_or_record_usage (addr_cache, ai);
         int offset = snprintf (alog->b, alog->s,
                                "listening for %x/%d on socket %d at ",
                                address [0] & 0xff, LISTEN_BITS, s);
         offset += addr_info_to_string (ai, alog->b + offset, alog->s - offset);
         log_print (alog);
+        result = s;
+        add_ai_to_cache_or_record_usage (addr_cache, ai); /* save or free ai */
       } else {
-        close (s);
-        free (ai);
         int offset = snprintf (alog->b, alog->s,
                                "listen_add_fd => 0 for %x/%d on socket %d at ",
                                address [0] & 0xff, LISTEN_BITS, s);
         offset += addr_info_to_string (ai, alog->b + offset, alog->s - offset);
         log_print (alog);
+        close (s);
+        listen_clear_reservation (ai, info);
+        free (ai);
       }
     }
   }
@@ -856,7 +857,8 @@ static void * connect_thread (void * a)
       close (fd);       /* remove from kernel */
       /* remove from cache, info, and pipemsg */
 struct addr_info * ai = listen_fd_addr (arg->info, fd);
-printf ("for now closed fd %d addr is %p, ", fd, ai);
+printf ("listener_fds [%d] = %d, for now closed fd %d addr is %p, ",
+arg->listener_index, listener_fds [arg->listener_index], fd, ai);
 print_addr_info (ai);
       cache_remove (arg->addr_cache, ai);
       listen_remove_fd (arg->info, fd);
