@@ -94,12 +94,14 @@ int ia_to_sockaddr (struct internet_addr * ia,
     *salen = 0;  /* for addresses other than IPv4 and IPv6 */
 
   if (ia->ip_version == 6) {
+    memset (sin6, 0, sizeof (struct sockaddr_in6));
     sin6->sin6_family = AF_INET6;
     memcpy (&(sin6->sin6_addr), &(ia->ip), 16);
     sin6->sin6_port = ia->port;
     if (salen != NULL)
       *salen = sizeof (struct sockaddr_in6);
   } else if (ia->ip_version == 4) {
+    memset (sin, 0, sizeof (struct sockaddr_in));
     sin->sin_family = AF_INET;
     memcpy (&(sin->sin_addr), ((char *) (&(ia->ip))) + 12, 4);
     sin->sin_port = ia->port;
