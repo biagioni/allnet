@@ -54,7 +54,8 @@ extern void cache_add (void * cache, void * data);
 /* calls to explicitly remove a cache entry */
 /* assuming the element is found, calls the corresponding
  * release function */
-extern void cache_remove (void * cache, void * data);
+/* returns 1 if successful, 0 if unable to remove */
+extern int cache_remove (void * cache, void * data);
 
 /* randomly select up to max elements from the cache and place them into
  * the array, which must have room for at least max void* pointers */

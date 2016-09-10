@@ -276,12 +276,12 @@ void cache_add (void * cp, void * data)
 }
 
 /* called with lock held */
-static void actual_remove (struct dcache * cache, int index)
+static int actual_remove (struct dcache * cache, int index)
 {
   if ((cache->num_entries <= 0) || (index < 0) ||
       (index >= cache->num_entries)) {
     printf ("cache unable to remove %d from %d\n", index, cache->num_entries);
-    return;
+    return 0;
   }
 #ifdef DEBUG_PRINT
   printf ("remove calling release_entry (%d)\n", index);
@@ -291,22 +291,26 @@ static void actual_remove (struct dcache * cache, int index)
   int i;
   for (i = index; i < cache->num_entries; i++)
     cache->entries [i] = cache->entries [i + 1];
+  return 1;
 }
 
 /* calls to explicitly remove a cache entry */
 /* assuming the element is found, calls the corresponding
  * release function */
-void cache_remove (void * cp, void * data)
+/* returns 1 if successful, 0 if unable to remove */
+int cache_remove (void * cp, void * data)
 {
   struct dcache * cache = (struct dcache *) cp;
-  if (cache->busy) return;
+  if (cache->busy) return 0;
   pthread_mutex_lock (&(cache->mutex));
   int index = find_data (cache, data);
+  int result = 0;
   if (index == -1)
     printf ("%s: unable to remove data %p, not found\n", cache->name, data);
   else
-    actual_remove (cache, index);
+    result = actual_remove (cache, index);
   pthread_mutex_unlock (&(cache->mutex));
+  return result;
 }
 
 /* randomly select up to max elements from the cache and place them into
@@ -316,11 +320,9 @@ int cache_random (void * cp, int max, void ** array)
 {
   if (max <= 0) return 0;
   struct dcache * cache = (struct dcache *) cp;
-  int i;
-  if (cache->busy)
-    return 0;
-
+  if (cache->busy) return 0;
   pthread_mutex_lock (&(cache->mutex));
+  int i;
   if (cache->num_entries > 0) {
 /*  printf ("cache_random (%d, %d)\n", max, cache->num_entries); */
     int * permutation = random_permute (cache->num_entries);
