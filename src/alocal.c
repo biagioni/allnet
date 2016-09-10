@@ -149,7 +149,7 @@ for (i = 0; i < npipes; i++) printf ("alocal: now added pipe %d (%d total)\n", r
   listen_init_info (&info, 256, "alocal", ALLNET_LOCAL_PORT, 1, 1, 1, NULL, p);
   snprintf (alog->b, alog->s, "calling listen_add_fd\n");
   log_print (alog);
-  if (! listen_add_fd (&info, rpipe, NULL, 0))
+  if (! listen_add_fd (&info, rpipe, NULL, 0))  /* should always succeed */
     printf ("alocal_main: listen_add_fd failed\n");
   snprintf (alog->b, alog->s, "calling main loop\n");
   log_print (alog);
