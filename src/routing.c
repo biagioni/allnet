@@ -299,7 +299,8 @@ static int read_line (int fd, char * buf, int bsize)
 }
 
 /* returns the new input after skipping all of the chars read into buffer */
-static char * read_buffer (char * in, int nbytes, char * buf, int bsize)
+static const char * read_buffer (const char * in, int nbytes,
+                                 char * buf, int bsize)
 {
   if (nbytes > bsize)
     nbytes = bsize;
@@ -318,13 +319,15 @@ static char * read_buffer (char * in, int nbytes, char * buf, int bsize)
   return in;
 }
 
-static void load_peer (struct addr_info * peer, char * line, int real_peer)
+static void load_peer (struct addr_info * peer, const char * line,
+                       int real_peer)
 {
+  const char * original_line = line;  /* for debugging */
   /* printf ("load_peer parsing line %s\n", line); */
   if (*line != ':')
     return;
   line++;
-  char * end = line;
+  char * end = (char *)line;  /* end cannot be const because used in strtol */
   if ((end [0] != ' ') || (end [1] != '('))
     return;
   line = end + 2;
@@ -348,7 +351,7 @@ static void load_peer (struct addr_info * peer, char * line, int real_peer)
   if (end == line)
     return;
   if ((ipversion != 4) && (ipversion != 6)) {
-    printf ("error: IP version %d\n", ipversion);
+    printf ("error: IP version %d in '%s'\n", ipversion, original_line);
     return;
   }
   line = end;
