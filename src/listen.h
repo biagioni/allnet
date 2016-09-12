@@ -70,12 +70,12 @@ extern void listen_remove_fd (struct listen_info * info, int fd);
  * do not modify in any way.  Returns NULL for no match */
 extern struct addr_info * listen_fd_addr (struct listen_info * info, int fd);
 
-/* mallocs and sets result to an n-element array of sockaddr_storage
+/* mallocs and sets result to an n-element array of file descriptors
  * that are the best matches for the given destination */
 /* returns the actual number of destinations found, or 0 */
 extern int listen_top_destinations (struct listen_info * info, int max,
                                     unsigned char * dest, int nbits,
-                                    struct sockaddr_storage ** result);
+                                    int ** result);
 
 /* returns the socket number if already listening,
    returns -1 and reserves the address if nobody else had reserved it,

@@ -513,78 +513,75 @@ struct addr_info * listen_fd_addr (struct listen_info * info, int fd)
   return result;
 }
 
-/* mallocs and sets result to an n-element array of sockaddr_storage 
+/* mallocs and sets result to an n-element array of file descriptors
  * that are the best matches for the given destination */
 /* returns the actual number of destinations found, or 0 */
 int listen_top_destinations (struct listen_info * info, int max,
                              unsigned char * dest, int nbits,
-                             struct sockaddr_storage ** result)
+                             int ** result)
 {
   *result = NULL;
   if (info == NULL)
     return 0;
+  if (max <= 0)
+    return 0;
   pthread_mutex_lock (&(info->mutex));
-  if (max > info->num_fds)
-    max = info->num_fds;
-  *result = malloc_or_fail (sizeof (struct sockaddr_storage) * max,
-                            "listen_top_destinations result");
-  size_t mb_size = sizeof (int) * max;
-  int * bits = malloc_or_fail (mb_size, "listen_top_destinations mb");
-  int i;
-  for (i = 0; i < max; i++) {
-    bits [i] = -1;
+  int start = 0;
+  /* the first peer usually added is the socket fd for communication with ad,
+   * and it has an all-zeros sockaddr.  It should not be returned */
+  if ((info->num_fds > 0) && (max > 0) &&
+      (info->peers [0].ip.ip_version != 4) &&
+      (info->peers [0].ip.ip_version != 6))
+    start = 1;
+  if ((info->num_fds <= 0) || (info->num_fds <= start)) {
+    pthread_mutex_unlock (&(info->mutex));
+    return 0;
   }
-  int invalid_count = 0;  /* counts peers with bad sockaddrs.  For example,
-                           * the first peer usually added is the socket fd
-                           * for communication with ad, and it has an all-zeros
-                           * sockaddr.  It should not be returned */
-  for (i = 0; i < info->num_fds; i++) {
-    int r = matching_bits (info->peers [i].destination, info->peers [i].nbits,
-                           dest, nbits);
-    struct sockaddr_storage sas;
-    struct sockaddr * sap = (struct sockaddr *) (&sas);
-    memset (sap, 0, sizeof (sas));
-    socklen_t salen;
-    if (((info->peers [i].ip.ip_version == 4) ||
-         (info->peers [i].ip.ip_version == 6)) &&
-        (ai_to_sockaddr ((info->peers + i), sap, &salen))) {
-      /* insertion sort */
-      int j = i - 1 - invalid_count;
-      while (j >= 0) {
-        if (bits [j] >= r) /* found the place to insert */
-          break;
-        (*result) [j + 1] = (*result) [j];  /* shift up */
-        bits      [j + 1] = bits      [j];
-        j--;
-      }
-      /* here, j == -1 or bits [j] >= r, and 0 <= j + 1 <= i - invalid_count */
-      (*result) [j + 1] = sas;
-      bits      [j + 1] = r;
-    } else { /* ignore this one */
-/* 2016/09/10: after convinced that it works, put this part into ifdef DEBUG */
-      int all_zeros = 1;
-      const char * p = (const char *)(info->peers + i);
-      int loop;
-      for (loop = 0; loop < sizeof (struct addr_info); loop++)
-        if (p [loop] != 0)
-          all_zeros = 0;
-      if ((i != 0) || (! all_zeros)) {
-        printf ("listen_top_destinations [%d/%d/%d(%d,%d)]: ",
-                i, max, info->num_fds, invalid_count, all_zeros);
-        printf ("ai_to_sockaddr failed for (%p %p %p) ",
-                info, info->peers, info->peers + i);
-        print_addr_info (info->peers + i);
-        print_buffer (p, sizeof (struct addr_info), "ai",
-                      sizeof (struct addr_info), 1);
-      }
-#ifdef DEBUG_PRINT
-#endif /* DEBUG_PRINT */
-      invalid_count++;
+  int available = info->num_fds - start; /* num_fds > start, so available > 0 */
+  if (max >= available) {   /* return all, order does not matter */
+    size_t size = available * sizeof (int);
+    *result = memcpy_malloc (info->fds + start, size,
+                             "listen_top_destinations returning all");
+    pthread_mutex_unlock (&(info->mutex));
+printf ("max %d > available %d, result buffer is ", max, available);
+for (int i = 0; i < available; i++) printf ("%d, ", (*result) [i]);
+printf ("\n");
+    return available;
+  }
+/* max < available: loop through the peers to find the max best destinations */
+  size_t bits_size = sizeof (int) * max;
+  *result = malloc_or_fail (bits_size, "listen_top_destinations result");
+  int * bits = malloc_or_fail (bits_size, "listen_top_destinations bits");
+  int i;
+  for (i = 0; i < max; i++)
+    bits [i] = -1;
+char dest_string [] = "destination with xxxxxxxxxx bits";
+snprintf (dest_string, sizeof (dest_string), "destination with %d bits", nbits);
+print_buffer ((char *) dest, (nbits + 7) / 8, dest_string, nbits, 1);
+  for (i = 0; i < available; i++) {
+    int index = i + start;
+    int r = matching_bits (info->peers [index].destination,
+                           info->peers [index].nbits, dest, nbits);
+printf ("peers [%d] matches %d bits\n", index, r);
+    /* insertion sort, with r as the key, saved in bits */
+    int j = i - 1;
+    while (j >= 0) {
+      if (bits [j] >= r) /* found the place to insert */
+        break;
+      (*result) [j + 1] = (*result) [j];  /* shift up to make room to insert */
+      bits      [j + 1] = bits      [j];
+      j--;
     }
+    /* here, j == -1 or bits [j] >= r, and 0 <= j + 1 <= i */
+    (*result) [j + 1] = info->fds [index];  /* insert */
+    bits      [j + 1] = r;
   }
   free (bits);
   pthread_mutex_unlock (&(info->mutex));
-  return max - invalid_count;
+printf ("result buffer is ");
+for (i = 0; i < max; i++) printf ("%d, ", (*result) [i]);
+printf ("\n");
+  return max;
 }
 
 /* returns the socket number if already listening,
