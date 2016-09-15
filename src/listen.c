@@ -160,7 +160,7 @@ static void * listen_loop (void * arg)
       close (connection);
       continue;   /* skip the rest of the while loop */
     }
-    int option = 1;  /* disable Nagle algorithm if nodelay */
+    int option = 1;  /* nodelay disables Nagle algorithm */
     if ((ra->info->nodelay) &&
         (setsockopt (connection, IPPROTO_TCP, TCP_NODELAY, &option,
                      sizeof (option)) != 0)) {
@@ -169,7 +169,7 @@ static void * listen_loop (void * arg)
     }
 
     struct addr_info addr;
-    sockaddr_to_ai (ap, addr_size, &addr);
+    sockaddr_to_ai (ap, addr_size, &addr);  /* zeros destination and nbits */
     if (listen_add_fd (info, connection, &addr,  /* unique unless local IP */
                        ! is_loopback_ip (ap, addr_size))) {
       if (info->callback != NULL)
@@ -177,7 +177,6 @@ static void * listen_loop (void * arg)
     } else {
       close (connection);
     }
-
     addr_size = sizeof (address);  /* reset for next call to accept */
   }
   perror ("accept");
@@ -265,7 +264,7 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
   }
 }
 
-#define FREE_NULL(p)	{ free (p); p = NULL; }
+#define FREE_NULL(p)	{ if (p != NULL) free (p); p = NULL; }
 
 void listen_shutdown (struct listen_info * info)
 {
@@ -543,9 +542,11 @@ int listen_top_destinations (struct listen_info * info, int max,
     *result = memcpy_malloc (info->fds + start, size,
                              "listen_top_destinations returning all");
     pthread_mutex_unlock (&(info->mutex));
-printf ("max %d > available %d, result buffer is ", max, available);
-for (int i = 0; i < available; i++) printf ("%d, ", (*result) [i]);
-printf ("\n");
+#ifdef DEBUG_PRINT
+    printf ("max %d >= available %d, result buffer is ", max, available);
+    for (int i = 0; i < available; i++) printf ("%d, ", (*result) [i]);
+    printf ("\n");
+#endif /* DEBUG_PRINT */
     return available;
   }
 /* max < available: loop through the peers to find the max best destinations */
@@ -555,32 +556,43 @@ printf ("\n");
   int i;
   for (i = 0; i < max; i++)
     bits [i] = -1;
-char dest_string [] = "destination with xxxxxxxxxx bits";
-snprintf (dest_string, sizeof (dest_string), "destination with %d bits", nbits);
-print_buffer ((char *) dest, (nbits + 7) / 8, dest_string, nbits, 1);
+#ifdef DEBUG_PRINT
+    printf ("max %d, available %d, dest %d bits ", max, available, nbits);
+    print_buffer ((char *) dest, (nbits + 7) / 8, NULL, nbits, 1);
+#endif /* DEBUG_PRINT */
   for (i = 0; i < available; i++) {
     int index = i + start;
     int r = matching_bits (info->peers [index].destination,
                            info->peers [index].nbits, dest, nbits);
-printf ("peers [%d] matches %d bits\n", index, r);
-    /* insertion sort, with r as the key, saved in bits */
-    int j = i - 1;
-    while (j >= 0) {
-      if (bits [j] >= r) /* found the place to insert */
-        break;
-      (*result) [j + 1] = (*result) [j];  /* shift up to make room to insert */
-      bits      [j + 1] = bits      [j];
-      j--;
+#ifdef DEBUG_PRINT
+    printf ("peers [%d], fd %d, matches %d/%d bits ", index, info->fds [index],
+            r, info->peers [index].nbits);
+    print_buffer ((char *)(info->peers [index].destination),
+                  (info->peers [index].nbits + 7) / 8, NULL, 100, 1);
+#endif /* DEBUG_PRINT */
+    /* insert into result/bits if there is room or if it is a better match */
+    if ((i <= max) || (bits [max - 1] < r)) {
+      /* insertion sort, with r as the key, saved in bits */
+      int j = ((i > max) ? (max - 1) : (i - 1));
+      while (j >= 0) {
+        if (bits [j] >= r) /* found the place to insert */
+          break;
+        (*result) [j + 1] = (*result) [j]; /* shift up to make room to insert */
+        bits      [j + 1] = bits      [j];
+        j--;
+      }
+      /* here, j == -1 or bits [j] >= r, and 0 <= j + 1 <= i and j + 1 <= max */
+      (*result) [j + 1] = info->fds [index];  /* insert */
+      bits      [j + 1] = r;
     }
-    /* here, j == -1 or bits [j] >= r, and 0 <= j + 1 <= i */
-    (*result) [j + 1] = info->fds [index];  /* insert */
-    bits      [j + 1] = r;
   }
   free (bits);
   pthread_mutex_unlock (&(info->mutex));
-printf ("result buffer is ");
-for (i = 0; i < max; i++) printf ("%d, ", (*result) [i]);
-printf ("\n");
+#ifdef DEBUG_PRINT
+  printf ("result buffer is ");
+  for (i = 0; i < max; i++) printf ("%d, ", (*result) [i]);
+  printf ("\n");
+#endif /* DEBUG_PRINT */
   return max;
 }
 
