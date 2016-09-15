@@ -4,9 +4,6 @@
 /* main thread uses select to check the pipe from ad and the sockets */
 /* secondary threads:
  * - listen and open TCP connections
-#ifdef ALLNET_ADDRS
- * - listen on the unix socket for allnet-destination-address to IP mappings
-#endif ALLNET_ADDRS
  */
 /* arguments are:
   - the fd number of the pipe from ad
@@ -73,7 +70,7 @@ static int debug_always_match (void * a1, void * a2)
 
 static void debug_print_addr_cache (void * addr_cache)
 {
-  void ** result;
+  void ** result = NULL;
   int n = cache_all_matches (addr_cache, debug_always_match, NULL, &result);
   if (n <= 0) {
     printf ("cache is empty: %d\n", n);
@@ -85,39 +82,12 @@ static void debug_print_addr_cache (void * addr_cache)
     if (result [i] != NULL)
       print_addr_info (result [i]);
   }
-  free (result);
+  if ((n > 0) && (result != NULL))
+    free (result);
 }
 #endif /* DEBUG_PRINT */
 
-#ifdef ALLNET_ADDRS
-static int init_unix_socket (char * addr_socket_name)
-{
-  int addr_socket = socket (AF_UNIX, SOCK_DGRAM, 0);
-  if (addr_socket < 0) {
-    perror ("af_unix socket");
-    exit (1);    /* not sure what this error would mean */
-  }
-  struct sockaddr_un sun;
-  sun.sun_family = AF_UNIX;
-  snprintf (sun.sun_path, sizeof (sun.sun_path), "%s", addr_socket_name);
-  if (bind (addr_socket, (struct sockaddr *) (&sun), sizeof (sun)) < 0) {
-    perror ("af_unix bind");
-    printf ("unable to bind to unix socket ");
-    print_sockaddr ((struct sockaddr *) (&sun), sizeof (sun), -1);
-    printf ("\nmake sure no other aip is running and delete %s\n",
-            addr_socket_name);
-    exit (1);
-  }
-  return addr_socket;
-}
-#endif /* ALLNET_ADDRS */
-
-struct receive_arg {
-  char * socket_name;
-  void * rp_cache;
-  void * dht_cache;
-};
-
+#if 0
 static void add_ai_to_cache_or_record_usage (void * cache, 
                                              struct addr_info * ai)
 {
@@ -129,55 +99,6 @@ static void add_ai_to_cache_or_record_usage (void * cache,
     free (ai);   /* not saved in the cache */
   }
 }
-
-#ifdef ALLNET_ADDRS
-#define max(a, b)	(((a) > (b)) ? (a) : (b))
-
-static void * receive_addrs (void * arg)
-{
-  struct receive_arg * ra = (struct receive_arg *) arg;
-  int addr_socket = init_unix_socket (ra->socket_name);
-  snprintf (alog->b, alog->s, "receive_addrs, socket is %d\n", addr_socket);
-  log_print (alog);
-
-  int size = sizeof (struct addr_info);
-  while (1) {
-    char * buffer = malloc_or_fail (size, "receive_addrs");
-    struct addr_info * ai = (struct addr_info *) buffer;
-    int bytes = recv (addr_socket, buffer, size, 0);
-    if (bytes < 0)
-      perror ("recv");
-    if (bytes <= 0) {
-      printf ("error: address socket %d closed, thread exiting\n", addr_socket);
-      free (ai);
-      break;
-    }
-    if (bytes == sizeof (struct addr_info)) {
-      /* error checking, print or abort loop if find inconsistencies */
-      if ((ai->ip.ip_version != 6) && (ai->ip.ip_version != 4))
-        printf ("ip version %d, expected 4 or 6\n", ai->ip.ip_version);
-      if ((ai->type != ALLNET_ADDR_INFO_TYPE_RP) &&
-          (ai->type != ALLNET_ADDR_INFO_TYPE_DHT))
-        printf ("ai type %d, expected 1 or 2\n", ai->type);
-      printf ("receive_addrs got %d bytes, ", bytes);
-      print_addr_info (ai);
-      if (ai->type == ALLNET_ADDR_INFO_TYPE_RP) {
-        add_ai_to_cache_or_record_usage (ra->rp_cache, ai);
-      } else if (ai->type == ALLNET_ADDR_INFO_TYPE_DHT) {
-        add_ai_to_cache_or_record_usage (ra->dht_cache, ai);
-      } else {
-        printf ("ai type %d, expected 1 or 2\n", ai->type);
-        free (buffer);
-      }
-    } else {
-      printf ("expected %zd bytes, got %d\n", sizeof (struct addr_info),
-              bytes);
-      free (buffer);
-    }
-  }
-  return NULL;
-}
-#endif /* ALLNET_ADDRS */
 
 struct match_arg {
   /* arguments */
@@ -203,8 +124,8 @@ static int aip_match (void * a, void * data)
   return r;
 }
 
-/* mallocs and sets result to an n-element array of addr_infos that are the
- * best matches for the given destination */
+/* mallocs and sets result to an n-element array of struct sockaddr_in6
+ * that are the best matches for the given destination */
 /* returns the actual number of destinations found, or 0 */
 static int top_destinations (void * addr_cache, int max, unsigned char * dest,
                              int nbits, struct sockaddr_in6 ** result)
@@ -242,6 +163,7 @@ static int top_destinations (void * addr_cache, int max, unsigned char * dest,
   free (matches);
   return num_matches;
 }
+#endif /* 0 */
 
 #if 0
 static int same_sockaddr (void * arg1, void * arg2)
@@ -514,7 +436,8 @@ static int dht_ping_match (struct allnet_header * hp, int msize,
  * translations, then the rest to a random permutation of other udps
  * we have heard from and tcps we are connected to */
 static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
-                             void * addr_cache, char * message, int msize,
+                             struct listen_info * info,
+                             char * message, int msize,
                              int priority, int max_send)
 {
 #ifdef LOG_PACKETS
@@ -543,6 +466,8 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
   struct sockaddr_storage dht_storage [DHT_SENDS];
   int dht_sends = routing_top_dht_matches (hp->destination, hp->dst_nbits,
                                            dht_storage, DHT_SENDS);
+  if (dht_sends > max_send)
+    dht_sends = max_send;
 #undef DHT_SENDS
 #ifdef LOG_PACKETS
   snprintf (alog->b, alog->s, "routing_top_dht_matches: %d\n", dht_sends);
@@ -550,60 +475,49 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
 #endif /* LOG_PACKETS */
   for (i = 0; i < dht_sends; i++)
     send_udp (udp, message, msize, ((struct sockaddr *) (&(dht_storage [i]))));
+  max_send -= dht_sends;
 
-  struct sockaddr_in6 * destinations;
-  int max_translations = max_send / 2 + 1;
-/* first send to recently-received from destinations from the rp cache */
-  int translations =
-    top_destinations (addr_cache, max_translations, hp->destination,
-                      hp->dst_nbits, &destinations);
-  for (i = 0; i < translations; i++)  /* send here first */
-    send_udp (udp, message, msize, (struct sockaddr *) (destinations + i));
-  if (translations > 0)
-    free (destinations);
-  if (translations > 1) {
-    snprintf (alog->b, alog->s, "forwarded to %d mappings\n", translations);
-    log_print (alog);
+  int max_listen = max_send / 2 + 1;
+  int num_send_fds = 0;
+  if (max_listen > 0) {
+    int * send_fds = NULL;
+    num_send_fds = listen_top_destinations (info, max_listen,
+                                            hp->destination, hp->dst_nbits,
+                                            &send_fds);
+    for (i = 0; i < num_send_fds; i++)  /* send here first */
+      send_pipe_message (send_fds [i], message, msize,
+                         ALLNET_PRIORITY_DEFAULT, alog);
+    if ((num_send_fds > 0) && (send_fds != NULL))
+      free (send_fds);
+    if (num_send_fds > 0) {
+      snprintf (alog->b, alog->s, "forwarded to %d mappings\n", num_send_fds);
+      log_print (alog);
+    }
+    max_send -= num_send_fds;
   }
 
-  int sent_fds = 0;
-  int sent_udps = 0;
-  int remaining = max_send - translations;
+  /* now send to a random subset of recently received-from addresses */
 #define FORWARDING_UDPS	100
   void * udps [FORWARDING_UDPS];
-  int nudps = cache_random (udp_cache, FORWARDING_UDPS, udps);
+  int num_udps = cache_random (udp_cache, FORWARDING_UDPS, udps);
   struct udp_cache_record * * ucrs = (struct udp_cache_record * *) udps;
 #undef FORWARDING_UDPS
-  int size = num_fds + nudps;
-  if (size > 0) {
-    int * random_selection = random_permute (size);
-    for (i = 0; i < size && i < remaining; i++) {
-      int index = random_selection [i];
-      if (index < num_fds) {
-        if (! send_pipe_message (fds [index], message, msize,
-                                 ALLNET_PRIORITY_DEFAULT, alog)) {
-          snprintf (alog->b, alog->s,
-                    "aip error sending to socket %d at %d\n",
-                    fds [index], i);
-          log_print (alog);
-        }
-#ifdef LOG_PACKETS
-        snprintf (alog->b, alog->s, "aip sent %d bytes to TCP socket %d\n",
-                  msize, fds [index]);
-        log_print (alog);
-#endif /* LOG_PACKETS */
-        sent_fds++;
-      } else {
-        struct udp_cache_record * ucr = ucrs [index - num_fds];
-        send_udp (udp, message, msize, (struct sockaddr *) (&(ucr->sas)));
-        sent_udps++;
-      }
+  int num_send_udps = num_udps;
+  if (num_send_udps > max_send)
+    num_send_udps = max_send;
+  if (num_send_udps > 0) {
+    int * random_selection = random_permute (num_udps);
+    for (i = 0; i < num_send_udps; i++) {
+      struct udp_cache_record * ucr = ucrs [random_selection [i]];
+      send_udp (udp, message, msize, (struct sockaddr *) (&(ucr->sas)));
     }
-    free (random_selection);
+    if ((num_udps > 0) && (random_selection != NULL))
+      free (random_selection);
   }
+  max_send -= num_send_udps;  /* useful if we want to add code below this */
 #ifdef LOG_PACKETS
-  snprintf (alog->b, alog->s, "forwarded to %d TCP and %d UDP\n",
-            sent_fds, sent_udps);
+  snprintf (alog->b, alog->s, "forwarded to %d+%d TCP and %d UDP\n",
+            dht_sends, num_send_fds, num_send_udps);
   log_print (alog);
 #endif /* LOG_PACKETS */
 }
@@ -701,7 +615,7 @@ static pthread_mutex_t listener_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int active_listeners = 0;
 
 static int connect_listener (unsigned char * address, struct listen_info * info,
-                             void * addr_cache, int af)
+                             int af)
 {
   int result = -1;
 #define MAX_DHT	10
@@ -740,33 +654,30 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       if (salen == 0)
         continue;   /* invalid address, ignore */
       /* check to see if we are already connected or connecting */
-      int size = sizeof (struct addr_info);
-      struct addr_info * ai = malloc_or_fail (size, "connect_listener ai");
-      if (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, ai)) {
-        free (ai);
+      struct addr_info ai;
+      if (! sockaddr_to_ai ((struct sockaddr *) (sas + k), salen, &ai))
         continue;   /* invalid address, ignore */
-      }
-      int prev_fd = already_listening (ai, info);
-/* printf ("initial prev_fd returned %d for ", prev_fd); print_addr_info (ai); */
+      memcpy (ai.destination, address, sizeof (ai.destination));
+      ai.nbits = LISTEN_BITS;
+      int prev_fd = already_listening (&ai, info);
+/* printf ("initial prev_fd returned %d for ", prev_fd); print_addr_info (&ai); */
       time_t start_time = time (NULL);
       int wait_time = 2000;   /* 2ms, doubled on each loop */
       while ((prev_fd == -2) && (time (NULL) < start_time + 2)) {
 /* printf ("prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (ai); */
         sleep_time_random_us (wait_time);  /* sleep for 0-2ms */
         wait_time += wait_time;            /* double the wait time */
-        prev_fd = already_listening (ai, info);  /* and try again */
-/* printf ("loop prev_fd returned %d for ", prev_fd); print_addr_info (ai);
+        prev_fd = already_listening (&ai, info);  /* and try again */
+/* printf ("loop prev_fd returned %d for ", prev_fd); print_addr_info (&ai);
 sleep (1); */
       }
-/* printf ("prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (ai); */
+/* printf ("prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (&ai); */
       if (prev_fd >= 0) {  /* already listening for this address, done */
-        free (ai);
         result = prev_fd;
         break;
       }
       if (prev_fd == -2) {  /* timed out, give up */
-/* printf ("giving up: prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (ai); */
-        free (ai);
+/* printf ("giving up: prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (&ai); */
         break;
       }
 
@@ -774,9 +685,8 @@ sleep (1); */
       int s = socket (af, SOCK_STREAM, 0);
       if (s < 0) {
         perror ("listener socket");
-/* printf ("thread %u proc %d unable to open socket, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
-        listen_clear_reservation (ai, info);
-        free (ai);
+/* printf ("thread %u proc %d unable to open socket, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (&ai); */
+        listen_clear_reservation (&ai, info);
         continue;
       }
       struct sockaddr * sap = (struct sockaddr *) (sas + k);
@@ -785,34 +695,30 @@ sleep (1); */
         print_sockaddr_str (sap, salen, 1, alog->b + n, alog->s - n);
         log_error (alog, "listener connect");
         close (s);
-/* printf ("thread %ud proc %d unable to connect, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (ai); */
-        listen_clear_reservation (ai, info);
-        free (ai);
+/* printf ("thread %ud proc %d unable to connect, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (&ai); */
+        listen_clear_reservation (&ai, info);
         continue;   /* return to the top of the loop and try the next addr */
       }
 #ifdef DEBUG_PRINT
-      printf ("aip added fd %d, %p: ", s, ai);
-      print_addr_info (ai);
-      debug_print_addr_cache (addr_cache);
+      printf ("aip added fd %d, %p: ", s, &ai);
+      print_addr_info (&ai);
 #endif /* DEBUG_PRINT */
-      if (listen_add_fd (info, s, ai, 1)) {  /* clears the reservation */
+      if (listen_add_fd (info, s, &ai, 1)) {  /* clears the reservation */
         /* success! */
         int offset = snprintf (alog->b, alog->s,
                                "listening for %x/%d on socket %d at ",
                                address [0] & 0xff, LISTEN_BITS, s);
-        offset += addr_info_to_string (ai, alog->b + offset, alog->s - offset);
+        offset += addr_info_to_string (&ai, alog->b + offset, alog->s - offset);
         log_print (alog);
         result = s;
-        add_ai_to_cache_or_record_usage (addr_cache, ai); /* save or free ai */
       } else {
         int offset = snprintf (alog->b, alog->s,
                                "listen_add_fd => 0 for %x/%d on socket %d at ",
                                address [0] & 0xff, LISTEN_BITS, s);
-        offset += addr_info_to_string (ai, alog->b + offset, alog->s - offset);
+        offset += addr_info_to_string (&ai, alog->b + offset, alog->s - offset);
         log_print (alog);
         close (s);
-        listen_clear_reservation (ai, info);
-        free (ai);
+        listen_clear_reservation (&ai, info);
       }
     }
   }
@@ -828,7 +734,6 @@ sleep (1); */
 struct connect_thread_arg {
   unsigned char address [ADDRESS_SIZE];
   struct listen_info * info;
-  void * addr_cache;
   int af;
   int listener_index;
 };
@@ -847,21 +752,15 @@ static void * connect_thread (void * a)
 #endif /* DEBUG_PRINT */
   struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
   routing_init_is_complete (1);   /* wait for routing to complete */
-  int fd = connect_listener (arg->address, arg->info, arg->addr_cache, arg->af);
+  int fd = connect_listener (arg->address, arg->info, arg->af);
   if (fd >= 0) {
     pthread_mutex_lock (&listener_mutex);
     if (listener_fds [arg->listener_index] == -1) {
       active_listeners++;
       listener_fds [arg->listener_index] = fd;
     } else {   /* undo connect */
-      close (fd);       /* remove from kernel */
-      /* remove from cache, info, and pipemsg */
-struct addr_info * ai = listen_fd_addr (arg->info, fd);
-printf ("listener_fds [%d] = %d, for now closed fd %d addr is %p, ",
-arg->listener_index, listener_fds [arg->listener_index], fd, ai);
-print_addr_info (ai);
-      cache_remove (arg->addr_cache, ai);
-      listen_remove_fd (arg->info, fd);
+      close (fd);                       /* remove from kernel */
+      listen_remove_fd (arg->info, fd); /* remove from info */
     }
     pthread_mutex_unlock (&listener_mutex);
   }
@@ -875,7 +774,7 @@ print_addr_info (ai);
   return NULL;
 }
 
-static void create_connect_thread (struct listen_info * info, void * addr_cache,
+static void create_connect_thread (struct listen_info * info,
                                    int af, int listener_index)
 {
   struct connect_thread_arg * arg =
@@ -885,7 +784,6 @@ static void create_connect_thread (struct listen_info * info, void * addr_cache,
   /* printf ("index %02x, new address %02x\n", listener_index,
           arg->address [0] & 0xff); */
   arg->info = info;
-  arg->addr_cache = addr_cache;
   arg->af = af;
   arg->listener_index = listener_index;
   pthread_t thread;
@@ -893,8 +791,7 @@ static void create_connect_thread (struct listen_info * info, void * addr_cache,
     log_error (alog, "pthread_create");
 }
 
-static void remove_listener (int fd, struct listen_info * info,
-                             void * addr_cache)
+static void remove_listener (int fd, struct listen_info * info)
 {
 #ifdef DEBUG_PRINT
   printf ("remove_listener (fd %d)\n", fd);
@@ -912,18 +809,6 @@ static void remove_listener (int fd, struct listen_info * info,
 #endif /* DEBUG_PRINT */
     }
   }
-  struct addr_info * ai = listen_fd_addr (info, fd);
-  struct addr_info * cached =
-    cache_get_match (addr_cache, (match_function)(&same_ai), ai);
-#ifdef DEBUG_PRINT
-  printf ("1: removing %p (%p) from address cache\n", cached, ai);
-  if (ai != NULL) print_addr_info (ai);
-  if (cached != NULL) print_addr_info (cached);
-  debug_print_addr_cache (addr_cache);
-  if (cached != NULL) debug_removed += 2;
-#endif /* DEBUG_PRINT */
-  if (cached != NULL)
-    cache_remove (addr_cache, cached); /* remove from cache */
   listen_remove_fd (info, fd); /* remove from info and pipemsg */
   close (fd);       /* remove from kernel */
   pthread_mutex_unlock (&listener_mutex);
@@ -938,7 +823,7 @@ static void remove_listener (int fd, struct listen_info * info,
 /* Connect can block for several seconds, so spawn a thread for
    each listener.  Listeners are selected to correspond to at least
    one of our local addresses. */
-static void make_listeners (struct listen_info * info, void * addr_cache)
+static void make_listeners (struct listen_info * info)
 {
   int i;
   int connect_to_index [NUM_LISTENERS];
@@ -988,7 +873,7 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
   for (i = 0; i < NUM_LISTENERS; i++) {
     if (! in_use [i]) {   /* close socket (if any) if it is not in use */
       if (listener_fds [i] >= 0)
-        remove_listener (listener_fds [i], info, addr_cache);
+        remove_listener (listener_fds [i], info);
       listener_fds [i] = -1;
     }
   }
@@ -1016,9 +901,9 @@ static void make_listeners (struct listen_info * info, void * addr_cache)
   }
   for (i = 0; i < NUM_LISTENERS; i += 2) {
     if (connect_to_index [i])
-      create_connect_thread (info, addr_cache, AF_INET, i);
+      create_connect_thread (info, AF_INET, i);
     if (connect_to_index [i + 1])
-      create_connect_thread (info, addr_cache, AF_INET6, i + 1);
+      create_connect_thread (info, AF_INET6, i + 1);
   }
 }
 
@@ -1323,13 +1208,10 @@ log_print (alog);
 
 /* int debug_print_fd = -1; */
 
-static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
-                       void * addr_cache, void * dht_cache)
+static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
 {
   int udp = udp_socket ();
-  static void * udp_cache = NULL;
-  if (udp_cache == NULL)
-    udp_cache = cache_init (128, free, "aip UPD cache");
+  void * udp_cache = cache_init (128, free, "aip UPD cache");
   int removed_listener = 0;
   time_t last_listen = 0;
   time_t last_keepalive = 0;
@@ -1343,7 +1225,7 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
 /* printf ("making listeners\n"); */
 /* if we are already connected to everyone we want to connect to, then the
    call to make_listeners should be essentially free */
-      make_listeners (info, addr_cache);
+      make_listeners (info);
       last_listen = time (NULL);
       removed_listener = 0;
     }
@@ -1372,7 +1254,7 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
     int result = receive_pipe_message_fd (p, 1000, &message, udp, sap, &sasize,
                                           &fd, &priority);
     int valid = ((result > 0) && (is_valid_message (message, result)));
-    if ((result > 0) && (! valid)) {
+    if ((result > 0) && (! valid)) {  /* not a valid message */
       int off =
         snprintf (alog->b, alog->s,
                   "aip invalid packet from %d/udp %d ad %d, size %d pri %d\n",
@@ -1394,20 +1276,17 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
       snprintf (alog->b, alog->s,
                 "aip: error %d on file descriptor %d, closing\n", result, fd);
       log_print (alog);
-      remove_listener (fd, info, addr_cache);
+      remove_listener (fd, info);
       removed_listener = 1;
     } else if ((result > 0) && valid) {
       if (fd == rpipe) {    /* message from ad, send to IP neighbors */
-     /* printf ("aip: got %d-byte message from ad on fd %d\n", result, fd); */
 #ifdef LOG_PACKETS
         snprintf (alog->b, alog->s, "got %d-byte message from ad\n", result);
         log_print (alog);
 #endif /* LOG_PACKETS */
         forward_message (info->fds + 1, info->num_fds - 1, udp, udp_cache,
-                         addr_cache, message, result, priority, 10);
+                         info, message, result, priority, 10);
       } else {
-/* for debugging of 255-peer peer messages
-if (result == 6160) print_buffer (message, result, NULL, 100, 1); */
         int off = snprintf (alog->b, alog->s,
                             "got %d bytes from Internet on fd %d",
                             result, fd);
@@ -1456,6 +1335,7 @@ if (result == 6160) print_buffer (message, result, NULL, 100, 1); */
     }   /* else result is zero, timed out, or packet is invalid, try again */
   }
   close (udp);  /* on iOS we may get restarted later */
+  cache_close (udp_cache);
 }
 
 void aip_main (int rpipe, int wpipe, char * addr_socket_name)
@@ -1466,25 +1346,12 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
             rpipe, wpipe, addr_socket_name);
   log_print (alog);
 
-  static struct receive_arg ra;
-  ra.socket_name = addr_socket_name;
-  ra.rp_cache = cache_init (128, free, "aip RP cache");
-  ra.dht_cache = cache_init (256, free, "aip DHT cache");
-#ifdef ALLNET_ADDRS
-  pthread_t addr_thread;
-  if (pthread_create (&addr_thread, NULL, receive_addrs, &ra) != 0) {
-    perror ("pthread_create/addrs");
-    snprintf (alog->b, alog->s, "unable to create receive_addrs thread\n");
-    log_error ("pthread_create/addrs");
-    return;
-  }
-#endif /* ALLNET_ADDRS */
   pd p = init_pipe_descriptor (alog);
   static struct listen_info info;
   listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0,
                     listen_callback, p);
 
-  if (! listen_add_fd (&info, rpipe, NULL, 0))
+  if (! listen_add_fd (&info, rpipe, NULL, 0))  /* should always succeed */
     printf ("aip_main: listen_add_fd failed\n");
   pthread_mutex_init (&listener_mutex, NULL);
   int i;
@@ -1492,7 +1359,7 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
     listener_fds [i] = -1;
 
   srandom ((int)time (NULL));
-  main_loop (p, rpipe, wpipe, &info, ra.rp_cache, ra.dht_cache);
+  main_loop (p, rpipe, wpipe, &info);
 
   snprintf (alog->b, alog->s,
             "end of aip main thread, shutting down listen info");
