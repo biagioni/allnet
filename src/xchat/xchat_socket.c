@@ -156,20 +156,22 @@ static void send_seq_ack (int sock, struct sockaddr * sap, socklen_t slen,
 /* return the message length if a message was received, and 0 otherwise */
 /* both peer and message must have length ALLNET_MTU or more */
 static int recv_message (int sock, int * code, time_t * time,
-                         char * peer, char * message, char * extra)
+                         char * peer, char * message, char * extra,
+                         struct sockaddr_in * expected_from,
+                         socklen_t expected_len)
 {
   *peer = '\0';
   *message = '\0';
   *extra = '\0';
   char buf [ALLNET_MTU * 10];
-  int n = recv (sock, buf, sizeof (buf), MSG_DONTWAIT);
-  int len, plen, mlen;
-  time_t sent_time;
-  char * msg;
+  struct sockaddr_storage from_s;
+  socklen_t from_len = sizeof (from_s);
+  struct sockaddr * sap = (struct sockaddr *) (&from_s);
+  int n = recvfrom (sock, buf, sizeof (buf), MSG_DONTWAIT, sap, &from_len);
   if ((n < 0) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
     return 0;
-  if (n == 0) {    /* peer closed the socket */
-    /* printf ("xchat_socket: received peer shutdown, exiting\n"); */
+  if (n == 0) {    /* peer closed the socket -- is this possible w/ UDP? */
+    printf ("xchat_socket: error, received peer shutdown, exiting\n");
     stop_chat_and_exit (0);
   }
   if (n < 9) {
@@ -177,6 +179,25 @@ static int recv_message (int sock, int * code, time_t * time,
     printf ("error: received %d bytes on unix socket\n", n);
     stop_chat_and_exit (1);
   }
+  if (expected_len != from_len) {
+    printf ("xchat_socket recv_message expected sockaddr length %u, got %u\n",
+            expected_len, from_len);
+    print_buffer ((char *) (&from_s), from_len,
+                  "xchat_socket recv_message received sockaddr", from_len, 1);
+    print_buffer ((char *) (expected_from), expected_len,
+                  "xchat_socket recv_message expected sockaddr", from_len, 1);
+    return 0;
+  }
+  if (memcmp (&from_s, expected_from, expected_len) != 0) {
+    print_buffer ((char *) (&from_s), from_len,
+                  "xchat_socket recv_message received sockaddr", from_len, 1);
+    print_buffer ((char *) (expected_from), expected_len,
+                  "xchat_socket recv_message expected sockaddr", from_len, 1);
+    return 0;
+  }
+  int len, plen, mlen;
+  time_t sent_time;
+  char * msg;
   len = readb32 (buf);
   if (len != n) {
     printf ("error: received %d bytes but length is %d\n", n, len);
@@ -655,7 +676,7 @@ int main (int argc, char ** argv)
     int code;
     time_t rtime;
     int len = recv_message (forwarding_socket, &code, &rtime, peer, to_send,
-                            extra);
+                            extra, &fwd_addr, fwd_addr_size);
     if (len > 0) {
       if (code == CODE_DATA_MESSAGE) {
         long long int seq =
