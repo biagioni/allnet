@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <time.h>
+#include <pthread.h>
 #include <sys/select.h>
 
 #include "packet.h"
@@ -53,14 +54,17 @@ struct pipedesc {
   int num_queues;
   int queues [MAX_PIPES];  /* negative integers -x, at index x - 1 */
   struct allnet_log * log;
+  pthread_mutex_t receive_mutex;
 };
 
 pd init_pipe_descriptor (struct allnet_log * log)
 {
   pd result = malloc_or_fail (sizeof (struct pipedesc), "init pipe descriptor");
+  memset (result, 0, sizeof (*result));  /* makes debugging easier */
   result->num_pipes = 0;
   result->num_queues = 0;
   result->log = log;
+  pthread_mutex_init (&(result->receive_mutex), NULL);
   return result;
 }
 
@@ -82,12 +86,18 @@ static void print_pipes (pd p, const char * desc, int pipe)
 {
   if (do_not_print)
     return;
+  char * is_locked = "";
+  if (pthread_mutex_trylock (&(p->receive_mutex)) == 0) {
+    pthread_mutex_unlock (&(p->receive_mutex));
+  } else {
+    is_locked = " (locked)";
+  }
   if (pipe != -1)
-    snprintf (p->log->b, p->log->s, "%s pipe %d, total %d/%d\n",
-              desc, pipe, p->num_pipes, p->num_queues);
+    snprintf (p->log->b, p->log->s, "%s pipe %d, total %d/%d%s\n",
+              desc, pipe, p->num_pipes, p->num_queues, is_locked);
   else
-    snprintf (p->log->b, p->log->s, "%s %d/%d pipes\n",
-              desc, p->num_pipes, p->num_queues);
+    snprintf (p->log->b, p->log->s, "%s %d/%d pipes%s\n",
+              desc, p->num_pipes, p->num_queues, is_locked);
   log_print (p->log);
 if ((pipe > 1000) || (pipe < -1000)) die ("illegal pipe number");
   int i;
@@ -176,10 +186,14 @@ void add_pipe (pd p, int pipe)
 
 void remove_pipe (pd p, int pipe)
 {
+  /* acquire the lock, so we only remove when we are not receiving */
+  pthread_mutex_lock (&(p->receive_mutex));
   int is_pipe = (pipe >= 0);
   int index = (is_pipe) ? (pipe_index (p, pipe)) : (queue_index (p, pipe));
-  if (index == -1)  /* nothing to delete */
+  if (index == -1) { /* nothing to delete */
+    pthread_mutex_unlock (&(p->receive_mutex));
     return;
+  }
   snprintf (p->log->b, p->log->s,
             "removing %s %d from data structure [%d]\n",
             (is_pipe) ? "pipe" : "queue", pipe, index);
@@ -199,6 +213,7 @@ void remove_pipe (pd p, int pipe)
       p->queues [index] = p->queues [p->num_queues - 1];
     p->num_queues = p->num_queues - 1;
   }
+  pthread_mutex_unlock (&(p->receive_mutex));
   print_pipes (p, "removed", pipe);
 }
 
@@ -760,7 +775,7 @@ static int parse_header (char * header, int pipe, int * priority,
 /* shift the header left by one position, to make room for one more char */
 static void shift_header (char * header)
 {
-  int i;
+  unsigned int i;
   for (i = 0; i + 1 < HEADER_SIZE; i++)
     header [i] = header [i + 1];
 }
@@ -1026,6 +1041,12 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
     if (((timeout == PIPE_MESSAGE_WAIT_FOREVER) || (timeout > 10)) &&
         (p->num_queues > 0))
       effective_timeout = 10;    /* look at the queues every 10ms */
+/* receive with the lock held, since otherwise one of the file descriptors
+   might be closed while we receive, in which case the behavior of select
+   is undefined and apparently sometimes messed up. */ 
+    pthread_mutex_lock (&(p->receive_mutex));
+    if (effective_timeout > 100)
+      effective_timeout = 100;    /* release the lock at least every 100ms */
     pipe = next_available (p, fd, effective_timeout);
     if (pipe >= 0) { /* can read pipe */
       if (from_pipe != NULL) *from_pipe = pipe;
@@ -1035,13 +1056,16 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
         if (r != 0) {
 /* if (r < 0) printf ("receive_pipe_message_poll returned %d\n", r); */
           clear_addr (sa, salen); /* clear the address */
+          pthread_mutex_unlock (&(p->receive_mutex));
           return r;
         }
       } else {         /* UDP or raw socket */
         r = receive_dgram (pipe, message, sa, salen, p->log);
 /* if (r < 0) printf ("receive_dgram returned %d\n", r); */
-        if (r != 0)
+        if (r != 0) {
+          pthread_mutex_unlock (&(p->receive_mutex));
           return r;
+        }
       }
       /* else read a partial or no buffer, repeat until timeout */
       if (from_pipe != NULL) *from_pipe = -1;
@@ -1094,6 +1118,7 @@ plen, p->queues [i], i); */
           free (queues);  /* no longer needed */
           *message = malloc_or_fail (plen, "receive_pipe_message_fd queue");
           memcpy (*message, buffer, plen);
+          pthread_mutex_unlock (&(p->receive_mutex));
           return plen;
         }
         free (queues);  /* no longer needed */
@@ -1101,6 +1126,9 @@ plen, p->queues [i], i); */
           allnet_queue_discard_first (queues [nqueue]);
       }
     }
+    /* release the lock, acquire it again at the top of the loop */
+    pthread_mutex_unlock (&(p->receive_mutex));
+    /* refresh the current time, used at the top of the loop */
     if (timeout != PIPE_MESSAGE_WAIT_FOREVER)
       gettimeofday (&now, NULL);
   }
