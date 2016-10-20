@@ -51,7 +51,8 @@ struct allnet_ack_info {
  * and the hop count used in sending the key.
  *
  * if subscription is not null, listens for a reply containing a key
- * matching the subscription, returning -2 if a match is found.
+ * matching the subscription, returning -2 if a match is found between
+ * the address in the packet and addr/nbits (or if nbits is 0).
  */
 extern int handle_packet (int sock, char * packet, int psize,
                           char ** contact, keyset * kset,
