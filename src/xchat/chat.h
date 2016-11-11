@@ -43,10 +43,16 @@
 #define TIMESTAMP_SIZE	8
 
 struct chat_descriptor {
-  unsigned char message_ack [MESSAGE_ID_SIZE];
+  unsigned char message_ack   [MESSAGE_ID_SIZE];
   struct allnet_app_media_header app_media;
-  unsigned char counter     [   COUNTER_SIZE];
-  unsigned char timestamp   [ TIMESTAMP_SIZE];
+  unsigned char counter       [   COUNTER_SIZE];
+  unsigned char timestamp     [ TIMESTAMP_SIZE];
+#ifdef PREV_RECEIVED
+/* used to order packets in case of unsynchronized clocks -- this packet
+ * is being sent after receiving the prev_received sequence number
+ * prev_received is zero if no messages have been received prior to this one */
+  unsigned char prev_received [   COUNTER_SIZE];
+#endif /* PREV_RECEIVED */
 };
 
 #define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor))   /* 40 */
