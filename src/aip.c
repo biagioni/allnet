@@ -1247,7 +1247,7 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
     }
     int fd = -1;
     int priority;
-    char * message;
+    char * message = NULL;
     struct sockaddr_storage sockaddr;
     struct sockaddr * sap = (struct sockaddr *) (&sockaddr);
     socklen_t sasize = sizeof (sockaddr);
@@ -1331,8 +1331,9 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
         }
         listen_record_usage (info, fd);   /* this fd was used */
       }
-      free (message);   /* allocated by receive_pipe_message_fd */
     }   /* else result is zero, timed out, or packet is invalid, try again */
+    if ((result > 0) && (message != NULL))
+      free (message);   /* allocated by receive_pipe_message_fd */
   }
   close (udp);  /* on iOS we may get restarted later */
   cache_close (udp_cache);
