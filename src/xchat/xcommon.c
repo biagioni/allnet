@@ -160,7 +160,7 @@ static void * request_cached_data (void * arg)
                      NULL, 0, NULL, 0, NULL, NULL, &size);
     struct allnet_data_request * adr =
       (struct allnet_data_request *) (ALLNET_DATA_START (hp, hp->transport,
-                                                         size));
+                                                         (unsigned int) size));
     bzero (adr->since, sizeof (adr->since));
     adr->dst_bits_power_two = BITMAP_BITS_LOG;
     adr->src_bits_power_two = BITMAP_BITS_LOG;
@@ -301,15 +301,15 @@ static void do_request_and_resend (int sock)
   interval = random_int (0, 2400);
 }
 
-static void handle_ack (int sock, char * packet, int psize, int hsize,
-                        struct allnet_ack_info * acks)
+static void handle_ack (int sock, char * packet, unsigned int psize,
+                        unsigned int hsize, struct allnet_ack_info * acks)
 {
   struct allnet_header * hp = (struct allnet_header *) packet;
   /* save the acks */
   char * ack = packet + ALLNET_SIZE (hp->transport);
   int count = (psize - hsize) / MESSAGE_ID_SIZE; 
   int i;
-  int ack_count = 0;
+  unsigned int ack_count = 0;
   for (i = 0; i < count; i++) {
     char * peer = NULL;
     keyset kset;
@@ -343,7 +343,8 @@ static void handle_ack (int sock, char * packet, int psize, int hsize,
     acks->num_acks = ack_count;
 }
 
-static int handle_clear (struct allnet_header * hp, char * data, int dsize,
+static int handle_clear (struct allnet_header * hp, char * data,
+                         unsigned int dsize,
                          char ** contact, char ** message,
                          int * verified, int * broadcast)
 {
@@ -367,7 +368,7 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
 #endif /* DEBUG_PRINT */
     return 0;
   }
-  int ssize = readb16 (data + (dsize - 2)) + 2;  /* size of the signature */
+  unsigned int ssize = readb16 (data + (dsize - 2)) + 2;  /* size of the sig */
   if ((ssize <= 2) || (dsize <= ssize)) {
     printf ("data packet size %d less than sig %d, dropping\n", dsize, ssize);
     return 0;
@@ -420,8 +421,9 @@ static int handle_clear (struct allnet_header * hp, char * data, int dsize,
   return 0;   /* did not match */
 }
 
-static int handle_data (int sock, struct allnet_header * hp, int psize,
-                        char * data, int dsize, char ** contact, keyset * kset,
+static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
+                        char * data, unsigned int dsize,
+                        char ** contact, keyset * kset,
                         char ** message, char ** desc, int * verified,
                         time_t * sent, int * duplicate, int * broadcast)
 {
@@ -487,7 +489,7 @@ if (tsize > 0)
   } else if (tsize > 0) {
     verif = 1;
   }
-  if (tsize < CHAT_DESCRIPTOR_SIZE) {
+  if (tsize < (int) CHAT_DESCRIPTOR_SIZE) {
 #ifdef DEBUG_PRINT
     printf ("decrypted packet has size %d, min is %zd, dropping\n",
             tsize, CHAT_DESCRIPTOR_SIZE);
@@ -516,7 +518,7 @@ if (tsize > 0)
     return 0;
   }
   unsigned long int media = readb32u (cdp->app_media.media);
-  long long int seq = readb64u (cdp->counter);
+  unsigned long long int seq = readb64u (cdp->counter);
   if (seq == COUNTER_FLAG) {
     if (media == ALLNET_MEDIA_DATA) {
 #ifdef DEBUG_PRINT
@@ -583,7 +585,7 @@ if (tsize > 0)
 }
 
 static int handle_sub (int sock, struct allnet_header * hp,
-                       char * data, int dsize,
+                       char * data, unsigned int dsize,
                        char * subscription,
                        const unsigned char * addr, int nbits)
 {
@@ -714,7 +716,7 @@ static void save_key_in_cache (struct allnet_header * hp,
 
 /* if successful, returns -1, otherwise 0 */
 static int handle_key (int sock, struct allnet_header * hp,
-                       char * data, int dsize, char * contact,
+                       char * data, unsigned int dsize, char * contact,
                        char * secret1, char * secret2,
                        unsigned char * my_addr, int my_bits, int max_hops)
 {
@@ -885,7 +887,7 @@ int key_received (int sock, char * contact, char * secret1, char * secret2,
  * if subscription is not null, listens for a reply containing a key
  * matching the subscription, returning -2 if a match is found.
  */
-int handle_packet (int sock, char * packet, int psize,
+int handle_packet (int sock, char * packet, unsigned int psize,
                    char ** contact, keyset * kset,
                    struct allnet_ack_info * acks,
                    char ** message, char ** desc,
@@ -903,7 +905,7 @@ int handle_packet (int sock, char * packet, int psize,
     return 0;
 
   struct allnet_header * hp = (struct allnet_header *) packet;
-  int hsize = ALLNET_SIZE (hp->transport);
+  unsigned int hsize = ALLNET_SIZE (hp->transport);
   if (psize < hsize)
     return 0;
 

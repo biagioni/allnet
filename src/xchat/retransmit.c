@@ -200,7 +200,7 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
   free (message);
 }
 
-#define MAXLL	(-1LL)
+#define MAXLL	((uint64_t) (-1LL))
 /* return -1 (MAXLL) if no previous, otherwise the previous sequence number */
 static uint64_t get_prev (uint64_t last,
                           unsigned char * singles, unsigned int num_singles,
@@ -211,9 +211,9 @@ static uint64_t get_prev (uint64_t last,
   if (last <= 0)
     return result;
   /* in what follows, last > 0, so last-1 is a valid expression >= 0 */
-  int i;
+  unsigned int i;
   for (i = 0; i < num_ranges; i++) {
-    int index = 2 * i * COUNTER_SIZE;
+    unsigned int index = 2 * i * COUNTER_SIZE;
     uint64_t start = readb64u (ranges + index);
     index += COUNTER_SIZE;
     uint64_t finish = readb64u (ranges + index);
@@ -289,7 +289,9 @@ static int was_recently_resent (uint64_t seq, char * contact, keyset k)
         (recently_resent [i].seq == seq) &&
         (recently_resent [i].k == k) &&
         (strcmp (recently_resent [i].contact, contact) == 0) &&
-        (recently_resent [i].resend_time + TIME_BEFORE_RESEND > allnet_time ()))
+        (allnet_time () <
+         (unsigned long long int) (recently_resent [i].resend_time) +
+                                  TIME_BEFORE_RESEND))
       return 1;
   }
   return 0;
@@ -376,7 +378,7 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
   printf ("in resend_messages (%p, %d, %s, %d, %d)\n",
           retransmit_message, mlen, contact, sock, hops);
 #endif /* DEBUG_PRINT */
-  if (mlen < sizeof (struct chat_control_request)) {
+  if (mlen < (int) (sizeof (struct chat_control_request))) {
     printf ("message size %d less than %zd, cannot be retransmit\n",
             mlen, sizeof (struct chat_control_request));
     return;

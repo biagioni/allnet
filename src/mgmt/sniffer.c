@@ -23,7 +23,7 @@
 /* we really only need the bits set up to the maximum packet type, setting
  * all the bits is an attempt at future-proofing.  But if the last packet
  * type is no longer ALLNET_TYPE_MGMT, must replace the value below. */
-#define ALL_PACKET_TYPES	0xffffffff
+#define ALL_PACKET_TYPES	0x7fffffff
 #define MAX_PACKET_TYPE		ALLNET_TYPE_MGMT
 
 static char * hms (char * time_string)
@@ -43,8 +43,8 @@ static char * hms (char * time_string)
   return "";
 }
 
-static int handle_packet (char * message, int msize, int * rcvd, int debug,
-                          int verify, int types, int full_payloads)
+static int handle_packet (char * message, unsigned int msize, int * rcvd,
+                          int debug, int verify, int types, int full_payloads)
 {
   *rcvd = 0;
   struct timeval receive_time;
@@ -140,13 +140,13 @@ printf (" %d: attempting to verify with own key %s\n", i, keys [i].identifier);
   return 0;
 }
 
-static int received_before (char * message, int mlen)
+static int received_before (char * message, unsigned int mlen)
 {
 #define MAX_MESSAGES	1000
 #define MESSAGE_STORAGE	(ALLNET_MTU + 2)
   static char * received_before = NULL;
   static int latest_received = 0;
-  if (received_before == NULL) {
+  if (received_before == NULL) {  /* only true on the first call */
     received_before = malloc_or_fail (MESSAGE_STORAGE * MAX_MESSAGES,
                                       "storage of unique packets");
     memset (received_before, 0, MESSAGE_STORAGE * MAX_MESSAGES);
@@ -155,7 +155,7 @@ static int received_before (char * message, int mlen)
   int i;
   for (i = 0; i < MAX_MESSAGES; i++) {
     ptr = received_before + (MESSAGE_STORAGE * i); 
-    int len = readb16 (ptr);
+    unsigned int len = readb16 (ptr);
     ptr += 2;  /* point to the message itself */
     if ((len > ALLNET_HEADER_SIZE) && (len == mlen) &&
         /* separately compare all but the byte at position 2 (hop count) */
@@ -184,7 +184,7 @@ static void main_loop (int sock, pd p, int debug,
     if (found <= 0) {
       printf ("packet sniffer pipe closed, exiting\n");
       exit (1);
-    }
+    }  /* found > 0 */
     if ((! unique) || (! received_before (message, found))) {
       int received = 0;
       if (handle_packet (message, found, &received, debug, verify, types, full))

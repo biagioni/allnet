@@ -175,7 +175,7 @@ printf ("unable to stat %s\n", fname);  /* debug msg, remove later */
 
 /* if it is the kind of name we want, it should end in a string of n digits */
 /* if ext is not NULL, it indicates a possible extension, e.g. ".txt" */
-static int end_ndigits (char * path, int ndigits, char * ext)
+static int end_ndigits (char * path, unsigned int ndigits, char * ext)
 {
   char * slash = strrchr (path, '/');
   char * name = path;
@@ -189,7 +189,7 @@ static int end_ndigits (char * path, int ndigits, char * ext)
             path, ndigits, ext, strlen (name), ndigits, strlen (ext)); */
     return 0;
   }
-  int i;
+  unsigned int i;
   for (i = 0; i < ndigits; i++) {
     if ((name [i] < '0') || (name [i] > '9')) {
 /*    printf ("end_ndigits (%s, %d) => 0 ([%d] is %c)\n", path, ndigits,
@@ -426,7 +426,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
 
   /* copy the user data to the beginning, so it is easier to free */
   memmove (record, user_data, strlen (user_data) + 1);
-  int i;
+  unsigned int i;
   /* remove the blanks at the beginning of lines in the user data */
   /* in this loop, strlen decreases whenever a non-terminal newline is found */
   for (i = 0; i < strlen (record); i++) {
@@ -780,7 +780,7 @@ static void store_save_string_len (int fd, char * string, int mlen)
 
 static void store_save_string (int fd, char * string)
 {
-  if (write (fd, string, strlen (string)) != strlen (string)) {
+  if (write (fd, string, strlen (string)) != (int) (strlen (string))) {
     perror ("write");
     printf ("unable to write '%s' to file\n", string);
     exit (1);
@@ -1266,7 +1266,7 @@ int reduce_conversation (const char * contact, uint64_t max_size)
 {
   if (contact == NULL)
     return 0;
-  while ((conversation_size (contact) > max_size)) {
+  while (((uint64_t) conversation_size (contact)) > max_size) {
     char * fname = oldest_nonempty_file (contact);
     if (fname == NULL) {
     /* could be an error, but more likely, no files left and

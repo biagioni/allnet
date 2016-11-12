@@ -289,7 +289,7 @@ void listen_record_usage (struct listen_info * info, int fd)
 {
   int i;
   if (info->counter + 1 == 0) {  /* wrap around of counter value */
-    int decrement = info->counter - (info->counter / 16);
+    unsigned int decrement = info->counter - (info->counter / 16);
     printf ("wrapping around counter values, decrement %d\n", decrement);
     for (i = 0; i < info->num_fds; i++) {
       printf ("%d: %d", i, info->used [i]);

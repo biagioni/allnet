@@ -54,7 +54,7 @@ struct allnet_ack_info {
  * matching the subscription, returning -2 if a match is found between
  * the address in the packet and addr/nbits (or if nbits is 0).
  */
-extern int handle_packet (int sock, char * packet, int psize,
+extern int handle_packet (int sock, char * packet, unsigned int psize,
                           char ** contact, keyset * kset,
                           struct allnet_ack_info * acks,
                           char ** message, char ** desc, int * verified,

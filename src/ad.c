@@ -57,7 +57,7 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
                            rate_fraction, cacheable);
 }
 
-static int process_mgmt (char * message, int msize, int is_local,
+static int process_mgmt (char * message, unsigned int msize, int is_local,
                          int * priority, struct social_info * soc)
 {
   /* if sent from local, use the priority they gave us */

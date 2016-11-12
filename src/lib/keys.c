@@ -174,7 +174,7 @@ static int is_ndigits (char * path, int ndigits)
   char * name = path;
   if (slash != NULL)
     name = slash + 1;
-  if (strlen (name) != ndigits)
+  if (((int) strlen (name)) != ndigits)
     return 0;
   int i;
   for (i = 0; i < ndigits; i++)

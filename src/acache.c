@@ -241,11 +241,11 @@ struct request_details {
   unsigned char source [ADDRESS_SIZE];
   int empty;     /* the other details are only filled in if emtpy is zero */
   unsigned char * since;
-  int dpower_two;
-  int dbits;
+  unsigned int dpower_two;
+  unsigned int dbits;
   unsigned char * dbitmap;
-  int spower_two;
-  int sbits;
+  unsigned int spower_two;
+  unsigned int sbits;
   unsigned char * sbitmap;
 };
 
@@ -374,8 +374,9 @@ static void set_bit (unsigned char * bits, uint64_t pos)
 #endif /* USING_SET_BIT */
 
 /* returns 1 if the address is (or may be) in the bitmap, 0 otherwise */
-static int match_bitmap (int power_two, int bitmap_bits, unsigned char * bitmap,
-                         unsigned char * address, int abits)
+static int match_bitmap (unsigned int power_two, unsigned int bitmap_bits,
+                         unsigned char * bitmap,
+                         unsigned char * address, unsigned int abits)
 {
   if ((power_two <= 0) || (bitmap_bits <= 0) || (bitmap == NULL))
     return 1;   /* an empty bitmap matches every address */
@@ -702,7 +703,7 @@ static int hash_has_space ()
   return (message_hash_free != NULL);
 }
 
-static void hash_add_message (char * message, int msize, char * id,
+static void hash_add_message (char * message, unsigned int msize, char * id,
                               int64_t position, char * time)
 {
   /* allocate an entry from the pool */
@@ -1089,8 +1090,8 @@ static int hash_next_match (int fd, int max_size, int first_call,
 #endif /* HASH_RANDOM_MATCH */
 
 /* returns 1 if this message is ready to be deleted, 0 otherwise */
-static int delete_gc_message (char * message, int msize,
-                              int id_off, int priority, char * time,
+static int delete_gc_message (char * message, unsigned int msize,
+                              unsigned int id_off, int priority, char * time,
                               int64_t end_pos, int file_max)
 {
   if ((msize <= ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE) || (msize > ALLNET_MTU) ||
@@ -1154,8 +1155,11 @@ static void gc (int fd, int max_size)
   while ((read_position =
             get_next_message (fd, max_size, read_position, NULL, &message,
                               &msize, &id_off, &priority, time)) > 0) {
-    int delete = delete_gc_message (message, msize, id_off, priority, time,
-                                    read_position, gc_size);
+    int delete = 1;
+    if ((msize > 0) && (id_off >= 0))
+      delete = delete_gc_message (message, (unsigned int) msize,
+                                  (unsigned int) id_off, priority, time,
+                                  read_position, gc_size);
 #ifdef DEBUG_PRINT
     snprintf (alog->b + strlen (alog->b), alog->s - strlen (alog->b),
               "  ==> delete %d\n", delete);
@@ -1190,13 +1194,13 @@ static void gc (int fd, int max_size)
   print_stats (1, copied);
 }
 
-static void cache_message (int fd, int max_size,
-                           int id_off, char * message, int msize, int priority)
+static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
+                           char * message, unsigned int msize, int priority)
 {
   if (id_off + MESSAGE_ID_SIZE > msize)
     return;
   char mbuffer [MAX_MESSAGE_ENTRY_SIZE];
-  int fsize = MESSAGE_ENTRY_HEADER_SIZE + msize;
+  unsigned int fsize = MESSAGE_ENTRY_HEADER_SIZE + msize;
   if ((fsize > max_size) || (fsize > MAX_MESSAGE_ENTRY_SIZE) || (fsize < 0)) {
     snprintf (alog->b, alog->s,
               "unable to save message of size %d/%d, max %d/%d\n",
@@ -1279,7 +1283,7 @@ static void remove_cached_message (int fd, int max_size, char * id,
 }
 
 /* if the header includes an id, returns a pointer to the ID field of hp */
-static char * get_id (char * message, int size)
+static char * get_id (char * message, unsigned int size)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
   char * id = ALLNET_PACKET_ID (hp, hp->transport, size);
@@ -1299,8 +1303,8 @@ static char * get_id (char * message, int size)
 }
 
 /* returns 1 if successful, 0 otherwise */
-static int save_packet (int fd, int max_size, char * message, int msize,
-                        int priority)
+static int save_packet (int fd, unsigned int max_size, char * message,
+                        unsigned int msize, int priority)
 {
 #ifdef DEBUG_PRINT
   snprintf (alog->b, alog->s, "save_packet: size %d\n", msize);
@@ -1322,7 +1326,7 @@ static int save_packet (int fd, int max_size, char * message, int msize,
 #endif /* LOG_PACKETS */
     return 0;
   }
-  cache_message (fd, max_size, (int)(id - message), message, msize, priority);
+  cache_message (fd, max_size, id - message, message, msize, priority);
   return 1;
 }
 
@@ -1351,7 +1355,7 @@ static void limit_resources (int local_request,
   if (ack_limit != NULL) *ack_limit = first;
 }
 
-static int send_ack (struct allnet_header * hp, int msize, int sock)
+static int send_ack (struct allnet_header * hp, unsigned int msize, int sock)
 {
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) == 0)
     return 0;
@@ -1507,8 +1511,9 @@ static int respond_to_request (int fd, int max_size, char * in_message,
 /* if any of the ids in the request are not found, also sends onwards
  * the message (unless it was sent locally and with max_hops > 0), with
  * only those ids that were not found */
-static int respond_to_id_request (int fd, int max_size, char * in_message,
-                                  int in_msize, int sock)
+static int respond_to_id_request (int fd, unsigned int max_size,
+                                  char * in_message, unsigned int in_msize,
+                                  int sock)
 {
   struct allnet_header * in_hp = (struct allnet_header *) (in_message);
   struct allnet_mgmt_header * amhp = (struct allnet_mgmt_header *)
@@ -1563,8 +1568,8 @@ static int respond_to_id_request (int fd, int max_size, char * in_message,
 
 
 /* save the ack, and delete any matching packets */
-static void ack_packets (int msg_fd, int msg_size, int ack_fd,
-                         char * in_message, int in_msize)
+static void ack_packets (int msg_fd, unsigned int msg_size, int ack_fd,
+                         char * in_message, unsigned int in_msize)
 {
   struct allnet_header * hp = (struct allnet_header *) in_message;
   char * ack = ALLNET_DATA_START (hp, hp->transport, in_msize);
@@ -1668,7 +1673,7 @@ static void init_acache (int * msg_fd, int * max_msg_size,
   } else {     /* read input from ~/.allnet/acache/sizes */
     static char buffer [1000];
     ssize_t n = read (fd, buffer, sizeof (buffer));
-    if ((n > 0) && (n < sizeof (buffer))) {
+    if ((n > 0) && (n < (ssize_t) (sizeof (buffer)))) {
       char yesno [10] = "no";
       buffer [n] = '\0';
       sscanf (buffer, "%d\n%d\n %c", max_msg_size, max_acks, yesno);
@@ -1705,15 +1710,19 @@ static void init_acache (int * msg_fd, int * max_msg_size,
 static void main_loop (int rsock, int wsock, pd p)
 {
   int msg_fd;
-  int max_msg_size;
+  int signed_max;
   int ack_fd;
   int max_acks;
   int local_caching = 0;
-  init_acache (&msg_fd, &max_msg_size, &ack_fd, &max_acks, &local_caching);
+  init_acache (&msg_fd, &signed_max, &ack_fd, &max_acks, &local_caching);
+  unsigned int max_msg_size = 0;
+  if (signed_max > 0)
+    max_msg_size = signed_max;
   while (1) {
     char * message = NULL;
     int priority;
     int result = receive_pipe_message (p, rsock, &message, &priority);
+    unsigned int uresult = result;  /* only used if result > 0 */
     struct allnet_header * hp = (struct allnet_header *) message;
     /* unless we save it, free the message */
     int mfree = 1;
@@ -1723,8 +1732,8 @@ static void main_loop (int rsock, int wsock, pd p)
       log_print (alog);
       mfree = 0;  /* nothing to free */
       break;
-    } else if ((result >= ALLNET_HEADER_SIZE) &&
-               (result >= ALLNET_SIZE (hp->transport))) {
+    } else if ((uresult >= ALLNET_HEADER_SIZE) &&
+               (uresult >= ALLNET_SIZE (hp->transport))) {
       if (priority == 0) {
 #ifdef LOG_PACKETS
         snprintf (alog->b, alog->s,
@@ -1736,40 +1745,40 @@ static void main_loop (int rsock, int wsock, pd p)
       }
       /* valid message from ad: save, respond, or ignore */
       if (hp->message_type == ALLNET_TYPE_DATA_REQ) { /* respond */
-        if (respond_to_request (msg_fd, max_msg_size, message, result, wsock))
+        if (respond_to_request (msg_fd, max_msg_size, message, uresult, wsock))
           snprintf (alog->b, alog->s, "responded to data request packet\n");
         else
           snprintf (alog->b, alog->s, "no response to data request packet\n");
       } else if (hp->message_type == ALLNET_TYPE_MGMT) {
-        if (respond_to_id_request (msg_fd, max_msg_size, message, result,
-                                   wsock))
+        if (respond_to_id_request (msg_fd, max_msg_size, message,
+                                   uresult, wsock))
           snprintf (alog->b, alog->s, "responded to id request packet\n");
         else
           snprintf (alog->b, alog->s, "no response to id request packet\n");
       } else {   /* not a data request and not a mgmt packet */
         if (hp->message_type == ALLNET_TYPE_ACK) {
           /* erase the message and save the ack */
-          ack_packets (msg_fd, max_msg_size, ack_fd, message, result);
+          ack_packets (msg_fd, max_msg_size, ack_fd, message, uresult);
         } else if ((! local_caching) && (hp->hops == 0)) {
           snprintf (alog->b, alog->s, "not saving local packet\n");
         } else if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) {
           snprintf (alog->b, alog->s, "did not save non-cacheable packet\n");
         } else if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
                    (ack_found (ALLNET_MESSAGE_ID (hp, hp->transport,
-                                                  result)))) {
-          if (send_ack (hp, result, wsock))
+                                                  uresult)))) {
+          if (send_ack (hp, uresult, wsock))
             snprintf (alog->b, alog->s, "resent ack, did not save\n");
           else
             snprintf (alog->b, alog->s, "did not save acked packet\n");
         } else if (save_packet (msg_fd, max_msg_size,
-                                message, result, priority)) {
+                                message, uresult, priority)) {
           mfree = 0;   /* saved, so do not free */
-          snprintf (alog->b, alog->s, "saved packet type %d size %d pr %d\n",
-                    hp->message_type, result, priority);
+          snprintf (alog->b, alog->s, "saved packet type %d size %u pr %d\n",
+                    hp->message_type, uresult, priority);
         } else {
           snprintf (alog->b, alog->s,
-                    "did not save packet, type %d, size %d, priority %d\n",
-                    hp->message_type, result, priority);
+                    "did not save packet, type %d, size %u, priority %d\n",
+                    hp->message_type, uresult, priority);
         }
       }
 #ifdef LOG_PACKETS
@@ -1786,7 +1795,7 @@ static void main_loop (int rsock, int wsock, pd p)
   }
 }
 
-static void print_message (int fd, int max_size,
+static void print_message (int fd, unsigned int max_size,
                            struct hash_entry * entry, int print_level,
                            int count, int h_index)
 {
@@ -1840,8 +1849,10 @@ static void print_message (int fd, int max_size,
   /* print_level > 3, attempt to decrypt data packets and verify signatures */
   struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type == ALLNET_TYPE_DATA) {
-    char * data = ALLNET_DATA_START (hp, hp->transport, msize);
-    int dsize = msize - (int)(data - message);
+    char * data = ALLNET_DATA_START (hp, hp->transport, (unsigned int) msize);
+    unsigned int dsize = 0;
+    if (msize > (data - message))
+      dsize = msize - (data - message);
     char * contact;
     char * text;
     keyset k;

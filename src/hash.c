@@ -28,17 +28,18 @@ void init_hash_table (struct hash_table * hash)
 
 /* returns 0 if it fails, otherwise the number of bytes used */
 static int init_hash_table_size (struct hash_table * hash, int num_entries,
-                                 int user_bytes, int max_bytes)
+                                 unsigned int user_bytes,
+                                 unsigned int max_bytes)
 {
-  int needed_per_entry = sizeof (struct hash_entry) + user_bytes;
-  int needed_per_table_entry = sizeof (struct hash_entry *);
+  unsigned int needed_per_entry = sizeof (struct hash_entry) + user_bytes;
+  unsigned int needed_per_table_entry = sizeof (struct hash_entry *);
   if (needed_per_entry % 8 != 0) {
   /* make the size a multiple of 8 bytes, which gives 64-bit alignment */
     int mod = needed_per_entry % 8;
     needed_per_entry += 8 - mod;
   }
-  int total_per_entry = needed_per_entry + needed_per_table_entry;
-  int needed = total_per_entry * num_entries;
+  unsigned int total_per_entry = needed_per_entry + needed_per_table_entry;
+  unsigned int needed = total_per_entry * num_entries;
   if (needed > max_bytes) {
     num_entries = max_bytes / total_per_entry;
     needed = total_per_entry * num_entries;
@@ -181,7 +182,7 @@ static void hash_add (struct hash_table * table, char * data, int dsize)
   table->table [index] = new;
 }
 
-static int countlines (int fd, int maxlen)
+static unsigned int countlines (int fd, unsigned int maxlen)
 {
   if (lseek (fd, 0, SEEK_SET) == ((off_t) -1)) {
     perror ("countlines lseek");
@@ -189,7 +190,7 @@ static int countlines (int fd, int maxlen)
   }
   int result = 0;
   ssize_t r;   /* result from reading */
-  int this_line = 0;   /* how many bytes in this line */
+  unsigned int this_line = 0;   /* how many bytes in this line */
   do {
     char buf [1];
     r = read (fd, buf, 1);
@@ -231,12 +232,12 @@ int hexbyte (int c1, int c2)
 
 #define MAX_ENTRY	1024
 /* return the number of bytes read, or 0 if there are more than dsize */
-static int readline_bytes (int fd, char * data, int dsize)
+static unsigned int readline_bytes (int fd, char * data, unsigned int dsize)
 {
   if (dsize <= 0)
     return 0;
   char line [MAX_ENTRY * 2 + 1];
-  int chars = 0;
+  unsigned int chars = 0;
   while (chars < sizeof (line)) {
     ssize_t r = read (fd, line + chars, 1);
     if ((r == 1) && (line [chars] == '\n'))
@@ -251,7 +252,7 @@ static int readline_bytes (int fd, char * data, int dsize)
     printf ("error: hash line in file is %d, expected %d \n", chars, 2 * dsize);
     return 0;
   }
-  int index = 0;
+  unsigned int index = 0;
   for (index = 0; index < dsize; index++)
     data [index] = hexbyte (line [index * 2], line [index * 2 + 1]);
   return dsize;
@@ -262,22 +263,22 @@ static int readline_bytes (int fd, char * data, int dsize)
  * too much room */
 /* ignores entries that have more or fewer than bytes_per_entry */
 /* in case of failure returns 0 and the hash table is unchanged */
-int hash_from_file (struct hash_table * hash_table,
-		    int fd, int bytes_per_entry, int free_bytes)
+int hash_from_file (struct hash_table * hash_table, int fd,
+		    unsigned int bytes_per_entry, unsigned int free_bytes)
 {
   if (bytes_per_entry > MAX_ENTRY) {  /* sanity check */
     printf ("error: hash table can only handle %d bytes, requested %d\n",
             MAX_ENTRY, bytes_per_entry);
     return 0;  /* no change */
   }
-  int num_lines = countlines (fd, bytes_per_entry * 2);
+  unsigned int num_lines = countlines (fd, bytes_per_entry * 2);
   int bytes_used = init_hash_table_size (hash_table, num_lines,
                                          bytes_per_entry, free_bytes);
   if (bytes_used == 0)
     return 0;
   while (num_lines-- > 0) {
     char line [MAX_ENTRY];
-    int bytes = readline_bytes (fd, line, bytes_per_entry);
+    unsigned int bytes = readline_bytes (fd, line, bytes_per_entry);
     if (bytes > 0)
       hash_add (hash_table, line, bytes);
   }

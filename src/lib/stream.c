@@ -108,7 +108,7 @@ int allnet_stream_encrypt_buffer (struct allnet_stream_encryption_state * sp,
     char send_counter_bytes [sizeof (uint64_t)];
     writeb64 (send_counter_bytes, send_counter);
     bzero (result + tsize, sp->counter_size);
-    int num_bytes = sp->counter_size;
+    unsigned int num_bytes = sp->counter_size;
     char * send_pointer = result + tsize;
     if (num_bytes > sizeof (uint64_t)) {
       send_pointer = result + tsize + (num_bytes - sizeof (uint64_t));
@@ -187,7 +187,7 @@ int allnet_stream_decrypt_buffer (struct allnet_stream_encryption_state * sp,
   if (sp->counter_size > 0) {
     char counter_bytes [sizeof (uint64_t)];
     bzero (counter_bytes, sizeof (counter_bytes));
-    int num_bytes = sp->counter_size;
+    unsigned int num_bytes = sp->counter_size;
     if (num_bytes > sizeof (uint64_t))
       num_bytes = sizeof (uint64_t);
     memcpy (counter_bytes + (sizeof (uint64_t) - num_bytes),

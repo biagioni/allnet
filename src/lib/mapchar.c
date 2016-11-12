@@ -118,7 +118,7 @@ static long long int get_next_char (char * string, char ** next)
 
 static int prefix_match (char * s1, char * s2, size_t length)
 {
-  int i;
+  size_t i;
   for (i = 0; i < length; i++)
     if (s1 [i] != s2 [i])
       return 0;
@@ -145,8 +145,8 @@ static int string_in_string (char * substring, size_t substring_length,
     }
     return 0;
   }
-  int slen = string_length (string);
-  int i;
+  size_t slen = string_length (string);
+  size_t i;
   for (i = 0; i + substring_length <= slen; i++)
     if (prefix_match (substring, string + i, substring_length))
       return 1;

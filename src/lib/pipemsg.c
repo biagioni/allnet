@@ -38,8 +38,8 @@ struct allnet_pipe_info {
   int in_header;
   char header [HEADER_SIZE];
   char * buffer;   /* may be null */
-  int filled;      /* how many bytes does the buffer or header already have */
-  int bsize;       /* how many bytes do we receive before we are done? */
+  unsigned int filled; /* how many bytes already in the buffer or header? */
+  unsigned int bsize;  /* how many bytes do we receive before we are done? */
 };
 
 /*
@@ -104,7 +104,7 @@ if ((pipe > 1000) || (pipe < -1000)) die ("illegal pipe number");
   for (i = 0; i < p->num_pipes; i++) {
     char * inhdr = ((p->buffers [i].in_header) ? "" : "not ");
     snprintf (p->log->b, p->log->s,
-              "  [%d]: pipe %d, %shdr, h %p b %p, filled %d bsize %d\n", i,
+              "  [%d]: pipe %d, %shdr, h %p b %p, filled %u bsize %u\n", i,
               p->buffers [i].pipe_fd, inhdr,
               p->buffers [i].header, p->buffers [i].buffer,
               p->buffers [i].filled, p->buffers [i].bsize);
@@ -590,6 +590,10 @@ printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
 /* copies some code from make_fdset */
 static void debug_ebadf (pd p, int extra)
 {
+  int old_do_not_print = do_not_print;
+  do_not_print = 0;
+  print_pipes (p, "debug_ebadf", -1);
+  do_not_print = old_do_not_print;
   int i;
   for (i = 0; i < p->num_pipes + 1; i++) {
     /* like make_fdset, but only FD i */
@@ -799,19 +803,19 @@ static int receive_pipe_message_poll (pd p, int pipe,
   }
   struct allnet_pipe_info * bp = (p->buffers) + index;
 
-  int offset = bp->filled;
+  unsigned int offset = bp->filled;
   int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0,
                             p->log);
   if (read < 0)
     return -1;
   if (read == 0)
     return 0;
-  offset += read;
+  offset += (unsigned int) read;  /* read > 0 */
   if (offset == bp->bsize) {
    /* received all we were looking for, either allocate new buffer or return */
     if (bp->in_header) {
       int received_len = parse_header (bp->header, pipe, priority, p->log);
-      if (received_len != -1) {  /* successfully read a header */
+      if (received_len >= 0) {  /* successfully read a header */
         bp->buffer = malloc (received_len);
         if (bp->buffer == NULL) {
           snprintf (p->log->b, p->log->s,
@@ -820,7 +824,7 @@ static int receive_pipe_message_poll (pd p, int pipe,
           log_print (p->log);
           return -1;
         }
-        bp->bsize = received_len;
+        bp->bsize = (unsigned int) received_len;
         bp->in_header = 0;
         bp->filled = 0;
       } else {  /* failed to parse, i.e. no magic_string at start of header */
@@ -834,7 +838,7 @@ static int receive_pipe_message_poll (pd p, int pipe,
       return receive_pipe_message_poll (p, pipe, message, priority);
     } else {    /* not reading header and buffer is full, so we are done. */
       *message = bp->buffer;
-      int result = bp->bsize;
+      int result = (int) (bp->bsize);
       bp->in_header = 1;  /* next time read a new header */
       bp->buffer = bp->header;
       bp->bsize = HEADER_SIZE;
@@ -1152,9 +1156,10 @@ int receive_pipe_message_any (pd p, int timeout, char ** message,
 }
 
 #define DEBUG_PRINT
-static void print_split_message_error (int code, int n1, int n2, int n3)
+static void print_split_message_error (int code, int n1, int n2,
+                                       unsigned int n3)
 {
-  printf ("split_messages %d: error %d %d %d\n", code, n1, n2, n3);
+  printf ("split_messages %d: error %d %d %u\n", code, n1, n2, n3);
 }
 
 static void extend_results (char * data, int len, int prio,
@@ -1213,11 +1218,12 @@ static void extend_results (char * data, int len, int prio,
       free (priorities);
     }
  */
-int split_messages (char * data, int dlen, char *** messages, int ** lengths,
+int split_messages (char * data, unsigned int dlen,
+                    char *** messages, int ** lengths,
                     int ** priorities, void ** buffer)
 {
   struct buffer_info {
-    int filled;    /* number of bytes in data */
+    unsigned int filled;    /* number of bytes in data */
     char data [HEADER_SIZE + ALLNET_MTU];   /* bytes not yet processed */
     char prior [ALLNET_MTU];                /* message returned in prior call */
   };

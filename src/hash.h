@@ -19,7 +19,8 @@ struct hash_table {
 /* returns the number of bytes in the hash table. */
 /* in case of failure returns 0 and the hash table is unchanged */
 extern int hash_from_file (struct hash_table * hash,
-                           int fd, int bytes_per_entry, int free_bytes);
+                           int fd, unsigned int bytes_per_entry,
+                           unsigned int free_bytes);
 
 /* returns 1 if found, 0 otherwise */
 extern int hash_find (char * bitstring, int bits,

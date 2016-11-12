@@ -48,7 +48,7 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
     create_packet (dlen + amhsize + KEY_RANDOM_PAD_SIZE, type, hops,
                    ALLNET_SIGTYPE_NONE, key->address, 16, address, abits,
                    NULL, NULL, &bytes);
-  char * adp = ALLNET_DATA_START(hp, hp->transport, bytes);
+  char * adp = ALLNET_DATA_START(hp, hp->transport, (unsigned int) bytes);
   struct allnet_app_media_header * amhp =
     (struct allnet_app_media_header *) adp;
   writeb32u (amhp->app, 0x6b657964 /* keyd */ );
@@ -116,7 +116,7 @@ static void handle_packet (int sock, char * message, int msize)
     return;
   }
 
-  int i;
+  unsigned int i;
   for (i = 0; i < nkeys; i++) {
     int matching_bits =
       matches (hp->destination, hp->dst_nbits,

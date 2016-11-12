@@ -149,7 +149,7 @@ printf ("sending using key %s\n", key->identifier);
   char buffer [100000];
   while (fgets (buffer, sizeof (buffer), stdin) == buffer) {
     char * eol = strrchr (buffer, '\n');
-    if ((eol != NULL) && (strlen (buffer) == 1 + (eol - buffer)))
+    if ((eol != NULL) && (((int) strlen (buffer)) == 1 + (eol - buffer)))
        *eol = '\0';
     broadcast (sock, buffer, strlen (buffer), hops, key->prv_key,
                key->address, ADDRESS_BITS, key->address, ADDRESS_BITS,

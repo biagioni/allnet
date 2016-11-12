@@ -125,9 +125,9 @@ static void * init_default_dns (void * arg)
   int * initialized = (int *) arg;
   char service [10];
   snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
-  int i;
+  unsigned int i;
   /* begin connecting at a random position in the DNS array */
-  int random_offset = (int)(random_int (0, NUM_DEFAULTS - 1));
+  unsigned int random_offset = (unsigned int)(random_int (0, NUM_DEFAULTS - 1));
   for (i = 0; i < NUM_DEFAULTS; i++) {
     ip4_defaults [i].ss_family = 0;
     ip6_defaults [i].ss_family = 0;
@@ -202,9 +202,9 @@ static void start_dns_thread ()
 static int add_default_routes (struct sockaddr_storage * result,
                                int off, int max)
 {
-  int i;
+  unsigned int i;
   int number = off;
-  for (i = 0; (i < NUM_DEFAULTS) && (number < max); i++) {
+  for (i = 0; (i < NUM_DEFAULTS) && (number >= 0) && (number < max); i++) {
     if ((ip4_defaults [i].ss_family == AF_INET) &&
         (not_already_listed (ip4_defaults + i, result, number)))
       result [number++] = ip4_defaults [i];
@@ -229,7 +229,7 @@ static int entry_to_file (int fd, struct addr_info * entry, int index)
       snprintf (line, sizeof (line), "%d: %s", index, buf);
     else
       snprintf (line, sizeof (line), "p: %s", buf);
-    if (write (fd, line, strlen (line)) != strlen (line))
+    if (write (fd, line, strlen (line)) != (int) (strlen (line)))
       perror ("write entry to peer file");
     return 1;
   }
@@ -247,7 +247,7 @@ static void save_id ()
       char line [300];  /* write my address first */
       buffer_to_string (my_address, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 1,
                         line, sizeof (line));
-      if (write (fd, line, strlen (line)) != strlen (line))
+      if (write (fd, line, strlen (line)) != (int) (strlen (line)))
         perror ("save_id write");  /* report, but continue */
       close (fd);
     }
@@ -465,7 +465,7 @@ static int init_peers (int always)
   int result = 1 - initialized;  /* return 1 if this is the first call */
   if ((! initialized) || (always)) {
     load_peers (0);
-    int i;
+    unsigned int i;
     for (i = 0; i < NUM_DEFAULTS; i++) {
       ip4_defaults [i].ss_family = 0;
       ip6_defaults [i].ss_family = 0;

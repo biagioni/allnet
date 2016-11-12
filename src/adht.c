@@ -200,7 +200,7 @@ static void * send_loop (void * a)
   return NULL;
 }
 
-static void respond_to_dht (int sock, char * message, int msize)
+static void respond_to_dht (int sock, char * message, unsigned int msize)
 {
   /* ignore any packet other than valid dht packets */
   if (msize <= ALLNET_HEADER_SIZE)
@@ -237,9 +237,9 @@ static void respond_to_dht (int sock, char * message, int msize)
   snprintf (alog->b, alog->s, "packet has %d entries, size %d\n", n, msize);
   log_print (alog);
 #endif /* DEBUG_PRINT */
-  int expected_size = ALLNET_MGMT_HEADER_SIZE(hp->transport) + 
-                      sizeof (struct allnet_mgmt_dht) + 
-                      n * sizeof (struct addr_info);
+  unsigned int expected_size = ALLNET_MGMT_HEADER_SIZE(hp->transport) + 
+                               sizeof (struct allnet_mgmt_dht) + 
+                               n * sizeof (struct addr_info);
   if ((n < 1) || (msize < expected_size)) {
     printf ("packet has %d entries, %d/%d size, nothing to add to DHT/pings\n",
             n, msize, expected_size);
@@ -297,10 +297,11 @@ void adht_main (char * pname)
       pthread_cancel (send_thread);
       return;
     }
+    /* found >= 0 */
 #ifdef DEBUG_PRINT
     print_packet (message, found, "received", 1);
 #endif /* DEBUG_PRINT */
-    respond_to_dht (sock, message, found);
+    respond_to_dht (sock, message, (unsigned int) found);
     free (message);
   }
 }

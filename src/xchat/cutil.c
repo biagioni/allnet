@@ -150,14 +150,14 @@ static int send_to_one (keyset k, char * data, int dsize,
   /* if not already specified, get the addresses for the specific key */
   unsigned char a1 [ADDRESS_SIZE];
   if (src == NULL) {
-    int nbits = get_local (k, a1);
+    unsigned int nbits = get_local (k, a1);
     if (nbits < sbits)
       sbits = nbits;
     src = a1;
   }
   unsigned char a2 [ADDRESS_SIZE];
   if (dst == NULL) {
-    int nbits = get_remote (k, a2);
+    unsigned int nbits = get_remote (k, a2);
     if (nbits < dbits)
       dbits = nbits;
     dst = a2;
@@ -349,7 +349,7 @@ unsigned long long int send_to_contact (char * data, int dsize,
       return send_to_group (0, data, dsize, contact, sock,
                             hops, priority, ack_and_save);
   }
-  if (dsize < sizeof (struct chat_descriptor))
+  if (dsize < (int) (sizeof (struct chat_descriptor)))
     return 0;
   if (! init_chat_descriptor ((struct chat_descriptor *) data, contact))
     return 0;

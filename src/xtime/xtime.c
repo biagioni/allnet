@@ -117,7 +117,7 @@ static int time_to_buf (time_t t, char * dp, int n)
 {
   /* printf ("time %ld, dp is %p, n is %d\n", t, dp, n); */
   memset (dp, 0, n);
-  if (n < TIMESTAMP_SIZE) {
+  if (n < (int) TIMESTAMP_SIZE) {
     binary_time_to_buf (t, dp + 1, n - 1);
     /* best we can do -- empty binary string */
     return 9;
@@ -200,7 +200,7 @@ static int make_announcement (char * buffer, int n,
   }
   hp->sig_algo = sig_algo;
 
-  char * e = ALLNET_EXPIRATION(hp, hp->transport, n);
+  char * e = ALLNET_EXPIRATION(hp, hp->transport, (unsigned int) n);
   if (e != NULL)
     binary_time_to_buf (expiration, e, ALLNET_TIME_SIZE);
   return hsize + dsize + ssize;

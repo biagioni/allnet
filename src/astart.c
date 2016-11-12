@@ -366,7 +366,7 @@ static int read_pid (int fd)
 {
   static char debug [1000];
   debug [0] = '\0';
-  int debug_pos = 0;
+  unsigned int debug_pos = 0;
   int result = -1;
   char buffer [1];
   while (read (fd, buffer, 1) == 1) {
@@ -465,11 +465,11 @@ static void setup_signal_handler (int set)
     sa.sa_handler = SIG_DFL;  /* whatever the default is */
   sigfillset (&(sa.sa_mask)); /* block all signals while sighandler running */
   sa.sa_flags = SA_NOCLDSTOP | SA_RESTART | SA_RESETHAND;
-  int i;
+  unsigned int i;
   for (i = 0; i < sizeof (terminating_signals) / sizeof (int); i++) {
     if (sigaction (terminating_signals [i], &sa, NULL) != 0) {
       perror ("sigaction");
-      printf ("error setting up signal handler for signal %d [%d]\n",
+      printf ("error setting up signal handler for signal %d [%u]\n",
               terminating_signals [i], i);
       exit (1);
     }

@@ -150,11 +150,11 @@ int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
   if ((sap->sa_family == AF_INET) &&
-      (addr_size >= sizeof (struct sockaddr_in))) {
+      (addr_size >= (int) (sizeof (struct sockaddr_in)))) {
     init_addr (AF_INET, (unsigned char *) &(sin->sin_addr), sin->sin_port, ia);
     return 1;
   } else if ((sap->sa_family == AF_INET6) &&
-             (addr_size >= sizeof (struct sockaddr_in6))) {
+             (addr_size >= (int) (sizeof (struct sockaddr_in6)))) {
     init_addr (AF_INET6, (unsigned char *) &(sin6->sin6_addr),
                sin6->sin6_port, ia);
     return 1;

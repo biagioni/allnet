@@ -279,8 +279,8 @@ static void send_beacon (int awake_ms)
 
 static void make_beacon_reply (char * buffer, int bsize)
 {
-  assert (bsize >= ALLNET_MGMT_HEADER_SIZE (0) +
-               sizeof (struct allnet_mgmt_beacon_reply));
+  assert (((unsigned int) bsize) >= ALLNET_MGMT_HEADER_SIZE (0) +
+                                    sizeof (struct allnet_mgmt_beacon_reply));
   /* struct allnet_header * hp = */
   init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                NULL, 0, NULL, 0, NULL, NULL);
@@ -299,8 +299,8 @@ static void make_beacon_reply (char * buffer, int bsize)
 static void make_beacon_grant (char * buffer, int bsize,
                                unsigned long long int send_time_ns)
 {
-  assert (bsize >= ALLNET_MGMT_HEADER_SIZE (0) +
-               sizeof (struct allnet_mgmt_beacon_grant));
+  assert (((unsigned int) bsize) >= ALLNET_MGMT_HEADER_SIZE (0) +
+                                    sizeof (struct allnet_mgmt_beacon_grant));
   init_packet (buffer, bsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                NULL, 0, NULL, 0, NULL, NULL);
 
@@ -423,7 +423,7 @@ static void send_pending (enum abc_send_type type, int size, char * message)
  * that can be sent if we have been granted permission to send that many bytes.
  * If there is nothing to send, sets *send_type to ABC_SEND_TYPE_NONE
  */
-static int handle_beacon (const char * message, int msize,
+static int handle_beacon (const char * message, unsigned int msize,
                           struct timeval ** beacon_deadline,
                           struct timeval * time_buffer,
                           struct timeval * quiet_end,
@@ -561,10 +561,13 @@ static void remove_acked (const char * ack)
   int backoff;
   queue_iter_start ();
   while (queue_iter_next (&element, &size, &priority, &backoff)) {
-    if (size > ALLNET_HEADER_SIZE) {
+    unsigned int usize = 0;
+    if (size > 0)
+      usize = size;
+    if (usize > ALLNET_HEADER_SIZE) {
       struct allnet_header * hp = (struct allnet_header *) element;
-      char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, size);
-      char * packet_id = ALLNET_PACKET_ID (hp, hp->transport, size);
+      char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, usize);
+      char * packet_id = ALLNET_PACKET_ID (hp, hp->transport, usize);
       if (((message_id != NULL) &&
            (memcmp (hashed_ack, message_id, MESSAGE_ID_SIZE) == 0)) ||
           ((packet_id != NULL) &&
@@ -905,7 +908,7 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
     }
 
     int i;
-    for (i = 0; i < sizeof (iface_types) / sizeof (abc_iface *); ++i) {
+    for (i = 0; i < (int) (sizeof (iface_types) / sizeof (abc_iface *)); i++) {
       if (strcmp (iface_type_strings [i], iface_type) == 0) {
         iface = iface_types [i];
         iface->iface_type_args = iface_type_args;

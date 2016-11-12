@@ -103,8 +103,8 @@ extern int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
  * NULL on the first call to split_messages for a given socket.
  *
  * example:
-    char data [...] = ...;  // usually data received from network
-    int dlen = ...;         // the number of bytes from network
+    char data [...] = ...;    // usually data received from network
+    unsigned int dlen = ...;  // the number of bytes from network
     char ** messages;
     int * lengths;
     int * priorities;
@@ -120,7 +120,7 @@ extern int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
       free (priorities);
     }
  */
-extern int split_messages (char * data, int dlen, char *** messages,
+extern int split_messages (char * data, unsigned int dlen, char *** messages,
                            int ** lengths, int ** priorities, void ** buffer);
 
 #endif /* PIPEMSG_H */

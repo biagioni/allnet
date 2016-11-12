@@ -271,7 +271,8 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
 #endif /* DEBUG_PRINT */
 }
 
-static int send_udp (int udp, char * message, int msize, struct sockaddr * sa)
+static int send_udp (int udp, char * message, unsigned int msize,
+                     struct sockaddr * sa)
 {
   socklen_t addr_len = sizeof (struct sockaddr_storage);
   if (sa->sa_family == AF_INET)
@@ -331,7 +332,7 @@ static int send_udp (int udp, char * message, int msize, struct sockaddr * sa)
 }
 
 /* returns 1 for success, 0 for failure */
-static int send_udp_addr (int udp, char * message, int msize,
+static int send_udp_addr (int udp, char * message, unsigned int msize,
                           struct internet_addr * addr)
 {
   struct sockaddr_storage sas;
@@ -357,7 +358,7 @@ static int send_udp_addr (int udp, char * message, int msize,
 }
 
 /* assumed to be an outgoing, so do not check overall packet validity */
-static int is_outgoing_dht (struct allnet_header * hp, int msize,
+static int is_outgoing_dht (struct allnet_header * hp, unsigned int msize,
                             int min_entries)
 {
   char * message = ((char *) hp);
@@ -373,7 +374,7 @@ static int is_outgoing_dht (struct allnet_header * hp, int msize,
 static char * cached_dht_packet = NULL;
 static int cached_dht_size = 0;
 
-static void dht_save_cached (struct allnet_header * hp, int msize)
+static void dht_save_cached (struct allnet_header * hp, unsigned int msize)
 {
   if (is_outgoing_dht (hp, msize, 1)) {
     int off = snprintf (alog->b, alog->s,
@@ -397,7 +398,7 @@ static void dht_save_cached (struct allnet_header * hp, int msize)
   }
 }
 
-static int dht_ping_match (struct allnet_header * hp, int msize,
+static int dht_ping_match (struct allnet_header * hp, unsigned int msize,
                            struct addr_info * match)
 {
   if (! is_outgoing_dht (hp, msize, 0)) {
@@ -437,7 +438,7 @@ static int dht_ping_match (struct allnet_header * hp, int msize,
  * we have heard from and tcps we are connected to */
 static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
                              struct listen_info * info,
-                             char * message, int msize,
+                             char * message, unsigned int msize,
                              int priority, int max_send)
 {
 #ifdef LOG_PACKETS
@@ -910,7 +911,7 @@ static void make_listeners (struct listen_info * info)
 void send_keepalive (void * udp_cache, int udp,
                      int * listeners, int num_listeners)
 {
-  int max_size = ALLNET_MGMT_HEADER_SIZE (0xff);
+  unsigned int max_size = ALLNET_MGMT_HEADER_SIZE (0xff);
   char keepalive [ALLNET_MTU];
   bzero (keepalive, max_size);
   unsigned char address [ADDRESS_SIZE];
@@ -921,7 +922,7 @@ void send_keepalive (void * udp_cache, int udp,
   struct allnet_mgmt_header * mhp =
     (struct allnet_mgmt_header *) (keepalive + ALLNET_SIZE (hp->transport));
   mhp->mgmt_type = ALLNET_MGMT_KEEPALIVE;
-  int size = ALLNET_MGMT_HEADER_SIZE (hp->transport);
+  unsigned int size = ALLNET_MGMT_HEADER_SIZE (hp->transport);
   if (size > max_size) {  /* sanity check */
     snprintf (alog->b, alog->s, "error: keepalive size %d, max %d\n",
               size, max_size);
@@ -1117,7 +1118,9 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
     snprintf (alog->b + off, alog->s - off, ")\n");
   log_print (alog);
 #endif /* DEBUG_PRINT */
-  int msize = *msizep;
+  unsigned int msize = 0;
+  if (*msizep > 0)
+    msize = *msizep;
   if (msize < ALLNET_HEADER_SIZE)
     return 0;
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -1285,7 +1288,7 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
         log_print (alog);
 #endif /* LOG_PACKETS */
         forward_message (info->fds + 1, info->num_fds - 1, udp, udp_cache,
-                         info, message, result, priority, 10);
+                         info, message, (unsigned int) result, priority, 10);
       } else {
         int off = snprintf (alog->b, alog->s,
                             "got %d bytes from Internet on fd %d",

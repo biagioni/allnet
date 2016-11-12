@@ -66,7 +66,8 @@ static int my_system (char * command)
     char * p = command;
     int found_blank = 0;
     argv [0] = command;
-    while (*p != '\0' && num_args <= sizeof (argv) / sizeof (char *)) {
+    while ((*p != '\0') &&
+           (num_args <= (int) (sizeof (argv) / sizeof (char *)))) {
       if (found_blank) {
         if (*p != ' ') {
           argv [num_args] = p;
@@ -79,7 +80,7 @@ static int my_system (char * command)
       }
       p++;
     }
-    if (num_args >= sizeof (argv) / sizeof (char *)) {
+    if (num_args >= (int) (sizeof (argv) / sizeof (char *))) {
       snprintf (alog->b, alog->s, "error: reading beyond argv %d\n", num_args);
       log_print (alog);
       argv [sizeof (argv) / sizeof (char *) - 1] = NULL;

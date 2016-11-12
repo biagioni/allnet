@@ -121,10 +121,13 @@ int record_packet_time (char * data, int dsize, int conn)
   printf ("saved hash 0x%x at indices %d/%d, time %ld, delta %d/%d\n",
           hash, left_index, right_index, now, left_time, right_time); */
 
-  if (left_time  == 0)        return right_time;
-  if (right_time == 0)        return left_time;
-  if (left_time > right_time) return right_time;  /* return lesser time */
-                              return left_time;
+  if (left_time  == 0)
+    return right_time;
+  if (right_time == 0)
+    return left_time;
+  if (left_time > right_time)
+    return right_time;  /* return lesser time */
+  return left_time;
 }
 
 /* clear all packets sent on this connection */

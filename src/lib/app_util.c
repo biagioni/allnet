@@ -192,7 +192,10 @@ static void weak_seed_rng (char * buffer, int bsize)
    */
   int i;
   clock_t old_clock = 0;
-  for (i = 0; i < SHA512_SIZE - sizeof (results); i++) {
+  int max = (int)(SHA512_SIZE - sizeof (results));
+  if (max < 0)  /* unlikely as long as sizeof (results) < 64 */
+    max = 0;
+  for (i = 0; i < max; i++) {
     do {
       memcpy (rcopy, results, sizeof (results));
       sha512_bytes (rcopy, sizeof (results), results, sizeof (results));

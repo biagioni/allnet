@@ -344,13 +344,14 @@ static int readline_bytes (int fd, char * data, int dsize)
     return 0;
   char line [MAX_ENTRY * 2 + 1];
   int chars = 0;
-  while (chars < sizeof (line)) {
+  int linesize = (int) sizeof (line);
+  while (chars < linesize) {
     ssize_t r = read (fd, line + chars, 1);
     if ((r == 1) && (line [chars] == '\n'))
       break;       /* done!  Convert the hex to binary */
     chars++;
   }
-  if (chars >= sizeof (line)) {    /* ran out of room, which is an error */
+  if (chars >= linesize) {    /* ran out of room, which is an error */
     printf ("error: table line in file exceeds %zd bytes\n", sizeof (line));
     return 0;
   }

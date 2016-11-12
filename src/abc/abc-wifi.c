@@ -161,7 +161,7 @@ static int abc_wifi_init (const char * interface, struct allnet_log * log)
   alog = log;
   if (abc_iface_wifi.iface_type_args != NULL) {
     int i;
-    for (i = 0; i < sizeof (wifi_config_types); ++i) {
+    for (i = 0; i < (int) (sizeof (wifi_config_types)); ++i) {
       if (strcmp (abc_wifi_config_type_strings [i],
                   abc_iface_wifi.iface_type_args) == 0) {
         wifi_config_iface = wifi_config_types [i];

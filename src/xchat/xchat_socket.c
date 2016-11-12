@@ -384,7 +384,7 @@ static char * find_java ()
                            "C:\\windows\\system\\java",
                            "C:\\windows\\system32\\java",
                            "C:\\Program Files\\Java\\jdk1.8.0_40\\bin\\java" };
-  int i;
+  unsigned int i;
   for (i = 0; i < sizeof (candidates) / sizeof (char *); i++) {
     /* printf ("trying %s\n", candidates [i]); */
     if (access (candidates [i], X_OK) == 0)

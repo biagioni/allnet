@@ -76,7 +76,7 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
 
   *sig = '\0';  /* null-terminate the string */
   printf ("from %s: %s\n", from, payload);
-  if ((psize == strlen (payload) + 9) &&
+  if ((psize == ((int) (strlen (payload) + 9))) &&
       (readb32u (amhp->media) == ALLNET_MEDIA_TIME_TEXT_BIN)) {
   /* message from time server, see how long it took */
     char * bin_time = payload + strlen (payload) + 1;

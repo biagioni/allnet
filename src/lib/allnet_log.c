@@ -232,7 +232,7 @@ void log_print_str (struct allnet_log * log, char * string)
   /* add a newline if it is not already at the end of the string */
   char * last_nl = rindex (string, '\n');
   char * add_nl = "\n";
-  if ((last_nl != NULL) && (last_nl - string + 1 == strlen (string)))
+  if ((last_nl != NULL) && (last_nl - string + 1 == ((int) strlen (string))))
     add_nl = "";   /* already present */
   int len = snprintf (buffer, sizeof (buffer), "%s %s: %s%s",
                       header, log->debug_info, string, add_nl);

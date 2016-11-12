@@ -131,13 +131,16 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
     printf ("error: trace reply num_entries %d < 1 \n", num_entries);
     return 0;
   }
-  int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
+  unsigned int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
   int total;
   struct allnet_header * hp =
     create_packet (size_needed - ALLNET_SIZE (0), ALLNET_TYPE_MGMT,
                    inhp->hops + 4, ALLNET_SIGTYPE_NONE, my_address, abits,
                    inhp->source, inhp->src_nbits, NULL, NULL, &total);
-  if ((hp == NULL) || (total != size_needed)) {
+  unsigned int utotal = 0;
+  if (total > 0)
+    utotal = total;
+  if ((hp == NULL) || (utotal != size_needed)) {
     printf ("hp is %p, total is %d, size_needed %d\n", hp, total, size_needed);
     return 0;
   }
@@ -146,7 +149,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   *result = (char *) hp;
 
   struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (ALLNET_DATA_START(hp, hp->transport, total));
+    (struct allnet_mgmt_header *)(ALLNET_DATA_START(hp, hp->transport, utotal));
   mp->mgmt_type = ALLNET_MGMT_TRACE_REPLY;
 
   struct allnet_mgmt_trace_reply * trp =
@@ -193,14 +196,14 @@ static void debug_prt_trace_id (void * state, void * n)
 }
 #endif /* DEBUG_PRINT_ID */
 
-static void acknowledge_bcast (int sock, char * message, int msize)
+static void acknowledge_bcast (int sock, char * message, unsigned int msize)
 {
   /* ignore any packet other than unencrypted packets requesting an ack */
   struct allnet_header * hp = (struct allnet_header *) message;
   if ((hp->message_type != ALLNET_TYPE_CLEAR) ||
       ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) == 0))  /* ignore */
     return;
-  int hsize = ALLNET_SIZE (hp->transport);
+  unsigned int hsize = ALLNET_SIZE (hp->transport);
   if (msize < hsize + MESSAGE_ID_SIZE)
     return;
   int asize;
@@ -254,9 +257,9 @@ static int is_in_trace_cache (const unsigned char * trace_id)
 #undef TRACE_CACHE_SIZE
 }
 
-static void respond_to_trace (int sock, char * message, int msize,
+static void respond_to_trace (int sock, char * message, unsigned int msize,
                               int priority,
-                              unsigned char * my_address, int abits,
+                              unsigned char * my_address, unsigned int abits,
                               int match_only, int forward_only)
 {
   /* ignore any packet other than valid trace requests with at least 1 entry */
@@ -391,7 +394,7 @@ static void respond_to_trace (int sock, char * message, int msize,
 }
 
 static void main_loop (int wsock, pd p,
-                       unsigned char * my_address, int nbits,
+                       unsigned char * my_address, unsigned int nbits,
                        int match_only, int forward_only)
 {
   while (1) {
@@ -408,10 +411,10 @@ static void main_loop (int wsock, pd p,
 #ifdef DEBUG_PRINT
     print_packet (message, found, "traced received", 1);
 #endif /* DEBUG_PRINT */
-    if (is_valid_message (message, found)) {
-      acknowledge_bcast (wsock, message, found);
-      respond_to_trace (wsock, message, found, pri + 1, my_address, nbits,
-                        match_only, forward_only);
+    if ((found > 0) && (is_valid_message (message, found))) {
+      acknowledge_bcast (wsock, message, (unsigned int) found);
+      respond_to_trace (wsock, message, (unsigned int) found,
+                        pri + 1, my_address, nbits, match_only, forward_only);
     }
     free (message);
   }
@@ -423,7 +426,7 @@ void traced_thread (char * pname, int rpipe, int wpipe)
 printf ("traced_thread (%s), sockets %d %d\n", pname, rpipe, wpipe);
   unsigned char address [ADDRESS_SIZE];
   bzero (address, sizeof (address));  /* set any unused part to all zeros */
-  int abits = 16;
+  unsigned int abits = 16;
   get_my_addr (address, sizeof (address), alog);
   if (alog == NULL)
     alog = init_log ("traced_thread");
@@ -441,7 +444,7 @@ void traced_main (char * pname)
 {
   unsigned char address [ADDRESS_SIZE];
   bzero (address, sizeof (address));  /* set any unused part to all zeros */
-  int abits = 16;
+  unsigned int abits = 16;
   get_my_addr (address, sizeof (address), alog);
 
   if (alog == NULL)

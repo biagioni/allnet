@@ -83,7 +83,7 @@ printf ("freeing %s: %d, %d, %d, %d %d\n", queue->debug_info,
 
 static unsigned int used_space (struct allnet_queue * queue)
 {
-  int i;
+  unsigned int i;
   unsigned int result = 0;
   for (i = 0; i < queue->max_packets; i++)
     result += queue->packets [i].length;
@@ -188,9 +188,9 @@ static int queue_has (struct allnet_queue ** queues, unsigned int n)
   int start = random () % n;
   while ((restart) && (loop_count++ < 3)) {
     restart = 0;
-    int counter;
+    unsigned int counter;
     for (counter = 0; counter < n; counter++) {
-      int i = (counter + start) % n;
+      int i = (((int)counter) + start) % n;
       if ((queues [i]->valid) && (queues [i]->count > 0)) {
         if (pthread_mutex_trylock (&(queues [i]->mutex)) == 0) {
           /* we have the lock */
