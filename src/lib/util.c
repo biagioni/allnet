@@ -242,12 +242,7 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
     }
     break;
   case ALLNET_MGMT_PEER_REQUEST:
-    if (hsize < 0) {
-      r += snprintf (to + r, minz (tsize, r), "peer req size %d, min 0\n",
-                     hsize);
-    } else {
-      r += snprintf (to + r, minz (tsize, r), "peer request");
-    }
+    r += snprintf (to + r, minz (tsize, r), "peer request");
     break;
   case ALLNET_MGMT_PEERS:
     if (hsize < sizeof (struct allnet_mgmt_peers)) {

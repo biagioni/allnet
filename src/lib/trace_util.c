@@ -285,9 +285,9 @@ print_bitstring (arrivals [i].value.address, 0, abits, 1);
 
 static int sent_count = 0;
 static int received_count = 0;
-static uint64_t min_rtt = -1;  /* in units of microseconds */
-static uint64_t max_rtt = -1;
-static uint64_t sum_rtt = 0;  /* sum_rtt / received_count is the mean rtt */
+static int64_t min_rtt = -1;  /* in units of microseconds */
+static int64_t max_rtt = -1;
+static int64_t sum_rtt = 0;  /* sum_rtt / received_count is the mean rtt */
 
 /* print summaries.  Also, signal handler in case we are stopped */
 static void print_summary_file (int signal, int null_term, int fd_out,
@@ -331,8 +331,9 @@ void trace_print_summary (int signal)
 }
 
 
-static void record_rtt (unsigned long long us)
+static void record_rtt (unsigned long long uus)
 {
+  int64_t us = uus;
   if ((min_rtt < 0) || (us < min_rtt))
     min_rtt = us;
   if ((max_rtt < 0) || (max_rtt < us))

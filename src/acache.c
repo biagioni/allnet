@@ -1201,7 +1201,7 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
     return;
   char mbuffer [MAX_MESSAGE_ENTRY_SIZE];
   unsigned int fsize = MESSAGE_ENTRY_HEADER_SIZE + msize;
-  if ((fsize > max_size) || (fsize > MAX_MESSAGE_ENTRY_SIZE) || (fsize < 0)) {
+  if ((fsize > max_size) || (fsize > MAX_MESSAGE_ENTRY_SIZE)) {
     snprintf (alog->b, alog->s,
               "unable to save message of size %d/%d, max %d/%d\n",
               msize, fsize, max_size, MAX_MESSAGE_ENTRY_SIZE);
