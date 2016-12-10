@@ -752,20 +752,26 @@ static void * connect_thread (void * a)
   pthread_mutex_unlock (&connect_counter_mutex);
 #endif /* DEBUG_PRINT */
   struct connect_thread_arg * arg = (struct connect_thread_arg *) a; 
+  unsigned char address [ADDRESS_SIZE];
+  memcpy (address, arg->address, ADDRESS_SIZE);
+  struct listen_info * info = arg->info;
+  int af = arg->af;
+  int listener_index = arg->listener_index;
+  free (a);  /* the caller can't do it, so we should */
+  arg = NULL;
   routing_init_is_complete (1);   /* wait for routing to complete */
-  int fd = connect_listener (arg->address, arg->info, arg->af);
+  int fd = connect_listener (address, info, af);
   if (fd >= 0) {
     pthread_mutex_lock (&listener_mutex);
-    if (listener_fds [arg->listener_index] == -1) {
+    if (listener_fds [listener_index] == -1) {
       active_listeners++;
-      listener_fds [arg->listener_index] = fd;
+      listener_fds [listener_index] = fd;
     } else {   /* undo connect */
       close (fd);                       /* remove from kernel */
-      listen_remove_fd (arg->info, fd); /* remove from info */
+      listen_remove_fd (info, fd); /* remove from info */
     }
     pthread_mutex_unlock (&listener_mutex);
   }
-  free (a);  /* the caller doesn't do it, so we should */
 #ifdef DEBUG_PRINT
   pthread_mutex_lock (&connect_counter_mutex);
   counter--;
@@ -787,8 +793,13 @@ static void create_connect_thread (struct listen_info * info,
   arg->info = info;
   arg->af = af;
   arg->listener_index = listener_index;
+  pthread_attr_t attr;
+  if (pthread_attr_init (&attr) != 0)
+    log_error (alog, "pthread_attr_init");
+  if (pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED) != 0)
+    log_error (alog, "pthread_attr_setdetachstate");
   pthread_t thread;
-  if (pthread_create (&thread, NULL, &connect_thread, (void *) arg))
+  if (pthread_create (&thread, &attr, &connect_thread, (void *) arg))
     log_error (alog, "pthread_create");
 }
 
