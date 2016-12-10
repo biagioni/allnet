@@ -2649,7 +2649,7 @@ int get_temporary_key (char ** pubkey, allnet_rsa_prvkey * prvkey)
 
 /* verifies that a key obtained by a key exchange matches the address */
 /* the default lang and bits are used if they are not part of the address */
-/* if save_is_correct != 0, also saves it to a file using the given address */
+/* if save_if_correct != 0, also saves it to a file using the given address */
 unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
                             char * default_lang, int bitstring_bits,
                             int save_if_correct)
@@ -2762,8 +2762,25 @@ unsigned int get_other_keys (struct bc_key_info ** keys)
 static struct bc_key_info * find_bc_key (char * address,
                                          struct bc_key_info * keys, int nkeys)
 {
+  char * outer_index = index (address, '@');
+  if (outer_index == NULL)
+    return NULL;
+  int alen = outer_index - address;
   int i;
   for (i = 0; i < nkeys; i++) {
+    char * loop_index = index (keys [i].identifier, '@');
+    if (loop_index == NULL)
+      continue;  /* skip the rest of the loop; */
+    int idlen = loop_index - keys [i].identifier;
+    if ((alen != idlen) ||
+        (strncmp (address, keys [i].identifier, alen) != 0)) {
+      /* not the same ID */
+#ifdef DEBUG_PRINT
+      printf ("alen %d, idlen %d, for '%s' and '%s'\n", alen, idlen,
+              address, keys [i].identifier);
+#endif /* DEBUG_PRINT */
+      continue;  /* skip the rest of the loop; */
+    }
     char * key;
     int klen;
     rsa_to_external_pubkey (keys [i].pub_key, &key, &klen);
