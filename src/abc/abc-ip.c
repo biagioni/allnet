@@ -79,7 +79,7 @@ static int abc_ip_init (const char * interface, struct allnet_log * use_log)
         (ifa_loop->ifa_addr->sa_family == AF_INET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       if (!(ifa_loop->ifa_flags & IFF_UP)) {
-        fprintf (stderr, "abc-ip: interface is down\n");
+        fprintf (stderr, "abc-ip: interface %s is down\n", ifa_loop->ifa_name);
         goto abc_ip_init_cleanup;
       }
       abc_iface_ip.if_address.in = *((struct sockaddr_in *)ifa_loop->ifa_addr);
