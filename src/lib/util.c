@@ -1086,7 +1086,7 @@ static int read_fd_malloc_noclose (int fd, char ** content_p, int print_errors,
 {
   if (file_name == NULL)
     file_name = "(file name not available)";
-  int size = fd_size (fd);
+  int size = (int)fd_size (fd);
   if (content_p == NULL)  /* just return the size */
     return minz (size, 0);
   *content_p = NULL;
@@ -1134,7 +1134,7 @@ int read_fd_malloc (int fd, char ** content_p, int print_errors, int close_fd,
 int read_file_malloc (const char * file_name, char ** content_p,
                       int print_errors)
 {
-  int size = file_size (file_name);
+  int size = (int)file_size (file_name);
   if (content_p == NULL) {  /* if we can read it, just return the size */
     if (access (file_name, R_OK) == 0)
       return minz (size, 0);
@@ -1156,23 +1156,25 @@ int read_file_malloc (const char * file_name, char ** content_p,
 static int write_to_fd (int fd, const char * contents, int len,
                         int print_errors, const char * fname)
 {
+  int retval = 1;
   if (fd < 0) {
     if (print_errors) {
       perror ("open in write_to_fd");
       printf ("unable to open %s\n", fname);
     }
-    return 0;
-  }
-  ssize_t n = write (fd, contents, len);
-  if (n < 0) {
-    if (print_errors) {
-      perror ("write in write_to_fd");
-      printf ("attempted to write %d bytes to %s, wrote %zd\n", len, fname, n);
+    retval = 0;
+  } else if (len > 0) {
+    ssize_t n = write (fd, contents, len);
+    if (n < 0) {
+      if (print_errors) {
+        perror ("write in write_to_fd");
+        printf ("tried to write %d bytes to %s, wrote %zd\n", len, fname, n);
+      }
+      retval = 0;
     }
-    return 0;
   }
   close (fd);
-  return 1;
+  return retval;
 }
 
 int write_file (const char * fname, const char * contents, int len,
