@@ -431,42 +431,47 @@ static int read_key_info (const char * path, const char * file,
   }
   /* check to see if this is a group */
   char * members_name = strcat_malloc (basename, "/members", "members-name");
-  char * members_content;
-  int mlen = read_file_malloc (members_name, &members_content, 0);
+  /* the file may be empty, but as long as it exists, it is a group */
+  int found_members = (file_size (members_name) >= 0);
+  char * members_content = NULL;
+  int mlen = 0;  /* some things we only do if the group has members */
+  if (file_size (members_name) > 0)
+    mlen = read_file_malloc (members_name, &members_content, 0);
 #ifdef DEBUG_GROUP
-  if ((mlen > 0) && (contact != NULL))
-    printf ("found group %s in %s\n", *contact, members_name);
+  if (found_members && (contact != NULL))
+    printf ("found group %s in %s, mlen %d\n", *contact, members_name, mlen);
 #endif /* DEBUG_GROUP */
   free (members_name);
-  if (mlen > 0) {  /* it's a group */
-    char ** members_list;
-    int mcount = get_members (members_content, mlen, &members_list);
-    free (members_content);
+  if (found_members) {  /* it's a group */
+    char ** members_list = NULL;
+    int mcount = 0;
+    if (members_content != NULL) {
+      mcount = get_members (members_content, mlen, &members_list);
+      free (members_content);
+    }
 #ifdef DEBUG_GROUP
     int i;
     for (i = 0; i < mcount; i++)
       printf ("  %s\n", members_list [i]);
 #endif /* DEBUG_GROUP */
-    if (mcount > 0) {
-      if (info != NULL) {
-        info->is_group = 1;
-        info->members = members_list;
-        info->num_group_members = mcount;
-      } else {
-        free (members_list);
-      }
-      result = 2;  /* found a group */
+    if (info != NULL) {
+      info->is_group = 1;
+      info->members = members_list;
+      info->num_group_members = mcount;
+    } else {
+      free (members_list);
     }
+    result = 2;  /* found a group */
   } else {  /* it's not a group */
     if (info != NULL) {
-      char * name = strcat_malloc (basename, "/my_key", "my key name");
-      result = allnet_rsa_read_prvkey (name, &(info->my_key));
-      free (name);
+      char * kname = strcat_malloc (basename, "/my_key", "my key name");
+      result = allnet_rsa_read_prvkey (kname, &(info->my_key));
+      free (kname);
       if (result) {
-        char * name = strcat_malloc (basename, "/contact_pubkey", "pub name");
+        char * pname = strcat_malloc (basename, "/contact_pubkey", "pub name");
         info->has_pub_key =
-          allnet_rsa_read_pubkey (name, &(info->contact_pubkey));
-        free (name);
+          allnet_rsa_read_pubkey (pname, &(info->contact_pubkey));
+        free (pname);
         if (info->has_pub_key) {
           result = read_address_file (basename, "local", &(info->local));
           result = read_address_file (basename, "remote", &(info->remote));
@@ -494,10 +499,10 @@ static int read_key_info (const char * path, const char * file,
               symmetric_key [0], symmetric_key [1], symmetric_key [2]);
 #endif /* DEBUG_PRINT */
     if (info->has_symmetric_key) {
-      char * name = strcat_malloc (basename, "/send_state", "symm state");
-      if (read_symmetric_state (name, &(info->state)))
+      char * sname = strcat_malloc (basename, "/send_state", "symm state");
+      if (read_symmetric_state (sname, &(info->state)))
         info->has_state = 1;
-      free (name);
+      free (sname);
     }
   }
   if (info != NULL)
@@ -796,8 +801,8 @@ static void save_contact (struct key_info * k)
     write_address_file (remote_fname, k->remote.address, k->remote.nbits);
     free (remote_fname);
   }
-  if ((k->is_group) && (k->num_group_members > 0)) {
-    char * member_fname = strcat3_malloc (dirname, "/", "member", "mfile");
+  if (k->is_group) {  /* it's a group even if it has no members */
+    char * member_fname = strcat3_malloc (dirname, "/", "members", "mfile");
     write_member_file (member_fname, k->members, k->num_group_members);
     free (member_fname);
   }
@@ -1057,7 +1062,7 @@ int rename_contact (const char * old, const char * new)
       char * name_file_name = strcat_malloc (kip [key].dir_name, "/name",
                                              "rename_contact");
       size_t newlen = strlen (new);
-      if (write_file (name_file_name, new, newlen, 1)) {
+      if (write_file (name_file_name, new, (int)newlen, 1)) {
         char * p = realloc (kip [key].contact_name, newlen + 1);
         if (p != NULL) {
           strcpy (p, new);
@@ -1309,21 +1314,23 @@ static int reload_members_from_file (int ki)
 {
   int result = 0;
   char * fname = strcat_malloc (kip [ki].dir_name, "/members",
-                                "add_to_group members-name");
+                                "reload_members_from_file");
   char * members_content = NULL;
-  int mlen = read_file_malloc (fname, &members_content, 0);
-  if (mlen >= 0)
+  int mlen = 0;
+  if (file_size (fname) >= 0) /* file exists, even if empty we succeed */
     result = 1;
+  if (file_size (fname) > 0)  /* file has some content, read it */
+    mlen = read_file_malloc (fname, &members_content, 0);
   free (fname);
-  if (result && (mlen > 0)) {
+  if (result) {
     if ((kip [ki].num_group_members > 0) && (kip [ki].members != NULL))
       free (kip [ki].members); /* throw away the in-memory info */
-    char ** members_list;
-    int mcount = get_members (members_content, mlen, &members_list);
-    free (members_content);
+    char ** members_list = NULL;
+    int mcount = 0;
+    if (mlen > 0)
+      mcount = get_members (members_content, mlen, &members_list);
     kip [ki].num_group_members = mcount;
-    if (mcount > 0)
-      kip [ki].members = members_list;
+    kip [ki].members = members_list;
   }
   if (members_content != NULL)
     free (members_content);
@@ -1401,9 +1408,9 @@ int remove_from_group (const char * group, const char * contact)
     match++;  /* so it no longer matches at the same spot */
   }
   if (found) {
-    int wlen = write_file (fname, members_content, mlen, 1);
-    if (wlen != mlen) {
-      printf ("unable to write %d bytes to %s\n", mlen, fname);
+    int written = write_file (fname, members_content, mlen, 1);
+    if (! written) {
+      printf ("unable to write %d bytes to %s, wrote %d\n", mlen, fname, written);
       found = 0;
     }
   }
@@ -1420,10 +1427,14 @@ static int groups_for_contact (const char * contact, int * groups, int ngroups)
   int count = 0;
   for (i = 0; i < num_key_infos; i++) {
     if (kip [i].contact_name != NULL) {
+printf ("searching for contact %s in kip [%d].contact_name: %s, %d, %d\n", contact, i, kip [i].contact_name, kip [i].is_group, kip [i].num_group_members);
       if ((kip [i].is_group) && (kip [i].num_group_members > 0)) {
         int m;
         for (m = 0; m < kip [i].num_group_members; m++) {
+printf ("comparing contact %s to kip [%d].members [%d]: %s\n", contact, i, m, kip [i].members [m]);
+
           if (strcmp (contact, kip [i].members [m]) == 0) {
+printf ("succcess comparing contact %s to kip [%d].members [%d]: %s\n", contact, i, m, kip [i].members [m]);
             if ((groups != NULL) && (count < ngroups))
               groups [count] = i;
             count++;
@@ -1432,6 +1443,7 @@ static int groups_for_contact (const char * contact, int * groups, int ngroups)
       }
     }
   }
+    printf ("%d groups for contact %s\n", count, contact);
   return (count);
 }
 
@@ -2765,13 +2777,13 @@ static struct bc_key_info * find_bc_key (char * address,
   char * outer_index = index (address, '@');
   if (outer_index == NULL)
     return NULL;
-  int alen = outer_index - address;
+  size_t alen = outer_index - address;
   int i;
   for (i = 0; i < nkeys; i++) {
     char * loop_index = index (keys [i].identifier, '@');
     if (loop_index == NULL)
       continue;  /* skip the rest of the loop; */
-    int idlen = loop_index - keys [i].identifier;
+    size_t idlen = loop_index - keys [i].identifier;
     if ((alen != idlen) ||
         (strncmp (address, keys [i].identifier, alen) != 0)) {
       /* not the same ID */
