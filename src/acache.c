@@ -1141,7 +1141,7 @@ static int delete_gc_message (char * message, unsigned int msize,
 static void gc (int fd, int max_size)
 {
   int gc_size = max_size;
-  int actual_size = fd_size_or_zero (fd);
+  int actual_size = (int)fd_size_or_zero (fd);
   if (gc_size > actual_size)
     gc_size = actual_size;
   int copied = 0, deleted = 0;
@@ -1225,7 +1225,7 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
     }
     gc (fd, max_size);
   }
-  int write_position = fd_size_or_zero (fd);
+  int write_position = (int)fd_size_or_zero (fd);
   write_at_pos (fd, mbuffer, fsize, write_position);
   fsync (fd);
   hash_add_message (message, msize, message + id_off, (int) write_position,
@@ -1326,7 +1326,8 @@ static int save_packet (int fd, unsigned int max_size, char * message,
 #endif /* LOG_PACKETS */
     return 0;
   }
-  cache_message (fd, max_size, id - message, message, msize, priority);
+  cache_message (fd, max_size, (unsigned int) (id - message),
+                 message, msize, priority);
   return 1;
 }
 
@@ -1852,7 +1853,7 @@ static void print_message (int fd, unsigned int max_size,
     char * data = ALLNET_DATA_START (hp, hp->transport, (unsigned int) msize);
     unsigned int dsize = 0;
     if (msize > (data - message))
-      dsize = msize - (data - message);
+      dsize = msize - (int)(data - message);
     char * contact;
     char * text;
     keyset k;

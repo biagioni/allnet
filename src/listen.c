@@ -539,7 +539,7 @@ int listen_top_destinations (struct listen_info * info, int max,
   int available = info->num_fds - start; /* num_fds > start, so available > 0 */
   if (max >= available) {   /* return all, order does not matter */
     size_t size = available * sizeof (int);
-    *result = memcpy_malloc (info->fds + start, size,
+    *result = memcpy_malloc (info->fds + start, (int)size,
                              "listen_top_destinations returning all");
     pthread_mutex_unlock (&(info->mutex));
 #ifdef DEBUG_PRINT

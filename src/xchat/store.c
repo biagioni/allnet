@@ -156,7 +156,9 @@ struct msg_iter * start_iter (const char * contact, keyset k)
     result->current_size = 0;
     result->current_pos = 0;
   } else { /* unable to cache, use file */
-    *result = file_iter;
+    /* *result = file_iter -- file_iter is only initialized if
+          (message_cache_count < MESSAGE_CACHE_NUM_CONTACTS) */
+    start_iter_from_file(contact, k, result);
   }
   return result;
 }
@@ -474,7 +476,7 @@ static void set_result (
    uint64_t * seqp, uint64_t seq, uint64_t * timep, uint64_t time,
    int * tz_minp, int tz_min, uint64_t * rcvd_timep, uint64_t rcvd_time,
    char * message_ackp, const char * ack_value,
-   char ** messagep, const char * message, int * msizep, int msize)
+   char ** messagep, const char * message, int * msizep, size_t msize)
 {
   if (seqp != NULL) *seqp = seq;
   if (timep != NULL) *timep = time;
@@ -491,7 +493,7 @@ static void set_result (
       *messagep = m;
     }
   }
-  if (msizep != NULL) *msizep = msize;
+  if (msizep != NULL) *msizep = (int)msize;
 }
 
 static int prev_message_in_memory
@@ -1157,7 +1159,6 @@ printf ("store.c file_mod_time: '%s' is not a regular file\n", fname);
   return st.st_mtime;
 }
 
-extern int64_t conversation_size (const char * contact);
 /* returns an estimate of the number of bytes used to save the
  * conversation information for this contact
  * returns -1 if the contact does not exist or for other errors */
@@ -1262,16 +1263,17 @@ static char * oldest_nonempty_file (const char * contact)
 /* remove older files one by one until the remaining conversation size
  * is less than or equal to max_size
  * returns 1 for success, 0 for failure. */
-int reduce_conversation (const char * contact, uint64_t max_size)
+int reduce_conversation (const char * contact, uint64_t max_size_u)
 {
+  int64_t max_size = (int64_t) max_size_u;
   if (contact == NULL)
     return 0;
-  while (((uint64_t) conversation_size (contact)) > max_size) {
+  while (conversation_size (contact) > max_size) {
     char * fname = oldest_nonempty_file (contact);
     if (fname == NULL) {
     /* could be an error, but more likely, no files left and
        max_size > size of the empty dir */
-      printf ("oldest_nonempty is NULL, %jd remain\n",
+      printf ("oldest_nonempty is NULL, %" PRId64 " remain\n",
               conversation_size (contact));
       return 1;      /* success of some kind or other */
     }
