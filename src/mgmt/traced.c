@@ -432,7 +432,7 @@ printf ("traced_thread (%s), sockets %d %d\n", pname, rpipe, wpipe);
     alog = init_log ("traced_thread");
   pd p = init_pipe_descriptor (alog);
     printf ("traced_thread adding pipe %d, wpipe %d\n", rpipe, wpipe);
-  add_pipe(p, rpipe);
+  add_pipe (p, rpipe, "traced_thread");
   printf ("trace thread for %d bits: ", abits);
   print_bitstring (address, 0, abits, 1);
   main_loop (wpipe, p, address, abits, 0, 0);

@@ -40,6 +40,7 @@ struct allnet_pipe_info {
   char * buffer;   /* may be null */
   unsigned int filled; /* how many bytes already in the buffer or header? */
   unsigned int bsize;  /* how many bytes do we receive before we are done? */
+  char description [100];
 };
 
 /*
@@ -104,7 +105,8 @@ if ((pipe > 1000) || (pipe < -1000)) die ("illegal pipe number");
   for (i = 0; i < p->num_pipes; i++) {
     char * inhdr = ((p->buffers [i].in_header) ? "" : "not ");
     snprintf (p->log->b, p->log->s,
-              "  [%d]: pipe %d, %shdr, h %p b %p, filled %u bsize %u\n", i,
+              "  [%d: %s]: pipe %d, %shdr, h %p b %p, filled %u bsize %u\n", i,
+              p->buffers [i].description,
               p->buffers [i].pipe_fd, inhdr,
               p->buffers [i].header, p->buffers [i].buffer,
               p->buffers [i].filled, p->buffers [i].bsize);
@@ -141,7 +143,7 @@ static int queue_index (pd p, int queue)
   return -1;
 }
 
-void add_pipe (pd p, int pipe)
+void add_pipe (pd p, int pipe, const char * description)
 {
   if (pipe >= 0) {
     if (pipe_index (p, pipe) != -1) {
@@ -164,6 +166,7 @@ void add_pipe (pd p, int pipe)
     api->buffer = api->header;
     api->bsize = HEADER_SIZE;
     api->filled = 0;
+    snprintf (api->description, sizeof (api->description), "%s", description);
   } else {  /* negative, so it's a queue */
     if (queue_index (p, pipe) != -1) {
       snprintf (p->log->b, p->log->s,
@@ -608,7 +611,8 @@ static void debug_ebadf (pd p, int extra)
       int s = select (fd + 1, &receiving, NULL, NULL, tvp);
       if ((s < 0) && (errno == EBADF)) {
         snprintf (p->log->b, p->log->s,
-                  "EBADF: bad fd [%d/%d] = %d\n", i, p->num_pipes, fd);
+                  "EBADF: bad fd [%d/%d: %s] = %d\n", i, p->num_pipes,
+                  p->buffers [i].description, fd);
         printf ("%s", p->log->b);
         log_print (p->log);
       }

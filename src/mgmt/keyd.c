@@ -269,7 +269,7 @@ void keyd_thread (char * pname, int rpipe, int wpipe)
   struct allnet_log * private_log = init_log ("keyd_thread");
   pd p = init_pipe_descriptor (private_log);
     printf ("keyd_thread adding pipe %d\n", rpipe);
-  add_pipe(p, rpipe);
+  add_pipe (p, rpipe, "keyd_thread");
     
   while (1) {  /* loop forever */
     int pipe;

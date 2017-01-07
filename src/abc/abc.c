@@ -871,7 +871,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   log_print (alog);
   pd p = init_pipe_descriptor (alog);
 /* printf ("abc adding pipe %d\n", rpipe); */
-  add_pipe (p, rpipe);      /* tell pipemsg that we want to receive from ad */
+  add_pipe (p, rpipe, "abc.c main_loop");      /* tell pipemsg that we want to receive from ad */
   if (iface->iface_is_managed)
     bzero (zero_nonce, NONCE_SIZE);
   while (!terminate) {

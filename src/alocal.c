@@ -139,8 +139,11 @@ void alocal_main (int rpipe, int wpipe,
   if ((npipes > 0) && (rpipes != NULL)) {
       
     int i;
-    for (i = 0; i < npipes; i++)
-      add_pipe (p, rpipes [i]);
+    for (i = 0; i < npipes; i++) {
+      char pipe_number [] = "alocal_main pipe 1234567890";
+      snprintf (pipe_number, sizeof (pipe_number), "alocal_main pipe %d", i);
+      add_pipe (p, rpipes [i], pipe_number);
+    }
 for (i = 0; i < npipes; i++) printf ("alocal: now added pipe %d (%d total)\n", rpipes [i], npipes);
   }
   static struct listen_info info;

@@ -269,7 +269,8 @@ int connect_to_local (char * program_name, char * arg0, pd p)
       return -1;
     }
   }
-  add_pipe (p, sock);   /* tell pipe_msg to listen to this socket */
+  /* tell pipe_msg to listen to this socket */
+  add_pipe (p, sock, "app_util/connect_to_local");
 #ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */
   if (send_only == 1) {
     int * arg = malloc_or_fail (sizeof (int), "connect_to_local");

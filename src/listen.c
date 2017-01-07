@@ -447,7 +447,7 @@ static int listen_add_fd_with_lock_held (struct listen_info * info,
   else
     info->peers [index].ip.ip_version = 0;
   if (info->add_remove_pipe)
-    add_pipe (info->pipe_descriptor, fd);
+    add_pipe (info->pipe_descriptor, fd, "listen_add_fd_with_lock_held");
 #ifdef DEBUG_PRINT
   printf ("added %d: ", fd);
   print_listen_info (info);

@@ -53,7 +53,7 @@ extern int receive_pipe_message (pd p, int pipe,
 
 /* keeps track of which pipes are needed for receive_pipe_message_any,
  * which buffers partial messages received on a socket. */
-extern void add_pipe (pd p, int pipe);
+extern void add_pipe (pd p, int pipe, const char * description);
 extern void remove_pipe (pd p, int pipe);
 
 #define PIPE_MESSAGE_WAIT_FOREVER	-1

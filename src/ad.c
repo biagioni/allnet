@@ -210,8 +210,11 @@ static void main_loop (int npipes, int * read_pipes, int * write_pipes,
 {
   pd p = init_pipe_descriptor (alog);
   int i;
-  for (i = 0; i < npipes; i++)
-    add_pipe (p, read_pipes [i]);
+  for (i = 0; i < npipes; i++) {
+    char pipe_number [] = "ad main_loop pipe 1234567890";
+    snprintf (pipe_number, sizeof (pipe_number), "ad main_loop pipe %d", i);
+    add_pipe (p, read_pipes [i], pipe_number);
+  }
 /* snprintf (alog->b, alog->s, "ad calling init_social\n"); log_print (alog); */
   struct social_info * soc = init_social (max_social_bytes, max_checks, alog);
 /*snprintf (alog->b, alog->s, "ad calling update_social\n"); log_print (alog);*/
