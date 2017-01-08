@@ -61,7 +61,8 @@ extern void listen_record_usage (struct listen_info * info, int fd);
            0 if addr != NULL and add_only_if_unique_ip and
                 a matching address already had an fd */
 extern int listen_add_fd (struct listen_info * info, int fd,
-                          struct addr_info * addr, int add_only_if_unique_ip);
+                          struct addr_info * addr, int add_only_if_unique_ip,
+                          const char * caller_description);
 
 /* call to remove an fd from the data structure */
 extern void listen_remove_fd (struct listen_info * info, int fd);

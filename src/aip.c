@@ -704,7 +704,8 @@ sleep (1); */
       printf ("aip added fd %d, %p: ", s, &ai);
       print_addr_info (&ai);
 #endif /* DEBUG_PRINT */
-      if (listen_add_fd (info, s, &ai, 1)) {  /* clears the reservation */
+      /* listen_add_fd clears the reservation if it is successful */
+      if (listen_add_fd (info, s, &ai, 1, "aip.c connect_listener")) {
         /* success! */
         int offset = snprintf (alog->b, alog->s,
                                "listening for %x/%d on socket %d at ",
@@ -1366,7 +1367,8 @@ void aip_main (int rpipe, int wpipe, char * addr_socket_name)
   listen_init_info (&info, 256, "aip", ALLNET_PORT, 0, 1, 0,
                     listen_callback, p);
 
-  if (! listen_add_fd (&info, rpipe, NULL, 0))  /* should always succeed */
+  if (! listen_add_fd (&info, rpipe, NULL, 0, "aip_main"))
+    /* should always succeed */
     printf ("aip_main: listen_add_fd failed\n");
   pthread_mutex_init (&listener_mutex, NULL);
   int i;

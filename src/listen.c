@@ -171,7 +171,8 @@ static void * listen_loop (void * arg)
     struct addr_info addr;
     sockaddr_to_ai (ap, addr_size, &addr);  /* zeros destination and nbits */
     if (listen_add_fd (info, connection, &addr,  /* unique unless local IP */
-                       ! is_loopback_ip (ap, addr_size))) {
+                       ! is_loopback_ip (ap, addr_size),
+                       "listen.c listen_loop")) {
       if (info->callback != NULL)
         info->callback (connection);
     } else {
@@ -421,7 +422,8 @@ static void listen_clear_reservation_with_lock_held (struct addr_info * ai,
                 a matching address already had an fd */
 static int listen_add_fd_with_lock_held (struct listen_info * info,
                                          int fd, struct addr_info * addr,
-                                         int add_only_if_unique_ip)
+                                         int add_only_if_unique_ip,
+                                         const char * caller_description)
 {
   if (addr != NULL) {
     if (add_only_if_unique_ip) {
@@ -446,8 +448,13 @@ static int listen_add_fd_with_lock_held (struct listen_info * info,
     info->peers [index] = *addr;
   else
     info->peers [index].ip.ip_version = 0;
-  if (info->add_remove_pipe)
-    add_pipe (info->pipe_descriptor, fd, "listen_add_fd_with_lock_held");
+  if (info->add_remove_pipe) {
+    char * desc = strcat_malloc (caller_description,
+                                 "/listen_add_fd_with_lock_held",
+                                 "listen_add_fd_with_lock_held");
+    add_pipe (info->pipe_descriptor, fd, desc);
+    free (desc);
+  }
 #ifdef DEBUG_PRINT
   printf ("added %d: ", fd);
   print_listen_info (info);
@@ -462,18 +469,20 @@ static int listen_add_fd_with_lock_held (struct listen_info * info,
            0 if addr != NULL and add_only_if_unique_ip and
                 a matching address already had an fd */
 int listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr,
-                   int add_only_if_unique_ip)
+                   int add_only_if_unique_ip,
+                   const char * caller_description)
 {
-  int result = 0;
   pthread_mutex_lock (&(info->mutex));
   if ((info->num_fds >= info->max_num_fds) && (random () >= RAND_MAX / 2)) {
     /* if full, half the time just send a peer message and close the fd */
     send_peer_message (fd, info, -1);
-    result = 0;
-  } else {
-    result =
-      listen_add_fd_with_lock_held (info, fd, addr, add_only_if_unique_ip);
+    pthread_mutex_unlock (&(info->mutex));
+    close (fd);
+    return 0;
   }
+  int result =
+    listen_add_fd_with_lock_held (info, fd, addr, add_only_if_unique_ip,
+                                  caller_description);
   pthread_mutex_unlock (&(info->mutex));
   return result;
 }
