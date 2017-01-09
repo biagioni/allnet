@@ -129,6 +129,8 @@ extern unsigned int get_my_privkey     (keyset k, allnet_rsa_prvkey * key);
 /* address must have length at least ADDRESS_SIZE */
 extern unsigned int get_local (keyset k, unsigned char * address);
 extern unsigned int get_remote (keyset k, unsigned char * address);
+/* returnes a malloc'd copy of the contact name, or NULL for errors */
+extern char * get_contact_name (keyset k);
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
  * longer be accessed unless marked as valid again

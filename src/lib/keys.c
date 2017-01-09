@@ -1704,6 +1704,7 @@ int group_contacts (const char * group, char *** members)
 
 /*************** operations on keysets and keys ********************/
 
+#define RECURSIVELY_INCLUDE_GROUP_KEYS
 #ifdef RECURSIVELY_INCLUDE_GROUP_KEYS
 /* recursively (up to max depth) count keysets for groups */
 /* return -1 if a recursive loop is detected, as indicated by max_depth <= 0 */
@@ -1718,14 +1719,15 @@ static int recursive_num_keysets (const char * contact, int max_depth,
   for (i = 0; i < num_key_infos; i++) {
     if ((kip [i].contact_name != NULL) &&
         (strcmp (kip [i].contact_name, contact) == 0)) {
-      if (kip [i].num_members < 0) {
+      if ((! kip [i].is_group) || (kip [i].num_group_members < 0)) {
+        /* not a group */
         if ((keysets != NULL) && (num_keysets > count))
           keysets [count] = i;
         count++;
       } else {  /* recursively count each member's keys */
         int m;
-        for (m = 0; m < kip [i].num_members; m++) {
-          int result = 
+        for (m = 0; m < kip [i].num_group_members; m++) {
+          int result =
             recursive_num_keysets (kip [i].members [m], max_depth - 1,
                                    keysets + count, num_keysets - count);
           if (result < 0)
@@ -1735,6 +1737,8 @@ static int recursive_num_keysets (const char * contact, int max_depth,
       }
     }
   }
+    printf ("recursive_num_keysets (%s) returning %d, pointer %p %d\n",
+            contact, count, keysets, num_keysets);
   return count;
 }
 
@@ -1889,6 +1893,19 @@ unsigned int get_remote (keyset k, unsigned char * address)
     return 0;
   memcpy (address, kip [k].remote.address, ADDRESS_SIZE);
   return kip [k].remote.nbits;
+}
+
+/* returnes a malloc'd copy of the contact name, or NULL for errors */
+char * get_contact_name (keyset k)
+{
+  init_from_file ("get_contact_name");
+  if (! valid_keyset (k))
+    return NULL;
+  if (kip [k].contact_name == NULL)
+    return NULL;
+  if (strlen (kip [k].contact_name) <= 0)
+    return NULL;
+  return strcpy_malloc (kip [k].contact_name, "get_contact_name");
 }
 
 /* a keyset may be marked as invalid.  The keys are not deleted, but can no
