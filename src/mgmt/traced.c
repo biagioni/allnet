@@ -338,8 +338,7 @@ static void respond_to_trace (int sock, char * message, unsigned int msize,
 
   char * response = NULL;
   int rsize = 0;
-  if (trp->intermediate_replies) {   /* generate a reply */
-
+  if ((trp->intermediate_replies) || (nmatch >= mbits)) { /* generate a reply */
     if (nmatch >= mbits)  /* exact match, send final response */
       rsize = make_trace_reply (hp, msize, &timestamp, my_address, abits,
                                 trp, 0, trp->num_entries + 1, &response);

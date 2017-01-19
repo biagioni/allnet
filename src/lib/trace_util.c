@@ -192,7 +192,7 @@ void get_my_addr (unsigned char * my_addr, int my_addr_size,
 
 static void send_trace (int sock, unsigned char * address, int abits,
                         char * trace_id, unsigned char * my_address,
-                        int my_abits, int max_hops,
+                        int my_abits, int max_hops, int no_intermediates,
                         struct allnet_log * alog)
 {
   int total_size = ALLNET_TRACE_REQ_SIZE (0, 1, 0);
@@ -219,7 +219,7 @@ static void send_trace (int sock, unsigned char * address, int abits,
 
   mp->mgmt_type = ALLNET_MGMT_TRACE_REQ;
 
-  trp->intermediate_replies = 1;
+  trp->intermediate_replies = ! no_intermediates;
   trp->num_entries = 1;
   writeb16u (trp->pubkey_size, 0);
   /* pubkey_size is 0, so no public key */
@@ -600,7 +600,8 @@ void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
 /* printf ("%d/%d\n", count, repeat); */
     random_bytes (trace_id, sizeof (trace_id));
     random_bytes ((char *) my_addr, sizeof (my_addr));
-    send_trace (sock, address, abits, trace_id, my_addr, 5, nhops, alog);
+    send_trace (sock, address, abits, trace_id, my_addr, 5, nhops,
+                no_intermediates, alog);
     sent_count++;
     wait_for_responses (sock, p, trace_id, sleep, count,
                         match_only, no_intermediates, null_term,
