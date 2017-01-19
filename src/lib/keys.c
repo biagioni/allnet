@@ -1427,14 +1427,19 @@ static int groups_for_contact (const char * contact, int * groups, int ngroups)
   int count = 0;
   for (i = 0; i < num_key_infos; i++) {
     if (kip [i].contact_name != NULL) {
+#ifdef DEBUG_GROUPS
 printf ("searching for contact %s in kip [%d].contact_name: %s, %d, %d\n", contact, i, kip [i].contact_name, kip [i].is_group, kip [i].num_group_members);
+#endif /* DEBUG_GROUPS */
       if ((kip [i].is_group) && (kip [i].num_group_members > 0)) {
         int m;
         for (m = 0; m < kip [i].num_group_members; m++) {
+#ifdef DEBUG_GROUPS
 printf ("comparing contact %s to kip [%d].members [%d]: %s\n", contact, i, m, kip [i].members [m]);
-
+#endif /* DEBUG_GROUPS */
           if (strcmp (contact, kip [i].members [m]) == 0) {
+#ifdef DEBUG_GROUPS
 printf ("succcess comparing contact %s to kip [%d].members [%d]: %s\n", contact, i, m, kip [i].members [m]);
+#endif /* DEBUG_GROUPS */
             if ((groups != NULL) && (count < ngroups))
               groups [count] = i;
             count++;
@@ -1737,8 +1742,10 @@ static int recursive_num_keysets (const char * contact, int max_depth,
       }
     }
   }
-    printf ("recursive_num_keysets (%s) returning %d, pointer %p %d\n",
-            contact, count, keysets, num_keysets);
+#ifdef DEBUG_PRINT
+  printf ("recursive_num_keysets (%s) returning %d, pointer %p %d\n",
+          contact, count, keysets, num_keysets);
+#endif /* DEBUG_PRINT */
   return count;
 }
 
