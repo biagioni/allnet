@@ -136,32 +136,6 @@ static char * mtype_to_string (int mtype)
   }
 }
 
-#if 0
-static char * mgmt_type_to_string (int mtype)
-{
-  switch (mtype) {
-  case ALLNET_MGMT_BEACON:
-    return "beacon";
-  case ALLNET_MGMT_BEACON_REPLY:
-    return "beacon reply";
-  case ALLNET_MGMT_BEACON_GRANT:
-    return "beacon grant";
-  case ALLNET_MGMT_PEER_REQUEST:
-    return "peer request";
-  case ALLNET_MGMT_PEERS:
-    return "peers";
-  case ALLNET_MGMT_DHT:
-    return "DHT";
-  case ALLNET_MGMT_TRACE_REQ:
-    return "trace request";
-  case ALLNET_MGMT_TRACE_REPLY:
-    return "trace reply";
-  default:
-    return "unknown management type";
-  }
-}
-#endif /* 0 */
-
 /* returned buffer is statically allocated */
 static char * b2s (const char * buffer, int count)
 {
@@ -304,7 +278,8 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
     break;
   case ALLNET_MGMT_TRACE_REQ:
     if (hsize < sizeof (struct allnet_mgmt_trace_req)) {
-      r += snprintf (to + r, minz (tsize, r), "trace req size %d, min %zd\n",
+      r += snprintf (to + r, minz (tsize, r),
+                     "illegal trace request size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_trace_req));
     } else {
       const struct allnet_mgmt_trace_req * amt =
@@ -315,8 +290,9 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
         amt->num_entries * sizeof (struct allnet_mgmt_trace_entry);
       if (hsize < needed) {
         r += snprintf (to + r, minz (tsize, r),
-                       "trace req size %d, needed %d (ks %d, %d entries)\n",
-                       hsize, needed, ks, amt->num_entries);
+                       "%s %d, needed %d (ks %d, %d entries)\n",
+                       "illegal trace req size", hsize, needed, ks,
+                       amt->num_entries);
       } else {
         r += snprintf (to + r, minz (tsize, r), "trace request %d %d %s ",
                        amt->num_entries, ks,
