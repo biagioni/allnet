@@ -158,6 +158,9 @@ static void * listen_loop (void * arg)
       snprintf (alog->b, alog->s, "warning: loopback got from nonlocal\n");
       log_print (alog);
       close (connection);
+#ifdef DEBUG_EBADF
+printf ("listen_loop for localhost got nonlocal, closing %d\n", connection);
+#endif /* DEBUG_EBADF */
       continue;   /* skip the rest of the while loop */
     }
     int option = 1;  /* nodelay disables Nagle algorithm */
@@ -176,6 +179,9 @@ static void * listen_loop (void * arg)
       if (info->callback != NULL)
         info->callback (connection);
     } else {
+#ifdef DEBUG_EBADF
+printf ("listen_loop unable to listen_add_fd, closing %d\n", connection);
+#endif /* DEBUG_EBADF */
       close (connection);
     }
     addr_size = sizeof (address);  /* reset for next call to accept */
@@ -272,10 +278,16 @@ void listen_shutdown (struct listen_info * info)
   while (info->num_fds > 0)
    listen_remove_fd (info, info->fds [0]);
   if (info->listen_fd6 >= 0) {
+#ifdef DEBUG_EBADF
+printf ("listen_shutdown closing ipv6 listen socket %d\n", info->listen_fd6);
+#endif /* DEBUG_EBADF */
     close (info->listen_fd6);
     pthread_cancel (info->thread6);
   }
   if (info->listen_fd4 >= 0) {
+#ifdef DEBUG_EBADF
+printf ("listen_shutdown closing ipv4 listen socket %d\n", info->listen_fd6);
+#endif /* DEBUG_EBADF */
     close (info->listen_fd4);
     pthread_cancel (info->thread4);
   }
@@ -377,6 +389,9 @@ static int close_oldest_fd (struct listen_info * info)
   send_peer_message (fd, info, min_index);
   if (info->add_remove_pipe)
     remove_pipe (info->pipe_descriptor, fd);
+#ifdef DEBUG_EBADF
+printf ("close_oldest_fd closing %d, a_r %d\n", fd, info->add_remove_pipe);
+#endif /* DEBUG_EBADF */
   close (fd);
   info->fds [min_index] = -1;
   return min_index;
@@ -477,6 +492,9 @@ int listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr,
     /* if full, half the time just send a peer message and close the fd */
     send_peer_message (fd, info, -1);
     pthread_mutex_unlock (&(info->mutex));
+#ifdef DEBUG_EBADF
+printf ("listen_add_fd busy, closing fd %d\n", fd);
+#endif /* DEBUG_EBADF */
     close (fd);
     return 0;
   }

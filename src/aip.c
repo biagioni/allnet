@@ -696,7 +696,9 @@ sleep (1); */
         print_sockaddr_str (sap, salen, 1, alog->b + n, alog->s - n);
         log_error (alog, "listener connect");
         close (s);
-/* printf ("thread %ud proc %d unable to connect, releasing addr ", (unsigned int) pthread_self (), getpid ()); print_addr_info (&ai); */
+#ifdef DEBUG_EBADF
+printf ("thread %ud proc %d unable to connect, closed %d, releasing addr ", (unsigned int) pthread_self (), getpid (), s); print_addr_info (&ai);
+#endif /* DEBUG_EBADF */
         listen_clear_reservation (&ai, info);
         continue;   /* return to the top of the loop and try the next addr */
       }
@@ -718,6 +720,9 @@ sleep (1); */
                                "listen_add_fd => 0 for %x/%d on socket %d at ",
                                address [0] & 0xff, LISTEN_BITS, s);
         offset += addr_info_to_string (&ai, alog->b + offset, alog->s - offset);
+#ifdef DEBUG_EBADF
+printf ("%s", alog->b);
+#endif /* DEBUG_EBADF */
         log_print (alog);
         close (s);
         listen_clear_reservation (&ai, info);
@@ -768,6 +773,9 @@ static void * connect_thread (void * a)
       active_listeners++;
       listener_fds [listener_index] = fd;
     } else {   /* undo connect */
+#ifdef DEBUG_EBADF
+printf ("connect_thread closing %d, connect_listener failed (insane?)\n", fd);
+#endif /* DEBUG_EBADF */
       close (fd);                       /* remove from kernel */
       listen_remove_fd (info, fd); /* remove from info */
     }
@@ -823,6 +831,9 @@ static void remove_listener (int fd, struct listen_info * info)
     }
   }
   listen_remove_fd (info, fd); /* remove from info and pipemsg */
+#ifdef DEBUG_EBADF
+printf ("remove_listener removing fd %d\n", fd);
+#endif /* DEBUG_EBADF */
   close (fd);       /* remove from kernel */
   pthread_mutex_unlock (&listener_mutex);
 #ifdef DEBUG_PRINT
@@ -1175,11 +1186,18 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
         int af = (ia->ip_version == 4) ? AF_INET : AF_INET6;
         int new_sock = socket (af, SOCK_STREAM, 0);
         if (connect (new_sock, sap2, salen) < 0) {
+#ifdef DEBUG_EBADF
+printf ("handle_mgmt, connect failed, closing listeners [%d] = %d\n",
+listener_index, listeners [listener_index]);
+#endif /* DEBUG_EBADF */
           close (listeners [listener_index]);
           listeners [listener_index] = new_sock;
           return 1;
         } else {
           perror ("warning: connect/listener");  /* not really an error */
+#ifdef DEBUG_EBADF
+printf ("handle_mgmt, connect succeeded, closing %d\n", new_sock);
+#endif /* DEBUG_EBADF */
           close (new_sock);
         }
       }
@@ -1249,6 +1267,9 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
       last_keepalive = time (NULL);
     }
     if (time (NULL) - last_successful_udp >= 30) {
+#ifdef DEBUG_EBADF
+printf ("aip main loop, timeout, closing UDP socket %d\n", udp);
+#endif /* DEBUG_EBADF */
       close (udp);
 #ifdef DEBUG_PRINT
       int old_udp = udp;
@@ -1350,6 +1371,9 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
     if ((result > 0) && (message != NULL))
       free (message);   /* allocated by receive_pipe_message_fd */
   }
+#ifdef DEBUG_EBADF
+printf ("aip main loop, exiting, closing UDP socket %d\n", udp);
+#endif /* DEBUG_EBADF */
   close (udp);  /* on iOS we may get restarted later */
   cache_close (udp_cache);
 }
