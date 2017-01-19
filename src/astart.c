@@ -855,7 +855,8 @@ static char * interface_extra (struct ifaddrs * next)
       (next->ifa_addr->sa_family == AF_INET6)) */
     return "ip";
   if ((strncmp (next->ifa_name, "wlan", 4) == 0) ||
-      (strncmp (next->ifa_name, "wlx", 3) == 0)) {
+      (strncmp (next->ifa_name, "wlx", 3) == 0) ||
+      (strncmp (next->ifa_name, "wlo", 3) == 0)) {
     if (geteuid () == 0)
       return "wifi";
     else
@@ -886,34 +887,40 @@ static int default_interfaces (char * * * interfaces_p)
     }
     next = next->ifa_next;
   }
-  int size = count * sizeof (char *) + length;
-  *interfaces_p = malloc_or_fail (size, "default_interfaces");
-  char * * interfaces = *interfaces_p;
-  /* copy the names/extra to the malloc'd space after the pointers */
-  char * write_to = ((char *) (interfaces + count));
-  int write_len = length;
-  int index = 0;
-  int accept_non_ip;  /* favor /ip over /wifi, so on first pass only take ip */
-  for (accept_non_ip = 0; accept_non_ip < 2; accept_non_ip++) {
-    next = ap;
-    while ((write_len > 0) && (next != NULL)) {
-      char * extra = interface_extra (next);
-      if ((! in_interface_array (next->ifa_name, interfaces, index)) &&
-          (is_bc_interface (next)) &&
-          (strlen (extra) != 0) &&
-          ((accept_non_ip) || (strcmp (extra, "ip") == 0))) {
-        interfaces [index++] = write_to;
-        int slen = snprintf (write_to, write_len,
-                             "%s/%s", next->ifa_name, interface_extra (next))
-                 + 1;  /* for the null character */
-        write_len -= slen;
-        write_to += slen;
+  int result = 0;
+  if (count > 0) {
+    int size = count * sizeof (char *) + length;
+    *interfaces_p = malloc_or_fail (size, "default_interfaces");
+    char * * interfaces = *interfaces_p;
+    /* copy the names/extra to the malloc'd space after the pointers */
+    char * write_to = ((char *) (interfaces + count));
+    int write_len = length;
+    int accept_non_ip; /* favor /ip over /wifi, so on first pass only take ip */
+    for (accept_non_ip = 0; accept_non_ip < 2; accept_non_ip++) {
+      next = ap;
+      while ((write_len > 0) && (next != NULL)) {
+        char * extra = interface_extra (next);
+        if ((! in_interface_array (next->ifa_name, interfaces, result)) &&
+            (is_bc_interface (next)) &&
+            (strlen (extra) != 0) &&
+            ((accept_non_ip) || (strcmp (extra, "ip") == 0))) {
+          interfaces [result++] = write_to;
+          int slen = snprintf (write_to, write_len,
+                               "%s/%s", next->ifa_name, interface_extra (next))
+                   + 1;  /* for the null character */
+          write_len -= slen;
+          write_to += slen;
+        }
+        next = next->ifa_next;
       }
-      next = next->ifa_next;
+    }
+    if (result <= 0) {
+      free (*interfaces_p);
+      *interfaces_p = NULL;
     }
   }
   freeifaddrs (ap);
-  return index;
+  return result;
 }
 
 static void find_path (char * arg, char ** path, char ** program)
@@ -993,6 +1000,13 @@ int astart_main (int argc, char ** argv)
     num_interfaces = default_interfaces (&interfaces);
   else if (argc == 1)
     num_interfaces = 0;
+  else {  /* interfaces specified on the command line */
+    int size = (argc - 1) * sizeof (char *);
+    interfaces = malloc_or_fail (size, "specified interfaces");
+    int i;
+    for (i = 0; i < (argc - 1); i++)
+      interfaces [i] = strcpy_malloc (argv [i + 1], "specific interface");
+  }
   int num_pipes = NUM_FIXED_PIPES + NUM_INTERFACE_PIPES * num_interfaces;
   int ad_pipes = num_pipes;
 #ifndef USE_FORK  /* create queues for 4 of the 5 daemons and xchat */
