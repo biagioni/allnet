@@ -1448,7 +1448,9 @@ printf ("succcess comparing contact %s to kip [%d].members [%d]: %s\n", contact,
       }
     }
   }
-    printf ("%d groups for contact %s\n", count, contact);
+#ifdef DEBUG_GROUPS
+printf ("%d groups for contact %s\n", count, contact);
+#endif /* DEBUG_GROUPS */
   return (count);
 }
 
