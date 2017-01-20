@@ -268,13 +268,13 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
     switch (result) {
     case PROCESS_PACKET_ALL:
 #ifdef LOG_PACKETS
-      log_packet ("sending to all", packet, psize);
+      log_packet (alog, "sending to all", packet, psize);
 #endif /* LOG_PACKETS */
       send_all (packet, psize, priority, write_pipes, npipes, "all");
       break;
     case PROCESS_PACKET_OUT:
 #ifdef LOG_PACKETS
-      log_packet ("sending out", packet, psize);
+      log_packet (alog, "sending out", packet, psize);
 #endif /* LOG_PACKETS */
 /* alocal should be the first pipe, so just skip it */
       send_all (packet, psize, priority, write_pipes + 1, npipes - 1, "out");
@@ -282,14 +282,14 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
     /* all the rest are not forwarded, so priority does not matter */
     case PROCESS_PACKET_LOCAL:   /* send only to alocal */ 
 #ifdef LOG_PACKETS
-      log_packet ("sending to alocal", packet, psize);
+      log_packet (alog, "sending to alocal", packet, psize);
 #endif /* LOG_PACKETS */
 /* alocal should be the first pipe, so only write to that */
       send_all (packet, psize, 0, write_pipes, 1, "local");
       break;
     case PROCESS_PACKET_DROP:    /* do not forward */
 #ifdef LOG_PACKETS
-      log_packet ("dropping packet", packet, psize);
+      log_packet (alog, "dropping packet", packet, psize);
 #endif /* LOG_PACKETS */
       /* do nothing */
       break;
