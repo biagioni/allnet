@@ -994,7 +994,6 @@ int astart_main (int argc, char ** argv)
   /* two pipes from ad to each abc and back */
 #define NUM_INTERFACE_PIPES	2 
   char ** interfaces = NULL;
-  int i;
   int num_interfaces = argc - 1;
   if ((argc > 1) && (strncmp (argv [1], "def", 3) == 0))
     num_interfaces = default_interfaces (&interfaces);
@@ -1025,6 +1024,7 @@ int astart_main (int argc, char ** argv)
 
   /* in case we are root, start abc first, then become non-root, and
    * only after we become non-root start the other daemons */
+  int i;
   for (i = 0; i < num_interfaces; i++) {
     char * interface;
     if (interfaces != NULL)
