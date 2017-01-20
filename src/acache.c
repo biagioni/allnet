@@ -1290,14 +1290,9 @@ static char * get_id (char * message, unsigned int size)
   if (id == NULL)
     id = ALLNET_MESSAGE_ID (hp, hp->transport, size);
   /* key messages usually don't have IDs, so use hmac or fingerprints */
-  if ((id == NULL) && (size >= ALLNET_SIZE (hp->transport) + 1)) {
-    int nbytes = message [ALLNET_SIZE (hp->transport) + 1] & 0xff;
-    if ((size >= ALLNET_SIZE (hp->transport) + 1 + nbytes) &&
-        (nbytes >= MESSAGE_ID_SIZE)) {
-      if ((hp->message_type == ALLNET_TYPE_KEY_XCHG) ||
-          (hp->message_type == ALLNET_TYPE_KEY_REQ))
-        id = message + ALLNET_SIZE (hp->transport) + 1;
-    }
+  if ((id == NULL) && (size >= ALLNET_SIZE (hp->transport) + MESSAGE_ID_SIZE)) {
+    /* return the last MESSAGE_ID_SIZE bytes, which may be unique */
+    id = message + size - MESSAGE_ID_SIZE;
   }
   return id;  /* a pointer (if any) into hp */ 
 }
