@@ -411,6 +411,8 @@ void packet_to_string (const char * buffer, int bsize, const char * desc,
                        " e %lld",
                        readb64 (ALLNET_EXPIRATION (hp, t,
                                                    (unsigned int) bsize)));
+    if ((t & ALLNET_TRANSPORT_DO_NOT_CACHE) != 0)
+      off += snprintf (to + off, minz (tsize, off), " do-not-cache");
   }
   if (hp->message_type == ALLNET_TYPE_MGMT) {
     if (bsize < (int) (ALLNET_MGMT_HEADER_SIZE(t))) {
