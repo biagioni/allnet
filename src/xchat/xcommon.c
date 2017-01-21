@@ -382,7 +382,9 @@ static int handle_clear (struct allnet_header * hp, char * data,
   struct bc_key_info * keys;
   int nkeys = get_other_keys (&keys);
   int i;
-/* print_buffer (verif, dsize - ssize, "verifying BC message", dsize, 1); */
+#ifdef DEBUG_PRINT
+  print_buffer (verif, dsize - ssize, "verifying BC message", dsize, 1);
+#endif /* DEBUG_PRINT */
   for (i = 0; i < nkeys; i++) {
     if ((matches ((unsigned char *) (keys [i].address), ADDRESS_BITS,
                   hp->source, hp->src_nbits) > 0) &&
