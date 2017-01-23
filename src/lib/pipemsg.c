@@ -1038,7 +1038,7 @@ int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
   gettimeofday (&now, NULL);
   finish = now;
   if (timeout != PIPE_MESSAGE_WAIT_FOREVER)
-    add_us (&finish, timeout * 1000LL);
+    add_us (&finish, timeout * 1000LL);  /* timeout in ms, adding us */
 
   if (from_pipe != NULL) *from_pipe = -1;
   if (priority != NULL) *priority = ALLNET_PRIORITY_EPSILON;
