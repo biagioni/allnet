@@ -128,7 +128,7 @@ struct allnet_variable_signature {
  *   an app media header, with app "keyd" and media ALLNET_MEDIA_PUBLIC_KEY
  *   This is followed by the key, then a random bitstring.
  */
-#define KEY_RANDOM_PAD_SIZE	8
+#define KEY_RANDOM_PAD_SIZE	16  /* should be >= MESSAGE_ID_SIZE */
 struct allnet_key_exchange {
   unsigned char public_key [0];     /* public key to be used -- 513 for RSA */
   unsigned char hmac [64];          /* confirms knowledge of secret nonce */
