@@ -230,7 +230,7 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
   /* create_packet wants size without message ack */
   if ((message_ack != NULL) && (sendsize >= MESSAGE_ID_SIZE))
     csize = sendsize - MESSAGE_ID_SIZE;
-  else {
+  else if (message_ack != NULL) {
     printf ("error: csize %u, sendsize %u, id_size %d\n", 
             csize, sendsize, MESSAGE_ID_SIZE);
     return 0;  /* exit the loop */
