@@ -183,7 +183,7 @@ static void check_priority_mode ()
 /* if the interface is off, receives only from ad, otherwise from both ad and
  * the abc interface  */
 static int receive_until (struct timeval * t, char ** message,
-                          pd p, int * from_fd, int * priority)
+                          pd p, int * from_fd, unsigned int * priority)
 {
   struct timeval now;
   gettimeofday (&now, NULL);
@@ -661,7 +661,7 @@ static void handle_quiet (struct timeval * quiet_end, pd p,
   while (is_before (quiet_end) && !terminate) {
     char * message;
     int from_fd;
-    int priority;
+    unsigned int priority;
     int msize = receive_until (quiet_end, &message, p, &from_fd, &priority);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
@@ -691,7 +691,7 @@ static void unmanaged_handle_until (struct timeval * t, pd p,
   while (is_before (t) && !terminate) {
     char * message;
     int fd;
-    int priority;
+    unsigned int priority;
     int msize = receive_until (t, &message, p, &fd, &priority);
     if (msize > 0) {
       if (is_valid_message (message, msize)) {
@@ -718,7 +718,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
   while (is_before (t) && !terminate) {
     char * message;
     int fd;
-    int priority;
+    unsigned int priority;
     struct timeval * deadline = t;
     if ((beacon_deadline != NULL) && (delta_us (t, beacon_deadline) > 0))
       deadline = beacon_deadline;

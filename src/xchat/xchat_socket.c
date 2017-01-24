@@ -667,7 +667,7 @@ int main (int argc, char ** argv)
   char * subscription = NULL;
   char sbuf [ALLNET_MTU];   /* subscribe buffer */
   unsigned char saddr [ADDRESS_SIZE];
-  int sbits = 0;
+  unsigned int sbits = 0;
   while (1) {
 /* use temp (loop local) buffers, then copy them to kbuf* if code is 2 */
     char to_send [ALLNET_MTU];
@@ -715,7 +715,8 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       }
     }
     char * packet;
-    int pipe, pri;
+    int pipe;
+    unsigned int pri;
     int found_key = 0;
     if (check_for_key)  /* was a key received earlier? */
       found_key = key_received (sock, key_contact, key_secret, key_secret2,

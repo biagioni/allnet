@@ -30,7 +30,7 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info,
 {
   while (1) {
     int fd;
-    int priority;
+    unsigned int priority;
     char * message;
 /* the sleep time is arbitrarily set to 50ms.  The major thing that may
  * happen while we sleep is a new socket being added.  We don't listen to

@@ -45,10 +45,10 @@
  * desc is printed first unless it is null
  * a newline is printed after if print_eol
  */
-void print_buffer (const char * buffer, int count, const char * desc,
-                   int max, int print_eol)
+void print_buffer (const char * buffer, unsigned int count, const char * desc,
+                   unsigned int max, int print_eol)
 {
-  int i;
+  unsigned int i;
   if (desc != NULL)
     printf ("%s (%d bytes):", desc, count);
   else
@@ -91,18 +91,21 @@ int binary_log (unsigned long long int value)
 }
 
 /* same as print_buffer, but prints to the given string */
-int buffer_to_string (const char * buffer, int count, const char * desc,
-                      int max, int print_eol, char * to, int tsize)
+int buffer_to_string (const char * buffer, unsigned int count,
+                      const char * desc,
+                      unsigned int max, int print_eol, char * to, size_t tsize)
 {
-  int i;
-  int offset;
+  if (tsize <= 0)
+    return 0;
+  unsigned int i;
+  unsigned int offset = 0;
   if (desc != NULL)
     offset = snprintf (to, tsize, "%s (%d bytes):", desc, count);
   else
     offset = snprintf (to, tsize, "%d bytes:", count);
-  if (buffer == NULL)
+  if (buffer == NULL) {
     offset += snprintf (to + offset, minz (tsize, offset), "(null)");
-  else {
+  } else {
     for (i = 0; i < count && i < max; i++)
       offset += snprintf (to + offset, minz (tsize, offset),
                           " %02x", buffer [i] & 0xff);
@@ -163,6 +166,8 @@ static char * b2su (const unsigned char * buffer, int count)
 static int trace_entry_to_string (const struct allnet_mgmt_trace_entry * e,
                                   char * to, int tsize)
 {
+  if (tsize <= 0)
+    return 0;
   return snprintf (to, tsize, "%d %lld.%lld@%d %s/%d, ", e->precision,
                    readb64 ((const char *) (e->seconds)),
                    readb64 ((const char *) (e->seconds_fraction)),
@@ -171,7 +176,7 @@ static int trace_entry_to_string (const struct allnet_mgmt_trace_entry * e,
 }
 
 static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
-                          char * to, int tsize)
+                          char * to, size_t tsize)
 {
   int r = snprintf (to, tsize, " mt %d ", mtype);
 
@@ -298,10 +303,10 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
                        amt->num_entries, ks,
                        ((amt->intermediate_replies != 0) ? "all" : "final"));
         r += buffer_to_string ((char *) (amt->trace_id), NONCE_SIZE, "id",
-                               6, 0, to + r, tsize - r);
+                               6, 0, to + r, minz (tsize, r));
         int i;
         for (i = 0; i < amt->num_entries; i++)
-          r += trace_entry_to_string (amt->trace + i, to + r, tsize - r);
+          r += trace_entry_to_string (amt->trace + i, to + r, minz (tsize, r));
       }
     }
     break;
@@ -330,10 +335,10 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
                        amt->num_entries,
                        ((amt->intermediate_reply != 0) ? "int" : "final"));
         r += buffer_to_string ((char *) (amt->trace_id), NONCE_SIZE, "id",
-                               6, 0, to + r, tsize - r);
+                               6, 0, to + r, minz (tsize, r));
         int i;
         for (i = 0; i < amt->num_entries; i++)
-          r += trace_entry_to_string (amt->trace + i, to + r, tsize - r);
+          r += trace_entry_to_string (amt->trace + i, to + r, minz (tsize, r));
       }
     }
     break;
@@ -346,9 +351,12 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
 }
 
 /* same as print_buffer, but prints to the given string */
-void packet_to_string (const char * buffer, int bsize, const char * desc,
-                       int print_eol, char * to, int tsize)
+void packet_to_string (const char * buffer, unsigned int bsize,
+                       const char * desc, int print_eol,
+                       char * to, size_t tsize)
 {
+  if (tsize <= 0)
+    return;
   int off = 0;
   if ((desc != NULL) && (strlen (desc) > 0))
     off = snprintf (to, tsize, "%s ", desc);
@@ -415,7 +423,7 @@ void packet_to_string (const char * buffer, int bsize, const char * desc,
       off += snprintf (to + off, minz (tsize, off), " do-not-cache");
   }
   if (hp->message_type == ALLNET_TYPE_MGMT) {
-    if (bsize < (int) (ALLNET_MGMT_HEADER_SIZE(t))) {
+    if (bsize < (ALLNET_MGMT_HEADER_SIZE(t))) {
       off += snprintf (to + off, minz (tsize, off), " mgmt size %d, need %zd", 
                        bsize, ALLNET_MGMT_HEADER_SIZE(t));
     } else {
@@ -423,40 +431,42 @@ void packet_to_string (const char * buffer, int bsize, const char * desc,
         (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE(t));
       const char * next = buffer + ALLNET_MGMT_HEADER_SIZE(t);
       unsigned int nsize = 0;
-      if (bsize > (int) (ALLNET_MGMT_HEADER_SIZE(t)))
+      if (bsize > (ALLNET_MGMT_HEADER_SIZE(t)))
         nsize = bsize - ALLNET_MGMT_HEADER_SIZE(t);
       off += mgmt_to_string (mp->mgmt_type, next, nsize,
-                             to + off, tsize - off);
+                             to + off, minz (tsize, off));
     }
-  } else if (bsize > (int) (ALLNET_SIZE (hp->transport))) {
-    int dsize = bsize - ALLNET_SIZE (hp->transport);
+  } else if (bsize > (ALLNET_SIZE (hp->transport))) {
+    unsigned int dsize = bsize - ALLNET_SIZE (hp->transport);
     off += snprintf (to + off, minz (tsize, off),
                      ", %d bytes of payload", dsize);
-    if (hp->sig_algo != ALLNET_SIGTYPE_NONE) {
-      int ssize = readb16 (buffer + bsize - 2);
-      dsize -= ssize + 2;
-      off += snprintf (to + off, minz (tsize, off), " = %d data, %d + 2 sig", 
-                       dsize, ssize);
+    if ((hp->sig_algo != ALLNET_SIGTYPE_NONE) && (bsize > 2)) {
+      unsigned int ssize = readb16 (buffer + bsize - 2);
+      if (dsize > ssize + 2) {
+        dsize -= ssize + 2;
+        off += snprintf (to + off, minz (tsize, off), " = %d data, %d + 2 sig", 
+                         dsize, ssize);
+      }
     }
     if (hp->message_type == ALLNET_TYPE_ACK) {
-      int num_acks = dsize / MESSAGE_ID_SIZE;
+      unsigned int num_acks = dsize / MESSAGE_ID_SIZE;
       if (num_acks * MESSAGE_ID_SIZE == dsize)
-        off += snprintf (to + off, minz (tsize, off), " = %d acks", num_acks);
+        off += snprintf (to + off, minz (tsize, off), " = %u acks", num_acks);
       else
-        off += snprintf (to + off, minz (tsize, off), " = %d acks + %d bytes",
+        off += snprintf (to + off, minz (tsize, off), " = %u acks + %u bytes",
                          num_acks, dsize - num_acks * MESSAGE_ID_SIZE);
-      int i;
+      unsigned int i;
       for (i = 0; i < num_acks; i++)
         off += buffer_to_string (buffer + ALLNET_SIZE (hp->transport) +
                                  i * MESSAGE_ID_SIZE, MESSAGE_ID_SIZE,
-                                 ", ", 5, 0, to + off, tsize - off);
+                                 ", ", 5, 0, to + off, minz (tsize, off));
     }
   }
   if (print_eol)
     off += snprintf (to + off, minz (tsize, off), "\n");
 }
 
-void print_packet (const char * packet, int psize, const char * desc,
+void print_packet (const char * packet, unsigned int psize, const char * desc,
                    int print_eol)
 {
   static char buffer [10000];
@@ -476,10 +486,10 @@ void print_packet (const char * packet, int psize, const char * desc,
  *
  * ALLNET_TRANSPORT_LARGE packets are not supported by this call */
 struct allnet_header *
-  init_packet (char * packet, int psize,
-               int message_type, int max_hops, int sig_algo,
-               const unsigned char * source, int sbits,
-               const unsigned char * dest, int dbits,
+  init_packet (char * packet, unsigned int psize, unsigned int message_type,
+               unsigned int max_hops, unsigned int sig_algo,
+               const unsigned char * source, unsigned int sbits,
+               const unsigned char * dest, unsigned int dbits,
                const unsigned char * stream, const unsigned char * ack)
 {
   int transport = 0;
@@ -488,8 +498,8 @@ struct allnet_header *
   if (ack != NULL)
     transport |= ALLNET_TRANSPORT_ACK_REQ;
   struct allnet_header * hp = (struct allnet_header *) packet;
-  if ((psize < (int) ALLNET_HEADER_SIZE) ||
-      (psize < (int) (ALLNET_SIZE (transport))))
+  if ((psize < ALLNET_HEADER_SIZE) ||
+      (psize < (ALLNET_SIZE (transport))))
     return NULL;
   if ((message_type < ALLNET_TYPE_DATA) || (message_type > ALLNET_TYPE_MGMT))
     return NULL;
@@ -531,18 +541,19 @@ struct allnet_header *
  * MESSAGE_ID_SIZE bytes of the ack.
  * *size is set to the size to send */
 struct allnet_header *
-  create_packet (int data_size, int message_type, int max_hops, int sig_algo,
-                 const unsigned char * source, int sbits,
-                 const unsigned char * dest, int dbits,
+  create_packet (unsigned int data_size, unsigned int message_type,
+                 unsigned int max_hops, unsigned int sig_algo,
+                 const unsigned char * source, unsigned int sbits,
+                 const unsigned char * dest, unsigned int dbits,
                  const unsigned char * stream, const unsigned char * ack,
-                 int * size)
+                 unsigned int * size)
 {
   int transport = 0;
   if (stream != NULL)
     transport |= ALLNET_TRANSPORT_STREAM;
   if (ack != NULL)
     transport |= ALLNET_TRANSPORT_ACK_REQ;
-  int alloc_size = ALLNET_SIZE (transport) + data_size;
+  unsigned int alloc_size = ALLNET_SIZE (transport) + data_size;
   if (ack != NULL)
     alloc_size += MESSAGE_ID_SIZE;
   char * result = malloc_or_fail (alloc_size, "util.c create_packet");
@@ -557,7 +568,8 @@ struct allnet_header *
 /* if from is NULL, the source address is taken from packet->destination */
 struct allnet_header *
   create_ack (struct allnet_header * packet, const unsigned char * ack,
-              const unsigned char * from, int nbits, int * size)
+              const unsigned char * from, unsigned int nbits,
+              unsigned int * size)
 {
   *size = 0;   /* in case of early return */
   unsigned int alloc_size = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
@@ -583,9 +595,11 @@ struct allnet_header *
   return hp;
 }
 
-int print_sockaddr_str (const struct sockaddr * sap, int addr_size, int tcp,
-                        char * s, int len)
+int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
+                        int tcp, char * s, unsigned int len)
 {
+  if (len <= 0)
+    return 0;
   char * proto = "";
   if (tcp == 1)
     proto = "/tcp";
@@ -666,7 +680,8 @@ int print_sockaddr_str (const struct sockaddr * sap, int addr_size, int tcp,
 }
 
 /* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
-void print_sockaddr (const struct sockaddr * sap, int addr_size, int tcp)
+void print_sockaddr (const struct sockaddr * sap, socklen_t addr_size,
+                     int tcp)
 {
   char buffer [1000];
   print_sockaddr_str (sap, addr_size, tcp, buffer, sizeof (buffer));
@@ -777,7 +792,10 @@ int bitstring_matches (const unsigned char * x, int xoff,
 unsigned long long allnet_time ()     /* seconds since Y2K */
 {
   unsigned long long result = time (NULL);
-  return result - ALLNET_Y2K_SECONDS_IN_UNIX;
+  if (result > ALLNET_Y2K_SECONDS_IN_UNIX)
+    return result - ALLNET_Y2K_SECONDS_IN_UNIX;
+  else
+    return 0;
 }
 
 unsigned long long allnet_time_us ()  /* microseconds since Y2K */
@@ -1013,7 +1031,7 @@ char * string_replace_once (const char * original, const char * pattern,
 }
 
 /* copy memory to new storage, using malloc_or_fail to get the memory */
-void * memcpy_malloc (const void * bytes, int bsize, const char * desc)
+void * memcpy_malloc (const void * bytes, size_t bsize, const char * desc)
 {
   char * result = malloc_or_fail (bsize, desc);
   memcpy (result, bytes, bsize);
@@ -1170,7 +1188,7 @@ int append_file (const char * fname, const char * contents, int len,
 }
 
 /* low-grade randomness, in case the other calls don't work */
-static void computed_random_bytes (char * buffer, int bsize)
+static void computed_random_bytes (char * buffer, size_t bsize)
 {
   static int initialized = 0;
   if (! initialized) {  /* not very random, but better than nothing */
@@ -1179,13 +1197,13 @@ static void computed_random_bytes (char * buffer, int bsize)
     srandom ((unsigned)now.tv_sec ^ (unsigned)now.tv_usec);
     initialized = 1;
   }
-  int i;
+  size_t i;
   for (i = 0; i < bsize; i++)
     buffer [i] = random () % 256;
 }
 
 /* returns 1 if succeeds, 0 otherwise */
-static int dev_urandom_bytes (char * buffer, int bsize)
+static int dev_urandom_bytes (char * buffer, size_t bsize)
 {
   int fd = open ("/dev/urandom", O_RDONLY);
   if (fd < 0) {
@@ -1193,7 +1211,7 @@ static int dev_urandom_bytes (char * buffer, int bsize)
     return 0;
   }
   ssize_t r = read (fd, buffer, bsize);
-  if (r < bsize) {
+  if ((r < 0) || (((size_t) r) < bsize)) {
     perror ("read /dev/urandom");
     close (fd);
     return 0;
@@ -1203,7 +1221,7 @@ static int dev_urandom_bytes (char * buffer, int bsize)
 }
 
 /* fill this array with random bytes */
-void random_bytes (char * buffer, int bsize)
+void random_bytes (char * buffer, size_t bsize)
 {
   if (! dev_urandom_bytes (buffer, bsize))
     computed_random_bytes (buffer, bsize);
@@ -1241,11 +1259,11 @@ unsigned long long int random_int (unsigned long long int min,
 }
 
 /* fill this array with random alpha characters.  The last byte is set to \0 */
-void random_string (char * buffer, int bsize)
+void random_string (char * buffer, size_t bsize)
 {
   if (bsize <= 0)
     return;
-  int i;
+  size_t i;
   for (i = 0; i + 1 < bsize; i++)
     buffer [i] = 'a' + (random_mod (26));
   buffer [bsize - 1] = '\0';
@@ -1413,7 +1431,7 @@ void writeb64u (unsigned char * p, unsigned long long int value)
 }
 
 /* returns 1 if the message is valid, 0 otherwise */
-int is_valid_message (const char * packet, int size)
+int is_valid_message (const char * packet, unsigned int size)
 {
   if (size < (int) ALLNET_HEADER_SIZE) {
 /*

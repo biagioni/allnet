@@ -8,11 +8,12 @@
  * fraction of the available bandwidth this source is using.
  * ALLNET_PRIORITY_MAX is defined in priority.h
  */
-extern int track_rate (unsigned char * src, int sbits, int packet_size);
+extern unsigned int track_rate (unsigned char * src, unsigned int sbits,
+                                unsigned int packet_size);
 
 /* return the rate of the sender that is sending the most at this time */
 /* used by default when we cannot prove who the sender is */
-extern int largest_rate ();
+extern unsigned int largest_rate ();
 
 #endif /* TRACK_H */
 

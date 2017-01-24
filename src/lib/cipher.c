@@ -189,6 +189,22 @@ int allnet_decrypt (const char * cipher, int csize,
   return rsize;
 }
 
+static void debug_public_key_size (const char * text, int tsize,
+                                   const char * sig, int ssize, int rsa_size)
+{
+  if (ssize != rsa_size) {
+    if (rsa_size > ssize)
+      printf ("public key has %d-byte signature, only %d bytes given\n",
+              rsa_size, ssize);
+    else
+      printf ("notice: public key has %d-byte signature, %d bytes given\n",
+              rsa_size, ssize);
+    printf ("text: %s (%d)\n", text, tsize);
+  }
+#ifdef DEBUG_PRINT
+#endif /* DEBUG_PRINT */
+}
+
 /* returns 1 if it verifies, 0 otherwise */
 int allnet_verify (const char * text, int tsize, const char * sig, int ssize,
                    allnet_rsa_pubkey key)
@@ -202,16 +218,9 @@ int allnet_verify (const char * text, int tsize, const char * sig, int ssize,
     return 0;
   }
   int rsa_size = allnet_rsa_pubkey_size (key);
-  if (rsa_size > ssize) {
-    printf ("public key has %d-byte signature, only %d bytes given\n",
-            rsa_size, ssize);
+  debug_public_key_size (text, tsize, sig, ssize, rsa_size);
+  if (rsa_size > ssize)
     return 0;
-  }
-  if (ssize != rsa_size)
-    printf ("notice: public key has %d-byte signature, %d bytes given\n",
-            rsa_size, ssize);
-#ifdef DEBUG_PRINT
-#endif /* DEBUG_PRINT */
 
   /* hash the contents, verify that the signature matches the hash */
   char hash [SHA512_SIZE];

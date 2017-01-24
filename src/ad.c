@@ -24,16 +24,17 @@
 static struct allnet_log * alog = NULL;
 
 /* compute a forwarding priority for non-local packets */
-static int packet_priority (char * packet, struct allnet_header * hp, int size,
-                            struct social_info * soc)
+static unsigned int packet_priority (char * packet, struct allnet_header * hp,
+                                     unsigned int size,
+                                     struct social_info * soc)
 {
-  int sig_size = 0;
+  unsigned int sig_size = 0;
   if (hp->sig_algo != ALLNET_SIGTYPE_NONE)
     sig_size = readb16 (packet + (size - 2));
   int valid = 0;
-  int social_distance = UNKNOWN_SOCIAL_TIER;
-  int rate_fraction = largest_rate ();
-  int hsize = ALLNET_SIZE (hp->transport);
+  unsigned int social_distance = UNKNOWN_SOCIAL_TIER;
+  unsigned int rate_fraction = largest_rate ();
+  unsigned int hsize = ALLNET_SIZE (hp->transport);
   if ((sig_size > 0) && (hsize + sig_size + 2 < size)) {
     char * verify = packet + hsize; 
     int vsize = size - (hsize + sig_size + 2);
@@ -58,7 +59,7 @@ static int packet_priority (char * packet, struct allnet_header * hp, int size,
 }
 
 static int process_mgmt (char * message, unsigned int msize, int is_local,
-                         int * priority, struct social_info * soc)
+                         unsigned int * priority, struct social_info * soc)
 {
   /* if sent from local, use the priority they gave us */
   /* else set priority to the lowest possible.  Generally the right thing */
@@ -117,7 +118,7 @@ static int process_mgmt (char * message, unsigned int msize, int is_local,
  * 2 to forward only to local destinations, and 3 to forward everywhere */
 /* if returning 3, fills in priority */
 static int process_packet (char * packet, int size, int is_local,
-                           struct social_info * soc, int * priority)
+                           struct social_info * soc, unsigned int * priority)
 {
 /* if (! is_valid_message (packet, size))
 printf ("got invalid %s packet of size %d, priority %d\n",
@@ -226,7 +227,7 @@ static void main_loop (int npipes, int * read_pipes, int * write_pipes,
     char * packet = NULL;
     int from_pipe;
  /* incoming priorities ignored unless from local */
-    int priority = ALLNET_PRIORITY_EPSILON;
+    unsigned int priority = ALLNET_PRIORITY_EPSILON;
     int psize = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
                                           &packet, &from_pipe, &priority);
 #ifdef LOG_PACKETS

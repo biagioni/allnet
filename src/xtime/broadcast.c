@@ -48,7 +48,7 @@ static void * receive_ignore (void * arg)
   pd p = tap->p;
   while (1) {
     char * message;
-    int priority;
+    unsigned int priority;
     int n = receive_pipe_message (p, sock, &message, &priority);
     if (n > 0)    /* ignore the message and recycle the storage */
       free (message);

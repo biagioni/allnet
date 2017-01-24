@@ -374,7 +374,8 @@ static int send_header_data (int pipe, const char * message, int mlen,
   return send_buffer (pipe, packet, HEADER_SIZE + mlen, 0, log);
 }
 
-int send_pipe_message (int pipe, const char * message, int mlen, int priority,
+int send_pipe_message (int pipe, const char * message, unsigned int mlen,
+                       unsigned int priority,
                        struct allnet_log * log)
 {
   if (pipe < 0) {
@@ -402,14 +403,15 @@ int send_pipe_message (int pipe, const char * message, int mlen, int priority,
 /* send multiple messages at once, again to avoid the mysterious system
  * delay when sending multiple times in close succession on a socket.
  * (Nagle's delay?).  Each message gets its own header */
-static int send_multiple_packets (int pipe, int num_messages,
-                                  const char ** messages, const int * mlens,
-                                  const int * priorities,
+static int send_multiple_packets (int pipe, unsigned int num_messages,
+                                  const char ** messages,
+                                  const unsigned int * mlens,
+                                  const unsigned int * priorities,
                                   struct allnet_log * log)
 {
   if (num_messages <= 0)
     return 0;
-  int i;
+  unsigned int i;
   int total = 0;
   for (i = 0; i < num_messages; i++)
     total += HEADER_SIZE + mlens [i];
@@ -443,13 +445,14 @@ static int send_multiple_packets (int pipe, int num_messages,
 /* send multiple messages at once, again to avoid the mysterious system
  * delay when sending multiple times in close succession on a socket.
  * messages are not freed */
-int send_pipe_multiple (int pipe, int num_messages,
-                        const char ** messages, const int * mlens,
-                        const int * priorities, struct allnet_log * log)
+int send_pipe_multiple (int pipe, unsigned int num_messages,
+                        const char ** messages, const unsigned int * mlens,
+                        const unsigned int * priorities,
+                        struct allnet_log * log)
 {
   if (pipe < 0) {
     if (allnet_queues != NULL) {
-      int i;
+      unsigned int i;
       int success = 1;
       for (i = 0; i < num_messages; i++) {
         success = success &&
@@ -480,20 +483,22 @@ mlens [i], pipe, success, i, num_messages);
 }
 
 /* same, but messages are freed */
-int send_pipe_multiple_free (int pipe, int num_messages,
-                             char ** messages, const int * mlens,
-                             const int * priorities, struct allnet_log * log)
+int send_pipe_multiple_free (int pipe, unsigned int num_messages,
+                             char ** messages, const unsigned int * mlens,
+                             const unsigned int * priorities,
+                             struct allnet_log * log)
 {
   int r = send_pipe_multiple (pipe, num_messages, (const char **)messages,
                               mlens, priorities, log);
-  int i;
+  unsigned int i;
   for (i = 0; i < num_messages; i++)
     free (messages [i]);
   return r;
 }
 
 /* same as send_pipe_message, but frees the memory referred to by message */
-int send_pipe_message_free (int pipe, char * message, int mlen, int priority,
+int send_pipe_message_free (int pipe, char * message, unsigned int mlen,
+                            unsigned int priority,
                             struct allnet_log * log)
 {
   int result = send_pipe_message (pipe, message, mlen, priority, log);
@@ -746,7 +751,7 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block,
 /* returns -1 if the header is not valid, and the data size otherwise */
 /* note: does not work for buffers of size 2^32 - 1 -- but any buffer
  * larger than 2^31 - 1 is likely to cause problems due to signed ints anyway */
-static int parse_header (char * header, int pipe, int * priority,
+static int parse_header (char * header, int pipe, unsigned int * priority,
                          struct allnet_log * log)
 {
   static int printed = 0;
@@ -791,7 +796,7 @@ static void shift_header (char * header)
 /* similar to receive_pipe_message but may return 0 if no message
  * is immediately ready to return.  returns -1 in case of error */
 static int receive_pipe_message_poll (pd p, int pipe,
-                                      char ** message, int * priority)
+                                      char ** message, unsigned int * priority)
 {
   *message = NULL;
   int index = pipe_index (p, pipe);
@@ -853,7 +858,8 @@ static int receive_pipe_message_poll (pd p, int pipe,
   return 0;
 }
 
-static int receive_queue_message (int pipe, char ** message, int * priority,
+static int receive_queue_message (int pipe, char ** message,
+                                  unsigned int * priority,
                                   struct allnet_log * log)
 {
   if (allnet_queues == NULL) {  /* error */
@@ -892,7 +898,8 @@ static int receive_queue_message (int pipe, char ** message, int * priority,
 
 /* receives the message into a buffer it allocates for the purpose. */
 /* the caller is responsible for freeing the buffer. */
-int receive_pipe_message (pd p, int pipe, char ** message, int * priority)
+int receive_pipe_message (pd p, int pipe, char ** message,
+                          unsigned int * priority)
 {
   if (pipe < 0)
     return receive_queue_message (pipe, message, priority, p->log);
@@ -1032,7 +1039,7 @@ static void clear_addr (struct sockaddr * sa, socklen_t * salen)
  */
 int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
                              struct sockaddr * sa, socklen_t * salen,
-                             int * from_pipe, int * priority)
+                             int * from_pipe, unsigned int * priority)
 {
   struct timeval now, finish;
   gettimeofday (&now, NULL);
@@ -1153,7 +1160,7 @@ plen, p->queues [i], i); */
  * corresponding *from_pipe and returning 0, but not actually reading the fd
  */
 int receive_pipe_message_any (pd p, int timeout, char ** message,
-                              int * from_pipe, int * priority)
+                              int * from_pipe, unsigned int * priority)
 {
   return receive_pipe_message_fd (p, timeout, message, -1, NULL, NULL,
                                   from_pipe, priority);
@@ -1166,9 +1173,10 @@ static void print_split_message_error (int code, int n1, int n2,
   printf ("split_messages %d: error %d %d %u\n", code, n1, n2, n3);
 }
 
-static void extend_results (char * data, int len, int prio,
-                            int * index,  /* incremented by this call */
-                            char *** mbuf, int ** lbuf, int ** pbuf)
+static void extend_results (char * data, unsigned int len, unsigned int prio,
+                            unsigned int * index,/* incremented by this call */
+                            char *** mbuf, unsigned int ** lbuf,
+                            unsigned int ** pbuf)
 {
   int num_entries = (*index) + 1;
   size_t csize = num_entries * sizeof (char *);
@@ -1223,8 +1231,8 @@ static void extend_results (char * data, int len, int prio,
     }
  */
 int split_messages (char * data, unsigned int dlen,
-                    char *** messages, int ** lengths,
-                    int ** priorities, void ** buffer)
+                    char *** messages, unsigned int ** lengths,
+                    unsigned int ** priorities, void ** buffer)
 {
   struct buffer_info {
     unsigned int filled;    /* number of bytes in data */
@@ -1239,16 +1247,16 @@ int split_messages (char * data, unsigned int dlen,
     bp->filled = 0;
     *buffer = bp;
   }
-  int mi = 0;                 /* message index (and the return value) */
+  unsigned int mi = 0;           /* message index (and the return value) */
   /* clear *messages, *lengths, *priorities in case of error return */
   if (messages != NULL)   *messages   = NULL;
   if (lengths != NULL)    *lengths    = NULL;
   if (priorities != NULL) *priorities = NULL;
   char ** mbuf = NULL;
-  int *lbuf = NULL;
-  int *pbuf = NULL;
-  int msize = 0;
-  int priority;
+  unsigned int *lbuf = NULL;
+  unsigned int *pbuf = NULL;
+  unsigned int msize = 0;
+  unsigned int priority;
   while (bp->filled > 0) {  /* there is still data to process */
     while ((bp->filled < HEADER_SIZE) && (dlen > 0)) {
       bp->data [bp->filled] = *data;
@@ -1300,7 +1308,7 @@ int split_messages (char * data, unsigned int dlen,
   assert (bp->filled == 0);
 
   while (dlen >= HEADER_SIZE) {
-    int my_priority;
+    unsigned int my_priority;
     int my_msize = parse_header (data, -1, &my_priority, NULL);
     if ((my_msize < 0) || (my_msize > ALLNET_MTU)) {
       /* bad header, try again with next char */

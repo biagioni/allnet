@@ -177,7 +177,7 @@ static void main_loop (int sock, pd p, int debug,
 {
   while (1) {
     int pipe;
-    int pri;
+    unsigned int pri;
     char * message;
     int found = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
                                           &message, &pipe, &pri);

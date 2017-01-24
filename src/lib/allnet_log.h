@@ -10,7 +10,7 @@
 struct allnet_log {
     char * debug_info;  /* name from init_log, do not modify!! */
     char b [LOG_SIZE];  /* buffer */
-    int s;     /* buffer length -- always LOG_SIZE, do not modify! */
+    unsigned int s;     /* buffer length -- always LOG_SIZE, do not modify! */
     int log_to_output;   /* default 0, set as desired */
 };
 

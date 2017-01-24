@@ -156,7 +156,8 @@ int main (int argc, char ** argv)
   int ack_seen = 0;
   while (exchanging_key || (max_wait > 0)) {
     char * packet;
-    int pipe, pri;
+    int pipe;
+    unsigned int pri;
     int found = receive_pipe_message_any (p, max_wait, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchats pipe closed, exiting\n");

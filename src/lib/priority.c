@@ -2,10 +2,11 @@
 /* includes operations on fractions */
 
 #include <stdio.h>
+#include <stdint.h>
 
 #include "priority.h"
 
-void print_fraction (int value, char * str)
+void print_fraction (unsigned int value, char * str)
 {
   double v = ((double) value) / ((double) ALLNET_PRIORITY_MAX);
   if (str != NULL)
@@ -14,7 +15,7 @@ void print_fraction (int value, char * str)
     printf ("%f", v);
 }
 
-int power_half_fraction (int power)
+unsigned int power_half_fraction (unsigned int power)
 {
   if (power <= 0)
     return ALLNET_PRIORITY_MAX;
@@ -24,33 +25,35 @@ int power_half_fraction (int power)
 }
 
 /* multiplying fractions, so compute with 64 bits, then shift down 30 bits */
-int allnet_multiply (int p1, int p2)
+unsigned int allnet_multiply (unsigned int p1, unsigned int p2)
 {
-  long long int product = ((long long int) p1) * ((long long int) p2);
+  uint64_t product = ((uint64_t) p1) * ((uint64_t) p2);
   int result = (int)(product >> 30);
   return result;
 }
 
-static int divide (int dividend, int divisor)
+static unsigned int divide (unsigned int dividend, unsigned int divisor)
 {
-  long long int product =
-     ((long long int) ALLNET_PRIORITY_MAX) * ((long long int) dividend);
-  long long int result = product / divisor;
-  return (int) result;
+  uint64_t product =
+     ((uint64_t) ALLNET_PRIORITY_MAX) * ((uint64_t) dividend);
+  uint64_t result = product / divisor;
+  return (unsigned int) result;
 }
 
 /* if n1 < n2,  returns n1 / n2 */
 /* if n1 >= n2, returns ALLNET_PRIORITY_MAX */
-int allnet_divide (int n1, int n2)
+unsigned int allnet_divide (unsigned int n1, unsigned int n2)
 {
   if (n1 >= n2)
     return ALLNET_PRIORITY_MAX;
   return divide (n1, n2);
 }
 
-int compute_priority (int size, int sbits, int dbits,
-                      int hops_already, int hops_max,
-                      int social_distance, int rate_fraction, int cacheable)
+unsigned int compute_priority (unsigned int size,
+                               unsigned int sbits, unsigned int dbits,
+                               unsigned int hops_already, unsigned int hops_max,
+                               unsigned int social_distance,
+                               unsigned int rate_fraction, int cacheable)
 {
   int debug = 0;
   if (debug)

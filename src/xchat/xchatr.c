@@ -36,7 +36,8 @@ int main (int argc, char ** argv)
   keyset old_kset = -1;
   while (1) {
     char * packet;
-    int pipe, pri;
+    int pipe;
+    unsigned int pri;
     int found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchatr pipe closed, exiting\n");

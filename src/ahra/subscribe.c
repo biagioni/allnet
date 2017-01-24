@@ -30,8 +30,8 @@ static int send_key_request (int sock, char * phrase, char * source, int slen,
   free (mapped);
 
 #define EMPTY_FINGERPRINT_SIZE	1  /* nbits_fingerprint plus the fingerprint */
-  int dsize = EMPTY_FINGERPRINT_SIZE + KEY_RANDOM_PAD_SIZE;
-  int psize;
+  unsigned int dsize = EMPTY_FINGERPRINT_SIZE + KEY_RANDOM_PAD_SIZE;
+  unsigned int psize;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
                    (unsigned char *) source, slen * 8, destination, 8,
@@ -39,7 +39,7 @@ static int send_key_request (int sock, char * phrase, char * source, int slen,
   
   if (hp == NULL)
     return 0;
-  int hsize = ALLNET_SIZE(hp->transport);
+  unsigned int hsize = ALLNET_SIZE(hp->transport);
   if (psize != hsize + dsize) {
     printf ("send_key_request error: psize %d != %d = %d + %d\n", psize,
             hsize + dsize, hsize, dsize);
@@ -104,7 +104,7 @@ static void wait_for_response (int sock, pd p, char * phrase, char * ahra,
 {
   while (1) {
     int pipe;
-    int pri;
+    unsigned int pri;
     char * message;
     int found = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
                                           &message, &pipe, &pri);

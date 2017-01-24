@@ -121,18 +121,20 @@ int init_chat_descriptor (struct chat_descriptor * cp, const char * contact)
  * returns 0 if the encryption or transmission failed, and it would probably
  * be best to stop trying */
 /* can only do_save if also do_ack */
-static int send_to_one (keyset k, char * data, int dsize,
+static int send_to_one (keyset k, char * data, unsigned int dsize,
                         const char * contact, int sock,
                         unsigned char * src, unsigned int sbits,
                         unsigned char * dst, unsigned int dbits,
-                        int hops, int priority, int do_ack,
+                        unsigned int hops, unsigned int priority, int do_ack,
                         unsigned char * ack, int do_save)
 {
+  if (dsize <= 0)
+    return 0;
   static struct allnet_log * log = NULL;
   if (log == NULL) /* initialize */
     log = init_log ("cutil send_to_one");
 /* printf ("sending to contact %s, keyset %d\n", contact, k); */
-  int sksize = has_symmetric_key (contact, NULL, 0);
+  unsigned int sksize = has_symmetric_key (contact, NULL, 0);
   struct allnet_stream_encryption_state sym_state;
   int has_sym_state = 0;
   if (symmetric_key_state (contact, &sym_state)) {
@@ -183,9 +185,9 @@ static int send_to_one (keyset k, char * data, int dsize,
   allnet_rsa_pubkey key;
   char * encrypted = NULL;
   char * signature = NULL;
-  int esize = 0;
-  int sendsize = 0;
-  int ssize = 0;
+  unsigned int esize = 0;
+  unsigned int sendsize = 0;
+  unsigned int ssize = 0;
   int sigtype = ALLNET_SIGTYPE_RSA_PKCS1;
   if (has_sym_state) {
     esize = dsize + sym_state.counter_size + sym_state.hash_size;
@@ -224,15 +226,21 @@ static int send_to_one (keyset k, char * data, int dsize,
     return 0;  /* exit the loop */
   }
 
-  int csize = sendsize;  /* create_packet wants size without message ack */
-  if (message_ack != NULL)
+  unsigned int csize = sendsize;
+  /* create_packet wants size without message ack */
+  if ((message_ack != NULL) && (sendsize >= MESSAGE_ID_SIZE))
     csize = sendsize - MESSAGE_ID_SIZE;
-  int psize;
+  else {
+    printf ("error: csize %u, sendsize %u, id_size %d\n", 
+            csize, sendsize, MESSAGE_ID_SIZE);
+    return 0;  /* exit the loop */
+  }
+  unsigned int psize;
   struct allnet_header * hp =
     create_packet (csize, ALLNET_TYPE_DATA, hops, sigtype,
                    src, sbits, dst, dbits, NULL, message_ack, &psize);
-  int hsize = ALLNET_SIZE (hp->transport);
-  int msize = hsize + sendsize;
+  unsigned int hsize = ALLNET_SIZE (hp->transport);
+  unsigned int msize = hsize + sendsize;
   if (psize != msize) {
     printf ("error: computed message size %d, actual %d\n", msize, psize);
     printf ("  hsize %d (%x, %p, %d), sendsize %d = e %d + s %d + 2\n",
@@ -269,8 +277,9 @@ static int send_to_one (keyset k, char * data, int dsize,
 /* same as send_to_contact, but only sends to the one key corresponding
  * to key, and does not save outgoing.  Does request ack, and
  * uses the addresses saved for the contact. */
-int resend_packet (char * data, int dsize, const char * contact,
-                   keyset key, int sock, int hops, int priority)
+int resend_packet (char * data, unsigned int dsize, const char * contact,
+                   keyset key, int sock, unsigned int hops,
+                   unsigned int priority)
 {
   /* ack should already be in the packet data */
   unsigned char ack [MESSAGE_ID_SIZE];
@@ -281,9 +290,9 @@ int resend_packet (char * data, int dsize, const char * contact,
 
 /* send to the contact's specific key, returning 1 if successful, 0 otherwise */
 /* the xchat_descriptor must already have been initialized */
-int send_to_key (char * data, int dsize,
+int send_to_key (char * data, unsigned int dsize,
                  const char * contact, keyset key, int sock,
-                 int hops, int priority, int ack_and_save)
+                 unsigned int hops, unsigned int priority, int ack_and_save)
 {
   unsigned char src [ADDRESS_SIZE];
   unsigned char dst [ADDRESS_SIZE];
@@ -294,10 +303,10 @@ int send_to_key (char * data, int dsize,
                       ack_and_save, NULL, ack_and_save);
 }
 
-static unsigned long long int send_to_group (int depth, char * data, int dsize,
-                                             const char * contact, int sock,
-                                             int hops, int priority,
-                                             int ack_and_save)
+static unsigned long long int
+  send_to_group (int depth, char * data, unsigned int dsize,
+                 const char * contact, int sock,
+                 unsigned int hops, unsigned int priority, int ack_and_save)
 {
   if (depth > 100)  /* oo recursion, something wrong */
     return 0;
@@ -340,9 +349,10 @@ static unsigned long long int send_to_group (int depth, char * data, int dsize,
  * the largest sequence number */
 /* the message must include room for the chat descriptor 
  * and (if ack_and_save) for the ack, both initialized by this call. */
-unsigned long long int send_to_contact (char * data, int dsize,
+unsigned long long int send_to_contact (char * data, unsigned int dsize,
                                         const char * contact, int sock,
-                                        int hops, int priority,
+                                        unsigned int hops,
+                                        unsigned int priority,
                                         int ack_and_save)
 {
   if (is_group (contact)) {
@@ -434,10 +444,11 @@ char * chat_time_to_string (unsigned char * t, int static_result)
 
 /* rsize should be at least 3 * dsize */
 /* returns the number of characters in the final result */
-static int make_hex (char * data, int dsize, char * result, int rsize)
+static unsigned int make_hex (char * data, unsigned int dsize,
+                              char * result, unsigned int rsize)
 {
-  int i;
-  int total = 0;
+  unsigned int i;
+  unsigned int total = 0;
   for (i = 0; i < dsize; i++) {
     int chars = snprintf (result, rsize, "%02x%s", data [i] & 0xff,
                           (i + 1 < dsize) ? ":" : "");

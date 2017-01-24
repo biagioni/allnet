@@ -1360,7 +1360,7 @@ static int send_ack (struct allnet_header * hp, unsigned int msize, int sock)
     return 0;
   index--;   /* the actual index is one less than the return value */
 
-  int send_size;
+  unsigned int send_size;
   struct allnet_header * reply =
     create_packet (MESSAGE_ID_SIZE, ALLNET_TYPE_ACK, hp->hops + 1,
                    ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
@@ -1716,7 +1716,7 @@ static void main_loop (int rsock, int wsock, pd p)
     max_msg_size = signed_max;
   while (1) {
     char * message = NULL;
-    int priority;
+    unsigned int priority;
     int result = receive_pipe_message (p, rsock, &message, &priority);
     unsigned int uresult = result;  /* only used if result > 0 */
     struct allnet_header * hp = (struct allnet_header *) message;

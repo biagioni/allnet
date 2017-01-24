@@ -25,31 +25,33 @@ extern struct allnet_log * pipemsg_log (pd p);
 /* pipe numbers n < 0 give index = -n - 1 in allnet_queues */
 
 extern int send_pipe_message (int pipe,
-                              const char * message, int mlen, int priority,
-                              struct allnet_log * log);
+                              const char * message, unsigned int mlen,
+                              unsigned int priority, struct allnet_log * log);
 
 /* same as send_pipe_message, but frees the memory referred to by message */
-extern int send_pipe_message_free (int pipe, char * message, int mlen,
-                                   int priority,
+extern int send_pipe_message_free (int pipe, char * message, unsigned int mlen,
+                                   unsigned int priority,
                                    struct allnet_log * log);
 
 /* send multiple messages at once, again to avoid the mysterious system
  * delay when sending multiple times in close succession on a socket.
  * messages are not freed */
-extern int send_pipe_multiple (int pipe, int num_messages,
-                               const char ** messages, const int * mlens,
-                               const int * priorities,
+extern int send_pipe_multiple (int pipe, unsigned int num_messages,
+                               const char ** messages,
+                               const unsigned int * mlens,
+                               const unsigned int * priorities,
                                struct allnet_log * log);
 /* same, but messages are freed */
-extern int send_pipe_multiple_free (int pipe, int num_messages,
-                                    char ** messages, const int * mlens,
-                                    const int * priorities,
+extern int send_pipe_multiple_free (int pipe, unsigned int num_messages,
+                                    char ** messages,
+                                    const unsigned int * mlens,
+                                    const unsigned int * priorities,
                                     struct allnet_log * log);
 
 /* receives the message into a buffer it allocates for the purpose. */
 /* the caller is responsible for freeing the message buffer. */
 extern int receive_pipe_message (pd p, int pipe,
-                                 char ** message, int * priority);
+                                 char ** message, unsigned int * priority);
 
 /* keeps track of which pipes are needed for receive_pipe_message_any,
  * which buffers partial messages received on a socket. */
@@ -68,7 +70,7 @@ extern void remove_pipe (pd p, int pipe);
  * is returned in *from_pipe if not NULL.
  */
 extern int receive_pipe_message_any (pd p, int timeout, char ** message,
-                                     int * from_pipe, int * priority);
+                                     int * from_pipe, unsigned int * priority);
 
 /* same as receive_pipe_message_any, but listens to the given socket as
  * well as the pipes added previously,  The socket is assumed to be a
@@ -83,7 +85,7 @@ extern int receive_pipe_message_any (pd p, int timeout, char ** message,
  */
 extern int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
                                     struct sockaddr * sa, socklen_t * salen,
-                                    int * from_pipe, int * priority);
+                                    int * from_pipe, unsigned int * priority);
 
 /* splits an incoming data into n = zero or more allnet messages, returning
  * the number of messages.
@@ -121,6 +123,7 @@ extern int receive_pipe_message_fd (pd p, int timeout, char ** message, int fd,
     }
  */
 extern int split_messages (char * data, unsigned int dlen, char *** messages,
-                           int ** lengths, int ** priorities, void ** buffer);
+                           unsigned int ** lengths, unsigned int ** priorities,
+                           void ** buffer);
 
 #endif /* PIPEMSG_H */

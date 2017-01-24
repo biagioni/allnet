@@ -330,11 +330,11 @@ static void send_peer_message (int fd, struct listen_info * info, int index)
   if (npeers > 255)
     npeers = 255;
 printf ("sending peer message with %d/%d peers\n", npeers, info->num_fds);
-  int size = ALLNET_PEER_SIZE (0, npeers);
-  int hsize = ALLNET_SIZE (0);
-  int dsize = size - hsize;
+  unsigned int size = ALLNET_PEER_SIZE (0, npeers);
+  unsigned int hsize = ALLNET_SIZE (0);
+  unsigned int dsize = size - hsize;
 
-  int psize;
+  unsigned int psize;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                    NULL, 0, NULL, 0, NULL, NULL, &psize);

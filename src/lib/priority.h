@@ -61,20 +61,23 @@
 /* computes priority as a fraction of ALLNET_PRIORITY_MAX.  For example, a
  * priority of 3/4 is ALLNET_PRIORITY_MAX / 4 * 3
  */
-extern int compute_priority (int size, int sbits, int dbits,
-                             int hops_already, int hops_max,
-                             int social_distance, int rate_fraction,
-                             int cacheable);
+extern unsigned int compute_priority (unsigned int size, unsigned int sbits,
+                                      unsigned int dbits,
+                                      unsigned int hops_already,
+                                      unsigned int hops_max,
+                                      unsigned int social_distance,
+                                      unsigned int rate_fraction,
+                                      int cacheable);
 
 /* for use with priorities and also other fractions */
-extern void print_fraction (int value, char * str);
+extern void print_fraction (unsigned int value, char * str);
 
-extern int power_half_fraction (int power);
+extern unsigned int power_half_fraction (unsigned int power);
 
-extern int allnet_multiply (int p1, int p2);
+extern unsigned int allnet_multiply (unsigned int p1, unsigned int p2);
 
 /* if n1 < n2,  returns n1 / n2 */
 /* if n1 >= n2, returns ALLNET_PRIORITY_MAX */
-extern int allnet_divide (int n1, int n2);
+extern unsigned int allnet_divide (unsigned int n1, unsigned int n2);
 
 #endif /* PRIORITY_H */

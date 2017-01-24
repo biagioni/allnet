@@ -41,9 +41,9 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
     return;
   }
   int type = ALLNET_TYPE_CLEAR;
-  int allocated = 0;
-  int amhsize = sizeof (struct allnet_app_media_header);
-  int bytes;
+  unsigned int allocated = 0;
+  unsigned int amhsize = sizeof (struct allnet_app_media_header);
+  unsigned int bytes;
   struct allnet_header * hp =
     create_packet (dlen + amhsize + KEY_RANDOM_PAD_SIZE, type, hops,
                    ALLNET_SIGTYPE_NONE, key->address, 16, address, abits,
@@ -273,7 +273,7 @@ void keyd_thread (char * pname, int rpipe, int wpipe)
     
   while (1) {  /* loop forever */
     int pipe;
-    int pri;
+    unsigned int pri;
     char * message;                      /* sleep for up to a minute */
     int found = receive_pipe_message_any (p, 60 * 1000, &message, &pipe, &pri);
     if (found < 0) {
@@ -301,7 +301,7 @@ void keyd_main (char * pname)
 
   while (1) {  /* loop forever */
     int pipe;
-    int pri;
+    unsigned int pri;
     char * message;                      /* sleep for up to a minute */
     int found = receive_pipe_message_any (p, 60 * 1000, &message, &pipe, &pri);
     if (found < 0) {

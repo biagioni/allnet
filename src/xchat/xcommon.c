@@ -151,16 +151,17 @@ static void * request_cached_data (void * arg)
 #define BITMAP_BITS_LOG	8  /* 11 or less to keep packet size below 1K */
 #define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
 #define BITMAP_BYTES	(BITMAP_BITS / 8)
-    int size;
+    unsigned int size;
     /* adr_size has room for each of the bitmaps */
-    int adr_size = sizeof (struct allnet_data_request) + BITMAP_BYTES * 3;
+    unsigned int adr_size =
+      sizeof (struct allnet_data_request) + BITMAP_BYTES * 3;
     int hops = random_hop_count ();
     struct allnet_header * hp =
       create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
                      NULL, 0, NULL, 0, NULL, NULL, &size);
     struct allnet_data_request * adr =
       (struct allnet_data_request *) (ALLNET_DATA_START (hp, hp->transport,
-                                                         (unsigned int) size));
+                                                         size));
     bzero (adr->since, sizeof (adr->since));
     adr->dst_bits_power_two = BITMAP_BITS_LOG;
     adr->src_bits_power_two = BITMAP_BITS_LOG;
@@ -248,7 +249,7 @@ static void send_ack (int sock, struct allnet_header * hp,
 #endif /* DEBUG_PRINT */
     return;
   }
-  int size;
+  unsigned int size;
   struct allnet_header * ackp =
     create_ack (hp, message_ack, NULL, ADDRESS_BITS, &size);
   if (ackp == NULL)
@@ -643,7 +644,7 @@ static int send_key (int sock, const char * contact, keyset kset,
     return 0;
   }
   int dsize = pub_ksize + SHA512_SIZE + KEY_RANDOM_PAD_SIZE;
-  int size;
+  unsigned int size;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_XCHG, max_hops, ALLNET_SIGTYPE_NONE,
                    address, abits, NULL, 0, NULL, NULL, &size);
@@ -898,7 +899,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
                    char * kcontact, char * ksecret1, char * ksecret2,
                    unsigned char * kaddr, int kbits, int kmax_hops,
                    char * subscription, 
-                   unsigned char * addr, int nbits)
+                   unsigned char * addr, unsigned int nbits)
 {
   do_request_and_resend (sock);
   if (acks != NULL)
@@ -1071,7 +1072,7 @@ int create_contact_send_key (int sock, const char * contact,
 }
 
 static int send_key_request (int sock, char * phrase,
-                             unsigned char * addr, int * nbits)
+                             unsigned char * addr, unsigned int * nbits)
 {
   /* compute the destination address from the phrase */
   unsigned char destination [ADDRESS_SIZE];
@@ -1082,8 +1083,8 @@ static int send_key_request (int sock, char * phrase,
 
   random_bytes ((char *) addr, ADDRESS_SIZE);
   *nbits = 8;
-  int dsize = 1;  /* nbits_fingerprint with no key */
-  int psize = -1;
+  unsigned int dsize = 1;  /* nbits_fingerprint with no key */
+  unsigned int psize = 0;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
                    addr, *nbits, destination, *nbits, NULL, NULL, &psize);
@@ -1119,7 +1120,7 @@ static int send_key_request (int sock, char * phrase,
 /* sends out a request for a key matching the subscription.
  * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
 int subscribe_broadcast (int sock, char * ahra,
-                         unsigned char * my_addr, int * nbits)
+                         unsigned char * my_addr, unsigned int * nbits)
 {
   char * phrase;
   char * reason;

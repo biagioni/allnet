@@ -12,18 +12,21 @@
  * desc is printed first unless it is null
  * a newline is printed after if print_eol
  */
-extern void print_buffer (const char * buffer, int count, const char * desc,
-                          int max, int print_eol);
+extern void print_buffer (const char * buffer, unsigned int count,
+                          const char * desc,
+                          unsigned int max, int print_eol);
 /* same as print_buffer, but prints to the given string */
 /* if all goes well, returns the number of characters printed */
-extern int buffer_to_string (const char * buffer, int count, const char * desc,
-                             int max, int print_eol, char * to, int tsize);
+extern int buffer_to_string (const char * buffer, unsigned int count,
+                             const char * desc, unsigned int max, int print_eol,
+                             char * to, size_t tsize);
 
-extern void print_packet (const char * buffer, int count, const char * desc,
-                          int print_eol);
+extern void print_packet (const char * buffer, unsigned int count,
+                          const char * desc, int print_eol);
 /* same as print_buffer, but prints to the given string */
-extern void packet_to_string (const char * buffer, int count, const char * desc,
-                              int print_eol, char * to, int tsize);
+extern void packet_to_string (const char * buffer, unsigned int count,
+                              const char * desc, int print_eol,
+                              char * to, size_t tsize);
 
 /* buffer must be at least ALLNET_SIZE(transport) bytes long
  * returns a pointer to the buffer, but cast to an allnet_header
@@ -37,10 +40,10 @@ extern void packet_to_string (const char * buffer, int count, const char * desc,
  *
  * ALLNET_TRANSPORT_LARGE packets are not supported by this call */
 extern struct allnet_header *
-  init_packet (char * packet, int psize,
-               int message_type, int max_hops, int sig_algo,
-               const unsigned char * source, int sbits,
-               const unsigned char * dest, int dbits,
+  init_packet (char * packet, unsigned int psize, unsigned int message_type,
+               unsigned int max_hops, unsigned int sig_algo,
+               const unsigned char * source, unsigned int sbits,
+               const unsigned char * dest, unsigned int dbits,
                const unsigned char * stream, const unsigned char * ack);
 
 /* malloc's (must be free'd), initializes, and returns a packet with the
@@ -54,11 +57,12 @@ extern struct allnet_header *
  * does NOT add the signature size to data_size.
  */
 extern struct allnet_header *
-  create_packet (int data_size, int message_type, int max_hops, int sig_algo,
-                 const unsigned char * source, int sbits,
-                 const unsigned char * dest, int dbits,
+  create_packet (unsigned int data_size, unsigned int message_type,
+                 unsigned int max_hops, unsigned int sig_algo,
+                 const unsigned char * source, unsigned int sbits,
+                 const unsigned char * dest, unsigned int dbits,
                  const unsigned char * stream, const unsigned char * ack,
-                 int * size);
+                 unsigned int * size);
 
 /* malloc, initialize, and return an ack message for a received packet.
  * The message_ack bytes are taken from the argument, not from the packet.*/
@@ -66,7 +70,8 @@ extern struct allnet_header *
 /* if from is NULL, the source address is taken from packet->destination */
 extern struct allnet_header *
   create_ack (struct allnet_header * packet, const unsigned char * ack,
-              const unsigned char * from, int nbits, int * size);
+              const unsigned char * from, unsigned int nbits,
+              unsigned int * size);
 
 /* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
  * offset (in bits) within x, nbits the number of bits to print */
@@ -75,10 +80,11 @@ extern void print_bitstring (const unsigned char * x, int xoff, int nbits,
 
 /* print an arbitrary socket address */
 /* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
-extern void print_sockaddr (const struct sockaddr * sap, int addr_size,
+extern void print_sockaddr (const struct sockaddr * sap, socklen_t addr_size,
                             int tcp);
-extern int print_sockaddr_str (const struct sockaddr * sap, int addr_size,
-                               int tcp, char * string, int string_size);
+extern int print_sockaddr_str (const struct sockaddr * sap,
+                               socklen_t addr_size, int tcp,
+                               char * string, unsigned int string_size);
 
 /* print a message with the current time */
 extern void print_timestamp (const char * message);
@@ -167,7 +173,8 @@ extern char * strcat3_malloc (const char * s1, const char * s2,
 extern char * string_replace_once (const char * original, const char * pattern,
                                    const char * repl, int print_not_found);
 /* copy memory to new storage, using malloc_or_fail to get the memory */
-extern void * memcpy_malloc (const void * bytes, int bsize, const char * desc);
+extern void * memcpy_malloc (const void * bytes, size_t bsize,
+                             const char * desc);
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
@@ -191,7 +198,7 @@ extern long long int fd_size (int fd);
 extern int rmdir_and_all_files (const char * dirname);
 
 /* fill this array with random bytes */
-extern void random_bytes (char * buffer, int bsize);
+extern void random_bytes (char * buffer, size_t bsize);
 
 /* a random int between min and max (inclusive) */
 /* returns min if min >= max */
@@ -199,7 +206,7 @@ extern unsigned long long int random_int (unsigned long long int min,
                                           unsigned long long int max);
 
 /* fill this array with random alpha characters.  The last byte is set to \0 */
-extern void random_string (char * buffer, int bsize);
+extern void random_string (char * buffer, size_t bsize);
 
 /* place the values 0..n-1 at random within the given array */
 extern void random_permute_array (int n, int * array);
@@ -233,7 +240,7 @@ extern void writeb48u (unsigned char * p, unsigned long long int value);
 extern void writeb64u (unsigned char * p, unsigned long long int value);
 
 /* returns 1 if the message is valid, 0 otherwise */
-extern int is_valid_message (const char * packet, int size);
+extern int is_valid_message (const char * packet, unsigned int size);
 
 extern void print_gethostbyname_error (const char * hostname,
                                        struct allnet_log * log);

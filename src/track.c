@@ -12,7 +12,7 @@
 struct rate_record {
   unsigned char address [ADDRESS_SIZE];
   unsigned char num_bits;
-  int packet_size;
+  unsigned int packet_size;
 };
 
 static struct rate_record record [SAVED_ADDRESSES];
@@ -21,7 +21,7 @@ static int next = -1;
 
 #define DEFAULT_MAX	(ALLNET_PRIORITY_MAX - 1)
 
-int largest_rate ()
+unsigned int largest_rate ()
 {
   return DEFAULT_MAX;
 }
@@ -31,7 +31,8 @@ int largest_rate ()
  * fraction of the available bandwidth this source is using.
  * ALLNET_PRIORITY_MAX is defined in priority.h
  */
-int track_rate (unsigned char * source, int sbits, int packet_size)
+unsigned int track_rate (unsigned char * source, unsigned int sbits,
+                         unsigned int packet_size)
 {
   int i;
   if (next < 0) {    /* initialize */
@@ -44,8 +45,8 @@ int track_rate (unsigned char * source, int sbits, int packet_size)
   }
 
   /* how many saved packets have the same source as this one? */
-  int nmatches = 0;
-  int total = 0;
+  unsigned int nmatches = 0;
+  unsigned int total = 0;
   for (i = 0; i < SAVED_ADDRESSES; i++) {
     if (record [i].packet_size > 0) {
       total += record [i].packet_size;

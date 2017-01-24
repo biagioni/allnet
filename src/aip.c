@@ -1282,7 +1282,7 @@ printf ("aip main loop, timeout, closing UDP socket %d\n", udp);
 
     }
     int fd = -1;
-    int priority;
+    unsigned int priority;
     char * message = NULL;
     struct sockaddr_storage sockaddr;
     struct sockaddr * sap = (struct sockaddr *) (&sockaddr);

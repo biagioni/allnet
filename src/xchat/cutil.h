@@ -18,23 +18,25 @@ extern int init_chat_descriptor (struct chat_descriptor * cp,
  * the largest sequence number sent */
 /* the message must include room for the chat descriptor
  * and (if ack_and_save) for the ack, both initialized by this call. */
-extern unsigned long long int send_to_contact (char * data, int dsize,
+extern unsigned long long int send_to_contact (char * data, unsigned int dsize,
                                                const char * contact, int sock,
-                                               int hops, int priority,
+                                               unsigned int hops,
+                                               unsigned int priority,
                                                int ack_and_save);
 
 /* send to the contact's specific key, returning 1 if successful, 0 otherwise */
 /* the xchat_descriptor must already have been initialized */
-extern int send_to_key (char * data, int dsize,
+extern int send_to_key (char * data, unsigned int dsize,
                         const char * contact, keyset key,
-                        int sock, int hops, int priority, int ack_and_save);
+                        int sock, unsigned int hops, unsigned int priority,
+                        int ack_and_save);
 
 /* same as send_to_contact, but only sends to the one key corresponding
  * to key, and does not save outgoing.  Does request ack, and
  * uses the addresses saved for the contact. */
-extern int resend_packet (char * data, int dsize,
+extern int resend_packet (char * data, unsigned int dsize,
                           const char * contact, keyset key,
-                          int sock, int hops, int priority);
+                          int sock, unsigned int hops, unsigned int priority);
 
 /* the times that follow must be arrays of TIMESTAMP_SIZE chars */
 

@@ -70,8 +70,8 @@ static struct allnet_log * alog = NULL;
 static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
 {
 #define MAX_MY_ADDRS	10
-  int dsize = ALLNET_DHT_SIZE (0, MAX_MY_ADDRS);
-  int msize;
+  unsigned int dsize = ALLNET_DHT_SIZE (0, MAX_MY_ADDRS);
+  unsigned int msize;
 /* for now, create a packet addressed to my own address.  In the loop,
  * replace this address with the actual address we are sending to */
   struct allnet_header * hp =
@@ -289,7 +289,8 @@ void adht_main (char * pname)
   }
   while (1) {
     char * message;
-    int pipe, pri;
+    int pipe;
+    unsigned int pri;
     int timeout = PIPE_MESSAGE_WAIT_FOREVER;
     int found = receive_pipe_message_any (p, timeout, &message, &pipe, &pri);
     if (found < 0) {

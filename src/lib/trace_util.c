@@ -195,9 +195,9 @@ static void send_trace (int sock, unsigned char * address, int abits,
                         int my_abits, int max_hops, int no_intermediates,
                         struct allnet_log * alog)
 {
-  int total_size = ALLNET_TRACE_REQ_SIZE (0, 1, 0);
-  int data_size = total_size - ALLNET_SIZE (0);
-  int allocated = 0;
+  unsigned int total_size = ALLNET_TRACE_REQ_SIZE (0, 1, 0);
+  unsigned int data_size = minz (total_size, ALLNET_SIZE (0));
+  unsigned int allocated = 0;
   struct allnet_header * hp =
     create_packet (data_size, ALLNET_TYPE_MGMT, max_hops, ALLNET_SIGTYPE_NONE,
                    my_address, my_abits, address, abits, NULL, NULL,
@@ -561,7 +561,7 @@ static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
   gettimeofday (&tv_start, NULL);
   while ((sec < 0) || (time_spent < max_ms)) {
     int pipe;
-    int pri;
+    unsigned int pri;
     char * message;
     unsigned long long int computed_ms = max_ms - time_spent;
     int ms = (computed_ms > INT_MAX) ? INT_MAX : ((int) computed_ms);

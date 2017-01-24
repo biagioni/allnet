@@ -62,7 +62,7 @@ extern int handle_packet (int sock, char * packet, unsigned int psize,
                           char * kcontact, char * ksecret1, char * ksecret2,
                           unsigned char * kaddr, int kbits, int kmax_hops,
                           char * subscription,
-                          unsigned char * addr, int nbits);
+                          unsigned char * addr, unsigned int nbits);
 
 /* send this message and save it in the xchat log. */
 /* returns the sequence number of this message, or 0 for errors */
@@ -96,6 +96,6 @@ extern int create_contact_send_key (int sock, const char * contact,
 /* sends out a request for a key matching the subscription.
  * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
 extern int subscribe_broadcast (int sock, char * ahra,
-                                unsigned char * my_addr, int * nbits);
+                                unsigned char * my_addr, unsigned int * nbits);
 
 #endif /* ALLNET_XCHAT_COMMON_H */

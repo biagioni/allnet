@@ -54,12 +54,14 @@ static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
   memcpy (new_entry->address, my_address, (abits + 7) / 8);
 }
 
-static int add_my_entry (char * in, int insize, struct allnet_header * inhp,
-                         struct allnet_mgmt_header * inmp,
-                         struct allnet_mgmt_trace_req * intrp,
-                         struct timeval * now,
-                         unsigned char * my_address, int abits,
-                         char * * result)
+static unsigned int add_my_entry (char * in, unsigned int insize,
+                                  struct allnet_header * inhp,
+                                  struct allnet_mgmt_header * inmp,
+                                  struct allnet_mgmt_trace_req * intrp,
+                                  struct timeval * now,
+                                  unsigned char * my_address,
+                                  unsigned int abits,
+                                  char * * result)
 {
   *result = NULL;
   if (intrp->num_entries >= 255)
@@ -68,7 +70,7 @@ static int add_my_entry (char * in, int insize, struct allnet_header * inhp,
   int n = intrp->num_entries + 1;
   int t = inhp->transport;
   int k = readb16u (intrp->pubkey_size);
-  int needed = ALLNET_TRACE_REQ_SIZE (t, n, k);
+  unsigned int needed = ALLNET_TRACE_REQ_SIZE (t, n, k);
   *result = calloc (needed, 1);
   if (*result == NULL) {
     printf ("add_my_entry unable to allocate %d bytes for %d\n", needed, n);
@@ -108,11 +110,11 @@ static int add_my_entry (char * in, int insize, struct allnet_header * inhp,
 
 /* returns the size of the message to send, or 0 in case of failure */
 /* no encryption yet */
-static int make_trace_reply (struct allnet_header * inhp, int insize,
+static int make_trace_reply (struct allnet_header * inhp, unsigned int insize,
                              struct timeval * now,
-                             unsigned char * my_address, int abits,
+                             unsigned char * my_address, unsigned int abits,
                              struct allnet_mgmt_trace_req * intrp,
-                             int intermediate, int num_entries,
+                             int intermediate, unsigned int num_entries,
                              char ** result)
 {
   *result = NULL;
@@ -121,7 +123,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
             num_entries, intermediate);
   log_print (alog);
  */
-  int insize_needed =
+  unsigned int insize_needed =
     ALLNET_TRACE_REQ_SIZE (inhp->transport, intrp->num_entries, 0);
   if (insize < insize_needed) {
     printf ("error: trace req needs %d, has %d\n", insize_needed, insize);
@@ -132,16 +134,13 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
     return 0;
   }
   unsigned int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
-  int total;
+  unsigned int total = 0;
   struct allnet_header * hp =
     create_packet (size_needed - ALLNET_SIZE (0), ALLNET_TYPE_MGMT,
                    inhp->hops + 4, ALLNET_SIGTYPE_NONE, my_address, abits,
                    inhp->source, inhp->src_nbits, NULL, NULL, &total);
-  unsigned int utotal = 0;
-  if (total > 0)
-    utotal = total;
-  if ((hp == NULL) || (utotal != size_needed)) {
-    printf ("hp is %p, total is %d, size_needed %d\n", hp, total, size_needed);
+  if ((hp == NULL) || (total != size_needed)) {
+    printf ("hp is %p, total is %u, size_needed %d\n", hp, total, size_needed);
     return 0;
   }
   if (inhp->hops == 0) /* local, no need to send reply outwards */
@@ -149,7 +148,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   *result = (char *) hp;
 
   struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *)(ALLNET_DATA_START(hp, hp->transport, utotal));
+    (struct allnet_mgmt_header *)(ALLNET_DATA_START(hp, hp->transport, total));
   mp->mgmt_type = ALLNET_MGMT_TRACE_REPLY;
 
   struct allnet_mgmt_trace_reply * trp =
@@ -160,7 +159,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   trp->intermediate_reply = intermediate;
   trp->num_entries = num_entries;
   memcpy (trp->trace_id, intrp->trace_id, MESSAGE_ID_SIZE);
-  int i;
+  unsigned int i;
   /* if num_entries is 1, this loop never executes */
   /* if num_entries is 2, this loop executes once to copy
    * intrp->trace [intrp->num_entries - 1] to trp->trace [0] */
@@ -206,7 +205,7 @@ static void acknowledge_bcast (int sock, char * message, unsigned int msize)
   unsigned int hsize = ALLNET_SIZE (hp->transport);
   if (msize < hsize + MESSAGE_ID_SIZE)
     return;
-  int asize;
+  unsigned int asize;
   unsigned char * received = (unsigned char *) (message + hsize);
   struct allnet_header * ack = create_ack (hp, received, NULL, 0, &asize);
   if ((asize == 0) || (ack == NULL))
@@ -301,10 +300,11 @@ static void respond_to_trace (int sock, char * message, unsigned int msize,
   gettimeofday (&timestamp, NULL);
   /* do two things: forward the trace, and possibly respond to the trace. */
 
-  int mbits = abits;
+  unsigned int mbits = abits;
   if (mbits > hp->dst_nbits)
     mbits = hp->dst_nbits;   /* min of abits, and hp->dst_nbits */
-  int nmatch = matches (my_address, abits, hp->destination, hp->dst_nbits);
+  unsigned int nmatch = matches (my_address, abits,
+                                 hp->destination, hp->dst_nbits);
 #ifdef DEBUG_PRINT
   printf ("matches (");
   print_buffer ((char *)my_address, abits, NULL, (abits + 7) / 8, 0);
@@ -314,7 +314,7 @@ static void respond_to_trace (int sock, char * message, unsigned int msize,
   printf (") => %d (%d needed)\n", nmatch, mbits);
 #endif /* DEBUG_PRINT */
   /* when forwarding, use a low priority > epsilon, to tell ad it is from us */
-  int fwd_priority = ALLNET_PRIORITY_TRACE_FWD;
+  unsigned int fwd_priority = ALLNET_PRIORITY_TRACE_FWD;
   if ((! do_respond_to_trace ()) || (forward_only) ||
       ((match_only) && (nmatch < mbits))) {
     /* forward without adding my entry */
@@ -352,8 +352,8 @@ static void respond_to_trace (int sock, char * message, unsigned int msize,
 
 /* send request, reply, or both */
   char * messages [2];
-  int mlens [2];
-  int priorities [2];
+  unsigned int mlens [2];
+  unsigned int priorities [2];
   messages [0] = new_msg;
   mlens [0] = n;
   priorities [0] = fwd_priority;
@@ -398,7 +398,8 @@ static void main_loop (int wsock, pd p,
 {
   while (1) {
     char * message;
-    int pipe, pri;
+    int pipe;
+    unsigned int pri;
     int timeout = PIPE_MESSAGE_WAIT_FOREVER;
     int found = receive_pipe_message_any (p, timeout, &message, &pipe, &pri);
     if (found < 0) {
