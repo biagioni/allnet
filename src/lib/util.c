@@ -508,8 +508,7 @@ struct allnet_header *
   if ((sig_algo < ALLNET_SIGTYPE_NONE) ||
       (sig_algo > ALLNET_SIGTYPE_HMAC_SHA512))
     return NULL;
-  if ((sbits < 0) || (sbits > ADDRESS_BITS) ||
-      (dbits < 0) || (dbits > ADDRESS_BITS))
+  if ((sbits > ADDRESS_BITS) || (dbits > ADDRESS_BITS))
     return NULL;
   bzero (packet, psize);   /* clear all unused fields */
   hp->version = ALLNET_VERSION;

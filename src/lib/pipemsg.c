@@ -1255,7 +1255,6 @@ int split_messages (char * data, unsigned int dlen,
   char ** mbuf = NULL;
   unsigned int *lbuf = NULL;
   unsigned int *pbuf = NULL;
-  unsigned int msize = 0;
   unsigned int priority;
   while (bp->filled > 0) {  /* there is still data to process */
     while ((bp->filled < HEADER_SIZE) && (dlen > 0)) {
@@ -1266,14 +1265,15 @@ int split_messages (char * data, unsigned int dlen,
     }
     if (bp->filled < HEADER_SIZE)   /* dlen is zero, incomplete header */
       return 0;   /* finished */
-    msize = parse_header (bp->data, -1, &priority, NULL);
-    if ((msize < 0) || (msize > ALLNET_MTU)) {
-      if (msize > ALLNET_MTU)
-        print_split_message_error (1, msize, ALLNET_MTU, bp->filled);
+    int parse_result = parse_header (bp->data, -1, &priority, NULL);
+    if ((parse_result < 0) || (parse_result > ALLNET_MTU)) {
+      if (parse_result > ALLNET_MTU)
+        print_split_message_error (1, parse_result, ALLNET_MTU, bp->filled);
       /* bad header, try again with next char */
       bp->filled -= 1;
       memmove (bp->data, bp->data + 1, bp->filled);
-    } else if (bp->filled + dlen >= msize + HEADER_SIZE) {
+    } else if (bp->filled + dlen >= parse_result + HEADER_SIZE) {
+      unsigned int msize = parse_result;
       /* valid msize, and we have the data */
       int from_data = msize;
       if (bp->filled > HEADER_SIZE) {   /* copy message to prior */
@@ -1331,7 +1331,7 @@ int split_messages (char * data, unsigned int dlen,
     data += dlen;
     dlen -= dlen;   /* not needed, but good for consistency */
   } else if (dlen > 0) {   /* dlen > sizeof (bp->data), some error */
-    print_split_message_error (6, msize, dlen, sizeof (bp->data));
+    print_split_message_error (6, dlen, sizeof (bp->data), 0);
     exit (1);
   }
   if (mi > 0) {

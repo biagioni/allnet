@@ -64,11 +64,11 @@ int main (int argc, char ** argv)
   char * my_secret = NULL;
   char * peer_secret = NULL;
   unsigned char my_addr [ADDRESS_SIZE];
-  int my_bits;
+  unsigned int my_bits;
 #define MAX_SECRET	15  /* including a terminating null character */
   char my_secret_buf [MAX_SECRET];
   char peer_secret_buf [200];
-  int kmax_hops = 0;
+  unsigned int kmax_hops = 0;
   unsigned int wait_time = 5000;   /* 5 seconds to wait for acks and such */
   unsigned long long int start_time = allnet_time_ms ();
 
@@ -81,7 +81,7 @@ int main (int argc, char ** argv)
       return 1;
     }
     kcontact = argv [2];
-    int hops = 1;
+    unsigned int hops = 1;
     if (argc >= 4) {
       char * end;
       int n = strtol (argv [3], &end, 10);

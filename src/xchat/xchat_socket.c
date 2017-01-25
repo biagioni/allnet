@@ -661,9 +661,9 @@ int main (int argc, char ** argv)
   char kbuf2 [ALLNET_MTU];  /* key buffer to hold the first secret */
   char kbuf3 [ALLNET_MTU];  /* key buffer to hold the second secret, if any */
   unsigned char kaddr [ADDRESS_SIZE];
-  int kabits;
+  unsigned int kabits;
   int check_for_key = 0;
-  int num_hops = 0;
+  unsigned int num_hops = 0;
   char * subscription = NULL;
   char sbuf [ALLNET_MTU];   /* subscribe buffer */
   unsigned char saddr [ADDRESS_SIZE];

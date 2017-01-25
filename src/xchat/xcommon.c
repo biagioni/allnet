@@ -1020,8 +1020,8 @@ void request_and_resend (int sock, char * contact, keyset kset)
  * exists, but other errors are possible) */
 int create_contact_send_key (int sock, const char * contact,
                              const char * secret1, const char * secret2,
-                             unsigned char * addr, int * abits,
-                             int hops)
+                             unsigned char * addr, unsigned int * abits,
+                             unsigned int hops)
 {
   if ((contact == NULL) || (strlen (contact) == 0)) {
     printf ("empty contact, cannot send key\n");

@@ -90,8 +90,8 @@ extern void request_and_resend (int sock, char * peer, keyset kset);
 extern int create_contact_send_key (int sock, const char * contact,
                                     const char * secret1,
                                     const char * secret2,
-                                    unsigned char * addr, int * abits,
-                                    int hops);
+                                    unsigned char * addr, unsigned int * abits,
+                                    unsigned int hops);
 
 /* sends out a request for a key matching the subscription.
  * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
