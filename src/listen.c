@@ -510,7 +510,9 @@ void listen_remove_fd (struct listen_info * info, int fd)
   pthread_mutex_lock (&(info->mutex));
   if (info->add_remove_pipe) {
     remove_pipe (info->pipe_descriptor, fd);
-    /* printf ("removed_pipe (%d)\n", fd); */
+#ifdef DEBUG_EBADF
+    printf ("listen_remove_fd removed_pipe (%d)\n", fd);
+#endif /* DEBUG_EBADF */
   }
   int i;
   for (i = 0; i < info->num_fds; i++) {

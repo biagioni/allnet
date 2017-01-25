@@ -774,13 +774,17 @@ static void * connect_thread (void * a)
       listener_fds [listener_index] = fd;
     } else {   /* undo connect */
 #ifdef DEBUG_EBADF
-printf ("connect_thread closing %d, connect_listener failed (insane?)\n", fd);
+printf ("connect_thread closing %d because listener_fds [%d] = %d\n", fd,
+listener_index, listener_fds [listener_index]);
 #endif /* DEBUG_EBADF */
+      listen_remove_fd (info, fd);      /* remove from info */
       close (fd);                       /* remove from kernel */
-      listen_remove_fd (info, fd); /* remove from info */
     }
     pthread_mutex_unlock (&listener_mutex);
   }
+#ifdef DEBUG_EBADF
+else printf ("connect_thread closing %d, connect_listener failed (insane?)\n", fd);
+#endif /* DEBUG_EBADF */
 #ifdef DEBUG_PRINT
   pthread_mutex_lock (&connect_counter_mutex);
   counter--;
