@@ -783,7 +783,7 @@ listener_index, listener_fds [listener_index]);
     pthread_mutex_unlock (&listener_mutex);
   }
 #ifdef DEBUG_EBADF
-else printf ("connect_thread closing %d, connect_listener failed (insane?)\n", fd);
+else printf ("connect_thread connect_listener failed, result %d\n", fd);
 #endif /* DEBUG_EBADF */
 #ifdef DEBUG_PRINT
   pthread_mutex_lock (&connect_counter_mutex);
