@@ -105,11 +105,13 @@ static int init_listen_socket (int version, int port, int local)
                 version, ntohs (port), ntohs (port), addr_size);
       log_print (alog);
     }
+    close (fd);
     return -1;
   }
   /* specify the maximum queue length */
   if (listen (fd, 5) < 0) {
     perror("listen");
+    close (fd);
     return -1;
   }
   snprintf (alog->b, alog->s, "opened accept socket fd = %d, ip version %d\n",
@@ -120,75 +122,101 @@ static int init_listen_socket (int version, int port, int local)
 
 struct real_arg {
   struct listen_info * info;   /* struct listen_info is defined in listen.h */
-  int fd;  /* listen socket for opening new connections */
+  int version;                 /* IP version 6 or 4 */
 };
 
 static void * listen_loop (void * arg)
 {
   struct real_arg * ra = (struct real_arg *) arg;
-  snprintf (alog->b, alog->s, "started listen_loop, listen socket is %d\n",
-            ra->fd);
-  log_print (alog);
   struct listen_info * info = ra->info;
+  int version = ra->version;
+  int port = info->port;
+  int local = info->localhost_only;
+  free (ra);
+  snprintf (alog->b, alog->s, "started listen_loop (v %d, p %d, l %d)\n",
+            version, port, local);
+  log_print (alog);
 
   /* allow the main thread to kill this thread at any time */
   int notinteresting;
   pthread_setcanceltype (PTHREAD_CANCEL_ASYNCHRONOUS, &notinteresting);
+  int failure_count = 0;
 
-  struct sockaddr_storage address;
-  struct sockaddr     * ap   = (struct sockaddr     *) &address;
-  socklen_t addr_size = sizeof (address);
+  while (1) {   /* repeat, in case the listen socket is closed, e.g. in iOS */
+    if (version == 4)
+      sleep (3);  /* give IPv6 a chance to bind the port first */
+    int fd = init_listen_socket (version, port, local);
+    if (fd >= 0) {
+      failure_count = 0;
+      if (version == 4)
+        info->listen_fd4 = fd;
+      else
+        info->listen_fd6 = fd;
 
-  /* listen for connections, add them to the data structure */
-  int connection;
-  while ((connection = accept (ra->fd, ap, &addr_size)) >= 0) {
-    int off = snprintf (alog->b, alog->s,
-                        "opened connection socket fd = %d port %d from ",
-                        connection, ntohs (info->port));
+      struct sockaddr_storage address;
+      struct sockaddr     * ap   = (struct sockaddr     *) &address;
+      socklen_t addr_size = sizeof (address);
+
+      /* listen for connections, add them to the data structure */
+      int connection;
+      while ((connection = accept (fd, ap, &addr_size)) >= 0) {
+        int off = snprintf (alog->b, alog->s,
+                            "opened connection socket fd = %d port %d from ",
+                            connection, ntohs (info->port));
 /* sometimes an incoming IPv4 connection is recorded as an IPv6 connection.
  * we want to record it as an IPv4 connection */
-    standardize_ip (ap, addr_size);
+        standardize_ip (ap, addr_size);
 #ifdef DEBUG_PRINT
-    print_sockaddr_str (ap, addr_size, 1, alog->b + off, alog->s - off);
+        print_sockaddr_str (ap, addr_size, 1, alog->b + off, alog->s - off);
 #else /* DEBUG_PRINT */
-    snprintf (alog->b + off, alog->s - off, "\n");
+        snprintf (alog->b + off, alog->s - off, "\n");
 #endif /* DEBUG_PRINT */
-    log_print (alog);
-    if ((ra->info->localhost_only) && (! is_loopback_ip (ap, addr_size))) {
-      snprintf (alog->b, alog->s, "warning: loopback got from nonlocal\n");
-      log_print (alog);
-      close (connection);
+        log_print (alog);
+        if ((info->localhost_only) && (! is_loopback_ip (ap, addr_size))) {
+          snprintf (alog->b, alog->s, "warning: loopback got from nonlocal\n");
+          log_print (alog);
+          close (connection);
 #ifdef DEBUG_EBADF
 printf ("listen_loop for localhost got nonlocal, closing %d\n", connection);
 #endif /* DEBUG_EBADF */
-      continue;   /* skip the rest of the while loop */
-    }
-    int option = 1;  /* nodelay disables Nagle algorithm */
-    if ((ra->info->nodelay) &&
-        (setsockopt (connection, IPPROTO_TCP, TCP_NODELAY, &option,
-                     sizeof (option)) != 0)) {
-      snprintf (alog->b, alog->s, "unable to set nodelay socket option\n");
-      log_print (alog);
-    }
+          continue;   /* skip the rest of the inner while loop */
+        }
+        int option = 1;  /* nodelay disables Nagle algorithm */
+        if ((info->nodelay) &&
+            (setsockopt (connection, IPPROTO_TCP, TCP_NODELAY, &option,
+                         sizeof (option)) != 0)) {
+          snprintf (alog->b, alog->s, "unable to set nodelay socket option\n");
+          log_print (alog);
+        }
 
-    struct addr_info addr;
-    sockaddr_to_ai (ap, addr_size, &addr);  /* zeros destination and nbits */
-    if (listen_add_fd (info, connection, &addr,  /* unique unless local IP */
-                       ! is_loopback_ip (ap, addr_size),
-                       "listen.c listen_loop")) {
-      if (info->callback != NULL)
-        info->callback (connection);
-    } else {
+        struct addr_info addr;
+        sockaddr_to_ai (ap, addr_size, &addr);  /* zero destination and nbits */
+        if (listen_add_fd (info, connection, &addr, /* unique unless local IP */
+                           ! is_loopback_ip (ap, addr_size),
+                           "listen.c listen_loop")) {
+          if (info->callback != NULL)
+            info->callback (connection);
+        } else {
 #ifdef DEBUG_EBADF
 printf ("listen_loop unable to listen_add_fd, closing %d\n", connection);
 #endif /* DEBUG_EBADF */
-      close (connection);
+          close (connection);
+        }
+        addr_size = sizeof (address);  /* reset for next call to accept */
+      }
+      perror ("accept");
+      printf ("error calling accept (%d)\n", fd);
+      close (fd);    /* if still open */
+    } else {  /* unable to create listen_socket: wait a while, try again */
+      sleep (5);
+      failure_count++;
+      if ((failure_count > 20) || ((failure_count > 5) && (version == 4))) {
+      /* give up.  Give up sooner for IPv4, since IPv4 bind may fail if
+       * the IPv6 has already bound the port */
+        return NULL;
+      }
     }
-    addr_size = sizeof (address);  /* reset for next call to accept */
   }
-  perror ("accept");
-  printf ("error calling accept (%d)\n", ra->fd);
-  free (ra);
   return NULL;
 }
 
@@ -229,24 +257,12 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
     info->fds [i] = info->used [i] = info->peers [i].ip.ip_version = 0;
   info->counter = 0;
   pthread_mutex_init (&(info->mutex), NULL);
-  info->listen_fd6 = init_listen_socket (6, port, local_only);
-  info->listen_fd4 = init_listen_socket (4, port, local_only);
-  if (info->listen_fd6 < 0) {
-    snprintf (alog->b, alog->s, "unable to open IPv6 listener, exiting\n");
-    log_print (alog);
-    exit (1);
-  }
-/*  ipv4 may be handled under ipv6
-  if ((info->listen_fd4 < 0) || (info->listen_fd6 < 0)) {
-    snprintf (alog->b, alog->s, "unable to open IPv6 listener, exiting\n");
-    log_print (alog);
-    exit (1);
-  }
-*/
+  info->listen_fd6 = -1;
+  info->listen_fd4 = -1;
   struct real_arg * real_arg6 =
     malloc_or_fail (sizeof (struct real_arg), "ip6 real arg");
   real_arg6->info = info;
-  real_arg6->fd = info->listen_fd6;
+  real_arg6->version = 6;
   if (pthread_create (&(info->thread6), NULL, listen_loop, real_arg6) != 0) {
     perror ("listen6/pthread_create");
     snprintf (alog->b, alog->s,
@@ -254,20 +270,18 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
     log_print (alog);
     exit (1);
   }
-  if (info->listen_fd4 >= 0) {
   /* printf ("allocating %ld bytes for 4\n", sizeof (struct real_arg));  */
-    struct real_arg * real_arg4 =
-      malloc_or_fail (sizeof (struct real_arg), "ip4 real arg");
+  struct real_arg * real_arg4 =
+    malloc_or_fail (sizeof (struct real_arg), "ip4 real arg");
   /* printf ("allocated %ld bytes\n", sizeof (struct real_arg)); */
-    real_arg4->info = info;
-    real_arg4->fd = info->listen_fd4;
-    if (pthread_create (&(info->thread4), NULL, listen_loop, real_arg4) != 0) {
-      perror ("listen4/pthread_create");
-      snprintf (alog->b, alog->s,
-                "unable to create listen thread for IP version 4, exiting\n");
-      log_print (alog);
-      exit (1);
-    }
+  real_arg4->info = info;
+  real_arg4->version = 4;
+  if (pthread_create (&(info->thread4), NULL, listen_loop, real_arg4) != 0) {
+    perror ("listen4/pthread_create");
+    snprintf (alog->b, alog->s,
+              "unable to create listen thread for IP version 4, exiting\n");
+    log_print (alog);
+    exit (1);
   }
 }
 
