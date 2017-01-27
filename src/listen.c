@@ -144,7 +144,7 @@ static void * listen_loop (void * arg)
 
   while (1) {   /* repeat, in case the listen socket is closed, e.g. in iOS */
     if (version == 4)
-      sleep (3);  /* give IPv6 a chance to bind the port first */
+      usleep (100 * 1000);  /* give IPv6 a chance to bind the port first */
     int fd = init_listen_socket (version, port, local);
     if (fd >= 0) {
       failure_count = 0;
