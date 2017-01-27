@@ -523,13 +523,14 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
 #endif /* LOG_PACKETS */
 }
 
-static int udp_socket ()
+/* returns -1 for failure */
+static int udp_socket (unsigned int max_depth)
 {
   int udp = socket (AF_INET6, SOCK_DGRAM, 0);
   if (udp < 0) {
     snprintf (alog->b, alog->s, "unable to open UDP socket, exiting");
     log_error (alog, "main loop socket");
-    exit (1);
+    return -1;
   }
   /* enable dual-stack IPv6 and IPv4 for systems that don't enable it
      by default */
@@ -539,7 +540,7 @@ static int udp_socket ()
                   &v6only_flag, sizeof (v6only_flag)) != 0) {
     snprintf (alog->b, alog->s, "unable to setsockopt on UDP socket, exiting");
     log_error (alog, "setsockopt");
-    exit (1);
+    return -1;
   }
 #endif /* __OpenBSD__ */
 #ifdef SO_NOSIGPIPE
@@ -563,12 +564,14 @@ static int udp_socket ()
             ntohs (ALLNET_PORT), ntohs (ALLNET_PORT));
 #ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
 /* keep trying -- we may be waking up from sleep */
-    while (bind (udp, ap, addr_size) < 0) {
-      perror ("aip UDP repeated bind");
-      sleep (2);
-    }
+    close (udp);   /* may be closed already */
+    sleep (5);
+    if (max_depth > 0)
+      return udp_socket (max_depth - 1);
+    else
+      return -1;
 #else  /* not iOS, so probably already running */
-    exit (1);
+    return -1;
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
   }
   snprintf (alog->b, alog->s, "opened UDP socket %d\n", udp);
@@ -1247,7 +1250,7 @@ log_print (alog);
 
 static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
 {
-  int udp = udp_socket ();
+  int udp = udp_socket (100);
   void * udp_cache = cache_init (128, free, "aip UPD cache");
   int removed_listener = 0;
   time_t last_listen = 0;
@@ -1270,20 +1273,21 @@ static void main_loop (pd p, int rpipe, int wpipe, struct listen_info * info)
       send_keepalive (udp_cache, udp, listener_fds, NUM_LISTENERS);
       last_keepalive = time (NULL);
     }
-    if (time (NULL) - last_successful_udp >= 30) {
+    if ((udp == -1) || (time (NULL) - last_successful_udp >= 30)) {
+      if (udp != -1) {
 #ifdef DEBUG_EBADF
-printf ("aip main loop, timeout, closing UDP socket %d\n", udp);
+        printf ("aip main loop, timeout, closing UDP socket %d\n", udp);
 #endif /* DEBUG_EBADF */
-      close (udp);
+        close (udp);
+      }
 #ifdef DEBUG_PRINT
       int old_udp = udp;
 #endif /* DEBUG_PRINT */
-      udp = udp_socket();
+      udp = udp_socket(100);
       last_successful_udp = time (NULL);
 #ifdef DEBUG_PRINT
       printf ("aip: reset udp fd from %d to %d\n", old_udp, udp);
 #endif /* DEBUG_PRINT */
-
     }
     int fd = -1;
     unsigned int priority;
