@@ -249,9 +249,10 @@ static void save_id ()
                         line, sizeof (line));
       if (write (fd, line, strlen (line)) != (int) (strlen (line)))
         perror ("save_id write");  /* report, but continue */
-#ifdef DEBUG_EBADF
-printf ("routing.c save_id, closing my_id fd %d\n", fd);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadfbuf, EBADFBUFS, "routing.c save_id, closing my_id fd %d\n", fd);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
       close (fd);
     }
   }
@@ -272,9 +273,11 @@ static void save_peers ()
     cpeer += entry_to_file (fd, &(peers [i].ai), i);
   for (i = 0; i < MAX_PINGS; i++)
     cping += entry_to_file (fd, &(pings [i].ai), -1);
-#ifdef DEBUG_EBADF
-printf ("routing.c save_peers, closing peers fd %d\n", fd);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadfbuf, EBADFBUFS,
+"routing.c save_peers, closing peers fd %d\n", fd);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
   close (fd);
   peers_file_time = time (NULL);  /* no need to re-read in load_peers (1) */
 #ifdef DEBUG_PRINT
@@ -428,9 +431,11 @@ printf ("unable to open .allnet/adht/my_id\n");
     } else {   /* line >= 30 bytes long, beginning with "8 bytes: " */
       read_buffer (line + 9, (int)strlen (line + 9), my_address, ADDRESS_SIZE);
     }
-#ifdef DEBUG_EBADF
-printf ("routing.c load_peers, closing peers fd %d\n", fd);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadfbuf, EBADFBUFS,
+"routing.c load_peers, closing peers fd %d\n", fd);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
     close (fd);
   }
   fd = open_read_config ("adht", "peers", 1);
@@ -449,9 +454,11 @@ printf ("routing.c load_peers, closing peers fd %d\n", fd);
       load_peer (&(pings [ping_index++].ai), line + 1, 0);
     }
   }
-#ifdef DEBUG_EBADF
-printf ("routing.c load_peers, re-closing peers fd %d\n", fd);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadfbuf, EBADFBUFS,
+"routing.c load_peers, re-closing peers fd %d\n", fd);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
   close (fd);
   int i;
   int cpeers = 0;

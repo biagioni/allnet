@@ -56,6 +56,12 @@ struct pipedesc {
   int queues [MAX_PIPES];  /* negative integers -x, at index x - 1 */
   struct allnet_log * log;
   pthread_mutex_t receive_mutex;
+#ifdef DEBUG_EBADFD
+#define NUM_EBADBUFS	20
+char ebadbufs [NUM_EBADBUFS] [EBADBUFS];
+int ebadbufindex;  /* index of first, i.e. earliest, message */
+int ebadbufcount;
+#endif /* DEBUG_EBADFD */
 };
 
 pd init_pipe_descriptor (struct allnet_log * log)
@@ -66,6 +72,11 @@ pd init_pipe_descriptor (struct allnet_log * log)
   result->num_queues = 0;
   result->log = log;
   pthread_mutex_init (&(result->receive_mutex), NULL);
+#ifdef DEBUG_EBADFD
+  bzero (&(result->ebadbufs [0] [0]), sizeof (result->ebadbufs));
+  result->ebadbufindex = 0;
+  result->ebadbufcount = 0;
+#endif /* DEBUG_EBADFD */
   return result;
 }
 
@@ -598,11 +609,16 @@ printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
 /* copies some code from make_fdset */
 static void debug_ebadf (pd p, int extra)
 {
+  int i;
+#ifdef DEBUG_EBADFD
+  for (i = 0; i < p->ebadbufcount; i++) {
+    printf ("[%d]: %s", i, p->ebadbufs [(i + p->ebadbufindex) % NUM_EBADBUFS]);
+  }
+#endif /* DEBUG_EBADFD */
   int old_do_not_print = do_not_print;
   do_not_print = 0;
   print_pipes (p, "debug_ebadf", -1);
   do_not_print = old_do_not_print;
-  int i;
   for (i = 0; i < p->num_pipes + 1; i++) {
     /* like make_fdset, but only FD i */
     fd_set receiving;
@@ -1341,3 +1357,28 @@ int split_messages (char * data, unsigned int dlen,
   }
   return mi;
 }
+
+#ifdef DEBUG_EBADFD
+/* temporary (I hope), for debugging of EBADF */
+/* #define EBADBUFS       10000 */
+char ebadbuf [EBADBUFS];
+void record_message (pd p)  /* call after snprintf to ebadfbuf */
+{
+  int idx = (p->ebadbufindex + p->ebadbufcount) % NUM_EBADBUFS;
+  if (p->ebadbufcount >= NUM_EBADBUFS) {
+    p->ebadbufindex = (p->ebadbufindex + 1) % NUM_EBADBUFS;
+  } else {
+    p->ebadbufcount = p->ebadbufcount + 1; 
+  }
+  time_t now = time (NULL);
+  char ctime_buf [100];
+  ctime_r (&now, ctime_buf);
+  char * nl = index (ctime_buf, '\n');
+  if (nl != NULL)
+    *nl = '\0';  /* no newlines */
+  snprintf (p->ebadbufs [idx], EBADBUFS, "%s %s", ctime_buf, ebadbuf);
+}
+
+#endif /* DEBUG_EBADFD */
+
+

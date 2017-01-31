@@ -176,9 +176,11 @@ static void * listen_loop (void * arg)
           snprintf (alog->b, alog->s, "warning: loopback got from nonlocal\n");
           log_print (alog);
           close (connection);
-#ifdef DEBUG_EBADF
-printf ("listen_loop for localhost got nonlocal, closing %d\n", connection);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadbuf, EBADBUFS,
+"listen_loop for local host got nonlocal, closing %d\n", connection);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
           continue;   /* skip the rest of the inner while loop */
         }
         int option = 1;  /* nodelay disables Nagle algorithm */
@@ -197,9 +199,11 @@ printf ("listen_loop for localhost got nonlocal, closing %d\n", connection);
           if (info->callback != NULL)
             info->callback (connection);
         } else {
-#ifdef DEBUG_EBADF
-printf ("listen_loop unable to listen_add_fd, closing %d\n", connection);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadbuf, EBADBUFS, 
+"listen_loop unable to listen_add_fd, closing %d\n", connection);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
           close (connection);
         }
         addr_size = sizeof (address);  /* reset for next call to accept */
@@ -289,19 +293,23 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
 
 void listen_shutdown (struct listen_info * info)
 {
-  while (info->num_fds > 0)
+  while (info->num_fds > 0) 
    listen_remove_fd (info, info->fds [0]);
   if (info->listen_fd6 >= 0) {
-#ifdef DEBUG_EBADF
-printf ("listen_shutdown closing ipv6 listen socket %d\n", info->listen_fd6);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadbuf, EBADBUFS,
+"listen_shutdown closing ipv6 listen socket %d\n", info->listen_fd6);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
     close (info->listen_fd6);
     pthread_cancel (info->thread6);
   }
   if (info->listen_fd4 >= 0) {
-#ifdef DEBUG_EBADF
-printf ("listen_shutdown closing ipv4 listen socket %d\n", info->listen_fd6);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadbuf, EBADBUFS,
+"listen_shutdown closing ipv4 listen socket %d\n", info->listen_fd6);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
     close (info->listen_fd4);
     pthread_cancel (info->thread4);
   }
@@ -403,9 +411,11 @@ static int close_oldest_fd (struct listen_info * info)
   send_peer_message (fd, info, min_index);
   if (info->add_remove_pipe)
     remove_pipe (info->pipe_descriptor, fd);
-#ifdef DEBUG_EBADF
-printf ("close_oldest_fd closing %d, a_r %d\n", fd, info->add_remove_pipe);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadbuf, EBADBUFS,
+"close_oldest_fd closing %d, a_r %d\n", fd, info->add_remove_pipe);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
   close (fd);
   info->fds [min_index] = -1;
   return min_index;
@@ -506,9 +516,10 @@ int listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr,
     /* if full, half the time just send a peer message and close the fd */
     send_peer_message (fd, info, -1);
     pthread_mutex_unlock (&(info->mutex));
-#ifdef DEBUG_EBADF
-printf ("listen_add_fd busy, closing fd %d\n", fd);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+snprintf (ebadbuf, EBADBUFS, "listen_add_fd busy, closing fd %d\n", fd);
+record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
     close (fd);
     return 0;
   }
@@ -524,9 +535,10 @@ void listen_remove_fd (struct listen_info * info, int fd)
   pthread_mutex_lock (&(info->mutex));
   if (info->add_remove_pipe) {
     remove_pipe (info->pipe_descriptor, fd);
-#ifdef DEBUG_EBADF
-    printf ("listen_remove_fd removed_pipe (%d)\n", fd);
-#endif /* DEBUG_EBADF */
+#ifdef DEBUG_EBADFD
+    snprintf (ebadbuf, EBADBUFS, "listen_remove_fd removed_pipe (%d)\n", fd);
+    record_message (info->pipe_descriptor);
+#endif /* DEBUG_EBADFD */
   }
   int i;
   for (i = 0; i < info->num_fds; i++) {
