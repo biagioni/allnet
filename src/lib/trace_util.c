@@ -371,10 +371,10 @@ static int print_times (struct allnet_mgmt_trace_entry * entry,
     if (print_details) {
       if (delta > 0)
         off += snprintf (buf + off, bsize - off,
-                         " %3lld.%06llds timestamp, ", delta / 1000000LL,
+                         " %5lld.%06llds timestamp, ", delta / 1000000LL,
                          delta % 1000000LL);
       else
-        off += snprintf (buf + off, bsize - off, "                        ");
+        off += snprintf (buf + off, bsize - off, "                          ");
     }
   
     delta = delta_us (now, start);
