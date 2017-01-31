@@ -101,4 +101,9 @@ class Conversation {
     Iterator<Message> getIterator() {
         return (messages.iterator());
     }
+
+    public ArrayList<Message> getMessages() {
+        return messages;
+    }
+
 }

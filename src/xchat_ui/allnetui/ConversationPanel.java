@@ -1,3 +1,4 @@
+
 package allnetui;
 
 import java.awt.*;
@@ -28,6 +29,7 @@ class ConversationPanel extends JPanel {
     public static final String CLOSE_COMMAND = "CLOSE";
     public static final String CONTACTS_COMMAND = "CONTACTS";
     public static final String EXCHANGE_KEYS_COMMAND = "EXCHANGE_KEYS";
+    public static final String DISPLAY_MORE_MSGS_COMMAND = "DISPLAY_MORE_MSGS_COMMAND";
     //
     private static final long DAY = 86400 * 1000;
     //
@@ -35,6 +37,9 @@ class ConversationPanel extends JPanel {
     private static final int MAX_LINES = 10;
     // assume that N chars will wrap around (a little rough I guess)
     private static final int CHARS_PER_LINE = 40;
+    // how many msgs to display
+    private static final int DEFAULT_NUM_MSGS_TO_DISPLAY = 20;
+    private int numMsgsToDisplay = DEFAULT_NUM_MSGS_TO_DISPLAY;
     //
     // message bubble border params
     private int borderWidth = 1;
@@ -46,10 +51,11 @@ class ConversationPanel extends JPanel {
     private JPanel messagePanel;
     private HtmlLabel topLabel;
     private JScrollPane scrollPane;
-    private boolean scrollToBottom;
+    private boolean scrollToBottom, scrollToTop;
     private JTextArea inputArea;
     // the buttons
-    private JButton sendButton;
+    private JButton sendButton, moreMsgsButton;
+    private JPanel morePanel;
     // the command prefix will identify which instance of the Class is sending the event
     private String commandPrefix;
     // default colors to use
@@ -112,6 +118,18 @@ class ConversationPanel extends JPanel {
         inputArea.setBorder(textAreaBorder);
         //
         sendButton = makeButton("Send", SEND_COMMAND);
+        //
+        moreMsgsButton = makeButton("Display More Messages", DISPLAY_MORE_MSGS_COMMAND);
+        messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        morePanel = new JPanel();
+        morePanel.setBackground(background);
+        morePanel.setLayout(new BoxLayout(morePanel, BoxLayout.X_AXIS));
+        morePanel.add(Box.createHorizontalGlue());
+        morePanel.add(moreMsgsButton);
+        morePanel.add(Box.createHorizontalGlue());
+        messagePanel.add(morePanel);
+        messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        //
         JPanel sendPanel = new JPanel();
         sendPanel.setOpaque(true);
         sendPanel.setBackground(background);
@@ -152,6 +170,18 @@ class ConversationPanel extends JPanel {
         }
     }
 
+    public static int getDefaultNumMsgsToDisplay() {
+        return DEFAULT_NUM_MSGS_TO_DISPLAY;
+    }
+
+    public int getNumMsgsToDisplay() {
+        return numMsgsToDisplay;
+    }
+
+    public void setNumMsgsToDisplay(int numMsgsToDisplay) {
+        this.numMsgsToDisplay = numMsgsToDisplay;
+    }
+
     public String getContactName() {
         return contactName;
     }
@@ -183,6 +213,7 @@ class ConversationPanel extends JPanel {
 
     void setListener(ActionListener listener) {
         sendButton.addActionListener(listener);
+        moreMsgsButton.addActionListener(listener);
         // no longer want to send event when return key is entered
         // msgField.addActionListener(listener);
     }
@@ -227,6 +258,22 @@ class ConversationPanel extends JPanel {
         return Color.WHITE;
     }
 
+    public void validateToBottom() {
+        // tell scroll panel to scroll to the bottom the next time it adjusts,
+        // which will be triggered right now when it validates.  there is 
+        // apparently no other way to do this 
+        scrollToBottom = true;
+        messagePanel.revalidate();
+    }
+
+    public void validateToTop() {
+        // tell scroll panel to scroll to the bottom the next time it adjusts,
+        // which will be triggered right now when it validates.  there is 
+        // apparently no other way to do this 
+        scrollToTop = true;
+        messagePanel.revalidate();
+    }
+
     public void addMsg(String text, Message msg) {
         boolean isReceived = msg.to.equals(Message.SELF);
         boolean broadcast = msg.isBroadcast();
@@ -255,11 +302,6 @@ class ConversationPanel extends JPanel {
         }
         messagePanel.add(inner);
         messagePanel.add(Box.createRigidArea(new Dimension(0, 4)));
-        // tell scroll panel to scroll to the bottom the next time it adjusts,
-        // which will be triggered right now when it validates.  there is 
-        // apparently no other way to do this 
-        scrollToBottom = true;
-        messagePanel.revalidate();
         //
         // update ack tracking
         if (!acked) {
@@ -267,7 +309,7 @@ class ConversationPanel extends JPanel {
             unackedBubbles.add(bubble);
         }
     }
- 
+
     void ackMsg(Message msg) {
         for (MessageBubble<Message> bubble : unackedBubbles) {
             if (bubble.getMessage().equals(msg)) {
@@ -283,6 +325,10 @@ class ConversationPanel extends JPanel {
         messagePanel.removeAll();
         messagePanel.validate();
         unackedBubbles.clear();
+        // must restore the more msgs button at top of panel 
+        messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        messagePanel.add(morePanel);
+        messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
     }
 
     void setTopLabelText(String... lines) {
@@ -296,11 +342,23 @@ class ConversationPanel extends JPanel {
         }
 
         @Override
-        public void adjustmentValueChanged(AdjustmentEvent e) {
-            if (scrollToBottom) {
-                scrollToBottom = false;
-                e.getAdjustable().setValue(e.getAdjustable().getMaximum());
-            }
+        public void adjustmentValueChanged(final AdjustmentEvent e) {
+            Runnable r = new Runnable() {
+
+                @Override
+                public void run() {
+                    if (scrollToBottom) {
+                        scrollToBottom = false;
+                        e.getAdjustable().setValue(e.getAdjustable().getMaximum());
+                    }
+                    if (scrollToTop) {
+                        scrollToTop = false;
+                        e.getAdjustable().setValue(e.getAdjustable().getMinimum());
+                    }
+                }
+            };
+            // schedule it in the event disp thread, but don't wait for it to execute
+            SwingUtilities.invokeLater(r);
         }
     }
 

@@ -1,3 +1,4 @@
+
 package allnetui;
 
 import java.awt.Component;
@@ -12,15 +13,13 @@ import utils.ControllerInterface;
 import utils.tabbedpane.MyTabbedPane;
 
 /**
- * The C of MVC.  Receives and processes UI and application events.  The idea
- * is to put all UI logic (and sometimes application logic, when feasible) in
- * one place.
- * 
- *   M <=> C <=> V
- *         |
- *    Application
- * 
- * 
+ * The C of MVC. Receives and processes UI and application events. The idea is
+ * to put all UI logic (and sometimes application logic, when feasible) in one
+ * place.
+ *
+ * M <=> C <=> V | Application
+ *
+ *
  * @author Henry
  */
 class UIController implements ControllerInterface, UIAPI {
@@ -32,9 +31,9 @@ class UIController implements ControllerInterface, UIAPI {
     public final int HOPS_LOCAL = 1;
     public final int HOPS_REMOTE = 6;
     // for formatting message times
-    private static SimpleDateFormat formatter =
-            //          new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss z");
-            new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss");
+    private static SimpleDateFormat formatter
+        = //          new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss z");
+        new SimpleDateFormat("yyyy/MM/dd  HH:mm:ss");
     //
     // reference to the swing Frame in which the ui is running 
     private ApplicationFrame frame;
@@ -62,14 +61,15 @@ class UIController implements ControllerInterface, UIAPI {
     // the application should call this method after a valid message is received
     @Override
     public void messageReceived(final String from, final long sentTime,
-                                final String text, final boolean broadcast) {
+        final String text, final boolean broadcast) {
         Runnable r = new Runnable() {
             long rcvdTime = java.util.Calendar.getInstance().getTimeInMillis();
             Message message = new Message(from, Message.SELF, sentTime,
-                                          rcvdTime, text, broadcast, true);
+                rcvdTime, text, broadcast, true);
+
             @Override
             public void run() {
-// System.out.println("processing received message " + message.toString());
+                // System.out.println("processing received message " + message.toString());
                 processReceivedMessage(message, true);
             }
         };
@@ -87,7 +87,8 @@ class UIController implements ControllerInterface, UIAPI {
                 for (Message message : messages) {
                     if (message.sentNotReceived) {
                         displaySentMessage(message);
-                    } else {
+                    }
+                    else {
                         processReceivedMessage(message, false);
                     }
                 }
@@ -121,11 +122,11 @@ class UIController implements ControllerInterface, UIAPI {
     // the application should call this method after a message has been successfully sent
     @Override
     public void messageSent(final String to, final long sentTime,
-                            final long seq, final String text) {
+        final long seq, final String text) {
         Runnable r = new Runnable() {
 
             Message message = new Message(Message.SELF, to, sentTime, seq,
-                                          text, null);
+                text, null);
 
             @Override
             public void run() {
@@ -152,7 +153,7 @@ class UIController implements ControllerInterface, UIAPI {
     // the application should call this method to tell the UI about a new contact
     @Override
     public void contactCreated(final String contactName,
-                               final boolean isBroadcast) {
+        final boolean isBroadcast) {
         Runnable r = new Runnable() {
 
             @Override
@@ -208,15 +209,14 @@ class UIController implements ControllerInterface, UIAPI {
 //        // schedule it in the event disp thread, but don't wait for it to execute
 //        SwingUtilities.invokeLater(r);
 //    }
-
     @Override
     // if a trace response is received, call this method
-    public void traceReceived(final String traceMessage) { 
+    public void traceReceived(final String traceMessage) {
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
-                morePanel.addTraceText (traceMessage);
+                morePanel.addTraceText(traceMessage);
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
@@ -303,7 +303,8 @@ class UIController implements ControllerInterface, UIAPI {
         else if (actionCommand[0].startsWith(UI.MORE_PANEL_ID)) {
             // from the more panel
             processMorePanelEvent(actionCommand);
-        } else {
+        }
+        else {
             // must be from a conversation panel
             processConversationPanelEvent(actionCommand);
         }
@@ -329,30 +330,31 @@ class UIController implements ControllerInterface, UIAPI {
                     min = MIN_LENGTH_LONG;
                 }
                 String variableInput = kep.getVariableInput();
-                if ((variableInput == null) || (variableInput.isEmpty()) ||
-                    (variableInput.length() < min)) {
+                if ((variableInput == null) || (variableInput.isEmpty())
+                    || (variableInput.length() < min)) {
                     kep.setText(1, " Resend Key button pressed !!!", "",
-                            " Shared secret:", " " + kep.getSecret());
+                        " Shared secret:", " " + kep.getSecret());
                 }
                 else {
                     kep.setText(1, " Resend Key button pressed !!!", "",
-                            " Shared secret:", " " + kep.getSecret(), " or:",
-                            " " + variableInput, " ");
+                        " Shared secret:", " " + kep.getSecret(), " or:",
+                        " " + variableInput, " ");
                 }
                 if (XchatSocket.sendKeyRequest(kep.getContactName(),
-                                               kep.getSecret(),
-                                               kep.getVariableInput(), hops)) {
+                    kep.getSecret(),
+                    kep.getVariableInput(), hops)) {
                     System.out.println("resent key request");
                 }
                 break;
             case 2:
                 String ahra = kep.getVariableInput();
                 kep.setText(1, " Resent subscription request",
-                            " requesting authentication for: " + ahra);
-System.out.println ("resending subscription for " + ahra);
+                    " requesting authentication for: " + ahra);
+                System.out.println("resending subscription for " + ahra);
                 if ((ahra != null) && (XchatSocket.sendSubscription(ahra))) {
                     System.out.println("sent ahra subscription");
-                } else {
+                }
+                else {
                     System.out.println("unable to resend ahra subscription");
                 }
                 break;
@@ -385,7 +387,7 @@ System.out.println ("resending subscription for " + ahra);
                 break;
             case MorePanel.TRACE_COMMAND:
 //              System.out.println ("trace command called");
-                morePanel.setTraceText ("");
+                morePanel.setTraceText("");
                 if (XchatSocket.sendTrace(5)) {
 //                  System.out.println("sent trace request");
                 }
@@ -446,8 +448,8 @@ System.out.println ("resending subscription for " + ahra);
         if (m > 0) {
 //            tabTitle = "Contacts (" 
 //                     + contactsWithNewMessages + "/" + newMessages + ")";
-            tabTitle = "Contacts (" + m + "/" + 
-                                  clientData.getTotalNewMsgs() + ")";
+            tabTitle = "Contacts (" + m + "/"
+                + clientData.getTotalNewMsgs() + ")";
         }
         myTabbedPane.setTitle(UI.CONTACTS_PANEL_ID, tabTitle);
     }
@@ -498,12 +500,14 @@ System.out.println ("resending subscription for " + ahra);
             cp.setListener(this);
             // display the conversation on the new panel
             Conversation conv = clientData.getConversation(contactName);
-            Iterator<Message> it = conv.getIterator();
-            Message msg;
-            while (it.hasNext()) {
-                msg = it.next();
-                cp.addMsg(formatMessage(msg, maxLineLength), msg);
-            }
+            initializeConversation(cp, conv, true);
+
+//            Iterator<Message> it = conv.getIterator();
+//            Message msg;
+//            while (it.hasNext()) {
+//                msg = it.next();
+//                cp.addMsg(formatMessage(msg, maxLineLength), msg);
+//            }
             myTabbedPane.addTabWithClose(contactName, cp.getTitle(), cp, ConversationPanel.CLOSE_COMMAND);
             myTabbedPane.setSelected(cp);
         }
@@ -519,7 +523,7 @@ System.out.println ("resending subscription for " + ahra);
     }
 
     private String[] makeMiddlePanel(boolean useLongSecret,
-                                     String variableInput) {
+        String variableInput) {
         String secret = newContactPanel.getMySecretShort();
         int minLength = MIN_LENGTH_SHORT;
         if (useLongSecret) {
@@ -528,17 +532,17 @@ System.out.println ("resending subscription for " + ahra);
         }
         if (variableInput.length() >= minLength) {
             return new String[]{
-                        " Shared secret:",
-                        " " + secret,
-                        " or:",
-                        " " + newContactPanel.getVariableInput()
-                    };
+                " Shared secret:",
+                " " + secret,
+                " or:",
+                " " + newContactPanel.getVariableInput()
+            };
         }
         else {
             return new String[]{
-                        " Shared secret:",
-                        " " + secret
-                    };
+                " Shared secret:",
+                " " + secret
+            };
         }
     }
 
@@ -555,13 +559,14 @@ System.out.println ("resending subscription for " + ahra);
             }
             int button = newContactPanel.getSelectedButton();
             String variableInput = newContactPanel.getVariableInput();
-            if (variableInput == null)
+            if (variableInput == null) {
                 variableInput = "";
+            }
             String secret;
             switch (button) {
                 case -1:
                     System.out.println("UIController.java: new contact " + contact
-                            + ", no button selected");
+                        + ", no button selected");
                     break;
                 case 0:
                     secret = newContactPanel.getMySecretShort();
@@ -569,26 +574,26 @@ System.out.println ("resending subscription for " + ahra);
                         variableInput = "";
                     }
                     System.out.println("new 1-hop contact " + contact + ", "
-                            + ", secret " + variableInput + "/" + secret);
+                        + ", secret " + variableInput + "/" + secret);
                     // create the key exchange panel if it doesn't already exist
                     kep = getKeyExchangePanel(contact);
                     if (kep == null) {
                         // now put up a key exchange panel
-                        String[] middlePanelMsg =
-                            makeMiddlePanel(false, variableInput);
+                        String[] middlePanelMsg
+                            = makeMiddlePanel(false, variableInput);
                         String[] bottomPanelMsg = new String[]{
                             " Key exchange in progress",
                             " Sent your key",
                             " Waiting for key from " + contact
                         };
                         kep = createKeyExchangePanel(contact, middlePanelMsg,
-                                bottomPanelMsg, true, true);
+                            bottomPanelMsg, true, true);
                         kep.setButtonState(button);
                         kep.setSecret(secret);
                         kep.setVariableInput(variableInput);
                     }
                     if (XchatSocket.sendKeyRequest(contact,
-                            secret, variableInput, HOPS_LOCAL)) {
+                        secret, variableInput, HOPS_LOCAL)) {
                         System.out.println("sent direct wireless key request");
                         newContactPanel.setMySecret();
                     }
@@ -602,27 +607,27 @@ System.out.println ("resending subscription for " + ahra);
                         variableInput = "";
                     }
                     System.out.println("new long-distance contact " + contact
-                            + ", secret " + variableInput + "/" + secret);
+                        + ", secret " + variableInput + "/" + secret);
                     kep = getKeyExchangePanel(contact);
                     if (kep == null) {
                         // now put up a key exchange panel
-                        String[] middlePanelMsg =
-                            makeMiddlePanel(true, variableInput);
+                        String[] middlePanelMsg
+                            = makeMiddlePanel(true, variableInput);
                         String[] bottomPanelMsg = new String[]{
                             " Key exchange in progress",
                             " Sent your key",
                             " Waiting for key from " + contact
                         };
                         kep = createKeyExchangePanel(contact, middlePanelMsg,
-                                bottomPanelMsg, true, true);
+                            bottomPanelMsg, true, true);
                         kep.setButtonState(button);
                         kep.setSecret(secret);
                         kep.setVariableInput(variableInput);
                     }
                     //
                     if (XchatSocket.sendKeyRequest(contact,
-                            newContactPanel.getMySecretLong(),
-                            newContactPanel.getVariableInput(), HOPS_REMOTE)) {
+                        newContactPanel.getMySecretLong(),
+                        newContactPanel.getVariableInput(), HOPS_REMOTE)) {
                         System.out.println("sent key request with 6 hops");
                         newContactPanel.setMySecret();
                     }
@@ -633,34 +638,36 @@ System.out.println ("resending subscription for " + ahra);
                 case 2:
                     String ahra = newContactPanel.getVariableInput();
                     System.out.println("new ahra contact " + contact + ", "
-                                       + ahra);
+                        + ahra);
                     if ((ahra == null) || (ahra.indexOf('@') < 0)) {
                         ahra = contact;
                     }
                     if ((ahra == null) || (ahra.indexOf('@') < 0)) {
                         System.out.println("new ahra contact " + contact
-                                + " must contain '@' sign");
-                    } else {
+                            + " must contain '@' sign");
+                    }
+                    else {
                         kep = getKeyExchangePanel(contact);
                         if (kep == null) {
                             // now put up a key exchange panel
-                            String[] middlePanelMsg =
-                                { "requesting authentication for: " + contact };
+                            String[] middlePanelMsg
+                                = {"requesting authentication for: " + contact};
                             String[] bottomPanelMsg = new String[]{
                                 " authentication in progress",
                                 " Sent your your request",
                                 " Waiting for key matching " + contact
                             };
                             kep = createKeyExchangePanel(contact,
-                                                         middlePanelMsg,
-                                                         bottomPanelMsg,
-                                                         true, false);
+                                middlePanelMsg,
+                                bottomPanelMsg,
+                                true, false);
                             kep.setButtonState(button);
                             kep.setVariableInput(ahra);
                         }
                         if (XchatSocket.sendSubscription(ahra)) {
                             System.out.println("sent ahra subscription");
-                        } else {
+                        }
+                        else {
                             System.out.println("unable to send ahra request");
                         }
                     }
@@ -672,7 +679,7 @@ System.out.println ("resending subscription for " + ahra);
 //                    break;
                 default:
                     System.out.println("UIController.java: unknown button "
-                            + button + " for contact " + contact);
+                        + button + " for contact " + contact);
                     break;
             }
         }
@@ -687,12 +694,24 @@ System.out.println ("resending subscription for " + ahra);
             throw new RuntimeException("event from unknown ConversationPanel: " + contactName);
         }
         switch (buttonName) {
+            case ConversationPanel.DISPLAY_MORE_MSGS_COMMAND:
+                // fetch the number to display, and increment it
+                int currentNum = cp.getNumMsgsToDisplay();
+                // currentNum += ConversationPanel.getDefaultNumMsgsToDisplay();
+                // exponential growth gets us there faster if we want to
+                // go back a large number of messages
+                currentNum *= 2;
+                cp.setNumMsgsToDisplay(currentNum);
+                Conversation conv = clientData.getConversation(cp.getContactName());
+                initializeConversation(cp, conv, false);
+                break;
             case ConversationPanel.SEND_COMMAND:
                 // here we yank the message data from the ConversationPanel and 
                 // send it to the application to be sent
                 String msgText = cp.getMsgToSend();
-                if (msgText.length() <= 0)
-                  break;
+                if (msgText.length() <= 0) {
+                    break;
+                }
                 String peer = cp.getContactName();
                 long seq = XchatSocket.sendToPeer(peer, msgText);
                 if (seq > 0) {
@@ -725,29 +744,33 @@ System.out.println ("resending subscription for " + ahra);
         String contactName = msg.from;
         if (!clientData.contactExists(contactName)) {
             // maybe should throw Exception here, in production code?
-            System.out.println("got message from unknown contact " +
-                               contactName + " (self is " + Message.SELF + ")");
+            System.out.println("got message from unknown contact "
+                + contactName + " (self is " + Message.SELF + ")");
             return;
         }
         Conversation conv = clientData.getConversation(contactName);
         boolean addedAtEnd = conv.add(msg);
         // see if there is a tab open for this conversation
-        ConversationPanel cp =
-          (ConversationPanel) myTabbedPane.getTabContent(contactName);
+        ConversationPanel cp
+            = (ConversationPanel) myTabbedPane.getTabContent(contactName);
         if (cp != null) {
             // add the message to it
             if (addedAtEnd) {
                 cp.addMsg(formatMessage(msg, maxLineLength), msg);
-            } else {
-          // out of order, so delete everything, then add everything back
-// System.out.println ("received out-of-order message");
-                cp.clearMsgs();
-                Iterator<Message> it = conv.getIterator();
-                Message savedMsg;
-                while (it.hasNext()) {
-                    savedMsg = it.next();
-                    cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
-                }
+                cp.validateToBottom();
+            }
+            else {
+                // out of order, so delete everything, then add everything back
+                // System.out.println ("received out-of-order message");
+                initializeConversation(cp, conv, true);
+
+//                cp.clearMsgs();
+//                Iterator<Message> it = conv.getIterator();
+//                Message savedMsg;
+//                while (it.hasNext()) {
+//                    savedMsg = it.next();
+//                   cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
+//                }
             }
             // if the tab is currently selected, then mark message as read
             String selectedName = myTabbedPane.getSelectedID();
@@ -762,6 +785,49 @@ System.out.println ("resending subscription for " + ahra);
             boolean isBroadcast = clientData.isBroadcast(contactName);
             updateContactsPanel(contactName, isBroadcast);
             updateConversationPanels();
+        }
+    }
+
+    private void initializeConversationOld(ConversationPanel cp, Conversation conv, boolean scrollToBottom) {
+        cp.clearMsgs();
+        Iterator<Message> it = conv.getIterator();
+        Message savedMsg;
+        while (it.hasNext()) {
+            savedMsg = it.next();
+            cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
+        }
+        if (scrollToBottom) {
+            cp.validateToBottom();
+        }
+        else {
+            cp.validateToTop();
+        }
+    }
+
+    private void initializeConversation(ConversationPanel cp, Conversation conv, boolean scrollToBottom) {
+        cp.clearMsgs();
+        ArrayList<Message> msgs = conv.getMessages();
+        int numToDisplay = cp.getNumMsgsToDisplay();
+        int startIdx = Math.max(0, msgs.size() - numToDisplay);
+        // find earliest unread msg
+        int earliest = Integer.MAX_VALUE;
+        for (int i = 0; i < msgs.size(); i++) {
+            if (msgs.get(i).isNewMessage()) {
+                earliest = i;
+                break;
+            }
+        }
+        startIdx = Math.min(startIdx, earliest);
+        Message savedMsg;
+        for (int i = startIdx; i < msgs.size(); i++) {
+            savedMsg = msgs.get(i);
+            cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
+        }
+        if (scrollToBottom) {
+            cp.validateToBottom();
+        }
+        else {
+            cp.validateToTop();
         }
     }
 
@@ -781,7 +847,7 @@ System.out.println ("resending subscription for " + ahra);
     }
 
     private void updateConversationPanel(String contact,
-            ConversationPanel panel) {
+        ConversationPanel panel) {
         String line1 = " conversation with " + contact;
         if (clientData.isBroadcast(contact)) {
             int pos = contact.indexOf("@");
@@ -886,6 +952,7 @@ System.out.println ("resending subscription for " + ahra);
         if (cp != null) {
             // add the message to it
             cp.addMsg(formatMessage(msg, maxLineLength), msg);
+            cp.validateToBottom();
             // mark the message as read, even though this is not checked at present
             msg.setRead();
         }
@@ -900,17 +967,17 @@ System.out.println ("resending subscription for " + ahra);
         Conversation conv = clientData.getConversation(peer);
         // see if there is a tab open for this conversation
         Iterator<Message> it = conv.getIterator();
-        while (it.hasNext ()) {
-            Message msg = it.next ();
-            if (msg.setAcked (seq)) {  // set ack flag if this is the right seq
-                ConversationPanel cp =
-                    (ConversationPanel) myTabbedPane.getTabContent(peer);
-                if (cp != null)
-                    cp.ackMsg (msg);
+        while (it.hasNext()) {
+            Message msg = it.next();
+            if (msg.setAcked(seq)) {  // set ack flag if this is the right seq
+                ConversationPanel cp
+                    = (ConversationPanel) myTabbedPane.getTabContent(peer);
+                if (cp != null) {
+                    cp.ackMsg(msg);
+                }
             }
         }
     }
-
 
     private void showKeyExchangeSuccess(KeyExchangePanel kep, String contactName) {
         // for debug
@@ -926,20 +993,22 @@ System.out.println ("resending subscription for " + ahra);
     }
 
     private KeyExchangePanel
-       createKeyExchangePanel(String contactName, String[] middlePanelText,
-                              String[] bottomPanelText, boolean selectIt,
-                              boolean isKeyExchange) {
-        KeyExchangePanel keyExchangePanel =
-            new KeyExchangePanel(contactName, new int[]{2, 6, 4},
-                                 isKeyExchange);
-        if (middlePanelText != null)
+        createKeyExchangePanel(String contactName, String[] middlePanelText,
+            String[] bottomPanelText, boolean selectIt,
+            boolean isKeyExchange) {
+        KeyExchangePanel keyExchangePanel
+            = new KeyExchangePanel(contactName, new int[]{2, 6, 4},
+                isKeyExchange);
+        if (middlePanelText != null) {
             keyExchangePanel.setText(1, middlePanelText);
-        else
-            keyExchangePanel.setText(1, new String [0]);
+        }
+        else {
+            keyExchangePanel.setText(1, new String[0]);
+        }
         keyExchangePanel.setText(2, bottomPanelText);
         keyExchangePanel.setListener(this);
         myTabbedPane.addTabWithCloseRight(keyExchangePanel.getCommandPrefix(),
-                "key exchange", keyExchangePanel, KeyExchangePanel.CLOSE_COMMAND);
+            "key exchange", keyExchangePanel, KeyExchangePanel.CLOSE_COMMAND);
         if (selectIt) {
             myTabbedPane.setSelected(keyExchangePanel);
         }
@@ -955,10 +1024,11 @@ System.out.println ("resending subscription for " + ahra);
         // and then exit
         try {   // if on windows, show the hidden console so user can close it
             Runtime.getRuntime().exec("showConsole.exe");
-        // } // not needed in production code
-          //  catch(IOException iOException)        {
-          //  iOException.printStackTrace();
-        } catch(Exception e) {  // ignore, especially on non-windows systems
+            // } // not needed in production code
+            //  catch(IOException iOException)        {
+            //  iOException.printStackTrace();
+        }
+        catch (Exception e) {  // ignore, especially on non-windows systems
         }
         System.exit(0);
     }
