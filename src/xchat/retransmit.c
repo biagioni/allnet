@@ -375,8 +375,8 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
                       keyset k, int sock, int hops, int top_priority, int max)
 {
 #ifdef DEBUG_PRINT
-  printf ("in resend_messages (%p, %d, %s, %d, %d)\n",
-          retransmit_message, mlen, contact, sock, hops);
+  printf ("in resend_messages (%p, %d, %s, %d, %d, %d)\n",
+          retransmit_message, mlen, contact, k, sock, hops);
 #endif /* DEBUG_PRINT */
   if (mlen < (int) (sizeof (struct chat_control_request))) {
     printf ("message size %d less than %zd, cannot be retransmit\n",
@@ -412,7 +412,7 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
 #ifdef DEBUG_PRINT
   printf ("rcvd rexmit request for %s, %d singles, %d ranges, last %lld\n",
           contact, hp->num_singles, hp->num_ranges,
-          readb64 ((char *)(hp->last_received)));
+          readb64u (hp->last_received));
   char * ptr = (char *)(hp->counters);
   int i;
   for (i = 0; i < hp->num_singles; i++)
