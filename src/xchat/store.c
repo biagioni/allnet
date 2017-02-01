@@ -682,6 +682,8 @@ int highest_seq_record (const char * contact, keyset k, int type_wanted,
       max_rcvd_time = this_rcvd_time;
       memcpy (max_ack, this_ack, MESSAGE_ID_SIZE);
       if (message != NULL) {
+        if (max_message != NULL)
+          free (max_message);
         max_message = this_message;
         max_msize = this_msize;
       }
