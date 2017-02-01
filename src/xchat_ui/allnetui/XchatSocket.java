@@ -188,6 +188,16 @@ public class XchatSocket extends Thread {
     debugPacket (true, packet.getData (), packet.getLength (), code, peer);
   }
 
+  static String sanitizeForHtml (String message) {
+    java.util.regex.Pattern ltPat = java.util.regex.Pattern.compile ("<");
+    java.util.regex.Matcher ltMat = ltPat.matcher (message);
+    String noLt = ltMat.replaceAll ("&lt;");
+    java.util.regex.Pattern gtPat = java.util.regex.Pattern.compile (">");
+    java.util.regex.Matcher gtMat = ltPat.matcher (noLt);
+    String noGt = gtMat.replaceAll ("&gt;");
+    return noGt;
+  }
+
   /* Decode a message (if possible), and call the corresponding API function.
    * messages have a length, time, code, peer name, and text
    *   length (4 bytes, big-endian order) includes everything.
@@ -213,6 +223,7 @@ public class XchatSocket extends Thread {
     if ((code == codeDataMessage) || (code == codeBroadcastMessage)) {
       String message = bString (data, nextIndex.value, dlen, nextIndex);
       // System.out.println ("message '" + message + "' from " + peer);
+      message = sanitizeForHtml(message);
       boolean broadcastReceived = (code == codeBroadcastMessage);
       if (broadcastReceived)
         time = System.currentTimeMillis();
