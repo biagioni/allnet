@@ -893,7 +893,7 @@ class UIController implements ControllerInterface, UIAPI {
             sb.append("\n");
             sb.append(line);
         }
-        return (sb.toString());
+        return (XchatSocket.sanitizeForHtml (sb.toString()));
     }
 
     // chop a line up into pieces <= max length
