@@ -307,6 +307,7 @@ static char ** randomize_contacts (char ** original, int n, int max)
  * negative of the data size < 0, and fills in the contact matching
  * the public key used to decrypt.
  * With either of these, malloc's and fills in *text.
+ * The contact and keyset always identify an individual contact, never a group
  * if decryption does not work, returns 0 and sets *contact and *text to NULL
  *
  * if maxcontacts > 0, only tries to match up to maxcontacts
@@ -333,7 +334,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
   int count = 0;
   int decrypt_count = 0;
   char ** contacts = NULL;
-  int ncontacts = all_contacts (&contacts);
+  int ncontacts = all_individual_contacts (&contacts);
   if ((maxcontacts > 0) && (maxcontacts < ncontacts)) {
     contacts = randomize_contacts (contacts, ncontacts, maxcontacts);
     ncontacts = maxcontacts;

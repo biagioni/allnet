@@ -630,36 +630,34 @@ static char ** malloc_copy_array_of_strings (char ** array, int count)
   return result;
 }
 
-/* returns the number of contacts, and (if not NULL) has contacts point
- * to a dynamically allocated array of pointers to null-terminated
- * contact names (to free, call free (*contacts)). */
-int all_contacts (char *** contacts)
+static int all_contacts_implementation (char *** contacts, int individual_only)
 {
-  init_from_file ("all_contacts");
-#if 0
-  static int test = 1;
-  if (test) {
-    char * a [] = { "foo", "bar2", "baz" };
-    int i;
-    for (i = 0; i < 3; i++) printf ("a %p [%d] = %p, %s\n", a, i, a [i], a [i]);
-    char ** b = malloc_copy_array_of_strings (a, 3);
-    for (i = 0; i < 3; i++) printf ("b %p [%d] = %p, %s\n", b, i, b [i], b [i]);
-    test = 0;
-  }
-#endif /* 0 */
+  init_from_file ("all_contacts_implementation");
 #ifdef DEBUG_PRINT
-  print_contacts ("entering all_contacts");
+  print_contacts ("entering all_contacts_implementation (%d)", individual_only);
 #endif /* DEBUG_PRINT */
   int i;
   int delta = 0;
   char ** p = NULL;
+/* allocate enough room for all the contacts, then only return the ones
+ * we actually want to return: the ones that are not deleted,
+ * and if individual_only, that are not groups
+ * otherwise, that are visible
+ * we do waste of some space, but the amount of wasted space should
+ * be small, and simplifying the code is worth it */
   if (contacts != NULL) {
     p = malloc_copy_array_of_strings (cpx, cp_used);
     *contacts = p;
   }
   for (i = 0; i < cp_used; i++) {
-    if ((! kip [i].is_deleted) && (kip [i].is_visible)) {
+    int include = (! kip [i].is_deleted);
+    if (individual_only)  /* only include if it is not a group */
+      include = include && (! kip [i].is_group);
+    else                  /* only include if it is visible */
+      include = include && (kip [i].is_visible);
+    if (include) {
       if ((delta > 0) && (p != NULL))
+        /* delta > 0, so at least some with index < i have been ignored */
         p [i - delta] = p [i];  /* make p[i-delta] valid */
          /* note: delta increases at most once per loop,
             so i >= delta >= 0 and i >= i - delta >= 0 */
@@ -668,6 +666,20 @@ int all_contacts (char *** contacts)
     }
   }
   return cp_used - delta;
+}
+
+/* returns the number of contacts, and (if not NULL) has contacts point
+ * to a dynamically allocated array of pointers to null-terminated
+ * contact names (to free, call free (*contacts)). */
+int all_contacts (char *** contacts)
+{
+  return all_contacts_implementation (contacts, 0);
+}
+
+/* same, but only individual contacts, not groups */
+int all_individual_contacts (char *** contacts)
+{
+  return all_contacts_implementation (contacts, 1);
 }
 
 #if 0

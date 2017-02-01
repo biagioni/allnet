@@ -25,6 +25,8 @@ extern int num_contacts ();
  * to a dynamically allocated array of pointers to null-terminated
  * contact names (to free, call free (*contacts)). */
 extern int all_contacts (char *** contacts);
+/* same, but only individual contacts, not groups */
+extern int all_individual_contacts (char *** contacts);
 
 /* returns the keyset if successful, -1 if the contact already existed
  * creates a new private/public key pair, and if not NULL, also 

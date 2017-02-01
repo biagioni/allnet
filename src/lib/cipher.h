@@ -38,7 +38,9 @@ extern int allnet_sign (const char * text, int tsize, allnet_rsa_prvkey key,
  * negative of the data size < 0, and fills in the contact matching
  * the public key used to decrypt.
  * With either of these, malloc's and fills in *text.
+ * The contact and keyset always identify an individual contact, never a group
  * if decryption does not work, returns 0 and sets *contact and *text to NULL
+ *
  *
  * if maxcontacts > 0, only tries to match up to maxcontacts
  */
