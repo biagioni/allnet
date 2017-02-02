@@ -30,7 +30,12 @@ extern int prev_message (struct msg_iter * iter, uint64_t * seq,
 
 extern void free_iter (struct msg_iter * iter);
 
+/* returns the sequence number, or 0 if none are available */
+extern uint64_t highest_seq_value (const char * contact, keyset k,
+                                   int type_wanted);
+
 /* returns the message type, or MSG_TYPE_DONE if none are available */
+/* not used anywhere, I think */
 extern int highest_seq_record (const char * contact, keyset k, int type_wanted,
                                uint64_t * seq, uint64_t * time, int * tz_min,
                                uint64_t * rcvd_time, char * message_ack,

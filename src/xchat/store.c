@@ -711,6 +711,122 @@ int highest_seq_record (const char * contact, keyset k, int type_wanted,
   return max_type;
 }
 
+struct cached_seq_value {
+  uint64_t seq;
+  uint64_t time;
+};
+
+struct cached_seq_pair {
+  keyset k;
+  struct cached_seq_value sent;
+  struct cached_seq_value rcvd;
+};
+
+#define NUM_CACHE_ENTRIES	1000
+static struct cached_seq_pair cached_seq [NUM_CACHE_ENTRIES];
+static int cached_seq_index = 0;
+
+/* returns -1 if not found */
+static int get_cached (keyset k)
+{
+  int i;
+  for (i = 0; i < cached_seq_index; i++) {
+    if (cached_seq [i].k == k)
+      return i;
+  }
+  return -1;
+}
+
+static void cache_seq (keyset k, uint64_t seq, uint64_t time, int sent)
+{
+  int i = 0;
+  int index = cached_seq_index;
+  int need_new = 1;
+  for (i = 0; i < cached_seq_index; i++) {
+    if (cached_seq [i].k == k) {
+      need_new = 0;
+      index = i;
+      break;
+    }
+  }
+  if (need_new && (index >= NUM_CACHE_ENTRIES))
+    return;  /* no room, don't cache */
+  if (need_new) {  /* initialize the new entry to default values */
+    cached_seq [index].k = k;
+    cached_seq [index].sent.seq = 0;
+    cached_seq [index].sent.time = 0;
+    cached_seq [index].rcvd.seq = 0;
+    cached_seq [index].rcvd.time = 0;
+    cached_seq_index++;
+  }
+  if (sent) {
+    cached_seq [index].sent.seq = seq;
+    cached_seq [index].sent.time = time;
+  } else {
+    cached_seq [index].rcvd.seq = seq;
+    cached_seq [index].rcvd.time = time;
+  }
+}
+
+/* returns the sequence number, or 0 if none are available */
+uint64_t highest_seq_value (const char * contact, keyset k, int type_wanted)
+{
+  if ((type_wanted != MSG_TYPE_SENT) && (type_wanted != MSG_TYPE_RCVD) &&
+      (type_wanted != MSG_TYPE_ANY)) {
+    printf ("coding error: highest_seq_value takes %d or %d or %d, got %d\n",
+            MSG_TYPE_SENT, MSG_TYPE_RCVD, MSG_TYPE_ANY, type_wanted);
+    return 0;
+  }
+  struct msg_iter * iter = start_iter (contact, k);
+  if (iter == NULL)
+    return 0;
+  uint64_t saved_seq = 0;
+  uint64_t saved_time = 0;
+  int cache_index = get_cached (k);
+  if (cache_index >= 0) {
+    int save_sent = (type_wanted == MSG_TYPE_SENT);
+    if ((type_wanted == MSG_TYPE_ANY) &&
+        (cached_seq [cache_index].sent.seq > cached_seq [cache_index].rcvd.seq))
+      save_sent = 1;
+    if (save_sent) {
+      saved_seq  = cached_seq [cache_index].sent.seq;
+      saved_time = cached_seq [cache_index].sent.time;
+    } else {
+      saved_seq  = cached_seq [cache_index].rcvd.seq;
+      saved_time = cached_seq [cache_index].rcvd.time;
+    }
+  }
+  int max_type = MSG_TYPE_DONE;
+  uint64_t max_seq = 0;
+  uint64_t max_time = 0;
+  while (1) {
+    uint64_t this_seq = 0;
+    uint64_t this_time = 0;
+    int type = prev_message (iter, &this_seq, &this_time,
+                             NULL, NULL, NULL, NULL, NULL);
+    if (type == MSG_TYPE_DONE)  /* no (more) messages */
+      break;
+    if (((type == MSG_TYPE_SENT) || (type == MSG_TYPE_RCVD)) && /* no acks */
+        ((type_wanted == MSG_TYPE_ANY) || (type == type_wanted))) { /* match */
+      if ((this_seq > max_seq) ||
+          ((this_seq == max_seq) && (this_time > max_time))) {
+        max_type = type;
+        max_seq = this_seq;
+        max_time = this_time;
+      }
+      if ((cache_index >= 0) &&
+          (this_seq == saved_seq) && (this_time == saved_time))
+        break; /* reached the cached value, no point going further */
+    }
+  }
+  free_iter (iter);
+  if (max_type == MSG_TYPE_SENT)
+    cache_seq (k, max_seq, max_time, 1);
+  else if (max_type == MSG_TYPE_RCVD)
+    cache_seq (k, max_seq, max_time, 0);
+  return max_seq;
+}
+
 /* fix the prev_missing of each received message.  quadratic loop */
 static void set_missing (struct message_store_info * msgs, int num_used,
                          keyset k)

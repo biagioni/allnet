@@ -41,10 +41,8 @@ uint64_t get_counter (const char * contact)
   uint64_t max = 0;
   int i;
   for (i = 0; i < nkeys; i++) {
-    uint64_t seq;
-    int type = highest_seq_record (contact, kset [i], MSG_TYPE_SENT,
-                                   &seq, NULL, NULL, NULL, NULL, NULL, NULL);
-    if ((type != MSG_TYPE_DONE) && (seq > max))
+    uint64_t seq = highest_seq_value (contact, kset [i], MSG_TYPE_SENT);
+    if (seq > max)
       max = seq;
   }
   free (kset);
@@ -55,12 +53,7 @@ uint64_t get_counter (const char * contact)
  * or the keyset is not valid. */
 uint64_t get_last_received (const char * contact, keyset k)
 {
-  uint64_t seq;
-  int type = highest_seq_record (contact, k, MSG_TYPE_RCVD,
-                                 &seq, NULL, NULL, NULL, NULL, NULL, NULL);
-  if (type == MSG_TYPE_RCVD)
-    return seq;
-  return 0;
+  return highest_seq_value (contact, k, MSG_TYPE_RCVD);
 }
 
 /* search for a message with a message ack matching "wanted", and of wtype.
@@ -229,12 +222,7 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
 
 static uint64_t max_seq (const char * contact, keyset k, int wanted)
 {
-  uint64_t seq;
-  int type = highest_seq_record (contact, k, wanted, &seq, NULL, NULL, NULL,
-                                 NULL, NULL, NULL);
-  if (type == MSG_TYPE_DONE)
-    return 0;
-  return seq;
+  return highest_seq_value (contact, k, wanted);
 }
 
 /* returns a new (malloc'd) array, or NULL in case of error
