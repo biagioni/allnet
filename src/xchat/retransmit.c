@@ -45,7 +45,8 @@ static char * gather_missing_info (char * contact, keyset k,
   }
 #ifdef DEBUG_PRINT
   int d;
-  printf ("generating %d singles, %d ranges:\n", *singles, *ranges);
+  printf ("for contact %s keyset %d generating %d singles, %d ranges:\n",
+          contact, k, *singles, *ranges);
   for (d = 0; d < *singles; d++)
     printf ("%lld, ", readb64 (missing + d * COUNTER_SIZE));
   for (d = 0; d < *ranges; d++)
@@ -310,7 +311,8 @@ static void record_resend (uint64_t seq, char * contact, keyset k)
 }
 
 static void resend_message (uint64_t seq, char * contact,
-                            keyset k, int sock, int hops, int priority)
+                            keyset k, int sock,
+                            unsigned int hops, unsigned int priority)
 {
 #ifdef DEBUG_PRINT
   printf ("resending message with sequence %ju to %s/%d\n",
@@ -371,8 +373,10 @@ static void resend_message (uint64_t seq, char * contact,
 }
 
 /* resends the messages requested by the retransmit message */
-void resend_messages (char * retransmit_message, int mlen, char * contact,
-                      keyset k, int sock, int hops, int top_priority, int max)
+static void resend_messages (char * retransmit_message, int mlen,
+                             char * contact, keyset k, int sock,
+                             unsigned int hops, unsigned int top_priority,
+                             unsigned int max)
 {
 #ifdef DEBUG_PRINT
   printf ("in resend_messages (%p, %d, %s, %d, %d, %d)\n",
@@ -427,10 +431,10 @@ void resend_messages (char * retransmit_message, int mlen, char * contact,
   }
 #endif /* DEBUG_PRINT */
 
-  int send_count = 0;
+  unsigned int send_count = 0;
   /* priority decreases gradually from 5/8, which is less than for
    * fresh messages. */
-  int priority = top_priority;
+  unsigned int priority = top_priority;
   /* assume the more recent messages are more important, so send them first */
   /* and with slightly higher priority */
   uint64_t last = readb64u (hp->last_received);

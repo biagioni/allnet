@@ -11,11 +11,6 @@
 extern int send_retransmit_request (char * contact, keyset k, int sock,
                                     int hops, int priority);
 
-/* resends the messages requested by the retransmit message, up to max */
-extern void resend_messages (char * retransmit_message, int mlen,
-                             char * contact, keyset k, int sock,
-                             int hops, int top_priority, int max);
-
 /* resends up to max unacked messages */
 extern void resend_unacked (char * contact, keyset k, int sock, int hops,
                             int priority, int max);
