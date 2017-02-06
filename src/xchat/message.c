@@ -225,6 +225,7 @@ static uint64_t max_seq (const char * contact, keyset k, int wanted)
   return highest_seq_value (contact, k, wanted);
 }
 
+#define MAX_MISSING	50
 /* returns a new (malloc'd) array, or NULL in case of error
  * the new array has (singles + 2 * ranges) * COUNTER_SIZE bytes.
  * the first *singles sequence numbers are individual sequence numbers
@@ -238,8 +239,66 @@ char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
   *ranges = 0;
   if (last < 1)
     return NULL;
+/* the current implementation is relatively simple, returning up to
+ * MAX_MISSING singles and as many ranges. */
+  char singles_values [MAX_MISSING] [COUNTER_SIZE];
+  unsigned int singles_used = 0;
+  char ranges_first [MAX_MISSING] [COUNTER_SIZE];
+  char ranges_last [MAX_MISSING] [COUNTER_SIZE];
+  unsigned int ranges_used = 0;
+  uint64_t i;
+  for (i = last - 1; i > 0; i--) {
+    if (! was_received (contact, k, i)) {
+      if ((ranges_used > 0) &&
+          (i + 1 == readb64 (&(ranges_first [ranges_used - 1] [0])))) {
+        /* i extends the latest range */
+        writeb64 (&(ranges_first [ranges_used - 1] [0]), i);
+      } else if ((singles_used > 0) && (ranges_used < MAX_MISSING) &&
+                 (i + 1 == readb64 (singles_values [singles_used - 1]))) {
+        /* replace a single with a range */
+        memcpy (ranges_last [ranges_used], singles_values [singles_used - 1],
+                COUNTER_SIZE);
+        writeb64 (&(ranges_first [ranges_used] [0]), i);
+        singles_used--;
+        ranges_used++;
+      } else if (singles_used < MAX_MISSING) {
+        /* save as a single */
+        writeb64 (&(singles_values [singles_used] [0]), i);
+        singles_used++;
+      } else {   /* singles_used >= MAX_MISSING, done */
+/* note: could save a single as a range.  Not clear that this
+ * is very useful, so just keeping the code simple here */
+        break;
+      }
+    }
+  }
+  if ((singles_used == 0) && (ranges_used == 0))
+    return NULL;
+  *singles = singles_used;
+  *ranges = ranges_used;
+  char * result =
+    malloc_or_fail ((singles_used + 2 * ranges_used) * COUNTER_SIZE,
+                    "get_missing");
+  memcpy (result, singles_values, singles_used * COUNTER_SIZE);
+  char * p = result + singles_used * COUNTER_SIZE;
+  for (i = 0; i < ranges_used; i++) {
+    memcpy (p, ranges_first [i], COUNTER_SIZE);
+    memcpy (p + COUNTER_SIZE, ranges_last [i], COUNTER_SIZE);
+    p += 2 * COUNTER_SIZE;
+  }
+  return result;
+}
+
+#ifdef GET_MISSING_SINGLES_ONLY
+/* old implementation, only returns singles */
+char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
+{
+  uint64_t last = max_seq (contact, k, MSG_TYPE_RCVD);
+  *singles = 0;
+  *ranges = 0;
+  if (last < 1)
+    return NULL;
 /* the current implementation is quite simple and only returns singles */
-#define MAX_MISSING	20
   char * result = malloc_or_fail (MAX_MISSING * COUNTER_SIZE, "get_missing");
   int missing = 0;
   uint64_t i;
@@ -260,6 +319,7 @@ char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
   *singles = missing;
   return result;
 }
+#endif /* GET_MISSING_SINGLES_ONLY */
 
 /* returns a new (malloc'd) array, or NULL in case of error
  * the new array has (singles + 2 * ranges) * COUNTER_SIZE bytes.
