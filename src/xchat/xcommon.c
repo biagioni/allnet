@@ -859,9 +859,11 @@ int key_received (int sock, char * contact, char * secret1, char * secret2,
 /* handle an incoming packet, acking it if it is a data packet for us
  * returns the message length > 0 if this was a valid data message from a peer.
  * if it gets a valid key, returns -1 (details below)
+ * if it gets a new valid subscription, returns -2 (details below)
+ * if it gets a new valid ack, returns -3 (details below)
  * Otherwise returns 0 and does not fill in any of the following results.
  *
- * if it is a data, it is saved in the xchat log
+ * if it is a data message, it is saved in the xchat log
  * if it is a valid data message from a peer or a broadcaster,
  * fills in verified and broadcast
  * fills in contact, message (to point to malloc'd buffers, must be freed)
@@ -878,9 +880,9 @@ int key_received (int sock, char * contact, char * secret1, char * secret2,
  * (if not NULL) ksecret2.  If such a key is found, returns -1.
  * there are two ways of calling this:
  * - if the user specified the peer's secret, first send initial key,
- *   then call handle_packet with our secret in ksecret1 and our
+ *   then call handle_packet with our secret in ksecret1, and our
  *   peer's secret in ksecret2.
- * - otherwise, put our secret in ksecret1, make ksecret2 and kaddr NULL,
+ * - otherwise, put our secret in ksecret1, make ksecret2 NULL,
  *   and handle_packet is ready to receive a key.
  * In either case, if a matching key is received, it is saved and a
  * response is sent (if a response is a duplicate, it does no harm).
@@ -888,7 +890,8 @@ int key_received (int sock, char * contact, char * secret1, char * secret2,
  * and the hop count used in sending the key.
  *
  * if subscription is not null, listens for a reply containing a key
- * matching the subscription, returning -2 if a match is found.
+ * matching the subscription, returning -2 if a match is found between
+ * the address in the packet and addr/nbits (or if nbits is 0).
  */
 int handle_packet (int sock, char * packet, unsigned int psize,
                    char ** contact, keyset * kset,
@@ -919,7 +922,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
 
   if (hp->message_type == ALLNET_TYPE_ACK) {
     handle_ack (sock, packet, psize, hsize, acks);
-    return 0;
+    return -3;
   }
 
   if (hp->message_type == ALLNET_TYPE_CLEAR) { /* a broadcast packet */
@@ -957,8 +960,8 @@ int handle_packet (int sock, char * packet, unsigned int psize,
 
 /* send this message and save it in the xchat log. */
 /* returns the sequence number of this message, or 0 for errors */
-long long int send_data_message (int sock, char * peer,
-                                 char * message, int mlen)
+long long int send_data_message (int sock, const char * peer,
+                                 const char * message, int mlen)
 {
   if (mlen <= 0) {
     printf ("unable to send a data message of size %d\n", mlen);

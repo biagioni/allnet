@@ -21,10 +21,11 @@ struct allnet_ack_info {
 /* handle an incoming packet, acking it if it is a data packet for us
  * returns the message length > 0 if this was a valid data message from a peer.
  * if it gets a valid key, returns -1 (details below)
- * if it gets a new valid ack, returns -2 (details below)
+ * if it gets a new valid subscription, returns -2 (details below)
+ * if it gets a new valid ack, returns -3 (details below)
  * Otherwise returns 0 and does not fill in any of the following results.
  *
- * if it is a data, it is saved in the xchat log
+ * if it is a data message, it is saved in the xchat log
  * if it is a valid data message from a peer or a broadcaster,
  * fills in verified and broadcast
  * fills in contact, message (to point to malloc'd buffers, must be freed)
@@ -66,8 +67,8 @@ extern int handle_packet (int sock, char * packet, unsigned int psize,
 
 /* send this message and save it in the xchat log. */
 /* returns the sequence number of this message, or 0 for errors */
-extern long long int send_data_message (int sock, char * peer,
-                                        char * message, int mlen);
+extern long long int send_data_message (int sock, const char * peer,
+                                        const char * message, int mlen);
 
 /* if a previously received key matches one of the secrets, returns 1,
  * otherwise returns 0 */
