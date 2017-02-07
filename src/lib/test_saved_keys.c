@@ -7,7 +7,7 @@
 #include <string.h>
 #include <dirent.h>
 
-#include "src/lib/wp_rsa.h"
+#include "wp_rsa.h"
 
 extern int b64_decode (const char * data, int dsize, char * result, int rsize);
 
