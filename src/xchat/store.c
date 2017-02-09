@@ -873,6 +873,14 @@ static void ack_one_message (struct message_store_info * msgs, int num_used,
 static void ack_all_messages (struct message_store_info * msgs, int num_used,
                               const char * contact, keyset k)
 {
+  if (contact == NULL) {
+    printf ("ack_all_messages error: NULL contact\n");
+    return;
+  }
+  if ((msgs == NULL) || (num_used <= 0)) {
+    /* no messages to ack, nothing to do */
+    return;
+  }
   struct msg_iter iter;
   if (! start_iter_from_file (contact, k, &iter)) {
     printf ("error: ack_all_messages unable to create iter for %s/%d\n",
@@ -1071,12 +1079,12 @@ int add_message (struct message_store_info ** msgs, int * num_alloc,
                  int acked, const char * ack,
                  const char * message, int msize)
 {
-  if ((num_used == NULL) || (num_alloc == NULL) ||
+  if ((num_used == NULL) || (num_alloc == NULL) || (msgs == NULL) ||
       (position < 0) || (position > (*num_used) + 1))
     return 0;
   if (*num_used < 0)
     *num_used = 0;
-  if ((msgs == NULL) || (*num_used >= *num_alloc)) {
+  if ((*msgs == NULL) || (*num_used >= *num_alloc)) {
     int count = *num_alloc;
     if (count <= 0)
       count = 100;
@@ -1162,7 +1170,7 @@ static void add_all_messages (struct message_store_info ** msgs,
       for ( ; ((i >= 0) && (! inserted)); i--) {
         if (time <= (*msgs) [i].time) {   /* insert here */
 /* for now, let missing and acked both be zero.
- * missing is fixed by set_missing, acked by in ack_all_messages */
+ * missing is fixed by set_missing, acked by ack_all_messages */
           add_message (msgs, num_alloc, num_used, i + 1, k,
                        next, seq, 0, time, tz_min, rcvd_time, 0, ack,
                        message, msize);
@@ -1196,6 +1204,9 @@ int list_all_messages (const char * contact,
                        struct message_store_info ** msgs,
                        int * num_alloc, int * num_used)
 {
+  if ((contact == NULL) || (msgs == NULL) ||
+      (num_alloc == NULL) || (num_used == NULL))
+    return 0;
   *num_used = 0;
   keyset * k = NULL;
   int nk = all_keys (contact, &k);
