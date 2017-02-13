@@ -342,8 +342,8 @@ notsock_printed = pipe;
   }
 #ifdef DEBUG_PRINT
   snprintf (log->b, log->s, "send_buffer sent %d/%d bytes on %s %d\n",
-            blen, w, ((is_send) ? "socket" : "pipe"), pipe);
-  log_print ();
+            blen, (int)w, ((is_send) ? "socket" : "pipe"), pipe);
+  log_print (log);
 #endif /* DEBUG_PRINT */
   if (do_free)
     free (buffer);
@@ -520,23 +520,25 @@ int send_pipe_message_free (int pipe, char * message, unsigned int mlen,
   return result;
 }
 
-static void add_fd_to_bitset (fd_set * set, int fd, int * max)
+static void add_fd_to_bitset (fd_set * set, int fd, int * max,
+                              struct allnet_log * log)
 {
   FD_SET (fd, set);
   if (fd > *max)
     *max = fd;
 #ifdef DEBUG_PRINT
   snprintf (log->b, log->s, "selecting pipe %d, max %d\n", fd, *max);
-  log_print ();
+  log_print (log);
 #endif /* DEBUG_PRINT */
 }
 
-static struct timeval * set_timeout (int timeout, struct timeval * tvp)
+static struct timeval * set_timeout (int timeout, struct timeval * tvp,
+                                     struct allnet_log * log)
 {
   if (timeout == PIPE_MESSAGE_WAIT_FOREVER) {
 #ifdef DEBUG_PRINT
     snprintf (log->b, log->s, "set_timeout returning NULL\n");
-    log_print ();
+    log_print (log);
 #endif /* DEBUG_PRINT */
     return NULL; /* no timeout to select */
   }
@@ -547,7 +549,7 @@ static struct timeval * set_timeout (int timeout, struct timeval * tvp)
   int x = snprintf (log->b, log->s, "set_timeout returning %p", tvp);
   x += snprintf (log->b + x, log->s - x, " = %d.%06d\n",
                  (int) tvp->tv_sec, (int) tvp->tv_usec);
-  log_print ();
+  log_print (log);
 #endif /* DEBUG_PRINT */
   return tvp;
 }
@@ -590,7 +592,7 @@ static int find_fd (pd p, fd_set * set, int extra,
   return -1;
 }
 
-static int make_fdset (pd p, int extra, fd_set * set)
+static int make_fdset (pd p, int extra, fd_set * set, struct allnet_log * log)
 {
   int i;
 /* for (i = 0; i < p->num_pipes; i++)
@@ -599,9 +601,9 @@ printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
   int max_pipe = 0;
   FD_ZERO (set);
   for (i = 0; i < p->num_pipes; i++)
-    add_fd_to_bitset (set, p->buffers [i].pipe_fd, &max_pipe);
+    add_fd_to_bitset (set, p->buffers [i].pipe_fd, &max_pipe, log);
   if (extra != -1)
-    add_fd_to_bitset (set, extra, &max_pipe);
+    add_fd_to_bitset (set, extra, &max_pipe, log);
   return max_pipe;
 }
 
@@ -626,9 +628,9 @@ static void debug_ebadf (pd p, int extra)
     int max_pipe = 0;
     int fd = ((i < p->num_pipes) ? (p->buffers [i].pipe_fd) : (extra));
     if (fd >= 0) {
-      add_fd_to_bitset (&receiving, fd, &max_pipe);
+      add_fd_to_bitset (&receiving, fd, &max_pipe, p->log);
       struct timeval tv;
-      struct timeval * tvp = set_timeout (0, &tv);
+      struct timeval * tvp = set_timeout (0, &tv, p->log);
       int s = select (fd + 1, &receiving, NULL, NULL, tvp);
       if ((s < 0) && (errno == EBADF)) {
         snprintf (p->log->b, p->log->s,
@@ -652,26 +654,28 @@ static void debug_ebadf (pd p, int extra)
 static int next_available (pd p, int extra, int timeout)
 {
 #ifdef DEBUG_PRINT
-  snprintf (log->b, log->s "next_available (%d, %d)\n", extra, timeout);
-  log_print (log);
+  snprintf (p->log->b, p->log->s, "next_available (%d, %d)\n",
+            extra, timeout);
+  log_print (p->log);
 #endif /* DEBUG_PRINT */
   /* set up the fdset for receiving */
   fd_set receiving;
-  int max_pipe = make_fdset (p, extra, &receiving);
+  int max_pipe = make_fdset (p, extra, &receiving, p->log);
   /* set up the timeout, if any */
   struct timeval tv;
-  struct timeval * tvp = set_timeout (timeout, &tv);
+  struct timeval * tvp = set_timeout (timeout, &tv, p->log);
   if ((timeout > 0) && (timeout != PIPE_MESSAGE_WAIT_FOREVER) &&
       (p->num_pipes == 0) && (extra == -1) && (p->num_queues > 0))
     /* since we have queues and no pipes, set timeout so we check
      * the queues after a 10ms timeout */
-    tvp = set_timeout (10, &tv);
+    tvp = set_timeout (10, &tv, p->log);
 
   /* call select */
   int s = select (max_pipe + 1, &receiving, NULL, NULL, tvp);
 #ifdef DEBUG_PRINT
-  snprintf (log->b, log->s "select done, pipe %d/%d\n", s, num_pipes);
-  log_print ();
+  snprintf (p->log->b, p->log->s, "select done, pipe %d/%d\n",
+            s, p->num_pipes);
+  log_print (p->log);
 #endif /* DEBUG_PRINT */
   if (s < 0) {
     /* we are going to exit (unless EBADF), so print everything, unless
@@ -706,8 +710,9 @@ static int next_available (pd p, int extra, int timeout)
   /* s > 0 */
   int found = find_fd (p, &receiving, extra, s, max_pipe);
 #ifdef DEBUG_PRINT
-  snprintf (log->b, log->s "next_available returning %d\n", found);
-  log_print ();
+  snprintf (p->log->b, p->log->s,
+            "next_available returning %d\n", found);
+  log_print (p->log);
 #endif /* DEBUG_PRINT */
   return found;
 }
@@ -991,7 +996,7 @@ static int receive_dgram (int fd, char ** message,
   }
 #ifdef DEBUG_PRINT
   snprintf (log->b, log->s, "ready to receive datagram on fd %d\n", fd);
-  log_print ();
+  log_print (log);
 #endif /* DEBUG_PRINT */
   int old_salen = -3;  /* a value unlikely to be in *salen */
   if (salen != NULL)
