@@ -201,6 +201,8 @@ static void * request_cached_data (void * arg)
 int xchat_init (char * arg0, pd p)
 {
   if (alog == NULL)
+    alog = pipemsg_log (p);
+  if (alog == NULL)
     alog = init_log ("xchat/xcommon");
   int sock = connect_to_local ("xcommon", arg0, p);
   if (sock < 0)
