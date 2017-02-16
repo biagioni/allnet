@@ -769,6 +769,8 @@ static void cache_seq (keyset k, uint64_t seq, uint64_t time, int sent)
 }
 
 /* returns the sequence number, or 0 if none are available */
+/* type_wanted must be MSG_TYPE_ANY, MSG_TYPE_RCVD, or MSG_TYPE_SENT,
+ * otherwise returns 0 */
 uint64_t highest_seq_value (const char * contact, keyset k, int type_wanted)
 {
   if ((type_wanted != MSG_TYPE_SENT) && (type_wanted != MSG_TYPE_RCVD) &&

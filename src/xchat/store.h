@@ -31,6 +31,8 @@ extern int prev_message (struct msg_iter * iter, uint64_t * seq,
 extern void free_iter (struct msg_iter * iter);
 
 /* returns the sequence number, or 0 if none are available */
+/* type_wanted must be MSG_TYPE_ANY, MSG_TYPE_RCVD, or MSG_TYPE_SENT,
+ * otherwise returns 0 */
 extern uint64_t highest_seq_value (const char * contact, keyset k,
                                    int type_wanted);
 
