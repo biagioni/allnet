@@ -310,7 +310,9 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
 static int notsock_printed = -1;
 static int print_count = 0;
 if ((print_count++ < 100) && (notsock_printed != pipe)) {
-snprintf (log->b, log->s, "trying write instead of send on fd %d\n", pipe);
+snprintf (log->b, log->s,
+          "result %zd, errno %d, trying write instead of send on fd %d\n",
+          w, save_errno, pipe);
 log_print (log);
 notsock_printed = pipe;
 }
