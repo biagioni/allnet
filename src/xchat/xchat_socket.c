@@ -394,6 +394,9 @@ static char * find_java ()
   return NULL;
 }
 
+#define LOG_FILE_NAME	"xchat-java-log.txt"
+static char * tmp_dir = "/tmp";
+
 static pid_t exec_java_ui (char * arg)
 {
 #define JAR_FILE_NAME	"AllNetUI.jar"
@@ -446,8 +449,6 @@ static pid_t exec_java_ui (char * arg)
     printf ("exec_java_ui: final jarfile is %s, current dir %s\n",
             jarfile, debug);
 #endif /* DEBUG_PRINT */
-#define LOG_FILE_NAME	"/tmp/xchat-java-log.txt"
-#define LOG_FILE_ALT	"/xchat-java-log.txt"  /* in the system tmp directory */
 
 /* unfortunately, we get lots of messages such as the following:
         ** (java:14856): CRITICAL **: murrine_scrollbar_get_junction: assertion 'GTK_IS_RANGE (widget)' failed
@@ -458,11 +459,17 @@ static pid_t exec_java_ui (char * arg)
     to avoid these messages, which don't seem to be signaling anything
     actually important, we redirect the stdout and stderr to a file in /tmp,
     where they are available if desired. */
-    int log_fd = open (LOG_FILE_NAME, O_CREAT | O_TRUNC, 0644);
+    char * name = strcat3_malloc (tmp_dir, "/", LOG_FILE_NAME,
+                                  "xchat_socket tmp1");
+    int log_fd = open (name, O_CREAT | O_TRUNC, 0644);
+    free (name);
     if (log_fd < 0) {
       char * env = getenv ("TMP");  /* works on Windows, where /tmp does not */
       if (env != NULL) {
-        char * name = strcat_malloc (env, LOG_FILE_ALT, "xchat_socket tmpfile");
+        if ((tmp_dir != NULL) && (strcmp (tmp_dir, "tmp") != 0))
+          free (tmp_dir);  /* I don't think this code will ever execute */
+        tmp_dir = strcpy_malloc (env, "xchat_socket tmp dir");
+        name = strcat3_malloc (env, "/", LOG_FILE_NAME, "xchat_socket tmp2");
         log_fd = open (name, O_CREAT | O_TRUNC, 0644);
         free (name);
       }
@@ -620,7 +627,7 @@ printf ("trace child exiting\n");
     pthread_t thread;
     pthread_create (&thread, &attributes, trace_thread, (void *) a);
   } else {  /* no pipes or no fork, use trace_string */
-    char * result = trace_string ("/tmp", time, NULL, hops, 1, 0, 1);
+    char * result = trace_string (tmp_dir, time, NULL, hops, 1, 0, 1);
 /* printf ("result of trace was '%s'\n", result); */
     send_message (forwarding_socket, fwd_addr, slen,
                   CODE_TRACE_RESPONSE, 0, "trace", result);
