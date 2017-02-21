@@ -711,6 +711,56 @@ int highest_seq_record (const char * contact, keyset k, int type_wanted,
   return max_type;
 }
 
+static char * get_xchat_dir (keyset k)
+{
+  char * contact_dir = key_dir (k);
+  if (contact_dir == NULL)
+    return NULL;
+  char * xchat_dir = string_replace_once (contact_dir, "contacts", "xchat", 1);
+  free (contact_dir);
+  return xchat_dir;
+}
+
+static char * get_xchat_path (keyset k, const char * fname)
+{
+  char * xchat_dir = get_xchat_dir (k);  /* must be free'd */
+  if (xchat_dir == NULL)
+    return NULL;
+  char * path = strcat3_malloc (xchat_dir, "/", fname, "find_prev_file");
+  free (xchat_dir);
+  return path;
+}
+
+static uint64_t read_int_from_file (const char * contact, keyset k,
+                                    const char * fname)
+{
+  char * path = get_xchat_path (k, fname);  /* must be free'd */
+  if (path == NULL)
+    return 0;
+  char * contents = NULL;                   /* must be free'd */
+  int csize = read_file_malloc (path, &contents, 0);
+  free (path);
+  if ((csize <= 0) || (contents == NULL))
+    return 0;
+  uint64_t result = 0;
+  sscanf (contents, "%" PRIu64, &result);
+  free (contents);
+  return result;
+}
+
+static void save_int_to_file (const char * contact, keyset k,
+                              const char * fname, uint64_t value)
+{
+  char * path = get_xchat_path (k, fname);  /* must be free'd */
+  if (path == NULL)
+    return;
+  char buffer [] = "18446744073709551616\n";  /* 2^64 */
+  snprintf (buffer, sizeof (buffer), "%" PRIu64 "\n", value);
+  write_file (path, buffer, strlen (buffer), 1);
+  free (path);
+}
+
+#ifdef IMPLEMENTING_SEQ_CACHING
 struct cached_seq_value {
   uint64_t seq;
   uint64_t time;
@@ -767,6 +817,7 @@ static void cache_seq (keyset k, uint64_t seq, uint64_t time, int sent)
     cached_seq [index].rcvd.time = time;
   }
 }
+#endif /* IMPLEMENTING_SEQ_CACHING */
 
 /* returns the sequence number, or 0 if none are available */
 /* type_wanted must be MSG_TYPE_ANY, MSG_TYPE_RCVD, or MSG_TYPE_SENT,
@@ -779,9 +830,22 @@ uint64_t highest_seq_value (const char * contact, keyset k, int type_wanted)
             MSG_TYPE_SENT, MSG_TYPE_RCVD, MSG_TYPE_ANY, type_wanted);
     return 0;
   }
+  uint64_t seq = 0;
+  if ((type_wanted == MSG_TYPE_SENT) || (type_wanted == MSG_TYPE_ANY)) {
+    seq = read_int_from_file (contact, k, "last_sent");
+  }
+  if ((type_wanted == MSG_TYPE_RCVD) || (type_wanted == MSG_TYPE_ANY)) {
+    uint64_t seq_r = read_int_from_file (contact, k, "last_received");
+    if (seq_r > seq)  /* always true if MSG_TYPE_RCVD and sane file exists */
+      seq = seq_r;
+  }
+  if (seq > 0)
+    return seq;
+  /* no such message found, iterate through all messages to find it. */
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)
     return 0;
+#ifdef IMPLEMENTING_SEQ_CACHING
   uint64_t saved_seq = 0;
   uint64_t saved_time = 0;
   int cache_index = get_cached (k);
@@ -798,6 +862,7 @@ uint64_t highest_seq_value (const char * contact, keyset k, int type_wanted)
       saved_time = cached_seq [cache_index].rcvd.time;
     }
   }
+#endif /* IMPLEMENTING_SEQ_CACHING */
   int max_type = MSG_TYPE_DONE;
   uint64_t max_seq = 0;
   uint64_t max_time = 0;
@@ -816,16 +881,26 @@ uint64_t highest_seq_value (const char * contact, keyset k, int type_wanted)
         max_seq = this_seq;
         max_time = this_time;
       }
+#ifdef IMPLEMENTING_SEQ_CACHING
       if ((cache_index >= 0) &&
           (this_seq == saved_seq) && (this_time == saved_time))
         break; /* reached the cached value, no point going further */
+#endif /* IMPLEMENTING_SEQ_CACHING */
     }
   }
   free_iter (iter);
-  if (max_type == MSG_TYPE_SENT)
+  /* save the result of all this hard work */
+  if (max_type == MSG_TYPE_SENT) {
+#ifdef IMPLEMENTING_SEQ_CACHING
     cache_seq (k, max_seq, max_time, 1);
-  else if (max_type == MSG_TYPE_RCVD)
+#endif /* IMPLEMENTING_SEQ_CACHING */
+    save_int_to_file (contact, k, "last_sent", max_seq);
+  } else if (max_type == MSG_TYPE_RCVD) {
+#ifdef IMPLEMENTING_SEQ_CACHING
     cache_seq (k, max_seq, max_time, 0);
+#endif /* IMPLEMENTING_SEQ_CACHING */
+    save_int_to_file (contact, k, "last_received", max_seq);
+  }
   return max_seq;
 }
 
@@ -1067,6 +1142,16 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
       ack_one_message (message_cache [index].msgs,
                        message_cache [index].num_used, message_ack);
     }
+  }
+  /* save the sequence number if it is a new maximum */
+  if (type == MSG_TYPE_SENT) {
+    uint64_t max_seq = read_int_from_file (contact, k, "last_sent");
+    if (max_seq < seq)
+      save_int_to_file (contact, k, "last_sent", seq);
+  } else if (type == MSG_TYPE_RCVD) {
+    uint64_t max_seq = read_int_from_file (contact, k, "last_received");
+    if (max_seq < seq)
+      save_int_to_file (contact, k, "last_received", seq);
   }
 }
 
@@ -1344,16 +1429,6 @@ int64_t conversation_size (const char * contact)
   if (success)
     return result;
   return -1;
-}
-
-static char * get_xchat_dir (keyset k)
-{
-  char * contact_dir = key_dir (k);
-  if (contact_dir == NULL)
-    return NULL;
-  char * xchat_dir = string_replace_once (contact_dir, "contacts", "xchat", 1);
-  free (contact_dir);
-  return xchat_dir;
 }
 
 static char * oldest_nonempty_file (const char * contact)
