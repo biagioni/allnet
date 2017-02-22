@@ -62,7 +62,7 @@ static time_t last_successful_udp;
 /* UDPv4 messages are limited to less than 2^16 bytes */
 #define MAX_RECEIVE_BUFFER	ALLNET_MAX_UDP_SIZE
 
-#ifdef DEBUG_PRINT
+#if 0  /* not used, but may be useful in the future */
 static int debug_always_match (void * a1, void * a2)
 {
   return 1;
@@ -85,7 +85,7 @@ static void debug_print_addr_cache (void * addr_cache)
   if ((n > 0) && (result != NULL))
     free (result);
 }
-#endif /* DEBUG_PRINT */
+#endif /* 0 */
 
 #if 0
 static void add_ai_to_cache_or_record_usage (void * cache, 

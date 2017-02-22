@@ -455,7 +455,7 @@ void traced_main (char * pname)
     return;
 
 #ifdef DEBUG_PRINT
-  printf ("trace daemon (m %d) for %d bits: ", match_only, abits);
+  printf ("trace daemon for %d bits: ", abits);
   print_bitstring (address, 0, abits, 1);
 #endif /* DEBUG_PRINT */
   main_loop (sock, p, address, abits, 0, 0);

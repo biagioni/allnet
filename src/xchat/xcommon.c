@@ -473,7 +473,7 @@ if (tsize > 0)
           allnet_time_us () - start, tsize, hp->transport, hops);
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
-  if (tsize > CHAT_DESCRIPTOR_SIZE) {
+  if (tsize > (int)CHAT_DESCRIPTOR_SIZE) {
     intmax_t seq = readb64 (text + 24);
     if (seq == -1) {
       printf ("from %s received control seq %jd, %d bytes\n",
@@ -611,8 +611,8 @@ static int handle_sub (int sock, struct allnet_header * hp,
     if ((memcmp ("keyd", &(amhp->app), ALLNET_APP_ID_SIZE) != 0) ||
         (media != ALLNET_MEDIA_PUBLIC_KEY)) {
 #ifdef DEBUG_PRINT
-      printf ("handle_sub ignoring unknown app %d, media type %08x, dsize %d\n",
-              readb32 (amhp->app), media, dsize);
+      printf ("handle_sub %s %ld, media type %08lx, dsize %u\n",
+              "ignoring unknown app", readb32u (amhp->app), media, dsize);
 #endif /* DEBUG_PRINT */
       return 0;
     }
@@ -973,15 +973,15 @@ long long int send_data_message (int sock, const char * peer,
   int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
   char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
-#ifdef DEBUG_PRINT
-  printf ("sending seq %ju:\n", (uintmax_t)seq);
-  print_buffer (data_with_cd, dsize, "sending", 64, 1);
-#endif /* DEBUG_PRINT */
   /* send_to_contact initializes the message ack in data_with_cd/cp */
   unsigned long long int seq =
     send_to_contact (data_with_cd, dsize, peer, sock,
                      6, ALLNET_PRIORITY_LOCAL, 1);
   free (data_with_cd);
+#ifdef DEBUG_PRINT
+  printf ("sent seq %ju:\n", (uintmax_t)seq);
+  print_buffer (data_with_cd, dsize, "sending", 64, 1);
+#endif /* DEBUG_PRINT */
   return seq;
 }
 

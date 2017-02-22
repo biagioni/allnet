@@ -78,12 +78,14 @@ char * * cpx = NULL;
 int cp_used = 0;
 
 #ifdef DEBUG_PRINT
-static void print_contacts (char * desc)
+static void print_contacts (char * desc, int individual_only)
 {
   int i;
-  printf ("%s: %d contacts (%p)\n", desc, cp_used, cpx);
+  printf ("%s: %d contacts (%p)%s\n", desc, cp_used, cpx,
+          ((individual_only) ? ", printing only individual contacts" : ""));
   for (i = 0; i < cp_used; i++)
-    printf ("   [%d]: %p %s\n", i, cpx [i], cpx [i]);
+    if ((! individual_only) || (! (kip [i].is_group)))
+      printf ("   [%d]: %p %s\n", i, cpx [i], cpx [i]);
 }
 #endif /* DEBUG_PRINT */
 
@@ -494,9 +496,10 @@ static int read_key_info (const char * path, const char * file,
 #ifdef DEBUG_PRINT
     printf ("symmetric key for %s has size %d/%d\n",
             basename, n, SYMMETRIC_KEY_SIZE);
-    if (info->has_symmetric_key))
-      printf ("%d: %02x:%02x:%02x...\n", *has_symmetric_key,
-              symmetric_key [0], symmetric_key [1], symmetric_key [2]);
+    if (info->has_symmetric_key)
+      printf ("%d: %02x:%02x:%02x...\n", info->has_symmetric_key,
+              info->symmetric_key [0], info->symmetric_key [1],
+              info->symmetric_key [2]);
 #endif /* DEBUG_PRINT */
     if (info->has_symmetric_key) {
       char * sname = strcat_malloc (basename, "/send_state", "symm state");
@@ -1103,7 +1106,7 @@ int hidden_contacts (char *** contacts)
 {
   init_from_file ("hidden_contacts");
 #ifdef DEBUG_PRINT
-  print_contacts ("entering hidden_contacts");
+  print_contacts ("entering hidden_contacts", 0);
 #endif /* DEBUG_PRINT */
   int i;
   int delta = 0;
@@ -1805,7 +1808,7 @@ int all_keys (const char * contact, keyset ** keysets)
 {
   init_from_file ("all_keys");
 #ifdef DEBUG_PRINT
-  print_contacts ("entering all_keys");
+  print_contacts ("entering all_keys", 0);
 #endif /* DEBUG_PRINT */
 
   if (! contact_exists (contact))
@@ -2826,7 +2829,7 @@ static struct bc_key_info * find_bc_key (char * address,
         (strncmp (address, keys [i].identifier, alen) != 0)) {
       /* not the same ID */
 #ifdef DEBUG_PRINT
-      printf ("alen %d, idlen %d, for '%s' and '%s'\n", alen, idlen,
+      printf ("alen %zd, idlen %zd, for '%s' and '%s'\n", alen, idlen,
               address, keys [i].identifier);
 #endif /* DEBUG_PRINT */
       continue;  /* skip the rest of the loop; */

@@ -485,7 +485,7 @@ static int64_t get_next_message (int fd, int max_size, int64_t position,
     if ((found_size <= 0) || (found_size > ALLNET_MTU)) { /* unknown size */
 #ifdef DEBUG_PRINT
       snprintf (alog->b, alog->s,
-                "get_next_message found %d at %d (%d/%zd)\n",
+                "get_next_message found %d at %" PRId64 " (%d/%lld)\n",
                 found_size, position, r, fd_size (fd));
       log_print (alog);
       buffer_to_string (buffer, r, "data", 16, 0, alog->b, alog->s);
@@ -509,7 +509,7 @@ static int64_t get_next_message (int fd, int max_size, int64_t position,
       if (received_time != NULL)
         memcpy (received_time, found_time, ALLNET_TIME_SIZE);
 #ifdef DEBUG_PRINT
-      snprintf (alog->b, alog->s, "get_next_message: %d %d ok\n",
+      snprintf (alog->b, alog->s, "get_next_message: %d %" PRId64 " ok\n",
                 found_size, position);
       log_print (alog);
 #endif /* DEBUG_PRINT */
@@ -517,9 +517,9 @@ static int64_t get_next_message (int fd, int max_size, int64_t position,
     }
 #ifdef DEBUG_PRINT
     snprintf (alog->b, alog->s,
-              "get_next_message found %d id_off %d p %d %d\n", found_size,
-              found_id_off, position - (MESSAGE_ENTRY_HEADER_SIZE + found_size),
-              position);
+              "get_next_message found %d id_off %d p %" PRId64 " %" PRId64 "\n",
+              found_size, found_id_off,
+              position - (MESSAGE_ENTRY_HEADER_SIZE + found_size), position);
     log_print (alog);
 #endif /* DEBUG_PRINT */
   }

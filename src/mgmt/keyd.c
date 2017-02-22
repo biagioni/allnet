@@ -30,7 +30,8 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
                       int rksize, unsigned char * address, int abits, int hops)
 {
 #ifdef DEBUG_PRINT
-  printf ("send_key ((%p, %d), %p)\n", key->pub_key, key->pub_klen, return_key);
+  printf ("send_key ((%p, %d), %p)\n", key->pub_key,
+          allnet_rsa_pubkey_size (key->pub_key), return_key);
 #endif /* DEBUG_PRINT */
   int dlen = allnet_rsa_pubkey_size (key->pub_key) + 1;
   char * data = malloc_or_fail (dlen, "keyd send_key");
@@ -102,7 +103,7 @@ static void handle_packet (int sock, char * message, int msize)
     ksize = 0;
   }
 #ifdef DEBUG_PRINT
-  printf (" ==> kp is %p (%d bytes)\n", kp, ksize);
+  printf (" ==> kp is %p (%zd bytes)\n", kp, ksize);
 #endif /* DEBUG_PRINT */
 
   struct bc_key_info * keys;
@@ -132,7 +133,7 @@ static void handle_packet (int sock, char * message, int msize)
     log_print (alog);
     if (matching_bits >= hp->dst_nbits) {  /* send the key */
 #ifdef DEBUG_PRINT
-      printf ("sending key %d, kp %p, %d bytes to %x/%d\n", i, kp, ksize,
+      printf ("sending key %d, kp %p, %zd bytes to %x/%d\n", i, kp, ksize,
               hp->source [0] & 0xff, hp->src_nbits);
 #endif /* DEBUG_PRINT */
       send_key (sock, keys + i, kp, (int)ksize,

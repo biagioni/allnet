@@ -1189,7 +1189,9 @@ int receive_pipe_message_any (pd p, int timeout, char ** message,
                                   from_pipe, priority);
 }
 
+#ifndef DEBUG_PRINT
 #define DEBUG_PRINT
+#endif /* DEBUG_PRINT */
 static void print_split_message_error (int code, int n1, int n2,
                                        unsigned int n3)
 {
