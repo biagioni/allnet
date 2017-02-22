@@ -170,7 +170,7 @@ class NewContactPanel extends JPanel {
     }
 
     final int unimplemented_offset = 1;  // for "both contacts of"
-    final int num_choices = 4 - unimplemented_offset;
+    final int num_choices = 5 - unimplemented_offset;
 
     private void makeSelectionPanel() {
         JPanel panel = new JPanel();
@@ -185,18 +185,18 @@ class NewContactPanel extends JPanel {
         JLabel[] labels = new JLabel[num_choices];
         String[] labelText = new String[]{
             "new contact has a wireless device<br>" +
-                 "within 10m (30ft):<br>" +
-                 "give contact your short secret<br>" +
-                 "or enter their short secret below",
+                 "within 10m (30ft): " +
+                 "give contact your secret<br>" +
+                 "and enter their secret",
             "new contact is at a distance:<br>" +
-                 "give contact your long secret<br>" +
-                 "or enter their long secret below",
+                 "give contact your secret<br>" +
+                 "and enter their secret",
             "subscribe to a broadcast:<br>" +
-                 "enter the address below<br>" +
+                 "enter the address<br>" +
                  "(no secrets needed)</b>",
-//            "you know your contact's AllNet address:<br>" +
-//                 "(or want to subscribe to a broadcast)<br>" +
-//                 "enter the address above",
+            "create a new group:<br>" +
+                 "enter the group name<br>" +
+                 "(no secrets needed)</b>",
 //            "you are both contacts of:<br>" +
 //                 "enter the name below<br>" +
 //                 "(not yet available)",
@@ -225,7 +225,7 @@ class NewContactPanel extends JPanel {
         gbc.gridy = 0;
         gbc.gridheight = 1;
         gbc.gridwidth = 1;
-        for (int i = 0; i < 4 - unimplemented_offset; i++) {
+        for (int i = 0; i < num_choices; i++) {
             gbc.gridx = 0;
             panel.add(buttons[i], gbc);
             gbc.gridx = 1;

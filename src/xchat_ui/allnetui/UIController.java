@@ -672,7 +672,11 @@ class UIController implements ControllerInterface, UIAPI {
                         }
                     }
                     break;
-//                case 3:
+                case 3:
+                    System.out.println("create new group " + contact);
+                    System.out.println("  (not implemented)");
+                    break;
+//                case 4:
 //                    System.out.println("new common contact for " + contact + " is "
 //                            + newContactPanel.getVariableInput());
 //                    System.out.println("  (not implemented)");
