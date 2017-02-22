@@ -199,7 +199,7 @@ static void debug_public_key_size (const char * text, int tsize,
     else
       printf ("notice: public key has %d-byte signature, %d bytes given\n",
               rsa_size, ssize);
-    print_buffer (text, tsize, "text", 20, 1);
+    print_buffer (text, tsize, "text", 18, 1);
     /* printf ("text: %s (%d)\n", text, tsize); */
   }
 #ifdef DEBUG_PRINT
