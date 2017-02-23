@@ -224,6 +224,7 @@ record_message (info->pipe_descriptor);
   return NULL;
 }
 
+/* port is in host byte order */
 void listen_init_info (struct listen_info * info, int max_fds, char * name,
                        int port, int local_only, int add_remove_pipe,
                        int nodelay, void (* callback) (int), pd p)
@@ -239,7 +240,7 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
     exit (1);
   }
   info->program_name = name;
-  info->port = port;
+  info->port = allnet_htons (port);
   info->add_remove_pipe = add_remove_pipe;
   info->localhost_only = local_only;
   info->num_fds = 0;

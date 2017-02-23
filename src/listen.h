@@ -41,6 +41,7 @@ struct listen_info {
 /* exits in case of errors, otherwise initializes info and starts the
  * listen thread */
 /* ip version should be 4 or 6 */
+/* port is in host byte order */
 /* add_remove_pipe should be 1 if add_pipe and remove_pipe should be
  * called when adding or removing pipes */
 extern void listen_init_info (struct listen_info * info, int max_fds,
