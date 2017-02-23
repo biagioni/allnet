@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <net/if.h>
+#include <arpa/inet.h>
 
 #include "lib/packet.h"
 #include "lib/mgmt.h"
@@ -124,7 +125,7 @@ static void * init_default_dns (void * arg)
 {
   int * initialized = (int *) arg;
   char service [10];
-  snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
+  snprintf (service, sizeof (service), "%d", ALLNET_PORT);
   unsigned int i;
   /* begin connecting at a random position in the DNS array */
   unsigned int random_offset = (unsigned int)(random_int (0, NUM_DEFAULTS - 1));
@@ -1028,7 +1029,7 @@ int init_own_routing_entries (struct addr_info * entry, int max,
     }
     if (valid) {
       if (entry != NULL) {
-        entry->ip.port = ALLNET_PORT;
+        entry->ip.port = allnet_htons (ALLNET_PORT);
         memcpy (entry->destination, dest, ADDRESS_SIZE);
         entry->nbits = nbits;
         entry->type = ALLNET_ADDR_INFO_TYPE_DHT;

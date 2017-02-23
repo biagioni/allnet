@@ -3,17 +3,17 @@
 #ifndef PACKET_H
 #define PACKET_H
 
-#include <arpa/inet.h>  /* htons */
-
 /* allnet uses two ports: allnet port, for exchanges among peers on different
  * machines, and allnet local port, for connection by local clients to
  * the allnet daemon
+ * port numbers are in host byte order, use allnet_htons to
+ * convert to network byte order
  */
-#define ALLNET_PORT 	     (htons (0xa119))  /* ALLNet, 41241 */
-#define ALLNET_LOCAL_PORT    (htons (0xa11e))  /* ALLnEt, 41246 */
+#define ALLNET_PORT 	     0xa119  /* ALLNet, 41241 */
+#define ALLNET_LOCAL_PORT    0xa11e  /* ALLnEt, 41246 */
 
 /* protocol number used when sending/receiving over 802.11, WiFi */
-#define ALLNET_WIFI_PROTOCOL (htons (0xa119))  /* ALLNet, 41241 */
+#define ALLNET_WIFI_PROTOCOL 0xa119  /* ALLNet, 41241 */
 
 /* for receiving allnet messages, the receiver must know in advance what the
  * maximum packet size will be.  So allnet defines a maximum size, which

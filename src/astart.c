@@ -25,6 +25,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <net/if.h>      /* IFF_LOOPBACK, etc */
+#include <arpa/inet.h>   /* inet_addr */
 
 #include "lib/util.h"
 #include "lib/allnet_log.h"
@@ -556,7 +557,7 @@ static int connect_to_local ()
   struct sockaddr_in sin;
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
-  sin.sin_port = ALLNET_LOCAL_PORT;
+  sin.sin_port = allnet_htons (ALLNET_LOCAL_PORT);
   int success = (connect (sock, (struct sockaddr *) &sin, sizeof (sin)) == 0);
   debug_close (sock, "connect_to_local");
   return success;

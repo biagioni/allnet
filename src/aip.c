@@ -557,11 +557,11 @@ static int udp_socket (unsigned int max_depth)
   memset (&address, 0, addr_size);
   ap6->sin6_family = AF_INET6;
   memcpy (&(ap6->sin6_addr), &(in6addr_any), sizeof (ap6->sin6_addr));
-  ap6->sin6_port = ALLNET_PORT;
+  ap6->sin6_port = allnet_htons (ALLNET_PORT);
   if (bind (udp, ap, addr_size) < 0) {
     perror ("aip UDP bind");
     printf ("aip unable to bind to UDP %d/%x, probably already running\n",
-            ntohs (ALLNET_PORT), ntohs (ALLNET_PORT));
+            ALLNET_PORT, ALLNET_PORT);
 #ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
 /* keep trying -- we may be waking up from sleep */
     close (udp);   /* may be closed already */

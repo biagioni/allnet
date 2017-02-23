@@ -16,6 +16,7 @@
 #include <net/if.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <arpa/inet.h>   /* inet_addr */
 
 #include "app_util.h"
 #include "packet.h"
@@ -143,7 +144,7 @@ static int connect_once (int print_error)
   struct sockaddr_in sin;
   sin.sin_family = AF_INET;
   sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
-  sin.sin_port = ALLNET_LOCAL_PORT;
+  sin.sin_port = allnet_htons (ALLNET_LOCAL_PORT);
   usleep (200 * 1000); /* listen.c now sleeps 100ms to allow IPv6 to go first */
   if (connect (sock, (struct sockaddr *) &sin, sizeof (sin)) == 0)
     return sock;

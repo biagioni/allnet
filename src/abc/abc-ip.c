@@ -10,7 +10,6 @@
 #include <netinet/in.h>       /* struct sockaddr_in */
 #include <sys/time.h>         /* gettimeofday */
 
-#include "lib/packet.h"       /* ALLNET_WIFI_PROTOCOL */
 #include "lib/util.h"         /* delta_us */
 
 #include "abc-iface.h"        /* sockaddr_t */

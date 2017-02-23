@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "abc-iface.h"
 #include "lib/packet.h" /* ALLNET_WIFI_PROTOCOL */
+#include "lib/util.h"   /* allnet_htons */
 #include "lib/allnet_log.h"
 
 /** Accept every sender */
@@ -14,7 +15,7 @@ int abc_iface_accept_sender (const struct sockaddr * sender) { return 1; }
 void abc_iface_set_default_sll_broadcast_address (struct sockaddr_ll * bc)
 {
   bc->sll_family = AF_PACKET;
-  bc->sll_protocol = ALLNET_WIFI_PROTOCOL;
+  bc->sll_protocol = allnet_htons (ALLNET_WIFI_PROTOCOL);
   bc->sll_hatype = 1;   /* used? */
   bc->sll_pkttype = 0;  /* not used */
   bc->sll_halen = 6;

@@ -118,7 +118,7 @@ static int init_socket (struct ifaddrs * ifa)
   if (ifa->ifa_addr == NULL)  /* can happen */
     return 0;
   abc_iface_wifi.iface_sockfd = socket (AF_PACKET, SOCK_DGRAM,
-                                        ALLNET_WIFI_PROTOCOL);
+                                        allnet_htons (ALLNET_WIFI_PROTOCOL));
   if (abc_iface_wifi.iface_sockfd == -1) {
     perror ("abc-wifi: error creating socket");
     return 0;
@@ -136,7 +136,8 @@ static int init_socket (struct ifaddrs * ifa)
   else
     abc_iface_set_default_sll_broadcast_address (&abc_iface_wifi.bc_address.ll);
   /* must set sll_protocol, otherwise it is not set */
-  abc_iface_wifi.bc_address.ll.sll_protocol = ALLNET_WIFI_PROTOCOL;
+  abc_iface_wifi.bc_address.ll.sll_protocol =
+    allnet_htons (ALLNET_WIFI_PROTOCOL);
   abc_iface_wifi.bc_address.ll.sll_hatype = 0;  /* packet(7) says to set to 0 */
   abc_iface_wifi.bc_address.ll.sll_pkttype = 0; /* packet(7) says to set to 0 */
   if (abc_iface_wifi.bc_address.ll.sll_ifindex !=
