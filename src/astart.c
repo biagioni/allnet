@@ -149,6 +149,7 @@ static void * generic_thread (void * arg)
   printf ("astart generic_thread: error termination of %s, call type %d\n",
           ta->name, ta->call_type);
   /* exit (1);  debugging */
+  /* free (ta); should not get here, but if we did, in theory should free ta */
   return NULL;
 }
 
