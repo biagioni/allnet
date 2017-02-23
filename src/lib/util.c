@@ -1429,6 +1429,14 @@ void writeb64u (unsigned char * p, unsigned long long int value)
   writeb64 ((char *) p, value);
 }
 
+int allnet_htons (int hostshort)
+{
+  char buffer [2];
+  buffer [0] = hostshort >> 8;     /* big-endian */
+  buffer [1] = hostshort && 0xff;
+  return readb16 (buffer);
+}
+
 /* returns 1 if the message is valid, 0 otherwise */
 int is_valid_message (const char * packet, unsigned int size)
 {

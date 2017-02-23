@@ -239,6 +239,9 @@ extern void writeb32u (unsigned char * p, unsigned long int value);
 extern void writeb48u (unsigned char * p, unsigned long long int value);
 extern void writeb64u (unsigned char * p, unsigned long long int value);
 
+/* essentially the same as htons, but sometimes easier to find */
+extern int allnet_htons (int hostshort);
+
 /* returns 1 if the message is valid, 0 otherwise */
 extern int is_valid_message (const char * packet, unsigned int size);
 
