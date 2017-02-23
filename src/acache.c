@@ -1044,11 +1044,19 @@ static int hash_next_match (int fd, int max_size, int first_call,
   static int persistent_index = -1;
   static struct hash_entry * persistent_entry = NULL;
   static int first_index = -1;
+#ifdef ALLNET_USE_THREADS  /* synchronize, otherwise persistent_entry sometimes
+                              becomes NULL when we expect it not to be */
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock (&mutex);
+#endif /* ALLNET_USE_THREADS */
   if (first_call) {
     persistent_index = (int)random_int (0, hash_size - 1);
     persistent_entry = message_hash_table [persistent_index];
     first_index = persistent_index;
   } else if (persistent_index < 0) { /* already done */
+#ifdef ALLNET_USE_THREADS
+    pthread_mutex_unlock (&mutex);
+#endif /* ALLNET_USE_THREADS */
     return 0;
   }
   while (1) {
@@ -1060,6 +1068,9 @@ static int hash_next_match (int fd, int max_size, int first_call,
       if (persistent_index == first_index) {  /* nothing found */
         persistent_index = -1;
         persistent_entry = NULL;
+#ifdef ALLNET_USE_THREADS
+        pthread_mutex_unlock (&mutex);
+#endif /* ALLNET_USE_THREADS */
         return 0;
       }
       persistent_entry = message_hash_table [persistent_index];
@@ -1070,6 +1081,9 @@ static int hash_next_match (int fd, int max_size, int first_call,
                 persistent_index, first_index, persistent_entry);
       printf ("%s", alog->b);
       log_print (alog);
+#ifdef ALLNET_USE_THREADS
+      pthread_mutex_unlock (&mutex);
+#endif /* ALLNET_USE_THREADS */
       return 0;
     }
     struct hash_entry * entry = persistent_entry;
@@ -1082,8 +1096,14 @@ static int hash_next_match (int fd, int max_size, int first_call,
     int match = packet_matches (rd, *message, *msize, ptime);
     if (match == 0)
       continue;   /* try again with the next entry */
+#ifdef ALLNET_USE_THREADS
+    pthread_mutex_unlock (&mutex);
+#endif /* ALLNET_USE_THREADS */
     return 1;  /* found */
   }
+#ifdef ALLNET_USE_THREADS
+  pthread_mutex_unlock (&mutex);
+#endif /* ALLNET_USE_THREADS */
   /* printf ("control flow error in acache\n");
   return 0; */  /* should never be executed */
 }
