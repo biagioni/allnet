@@ -198,9 +198,9 @@ int trace_main (int argc, char ** argv)
   return 0;
 }
 
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* not on iOS, define main */
+#ifdef ALLNET_USE_FORK  /* not on iOS, define main */
 int main (int argc, char ** argv)
 {
   return trace_main (argc, argv);
 }
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#endif /* ALLNET_USE_FORK */

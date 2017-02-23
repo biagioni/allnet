@@ -48,8 +48,7 @@ extern void keyd_generate (char * pname);
 
 static struct allnet_log * alog = NULL;
 
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED 
-#define USE_FORK  /* sane systems allow fork, iOS doesn't */
+#ifdef ALLNET_USE_FORK 
 
 static int debug_close (int fd, char * loc)
 {
@@ -60,7 +59,7 @@ static int debug_close (int fd, char * loc)
 
 static const char * daemon_name = "allnet";
 
-#else /* __IPHONE_OS_VERSION_MIN_REQUIRED  */
+#else /* ALLNET_USE_FORK  */
 
 /* fork is not supported under iOS, but threads are */
 #include <pthread.h>
@@ -173,11 +172,11 @@ void stop_allnet_threads ()
 }
 
 
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#endif /* ALLNET_USE_FORK */
 
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
 static void stop_all ();
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 /* if astart is called as root, abc should run as root, and everything
  * else should be run as the calling user, if any, and otherwise,
  * user "allnet" (if it exists) or user "nobody" otherwise */
@@ -193,7 +192,7 @@ static void stop_all ();
 #define ROOT_USER_ID	0
 static void make_root_other (int verbose)
 {
-#ifdef USE_FORK   /* on iOS, no point in doing any of this */
+#ifdef ALLNET_USE_FORK   /* on iOS, no point in doing any of this */
   if (geteuid () != ROOT_USER_ID)
     return;   /* not root, nothing to do, and cannot change uids anyway */
   uid_t real_uid = getuid ();
@@ -237,10 +236,10 @@ static void make_root_other (int verbose)
     stop_all ();
   }
   if (verbose) printf ("set uids to %d %d\n", getuid (), geteuid ());
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 }
 
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
 static void set_nonblock (int fd)
 {
   int flags = fcntl (fd, F_GETFL, 0);
@@ -251,14 +250,14 @@ static void set_nonblock (int fd)
   if (fcntl (fd, F_SETFL, flags | O_NONBLOCK) < 0)
     printf ("unable to set nonblocking on fd %d\n", fd);
 }
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 
 static void init_pipes (int * pipes, int num_pipes)
 {
   int i;
   for (i = 0; i < num_pipes; i++) {
     int pipefd [2];
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
     if (pipe (pipefd) < 0) {
       perror ("pipe");
       printf ("error creating pipe set %d\n", i);
@@ -268,7 +267,7 @@ static void init_pipes (int * pipes, int num_pipes)
     }
     set_nonblock (pipefd [0]);
     set_nonblock (pipefd [1]);
-#else /* ! USE_FORK -- create queues instead */
+#else /* ! ALLNET_USE_FORK -- create queues instead */
     if (allnet_queues == NULL)
       allnet_queues = malloc_or_fail (2 * num_pipes *
                                       sizeof (struct allnet_queue *),
@@ -281,7 +280,7 @@ static void init_pipes (int * pipes, int num_pipes)
     pipefd[1] = pipefd[0] = - (i + 1);
 #undef PACKETS
 #undef BYTES
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
     pipes [i] = pipefd [0];
     pipes [i + num_pipes] = pipefd [1];
 #ifdef DEBUG_PRINT
@@ -291,7 +290,7 @@ static void init_pipes (int * pipes, int num_pipes)
   }
 }
 
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
 static void print_pid (int fd, int pid)
 {
   static int original_fd = -1; /* for debugging */
@@ -305,19 +304,19 @@ static void print_pid (int fd, int pid)
     original_fd = fd;
   }
 }
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 
 static void replace_command (char * old, int olen, char * new)
 {
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
   /* printf ("replacing %s ", old); */
   /* strncpy, for all its quirks, is just right for this application */
   strncpy (old, new, olen);
   /* printf ("with %s (%s, %d)\n", new, old, olen); */
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 }
 
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
 static char * pid_file_name ()
 {
 #define PIDS_FILE_NAME	"allnet-pids"
@@ -330,13 +329,13 @@ static char * pid_file_name ()
   if (geteuid () == 0)  /* is root */
     temp = UNIX_TEMP_ROOT;
 #endif /* 0 */
-#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+#ifndef ALLNET_USE_FORK
   DIR * ios_d = opendir (IOS_TEMP);
   if (ios_d != NULL) {  /* directory exists, use it */
     closedir (ios_d);
     temp = IOS_TEMP;
   }
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#endif /* ALLNET_USE_FORK */
 #if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
 /* from https://en.wikipedia.org/wiki/Temporary_folder
      In MS-DOS and Microsoft Windows, the temporary directory is set by
@@ -476,14 +475,14 @@ static void setup_signal_handler (int set)
     }
   }
 }
-/* if !USE_FORK, astart_main tells the system to ignore SIGPIPE.
+/* if !ALLNET_USE_FORK, astart_main tells the system to ignore SIGPIPE.
  * unfortuantely, xcode still catches SIGPIPE.  It is safe to
  * ignore it, and in fact where defined we use setsockopt (..SO_NOSIGPIPE)
  * when we create a socket to tell it we aren't interested.  Unfortunately,
  * not all systems support SO_NOSIGPIPE */
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
 static void child_return (char * executable, pid_t parent, int stop_allnet)
 {
   snprintf (alog->b, alog->s, "%s completed\n", executable);
@@ -495,7 +494,7 @@ static void child_return (char * executable, pid_t parent, int stop_allnet)
   }
   exit (1);  /* at any rate, stop this process */
 }
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 
 static void my_call1 (char * argv, int alen, char * program,
                       void (*run_function) (char *), int fd, pid_t parent)
@@ -505,11 +504,11 @@ static void my_call1 (char * argv, int alen, char * program,
     replace_command (argv, alen, program);
     snprintf (alog->b, alog->s, "calling %s\n", program);
     log_print (alog);
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
     daemon_name = program;
     run_function (argv);
     child_return (program, parent, 1);
-#else /* ! USE_FORK */
+#else /* ! ALLNET_USE_FORK */
     struct thread_arg * tap = thread_args + (free_thread_arg++);
     tap->name = strcpy_malloc (program, "astart my_call1");
     tap->call_type = CALL_STRING;
@@ -519,17 +518,17 @@ static void my_call1 (char * argv, int alen, char * program,
       printf ("pthread_create failed for %s\n", program);
       exit (1);
     }
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
   }
   /* parent, not much to do */
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
   print_pid (fd, child);
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
   snprintf (alog->b, alog->s, "parent called %s\n", program);
   log_print (alog);
 }
 
-#ifndef USE_FORK
+#ifndef ALLNET_USE_FORK
 static void my_call_thread (char * argv, int alen, char * program,
                             void (*run_function) (char *, int, int),
                             int fd, pid_t parent, int rpipe, int wpipe)
@@ -548,9 +547,9 @@ static void my_call_thread (char * argv, int alen, char * program,
     printf ("pthread_create failed for %s\n", program);
   }
 }
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
 static int connect_to_local ()
 {
   int sock = socket (AF_INET, SOCK_STREAM, 0);
@@ -562,14 +561,14 @@ static int connect_to_local ()
   debug_close (sock, "connect_to_local");
   return success;
 }
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 
 static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
                             int fd, pid_t parent,
                             int num_pipes, int * rpipes, int * wpipes)
 {
   int i;
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
   char * program = "alocal";
   pid_t child = fork ();
   if (child == 0) {
@@ -595,7 +594,7 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
   do {   /* wait for alocal to start and open its socket */
     usleep (10 * 1000);
   } while (! connect_to_local());
-#else /* ! USE_FORK */
+#else /* ! ALLNET_USE_FORK */
 printf ("allocating %d pipes for rcopy and same for wcopy\n", num_pipes);
   int * rcopy = memcpy_malloc (rpipes, num_pipes * sizeof (int),
                                "my_call_alocal rpipes");
@@ -621,7 +620,7 @@ printf ("allocating %d pipes for rcopy and same for wcopy\n", num_pipes);
     printf ("pthread_create failed for alocal\n");
     exit (1);
   }
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 
 }
 
@@ -629,7 +628,7 @@ static void my_call_aip (char * argv, int alen, char * program,
                          int rpipe, int wpipe, char * extra, int fd,
                          pid_t parent)
 {
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
     replace_command (argv, alen, program);
@@ -646,7 +645,7 @@ static void my_call_aip (char * argv, int alen, char * program,
   snprintf (alog->b, alog->s, "parent called %s %d %d %s, closed %d %d\n",
             program, rpipe, wpipe, extra, rpipe, wpipe);
   log_print (alog);
-#else /* ! USE_FORK */
+#else /* ! ALLNET_USE_FORK */
   struct thread_arg * tap = thread_args + (free_thread_arg++);
   tap->name = "aip";
   tap->call_type = CALL_AIP;
@@ -657,14 +656,14 @@ static void my_call_aip (char * argv, int alen, char * program,
     printf ("pthread_create failed for aip\n");
     exit (1);
   }
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 }
 
 static void my_call_abc (char * argv, int alen, char * program,
                          int rpipe, int wpipe, int ppipe1, int ppipe2,
                          char * ifopts, pid_t * pid, pid_t parent)
 {
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
     replace_command (argv, alen, program);
@@ -689,7 +688,7 @@ static void my_call_abc (char * argv, int alen, char * program,
 /* snprintf (alog->b, alog->s, "parent called %s %d %d %s, closed %d %d\n",
             program, rpipe, wpipe, ifopts, rpipe, wpipe);
   log_print (alog); */
-#else /* ! USE_FORK */
+#else /* ! ALLNET_USE_FORK */
   struct thread_arg * tap = thread_args + (free_thread_arg++);
   tap->name = "abc";
   tap->call_type = CALL_ABC;
@@ -701,14 +700,14 @@ static void my_call_abc (char * argv, int alen, char * program,
     exit (1);
   }
   *pid = getpid ();
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 }
 
 static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
                          int * wpipes, int fd, pid_t parent)
 {
   int i;
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
     char * program = "ad";
@@ -742,7 +741,7 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
     wpipes [i] = wpipes [2 * i + 1];
   }
   return child;
-#else /* ! USE_FORK */
+#else /* ! ALLNET_USE_FORK */
   snprintf (alog->b, alog->s, "calling ad_main\n");
   log_print (alog);
   int * rcopy = memcpy_malloc (rpipes, (num_pipes / 2) * sizeof (int),
@@ -767,7 +766,7 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
     exit (1);
   }
   return getpid ();
-#endif /* ! USE_FORK */
+#endif /* ! ALLNET_USE_FORK */
 }
 
 #ifdef DEBUG_PRINT
@@ -978,10 +977,10 @@ int astart_main (int argc, char ** argv)
   char * pname;
   find_path (argv [0], &path, &pname);
   if (strstr (pname, "stop") != NULL) {
-#ifdef USE_FORK
+#ifdef ALLNET_USE_FORK
     daemon_name = "astop";
     stop_all ();   /* just stop */
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
     return 0;
   }
   signal (SIGPIPE, SIG_IGN);  /* we are never interested in SIGPIPE */
@@ -1009,10 +1008,10 @@ int astart_main (int argc, char ** argv)
   }
   int num_pipes = NUM_FIXED_PIPES + NUM_INTERFACE_PIPES * num_interfaces;
   int ad_pipes = num_pipes;
-#ifndef USE_FORK  /* create queues for 4 of the 5 daemons and xchat */
+#ifndef ALLNET_USE_FORK  /* create queues for 4 of the 5 daemons and xchat */
 #define NUM_DAEMON_PIPES    4
   num_pipes += (NUM_DAEMON_PIPES + 1) * 2;
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 /* printf ("adding pipe total %d (ad %d)\n", num_pipes, ad_pipes); */
   /* note: two file descriptors (ints) per pipe */
   int * pipes = malloc_or_fail (num_pipes * 2 * sizeof (int), "astart pipes");
@@ -1056,7 +1055,7 @@ int astart_main (int argc, char ** argv)
 #endif /* PRODUCTION_CODE */
 
   int pid_fd = 0;
-#ifdef USE_FORK  /* only save pids if we do have processes */
+#ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
   char * fname = pid_file_name ();
   pid_fd = open (fname, O_WRONLY | O_TRUNC | O_CREAT | O_CLOEXEC, 0644);
   if (pid_fd < 0) {
@@ -1068,7 +1067,7 @@ int astart_main (int argc, char ** argv)
   free (fname);
   for (i = 0; i < num_interfaces; i++)
     print_pid (pid_fd, abc_pids [i]);
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
   if (num_interfaces > 0)
     free (abc_pids);
 
@@ -1088,11 +1087,11 @@ int astart_main (int argc, char ** argv)
   int alocal_numpipes = 0;
   int * alocal_rpipes = NULL;
   int * alocal_wpipes = NULL;
-#ifndef USE_FORK  /* create queues for 4 of the 5 daemons */
+#ifndef ALLNET_USE_FORK  /* create queues for 4 of the 5 daemons */
   alocal_numpipes = NUM_DAEMON_PIPES;
   alocal_rpipes = rpipes + ad_pipes;
   alocal_wpipes = wpipes + ad_pipes;
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
 
   /* start ad */
   my_call_ad (argv [0], alen, ad_pipes, rpipes, wpipes, pid_fd, astart_pid);
@@ -1100,7 +1099,7 @@ int astart_main (int argc, char ** argv)
   num_pipes = num_pipes / 2;
 
   /* start all the other programs */
-#ifdef USE_FORK  /* daemons connect through sockets */
+#ifdef ALLNET_USE_FORK  /* daemons connect through sockets */
   /* note: receive pipes for alocal are write pipes for everyone else */
   /* also note that after my_call_ad, pipes are in [rw]pipes [0,1] */
   my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd, astart_pid,
@@ -1117,7 +1116,7 @@ int astart_main (int argc, char ** argv)
   my_call1 (argv [0], alen, "acache", acache_main, pid_fd, astart_pid);
   my_call1 (argv [0], alen, "traced", traced_main, pid_fd, astart_pid);
   my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd, astart_pid);
-#else /* ! USE_FORK -- daemons use queues to communicate */
+#else /* ! ALLNET_USE_FORK -- daemons use queues to communicate */
   printf ("calling alocal with pipes %d %d\n", rpipes [0], wpipes [0]);
   my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd, astart_pid,
                   alocal_numpipes, alocal_wpipes, alocal_rpipes);
@@ -1140,7 +1139,7 @@ int astart_main (int argc, char ** argv)
           alocal_rpipes [6], alocal_wpipes [7]);
   my_call_thread (argv [0], alen, "keyd", keyd_thread, pid_fd, astart_pid,
                   alocal_rpipes [6], alocal_wpipes [7]);
-#endif /* USE_FORK */
+#endif /* ALLNET_USE_FORK */
   my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd, astart_pid);
 
 #ifdef WAIT_FOR_CHILD_TERMINATION
@@ -1153,11 +1152,11 @@ int astart_main (int argc, char ** argv)
   return 0;
 }
 
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
+#ifdef ALLNET_USE_FORK
 
 int main (int argc, char ** argv)
 {
   return astart_main (argc, argv);
 }
 
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#endif /* ALLNET_USE_FORK */

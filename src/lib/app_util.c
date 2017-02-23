@@ -26,7 +26,7 @@
 #include "priority.h"
 #include "crypt_sel.h"
 
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED
+#ifdef ALLNET_USE_FORK
 static void find_path (char * arg, char ** path, char ** program)
 {
   char * slash = strrchr (arg, '/');
@@ -106,7 +106,7 @@ static void exec_allnet (char * arg)
   waitpid (child, NULL, 0);
 }
 
-#else /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#else /* ALLNET_USE_FORK */
 
 extern int astart_main (int, char **);
 
@@ -129,7 +129,7 @@ static void exec_allnet (char * arg)  /* iOS version, threads instead of fork */
     exit (1);  /* no point continuing */
   }
 }
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#endif /* ALLNET_USE_FORK */
 
 static int connect_once (int print_error)
 {

@@ -276,6 +276,10 @@ extern int binary_log (unsigned long long int value);
 #ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
 #include <pthread.h>
 #define exit(n)        pthread_exit(NULL)
+#define ALLNET_USE_THREADS
+#else  /* ! __IPHONE_OS_VERSION_MIN_REQUIRED */
+/* we use fork except on systems that don't support it */
+#define ALLNET_USE_FORK
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 #endif /* ALLNET_UTIL_H */

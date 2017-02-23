@@ -562,7 +562,7 @@ static int udp_socket (unsigned int max_depth)
     perror ("aip UDP bind");
     printf ("aip unable to bind to UDP %d/%x, probably already running\n",
             ALLNET_PORT, ALLNET_PORT);
-#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+#ifndef ALLNET_USE_FORK
 /* keep trying -- we may be waking up from sleep */
     close (udp);   /* may be closed already */
     sleep (5);
@@ -572,7 +572,7 @@ static int udp_socket (unsigned int max_depth)
       return -1;
 #else  /* not iOS, so probably already running */
     return -1;
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+#endif /* ALLNET_USE_FORK */
   }
   snprintf (alog->b, alog->s, "opened UDP socket %d\n", udp);
   log_print (alog);
