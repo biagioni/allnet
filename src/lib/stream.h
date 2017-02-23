@@ -3,6 +3,7 @@
 #ifndef STREAM_ENCRYPTION_H
 #define STREAM_ENCRYPTION_H
 
+#include <inttypes.h>    /* uint64_t */
 #include "crypt_sel.h"   /* AES256_SIZE */
 
 #define ALLNET_STREAM_KEY_SIZE		AES256_SIZE  /* 32 bytes, 256 bits */
