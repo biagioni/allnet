@@ -1432,8 +1432,8 @@ void writeb64u (unsigned char * p, unsigned long long int value)
 int allnet_htons (int hostshort)
 {
   char buffer [2];
-  buffer [0] = hostshort >> 8;     /* big-endian */
-  buffer [1] = hostshort & 0xff;
+  uint16_t * p = (uint16_t *) buffer;
+  *p = (hostshort & 0xffff);
   return readb16 (buffer);
 }
 
