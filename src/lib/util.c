@@ -1433,7 +1433,7 @@ int allnet_htons (int hostshort)
 {
   char buffer [2];
   buffer [0] = hostshort >> 8;     /* big-endian */
-  buffer [1] = hostshort && 0xff;
+  buffer [1] = hostshort & 0xff;
   return readb16 (buffer);
 }
 
