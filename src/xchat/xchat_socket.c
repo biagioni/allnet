@@ -395,7 +395,8 @@ static char * find_java ()
 }
 
 #define LOG_FILE_NAME	"xchat-java-log.txt"
-static char * tmp_dir = "/tmp";
+#define TMP_DIR_INITIALIZER	"/tmp"
+static char * tmp_dir = TMP_DIR_INITIALIZER;
 
 static pid_t exec_java_ui (char * arg)
 {
@@ -466,7 +467,7 @@ static pid_t exec_java_ui (char * arg)
     if (log_fd < 0) {
       char * env = getenv ("TMP");  /* works on Windows, where /tmp does not */
       if (env != NULL) {
-        if ((tmp_dir != NULL) && (strcmp (tmp_dir, "tmp") != 0))
+        if ((tmp_dir != NULL) && (strcmp (tmp_dir, TMP_DIR_INITIALIZER) != 0))
           free (tmp_dir);  /* I don't think this code will ever execute */
         tmp_dir = strcpy_malloc (env, "xchat_socket tmp dir");
         name = strcat3_malloc (env, "/", LOG_FILE_NAME, "xchat_socket tmp2");
@@ -479,8 +480,8 @@ static pid_t exec_java_ui (char * arg)
       dup2 (STDERR_FILENO, log_fd);  /* write stderr to the log file */
       close (log_fd);  /* no longer needed as a separate fd */
     } else {
-      perror ("xchat_socket unable to create or write temp file\n");
 #ifdef DEBUG_PRINT
+      perror ("xchat_socket unable to create or write temp file\n");
 #endif /* DEBUG_PRINT */
     }
     if (args [0] != NULL) {
