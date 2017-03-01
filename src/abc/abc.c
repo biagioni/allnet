@@ -103,6 +103,7 @@ static unsigned long cycle = 0ul;
 
 /** exit flag set by TERM signal. Set by term_handler. */
 static volatile sig_atomic_t terminate = 0;
+static int restart = 1;    /* need to (re)open socket */
 
 /* Managed interface drivers limit the rate. TODO: move into interface */
 static unsigned long long int bits_per_s = 1000 * 1000;  /* 1Mb/s default */
@@ -146,8 +147,10 @@ static abc_iface * iface_types[] = {
 
 /* must match length and order of iface_types[] */
 static const char * iface_type_strings[] = {
-  "ip",
-  "wifi"
+  "ip"
+#ifdef ALLNET_NETPACKET_SUPPORT
+  , "wifi"
+#endif /* ALLNET_NETPACKET_SUPPORT */
 };
 static abc_iface * iface = NULL; /* used interface ptr */
 
@@ -225,7 +228,7 @@ printf ("receive_pipe_message_any returned %d\n", msize);
   printf ("after time %lld/%d ms\n", finish - start, timeout_ms);
 #endif /* DEBUG_PRINT */
   if (msize < 0) {
-    terminate = 1;
+    restart = 1;
     snprintf (alog->b, alog->s, "receive_until msize %d on fd %d\n", msize,
               iface->iface_sockfd);
     log_print (alog);
@@ -612,7 +615,7 @@ static void unmanaged_handle_network_message (const char * message,
     snprintf (alog->b, alog->s, "u sent to ad %d bytes, message %d bytes\n",
               sent, msize);
     log_print (alog);
-    terminate = 1;
+    restart = 1;
   }
   /* remove any messages that this message acks */
   remove_acks (message, message + msize);
@@ -645,7 +648,7 @@ static void handle_network_message (const char * message, int msize,
       snprintf (alog->b, alog->s, "sent to ad %d bytes, message %d bytes\n",
                 sent, msize);
       log_print (alog);
-      terminate = 1;
+      restart = 1;
     }
     /* remove any messages that this message acks */
     remove_acks (message, message + msize);
@@ -658,7 +661,7 @@ static void handle_quiet (struct timeval * quiet_end, pd p,
                           int rpipe, int wpipe)
 {
   check_priority_mode ();
-  while (is_before (quiet_end) && !terminate) {
+  while ((is_before (quiet_end)) && (! terminate) && (! restart)) {
     char * message;
     int from_fd;
     unsigned int priority;
@@ -688,7 +691,7 @@ static void handle_quiet (struct timeval * quiet_end, pd p,
 static void unmanaged_handle_until (struct timeval * t, pd p,
                                     int rpipe, int wpipe)
 {
-  while (is_before (t) && !terminate) {
+  while ((is_before (t)) && (! terminate) && (! restart)) {
     char * message;
     int fd;
     unsigned int priority;
@@ -715,7 +718,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
   check_priority_mode ();
   struct timeval * beacon_deadline = NULL;
   struct timeval time_buffer;   /* beacon_deadline sometimes points here */
-  while (is_before (t) && !terminate) {
+  while ((is_before (t)) && (! terminate) && (! restart)) {
     char * message;
     int fd;
     unsigned int priority;
@@ -848,15 +851,13 @@ static void one_cycle (const char * interface, pd p, int rpipe, int wpipe,
   received_high_priority = 0;
 }
 
-static void main_loop (const char * interface, int rpipe, int wpipe)
+static int start_interface (const char * interface)
 {
-  struct timeval quiet_end;   /* should we keep quiet? */
-  gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
-  if (!iface->init_iface_cb (interface, alog)) {
+  if (! iface->init_iface_cb (interface, alog)) {
     snprintf (alog->b, alog->s, "unable to init interface %s\n", interface);
     log_print (alog);
     iface->iface_cleanup_cb ();
-    return;
+    return 0;
   }
   int is_on = iface->iface_is_enabled_cb ();
   if ((is_on < 0) || ((is_on == 0) && (iface->iface_set_enabled_cb (1) != 1))) {
@@ -864,21 +865,35 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
               "abc: unable to bring up interface %s\n", interface);
     log_print (alog);
     iface->iface_cleanup_cb ();
-    return;
+    return 0;
   }
   snprintf (alog->b, alog->s,
             "interface '%s' on fd %d\n", interface, iface->iface_sockfd);
   log_print (alog);
+  restart = 0;
+  return 1;
+}
+
+static void main_loop (const char * interface, int rpipe, int wpipe)
+{
+  struct timeval quiet_end;   /* should we keep quiet? */
+  gettimeofday (&quiet_end, NULL);  /* not until we overhear a beacon grant */
   pd p = init_pipe_descriptor (alog);
-/* printf ("abc adding pipe %d\n", rpipe); */
-  add_pipe (p, rpipe, "abc.c main_loop");      /* tell pipemsg that we want to receive from ad */
+  add_pipe (p, rpipe, "abc.c main_loop");  /* tell pipemsg to receive from ad */
   if (iface->iface_is_managed)
     bzero (zero_nonce, NONCE_SIZE);
-  while (!terminate) {
-    if (iface->iface_is_managed)
-      one_cycle (interface, p, rpipe, wpipe, &quiet_end);
-    else
-      unmanaged_one_cycle (interface, p, rpipe, wpipe);
+  restart = 1;                /* make sure we start the interfaces */
+  while (! terminate) {
+    if ((! restart) || ((restart) && (start_interface (interface)))) {
+      if (iface->iface_is_managed)
+        one_cycle (interface, p, rpipe, wpipe, &quiet_end);
+      else
+        unmanaged_one_cycle (interface, p, rpipe, wpipe);
+    }
+    if (restart) {
+      iface->iface_cleanup_cb ();  /* and then go through starting everything */
+      sleep (10);                  /* don't do this too quickly */
+    }
   }
   iface->iface_cleanup_cb ();
 }
@@ -922,7 +937,7 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
     }
   }
   if (iface == NULL)
-    iface = iface_types [0];
+    iface = iface_types [0];   /* ip is the default */
 
   snprintf (alog->b, alog->s, "read pipe is fd %d, write pipe fd %d\n",
             rpipe, wpipe);
