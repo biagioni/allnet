@@ -12,6 +12,7 @@
 #include <time.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <dirent.h>
 #include <sys/types.h>
 #include <sys/file.h>
@@ -60,8 +61,13 @@ struct message_cache_record {
 #define MESSAGE_CACHE_NUM_CONTACTS	10000
 static struct message_cache_record message_cache [MESSAGE_CACHE_NUM_CONTACTS];
 static int message_cache_count = 0;
+/* this mutex should be acquired each time before accessing message_cache
+ * or message_cache_count, and released at the end of any related set
+ * of accesses */
+static pthread_mutex_t message_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* returns -1 if not found */
+/* must be called with the mutex held */
 static int find_message_cache_record (const char * contact)
 {
   int i;
@@ -72,6 +78,7 @@ static int find_message_cache_record (const char * contact)
 }
 
 /* returns -1 if unable to add, the record index otherwise */
+/* must be called with the mutex held */
 static int add_message_cache_record (const char * contact,
                                      struct message_store_info * msgs,
                                      int num_alloc,
@@ -119,6 +126,7 @@ struct msg_iter * start_iter (const char * contact, keyset k)
 {
   if ((contact == NULL) || (k < 0))
     return NULL;
+  pthread_mutex_lock (&message_cache_mutex);
   int index = find_message_cache_record (contact);
   struct msg_iter file_iter;
   if ((index < 0) &&  /* not already cached, get data from files */
@@ -132,10 +140,13 @@ struct msg_iter * start_iter (const char * contact, keyset k)
       if (index < 0) { /* unable to cache */
         if ((msgs != NULL) && (num_used > 0))
           free_all_messages (msgs, num_used);
-        if (! start_iter_from_file (contact, k, &file_iter))
+        if (! start_iter_from_file (contact, k, &file_iter)) {
+          pthread_mutex_unlock (&message_cache_mutex);
           return NULL;   /* unable to cache, unable to find file */
+        }
       }
     } else {   /* unable to list messages, probably unable to find file */
+      pthread_mutex_unlock (&message_cache_mutex);
       return NULL;
     }
   }
@@ -160,6 +171,7 @@ struct msg_iter * start_iter (const char * contact, keyset k)
           (message_cache_count < MESSAGE_CACHE_NUM_CONTACTS) */
     start_iter_from_file(contact, k, result);
   }
+  pthread_mutex_unlock (&message_cache_mutex);
   return result;
 }
 
@@ -496,6 +508,7 @@ static void set_result (
   if (msizep != NULL) *msizep = (int)msize;
 }
 
+/* must be called with the mutex held */
 static int prev_message_in_memory
   (struct msg_iter * iter, uint64_t * seq, uint64_t * time,
    int * tz_min, uint64_t * rcvd_time, char * message_ack,
@@ -568,9 +581,13 @@ int prev_message (struct msg_iter * iter, uint64_t * seq, uint64_t * time,
 {
   if (iter->k < 0)  /* invalid */
     return MSG_TYPE_DONE;
-  if (iter->is_in_memory)
-    return prev_message_in_memory (iter, seq, time, tz_min, rcvd_time,
-                                   message_ack, message, msize);
+  if (iter->is_in_memory) {
+    pthread_mutex_lock (&message_cache_mutex);
+    int r = prev_message_in_memory (iter, seq, time, tz_min, rcvd_time,
+                                    message_ack, message, msize);
+    pthread_mutex_unlock (&message_cache_mutex);
+    return r;
+  }
   char * record = find_prev_record (iter);
   if (record == NULL)  /* finished */
     return MSG_TYPE_DONE;
@@ -1122,6 +1139,7 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
   close (fd);
   free (path);
   /* now save it internally, if we are caching this contact's data */
+  pthread_mutex_lock (&message_cache_mutex);
   int index = find_message_cache_record (contact);
   if (index >= 0) {
     if ((type == MSG_TYPE_SENT) || (type == MSG_TYPE_RCVD)) {
@@ -1153,6 +1171,7 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
     if (max_seq < seq)
       save_int_to_file (contact, k, "last_received", seq);
   }
+  pthread_mutex_unlock (&message_cache_mutex);
 }
 
 /* add an individual message, modifying msgs, num_alloc or num_used as needed
