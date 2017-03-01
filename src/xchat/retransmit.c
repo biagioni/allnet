@@ -23,7 +23,7 @@
  *    (COUNTER_SIZE) bytes * (singles + 2 * ranges);
  * or NULL for failure
  */
-static char * gather_missing_info (char * contact, keyset k,
+static char * gather_missing_info (const char * contact, keyset k,
                                    int * singles, int * ranges,
                                    uint64_t * rcvd_sequence)
 {
@@ -60,7 +60,7 @@ static char * gather_missing_info (char * contact, keyset k,
 /* allocates and fills in in the chat control request header, except for
  * the message_ack */
 /* returns the request (*rsize bytes) for success, NULL for failure */
-static char * create_chat_control_request (char * contact, char * missing,
+static char * create_chat_control_request (const char * contact, char * missing,
                                            int num_singles, int num_ranges,
                                            uint64_t rcvd_sequence,
                                            int * rsize)
@@ -130,7 +130,7 @@ static char * create_chat_control_request (char * contact, char * missing,
 /* sends a chat_control message to request retransmission.
  * returns 1 for success, 0 in case of error.
  */ 
-int send_retransmit_request (char * contact, keyset k, int sock,
+int send_retransmit_request (const char * contact, keyset k, int sock,
                              int hops, int priority)
 {
   int num_singles;
@@ -282,7 +282,7 @@ static void init_resent ()
   }
 }
 
-static int was_recently_resent (uint64_t seq, char * contact, keyset k)
+static int was_recently_resent (uint64_t seq, const char * contact, keyset k)
 {
   int i;
   for (i = 0; i < NUM_RECENTLY_RESENT; i++) {
@@ -298,7 +298,7 @@ static int was_recently_resent (uint64_t seq, char * contact, keyset k)
   return 0;
 }
 
-static void record_resend (uint64_t seq, char * contact, keyset k)
+static void record_resend (uint64_t seq, const char * contact, keyset k)
 {
   latest_resent = (latest_resent + 1) % NUM_RECENTLY_RESENT;
   if (recently_resent [latest_resent].contact != NULL)
@@ -310,7 +310,7 @@ static void record_resend (uint64_t seq, char * contact, keyset k)
   recently_resent [latest_resent].resend_time = (time_t) (allnet_time ());
 }
 
-static void resend_message (uint64_t seq, char * contact,
+static void resend_message (uint64_t seq, const char * contact,
                             keyset k, int sock,
                             unsigned int hops, unsigned int priority)
 {
@@ -373,8 +373,8 @@ static void resend_message (uint64_t seq, char * contact,
 }
 
 /* resends the messages requested by the retransmit message */
-static void resend_messages (char * retransmit_message, int mlen,
-                             char * contact, keyset k, int sock,
+static void resend_messages (const char * retransmit_message, int mlen,
+                             const char * contact, keyset k, int sock,
                              unsigned int hops, unsigned int top_priority,
                              unsigned int max)
 {
@@ -383,7 +383,7 @@ static void resend_messages (char * retransmit_message, int mlen,
           retransmit_message, mlen, contact, k, sock, hops);
 #endif /* DEBUG_PRINT */
   if (mlen < (int) (sizeof (struct chat_control_request))) {
-    printf ("message size %d less than %zd, cannot be retransmit\n",
+    printf ("message size %d less than %zd, cannot be retransmitted\n",
             mlen, sizeof (struct chat_control_request));
     return;
   }
@@ -461,7 +461,7 @@ static void resend_messages (char * retransmit_message, int mlen,
   sanity_check_sequence_number (contact, k, hp, sock, hops);
 }
 
-void resend_unacked (char * contact, keyset k, int sock, 
+void resend_unacked (const char * contact, keyset k, int sock, 
                      int hops, int priority, int max)
 {
   int singles;
@@ -502,7 +502,7 @@ void resend_unacked (char * contact, keyset k, int sock,
 }
 
 /* retransmit any requested messages */
-void do_chat_control (char * contact, keyset k, char * msg, int msize,
+void do_chat_control (const char * contact, keyset k, char * msg, int msize,
                       int sock, int hops)
 {
   struct chat_control * cc = (struct chat_control *) msg;

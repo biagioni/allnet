@@ -8,15 +8,15 @@
 
 /* sends a chat_control message to request retransmission.
  * returns 1 for success, 0 in case of error. */ 
-extern int send_retransmit_request (char * contact, keyset k, int sock,
+extern int send_retransmit_request (const char * contact, keyset k, int sock,
                                     int hops, int priority);
 
 /* resends up to max unacked messages */
-extern void resend_unacked (char * contact, keyset k, int sock, int hops,
+extern void resend_unacked (const char * contact, keyset k, int sock, int hops,
                             int priority, int max);
 
 /* retransmit any requested messages */
-extern void do_chat_control (char * contact, keyset k,
+extern void do_chat_control (const char * contact, keyset k,
                              char * msg, int msize, int sock, int hops);
 
 #endif /* RETRANSMIT_H */
