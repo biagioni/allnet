@@ -166,35 +166,18 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
     return;
   printf ("error: counter %ju < last_received %ju\n",
           (uintmax_t)counter, (uintmax_t)last);
-  /* resend the last message, but using all the missing sequence numbers */
-  uint64_t seq, time, rtime;
-  char ack [MESSAGE_ID_SIZE];
-  int tz_min, msize;
-  char * message_text = NULL;
-  if (most_recent_record (contact, k, MSG_TYPE_SENT, &seq, &time, &tz_min,
-                          &rtime, ack, &message_text, &msize) != MSG_TYPE_SENT)
-    return;
-  if ((message_text == NULL) || (msize < 0))
-    return;
+  /* send an empty message, using the last missing sequence number */
   size_t cd_size = sizeof (struct chat_descriptor);
-  char * message = malloc_or_fail (cd_size + msize, "sanity_check_seq");
+  int dsize = 1;  /* message is a single space, " " */
+  char * message = malloc_or_fail (cd_size + dsize, "sanity_check_seq");
   char * data = message + cd_size;
-  int dsize = msize;
-  memcpy (data, message_text, dsize);
-  free (message_text);
-  msize += cd_size;
+  memcpy (data, " ", dsize);
+  int msize = cd_size + dsize;
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
   if (! init_chat_descriptor (cdp, contact))
     return;
-  if (last - counter < 300) {  /* too many might fill disk with empty msgs */
-    while (counter <= last) {
-      writeb64u (cdp->counter, counter++);  /* new, higher sequence number */
-      save_outgoing (contact, k, cdp, data, 0);
-    }
-  } else {
-    counter = last + 1;
-  }
-  writeb64u (cdp->counter, counter);  /* final sequence number */
+  writeb64u (cdp->counter, last);  /* final sequence number */
+  save_outgoing (contact, k, cdp, data, 0);
   /* since this is sort of a housekeeping message, send with minimum priority */
   send_to_key (message, msize, contact, k, sock,
                hops, ALLNET_PRIORITY_EPSILON, 1);
