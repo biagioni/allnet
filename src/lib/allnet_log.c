@@ -220,7 +220,7 @@ void log_print_str (struct allnet_log * log, char * string)
   gettimeofday (&now, NULL);
   struct tm n;
   int process = (getpid ()) % 100000;
-  int thread = ((int)(pthread_self ())) % 100000;
+  int thread = ((long int)(pthread_self ())) % 100000;
   if (localtime_r (&now.tv_sec, &n) == NULL)
     snprintf (header, sizeof (header), "bad time %ld p%05d t%05d",
               now.tv_sec, process, thread);
