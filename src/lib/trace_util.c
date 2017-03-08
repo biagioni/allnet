@@ -98,17 +98,17 @@ static int write_string_to (const char * string, int null_term, int fd,
   return result;
 }
 
+#define CHECK_FOR_DUPLICATES
+
 #ifdef CHECK_FOR_DUPLICATES
 /* returns 1 if the packet was seen within the last NUM_REMEMBERED packets.
  * Otherwise, returns 0 and remembers this packet */
-int packet_received_before (char * message, int msize)
+int packet_received_before (char * message, int msize,
+                            char * remembered_hashes, int nh, int * position)
 {
-#define NUM_REMEMBERED_HASHES	1000
-  static char remembered_hashes [NUM_REMEMBERED_HASHES] [MESSAGE_ID_SIZE];
-  static int position = -1;
-  if (position < 0) {
-    memset (remembered_hashes, 0, sizeof (remembered_hashes));
-    position = 0;
+  if (*position < 0) {
+    memset (remembered_hashes, 0, nh * MESSAGE_ID_SIZE);
+    *position = 0;
   }
   if (msize <= 4)
     return 1;  /* should be caught before calling packet_received_before */
@@ -116,15 +116,17 @@ int packet_received_before (char * message, int msize)
   /* when hashing, skip the hop counts */
   sha512_bytes (message + 4, msize - 4, hash, MESSAGE_ID_SIZE);
   int i;
-  for (i = 0; i < NUM_REMEMBERED_HASHES; i++) {
-    if (memcmp (remembered_hashes [i], hash, MESSAGE_ID_SIZE) == 0)
+  for (i = 0; i < nh; i++) {
+    if (memcmp (remembered_hashes + (i * MESSAGE_ID_SIZE),
+                hash, MESSAGE_ID_SIZE) == 0)
       return 1;  /* found */
   }
   /* not found, add */
-  if ((position < 0) || (position >= NUM_REMEMBERED_HASHES))
-    position = 0;
-  memcpy (remembered_hashes [position], hash, MESSAGE_ID_SIZE);
-  position++;
+  if ((*position < 0) || (*position >= nh))
+    *position = 0;
+  memcpy (remembered_hashes + ((*position) * MESSAGE_ID_SIZE), hash,
+          MESSAGE_ID_SIZE);
+  *position = *position + 1;
   return 0;   /* not found */
 #undef NUM_REMEMBERED_HASHES
 }
@@ -493,6 +495,7 @@ static void handle_packet (char * message, int msize, char * seeking,
                            int match_only, int no_intermediates,
                            int null_term, int fd_out,
                            struct allnet_queue * queue,
+                           char * rememberedh, int nh, int * positionh,
                            struct allnet_log * alog)
 {
 /* print_packet (message, msize, "handle_packet got", 1); */
@@ -528,7 +531,7 @@ static void handle_packet (char * message, int msize, char * seeking,
     return;
   }
 #ifdef CHECK_FOR_DUPLICATES
-  if (packet_received_before (message, msize)) {
+  if (packet_received_before (message, msize, rememberedh, nh, positionh)) {
 #ifdef DEBUG_PRINT
     print_packet (message, msize, "received duplicate trace packet", 1);
 #endif /* DEBUG_PRINT */
@@ -551,6 +554,7 @@ static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
                                 int seq, int match_only, int no_intermediates,
                                 int null_term,
                                 int fd_out, struct allnet_queue * queue,
+                                char * rememberedh, int nh, int * positionh,
                                 struct allnet_log * alog)
 {
   num_arrivals = 0;   /* not received anything yet */
@@ -573,7 +577,8 @@ static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
       exit (1);
     }
     handle_packet (message, found, trace_id, tv_start, seq, match_only,
-                   no_intermediates, null_term, fd_out, queue, alog);
+                   no_intermediates, null_term, fd_out, queue,
+                   rememberedh, nh, positionh, alog);
     if (found > 0)
       free (message);
     time_spent = allnet_time_ms () - start;
@@ -588,6 +593,10 @@ void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
                     int no_intermediates, int wide, int null_term, int fd_out,
                     struct allnet_queue * queue, struct allnet_log * alog)
 {
+#define NUM_REMEMBERED_HASHES	1000
+  char remembered_hashes [NUM_REMEMBERED_HASHES * MESSAGE_ID_SIZE];
+  int remembered_position = 0;
+  
   print_details = wide;
 #ifdef DEBUG_PRINT
   printf ("tracing %d bits to %d hops: ", abits, nhops);
@@ -605,7 +614,8 @@ void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
     sent_count++;
     wait_for_responses (sock, p, trace_id, sleep, count,
                         match_only, no_intermediates, null_term,
-                        fd_out, queue, alog);
+                        fd_out, queue, remembered_hashes,
+                        NUM_REMEMBERED_HASHES, &remembered_position, alog);
   }
   print_summary_file (0, null_term, fd_out, queue);
   print_details = 1;
