@@ -1469,6 +1469,7 @@ printf ("time to crash %d\n", 1000 / ah->version); */
       (ah->transport != 0)) {
     printf ("received message type %d, transport 0x%x != 0\n",
             ah->message_type, ah->transport);
+    print_buffer (packet, size, NULL, 100, 1);
     return 0;
   }
   int payload_size = size -
