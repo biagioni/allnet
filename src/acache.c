@@ -34,14 +34,16 @@ static struct ack_entry * acks = NULL;
 static int ack_space = 0;
 static int save_ack_pos = 0;  /* save the next ack at this index */
 
+#ifdef USING_MESSAGE_LIST
 /* for now, a fixed-size entry, later, allocate dynamically according to size */
 /* or, may just delete -- only needed for list_next_matching, used to loop
  * over all the messages, but we could loop over the hash table instead */
 #ifdef SMALL_FIXED_SIZE
 #define LIST_SIZE	16
+#else /* ! SMALL_FIXED_SIZE */
+#define LIST_SIZE	1024 * 1024  /* 1Mi */
 #endif /* SMALL_FIXED_SIZE */
 
-#ifdef USING_MESSAGE_LIST
 struct list_entry {
   char message_id  [MESSAGE_ID_SIZE];
 };
@@ -630,7 +632,8 @@ static int count_list (struct hash_entry * entry, int index)
   return result;
 }
 
-static void print_stats (int exit_if_none_free, int must_match)
+static void print_stats (int exit_if_none_free, int must_match,
+                         const char * caller)
 {
   int hcount = 0;
   int i;
@@ -643,15 +646,15 @@ static void print_stats (int exit_if_none_free, int must_match)
   int off = (int)strlen (alog->b);
 #ifdef USING_MESSAGE_LIST
   if (hcount == mcount)
-    snprintf (alog->b + off, alog->s - off, "%d in hash/list, %d free\n",
-              hcount, fcount);
+    snprintf (alog->b + off, alog->s - off,
+              "acache %s: %d in hash/list, %d free\n", caller, hcount, fcount);
   else
     snprintf (alog->b + off, alog->s - off,
-              "%d in hash, %d in message list, %d free\n",
-              hcount, mcount, fcount);
+              "acache %s: %d in hash, %d in message list, %d free\n",
+              caller, hcount, mcount, fcount);
 #else /* ! USING_MESSAGE_LIST */
-    snprintf (alog->b + off, alog->s - off, "%d in hash, %d free\n",
-              hcount, fcount);
+    snprintf (alog->b + off, alog->s - off, "acache %s: %d in hash, %d free\n",
+              caller, hcount, fcount);
 #endif /* USING_MESSAGE_LIST */
   log_print (alog);
   if (exit_if_none_free && (fcount == 0))
@@ -659,16 +662,17 @@ static void print_stats (int exit_if_none_free, int must_match)
 #ifdef USING_MESSAGE_LIST
   if ((must_match >= 0) && ((must_match != mcount) || (must_match != hcount))) {
     snprintf (alog->b, alog->s,
-              "%d in hash, %d in message list, %d free, should have %d\n",
-              hcount, mcount, fcount, must_match);
+              "acache %s: %d in hash, %d in msglist, %d free, should have %d\n",
+              caller, hcount, mcount, fcount, must_match);
     printf ("%s", alog->b);
     log_print (alog);
     exit (1);
   }
 #else /* USING_MESSAGE_LIST */
   if ((must_match >= 0) && (must_match != hcount)) {
-    snprintf (alog->b, alog->s, "%d in hash, %d free, should have %d\n",
-              hcount, fcount, must_match);
+    snprintf (alog->b, alog->s,
+              "acache %s: %d in hash, %d free, should have %d\n",
+              caller, hcount, fcount, must_match);
     printf ("%s", alog->b);
     log_print (alog);
     if (exit_if_none_free)
@@ -1211,7 +1215,7 @@ static void gc (int fd, int max_size)
   snprintf (alog->b, alog->s, "%d copied, %d deleted, ", copied, deleted);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
-  print_stats (1, copied);
+  print_stats (1, copied, "gc");
 }
 
 static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
@@ -1253,7 +1257,7 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
 #ifdef USING_MESSAGE_LIST
   list_add_message (message + id_off);
 #endif /* USING_MESSAGE_LIST */
-snprintf (alog->b, alog->s, "saved message at position %d, hash index %d, ", (int) write_position, hash_index (message + id_off)); log_print (alog); print_stats (0, -1);
+snprintf (alog->b, alog->s, "saved message at position %d, hash index %d, ", (int) write_position, hash_index (message + id_off)); log_print (alog); print_stats (0, -1, "cache_message");
   count = 0;
   while (fd_size (fd) > max_size) {
     snprintf (alog->b, alog->s, "gc'ing to reduce space from %d to %d: %d\n",
@@ -1286,7 +1290,7 @@ static void remove_cached_message (int fd, int max_size, char * id,
     buffer_to_string (id, MESSAGE_ID_SIZE, "id", MESSAGE_ID_SIZE, 1,
                       alog->b, alog->s);
     log_print (alog);
-    print_stats (0, -1);
+    print_stats (0, -1, "remove_cached_message");
   }
   buffer_to_string (id, MESSAGE_ID_SIZE, "removing cached", MESSAGE_ID_SIZE, 1,
                     alog->b, alog->s);
@@ -1647,7 +1651,7 @@ static void init_msgs (int msg_fd, int max_msg_size)
   snprintf (alog->b, alog->s, "init almost done, %d %d %d, ",
             msg_fd, (int)fd_size (msg_fd), max_msg_size);
   log_print (alog);
-  print_stats (0, count);
+  print_stats (0, count, "init_msgs");
   while (fd_size (msg_fd) > max_msg_size) {
     snprintf (alog->b, alog->s, "message file %d, max %d, gc'ing",
               (int)fd_size (msg_fd), max_msg_size);
@@ -1655,7 +1659,7 @@ static void init_msgs (int msg_fd, int max_msg_size)
     gc (msg_fd, max_msg_size);
   }
   snprintf (alog->b, alog->s, "after init, saving at %d, ", save_ack_pos);
-  print_stats (0, -1);
+  print_stats (0, -1, "init_msgs");
 }
 
 static void init_acache (int * msg_fd, int * max_msg_size,
@@ -1946,7 +1950,7 @@ void print_caches (int print_msgs, int print_acks)
     }
     printf ("found %d acks out of %d entries\n", count, ack_space);
   }
-  /* print_stats (0, 0); */
+  /* print_stats (0, 0, "print_caches"); */
   close (msg_fd);
   close (ack_fd);
 }
