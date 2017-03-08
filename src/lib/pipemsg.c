@@ -861,13 +861,12 @@ static int receive_pipe_message_poll (pd p, int pipe,
         bp->filled = 0;
       } else {  /* failed to parse, i.e. no magic_string at start of header */
         shift_header (bp->header);            /* shift header and try again */
+        bp->filled += read;
         if (bp->filled > 0)
           bp->filled = bp->filled - 1;
       }
-      /* we stopped because the header was filled.  Try again, for either
-         the next attempt to match, or the actual data */
-/* printf ("recursive call rpmp (%d, %p, %d)\n", pipe, *message, *priority); */
-      return receive_pipe_message_poll (p, pipe, message, priority);
+      /* we stopped because the header was filled.  Tell caller to try again. */
+      return 0;
     } else {    /* not reading header and buffer is full, so we are done. */
       *message = bp->buffer;
       int result = (int) (bp->bsize);
