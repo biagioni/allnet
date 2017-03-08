@@ -213,7 +213,7 @@ struct allnet_key_reply {
  *
  * packets of a large message include a packet ID that is the hash of
  * the packet ACK, included as the first MESSAGE_ID_SIZE bytes of each packet.
- * The user data tne follows the packet ACK.  The message ACK is then the first
+ * The user data follows the packet ACK.  The message ACK is then the first
  * MESSAGE_ID_SIZE bytes of the sha512 hash of the concatenation of all
  * the packet ACKs, in the correct sequence.  The message ID is the first
  * MESSAGE_ID_SIZE bytes of the sha512 hash of this message ACK.
