@@ -1105,10 +1105,11 @@ static int hash_next_match (int fd, int max_size, int first_call,
 #endif /* ALLNET_USE_THREADS */
     return 1;  /* found */
   }
+  /*
 #ifdef ALLNET_USE_THREADS
   pthread_mutex_unlock (&mutex);
 #endif /* ALLNET_USE_THREADS */
-  /* printf ("control flow error in acache\n");
+  printf ("control flow error in acache\n");
   return 0; */  /* should never be executed */
 }
 #endif /* HASH_RANDOM_MATCH */
