@@ -224,6 +224,9 @@ static uint64_t get_prev (uint64_t last,
   return result;
 }
 
+#define LIMIT_RETRANSMIT_RATE  /* 2017/03/10: still experimenting, for now
+                                  keep it enabled */
+#ifdef LIMIT_RETRANSMIT_RATE
 /* the allnet xchat protocol has two mechanisms for retransmitting:
  * - pull: a receiver that knows it is lacking some message will
  *   request them, sending a chat_control_request
@@ -239,7 +242,8 @@ static uint64_t get_prev (uint64_t last,
  * retransmitted packets, and do not retransmit them again if they
  * were sent within the most recent TIME_BEFORE_RESEND.
  */
-#define TIME_BEFORE_RESEND	600    /* 600 seconds, 10 min */
+/* #define TIME_BEFORE_RESEND	600    * 600 seconds, 10 min */
+#define TIME_BEFORE_RESEND	27    /* 27 seconds, ~1/2 min */
 #define NUM_RECENTLY_RESENT	100
 struct resend_info {
   uint64_t seq;
@@ -292,6 +296,7 @@ static void record_resend (uint64_t seq, const char * contact, keyset k)
       strcpy_malloc (contact, "record_resend");
   recently_resent [latest_resent].resend_time = (time_t) (allnet_time ());
 }
+#endif /* LIMIT_RETRANSMIT_RATE */
 
 static void resend_message (uint64_t seq, const char * contact,
                             keyset k, int sock,
@@ -301,6 +306,7 @@ static void resend_message (uint64_t seq, const char * contact,
   printf ("resending message with sequence %ju to %s/%d\n",
           (uintmax_t)seq, contact, k);
 #endif /* DEBUG_PRINT */
+#ifdef LIMIT_RETRANSMIT_RATE
   init_resent ();
   if (was_recently_resent (seq, contact, k)) {
 #ifdef DEBUG_PRINT
@@ -309,6 +315,7 @@ static void resend_message (uint64_t seq, const char * contact,
 #endif /* DEBUG_PRINT */
     return;
   }
+#endif /* LIMIT_RETRANSMIT_RATE */
   int size;
   uint64_t time;
   char message_ack [MESSAGE_ID_SIZE];
@@ -324,7 +331,9 @@ static void resend_message (uint64_t seq, const char * contact,
   printf ("  resending message with sequence %ju to %s: %s\n",
           (uintmax_t)seq, contact, text);
 #endif /* DEBUG_PRINT */
+#ifdef LIMIT_RETRANSMIT_RATE
   record_resend (seq, contact, k);
+#endif /* LIMIT_RETRANSMIT_RATE */
   char * message = malloc_or_fail (size + CHAT_DESCRIPTOR_SIZE, "resend_msg");
   bzero (message, CHAT_DESCRIPTOR_SIZE);
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
