@@ -84,7 +84,8 @@ void cache_close (void * cp)
     if (cache->entries [i].data != NULL)
       release_entry (cache, i);
   /* do not unlock!!!   Prevents further use of the cache */
-  printf ("closing cache, lock still held, will never use again\n");
+  printf ("%s: closing cache, lock still held, will never use again\n",
+          cache->name);
   /* pthread_mutex_unlock (&(cache->mutex)); */
 }
 
