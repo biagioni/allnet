@@ -127,14 +127,17 @@ printf ("got invalid %s packet of size %d, priority %d\n",
     return PROCESS_PACKET_DROP;
 
 /* skip the hop count in the hash, since it changes at each hop */
-#define HEADER_SKIP	3
-  int time = record_packet_time (packet + HEADER_SKIP, size - HEADER_SKIP, 0);
-#undef HEADER_SKIP
-  if ((! is_local) && (time > 0)) {
+/* printf ("before record_packet (%p %d)\n", packet, size); */
+  unsigned int seen_before = record_packet (packet, size);
+/* printf ("       record_packet (%p %d) => %u\n", packet, size, seen_before); */
+  if ((! is_local) && (seen_before)) {
    /* we have received this packet before, so drop it */
 #ifdef LOG_PACKETS
     snprintf (alog->b, alog->s, 
-              "packet received in the last %d seconds, dropping\n", time);
+              "packet received in the last %u seconds, dropping\n", seen_before);
+#ifdef DEBUG_PRINT
+    printf ("%s", alog->b);
+#endif /* DEBUG_PRINT */
     log_print (alog);
 #endif /* LOG_PACKETS */
     return PROCESS_PACKET_DROP;     /* duplicate, ignore */
@@ -153,6 +156,9 @@ printf ("got invalid %s packet of size %d, priority %d\n",
 #ifdef LOG_PACKETS
   snprintf (alog->b, alog->s, "forwarding %s packet with %d/%d hops\n",
             (is_local ? "local" : "received"), ah->hops, ah->max_hops);
+#ifdef DEBUG_PRINT
+  printf ("%s", alog->b);
+#endif /* DEBUG_PRINT */
   log_print (alog);
 #endif /* LOG_PACKETS */
 
@@ -189,6 +195,9 @@ static void send_all (char * packet, int psize, int priority,
   for (i = 0; i < nwrite; i++)
     n += snprintf (alog->b + n, alog->s - n, "%d%s", write_pipes [i],
                    (((i + 1) < nwrite) ? ", " : "\n"));
+#ifdef DEBUG_PRINT
+  printf ("%s", alog->b);
+#endif /* DEBUG_PRINT */
   log_print (alog);
 #endif /* LOG_PACKETS */
   for (i = 0; i < nwrite; i++) {
@@ -232,6 +241,9 @@ static void main_loop (int npipes, int * read_pipes, int * write_pipes,
                                           &packet, &from_pipe, &priority);
 #ifdef LOG_PACKETS
     snprintf (alog->b, alog->s, "ad received %d, fd %d\n", psize, from_pipe);
+#ifdef DEBUG_PRINT
+    printf ("%s", alog->b);
+#endif /* DEBUG_PRINT */
     log_print (alog);
 #endif /* LOG_PACKETS */
     if (psize <= 0) { /* for now exit */
@@ -258,7 +270,13 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
         npipes--;
         continue;   /* read again */
       } else {  /* some other pipe */
-        snprintf (alog->b, alog->s, "  exiting\n");
+        int pipe_index = -1;
+        for (i = 0; i < npipes; i++)
+          if (read_pipes [i] == from_pipe)
+            pipe_index = i;
+        snprintf (alog->b, alog->s, "  exiting, index %d/%d read pipes %d %d\n",
+                  pipe_index, npipes, read_pipes [0], read_pipes [1]);
+        printf ("%s", alog->b);
         log_print (alog);
         return;
       }
@@ -268,12 +286,18 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
     int result = process_packet (packet, psize, is_local, soc, &priority);
     switch (result) {
     case PROCESS_PACKET_ALL:
+#ifdef DEBUG_PRINT
+      printf ("-> sending to all\n");
+#endif /* DEBUG_PRINT */
 #ifdef LOG_PACKETS
       log_packet (alog, "sending to all", packet, psize);
 #endif /* LOG_PACKETS */
       send_all (packet, psize, priority, write_pipes, npipes, "all");
       break;
     case PROCESS_PACKET_OUT:
+#ifdef DEBUG_PRINT
+      printf ("-> sending out\n");
+#endif /* DEBUG_PRINT */
 #ifdef LOG_PACKETS
       log_packet (alog, "sending out", packet, psize);
 #endif /* LOG_PACKETS */
@@ -282,6 +306,9 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
       break;
     /* all the rest are not forwarded, so priority does not matter */
     case PROCESS_PACKET_LOCAL:   /* send only to alocal */ 
+#ifdef DEBUG_PRINT
+      printf ("-> sending to alocal\n");
+#endif /* DEBUG_PRINT */
 #ifdef LOG_PACKETS
       log_packet (alog, "sending to alocal", packet, psize);
 #endif /* LOG_PACKETS */
@@ -289,6 +316,9 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
       send_all (packet, psize, 0, write_pipes, 1, "local");
       break;
     case PROCESS_PACKET_DROP:    /* do not forward */
+#ifdef DEBUG_PRINT
+      printf ("-> dropping packet\n");
+#endif /* DEBUG_PRINT */
 #ifdef LOG_PACKETS
       log_packet (alog, "dropping packet", packet, psize);
 #endif /* LOG_PACKETS */

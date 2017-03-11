@@ -13,28 +13,30 @@
 #include <time.h>
 
 #include "record.h"
+#include "lib/packet.h"
 
 #define ENTRIES_PER_TABLE		(64 * 1024)
 
 struct hash_entry {
   time_t last_seen;
-  int hash;
-  int connection;
+  unsigned int hash;
 };
 
 static struct hash_entry hash1 [ENTRIES_PER_TABLE];
 static struct hash_entry hash2 [ENTRIES_PER_TABLE];
 
-/* data must have at least ((bits + 7) / 8) bytes */
-int allnet_record_simple_hash_fn (char * data, int bits)
+/* data must have at least ((bits + 7) / 8) bytes, and bits should be > 0 */
+int allnet_record_simple_hash_fn (char * data, unsigned int bits)
 {
+  if (bits <= 0)
+    return 0;
   /* just xor all the 32-bit words in the data, shifting as we go along.
    * if there are any odd (< 32) bits at the end, they are used
    * to initialize the result
    */
   int * idata = ((int *) data);
-  int isize = bits / 32;
-  int i;
+  unsigned int isize = bits / 32;
+  unsigned int i;
   int result = 0;
   if (isize * 32 < bits) {
     result = data [isize * 4];
@@ -55,34 +57,33 @@ int allnet_record_simple_hash_fn (char * data, int bits)
   return result;
 }
 
-static void lr_hash_fun (char * data, int bits,
-                         int * hash, int * lindex, int * rindex)
+static void lr_hash_fun (char * data, unsigned int bits, unsigned int * hash,
+                         unsigned int * lindex, unsigned int * rindex)
 {
   *hash = allnet_record_simple_hash_fn (data, bits);
   int left_hash  = (((*hash) >> 16) & 0xff00) | (((*hash) >> 8) & 0xff);
   *lindex = left_hash % ENTRIES_PER_TABLE;
   int right_hash = (((*hash) >>  8) & 0xff00) | ( (*hash)       & 0xff);
   *rindex = right_hash % ENTRIES_PER_TABLE;
-/*
+#ifdef DEBUG_PRINT
   printf ("hash = %x, left %d %x, right = %d %x\n", (*hash),
           left_hash % ENTRIES_PER_TABLE,
           hash1 [left_hash  % ENTRIES_PER_TABLE].hash,
           right_hash % ENTRIES_PER_TABLE,
           hash2 [right_hash  % ENTRIES_PER_TABLE].hash);
- */
+#endif /* DEBUG_PRINT */
 }
 
 /* returns 0 if not found, 1 or more if found */
-static int get_hash_time (struct hash_entry * entry, int hash, time_t now)
+static unsigned int get_hash_time (struct hash_entry * entry,
+                                   unsigned int hash, time_t now)
 {
-  /* printf ("get_hash_time (%x/%ld, %x, %ld)\n",
-          entry->hash, entry->last_seen, hash, now); */
   if ((entry->hash != hash) || (entry->last_seen == 0))
     return 0;
   time_t hash_time = now - entry->last_seen;
-  if (hash_time == 0)
+  if (hash_time <= 0)
     hash_time = 1;
-  return (int)hash_time;
+  return (unsigned int) hash_time;
 }
 
 static void init ()
@@ -91,8 +92,8 @@ static void init ()
   if (! initialized) {
     int i;
     for (i = 0; i < ENTRIES_PER_TABLE; i++) {
-      hash1 [i].hash = 0; hash1 [i].last_seen = 0; hash1 [i].connection = -1;
-      hash2 [i].hash = 0; hash2 [i].last_seen = 0; hash2 [i].connection = -1;
+      hash1 [i].hash = 0; hash1 [i].last_seen = 0;
+      hash2 [i].hash = 0; hash2 [i].last_seen = 0;
     }
     initialized = 1;
   }
@@ -100,26 +101,28 @@ static void init ()
 
 /* return 0 if this is a new packet, and the number of seconds (at least 1)
  * since it has been seen, if it has been seen before on this connection */
-int record_packet_time (char * data, int dsize, int conn)
+unsigned int record_packet (char * packet, unsigned int psize)
 {
   init ();
 
-  int hash, left_index, right_index;
-  lr_hash_fun (data, dsize * 8, &hash, &left_index, &right_index);
+  if ((packet == NULL) || (psize < ALLNET_HEADER_SIZE))
+    return 1;    /* do not forward */
+  struct allnet_header * hp = (struct allnet_header *) packet;
+  /* offset lets us skip the hop count when we compute the hash */
+  size_t offset = (((char *) (&(hp->hops))) - packet) + 1;
 
+  unsigned int hash, left_index, right_index;
+  lr_hash_fun (packet + offset, (psize - offset) * 8,
+               &hash, &left_index, &right_index);
   time_t now = time (NULL);
-  int left_time  = get_hash_time (hash1 + left_index , hash, now);
-  int right_time = get_hash_time (hash2 + right_index, hash, now);
+  unsigned int left_time  = get_hash_time (hash1 + left_index , hash, now);
+  unsigned int right_time = get_hash_time (hash2 + right_index, hash, now);
 
   /* store into both hash tables */
   hash1 [left_index].hash = hash;
   hash1 [left_index].last_seen = now;
   hash2 [right_index].hash = hash;
   hash2 [right_index].last_seen = now;
-
-/*
-  printf ("saved hash 0x%x at indices %d/%d, time %ld, delta %d/%d\n",
-          hash, left_index, right_index, now, left_time, right_time); */
 
   if (left_time  == 0)
     return right_time;
@@ -128,20 +131,5 @@ int record_packet_time (char * data, int dsize, int conn)
   if (left_time > right_time)
     return right_time;  /* return lesser time */
   return left_time;
-}
-
-/* clear all packets sent on this connection */
-void record_packet_clear (int conn)
-{
-  init ();
-  int i;
-  for (i = 0; i < ENTRIES_PER_TABLE; i++) {
-    if (hash1 [i].connection == conn) {
-      hash1 [i].hash = 0; hash1 [i].last_seen = 0; hash1 [i].connection = -1;
-    }
-    if (hash2 [i].connection == conn) {
-      hash2 [i].hash = 0; hash2 [i].last_seen = 0; hash2 [i].connection = -1;
-    }
-  }
 }
 

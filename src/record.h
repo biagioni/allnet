@@ -4,13 +4,11 @@
 #define RECORD_H
 
 /* return 0 if this is a new packet, and the number of seconds (at least 1)
- * since it has been seen, if it has been seen before on this connection */
-extern int record_packet_time (char * data, int dsize, int conn);
+ * since it has been seen, if it has been seen before */
+extern unsigned int record_packet (char * packet, unsigned int psize);
 
-/* clear all packets sent on this connection */
-extern void record_packet_clear (int conn);
-
-/* possibly useful elsewhere */
-extern int allnet_record_simple_hash_fn (char * data, int bits);
+/* possibly useful elsewhere. */
+/* data must have at least ((bits + 7) / 8) bytes, and bits should be > 0 */
+extern int allnet_record_simple_hash_fn (char * data, unsigned int bits);
 
 #endif /* RECORD_H */
