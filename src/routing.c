@@ -67,6 +67,13 @@ static struct allnet_log * alog = NULL;
 
 void print_dht (int to_log)
 {
+  if ((dns_init <= 0) || (alog == NULL)) {  /* not initialized */
+#ifdef DEBUG_PRINT
+    printf ("print_dht called before initialization, state %d, alog %p\n",
+            dns_init, alog);
+#endif /* DEBUG_PRINT */
+    return;
+  }
   int npeers = 0;
   int i;
   for (i = 0; i < MAX_PEERS; i++)
@@ -87,6 +94,13 @@ void print_dht (int to_log)
 
 void print_ping_list (int to_log)
 {
+  if ((dns_init <= 0) || (alog == NULL)) {  /* not initialized */
+#ifdef DEBUG_PRINT
+    printf ("print_ping_list called before initialization, state %d, alog %p\n",
+            dns_init, alog);
+#endif /* DEBUG_PRINT */
+    return;
+  }
   int i, n;
   int count = 0;
   for (i = 0; i < MAX_PINGS; i++)
@@ -1055,7 +1069,7 @@ int is_own_address (struct addr_info * addr)
     return 1;
 #define MAX_MY_ADDRS	100
   struct addr_info mine [MAX_MY_ADDRS];
-  int n = init_own_routing_entries (mine, MAX_MY_ADDRS,
+  int n = init_own_routing_entries (mine, MAX_MY_ADDRS - 1,
                                     addr->destination, ADDRESS_BITS);
 #undef MAX_MY_ADDRS
   int i;
