@@ -248,15 +248,17 @@ static void respond_to_dht (int sock, char * message, unsigned int msize)
 
   /* found a valid dht packet */
   int i;
-  for (i = 0; i < n_sender; i++)
+  for (i = 0; i < n_sender; i++) {
     if (! is_own_address (dhtp->nodes + i))
       routing_add_dht (dhtp->nodes + i);
+  }
   print_dht (1);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
-  for (i = 0; i < n_dht; i++)
+  for (i = 0; i < n_dht; i++) {
     if (! is_own_address (dhtp->nodes + n_sender + i))
       routing_add_ping (dhtp->nodes + n_sender + i);
+  }
   print_ping_list (1);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
