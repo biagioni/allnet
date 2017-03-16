@@ -168,18 +168,18 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
           (uintmax_t)counter, (uintmax_t)last);
   /* send an empty message, using the last missing sequence number */
   size_t cd_size = sizeof (struct chat_descriptor);
-  int dsize = 1;  /* message is a single space, " " */
+  size_t dsize = 1;  /* message is a single space, " " */
   char * message = malloc_or_fail (cd_size + dsize, "sanity_check_seq");
   char * data = message + cd_size;
   memcpy (data, " ", dsize);
-  int msize = cd_size + dsize;
+  size_t msize = cd_size + dsize;
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
   if (! init_chat_descriptor (cdp, contact))
     return;
   writeb64u (cdp->counter, last);  /* final sequence number */
   save_outgoing (contact, k, cdp, data, 0);
   /* since this is sort of a housekeeping message, send with minimum priority */
-  send_to_key (message, msize, contact, k, sock,
+  send_to_key (message, (int)msize, contact, k, sock,
                hops, ALLNET_PRIORITY_EPSILON, 1);
   free (message);
 }
