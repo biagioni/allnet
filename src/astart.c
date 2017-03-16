@@ -50,6 +50,8 @@ static struct allnet_log * alog = NULL;
 
 #ifdef ALLNET_USE_FORK 
 
+static const char * debug_process_name = "astart"; /* changed after each fork */
+
 static int debug_close (int fd, char * loc)
 {
   /* printf ("%s: process %d closing fd %d\n", loc, (int)(getpid ()), fd); */
@@ -394,6 +396,9 @@ static int read_pid (int fd)
 
 static void stop_all_on_signal (int signal)
 {
+  if (signal != SIGINT)
+    printf ("process ID is %d, program %s, signal %d\n", getpid (),
+            debug_process_name, signal);
   char * fname = pid_file_name ();
   int fd = -1;
   if (fname != NULL)
@@ -502,6 +507,7 @@ static void my_call1 (char * argv, int alen, char * program,
 {
   pid_t child = fork ();
   if (child == 0) {
+    debug_process_name = program;
     replace_command (argv, alen, program);
     snprintf (alog->b, alog->s, "calling %s\n", program);
     log_print (alog);
@@ -573,6 +579,7 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
   char * program = "alocal";
   pid_t child = fork ();
   if (child == 0) {
+    debug_process_name = "alocal";
     replace_command (argv, alen, program);
     int off = snprintf (alog->b, alog->s, "calling %s (%d %d), %d (%p %p): ",
                         program, rpipe, wpipe, num_pipes, rpipes, wpipes);
@@ -632,6 +639,7 @@ static void my_call_aip (char * argv, int alen, char * program,
 #ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
+    debug_process_name = "aip";
     replace_command (argv, alen, program);
     snprintf (alog->b, alog->s, "calling %s %d %d %s\n",
               program, rpipe, wpipe, extra);
@@ -667,6 +675,7 @@ static void my_call_abc (char * argv, int alen, char * program,
 #ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
+    debug_process_name = "abc";
     replace_command (argv, alen, program);
 #ifdef DEBUG_PRINT
     printf ("calling %s %d %d %d %d %s\n", program, rpipe, wpipe,
@@ -711,6 +720,7 @@ static pid_t my_call_ad (char * argv, int alen, int num_pipes, int * rpipes,
 #ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
+    debug_process_name = "ad";
     char * program = "ad";
     replace_command (argv, alen, program);
     snprintf (alog->b, alog->s, "calling %s\n", program);
@@ -978,6 +988,7 @@ int astart_main (int argc, char ** argv)
   char * pname;
   find_path (argv [0], &path, &pname);
   if (strstr (pname, "stop") != NULL) {
+    debug_process_name = "astop";
 #ifdef ALLNET_USE_FORK
     daemon_name = "astop";
     stop_all ();   /* just stop */
