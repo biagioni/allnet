@@ -477,13 +477,13 @@ static int64_t get_next_message (int fd, unsigned int max_size,
     return -1;
   unsigned int original_max_size = max_size;
   if (max_size > fd_size (fd))
-    max_size = fd_size (fd);
+    max_size = (unsigned int)fd_size (fd);
   while (position < max_size) {
     static char buffer [MAX_MESSAGE_ENTRY_SIZE];
     memset (buffer, 0, sizeof (buffer));
     unsigned int rsize = MAX_MESSAGE_ENTRY_SIZE;
-    if (rsize > (max_size - position)) /* we know position < max_size */
-      rsize = max_size - position;
+    if (rsize > (max_size - (unsigned int)position)) /* position < max_size */
+      rsize = max_size - (unsigned int)position;
     if (rsize <= MESSAGE_ENTRY_HEADER_SIZE) {
       printf ("get_next_message rsize %d, min %d\n", rsize,
               MESSAGE_ENTRY_HEADER_SIZE);
@@ -1202,7 +1202,7 @@ static int delete_gc_message (char * message, unsigned int msize,
 static void gc (int fd, unsigned int max_size)
 {
   unsigned int gc_size = max_size;
-  unsigned int actual_size = fd_size_or_zero (fd);
+  unsigned int actual_size = (unsigned int)fd_size_or_zero (fd);
   if (gc_size > actual_size)
     gc_size = actual_size;
   int copied = 0, deleted = 0;
