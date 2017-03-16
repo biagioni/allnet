@@ -110,9 +110,11 @@ unsigned int record_packet (char * packet, unsigned int psize)
   struct allnet_header * hp = (struct allnet_header *) packet;
   /* offset lets us skip the hop count when we compute the hash */
   size_t offset = (((char *) (&(hp->hops))) - packet) + 1;
+  if (psize < (unsigned int) offset)
+    return 1;   /* should never happen */
 
   unsigned int hash, left_index, right_index;
-  lr_hash_fun (packet + offset, (psize - offset) * 8,
+  lr_hash_fun (packet + offset, (psize - (unsigned int)offset) * 8,
                &hash, &left_index, &right_index);
   time_t now = time (NULL);
   unsigned int left_time  = get_hash_time (hash1 + left_index , hash, now);
