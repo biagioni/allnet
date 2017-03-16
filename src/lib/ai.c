@@ -31,7 +31,7 @@ void print_addr_info (struct addr_info * ai)
   char ip6_buf [50];
   ip6_to_string (ap, ip6_buf);
   if (ai->ip.ip_version == 4)
-    printf ("%d.%d.%d.%d\n", ap [12], ap [13], ap [14], ap [15]);
+    printf ("%u.%u.%u.%u\n", ap [12], ap [13], ap [14], ap [15]);
   else
     printf ("%s\n", ip6_buf);
 }
@@ -50,7 +50,7 @@ int addr_info_to_string (struct addr_info * ai, char * buf, int bsize)
   unsigned char * ap = (unsigned char *) &(ai->ip.ip);
   if (ai->ip.ip_version == 4)
     offset += snprintf (buf + offset, bsize - offset,
-                        "%d.%d.%d.%d", ap [12], ap [13], ap [14], ap [15]);
+                        "%u.%u.%u.%u", ap [12], ap [13], ap [14], ap [15]);
   else if ((bsize - offset) >= 42)
     offset += ip6_to_string (ap, buf + offset);
   offset += snprintf (buf + offset, bsize - offset, "\n");
@@ -61,10 +61,11 @@ int addr_info_to_string (struct addr_info * ai, char * buf, int bsize)
 void print_ia (struct internet_addr * ia)
 {
   printf ("v %d, port %d, addr ", ia->ip_version, ntohs (ia->port));
+  unsigned char * p = (unsigned char *) (&(ia->ip));
   if (ia->ip_version == 4)
-    print_buffer (((char *) &(ia->ip)) + 12, 4, NULL, 4, 1);
+    printf ("%u.%u.%u.%u\n", p [12], p [13], p [14], p [15]);
   else
-    print_buffer ((char *) &(ia->ip), 16, NULL, 16, 1);
+    print_buffer ((char *)p, 16, NULL, 16, 1);
 }
 
 /* includes a newline at the end of the address info */
@@ -73,12 +74,14 @@ int ia_to_string (const struct internet_addr * ia, char * buf, int bsize)
   int offset = 0;
   offset += snprintf (buf + offset, bsize - offset,
                       "v %d, port %d, addr ", ia->ip_version, ntohs (ia->port));
-  if (ia->ip_version == 4)
-    offset += buffer_to_string (((char *) &(ia->ip)) + 12, 4, NULL, 4, 1,
-                                buf + offset, bsize - offset);
-  else
+  if (ia->ip_version == 4) {
+    unsigned char * p = ((unsigned char *) &(ia->ip)) + 12;
+    offset += snprintf (buf + offset, bsize - offset, "%u.%u.%u.%u\n",
+                        p [0], p [1], p [2], p [3]);
+  } else {
     offset += buffer_to_string ((char *) &(ia->ip), 16, NULL, 16, 1,
                                 buf + offset, bsize - offset);
+  }
   return offset;
 }
 
