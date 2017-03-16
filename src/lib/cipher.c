@@ -371,6 +371,9 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
           count++;
         }
       }
+#ifdef DEBUG_PRINT
+      unsigned long long int time_ver = allnet_time_us () - start;
+#endif /* DEBUG_PRINT */
       if (do_decrypt) {
 #ifdef DEBUG_PRINT
         printf ("signature match for contact %s, key %d\n", contacts [i], j);
@@ -387,9 +390,11 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
           *kset = keys [j];
 #ifdef DEBUG_PRINT
           unsigned long long int time_delta = allnet_time_us () - start;
-          printf ("%ssuccess: %d ver + %d dec took %lld.%06lld seconds\n",
+          printf ("%ssuccess: %d ver (%lld.%06lld s) + %d dec ",
                   (sig_algo != ALLNET_SIGTYPE_NONE) ? "" : "unsigned ", count,
-                  decrypt_count, time_delta / 1000000, time_delta % 1000000);
+                  time_ver / 1000000, time_ver % 1000000, decrypt_count);
+          printf ("%lld.%06lld seconds\n",
+                  time_delta / 1000000, time_delta % 1000000);
 #endif /* DEBUG_PRINT */
           free (keys);
           if (contacts != NULL) free (contacts);
