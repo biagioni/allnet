@@ -128,12 +128,16 @@ static int abc_ip_init (const char * interface, struct allnet_log * use_log)
       memset (&sa.sin_zero, 0, sizeof (sa.sin_zero));
       if (bind (abc_iface_ip.iface_sockfd,
                 (struct sockaddr *)&sa, sizeof (sa)) == -1) {
+#ifndef _WIN32
+#ifndef _WIN64
         static int printed = 0;
         if (! printed) {
           perror ("abc-ip bind interface");
           printf ("abc-ip: error binding interface %s\n", interface);
           printed = 1;
         }
+#endif /* _WIN64 */
+#endif /* _WIN32 */
 #ifdef DEBUG_PRINT
         perror ("abc-ip: error binding interface");
         printf ("error binding interface %s\n", interface);
