@@ -157,6 +157,16 @@ extern void set_time_random (const struct timeval * start,
 /* sleep between 0 and us microseconds */
 extern void sleep_time_random_us (unsigned long long us);
 
+/* return 1 and update num_true_calls and last_true_time if one or more of:
+ * the time since the last call is greater than max (or max is 0)
+ * the time since the last call is greater than min * 2^num_true_calls
+ * otherwise return 0 and num_true_calls and last_true_time are unchanged
+ * all times are in microseconds */
+extern int time_exp_interval (unsigned long long int * last_true_time,
+                              unsigned long long int * num_true_calls,
+                              unsigned long long int min,
+                              unsigned long long int max);
+
 /* if malloc is not successful, exit after printing */
 extern void * malloc_or_fail (size_t bytes, const char * desc);
 /* copy a string to new storage, using malloc_or_fail to get the memory */
@@ -281,5 +291,8 @@ extern int binary_log (unsigned long long int value);
 /* we use fork except on systems that don't support it */
 #define ALLNET_USE_FORK
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
+
+/* defined in pipemsg.c, but used in files that don't #include pipemsg.h */
+extern void pipemsg_debug_last_received ();
 
 #endif /* ALLNET_UTIL_H */

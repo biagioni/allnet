@@ -414,11 +414,15 @@ void packet_to_string (const char * buffer, unsigned int bsize,
                           readb64 (ALLNET_SEQUENCE (hp, t,
                                                     (unsigned int) bsize) + 8));
     }
-    if ((t & ALLNET_TRANSPORT_EXPIRATION) != 0)
+    if ((t & ALLNET_TRANSPORT_EXPIRATION) != 0) {
+      unsigned long long tull = 0;  /* avoids a silly compiler warning */
+      tull = readb64 (ALLNET_EXPIRATION (hp, t, (unsigned int) bsize));
+      time_t tt = (time_t) tull;
+      char time_buf [100];
+      ctime_r (&tt, time_buf);
       off += snprintf (to + off, minz (tsize, off),
-                       " e %lld",
-                       readb64 (ALLNET_EXPIRATION (hp, t,
-                                                   (unsigned int) bsize)));
+                       " e %lld (%s)", tull, time_buf);
+    }
     if ((t & ALLNET_TRANSPORT_DO_NOT_CACHE) != 0)
       off += snprintf (to + off, minz (tsize, off), " do-not-cache");
   }
@@ -952,6 +956,45 @@ void sleep_time_random_us (unsigned long long us)
   usleep ((useconds_t) (random_mod (us)));
 }
 
+/* return true if comparison > multiplier * 2^exp */
+static int is_greater_than_power_two (unsigned long long int comparison,
+                                      unsigned long long int multiplier,
+                                      unsigned long long int exp)
+{
+  if (exp <= 0)
+    return comparison > multiplier;   /* 2^0 = 1 */
+  unsigned long long int power = 1;
+  while (exp-- > 0) {
+    power *= 2;
+    if (comparison > multiplier * power)
+      return 1;
+  }
+  return 0;
+}
+
+/* return 1 and update num_true_calls and last_true_time if one or more of:
+ * the time since the last call is greater than max (or max is 0)
+ * the time since the last call is greater than min * 2^num_true_calls
+ * otherwise return 0 and num_true_calls and last_true_time are unchanged
+ * all times are in microseconds */
+int time_exp_interval (unsigned long long int * last_true_time,
+                       unsigned long long int * num_true_calls,
+                       unsigned long long int min,
+                       unsigned long long int max)
+{
+  unsigned long long int now = allnet_time_us ();
+  unsigned long long int delta = 0;
+  if (now > *last_true_time)
+    delta = now - *last_true_time;
+  if ((*last_true_time == 0) || (delta > max) ||
+      (is_greater_than_power_two (delta, min, *num_true_calls))) {
+    *num_true_calls = *num_true_calls + 1; 
+    *last_true_time = now; 
+    return 1;
+  }
+  return 0;
+}
+
 /* if malloc is not successful, exit after printing */
 void * malloc_or_fail (size_t bytes, const char * desc)
 {
@@ -1470,6 +1513,7 @@ printf ("time to crash %d\n", 1000 / ah->version); */
     printf ("received message type %d, transport 0x%x != 0\n",
             ah->message_type, ah->transport);
     print_buffer (packet, size, NULL, 100, 1);
+pipemsg_debug_last_received ();
     return 0;
   }
   int payload_size = size -
