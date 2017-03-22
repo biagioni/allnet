@@ -109,13 +109,18 @@ static void save_received_message (pd p, int pipe,
   int off = snprintf (last_received_message, LOG_SIZE,
                       "%s packet received from fd %d, ",
                       p->log->debug_info, pipe);
-  if (off < LOG_SIZE)
-    buffer_to_string (msg, mlen, NULL, 150, 1, 
-                      last_received_message + off, LOG_SIZE - off);
-  else
+  if (off < LOG_SIZE) {
+    off += buffer_to_string (msg, mlen, NULL, 150, 0, 
+                             last_received_message + off, LOG_SIZE - off);
+    if ((off < LOG_SIZE) && (mlen > 150)) {  /* also print the last 4 bytes */
+      off += buffer_to_string (msg + mlen - 4, 4, NULL, 4, 1, 
+                               last_received_message + off, LOG_SIZE - off);
+    }
+  } else {
     snprintf (last_received_message, LOG_SIZE,
               "%s packet received from fd %d, %u bytes\n",
               p->log->debug_info, pipe, mlen);
+  }
   last_received_log = p->log;
 }
 
