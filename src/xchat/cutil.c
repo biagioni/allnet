@@ -125,8 +125,9 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
                         const char * contact, int sock,
                         unsigned char * src, unsigned int sbits,
                         unsigned char * dst, unsigned int dbits,
-                        unsigned int hops, unsigned int priority, int do_ack,
-                        unsigned char * ack, int do_save)
+                        unsigned int hops, unsigned int priority,
+                        const char * expiration,
+                        int do_ack, const unsigned char * ack, int do_save)
 {
   if (dsize <= 0)
     return 0;
@@ -185,9 +186,9 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
   allnet_rsa_pubkey key;
   char * encrypted = NULL;
   char * signature = NULL;
-  unsigned int esize = 0;
-  unsigned int sendsize = 0;
-  unsigned int ssize = 0;
+  unsigned int esize = 0;    /* size of the encrypted content */
+  unsigned int sendsize = 0; /* size of the encrypted content + signature */
+  unsigned int ssize = 0;    /* size of the signature */
   int sigtype = ALLNET_SIGTYPE_RSA_PKCS1;
   if (has_sym_state) {
     esize = dsize + sym_state.counter_size + sym_state.hash_size;
@@ -235,10 +236,17 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
             csize, sendsize, MESSAGE_ID_SIZE);
     return 0;  /* exit the loop */
   }
+  if (expiration != NULL)
+    csize += ALLNET_TIME_SIZE;
   unsigned int psize;
   struct allnet_header * hp =
     create_packet (csize, ALLNET_TYPE_DATA, hops, sigtype,
                    src, sbits, dst, dbits, NULL, message_ack, &psize);
+  if (expiration != NULL) {
+    hp->transport = hp->transport | ALLNET_TRANSPORT_EXPIRATION;
+    char * header_exp = ALLNET_EXPIRATION (hp, hp->transport, psize);
+    memcpy (header_exp, expiration, ALLNET_TIME_SIZE);
+  }
   unsigned int hsize = ALLNET_SIZE (hp->transport);
   unsigned int msize = hsize + sendsize;
   if (psize != msize) {
@@ -266,11 +274,6 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
     result = 0;  /* still save if possible */
   } /* else
     printf ("sent packet to %s\n", peer); */
-/*
-  if (do_ack && do_save)
-    save_outgoing (contact, k, (struct chat_descriptor *) data,
-                   data + CHAT_DESCRIPTOR_SIZE, dsize - CHAT_DESCRIPTOR_SIZE);
-*/
   return result;
 }
 
@@ -285,14 +288,15 @@ int resend_packet (char * data, unsigned int dsize, const char * contact,
   unsigned char ack [MESSAGE_ID_SIZE];
   memcpy (ack, data, MESSAGE_ID_SIZE);
   return send_to_one (key, data, dsize, contact, sock, NULL, ADDRESS_BITS,
-                      NULL, ADDRESS_BITS, hops, priority, 1, ack, 0);
+                      NULL, ADDRESS_BITS, hops, priority, NULL, 1, ack, 0);
 }
 
 /* send to the contact's specific key, returning 1 if successful, 0 otherwise */
 /* the xchat_descriptor must already have been initialized */
 int send_to_key (char * data, unsigned int dsize,
                  const char * contact, keyset key, int sock,
-                 unsigned int hops, unsigned int priority, int ack_and_save)
+                 unsigned int hops, unsigned int priority,
+                 const char * expiration, int do_ack, int do_save)
 {
   unsigned char src [ADDRESS_SIZE];
   unsigned char dst [ADDRESS_SIZE];
@@ -300,7 +304,7 @@ int send_to_key (char * data, unsigned int dsize,
   unsigned int dbits = get_remote (key, dst);
   return send_to_one (key, data, dsize, contact, sock,
                       src, sbits, dst, dbits, hops, priority,
-                      ack_and_save, NULL, ack_and_save);
+                      expiration, do_ack, NULL, do_save);
 }
 
 static unsigned long long int
@@ -375,7 +379,7 @@ unsigned long long int send_to_contact (char * data, unsigned int dsize,
   int success = 1;
   for (k = 0; ((success) && (k < nkeys)); k++)
     success = send_to_key (data, dsize, contact, keys [k], sock,
-                           hops, priority, ack_and_save);
+                           hops, priority, NULL, ack_and_save, ack_and_save);
   free (keys);
   if (success)
     return (readb64u (cp->counter));

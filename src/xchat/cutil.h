@@ -26,10 +26,11 @@ extern unsigned long long int send_to_contact (char * data, unsigned int dsize,
 
 /* send to the contact's specific key, returning 1 if successful, 0 otherwise */
 /* the xchat_descriptor must already have been initialized */
+/* expiration may be NULL */
 extern int send_to_key (char * data, unsigned int dsize,
                         const char * contact, keyset key,
                         int sock, unsigned int hops, unsigned int priority,
-                        int ack_and_save);
+                        const char * expiration, int do_ack, int do_save);
 
 /* same as send_to_contact, but only sends to the one key corresponding
  * to key, and does not save outgoing.  Does request ack, and
