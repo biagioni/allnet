@@ -9,7 +9,8 @@
 /* sends a chat_control message to request retransmission.
  * returns 1 for success, 0 in case of error. */ 
 extern int send_retransmit_request (const char * contact, keyset k, int sock,
-                                    int hops, int priority);
+                                    int hops, int priority,
+                                    const char * expiration);
 
 /* resends up to max unacked messages */
 extern void resend_unacked (const char * contact, keyset k, int sock, int hops,

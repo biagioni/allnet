@@ -131,7 +131,7 @@ static char * create_chat_control_request (const char * contact, char * missing,
  * returns 1 for success, 0 in case of error.
  */ 
 int send_retransmit_request (const char * contact, keyset k, int sock,
-                             int hops, int priority)
+                             int hops, int priority, const char * expiration)
 {
   int num_singles;
   int num_ranges;
@@ -148,7 +148,8 @@ int send_retransmit_request (const char * contact, keyset k, int sock,
   free (missing);
   if (request == NULL)
     return 0;
-  int result = send_to_key (request, size, contact, k, sock, hops, priority, 0);
+  int result = send_to_key (request, size, contact, k, sock,
+                            hops, priority, expiration, 1, 0);
   free (request);
   return result;
 }
@@ -180,7 +181,7 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
   save_outgoing (contact, k, cdp, data, 0);
   /* since this is sort of a housekeeping message, send with minimum priority */
   send_to_key (message, (int)msize, contact, k, sock,
-               hops, ALLNET_PRIORITY_EPSILON, 1);
+               hops, ALLNET_PRIORITY_EPSILON, NULL, 1, 1);
   free (message);
 }
 
