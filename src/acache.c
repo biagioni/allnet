@@ -1984,12 +1984,13 @@ void print_caches (int print_msgs, int print_acks)
 {
   if (alog == NULL)
     alog = init_log ("print_caches");
-  int msg_fd;
+  int print_msg_fd;
   int max_msg_size;
-  int ack_fd;
+  int print_ack_fd;
   int max_acks;
   int local_caching = 0;
-  init_acache (&msg_fd, &max_msg_size, &ack_fd, &max_acks, &local_caching);
+  init_acache (&print_msg_fd, &max_msg_size, &print_ack_fd,
+               &max_acks, &local_caching);
   printf ("cache sizes are %d for messages, %d for acks\n",
           max_msg_size, max_acks);
   char zero [MESSAGE_ID_SIZE];
@@ -2004,7 +2005,7 @@ void print_caches (int print_msgs, int print_acks)
         ecount++;
       while (entry != NULL) {
         if (memcmp (zero, entry->id, MESSAGE_ID_SIZE) != 0) {
-          print_message (msg_fd, max_msg_size, entry,
+          print_message (print_msg_fd, max_msg_size, entry,
                          print_msgs, count, h_index);
           count++;
         }
@@ -2030,10 +2031,10 @@ void print_caches (int print_msgs, int print_acks)
     printf ("found %d acks out of %d entries\n", count, ack_space);
   }
   /* print_stats (0, 0, "print_caches"); */
-  close (msg_fd);
-  close (ack_fd);
+  close (print_msg_fd);
+  close (print_ack_fd);
 }
-    
+
 /* used for systems that don't support multiple processes */
 void acache_thread (char * pname, int rpipe, int wpipe)
 {
