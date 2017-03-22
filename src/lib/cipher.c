@@ -201,6 +201,7 @@ static void debug_public_key_size (const char * text, int tsize,
               rsa_size, ssize);
     print_buffer (text, tsize, "text", 18, 1);
     /* printf ("text: %s (%d)\n", text, tsize); */
+pipemsg_debug_last_received ();
   }
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
