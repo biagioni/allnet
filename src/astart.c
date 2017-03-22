@@ -509,11 +509,11 @@ static void my_call1 (char * argv, int alen, char * program,
 {
   pid_t child = fork ();
   if (child == 0) {
-    debug_process_name = program;
     replace_command (argv, alen, program);
     snprintf (alog->b, alog->s, "calling %s\n", program);
     log_print (alog);
 #ifdef ALLNET_USE_FORK
+    debug_process_name = program;
     daemon_name = program;
     run_function (argv);
     child_return (program, parent, 1);
@@ -990,8 +990,8 @@ int astart_main (int argc, char ** argv)
   char * pname;
   find_path (argv [0], &path, &pname);
   if (strstr (pname, "stop") != NULL) {
-    debug_process_name = "astop";
 #ifdef ALLNET_USE_FORK
+    debug_process_name = "astop";
     daemon_name = "astop";
     stop_all ();   /* just stop */
 #endif /* ALLNET_USE_FORK */
