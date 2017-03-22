@@ -156,10 +156,25 @@ static void truncate_to_size (int fd, uint64_t max_size, char * caller)
   }
 }
 
-static void save_ack_data (int fd)
+/* initially save after 5s, growing exponentially to after 10min */
+static int time_to_save (unsigned long long int * num_saves,
+                         unsigned long long int * last_saved, int always)
 {
-  write_at_pos (fd, (char *) acks, sizeof (struct ack_entry) * ack_space, 0);
-  fsync (fd);
+  if (always)
+    return time_exp_interval (last_saved, num_saves, 0, 0);
+  unsigned long long int min = 5 * ALLNET_US_PER_S;  /* 5 seconds */
+  unsigned long long int max = 10 * 60 * ALLNET_US_PER_S;  /* 10 minutes */
+  return time_exp_interval (last_saved, num_saves, min, max);
+}
+
+static void save_ack_data (int fd, int always)
+{
+  static unsigned long long int num_saves = 0;
+  static unsigned long long int last_saved = 0;
+  if (time_to_save (&num_saves, &last_saved, always)) {
+    write_at_pos (fd, (char *) acks, sizeof (struct ack_entry) * ack_space, 0);
+    fsync (fd);
+  }
 }
 
 static void read_ack_data (int fd)
@@ -212,7 +227,7 @@ static void ack_add (char * ack, char * id, int ack_fd)
   /* clear the next location, to mark it in the file */
   int next_ack = (save_ack_pos + 1) % ack_space;
   bzero (&(acks [next_ack]), sizeof (struct ack_entry));
-  save_ack_data (ack_fd);
+  save_ack_data (ack_fd, 0);
   save_ack_pos = next_ack;
 }
 
@@ -1259,6 +1274,9 @@ static void gc (int fd, unsigned int max_size)
   print_stats (1, copied, "gc");
 }
 
+static unsigned long long int num_msg_saves = 0;
+static unsigned long long int last_msg_time = 0;
+
 static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
                            char * message, unsigned int msize, int priority)
 {
@@ -1294,7 +1312,8 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
   }
   int write_position = (int)fd_size_or_zero (fd);
   write_at_pos (fd, mbuffer, fsize, write_position);
-  fsync (fd);
+  if (time_to_save (&num_msg_saves, &last_msg_time, 0))
+    fsync (fd);   /* only fsync once in a while, lessen the disk traffic */
   hash_add_message (message, msize, message + id_off, write_position,
                     mbuffer + MESSAGE_ENTRY_HEADER_TIME_OFFSET);
 #ifdef USING_MESSAGE_LIST
@@ -1342,7 +1361,8 @@ static void remove_cached_message (int fd, unsigned int max_size, char * id,
   bzero (buffer, fsize);
   writeb16 (buffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET, msize);
   write_at_pos (fd, buffer, fsize, position);
-  fsync (fd);
+  if (time_to_save (&num_msg_saves, &last_msg_time, 0))
+    fsync (fd);   /* only fsync once in a while, lessen the disk traffic */
   remove_from_hash_table (id);
 #ifdef USING_MESSAGE_LIST
   list_remove_message (id);
@@ -1770,11 +1790,26 @@ static void init_acache (int * msg_fd, int * max_msg_size,
     init_msgs (*msg_fd, *max_msg_size);
 }
 
+static int msg_fd = -1;
+static int ack_fd = -1;
+
+/* may be called externally, e.g. when the process is terminated */
+void acache_save_data ()
+{
+  if (msg_fd != -1) {
+    fsync (msg_fd);  /* save all the messages that are in memory */
+    close (msg_fd);
+    msg_fd = -1;
+  }
+  if (ack_fd != -1) {
+    save_ack_data (ack_fd, 1);
+    ack_fd = -1;
+  }
+}
+
 static void main_loop (int rsock, int wsock, pd p)
 {
-  int msg_fd;
   int signed_max;
-  int ack_fd;
   int max_acks;
   int local_caching = 0;
   init_acache (&msg_fd, &signed_max, &ack_fd, &max_acks, &local_caching);
@@ -1794,7 +1829,7 @@ static void main_loop (int rsock, int wsock, pd p)
                 rsock, result);
       log_print (alog);
       mfree = 0;  /* nothing to free */
-      break;
+      break;      /* time to exit */
     } else if ((uresult >= ALLNET_HEADER_SIZE) &&
                (uresult >= ALLNET_SIZE (hp->transport))) {
       if (priority == 0) {
@@ -1856,6 +1891,7 @@ static void main_loop (int rsock, int wsock, pd p)
     if (mfree)
       free (message);
   }
+  acache_save_data ();
 }
 
 static void print_message (int fd, unsigned int max_size,
