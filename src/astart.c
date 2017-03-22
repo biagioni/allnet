@@ -40,6 +40,7 @@ extern void aip_main (int pipe1, int pipe2, char * fname);
 extern void abc_main (int pipe1, int pipe2, const char * ifopts);
 extern void adht_main (char * pname);
 extern void acache_main (char * pname);
+extern void acache_save_data ();
 extern void traced_main (char * pname);
 extern void keyd_main (char * pname);
 extern void keyd_generate (char * pname);
@@ -396,6 +397,7 @@ static int read_pid (int fd)
 
 static void stop_all_on_signal (int signal)
 {
+  acache_save_data ();
   if (signal != SIGINT)
     printf ("process ID is %d, program %s, signal %d\n", getpid (),
             debug_process_name, signal);
