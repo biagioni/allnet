@@ -62,9 +62,6 @@ char ebadbufs [NUM_EBADBUFS] [EBADBUFS];
 int ebadbufindex;  /* index of first, i.e. earliest, message */
 int ebadbufcount;
 #endif /* DEBUG_EBADFD */
-  char last_received_packet [ALLNET_MTU];
-  unsigned int last_received_length;
-  unsigned int last_received_pipe;
 };
 
 pd init_pipe_descriptor (struct allnet_log * log)
@@ -80,8 +77,6 @@ pd init_pipe_descriptor (struct allnet_log * log)
   result->ebadbufindex = 0;
   result->ebadbufcount = 0;
 #endif /* DEBUG_EBADFD */
-  result->last_received_length = 0;
-  result->last_received_pipe = 0;
   return result;
 }
 
@@ -90,21 +85,38 @@ struct allnet_log * pipemsg_log (pd p)
   return p->log;
 }
 
-void pipemsg_debug_last_received (pd p)
+static char last_received_message [LOG_SIZE] = "";
+static struct allnet_log * last_received_log = NULL;
+
+void pipemsg_debug_last_received ()
 {
-  if (p->last_received_length > 0) {
-    int off = snprintf (p->log->b, p->log->s,
-                        "%s packet received from fd %d: ",
-                        p->log->debug_info, p->last_received_pipe);
-    off += buffer_to_string (p->last_received_packet, p->last_received_length,
-                             NULL, 150, 1,
-                             p->log->b + off, p->log->s - off);
-  } else {
-    snprintf (p->log->b, p->log->s, "%s: no packet received\n",
-              p->log->debug_info);
+  if (strlen (last_received_message) > 0) {
+    printf ("%s", last_received_message);
+    if (last_received_log != NULL) {
+      snprintf (last_received_log->b, last_received_log->s,
+                "%s", last_received_message);
+      log_print (last_received_log);
+    }
   }
-  printf ("%s", p->log->b);
-  log_print (p->log);
+  last_received_message [0] = '\0';   /* delete the message */
+}
+
+static void save_received_message (pd p, int pipe,
+                                   char * msg, unsigned int mlen)
+{
+  if (mlen <= 0)
+    return;
+  int off = snprintf (last_received_message, LOG_SIZE,
+                      "%s packet received from fd %d, ",
+                      p->log->debug_info, pipe);
+  if (off < LOG_SIZE)
+    buffer_to_string (msg, mlen, NULL, 150, 1, 
+                      last_received_message + off, LOG_SIZE - off);
+  else
+    snprintf (last_received_message, LOG_SIZE,
+              "%s packet received from fd %d, %u bytes\n",
+              p->log->debug_info, pipe, mlen);
+  last_received_log = p->log;
 }
 
 static void die (const char * msg)
@@ -890,11 +902,7 @@ static int receive_pipe_message_poll (pd p, int pipe,
       /* we stopped because the header was filled.  Tell caller to try again. */
       return 0;
     } else {    /* not reading header and buffer is full, so we are done. */
-if ((bp->bsize >= 0) && (bp->bsize < ALLNET_MTU)) {
-p->last_received_length = bp->bsize;
-memcpy (p->last_received_packet, bp->buffer, p->last_received_length);
-p->last_received_pipe = pipe;
-}
+save_received_message (p, pipe, bp->buffer, bp->bsize);
       *message = bp->buffer;
       int result = (int) (bp->bsize);
       bp->in_header = 1;  /* next time read a new header */

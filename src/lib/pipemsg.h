@@ -134,8 +134,4 @@ extern char ebadbuf [EBADBUFS];
 extern void record_message (pd p);  /* call after snprintf to ebadfbuf */
 #endif /* DEBUG_EBADFD */
 
-/* we get mysterious messages occasionally.  This may help debug where
- * the message came from */
-extern void pipemsg_debug_last_received (pd p);
-
 #endif /* PIPEMSG_H */
