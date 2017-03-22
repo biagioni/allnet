@@ -468,9 +468,22 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
                               (char *) (hp->destination), hp->dst_nbits,
                               max_contacts);
 #ifdef DEBUG_PRINT
-if (tsize > 0)
-  printf ("decrypt_verify took %lluus, result %d, transport 0x%x, %d hops\n",
-          allnet_time_us () - start, tsize, hp->transport, hops);
+if (tsize > 0) {
+  printf ("decrypt_verify %lluus, result %d, transport 0x%x, ",
+          allnet_time_us () - start, tsize, hp->transport);
+  printf ("%d hops %04x -> %04x, ",
+          hops, readb16u (hp->source), readb16u (hp->destination));
+if (hp->transport & ALLNET_TRANSPORT_ACK_REQ)
+  print_buffer (ALLNET_MESSAGE_ID (hp, hp->transport, psize), 16, "id", 16, 1);
+else {
+  int msize = tsize - CHAT_DESCRIPTOR_SIZE;
+  char * debug = malloc_or_fail (msize + 1, "debugging in xcommon.c");
+  memcpy (debug, text + CHAT_DESCRIPTOR_SIZE, msize);
+  debug [msize] = '\0';
+  printf ("%s %lx, ", debug, readb32 (text));
+  print_buffer (text, msize, NULL, 16, 1);
+}
+}
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
   if (tsize > (int)CHAT_DESCRIPTOR_SIZE) {
@@ -1000,12 +1013,21 @@ void request_and_resend (int sock, char * contact, keyset kset)
 /*  printf ("request_and_resend (socket %d, peer %s)\n", sock, peer); */
   /* request retransmission of any missing messages */
   int hops = 10;
-  send_retransmit_request (contact, kset, sock,
-                           hops, ALLNET_PRIORITY_LOCAL_LOW);
-
+  /* let requests expire so on average at most 1 will be cached at any time */
+  time_t now = time (NULL);
+  static time_t last_request = 0;
+  if (last_request <= now + 30) {  /* don't send more than once every 30s */
+    char expiration [ALLNET_TIME_SIZE];
+    unsigned long long int delta = now - last_request;
+    if (last_request == 0)
+      delta = 30;
+    writeb64 (expiration, delta + allnet_time ());
+    last_request = now;
+    send_retransmit_request (contact, kset, sock,
+                             hops, ALLNET_PRIORITY_LOCAL_LOW, expiration);
+  }
   /* resend any unacked messages, but no more than once every hour */
   static time_t last_resend = 0;
-  time_t now = time (NULL);
   if (now - last_resend > 3600) {
 #ifdef DEBUG_PRINT
     printf ("resending unacked\n");
