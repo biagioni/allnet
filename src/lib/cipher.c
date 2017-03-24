@@ -201,7 +201,7 @@ static void debug_public_key_size (const char * text, int tsize,
               rsa_size, ssize);
     print_buffer (text, tsize, "text", 18, 1);
     /* printf ("text: %s (%d)\n", text, tsize); */
-pipemsg_debug_last_received ();
+    pipemsg_debug_last_received ();
   }
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
@@ -211,7 +211,6 @@ pipemsg_debug_last_received ();
 int allnet_verify (const char * text, int tsize, const char * sig, int ssize,
                    allnet_rsa_pubkey key)
 {
-
   if ((text == NULL) || (sig == NULL) || (tsize < 0) || (ssize <= 0)) {
 /* null sig or 0 ssize are not really errors, I think */
     if ((text == NULL) || (tsize < 0))
