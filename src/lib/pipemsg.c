@@ -113,7 +113,7 @@ static void save_received_message (pd p, int pipe,
     off += buffer_to_string (msg, mlen, NULL, 150, 0, 
                              last_received_message + off, LOG_SIZE - off);
     if ((off < LOG_SIZE) && (mlen > 150)) {  /* also print the last 4 bytes */
-      off += buffer_to_string (msg + mlen - 4, 4, NULL, 4, 1, 
+      off += buffer_to_string (msg + mlen - 4, 4, "last", 4, 1, 
                                last_received_message + off, LOG_SIZE - off);
     }
   } else {
