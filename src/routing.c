@@ -280,6 +280,14 @@ static void save_peers ()
   print_dht (0);
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
+  /* only save once every second to once every 30min, depending how
+   * long we've been running */
+  static unsigned long long int num_saves = 0;
+  static unsigned long long int last_saved = 0;
+  unsigned long long int min = 1 * ALLNET_US_PER_S;        /* 1 second */
+  unsigned long long int max = 30 * 60 * ALLNET_US_PER_S;  /* 30 minutes */
+  if (! time_exp_interval (&last_saved, &num_saves, min, max))
+    return;  /* don't save now */
   int cpeer = 0;
   int cping = 0;
   int fd = open_write_config ("adht", "peers", 1);
