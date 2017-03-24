@@ -420,8 +420,10 @@ void packet_to_string (const char * buffer, unsigned int bsize,
       time_t tt = (time_t) tull;
       char time_buf [100];
       ctime_r (&tt, time_buf);
+      time_buf [24] = '\0';   /* get rid of the newline */
       off += snprintf (to + off, minz (tsize, off),
-                       " e %lld (%s)", tull, time_buf);
+                       " e %lld (%s, in %lld s)", tull, time_buf,
+                       tull - allnet_time ());
     }
     if ((t & ALLNET_TRANSPORT_DO_NOT_CACHE) != 0)
       off += snprintf (to + off, minz (tsize, off), " do-not-cache");
