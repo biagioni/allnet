@@ -374,6 +374,9 @@ static int handle_clear (struct allnet_header * hp, char * data,
   unsigned int ssize = readb16 (data + (dsize - 2)) + 2;  /* size of the sig */
   if ((ssize <= 2) || (dsize <= ssize)) {
     printf ("data packet size %d less than sig %d, dropping\n", dsize, ssize);
+    print_buffer ((char *) hp, dsize + ALLNET_SIZE (hp->transport),
+                  "original data", 100, 1);
+    pipemsg_debug_last_received ();
     return 0;
   }
   data += sizeof (struct allnet_app_media_header);
@@ -1013,14 +1016,15 @@ void request_and_resend (int sock, char * contact, keyset kset)
 /*  printf ("request_and_resend (socket %d, peer %s)\n", sock, peer); */
   /* request retransmission of any missing messages */
   int hops = 10;
-  /* let requests expire so on average at most 1 will be cached at any time */
+  /* let requests expire so on average at most ~3 will be cached at any time */
   time_t now = time (NULL);
   static time_t last_request = 0;
-  if (last_request <= now + 30) {  /* don't send more than once every 30s */
+  if (last_request + 30 <= now) {  /* don't send more than once every ~30s */
     char expiration [ALLNET_TIME_SIZE];
-    unsigned long long int delta = now - last_request;
-    if (last_request == 0)
-      delta = 30;
+    unsigned long long int delta = 100;
+    if ((last_request != 0) && (now > last_request) &&
+        ((unsigned long long int)now - last_request > delta))
+      delta = now - last_request;
     writeb64 (expiration, delta + allnet_time ());
     last_request = now;
     send_retransmit_request (contact, kset, sock,
