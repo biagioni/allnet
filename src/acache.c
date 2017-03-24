@@ -1825,7 +1825,7 @@ static void main_loop (int rsock, int wsock, pd p)
     /* unless we save it, free the message */
     int mfree = 1;
     if (result <= 0) {
-      snprintf (alog->b, alog->s, "ad pipe %d closed, result %d\n",
+      snprintf (alog->b, alog->s, "alocal pipe %d closed, result %d\n",
                 rsock, result);
       log_print (alog);
       mfree = 0;  /* nothing to free */
