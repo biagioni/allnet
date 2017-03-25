@@ -844,7 +844,19 @@ static int parse_header (char * header, int pipe, unsigned int * priority,
   printed = 0;
   if (priority != NULL)
     *priority = read_big_endian32 (header + MAGIC_SIZE);
-  return        read_big_endian32 (header + MAGIC_SIZE + PRIORITY_SIZE);
+  int result  = read_big_endian32 (header + MAGIC_SIZE + PRIORITY_SIZE);
+  if ((result < 0) || (result > ALLNET_MTU)) {
+    if (log != NULL) {
+      snprintf (log->b, log->s, "parse_header: illegal header size %d (%u)\n",
+                result, result);
+      log_print (log);
+      buffer_to_string (header, HEADER_SIZE, " header:", 20, 1, log->b, log->s);
+      log_print (log);
+    } else {
+      printf ("parse_header: illegal header size %d (%u)\n", result, result);
+    }
+  }
+  return result;
 }
 
 /* shift the header left by one position, to make room for one more char */
@@ -980,18 +992,23 @@ int receive_pipe_message (pd p, int pipe, char ** message,
     /* first part of header should be MAGIC_STRING.  If not, it is an error,
        report it and keep looking */
     received_len = parse_header (header, pipe, priority, p->log);
-    if (received_len != -1)   /* successfully received the header */
+    if ((received_len > 0) && /* successfully received the header */
+        (received_len <= ALLNET_MTU))  /* and a reasonable length */
       break;
-    shift_header (header);    /* no match, shift the header and try again */
-    wanted = 1;
+    if (received_len == 0) {  /* empty packet, skip to next packet */
+      wanted = HEADER_SIZE;
+    } else {
+      shift_header (header);  /* no match, shift the header and try again */
+      wanted = 1;
+    }
   }
 
   /* allocate the result buffer */
   char * buffer = malloc (received_len);
   if (buffer == NULL) {
     snprintf (p->log->b, p->log->s,
-              "unable to allocate %d bytes for receive_pipe_message buffer\n",
-              received_len);
+              "unable to allocate %d bytes for receive_pipe_message, pipe %d\n",
+              received_len, pipe);
     log_print (p->log);
     return -1;
   }
