@@ -772,7 +772,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         int mtype = CODE_DATA_MESSAGE; /* data */
         if (broadcast)
           mtype = CODE_BROADCAST_MESSAGE;  /* broadcast */
-        if (broadcast || (! duplicate)) {
+        if (! duplicate) {
           struct sockaddr * sap = (struct sockaddr *) (&fwd_addr);
           if (is_visible (peer))
             send_message (forwarding_socket, sap, fwd_addr_size,

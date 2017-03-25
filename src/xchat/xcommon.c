@@ -24,6 +24,7 @@
 #include "lib/allnet_log.h"
 #include "lib/sha.h"
 #include "lib/mapchar.h"
+#include "lib/dcache.h"
 
 /* #define DEBUG_PRINT */
 
@@ -346,10 +347,35 @@ static void handle_ack (int sock, char * packet, unsigned int psize,
     acks->num_acks = ack_count;
 }
 
+static int cache_match (void * s1, void * s2)
+{
+  return (strcmp (s1, s2) == 0);
+}
+
+/* returns 0 for a new message, 1 for a message that was already cached */
+static int cache_message (const char * data, unsigned int dsize,
+                          const char * contact)
+{
+  static void * cache = NULL;
+  if (cache == NULL)
+    cache = cache_init (300, free, "xcommon.c cache_message");
+  size_t len = strlen (data) + strlen (contact) + 3;
+  char * copy = malloc_or_fail (len, "xcommon.c cache_message");
+  snprintf (copy, len, "%s:%s\n", contact, data);
+  void * found = cache_get_match (cache, cache_match, copy);
+  if (found == NULL) {   /* not found */
+    cache_add (cache, copy);
+    return 0;
+  } else {               /* already in the cache */
+    free (copy);
+    return 1;
+  }
+}
+
 static int handle_clear (struct allnet_header * hp, char * data,
                          unsigned int dsize,
                          char ** contact, char ** message,
-                         int * verified, int * broadcast)
+                         int * verified, int * duplicate, int * broadcast)
 {
   if (hp->sig_algo == ALLNET_SIGTYPE_NONE) {
 #ifdef DEBUG_PRINT
@@ -403,6 +429,7 @@ static int handle_clear (struct allnet_header * hp, char * data,
       (*message) [text_size] = '\0';   /* null-terminate the message */
       *broadcast = 1;
       *verified = 1;
+      *duplicate = cache_message (*message, text_size, *contact);
 #ifdef DEBUG_PRINT
       printf ("verified bc message, contact %s, %d bytes\n",
               keys [i].identifier, text_size);
@@ -961,7 +988,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
               subscription, addr);
 #endif /* DEBUG_PRINT */
     return handle_clear (hp, packet + hsize, psize - hsize,
-                         contact, message, verified, broadcast);
+                         contact, message, verified, duplicate, broadcast);
   }
 
   if (hp->message_type == ALLNET_TYPE_DATA) /* an encrypted data packet */
@@ -1017,8 +1044,8 @@ void request_and_resend (int sock, char * contact, keyset kset)
   /* request retransmission of any missing messages */
   int hops = 10;
   /* let requests expire so on average at most ~3 will be cached at any time */
-  time_t now = time (NULL);
-  static time_t last_request = 0;
+  unsigned long long int now = allnet_time ();
+  static unsigned long long int last_request = 0;
   if (last_request + 30 <= now) {  /* don't send more than once every ~30s */
     char expiration [ALLNET_TIME_SIZE];
     unsigned long long int delta = 100;
@@ -1026,12 +1053,12 @@ void request_and_resend (int sock, char * contact, keyset kset)
         ((unsigned long long int)now - last_request > delta))
       delta = now - last_request;
     writeb64 (expiration, delta + allnet_time ());
-    last_request = now;
-    send_retransmit_request (contact, kset, sock,
-                             hops, ALLNET_PRIORITY_LOCAL_LOW, expiration);
+    if (send_retransmit_request (contact, kset, sock,
+                                 hops, ALLNET_PRIORITY_LOCAL_LOW, expiration))
+      last_request = now;   /* sent something, update time */
   }
   /* resend any unacked messages, but no more than once every hour */
-  static time_t last_resend = 0;
+  static unsigned long long int last_resend = 0;
   if (now - last_resend > 3600) {
 #ifdef DEBUG_PRINT
     printf ("resending unacked\n");
