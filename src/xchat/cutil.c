@@ -211,7 +211,7 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
       /* sign */
       ssize = allnet_sign (encrypted, esize, priv_key, &signature);
       if (ssize == 0) {
-        printf ("unable to sign retransmit request\n");
+        printf ("unable to sign outgoing packet\n");
         if (encrypted != NULL) free (encrypted);
         if (signature != NULL) free (signature);
         return 0;  /* exit the loop */
@@ -219,9 +219,10 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
       sendsize = esize + ssize + 2;
     }
   }
-  if ((esize == 0) || (sendsize == 0)) {  /* some serious problem */
-    printf ("unable to encrypt retransmit request for key %d of %s: %d %d\n",
-            k, contact, esize, sendsize);
+  if ((esize == 0) || (encrypted == NULL) || (sendsize == 0)) {
+    /* some serious problem */
+    printf ("unable to encrypt retransmit request for key %d of %s: %d %p %d\n",
+            k, contact, esize, encrypted, sendsize);
     if (encrypted != NULL) free (encrypted);
     if (signature != NULL) free (signature);
     return 0;  /* exit the loop */
@@ -259,9 +260,11 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
 
   memcpy (message + hsize, encrypted, esize);
   if (encrypted != NULL) free (encrypted);
-  memcpy (message + hsize + esize, signature, ssize);
-  if (signature != NULL) free (signature);
-  writeb16 (message + hsize + esize + ssize, ssize);
+  if ((signature != NULL) && (ssize > 0)) {
+    memcpy (message + hsize + esize, signature, ssize);
+    free (signature);
+    writeb16 (message + hsize + esize + ssize, ssize);
+  }
 
 #ifdef DEBUG_PRINT
   print_packet (message, msize, "sending", 1);
