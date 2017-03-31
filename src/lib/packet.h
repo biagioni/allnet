@@ -45,8 +45,8 @@
  * the signature size is in big-endian order, that is, message [size - 2]
  * has the MSB, and message [size - 1] the LSB of the size.
  *
- * If the size is not valid for the given signature algorithm, the
- * signature is not valid.
+ * If the size is not valid for the given signature algorithm, or the
+ * size is too large for the packet, the signature is not valid.
  *
  * the signature, if any, covers all the bytes from the end of the header
  * to the beginning of the signature.  That means, for encrypted messages,
@@ -85,6 +85,7 @@ struct allnet_header {
  * ALLNET_TRANSPORT_ACK_REQ bit set, but payload less than MESSAGE_ID_SIZE
  * ALLNET_TRANSPORT_LARGE bit set without ALLNET_TRANSPORT_ACK_REQ bit
  * ALLNET_TRANSPORT_EXPIRATION bit set but the expiration time is in the past
+ * non-zero sig_algo and the signature size >= (packet size - header size)
  *
  * invalid messages are normally discarded by allnet hosts
  */
