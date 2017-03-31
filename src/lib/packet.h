@@ -147,8 +147,12 @@ struct allnet_key_reply {
   unsigned char random [KEY_RANDOM_PAD_SIZE];    /* make each msg unique */
 };
 
-/* a LARGE packet must also be an ACK_REQ packet.  All other flags can
- * be used independently of each other */
+/* these are the transport bits.
+ * a data packet should typically carry at least one of ACK_REQ,
+ * EXPIRATION, or DO_NOT_CACHE.
+ * A broadcast packet will typically be an EXPIRATION packet.
+ * a LARGE packet must also be an ACK_REQ packet.
+ * All other flags can be used independently of each other */
 #define ALLNET_TRANSPORT_STREAM		1	/* related packets */
 #define ALLNET_TRANSPORT_ACK_REQ	2	/* message_id allows acking */
 #define ALLNET_TRANSPORT_LARGE		4	/* packets part of 1 message */
