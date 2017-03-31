@@ -1310,7 +1310,7 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
     }
     gc (fd, max_size);
   }
-  int write_position = (int)fd_size_or_zero (fd);
+  int64_t write_position = (int64_t)fd_size_or_zero (fd);
   write_at_pos (fd, mbuffer, fsize, write_position);
   if (time_to_save (&num_msg_saves, &last_msg_time, 0))
     fsync (fd);   /* only fsync once in a while, lessen the disk traffic */
