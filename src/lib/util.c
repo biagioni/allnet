@@ -446,11 +446,15 @@ void packet_to_string (const char * buffer, unsigned int bsize,
     unsigned int dsize = bsize - ALLNET_SIZE (hp->transport);
     off += snprintf (to + off, minz (tsize, off),
                      ", %d bytes of payload", dsize);
-    if ((hp->sig_algo != ALLNET_SIGTYPE_NONE) && (bsize > 2)) {
+    if ((hp->sig_algo != ALLNET_SIGTYPE_NONE) && (bsize > 2) && (dsize > 2)) {
       unsigned int ssize = readb16 (buffer + bsize - 2);
       if (dsize > ssize + 2) {
         dsize -= ssize + 2;
         off += snprintf (to + off, minz (tsize, off), " = %d data, %d + 2 sig", 
+                         dsize, ssize);
+      } else {
+        off += snprintf (to + off, minz (tsize, off),
+                         " = %d overall with unreasonable %d + 2 sig", 
                          dsize, ssize);
       }
     }
@@ -1548,6 +1552,16 @@ pipemsg_debug_last_received ();
               readb64 (ep), now - ALLNET_Y2K_SECONDS_IN_UNIX, ep); */
       return 0;
     }
+  }
+  if (ah->sig_algo != ALLNET_SIGTYPE_NONE) {
+    unsigned int hsize = ALLNET_SIZE (ah->transport);
+    if (size <= hsize + 2)  /* not enough room for signature length */
+      return 0;
+    unsigned int length = readb16 (packet + (size - 2));
+    if (length <= 0)         /* not enough room for a signature */ 
+      return 0;
+    if (size <= length + 2)  /* not enough room for any data */ 
+      return 0;
   }
   return 1;
 }
