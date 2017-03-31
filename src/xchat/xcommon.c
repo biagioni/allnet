@@ -401,7 +401,7 @@ static int handle_clear (struct allnet_header * hp, char * data,
   if ((ssize <= 2) || (dsize <= ssize)) {
     printf ("data packet size %d less than sig %d, dropping\n", dsize, ssize);
     print_buffer ((char *) hp, dsize + ALLNET_SIZE (hp->transport),
-                  "original data", 100, 1);
+                  "original data", dsize + ALLNET_SIZE (hp->transport), 1);
     pipemsg_debug_last_received ();
     return 0;
   }
