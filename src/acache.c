@@ -1155,7 +1155,7 @@ static int hash_next_match (int fd, unsigned int max_size, int first_call,
 #endif /* ALLNET_USE_THREADS */
     return 1;  /* found */
   }
-#if 0
+#if 0  /* after infinite loop, so, never executed */
 #ifdef ALLNET_USE_THREADS
   pthread_mutex_unlock (&mutex);
 #endif /* ALLNET_USE_THREADS */
@@ -1520,6 +1520,22 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
   return count;
 }
 
+static void debug_resend_message (char * message, int msize,
+                                  struct allnet_header * hp,
+                                  int local_request, int64_t position)
+{
+#if 0  /* not ready for prime time */
+  if (hp->sig_algo != ALLNET_SIGTYPE_NONE) {
+    int length = readb16 (message + (msize - 2));
+    if (length != 512) {
+      printf ("sending cached message with weird signature size %d\n", length);
+      print_packet (message, msize, "message", 1);
+      print_buffer (message, msize, "message bytes", msize, 1);
+    }
+  }
+#endif /* 0 */
+}
+
 static void resend_message (char * message, int msize, int64_t position,
                             int *priorityp, int local_request, int sock)
 {
@@ -1529,6 +1545,7 @@ static void resend_message (char * message, int msize, int64_t position,
             msize, position);
   log_print (alog);
   struct allnet_header * send_hp = (struct allnet_header *) message;
+debug_resend_message (message, msize, send_hp, local_request, position);
   int saved_max = send_hp->max_hops;
   if (local_request)  /* only forward locally */
     send_hp->max_hops = send_hp->hops;
@@ -1570,7 +1587,7 @@ static int respond_to_request (int fd, unsigned int max_size, char * in_message,
 #undef BF_SIZE
 #endif /* HASH_RANDOM_MATCH */
   while (allnet_time_ms () < overall_limit) {
-    char * message;
+    char * message = NULL;
     int msize = 0;
     int first_call = (count++ == 0);
 #ifdef HASH_RANDOM_MATCH
@@ -1592,7 +1609,7 @@ static int respond_to_request (int fd, unsigned int max_size, char * in_message,
 
 /* returns the number of responses sent, or 0 */
 /* if any of the ids in the request are not found, also sends onwards
- * the message (unless it was sent locally and with max_hops > 0), with
+ * the message (unless it was sent locally and with max_hops == 0), with
  * only those ids that were not found */
 static int respond_to_id_request (int fd, unsigned int max_size,
                                   char * in_message, unsigned int in_msize,
@@ -1626,7 +1643,7 @@ static int respond_to_id_request (int fd, unsigned int max_size,
   int i;
   for (i = 0; i < n; i++) {
     char *id = (char *) (amirp->ids + i * MESSAGE_ID_SIZE);
-    char * message;
+    char * message = NULL;
     int msize = 0;
     int64_t position = 0;
     if ((! local_request) && (allnet_time_ms () < limit) &&
@@ -1943,10 +1960,17 @@ static void print_message (int fd, unsigned int max_size,
             (int)assigned, msize, priority, id_off);
   }
   print_packet (message, msize, NULL, 1);
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if (hp->sig_algo != ALLNET_SIGTYPE_NONE) {  /* check sig size */
+    int length = readb16 (message + (msize - 2));
+    if (length != 512) {
+      printf ("odd signature length %d\n", length);
+      print_buffer (message, msize, "packet", msize, 1);
+    }
+  }
   if (print_level <= 3)
     return;
   /* print_level > 3, attempt to decrypt data packets and verify signatures */
-  struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type == ALLNET_TYPE_DATA) {
     char * data = ALLNET_DATA_START (hp, hp->transport, (unsigned int) msize);
     unsigned int dsize = 0;
