@@ -296,12 +296,18 @@ void log_packet (struct allnet_log * log, char * desc, char * packet, int plen)
    is in the buffer */
 void log_error (struct allnet_log * log, char * syscall)
 {
+  int saved_errno = errno; 
   char ebuf [1000];
   strerror_r (errno, ebuf, sizeof (ebuf));
   char local_buf [LOG_SIZE + LOG_SIZE];
-  snprintf (local_buf, sizeof (local_buf), "%s: %s\n    ", syscall, ebuf);
+  const char * indent = "";
+  if (strlen (log->b) > 0)
+    indent = "  ";
+  snprintf (local_buf, sizeof (local_buf), "%s: %s (errno %d)\n%s",
+              syscall, ebuf, saved_errno, indent);
   log_print_str (log, local_buf);
-  log_print (log);
+  if (strlen (log->b) > 0)
+    log_print (log);
 }
 
 /* output everything to stdout as well as the log file if on != 0.
