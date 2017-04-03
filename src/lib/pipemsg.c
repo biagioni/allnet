@@ -350,6 +350,7 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
     result = 0;
   } else {
     /* try to send with write */
+int print_result_of_write = 0;
     if ((w < 0) && (errno == ENOTSOCK)) {
 static int notsock_printed = -1;
 static int print_count = 0;
@@ -359,8 +360,14 @@ snprintf (log->b, log->s,
           w, save_errno, pipe);
 log_print (log);
 notsock_printed = pipe;
+print_result_of_write = 1;
 }
       w = write (pipe, buffer, blen); 
+if (print_result_of_write) {
+snprintf (log->b, log->s, "result of write %zd, errno %d on fd %d\n",
+          w, errno, pipe);
+log_print (log);
+}
       is_send = 0;
     }
     if (w != blen) {
