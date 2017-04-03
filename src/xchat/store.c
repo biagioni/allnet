@@ -773,7 +773,7 @@ static void save_int_to_file (const char * contact, keyset k,
     return;
   char buffer [] = "18446744073709551616\n";  /* 2^64 */
   snprintf (buffer, sizeof (buffer), "%" PRIu64 "\n", value);
-  write_file (path, buffer, strlen (buffer), 1);
+  write_file (path, buffer, (int)strlen (buffer), 1);
   free (path);
 }
 
