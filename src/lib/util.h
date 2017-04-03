@@ -293,6 +293,6 @@ extern int binary_log (unsigned long long int value);
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 /* defined in pipemsg.c, but used in files that don't #include pipemsg.h */
-extern void pipemsg_debug_last_received ();
+extern void pipemsg_debug_last_received (const char * message);
 
 #endif /* ALLNET_UTIL_H */

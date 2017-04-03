@@ -402,7 +402,7 @@ static int handle_clear (struct allnet_header * hp, char * data,
     printf ("data packet size %d less than sig %d, dropping\n", dsize, ssize);
     print_buffer ((char *) hp, dsize + ALLNET_SIZE (hp->transport),
                   "original data", dsize + ALLNET_SIZE (hp->transport), 1);
-    pipemsg_debug_last_received ();
+    pipemsg_debug_last_received ("xcommon handle_clear");
     return 0;
   }
   data += sizeof (struct allnet_app_media_header);

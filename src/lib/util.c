@@ -1521,10 +1521,11 @@ printf ("time to crash %d\n", 1000 / ah->version); */
   if (((ah->message_type == ALLNET_TYPE_ACK) ||
        (ah->message_type == ALLNET_TYPE_DATA_REQ)) &&
       (ah->transport != 0)) {
-    printf ("received message type %d, transport 0x%x != 0\n",
-            ah->message_type, ah->transport);
-    print_buffer (packet, size, NULL, 100, 1);
-pipemsg_debug_last_received ();
+    char buffer [10000];
+    snprintf (buffer, sizeof (buffer),
+              "received message type %d, transport 0x%x != 0",
+              ah->message_type, ah->transport);
+pipemsg_debug_last_received (buffer);
     return 0;
   }
   int payload_size = size -

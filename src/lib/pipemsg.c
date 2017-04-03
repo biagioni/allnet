@@ -88,10 +88,10 @@ struct allnet_log * pipemsg_log (pd p)
 static char last_received_message [LOG_SIZE] = "";
 static struct allnet_log * last_received_log = NULL;
 
-void pipemsg_debug_last_received ()
+void pipemsg_debug_last_received (const char * message)
 {
   if (strlen (last_received_message) > 0) {
-    printf ("%s", last_received_message);
+    printf ("%s\n%s", message, last_received_message);
     if (last_received_log != NULL) {
       snprintf (last_received_log->b, last_received_log->s,
                 "%s", last_received_message);
@@ -104,8 +104,13 @@ void pipemsg_debug_last_received ()
 static void save_received_message (pd p, int pipe,
                                    char * msg, unsigned int mlen)
 {
-  if (mlen <= 0)
+  if (mlen <= 24)
     return;
+  if (((msg [8] & 0xff) == 0x99) && ((msg [16] & 0xff) == 0x99) &&  /* known sender of bad packets */
+      ((msg [9] & 0xff) == 0x57) && ((msg [17] & 0xff) == 0x57)) {
+    last_received_message [0] = '\0';   /* delete the message, don't print */
+    return;
+  }
   int off = snprintf (last_received_message, LOG_SIZE,
                       "%s packet received from fd %d, ",
                       p->log->debug_info, pipe);

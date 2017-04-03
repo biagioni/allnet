@@ -193,15 +193,15 @@ static void debug_public_key_size (const char * text, int tsize,
                                    const char * sig, int ssize, int rsa_size)
 {
   if (ssize != rsa_size) {
-    if (rsa_size > ssize)
-      printf ("public key has %d-byte signature, only %d bytes given\n",
+    char buffer [10000];
+    snprintf (buffer, sizeof (buffer),
+              "public key has %d-byte signature, only %d bytes given",
               rsa_size, ssize);
-    else
-      printf ("notice: public key has %d-byte signature, %d bytes given\n",
-              rsa_size, ssize);
-    print_buffer (text, tsize, "text", 18, 1);
-    /* printf ("text: %s (%d)\n", text, tsize); */
-    pipemsg_debug_last_received ();
+    if (rsa_size < ssize)
+      snprintf (buffer, sizeof (buffer),
+                "notice: public key has %d-byte signature, %d bytes given",
+                rsa_size, ssize);
+    pipemsg_debug_last_received (buffer);
   }
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
