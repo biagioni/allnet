@@ -99,21 +99,22 @@ int buffer_to_string (const char * buffer, unsigned int count,
     return 0;
   unsigned int i;
   unsigned int offset = 0;
+  unsigned int itsize = (unsigned int)tsize;
   if (desc != NULL)
     offset = snprintf (to, tsize, "%s (%d bytes):", desc, count);
   else
     offset = snprintf (to, tsize, "%d bytes:", count);
   if (buffer == NULL) {
-    offset += snprintf (to + offset, minz (tsize, offset), "(null)");
+    offset += snprintf (to + offset, minz (itsize, offset), "(null)");
   } else {
     for (i = 0; i < count && i < max; i++)
-      offset += snprintf (to + offset, minz (tsize, offset),
+      offset += snprintf (to + offset, minz (itsize, offset),
                           " %02x", buffer [i] & 0xff);
     if (i < count)
-      offset += snprintf (to + offset, minz (tsize, offset), " ...");
+      offset += snprintf (to + offset, minz (itsize, offset), " ...");
   }
   if (print_eol)
-    offset += snprintf (to + offset, minz (tsize, offset), "\n");
+    offset += snprintf (to + offset, minz (itsize, offset), "\n");
   return offset;
 }
 
@@ -179,53 +180,56 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
                           char * to, size_t tsize)
 {
   int r = snprintf (to, tsize, " mt %d ", mtype);
+  unsigned int itsize = (unsigned int)tsize;
 
   switch (mtype) {
   case ALLNET_MGMT_BEACON:
     if (hsize < sizeof (struct allnet_mgmt_beacon)) {
-      r += snprintf (to + r, minz (tsize, r), "beacon size %d, min %zd\n",
+      r += snprintf (to + r, minz (itsize, r), "beacon size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_beacon));
     } else {
       const struct allnet_mgmt_beacon * amb =
         (const struct allnet_mgmt_beacon *) hp;
-      r += snprintf (to + r, minz (tsize, r), "beacon %s (%lldns)",
+      r += snprintf (to + r, minz (itsize, r), "beacon %s (%lldns)",
                      b2su (amb->receiver_nonce, NONCE_SIZE),
                      readb64 ((char *) (amb->awake_time)));
     }
     break;
   case ALLNET_MGMT_BEACON_REPLY:
     if (hsize < sizeof (struct allnet_mgmt_beacon_reply)) {
-      r += snprintf (to + r, minz (tsize, r), "beacon reply size %d, min %zd\n",
+      r += snprintf (to + r, minz (itsize, r),
+                     "beacon reply size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_beacon_reply));
     } else {
       const struct allnet_mgmt_beacon_reply * ambr =
         (const struct allnet_mgmt_beacon_reply *) hp;
-      r += snprintf (to + r, minz (tsize, r), "beacon reply r %s ",
+      r += snprintf (to + r, minz (itsize, r), "beacon reply r %s ",
                      b2su (ambr->receiver_nonce, NONCE_SIZE));
-      r += snprintf (to + r, minz (tsize, r), "s %s",
+      r += snprintf (to + r, minz (itsize, r), "s %s",
                      b2su (ambr->sender_nonce, NONCE_SIZE));
     }
     break;
   case ALLNET_MGMT_BEACON_GRANT:
     if (hsize < sizeof (struct allnet_mgmt_beacon_grant)) {
-      r += snprintf (to + r, minz (tsize, r), "beacon grant size %d, min %zd\n",
+      r += snprintf (to + r, minz (itsize, r),
+                     "beacon grant size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_beacon_grant));
     } else {
       const struct allnet_mgmt_beacon_grant * ambg =
         (const struct allnet_mgmt_beacon_grant *) hp;
-      r += snprintf (to + r, minz (tsize, r), "beacon grant r %s ",
+      r += snprintf (to + r, minz (itsize, r), "beacon grant r %s ",
                      b2su (ambg->receiver_nonce, NONCE_SIZE));
-      r += snprintf (to + r, minz (tsize, r), "s %s %lldns",
+      r += snprintf (to + r, minz (itsize, r), "s %s %lldns",
                      b2su (ambg->sender_nonce, NONCE_SIZE),
                      readb64 ((char *) (ambg->send_time)));
     }
     break;
   case ALLNET_MGMT_PEER_REQUEST:
-    r += snprintf (to + r, minz (tsize, r), "peer request");
+    r += snprintf (to + r, minz (itsize, r), "peer request");
     break;
   case ALLNET_MGMT_PEERS:
     if (hsize < sizeof (struct allnet_mgmt_peers)) {
-      r += snprintf (to + r, minz (tsize, r), "peer size %d, min %zd\n",
+      r += snprintf (to + r, minz (itsize, r), "peer size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_peers));
     } else {
       const struct allnet_mgmt_peers * amp =
@@ -233,38 +237,38 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
       unsigned int needed = sizeof (struct allnet_mgmt_peers) +
                             amp->num_peers * sizeof (struct internet_addr);
       if (hsize < needed) {
-        r += snprintf (to + r, minz (tsize, r), "peer size %d, needed %d\n",
+        r += snprintf (to + r, minz (itsize, r), "peer size %d, needed %d\n",
                        hsize, needed);
       } else {
-        r += snprintf (to + r, minz (tsize, r), "peers %d ", amp->num_peers);
+        r += snprintf (to + r, minz (itsize, r), "peers %d ", amp->num_peers);
         int i;
         for (i = 0; i < amp->num_peers; i++) {
           char local [100];
           ia_to_string (amp->peers + i, local, sizeof (local));
           char * nl = strchr (local, '\n');
           *nl = '\0';   /* segfault if no newline */
-          r += snprintf (to + r, minz (tsize, r), "%s", local);
+          r += snprintf (to + r, minz (itsize, r), "%s", local);
           if (i + 1 < amp->num_peers)
-            r += snprintf (to + r, minz (tsize, r), ", ");
+            r += snprintf (to + r, minz (itsize, r), ", ");
         }
       }
     }
     break;
   case ALLNET_MGMT_DHT:
     if (hsize < sizeof (struct allnet_mgmt_dht)) {
-      r += snprintf (to + r, minz (tsize, r), "peer size %d, min %zd\n",
+      r += snprintf (to + r, minz (itsize, r), "peer size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_dht));
     } else {
       const struct allnet_mgmt_dht * dht = (const struct allnet_mgmt_dht *) hp;
       unsigned int needed = sizeof (struct allnet_mgmt_dht) +
                             dht->num_dht_nodes * sizeof (struct addr_info);
       if (hsize < needed) {
-        r += snprintf (to + r, minz (tsize, r), "dht size %d, needed %d\n",
+        r += snprintf (to + r, minz (itsize, r), "dht size %d, needed %d\n",
                        hsize, needed);
       } else {
         char time_string [100];
         allnet_time_string (readb64 ((char *) (dht->timestamp)), time_string);
-        r += snprintf (to + r, minz (tsize, r), "dht %d+%d @%s ",
+        r += snprintf (to + r, minz (itsize, r), "dht %d+%d @%s ",
                        dht->num_sender, dht->num_dht_nodes, time_string);
         int i;
         for (i = 0; i < dht->num_sender + dht->num_dht_nodes; i++) {
@@ -272,18 +276,18 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
           ia_to_string (&(dht->nodes [i].ip), local, sizeof (local));
           char * nl = strchr (local, '\n');
           *nl = '\0';   /* segfault if no newline */
-          r += snprintf (to + r, minz (tsize, r), "%s %s",
+          r += snprintf (to + r, minz (itsize, r), "%s %s",
                          b2su (dht->nodes [i].destination,
                                ADDRESS_SIZE), local);
           if (i + 1 < dht->num_sender + dht->num_dht_nodes)
-            r += snprintf (to + r, minz (tsize, r), ", ");
+            r += snprintf (to + r, minz (itsize, r), ", ");
         }
       }
     }
     break;
   case ALLNET_MGMT_TRACE_REQ:
     if (hsize < sizeof (struct allnet_mgmt_trace_req)) {
-      r += snprintf (to + r, minz (tsize, r),
+      r += snprintf (to + r, minz (itsize, r),
                      "illegal trace request size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_trace_req));
     } else {
@@ -294,32 +298,32 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
         sizeof (struct allnet_mgmt_trace_req) + ks +
         amt->num_entries * sizeof (struct allnet_mgmt_trace_entry);
       if (hsize < needed) {
-        r += snprintf (to + r, minz (tsize, r),
+        r += snprintf (to + r, minz (itsize, r),
                        "%s %d, needed %d (ks %d, %d entries)\n",
                        "illegal trace req size", hsize, needed, ks,
                        amt->num_entries);
       } else {
-        r += snprintf (to + r, minz (tsize, r), "trace request %d %d %s ",
+        r += snprintf (to + r, minz (itsize, r), "trace request %d %d %s ",
                        amt->num_entries, ks,
                        ((amt->intermediate_replies != 0) ? "all" : "final"));
         r += buffer_to_string ((char *) (amt->trace_id), NONCE_SIZE, "id",
-                               6, 0, to + r, minz (tsize, r));
+                               6, 0, to + r, minz (itsize, r));
         int i;
         for (i = 0; i < amt->num_entries; i++)
-          r += trace_entry_to_string (amt->trace + i, to + r, minz (tsize, r));
+          r += trace_entry_to_string (amt->trace + i, to + r, minz (itsize, r));
       }
     }
     break;
   case ALLNET_MGMT_TRACE_REPLY:
     if (hsize < 1) {
-      r += snprintf (to + r, minz (tsize, r), "trace reply size %d, min 1\n",
+      r += snprintf (to + r, minz (itsize, r), "trace reply size %d, min 1\n",
                      hsize);
     } else if (*hp == 1) {
-      r += snprintf (to + r, minz (tsize, r),
+      r += snprintf (to + r, minz (itsize, r),
                      "%d-byte encrypted trace replyd\n",
                      hsize);
     } else if (hsize < sizeof (struct allnet_mgmt_trace_reply)) {
-      r += snprintf (to + r, minz (tsize, r), "trace reply size %d, min %zd\n",
+      r += snprintf (to + r, minz (itsize, r), "trace reply size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_trace_reply));
     } else {
       const struct allnet_mgmt_trace_reply * amt =
@@ -328,22 +332,22 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
         sizeof (struct allnet_mgmt_trace_reply) +
         amt->num_entries * sizeof (struct allnet_mgmt_trace_entry);
       if (hsize < needed) {
-        r += snprintf (to + r, minz (tsize, r),
+        r += snprintf (to + r, minz (itsize, r),
                        "trace reply size %d, needed %d\n", hsize, needed);
       } else {
-        r += snprintf (to + r, minz (tsize, r), "trace reply %d %s ",
+        r += snprintf (to + r, minz (itsize, r), "trace reply %d %s ",
                        amt->num_entries,
                        ((amt->intermediate_reply != 0) ? "int" : "final"));
         r += buffer_to_string ((char *) (amt->trace_id), NONCE_SIZE, "id",
-                               6, 0, to + r, minz (tsize, r));
+                               6, 0, to + r, minz (itsize, r));
         int i;
         for (i = 0; i < amt->num_entries; i++)
-          r += trace_entry_to_string (amt->trace + i, to + r, minz (tsize, r));
+          r += trace_entry_to_string (amt->trace + i, to + r, minz (itsize, r));
       }
     }
     break;
   default:
-    r += snprintf (to + r, minz (tsize, r),
+    r += snprintf (to + r, minz (itsize, r),
                    "unknown management type %d", mtype);
     break;
   }
@@ -357,59 +361,60 @@ void packet_to_string (const char * buffer, unsigned int bsize,
 {
   if (tsize <= 0)
     return;
+  unsigned int itsize = (unsigned int) tsize;
   int off = 0;
   if ((desc != NULL) && (strlen (desc) > 0))
-    off = snprintf (to, tsize, "%s ", desc);
+    off = snprintf (to, itsize, "%s ", desc);
   if (! is_valid_message (buffer, bsize)) {
-    snprintf (to + off, minz (tsize, off), "invalid message of size %d%s",
+    snprintf (to + off, minz (itsize, off), "invalid message of size %d%s",
               bsize, (print_eol) ? "\n" : "");
     return;
   }
   struct allnet_header * hp = (struct allnet_header *) buffer;
   if (hp->version != ALLNET_VERSION)
-    off += snprintf (to + off, minz (tsize, off), "v %d (current %d) ",
+    off += snprintf (to + off, minz (itsize, off), "v %d (current %d) ",
                      hp->version, ALLNET_VERSION);
   int t = hp->transport;
-  off += snprintf (to + off, minz (tsize, off),
+  off += snprintf (to + off, minz (itsize, off),
                    "(%dB) %d/%s: %d/%d hops, sig %d, t %x", bsize,
                    hp->message_type, mtype_to_string (hp->message_type),
                    hp->hops, hp->max_hops, hp->sig_algo, t);
 
   /* print the addresses, if any */
   if (hp->src_nbits != 0)
-    off += snprintf (to + off, minz (tsize, off), " from %s/%d",
+    off += snprintf (to + off, minz (itsize, off), " from %s/%d",
                      b2su (hp->source, (hp->src_nbits + 7) / 8), hp->src_nbits);
   else
-    off += snprintf (to + off, minz (tsize, off), " from X");
+    off += snprintf (to + off, minz (itsize, off), " from X");
   if (hp->dst_nbits != 0)
-    off += snprintf (to + off, minz (tsize, off), " to %s/%d",
+    off += snprintf (to + off, minz (itsize, off), " to %s/%d",
                      b2su (hp->destination, (hp->dst_nbits + 7) / 8),
                      hp->dst_nbits);
   else
-    off += snprintf (to + off, minz (tsize, off), " to Y");
+    off += snprintf (to + off, minz (itsize, off), " to Y");
 
   /* print the transport information */
   if (t != 0) {
     if ((t & ALLNET_TRANSPORT_STREAM) != 0)
-      off += snprintf (to + off, minz (tsize, off),
+      off += snprintf (to + off, minz (itsize, off),
                        " s %s",
                        b2s (ALLNET_STREAM_ID (hp, t, (unsigned int) bsize),
                             MESSAGE_ID_SIZE));
     if ((t & ALLNET_TRANSPORT_ACK_REQ) != 0)
-      off += snprintf (to + off, minz (tsize, off),
+      off += snprintf (to + off, minz (itsize, off),
                        " a %s", b2s (ALLNET_MESSAGE_ID (hp, t,
                                                         (unsigned int) bsize),
                                      MESSAGE_ID_SIZE));
     if ((t & ALLNET_TRANSPORT_LARGE) != 0) {
-      off += snprintf (to + off, minz (tsize, off),
+      off += snprintf (to + off, minz (itsize, off),
                           " l %s", b2s (ALLNET_PACKET_ID (hp, t,
                                                           (unsigned int) bsize),
                                         MESSAGE_ID_SIZE));
-      off += snprintf (to + off, minz (tsize, off),
+      off += snprintf (to + off, minz (itsize, off),
                           "/n%lld",
                           readb64 (ALLNET_NPACKETS (hp, t,
                                                     (unsigned int) bsize) + 8));
-      off += snprintf (to + off, minz (tsize, off),
+      off += snprintf (to + off, minz (itsize, off),
                           "/s%lld",
                           readb64 (ALLNET_SEQUENCE (hp, t,
                                                     (unsigned int) bsize) + 8));
@@ -421,16 +426,16 @@ void packet_to_string (const char * buffer, unsigned int bsize,
       char time_buf [100];
       ctime_r (&tt, time_buf);
       time_buf [24] = '\0';   /* get rid of the newline */
-      off += snprintf (to + off, minz (tsize, off),
+      off += snprintf (to + off, minz (itsize, off),
                        " e %lld (%s, in %lld s)", tull, time_buf,
                        tull - allnet_time ());
     }
     if ((t & ALLNET_TRANSPORT_DO_NOT_CACHE) != 0)
-      off += snprintf (to + off, minz (tsize, off), " do-not-cache");
+      off += snprintf (to + off, minz (itsize, off), " do-not-cache");
   }
   if (hp->message_type == ALLNET_TYPE_MGMT) {
     if (bsize < (ALLNET_MGMT_HEADER_SIZE(t))) {
-      off += snprintf (to + off, minz (tsize, off), " mgmt size %d, need %zd", 
+      off += snprintf (to + off, minz (itsize, off), " mgmt size %d, need %zd", 
                        bsize, ALLNET_MGMT_HEADER_SIZE(t));
     } else {
       struct allnet_mgmt_header * mp =
@@ -440,20 +445,20 @@ void packet_to_string (const char * buffer, unsigned int bsize,
       if (bsize > (ALLNET_MGMT_HEADER_SIZE(t)))
         nsize = bsize - ALLNET_MGMT_HEADER_SIZE(t);
       off += mgmt_to_string (mp->mgmt_type, next, nsize,
-                             to + off, minz (tsize, off));
+                             to + off, minz (itsize, off));
     }
   } else if (bsize > (ALLNET_SIZE (hp->transport))) {
     unsigned int dsize = bsize - ALLNET_SIZE (hp->transport);
-    off += snprintf (to + off, minz (tsize, off),
+    off += snprintf (to + off, minz (itsize, off),
                      ", %d bytes of payload", dsize);
     if ((hp->sig_algo != ALLNET_SIGTYPE_NONE) && (bsize > 2) && (dsize > 2)) {
       unsigned int ssize = readb16 (buffer + bsize - 2);
       if (dsize > ssize + 2) {
         dsize -= ssize + 2;
-        off += snprintf (to + off, minz (tsize, off), " = %d data, %d + 2 sig", 
+        off += snprintf (to + off, minz (itsize, off), " = %d data, %d + 2 sig",
                          dsize, ssize);
       } else {
-        off += snprintf (to + off, minz (tsize, off),
+        off += snprintf (to + off, minz (itsize, off),
                          " = %d overall with unreasonable %d + 2 sig", 
                          dsize, ssize);
       }
@@ -461,19 +466,19 @@ void packet_to_string (const char * buffer, unsigned int bsize,
     if (hp->message_type == ALLNET_TYPE_ACK) {
       unsigned int num_acks = dsize / MESSAGE_ID_SIZE;
       if (num_acks * MESSAGE_ID_SIZE == dsize)
-        off += snprintf (to + off, minz (tsize, off), " = %u acks", num_acks);
+        off += snprintf (to + off, minz (itsize, off), " = %u acks", num_acks);
       else
-        off += snprintf (to + off, minz (tsize, off), " = %u acks + %u bytes",
+        off += snprintf (to + off, minz (itsize, off), " = %u acks + %u bytes",
                          num_acks, dsize - num_acks * MESSAGE_ID_SIZE);
       unsigned int i;
       for (i = 0; i < num_acks; i++)
         off += buffer_to_string (buffer + ALLNET_SIZE (hp->transport) +
                                  i * MESSAGE_ID_SIZE, MESSAGE_ID_SIZE,
-                                 ", ", 5, 0, to + off, minz (tsize, off));
+                                 ", ", 5, 0, to + off, minz (itsize, off));
     }
   }
   if (print_eol)
-    off += snprintf (to + off, minz (tsize, off), "\n");
+    off += snprintf (to + off, minz (itsize, off), "\n");
 }
 
 void print_packet (const char * packet, unsigned int psize, const char * desc,
