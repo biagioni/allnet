@@ -37,7 +37,7 @@ void print_addr_info (struct addr_info * ai)
 }
 
 /* includes a newline at the end of the address info */
-int addr_info_to_string (struct addr_info * ai, char * buf, int bsize)
+int addr_info_to_string (struct addr_info * ai, char * buf, size_t bsize)
 {
   int offset = 0;
   offset += snprintf (buf, bsize, "(%d) ", ai->nbits);
@@ -69,7 +69,7 @@ void print_ia (struct internet_addr * ia)
 }
 
 /* includes a newline at the end of the address info */
-int ia_to_string (const struct internet_addr * ia, char * buf, int bsize)
+int ia_to_string (const struct internet_addr * ia, char * buf, size_t bsize)
 {
   int offset = 0;
   offset += snprintf (buf + offset, bsize - offset,
@@ -147,7 +147,7 @@ int init_addr (int af, unsigned char * addr, int port,
   return 1;
 }
 
-int sockaddr_to_ia (struct sockaddr * sap, int addr_size,
+int sockaddr_to_ia (struct sockaddr * sap, socklen_t addr_size,
                     struct internet_addr * ia)
 {
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
@@ -203,7 +203,7 @@ int init_ai (int af, unsigned char * addr, int port, int nbits,
   return 1;
 }
 
-int sockaddr_to_ai (struct sockaddr * sap, int addr_size,
+int sockaddr_to_ai (struct sockaddr * sap, socklen_t addr_size,
                     struct addr_info * ai)
 {
   /* init_ai with 0 bits and NULL address simply sets address to all 0s */
