@@ -422,7 +422,7 @@ void packet_to_string (const char * buffer, unsigned int bsize,
     if ((t & ALLNET_TRANSPORT_EXPIRATION) != 0) {
       unsigned long long tull = 0;  /* avoids a silly compiler warning */
       tull = readb64 (ALLNET_EXPIRATION (hp, t, (unsigned int) bsize));
-      time_t tt = (time_t) tull;
+      time_t tt = (time_t) (tull + ALLNET_Y2K_SECONDS_IN_UNIX);
       char time_buf [100];
       ctime_r (&tt, time_buf);
       time_buf [24] = '\0';   /* get rid of the newline */
