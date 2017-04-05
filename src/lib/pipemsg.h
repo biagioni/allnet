@@ -126,7 +126,7 @@ extern int split_messages (char * data, unsigned int dlen, char *** messages,
                            unsigned int ** lengths, unsigned int ** priorities,
                            void ** buffer);
 
-#define DEBUG_EBADFD
+/* #define DEBUG_EBADFD */
 #ifdef DEBUG_EBADFD
 /* temporary (I hope), for debugging of EBADF */
 #define EBADBUFS	10000
