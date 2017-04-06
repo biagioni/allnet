@@ -106,7 +106,8 @@ static void save_received_message (pd p, int pipe,
 {
   if (mlen <= 24)
     return;
-  if (((msg [8] & 0xff) == 0x99) && ((msg [16] & 0xff) == 0x99) &&  /* known sender of bad packets */
+  /* 99 57 is a known sender of bad packets, ignore for now (2017/04) */
+  if (((msg [8] & 0xff) == 0x99) && ((msg [16] & 0xff) == 0x99) &&
       ((msg [9] & 0xff) == 0x57) && ((msg [17] & 0xff) == 0x57)) {
     last_received_message [0] = '\0';   /* delete the message, don't print */
     return;
@@ -165,6 +166,9 @@ if ((pipe > 1000) || (pipe < -1000)) die ("illegal pipe number");
               p->buffers [i].pipe_fd, inhdr,
               p->buffers [i].header, p->buffers [i].buffer,
               p->buffers [i].filled, p->buffers [i].bsize);
+   log_print (p->log);
+   buffer_to_string (p->buffers [i].header, HEADER_SIZE, "header",
+                     HEADER_SIZE, 1, p->log->b, p->log->s);
    log_print (p->log);
   }
   for (i = 0; i < p->num_queues; i++) {
@@ -701,6 +705,14 @@ static void debug_ebadf (pd p, int extra)
   }
 }
 
+#ifdef DEBUG_PIPEMSG_SELECT
+static fd_set debug_fdset1;
+static fd_set debug_fdset2;
+static fd_set debug_fdset3;
+static fd_set debug_fdset4;
+static unsigned long long int debug_fdtime = 0;
+#endif /* DEBUG_PIPEMSG_SELECT */
+
 /* returns the first available file descriptor, or -1 in case of timeout */
 /* timeout is in milliseconds, or one of PIPE_MESSAGE_WAIT_FOREVER or
  * PIPE_MESSAGE_NO_WAIT */
@@ -724,7 +736,14 @@ static int next_available (pd p, int extra, int timeout)
     tvp = set_timeout (10, &tv, p->log);
 
   /* call select */
+#ifdef DEBUG_PIPEMSG_SELECT
+  debug_fdset1 = receiving;
+#endif /* DEBUG_PIPEMSG_SELECT */
   int s = select (max_pipe + 1, &receiving, NULL, NULL, tvp);
+#ifdef DEBUG_PIPEMSG_SELECT
+  debug_fdset2 = receiving;
+  debug_fdtime = allnet_time_us ();
+#endif /* DEBUG_PIPEMSG_SELECT */
 #ifdef DEBUG_PRINT
   snprintf (p->log->b, p->log->s, "select done, pipe %d/%d\n",
             s, p->num_pipes);
@@ -781,7 +800,13 @@ static int fd_can_recv (int fd, int wait_forever)
   struct timeval * tvp = &tv;
   if (wait_forever)
     tvp = NULL;
+#ifdef DEBUG_PIPEMSG_SELECT
+  debug_fdset3 = receiving;
+#endif /* DEBUG_PIPEMSG_SELECT */
   int s = select (fd + 1, &receiving, NULL, NULL, tvp);
+#ifdef DEBUG_PIPEMSG_SELECT
+  debug_fdset4 = receiving;
+#endif /* DEBUG_PIPEMSG_SELECT */
   if (s > 0)
     return 1;
   if (s < 0) { 
@@ -799,8 +824,29 @@ static int receive_bytes (int pipe, char * buffer, int blen, int may_block,
 {
   int recvd = 0;
   while (recvd < blen) {
-    if ((! may_block) && (! fd_can_recv (pipe, 0)))
+    if ((! may_block) && (! fd_can_recv (pipe, 0))) {
+      if ((recvd == 0) && (! may_block)) {
+#ifdef DEBUG_PIPEMSG_SELECT
+        unsigned long long int now = allnet_time_us ();
+        printf ("%s: fd_can_recv (%d, %d) == %d, time %lluus, recvd %d\n",
+                log->debug_info, pipe, may_block, fd_can_recv (pipe, 0),
+                now - debug_fdtime, recvd);
+        print_buffer ((char *)&debug_fdset1, sizeof (debug_fdset1),
+                      "original fdset", 8, 1);
+        print_buffer ((char *)&debug_fdset2, sizeof (debug_fdset2),
+                      "returned fdset", 8, 1);
+        print_buffer ((char *)&debug_fdset3, sizeof (debug_fdset3),
+                      "fd_can_recv bf", 8, 1);
+        print_buffer ((char *)&debug_fdset4, sizeof (debug_fdset4),
+                      "fd_can_recv af", 8, 1);
+#else /* DEBUG_PIPEMSG_SELECT */
+        printf ("%s: fd_can_recv (%d, %d) == %d, recvd %d\n",
+                log->debug_info, pipe, may_block, fd_can_recv (pipe, 0),
+                recvd);
+#endif /* DEBUG_PIPEMSG_SELECT */
+      }
       return recvd;   /* not ready to receive, and should not block */
+    }
     /* if we did not call fd_can_recv, the call to read may block */
     int new_recvd = (int)read (pipe, buffer + recvd, blen - recvd);
     if (new_recvd <= 0) {
@@ -854,15 +900,20 @@ static int parse_header (char * header, int pipe, unsigned int * priority,
     }
   }
   printed = 0;
-  if (priority != NULL)
+  if (priority != NULL) {
     *priority = read_big_endian32 (header + MAGIC_SIZE);
+    if (((*priority) > ALLNET_PRIORITY_MAX) ||
+        ((*priority) < ALLNET_PRIORITY_EPSILON)) /* bad priority */
+      *priority = ALLNET_PRIORITY_EPSILON;       /* make it min possible */
+  }
   int result  = read_big_endian32 (header + MAGIC_SIZE + PRIORITY_SIZE);
-  if ((result < 0) || (result > ALLNET_MTU)) {
+  if ((result < ALLNET_HEADER_SIZE) || (result > ALLNET_MTU)) {
     if (log != NULL) {
       snprintf (log->b, log->s, "parse_header: illegal header size %d (%u)\n",
                 result, result);
       log_print (log);
-      buffer_to_string (header, HEADER_SIZE, " header:", 20, 1, log->b, log->s);
+      buffer_to_string (header, HEADER_SIZE, " header:", HEADER_SIZE, 1,
+                        log->b, log->s);
       log_print (log);
     } else {
       printf ("parse_header: illegal header size %d (%u)\n", result, result);
@@ -871,12 +922,21 @@ static int parse_header (char * header, int pipe, unsigned int * priority,
   return result;
 }
 
-/* shift the header left by one position, to make room for one more char */
-static void shift_header (char * header)
+/* shift the header left as far as needed to start the new magic string*/
+static int shift_header (char * header)
 {
-  unsigned int i;
-  for (i = 0; i + 1 < HEADER_SIZE; i++)
-    header [i] = header [i + 1];
+print_buffer (header, HEADER_SIZE, "header before shift", HEADER_SIZE, 1);
+  int i;
+  for (i = 1; i < HEADER_SIZE; i++) {
+    if (header [i] == MAGIC_STRING [0]) {
+      memmove (header, header + i, HEADER_SIZE - i);
+char message [1000]; snprintf (message, sizeof (message),
+"header after %d-byte shift, returning %zd", i, HEADER_SIZE - i);
+print_buffer (header, HEADER_SIZE - i, message, HEADER_SIZE, 1);
+      return (HEADER_SIZE - i);
+    }
+  }
+  return 0;  /* no magic string, discard everything */
 }
 
 /* similar to receive_pipe_message but may return 0 if no message
@@ -899,6 +959,13 @@ static int receive_pipe_message_poll (pd p, int pipe,
   struct allnet_pipe_info * bp = (p->buffers) + index;
 
   unsigned int offset = bp->filled;
+  if (bp->bsize <= offset) {   /* serious error, can't read anything */
+    printf ("%s: receive_bytes %d - %d, pipe %d\n", p->log->debug_info,
+            bp->bsize, offset, pipe);
+    do_not_print = 0;
+    print_pipes (p, "receive_pipe_message_poll", pipe);
+    die ("aip: stuck, can never make progress");
+  }
   int read = receive_bytes (pipe, bp->buffer + offset, bp->bsize - offset, 0,
                             p->log);
   if (read < 0)
@@ -910,7 +977,8 @@ static int receive_pipe_message_poll (pd p, int pipe,
    /* received all we were looking for, either allocate new buffer or return */
     if (bp->in_header) {
       int received_len = parse_header (bp->header, pipe, priority, p->log);
-      if (received_len >= 0) {  /* successfully read a header */
+      if ((received_len >= ALLNET_HEADER_SIZE) &&
+          (received_len <= ALLNET_MTU)) { /* received a MAGICPIE header */
         bp->buffer = malloc (received_len);
         if (bp->buffer == NULL) {
           snprintf (p->log->b, p->log->s,
@@ -923,12 +991,10 @@ static int receive_pipe_message_poll (pd p, int pipe,
         bp->in_header = 0;
         bp->filled = 0;
       } else {  /* failed to parse, i.e. no magic_string at start of header */
-        shift_header (bp->header);            /* shift header and try again */
-        bp->filled += read;
-        if (bp->filled > 0)
-          bp->filled = bp->filled - 1;
+                /* or a weird received length */
+        bp->filled = shift_header (bp->header); /* shift header, try again */
       }
-      /* we stopped because the header was filled.  Tell caller to try again. */
+      /* we stopped because the header was filled. Tell caller to try again. */
       return 0;
     } else {    /* not reading header and buffer is full, so we are done. */
 save_received_message (p, pipe, bp->buffer, bp->bsize);
@@ -991,35 +1057,30 @@ int receive_pipe_message (pd p, int pipe, char ** message,
     return receive_queue_message (pipe, message, priority, p->log);
   char header [HEADER_SIZE];
 
-  int wanted = HEADER_SIZE;
+  int filled = 0;
   int received_len = 0;
   while (1) {
+    if (filled >= HEADER_SIZE) /* should never happen */
+      die ("aip: filled >= HEADER_SIZE");
     /* read the header */
-    int r = receive_bytes (pipe, header + (HEADER_SIZE - wanted), wanted, 1,
-                           p->log);
+    int r = receive_bytes (pipe, header + filled, HEADER_SIZE - filled,
+                           1, p->log);
     if (r < 0)
       return -1;
-    if (r == 0)
-      return 0;
-    /* first part of header should be MAGIC_STRING.  If not, it is an error,
-       report it and keep looking */
+    /* may_block is true, so r should only be -1 or HEADER_SIZE - filled */
     received_len = parse_header (header, pipe, priority, p->log);
-    if ((received_len > 0) && /* successfully received the header */
-        (received_len <= ALLNET_MTU))  /* and a reasonable length */
+    if ((received_len >= ALLNET_HEADER_SIZE) && /* rcvd a MAGICPIE header */
+        (received_len <= ALLNET_MTU))           /* and a reasonable length */
       break;
-    if (received_len == 0) {  /* empty packet, skip to next packet */
-      wanted = HEADER_SIZE;
-    } else {
-      shift_header (header);  /* no match, shift the header and try again */
-      wanted = 1;
-    }
+    received_len = 0;
+    filled = shift_header (header);             /* start over */
   }
 
   /* allocate the result buffer */
   char * buffer = malloc (received_len);
   if (buffer == NULL) {
     snprintf (p->log->b, p->log->s,
-              "unable to allocate %d bytes for receive_pipe_message, pipe %d\n",
+              "unable to allocate %d bytes for receive_pipe_message pipe %d\n",
               received_len, pipe);
     log_print (p->log);
     return -1;
