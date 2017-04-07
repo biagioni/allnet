@@ -925,14 +925,18 @@ static int parse_header (char * header, int pipe, unsigned int * priority,
 /* shift the header left as far as needed to start the new magic string*/
 static int shift_header (char * header)
 {
-print_buffer (header, HEADER_SIZE, "header before shift", HEADER_SIZE, 1);
+#ifdef DEBUG_PRINT
+  print_buffer (header, HEADER_SIZE, "header before shift", HEADER_SIZE, 1);
+#endif /* DEBUG_PRINT */
   int i;
   for (i = 1; i < HEADER_SIZE; i++) {
     if (header [i] == MAGIC_STRING [0]) {
       memmove (header, header + i, HEADER_SIZE - i);
-char message [1000]; snprintf (message, sizeof (message),
-"header after %d-byte shift, returning %zd", i, HEADER_SIZE - i);
-print_buffer (header, HEADER_SIZE - i, message, HEADER_SIZE, 1);
+#ifdef DEBUG_PRINT
+      char message [1000];
+      snprintf (message, sizeof (message), "header after %d-byte shift", i);
+      print_buffer (header, HEADER_SIZE - i, message, HEADER_SIZE, 1);
+#endif /* DEBUG_PRINT */
       return (HEADER_SIZE - i);
     }
   }
