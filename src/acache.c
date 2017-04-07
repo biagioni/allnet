@@ -218,10 +218,10 @@ static int ack_found (char * ack)
   return 0;
 }
 
-static void ack_add (char * ack, char * id, int ack_fd)
+static int ack_add (char * ack, char * id, int ack_fd)
 {
   if (ack_found (ack))
-    return;
+    return 0;  /* not new */
   memcpy (acks [save_ack_pos].message_ack, ack, MESSAGE_ID_SIZE);
   memcpy (acks [save_ack_pos].message_id , id , MESSAGE_ID_SIZE);
   /* clear the next location, to mark it in the file */
@@ -229,6 +229,7 @@ static void ack_add (char * ack, char * id, int ack_fd)
   bzero (&(acks [next_ack]), sizeof (struct ack_entry));
   save_ack_data (ack_fd, 0);
   save_ack_pos = next_ack;
+  return 1;
 }
 
 /* storage of a message in the file: 12-byte header */
@@ -1589,15 +1590,23 @@ static int respond_to_request (int fd, unsigned int max_size, char * in_message,
   while (allnet_time_ms () < overall_limit) {
     char * message = NULL;
     int msize = 0;
-    int first_call = (count++ == 0);
 #ifdef HASH_RANDOM_MATCH
-    if (hash_random_match (fd, max_size, bloom, bbits, &rd, &message, &msize)) {
+    if (hash_random_match (fd, max_size, bloom, bbits,
+                           &rd, &message, &msize)) {
 #else /* ! HASH_RANDOM_MATCH */
+    int first_call = (count++ == 0);
     if (hash_next_match (fd, max_size, first_call, &rd, &message, &msize)) {
 #endif /* HASH_RANDOM_MATCH */
       sent++;
-      int priority = ALLNET_PRIORITY_CACHE_RESPONSE;
+      int priority = ALLNET_PRIORITY_EPSILON;
+      if (ALLNET_PRIORITY_CACHE_RESPONSE > ALLNET_PRIORITY_EPSILON + count)
+        priority = ALLNET_PRIORITY_CACHE_RESPONSE - count;
       resend_message (message, msize, 0, &priority, local_request, sock);
+#ifdef HASH_RANDOM_MATCH
+#else /* ! HASH_RANDOM_MATCH */
+    } else {
+      break;  /* done */
+#endif /* HASH_RANDOM_MATCH */
     }
   }
   snprintf (alog->b, alog->s, "respond_to_request: sent %d packets, %d acks\n",
@@ -1678,23 +1687,24 @@ static void ack_packets (int msg_fd, unsigned int msg_size, int ack_fd,
   while (in_msize >= MESSAGE_ID_SIZE) {
     char hash [MESSAGE_ID_SIZE];
     sha512_bytes (ack, MESSAGE_ID_SIZE, hash, MESSAGE_ID_SIZE);
-    ack_add (ack, hash, ack_fd);
-    /* delete any message corresponding to this ack */
-    int64_t position = 0;
-    char * message;
-    int msize;
-    int id_off;
-    while ((position =
-              hash_get_next (msg_fd, msg_size, position, hash,
-                             &message, &msize, &id_off, NULL, NULL)) > 0) {
-      int64_t current_pos = next_prev_position (position, msize);
-      snprintf (alog->b, alog->s,
-                "acking %d-byte cached response at [%d]\n",
-                msize, (int)current_pos);
-      log_print (alog);
-      char * id = message + id_off;
-      remove_cached_message (msg_fd, msg_size, id, current_pos, msize);
-      count++;
+    if (ack_add (ack, hash, ack_fd)) {
+      /* new ack, delete any message corresponding to this ack */
+      int64_t position = 0;
+      char * message;
+      int msize;
+      int id_off;
+      while ((position =
+                hash_get_next (msg_fd, msg_size, position, hash,
+                               &message, &msize, &id_off, NULL, NULL)) > 0) {
+        int64_t current_pos = next_prev_position (position, msize);
+        snprintf (alog->b, alog->s,
+                  "acking %d-byte cached response at [%d]\n",
+                  msize, (int)current_pos);
+        log_print (alog);
+        char * id = message + id_off;
+        remove_cached_message (msg_fd, msg_size, id, current_pos, msize);
+        count++;
+      }
     }
     ack += MESSAGE_ID_SIZE;
     in_msize -= MESSAGE_ID_SIZE;
