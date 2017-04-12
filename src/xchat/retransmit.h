@@ -13,8 +13,9 @@ extern int send_retransmit_request (const char * contact, keyset k, int sock,
                                     const char * expiration);
 
 /* resends up to max unacked messages */
-extern void resend_unacked (const char * contact, keyset k, int sock, int hops,
-                            int priority, int max);
+/* returns the number of messages sent, or 0 */
+extern int resend_unacked (const char * contact, keyset k, int sock, int hops,
+                           int priority, int max);
 
 /* retransmit any requested messages */
 extern void do_chat_control (const char * contact, keyset k,

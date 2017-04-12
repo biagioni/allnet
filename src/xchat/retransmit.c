@@ -459,8 +459,9 @@ static void resend_messages (const char * retransmit_message, int mlen,
   sanity_check_sequence_number (contact, k, hp, sock, hops);
 }
 
-void resend_unacked (const char * contact, keyset k, int sock, 
-                     int hops, int priority, int max)
+/* returns the number of messages sent, or 0 */
+int resend_unacked (const char * contact, keyset k, int sock, 
+                    int hops, int priority, int max)
 {
   int singles;
   int ranges;
@@ -470,12 +471,12 @@ void resend_unacked (const char * contact, keyset k, int sock,
           singles, ranges, unacked);
 #endif /* DEBUG_PRINT */
   if (unacked == NULL)
-    return;
+    return 0;
 
   int max_send = 8;
   int send_count = 0;
-  int i;
   char * p = unacked;
+  int i;
   for (i = 0; (i < singles) && (send_count < max_send); i++) {
     uint64_t seq = readb64 (p);
 #ifdef DEBUG_PRINT
@@ -497,6 +498,7 @@ void resend_unacked (const char * contact, keyset k, int sock,
     }
   }
   free (unacked);
+  return send_count;
 }
 
 /* retransmit any requested messages */
