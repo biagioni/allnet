@@ -60,6 +60,7 @@ static char * gather_missing_info (const char * contact, keyset k,
 /* allocates and fills in in the chat control request header, except for
  * the message_ack */
 /* returns the request (*rsize bytes) for success, NULL for failure */
+/* if num_singles == 0 == num_ranges, missing may be NULL */
 static char * create_chat_control_request (const char * contact, char * missing,
                                            int num_singles, int num_ranges,
                                            uint64_t rcvd_sequence,
@@ -138,8 +139,12 @@ int send_retransmit_request (const char * contact, keyset k, int sock,
   uint64_t rcvd_sequence;
   char * missing = gather_missing_info (contact, k, &num_singles, &num_ranges,
                                         &rcvd_sequence);
-  if (missing == NULL)
+  if ((missing == NULL) &&
+      ((rcvd_sequence == 0) || (random_int (1, 100) <= 95)))
     return 0;
+  /* either we know we are missing some messages (num_singles > 0 and/or
+   * num_ranges > 0) or, with 5% chance, we request anyway, in case
+   * messages have been sent that are after the last one we've received */
 
   int size = 0;
   char * request =
