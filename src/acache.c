@@ -1843,6 +1843,9 @@ static void main_loop (int rsock, int wsock, pd p)
   unsigned int max_msg_size = 0;
   if (signed_max > 0)
     max_msg_size = signed_max;
+  snprintf (alog->b, alog->s, "acache main_loop fds %d, %d, max %u\n",
+            rsock, wsock, max_msg_size);
+  log_print (alog);
   while (1) {
     char * message = NULL;
     unsigned int priority;
@@ -2083,8 +2086,17 @@ void acache_main (char * pname)
               sizeof struct hash_entry = 56 */
   alog = init_log ("acache");
   pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local ("acache", pname, p);
-  main_loop (sock, sock, p);
+  while (1) {
+    int sock = connect_to_local ("acache", pname, p);
+    snprintf (alog->b, alog->s, "acache connected to local, fd %d\n", sock);
+    log_print (alog);
+    if (sock >= 0) {
+      main_loop (sock, sock, p);
+      remove_pipe (p, sock);
+      close (sock);  /* may already be closed */
+      sleep (60);    /* so we don't loop too tightly */
+    }
+  }
   snprintf (alog->b, alog->s, "end of acache\n");
   log_print (alog);
 }
