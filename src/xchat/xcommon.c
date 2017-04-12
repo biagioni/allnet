@@ -153,6 +153,7 @@ static void * request_cached_data (void * arg)
 #define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
 #define BITMAP_BYTES	(BITMAP_BITS / 8)
     unsigned int size;
+    /* adr is an allnet_data_request */
     /* adr_size has room for each of the bitmaps */
     unsigned int adr_size =
       sizeof (struct allnet_data_request) + BITMAP_BYTES * 3;
@@ -275,34 +276,67 @@ static void send_ack (int sock, struct allnet_header * hp,
 
 /* call every once in a while, e.g. every 1-10s, to poke all our
  * contacts and get any outstanding messages. */
+/* each time it is called, queries a different contact or keyset */
 static void do_request_and_resend (int sock)
 {
-  static unsigned long long int last_time = 0;
-  static unsigned long long int interval = 10;
-  unsigned long long int now = allnet_time ();
-  if (now <= last_time + interval)
-    return;    /* too soon */
-  last_time = now;
-
-  char * * contacts = NULL;
-  int num_contacts = all_contacts (&contacts);
-  if ((num_contacts <= 0) || (contacts == NULL))
-    return;
-
-  int contact;
-  for (contact = 0; contact < num_contacts; contact++) {
-    keyset * keysets = NULL;
-    int num_keysets = all_keys (contacts [contact], &keysets);
-    if (num_keysets > 0) {
-      int keyset;
-      for (keyset = 0; keyset < num_keysets; keyset++)
-        request_and_resend (sock, contacts [contact], keysets [keyset]);
+  static char * * contacts = NULL;
+  static int num_contacts = 0;
+  static keyset * keysets = NULL;
+  static int num_keysets = 0;
+  static int current_contact = 0;
+  static int current_keyset = 0;
+  if ((num_contacts <= 0) || (contacts == NULL) ||
+      (current_contact >= num_contacts)) {  /* restart */
+    if (contacts != NULL)
+      free (contacts);
+    num_contacts = all_contacts (&contacts);
+    if (keysets != NULL)
       free (keysets);
+    keysets = NULL;
+    num_keysets = 0;
+    current_contact = 0;
+    current_keyset = 0;
+  }
+  if ((num_contacts <= 0) || (contacts == NULL) ||
+      (current_contact >= num_contacts))
+    return;	/* no contacts, nothing to do */
+
+  for ( ; current_contact < num_contacts; current_contact++) {
+    if ((num_keysets <= 0) || (keysets == NULL) ||
+        (current_keyset >= num_keysets)) {
+      if (keysets != NULL)
+        free (keysets);
+      num_keysets = all_keys (contacts [current_contact], &keysets);
+      current_keyset = 0;
+    }
+    if ((num_keysets <= 0) || (keysets == NULL) ||
+        (current_keyset >= num_keysets))
+      continue;    /* loop around to the next contact, if any */
+    for ( ; current_keyset < num_keysets; current_keyset++) {
+      time_t now = time (NULL);
+      char * now_string = ctime (&now);
+      char * nl = index (now_string, '\n');
+      if (nl != NULL)
+        *nl = '\0';
+      int r = request_and_resend (sock, contacts [current_contact],
+                                  keysets [current_keyset]);
+      if (r != -1)  /* tried to send */
+        printf ("%s: request_and_resend for %s(%d/%d)/%d(%d/%d)\n", now_string,
+                contacts [current_contact], current_contact, num_contacts,
+                keysets  [current_keyset] , current_keyset , num_keysets);
+      if (r != 0) { /* r == 0 means tried to, but did not request */
+      /* if r != 0, either we succeeded, or it is too soon to request again */
+        current_keyset++;   /* next time, try the next keyset */
+        if (current_keyset >= num_keysets) {  /* try the next contact */
+          free (keysets);
+          keysets = NULL;
+          current_keyset = 0;
+          current_contact++;
+        }
+        return;
+      }
     }
   }
-  free (contacts);
-  /* slow the requests down to once every 20 minutes or so (0-40min) */
-  interval = random_int (0, 2400);
 }
 
 static void handle_ack (int sock, char * packet, unsigned int psize,
@@ -1029,16 +1063,21 @@ long long int send_data_message (int sock, const char * peer,
 }
 
 /* if there is anyting unacked, resends it.  If any sequence number is known
- * to be missing, requests it */
-/* but not too often */
-void request_and_resend (int sock, char * contact, keyset kset)
+ * to be missing, requests it, but not too often */
+/* returns:
+ *    -1 if it is too soon to request again
+ *    0 if it it did not send a retransmit request for this contact/key 
+ *      (e.g. if nothing is known to be missing)
+ *    1 if it sent a retransmit request
+ */
+int request_and_resend (int sock, char * contact, keyset kset)
 {
 #ifdef DEBUG_PRINT
   printf ("request and resend for %s\n", contact);
 #endif /* DEBUG_PRINT */
   if (get_counter (contact) <= 0) {
     printf ("unable to request and resend for %s, peer not found\n", contact);
-    return;
+    return 0;
   }
 /*  printf ("request_and_resend (socket %d, peer %s)\n", sock, peer); */
   /* request retransmission of any missing messages */
@@ -1046,6 +1085,7 @@ void request_and_resend (int sock, char * contact, keyset kset)
   /* let requests expire so on average at most ~3 will be cached at any time */
   unsigned long long int now = allnet_time ();
   static unsigned long long int last_request = 0;
+  int result = -1;
   if (last_request + 30 <= now) {  /* don't send more than once every ~30s */
     char expiration [ALLNET_TIME_SIZE];
     unsigned long long int delta = 100;
@@ -1054,8 +1094,10 @@ void request_and_resend (int sock, char * contact, keyset kset)
       delta = now - last_request;
     writeb64 (expiration, delta + allnet_time ());
     if (send_retransmit_request (contact, kset, sock,
-                                 hops, ALLNET_PRIORITY_LOCAL_LOW, expiration))
+                                 hops, ALLNET_PRIORITY_LOCAL_LOW, expiration)) {
       last_request = now;   /* sent something, update time */
+      result = 1;
+    }
   }
   /* resend any unacked messages, but no more than once every hour */
   static unsigned long long int last_resend = 0;
@@ -1066,6 +1108,7 @@ void request_and_resend (int sock, char * contact, keyset kset)
     last_resend = now;
     resend_unacked (contact, kset, sock, hops, ALLNET_PRIORITY_LOCAL_LOW, 10);
   }
+  return result;
 }
 
 /* create the contact and key, and send

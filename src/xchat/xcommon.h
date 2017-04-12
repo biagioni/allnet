@@ -78,7 +78,13 @@ extern int key_received (int sock, char * contact, char * secret1,
 
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it */
-extern void request_and_resend (int sock, char * peer, keyset kset);
+/* returns:
+ *    -1 if it is too soon to request again
+ *    0 if it it did not send a retransmit request for this contact/key
+ *      (e.g. if nothing is known to be missing)
+ *    1 if it sent a retransmit request
+ */
+extern int request_and_resend (int sock, char * peer, keyset kset);
 
 /* create the contact and key, and send
  * the public key followed by
