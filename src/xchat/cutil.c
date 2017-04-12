@@ -267,6 +267,11 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
   }
 
 #ifdef DEBUG_PRINT
+  if (expiration != NULL)
+    print_packet (message, msize, "sending packet with expiration", 1);
+#endif /* DEBUG_PRINT */
+
+#ifdef DEBUG_PRINT
   print_packet (message, msize, "sending", 1);
 #endif /* DEBUG_PRINT */
   int result = 1;
