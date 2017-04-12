@@ -44,11 +44,11 @@
 #include "lib/allnet_log.h"
 #include "lib/keys.h"
 
-#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__) || defined(__IPHONE_OS_VERSION_MIN_REQUIRED)
 #ifndef CONVERT_IPV4_TO_IPV6
 #define CONVERT_IPV4_TO_IPV6 /* IPv6 UDP socket requires IPv4-mapped address */
 #endif /* CONVERT_IPV4_TO_IPV6 */
-#endif /* _WIN32 || _WIN64 */
+#endif /* _WIN32 || _WIN64 || __CYGWIN__ || __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 struct udp_cache_record {
   struct sockaddr_storage sas;
@@ -280,9 +280,9 @@ static int send_udp (int udp, char * message, unsigned int msize,
   else
     addr_len = sizeof (struct sockaddr_in6);
 #ifdef CONVERT_IPV4_TO_IPV6
+  struct sockaddr_in6 sin6;  /* used only within send_udp */
   if (sa->sa_family == AF_INET) {
 /* IPv4 addresses represented as IPv6 addresses are preceded by xffff */
-    struct sockaddr_in6 sin6;
     addr_len = sizeof (sin6);
     /* clear the parts of the address that we don't set */
     memset (&sin6, 0, addr_len);
@@ -293,8 +293,8 @@ static int send_udp (int udp, char * message, unsigned int msize,
     struct sockaddr_in * sinp = (struct sockaddr_in *) sa;
     memcpy (ap + 12, &(sinp->sin_addr), 4);
     sin6.sin6_port = sinp->sin_port;
-/* copy the now IPv6 address back into the sockaddr_storage that sa points to */
-    memcpy (sa, &(sin6), addr_len);
+/* use the new IPv6 address.  Again, sa is only used within send_udp */
+    sa = (struct sockaddr *) (&sin6);
   }
 #endif /* CONVERT_IPV4_TO_IPV6 */
   char description [1000];
