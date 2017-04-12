@@ -272,7 +272,7 @@ static void add_sockaddr_to_cache (void * cache, struct sockaddr * addr,
 }
 
 static int send_udp (int udp, char * message, unsigned int msize,
-                     struct sockaddr * sa)
+                     struct sockaddr * sa, const char * caller)
 {
   socklen_t addr_len = sizeof (struct sockaddr_storage);
   if (sa->sa_family == AF_INET)
@@ -297,7 +297,10 @@ static int send_udp (int udp, char * message, unsigned int msize,
     memcpy (sa, &(sin6), addr_len);
   }
 #endif /* CONVERT_IPV4_TO_IPV6 */
-  buffer_to_string ((char *) sa, addr_len, "send_udp sending to address",
+  char description [1000];
+  snprintf (description, sizeof (description),
+            "send_udp %s sending to address", caller);
+  buffer_to_string ((char *) sa, addr_len, description,
                     alog->s / 4, 1, alog->b, alog->s);
   log_print (alog);
   snprintf (alog->b, alog->s, "sendto (%d, %p, %d, 0, %p, %d)\n",
@@ -323,7 +326,8 @@ static int send_udp (int udp, char * message, unsigned int msize,
   } else {  /* record successful send */
     last_successful_udp = time (NULL);
 #ifdef LOG_PACKETS
-    int n = snprintf (alog->b, alog->s, "send_udp sent %d bytes to ", msize);
+    int n = snprintf (alog->b, alog->s, "send_udp %s sent %d bytes to ",
+                      caller, msize);
     n += print_sockaddr_str (sa, 0, 0, alog->b + n, alog->s - n);
     log_print (alog);
 #endif /* LOG_PACKETS */
@@ -354,7 +358,7 @@ static int send_udp_addr (int udp, char * message, unsigned int msize,
 #endif /* DEBUG_PRINT */
   log_print (alog);
 
-  return send_udp (udp, message, msize, sap);
+  return send_udp (udp, message, msize, sap, "send_udp_addr");
 }
 
 /* assumed to be an outgoing, so do not check overall packet validity */
@@ -475,7 +479,8 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
   log_print (alog);
 #endif /* LOG_PACKETS */
   for (i = 0; i < dht_sends; i++)
-    send_udp (udp, message, msize, ((struct sockaddr *) (&(dht_storage [i]))));
+    send_udp (udp, message, msize, ((struct sockaddr *) (&(dht_storage [i]))),
+              "forward_message dht_storage");
   max_send -= dht_sends;
 
   int max_listen = max_send / 2 + 1;
@@ -510,7 +515,8 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
     int * random_selection = random_permute (num_udps);
     for (i = 0; i < num_send_udps; i++) {
       struct udp_cache_record * ucr = ucrs [random_selection [i]];
-      send_udp (udp, message, msize, (struct sockaddr *) (&(ucr->sas)));
+      send_udp (udp, message, msize, (struct sockaddr *) (&(ucr->sas)),
+              "forward_message udp_cache");
     }
     if ((num_udps > 0) && (random_selection != NULL))
       free (random_selection);
@@ -981,7 +987,7 @@ void send_keepalive (void * udp_cache, int udp,
     int off = 0;
     /* send keepalives for at most 2 hours. after that, remove from cache */
     if ((time (NULL) - ucr->last_received) < 7200) {
-      send_udp (udp, keepalive, size, sap);
+      send_udp (udp, keepalive, size, sap, "send_keepalive");
       off = snprintf (alog->b, alog->s, "sent %d-byte keepalive to ", size);
     } else {
       cache_remove (udp_cache, udp_void_ptr);
@@ -1066,7 +1072,8 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
       log_print (alog);
       return;
     }
-    send_udp (udp, (char *) message, ALLNET_DHT_SIZE (hp->transport, n), sap);
+    send_udp (udp, (char *) message, ALLNET_DHT_SIZE (hp->transport, n), sap,
+              "send_dht_ping_response");
 #ifdef DEBUG_PRINT
     packet_to_string ((char *) message, ALLNET_DHT_SIZE (hp->transport, n),
                       "sent ping response", 1, alog->b, alog->s);
@@ -1301,7 +1308,7 @@ record_message (info->pipe_descriptor);
 #ifdef DEBUG_PRINT
       int old_udp = udp;
 #endif /* DEBUG_PRINT */
-      udp = udp_socket(100);
+      udp = udp_socket (100);
       last_successful_udp = time (NULL);
 #ifdef DEBUG_PRINT
       printf ("aip: reset udp fd from %d to %d\n", old_udp, udp);
