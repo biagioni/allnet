@@ -77,6 +77,8 @@ unsigned int compute_priority (unsigned int size,
       ALLNET_PRIORITY_MAX - ALLNET_ONE_EIGHT * (hops_already - 1);
   if (debug) print_fraction (hops_carried_priority, "hops_carried");
   int hops_total_priority = power_half_fraction (hops_max - 1);
+  if (hops_total_priority <= 0) /* multiplication below is 0, make epsilon */
+    hops_total_priority = ALLNET_PRIORITY_EPSILON;
   if (debug) print_fraction (hops_total_priority, "hops_total");
 
   /* compute Pb as 1 - 2^(1-dbits).  So for dbits == 0, Pb = 1/2,
