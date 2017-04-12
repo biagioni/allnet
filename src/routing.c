@@ -166,7 +166,8 @@ static void * init_default_dns (void * arg)
           printf ("init_default_dns: unknown address family %d (%d, %d)\n",
                   next->ai_family, ip4_defaults [i].ss_family,
                   ip6_defaults [i].ss_family);
-        if (sap != NULL)
+        if ((sap != NULL) &&
+            (next->ai_addrlen <= sizeof (struct sockaddr_storage)))
           memcpy ((char *) sap, (char *) (next->ai_addr), next->ai_addrlen);
         next = next->ai_next;
       }
