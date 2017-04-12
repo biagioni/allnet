@@ -275,8 +275,9 @@ printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes 
           if (read_pipes [i] == from_pipe)
             pipe_index = i;
         snprintf (alog->b, alog->s,
-                  "  ad exiting, index %d/%d read pipes %d %d\n",
-                  pipe_index, npipes, read_pipes [0], read_pipes [1]);
+                  "  ad exiting, pipe %d at index %d/%d read pipes %d %d\n",
+                  from_pipe, pipe_index, npipes,
+                  read_pipes [0], read_pipes [1]);
         printf ("%s", alog->b);
         log_print (alog);
         return;
