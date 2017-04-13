@@ -31,6 +31,17 @@ int main (int argc, char ** argv)
       print_duplicates = 1;
   }
 
+  int max_count = 0;
+  int received_count = 0;
+  for (i = 1; i + 1 < argc; i++) {
+    if (strcmp (argv [i], "-m") == 0) {
+      int n = atoi (argv [i + 1]);
+      if (n > 0)
+        max_count = n;
+      printf ("will quit after %d packets\n", n);
+    }
+  }
+
   int timeout = PIPE_MESSAGE_WAIT_FOREVER;
   char * old_contact = NULL;
   keyset old_kset = -1;
@@ -74,9 +85,12 @@ int main (int argc, char ** argv)
           dup_mess = "";
           desc = "";
         }
-        if ((! duplicate) || (print_duplicates) || (broadcast))
+        if ((! duplicate) || (print_duplicates)) {
           printf ("from '%s'%s got %s%s%s\n  %s\n",
                   peer, ver_mess, dup_mess, bc_mess, desc, message);
+          if ((max_count != 0) && (++received_count >= max_count))
+            return 0;
+        }
         if ((! broadcast) &&
             ((old_contact == NULL) ||
              (strcmp (old_contact, peer) != 0) || (old_kset != kset))) {
