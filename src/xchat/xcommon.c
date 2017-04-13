@@ -35,13 +35,13 @@
 static struct allnet_log * alog = NULL;
 
 /* time constants for requesting cached and missing data */
-#define SLEEP_INITIAL_MIN	3  /* seconds */
-#define SLEEP_INITIAL_MAX	10 /* seconds */
+#define SLEEP_INITIAL_MIN	3    /* seconds */
+#define SLEEP_INITIAL_MAX	10   /* seconds */
 #define SLEEP_INCREASE_NUMERATOR	12  /* 12/10, 20% increase */
 #define SLEEP_INCREASE_DENOMINATOR	10
-#define SLEEP_INCREASE_MIN	5  /* each time increase by at least 5s */
-#define SLEEP_MAX_THRESHOLD	900   /* seconds -- 15min */
-#define SLEEP_MAX		1200  /* seconds -- 20min */
+#define SLEEP_INCREASE_MIN	5    /* each time increase by at least 5s */
+#define SLEEP_MAX_THRESHOLD	240  /* seconds -- 4min */
+#define SLEEP_MAX		300  /* seconds -- 5min */
 
 /* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
  * and power_two must be less than 32.
@@ -142,52 +142,60 @@ static int random_hop_count ()
   return hops;
 }
 
+/* returns 1 if successfully sent something, 0 otherwise */
+/* if not NULL, start must be at least ALLNET_TIME_SIZE, 8 bytes */
+static int send_data_request (int sock, int priority, char * start)
+{
+#define BITMAP_BITS_LOG	8  /* 11 or less to keep packet size below 1K */
+#define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
+#define BITMAP_BYTES	(BITMAP_BITS / 8)
+  unsigned int size;
+  /* adr is an allnet_data_request */
+  /* adr_size has room for each of the bitmaps */
+  unsigned int adr_size =
+    sizeof (struct allnet_data_request) + BITMAP_BYTES * 3;
+  int hops = random_hop_count ();
+  struct allnet_header * hp =
+    create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
+                   NULL, 0, NULL, 0, NULL, NULL, &size);
+  struct allnet_data_request * adr =
+    (struct allnet_data_request *)
+       (ALLNET_DATA_START (hp, hp->transport, size));
+  bzero (adr->since, sizeof (adr->since));
+  if (start != NULL)
+    memcpy (adr->since, start, ALLNET_TIME_SIZE);
+  adr->dst_bits_power_two = BITMAP_BITS_LOG;
+  adr->src_bits_power_two = BITMAP_BITS_LOG;
+  adr->mid_bits_power_two = BITMAP_BITS_LOG;
+  random_bytes ((char *) (adr->padding), sizeof (adr->padding));
+  unsigned char * dst = adr->dst_bitmap;
+  unsigned char * src = dst + BITMAP_BYTES;
+  unsigned char * ack = src + BITMAP_BYTES;
+  if ((fill_bits (dst, BITMAP_BITS_LOG, FILL_LOCAL_ADDRESS ) < 0) ||
+      (fill_bits (src, BITMAP_BITS_LOG, FILL_REMOTE_ADDRESS) < 0) ||
+      (fill_bits (ack, BITMAP_BITS_LOG, FILL_ACK           ) < 0)) {
+    size -= BITMAP_BYTES * 3;
+    adr->dst_bits_power_two = 0;
+    adr->src_bits_power_two = 0;
+    adr->mid_bits_power_two = 0;
+  }
+  if (! send_pipe_message_free (sock, (char *) (hp), size, priority, alog)) {
+    snprintf (alog->b, alog->s, "unable to request data on %d\n", sock);
+    log_print (alog);
+    return 0;
+  }
+  return 1;
+}
+
+#ifdef HAVE_REQUEST_THREAD
 static void * request_cached_data (void * arg)
 {
   int sock = * (int *) arg;
   free (arg);
   /* initial sleep is 3s-10s, slowly grow to ~20min */
   int sleep_time = (int)random_int (SLEEP_INITIAL_MIN, SLEEP_INITIAL_MAX);
-  while (1) {  /* loop forever, unless the socket is closed */
-#define BITMAP_BITS_LOG	8  /* 11 or less to keep packet size below 1K */
-#define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
-#define BITMAP_BYTES	(BITMAP_BITS / 8)
-    unsigned int size;
-    /* adr is an allnet_data_request */
-    /* adr_size has room for each of the bitmaps */
-    unsigned int adr_size =
-      sizeof (struct allnet_data_request) + BITMAP_BYTES * 3;
-    int hops = random_hop_count ();
-    struct allnet_header * hp =
-      create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
-                     NULL, 0, NULL, 0, NULL, NULL, &size);
-    struct allnet_data_request * adr =
-      (struct allnet_data_request *) (ALLNET_DATA_START (hp, hp->transport,
-                                                         size));
-    bzero (adr->since, sizeof (adr->since));
-    adr->dst_bits_power_two = BITMAP_BITS_LOG;
-    adr->src_bits_power_two = BITMAP_BITS_LOG;
-    adr->mid_bits_power_two = BITMAP_BITS_LOG;
-    random_bytes ((char *) (adr->padding), sizeof (adr->padding));
-    unsigned char * dst = adr->dst_bitmap;
-    unsigned char * src = dst + BITMAP_BYTES;
-    unsigned char * ack = src + BITMAP_BYTES;
-    if ((fill_bits (dst, BITMAP_BITS_LOG, FILL_LOCAL_ADDRESS ) < 0) ||
-        (fill_bits (src, BITMAP_BITS_LOG, FILL_REMOTE_ADDRESS) < 0) ||
-        (fill_bits (ack, BITMAP_BITS_LOG, FILL_ACK           ) < 0)) {
-      size -= BITMAP_BYTES * 3;
-      adr->dst_bits_power_two = 0;
-      adr->src_bits_power_two = 0;
-      adr->mid_bits_power_two = 0;
-    }
-    int priority = ALLNET_PRIORITY_LOCAL_LOW;
-    if (! send_pipe_message_free (sock, (char *) (hp), size, priority, alog)) {
-      snprintf (alog->b, alog->s,
-                "unable to request cached data on %d, ending request thread\n",
-                sock);
-      log_print (alog);
-      return NULL;
-    }
+  while (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW, NULL)) {
+    /* loop forever, unless the socket is closed */
     sleep (sleep_time);
     if (sleep_time >= SLEEP_MAX_THRESHOLD)
       sleep_time = (int)random_int (SLEEP_MAX_THRESHOLD, SLEEP_MAX);
@@ -197,7 +205,13 @@ static void * request_cached_data (void * arg)
                                      SLEEP_INCREASE_DENOMINATOR) +
                                     SLEEP_INCREASE_MIN);
   }
+  snprintf (alog->b, alog->s, 
+            "unable to request cached data on %d, ending request thread\n",
+            sock);
+  log_print (alog);
+  return NULL;
 }
+#endif /* HAVE_REQUEST_THREAD */
 
 /* returns the socket if successful, -1 otherwise */
 int xchat_init (char * arg0, pd p)
@@ -214,11 +228,13 @@ int xchat_init (char * arg0, pd p)
   if (setsockopt (sock, SOL_SOCKET, SO_NOSIGPIPE, &option, sizeof (int)) != 0)
     perror ("xchat_init setsockopt nosigpipe");
 #endif /* SO_NOSIGPIPE */
+#ifdef HAVE_REQUEST_THREAD
   pthread_t thread;
   int * arg = malloc_or_fail (sizeof (int), "xchat_init");
   *arg = sock;
   /* request_cached_data loops forever, so do it in a separate thread */
   pthread_create (&thread, NULL, request_cached_data, (void *)(arg));
+#endif /* HAVE_REQUEST_THREAD */
   return sock;
 }
 
@@ -285,23 +301,24 @@ static void do_request_and_resend (int sock)
   static int num_keysets = 0;
   static int current_contact = 0;
   static int current_keyset = 0;
-  if ((num_contacts <= 0) || (contacts == NULL) ||
-      (current_contact >= num_contacts)) {  /* restart */
-    if (contacts != NULL)
-      free (contacts);
-    num_contacts = all_contacts (&contacts);
-    if (keysets != NULL)
-      free (keysets);
-    keysets = NULL;
-    num_keysets = 0;
-    current_contact = 0;
-    current_keyset = 0;
-  }
-  if ((num_contacts <= 0) || (contacts == NULL) ||
-      (current_contact >= num_contacts))
-    return;	/* no contacts, nothing to do */
-
-  for ( ; current_contact < num_contacts; current_contact++) {
+  while (1) {
+    /* make sure we have a valid contact */
+    if ((num_contacts <= 0) || (contacts == NULL) ||
+        (current_contact >= num_contacts)) {  /* restart */
+      if (contacts != NULL)
+        free (contacts);
+      num_contacts = all_contacts (&contacts);
+      if (keysets != NULL)
+        free (keysets);
+      keysets = NULL;
+      num_keysets = 0;
+      current_contact = 0;
+      current_keyset = 0;
+    }
+    if ((num_contacts <= 0) || (contacts == NULL) ||
+        (current_contact >= num_contacts))
+      return;	/* no contacts, nothing to do */
+    /* make sure we have a valid keyset for the contact */
     if ((num_keysets <= 0) || (keysets == NULL) ||
         (current_keyset >= num_keysets)) {
       if (keysets != NULL)
@@ -310,32 +327,43 @@ static void do_request_and_resend (int sock)
       current_keyset = 0;
     }
     if ((num_keysets <= 0) || (keysets == NULL) ||
-        (current_keyset >= num_keysets))
+        (current_keyset >= num_keysets)) {
+      if (keysets != NULL)
+        free (keysets);
+      current_contact++;
       continue;    /* loop around to the next contact, if any */
-    for ( ; current_keyset < num_keysets; current_keyset++) {
+    }
+    /* we have a valid contact and a valid keyset.  Do request and resend */
+    int r = request_and_resend (sock, contacts [current_contact],
+                                keysets [current_keyset]);
+/* request_and_resend returns -1 if it is too soon, 0 for did not send
+ * because not missing anything, 1 if sent */
+#ifdef DEBUG_PRINT
+    if (r >= 0) { /* tried to send */
       time_t now = time (NULL);
       char * now_string = ctime (&now);
-      char * nl = index (now_string, '\n');
-      if (nl != NULL)
-        *nl = '\0';
-      int r = request_and_resend (sock, contacts [current_contact],
-                                  keysets [current_keyset]);
-      if (r != -1)  /* tried to send */
-        printf ("%s: request_and_resend for %s(%d/%d)/%d(%d/%d)\n", now_string,
-                contacts [current_contact], current_contact, num_contacts,
-                keysets  [current_keyset] , current_keyset , num_keysets);
-      if (r != 0) { /* r == 0 means tried to, but did not request */
-      /* if r != 0, either we succeeded, or it is too soon to request again */
-        current_keyset++;   /* next time, try the next keyset */
-        if (current_keyset >= num_keysets) {  /* try the next contact */
-          free (keysets);
-          keysets = NULL;
-          current_keyset = 0;
-          current_contact++;
-        }
-        return;
-      }
+      char start_string [20];
+      bzero (start_string, sizeof (start_string));
+      memcpy (start_string, now_string, sizeof (start_string) - 1);
+      printf ("%s: request_and_resend %d for %s(%d/%d)/%d(%d/%d)\n",
+              start_string, r,
+              contacts [current_contact], current_contact, num_contacts,
+              keysets  [current_keyset] , current_keyset , num_keysets);
     }
+#endif /* DEBUG_PRINT */
+    /* successful or not, advance to the next contact or keyset */
+    current_keyset++;
+    if (current_keyset >= num_keysets) {  /* try the next contact */
+      free (keysets);  /* keysets is not NULL */
+      keysets = NULL;
+      num_keysets = 0;
+      current_contact++;    /* loop around to the next contact, if any */
+    }
+    if (r > 0) /* r == 1 means sent, we are done */
+      return;
+    if (r < 0) /* r == -1 means too soon, stop trying for now */
+      return;
+      /* else, r == 0, continue with the next key or contact */
   }
 }
 
@@ -1062,13 +1090,26 @@ long long int send_data_message (int sock, const char * peer,
   return seq;
 }
 
+/* expiration must be at least ALLNET_TIME_SIZE, 8 bytes */
+static void compute_expiration (char * expiration, 
+                                unsigned long long int now,
+                                unsigned long long int last,
+                                unsigned long long int least)
+{
+  /* should expire now - last (but not less than least) seconds in the future */
+  unsigned long long int delta = least;
+  if ((last != 0) && (now > last) && (now - last > delta))
+      delta = now - last;
+  writeb64 (expiration, now + delta);
+}
+
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it, but not too often */
 /* returns:
  *    -1 if it is too soon to request again
  *    0 if it it did not send a retransmit request for this contact/key 
  *      (e.g. if nothing is known to be missing)
- *    1 if it sent a retransmit request
+ *    1 or more if it sent a retransmit request
  */
 int request_and_resend (int sock, char * contact, keyset kset)
 {
@@ -1079,34 +1120,54 @@ int request_and_resend (int sock, char * contact, keyset kset)
     printf ("unable to request and resend for %s, peer not found\n", contact);
     return 0;
   }
-/*  printf ("request_and_resend (socket %d, peer %s)\n", sock, peer); */
   /* request retransmission of any missing messages */
   int hops = 10;
   /* let requests expire so on average at most ~3 will be cached at any time */
   unsigned long long int now = allnet_time ();
-  static unsigned long long int last_request = 0;
-  int result = -1;
-  if (last_request + 30 <= now) {  /* don't send more than once every ~30s */
+  static unsigned long long int last_retransmit = 0;
+  int result = -1;   /* too soon */
+  if (last_retransmit + 30 <= now) {  /* don't send more than once every ~30s */
     char expiration [ALLNET_TIME_SIZE];
-    unsigned long long int delta = 100;
-    if ((last_request != 0) && (now > last_request) &&
-        ((unsigned long long int)now - last_request > delta))
-      delta = now - last_request;
-    writeb64 (expiration, delta + allnet_time ());
+    compute_expiration (expiration, now, last_retransmit, 100);
+    result = 0;      /* unable to send to this contact */
     if (send_retransmit_request (contact, kset, sock,
                                  hops, ALLNET_PRIORITY_LOCAL_LOW, expiration)) {
-      last_request = now;   /* sent something, update time */
-      result = 1;
+      last_retransmit = now;   /* sent something, update time */
+      result = 1;    /* transmission successful */
+    }
+  }
+  /* send a data request, again at a very limited rate */
+  static unsigned long long int last_data_request = 0;
+  static unsigned long long int sleep_time = SLEEP_INITIAL_MIN;
+/* printf ("request_and_resend (sock %d, peer %s) => %d, sleep %llu\n",
+        sock, contact, result, sleep_time); */
+  if (last_data_request + sleep_time <= now) {
+    char start [ALLNET_TIME_SIZE];
+    writeb64 (start, last_data_request);
+    if (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW,
+                           start)) {
+      last_data_request = now;
+      sleep_time += SLEEP_INCREASE_MIN;  /* but may adjust downwards below */
+      if (sleep_time >= SLEEP_MAX_THRESHOLD)
+        sleep_time = random_int (SLEEP_MAX_THRESHOLD, SLEEP_MAX);
+      else  /* increase sleep time by about 1.2 */
+        sleep_time = random_int (sleep_time,
+                                 (sleep_time * SLEEP_INCREASE_NUMERATOR) /
+                                 SLEEP_INCREASE_DENOMINATOR);
     }
   }
   /* resend any unacked messages, but no more than once every hour */
   static unsigned long long int last_resend = 0;
-  if (now - last_resend > 3600) {
+  if (last_resend + 3600 <= now) {
 #ifdef DEBUG_PRINT
     printf ("resending unacked\n");
 #endif /* DEBUG_PRINT */
-    last_resend = now;
-    resend_unacked (contact, kset, sock, hops, ALLNET_PRIORITY_LOCAL_LOW, 10);
+    if (resend_unacked (contact, kset, sock, hops,
+                        ALLNET_PRIORITY_LOCAL_LOW, 10) > 0) {
+      last_resend = now;
+      if (result != 1)
+        result = 2;
+    }
   }
   return result;
 }
