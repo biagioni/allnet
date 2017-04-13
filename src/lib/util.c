@@ -1299,15 +1299,15 @@ unsigned long long int random_int (unsigned long long int min,
   if ((delta <= 0xff) && (delta > 0) && (size > 1))
     size = 1;
   random_bytes (buffer, size);
-  unsigned long long int result = * ((unsigned long long int *) buffer);
+  unsigned long long int result = readb64 (buffer);
+  if (size == 4)
+    result = readb32 (buffer);
+  if (size == 2)
+    result = readb16 (buffer);
+  if (size == 1)
+    result = buffer [0] & 0xff;
   if (delta == 0)  /* min is 0, max is maxint, and % would fail */
     return result;
-  if (size == 4)
-    result = * ((uint32_t *) buffer);
-  if (size == 2)
-    result = * ((uint16_t *) buffer);
-  if (size == 1)
-    result = * ((uint8_t *) buffer);
   return (result % delta) + min;
 }
 
