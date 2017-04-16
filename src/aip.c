@@ -1335,11 +1335,12 @@ record_message (info->pipe_descriptor);
     }
     if (result < 0) {
 #ifdef ALLNET_USE_FORK
-      if ((fd == rpipe) || (fd == udp)) {
+      if ((fd == rpipe) || (fd == udp))
 #else /* ALLNET_USE_FORK */
-      if (fd == rpipe) {  /* iOS closes the udp socket when the device
+      if (fd == rpipe)    /* iOS closes the udp socket when the device
                            * goes to sleep, which is not a reason to exit */
 #endif /* ALLNET_USE_FORK */
+      {
         snprintf (alog->b, alog->s, "aip %s %d closed (%d)\n",
                   ((fd == rpipe) ? "ad pipe" : "udp socket"), fd, result);
         log_print (alog);
