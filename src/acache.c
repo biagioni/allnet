@@ -2086,7 +2086,9 @@ void acache_main (char * pname)
               sizeof struct hash_entry = 56 */
   alog = init_log ("acache");
   pd p = init_pipe_descriptor (alog);
+#ifndef ALLNET_USE_FORK   /* if the connection is closed, keep trying */
   while (1) {
+#endif /* ALLNET_USE_FORK */
     int sock = connect_to_local ("acache", pname, p);
     snprintf (alog->b, alog->s, "acache connected to local, fd %d\n", sock);
     log_print (alog);
@@ -2096,7 +2098,9 @@ void acache_main (char * pname)
       close (sock);  /* may already be closed */
       sleep (60);    /* so we don't loop too tightly */
     }
+#ifndef ALLNET_USE_FORK
   }
+#endif /* ALLNET_USE_FORK */
   snprintf (alog->b, alog->s, "end of acache\n");
   log_print (alog);
 }
