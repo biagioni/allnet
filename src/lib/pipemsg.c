@@ -907,7 +907,9 @@ static int parse_header (char * header, int pipe, unsigned int * priority,
       *priority = ALLNET_PRIORITY_EPSILON;       /* make it min possible */
   }
   int result  = read_big_endian32 (header + MAGIC_SIZE + PRIORITY_SIZE);
-  if ((result < ALLNET_HEADER_SIZE) || (result > ALLNET_MTU)) {
+/* need to cast ALLNET_HEADER_SIZE to int because result may be -1,
+ * and without the cast, the comparison is unsigned, so -1 > header size */
+  if ((result < (int)ALLNET_HEADER_SIZE) || (result > ALLNET_MTU)) {
     if (log != NULL) {
       snprintf (log->b, log->s, "parse_header: illegal header size %d (%u)\n",
                 result, result);
@@ -981,7 +983,9 @@ static int receive_pipe_message_poll (pd p, int pipe,
    /* received all we were looking for, either allocate new buffer or return */
     if (bp->in_header) {
       int received_len = parse_header (bp->header, pipe, priority, p->log);
-      if ((received_len >= ALLNET_HEADER_SIZE) &&
+/* need to cast ALLNET_HEADER_SIZE to int because received_len may be -1,
+ * and without the cast, the comparison is unsigned, so -1 > header size */
+      if ((received_len >= (int)ALLNET_HEADER_SIZE) &&
           (received_len <= ALLNET_MTU)) { /* received a MAGICPIE header */
         bp->buffer = malloc (received_len);
         if (bp->buffer == NULL) {
@@ -1073,7 +1077,9 @@ int receive_pipe_message (pd p, int pipe, char ** message,
       return -1;
     /* may_block is true, so r should only be -1 or HEADER_SIZE - filled */
     received_len = parse_header (header, pipe, priority, p->log);
-    if ((received_len >= ALLNET_HEADER_SIZE) && /* rcvd a MAGICPIE header */
+/* need to cast ALLNET_HEADER_SIZE to int because received_len may be -1,
+ * and without the cast, the comparison is unsigned, so -1 > header size */
+    if ((received_len >= (int)ALLNET_HEADER_SIZE) && /* rcvd a MAGICPIE hdr */
         (received_len <= ALLNET_MTU))           /* and a reasonable length */
       break;
     received_len = 0;
