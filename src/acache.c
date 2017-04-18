@@ -1541,10 +1541,12 @@ static void resend_message (char * message, int msize, int64_t position,
                             int *priorityp, int local_request, int sock)
 {
   int priority = *priorityp;
+#ifdef LOG_PACKETS
   snprintf (alog->b, alog->s,
             "sending %d-byte cached response at [%" PRIx64 "]\n",
             msize, position);
   log_print (alog);
+#endif /* LOG_PACKETS */
   struct allnet_header * send_hp = (struct allnet_header *) message;
 debug_resend_message (message, msize, send_hp, local_request, position);
   int saved_max = send_hp->max_hops;
@@ -1709,8 +1711,12 @@ static void ack_packets (int msg_fd, unsigned int msg_size, int ack_fd,
     ack += MESSAGE_ID_SIZE;
     in_msize -= MESSAGE_ID_SIZE;
   }
-  snprintf (alog->b, alog->s, "acked %d packets\n", count);
-  log_print (alog);
+#ifdef LOG_PACKETS
+  if (count > 0) {
+    snprintf (alog->b, alog->s, "acked %d packets\n", count);
+    log_print (alog);
+  }
+#endif /* LOG_PACKETS */
 }
 
 static void init_msgs (int msg_fd, int max_msg_size)
@@ -1910,7 +1916,8 @@ static void main_loop (int rsock, int wsock, pd p)
         }
       }
 #ifdef LOG_PACKETS
-      log_print (alog);
+      if (strlen (alog->b) > 0)
+        log_print (alog);
 #endif /* LOG_PACKETS */
     } else {
 #ifdef LOG_PACKETS
