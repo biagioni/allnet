@@ -157,8 +157,8 @@ static void truncate_to_size (int fd, uint64_t max_size, char * caller)
 }
 
 /* initially save after 5s, growing exponentially to after 10min */
-static int time_to_save (unsigned long long int * num_saves,
-                         unsigned long long int * last_saved, int always)
+static int time_to_save (unsigned long long int * last_saved,
+                         unsigned long long int * num_saves, int always)
 {
   if (always)
     return time_exp_interval (last_saved, num_saves, 0, 0);
@@ -169,9 +169,9 @@ static int time_to_save (unsigned long long int * num_saves,
 
 static void save_ack_data (int fd, int always)
 {
-  static unsigned long long int num_saves = 0;
   static unsigned long long int last_saved = 0;
-  if (time_to_save (&num_saves, &last_saved, always)) {
+  static unsigned long long int num_saves = 0;
+  if (time_to_save (&last_saved, &num_saves, always)) {
     write_at_pos (fd, (char *) acks, sizeof (struct ack_entry) * ack_space, 0);
     fsync (fd);
   }
@@ -1313,7 +1313,7 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
   }
   int64_t write_position = (int64_t)fd_size_or_zero (fd);
   write_at_pos (fd, mbuffer, fsize, write_position);
-  if (time_to_save (&num_msg_saves, &last_msg_time, 0))
+  if (time_to_save (&last_msg_time, &num_msg_saves, 0))
     fsync (fd);   /* only fsync once in a while, lessen the disk traffic */
   hash_add_message (message, msize, message + id_off, write_position,
                     mbuffer + MESSAGE_ENTRY_HEADER_TIME_OFFSET);
@@ -1362,7 +1362,7 @@ static void remove_cached_message (int fd, unsigned int max_size, char * id,
   bzero (buffer, fsize);
   writeb16 (buffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET, msize);
   write_at_pos (fd, buffer, fsize, position);
-  if (time_to_save (&num_msg_saves, &last_msg_time, 0))
+  if (time_to_save (&last_msg_time, &num_msg_saves, 0))
     fsync (fd);   /* only fsync once in a while, lessen the disk traffic */
   remove_from_hash_table (id);
 #ifdef USING_MESSAGE_LIST
@@ -1594,11 +1594,12 @@ static int respond_to_request (int fd, unsigned int max_size, char * in_message,
     int msize = 0;
 #ifdef HASH_RANDOM_MATCH
     if (hash_random_match (fd, max_size, bloom, bbits,
-                           &rd, &message, &msize)) {
+                           &rd, &message, &msize))
 #else /* ! HASH_RANDOM_MATCH */
     int first_call = (count++ == 0);
-    if (hash_next_match (fd, max_size, first_call, &rd, &message, &msize)) {
+    if (hash_next_match (fd, max_size, first_call, &rd, &message, &msize))
 #endif /* HASH_RANDOM_MATCH */
+    {
       sent++;
       int priority = ALLNET_PRIORITY_EPSILON;
       if (ALLNET_PRIORITY_CACHE_RESPONSE > ALLNET_PRIORITY_EPSILON + count)
@@ -1607,7 +1608,7 @@ static int respond_to_request (int fd, unsigned int max_size, char * in_message,
 #ifdef HASH_RANDOM_MATCH
 #else /* ! HASH_RANDOM_MATCH */
     } else {
-      break;  /* done */
+      break;  /* sequential search, none left, so done */
 #endif /* HASH_RANDOM_MATCH */
     }
   }
