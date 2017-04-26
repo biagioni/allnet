@@ -84,7 +84,11 @@ extern int key_received (int sock, char * contact, char * secret1,
  *      (e.g. if nothing is known to be missing)
  *    1 if it sent a retransmit request
  */
-extern int request_and_resend (int sock, char * peer, keyset kset);
+/* eagerly should be set when there is some chance that our peer is online,
+ * i.e. when we've received a message or an ack from the peer.  In this
+ * case, we retransmit and request data right away, independently of the
+ * time since the last request */
+extern int request_and_resend (int sock, char * peer, keyset kset, int eagerly);
 
 /* create the contact and key, and send
  * the public key followed by

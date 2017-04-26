@@ -56,7 +56,7 @@ int main (int argc, char ** argv)
     }
     if (found == 0) {  /* timed out, request/resend any missing */
       if (old_contact != NULL) {
-        request_and_resend (sock, old_contact, old_kset);
+        request_and_resend (sock, old_contact, old_kset, 0);
         old_contact = NULL;
         old_kset = -1;
       }
@@ -94,7 +94,7 @@ int main (int argc, char ** argv)
         if ((! broadcast) &&
             ((old_contact == NULL) ||
              (strcmp (old_contact, peer) != 0) || (old_kset != kset))) {
-          request_and_resend (sock, peer, kset);
+          request_and_resend (sock, peer, kset, 1);
           if (old_contact != NULL)
             free (old_contact);
           old_contact = peer;

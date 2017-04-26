@@ -287,7 +287,7 @@ static void send_ack (int sock, struct allnet_header * hp,
 /* after sending the ack, see if we can get any outstanding
  * messages from the peer */
   if (send_resend_request)
-    request_and_resend (sock, contact, kset);
+    request_and_resend (sock, contact, kset, 1);
 }
 
 /* call every once in a while, e.g. every 1-10s, to poke all our
@@ -335,7 +335,7 @@ static void do_request_and_resend (int sock)
     }
     /* we have a valid contact and a valid keyset.  Do request and resend */
     int r = request_and_resend (sock, contacts [current_contact],
-                                keysets [current_keyset]);
+                                keysets [current_keyset], 0);
 /* request_and_resend returns -1 if it is too soon, 0 for did not send
  * because not missing anything, 1 if sent */
 #ifdef DEBUG_PRINT
@@ -391,7 +391,7 @@ static void handle_ack (int sock, char * packet, unsigned int psize,
 #ifdef DEBUG_PRINT
       printf ("sequence number %lld acked\n", ack_number);
 #endif /* DEBUG_PRINT */
-      request_and_resend (sock, peer, kset);
+      request_and_resend (sock, peer, kset, 1);
 /*    } else if (ack_number == -2) {
       printf ("packet acked again\n"); */
     } else if (is_recently_sent_ack (ack)) {
@@ -1111,7 +1111,11 @@ static void compute_expiration (char * expiration,
  *      (e.g. if nothing is known to be missing)
  *    1 or more if it sent a retransmit request
  */
-int request_and_resend (int sock, char * contact, keyset kset)
+/* eagerly should be set when there is some chance that our peer is online,
+ * i.e. when we've received a message or an ack from the peer.  In this
+ * case, we retransmit and request data right away, independently of the
+ * time since the last request */
+int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
 {
 #ifdef DEBUG_PRINT
   printf ("request and resend for %s\n", contact);
@@ -1126,7 +1130,8 @@ int request_and_resend (int sock, char * contact, keyset kset)
   unsigned long long int now = allnet_time ();
   static unsigned long long int last_retransmit = 0;
   int result = -1;   /* too soon */
-  if (last_retransmit + 30 <= now) {  /* don't send more than once every ~30s */
+  if (eagerly ||                        /* if not eagerly send at most */
+      (last_retransmit + 30 <= now)) {  /* once every ~30s */
     char expiration [ALLNET_TIME_SIZE];
     compute_expiration (expiration, now, last_retransmit, 100);
     result = 0;      /* unable to send to this contact */
@@ -1144,8 +1149,7 @@ int request_and_resend (int sock, char * contact, keyset kset)
   if (last_data_request + sleep_time <= now) {
     char start [ALLNET_TIME_SIZE];
     writeb64 (start, last_data_request);
-    if (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW,
-                           start)) {
+    if (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW, start)) {
       last_data_request = now;
       sleep_time += SLEEP_INCREASE_MIN;  /* but may adjust downwards below */
       if (sleep_time >= SLEEP_MAX_THRESHOLD)
@@ -1156,9 +1160,9 @@ int request_and_resend (int sock, char * contact, keyset kset)
                                  SLEEP_INCREASE_DENOMINATOR);
     }
   }
-  /* resend any unacked messages, but no more than once every hour */
+  /* resend any unacked messages, but less than once every hour (or eagerly) */
   static unsigned long long int last_resend = 0;
-  if (last_resend + 3600 <= now) {
+  if (eagerly || (last_resend + 3600 <= now)) {
 #ifdef DEBUG_PRINT
     printf ("resending unacked\n");
 #endif /* DEBUG_PRINT */

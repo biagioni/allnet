@@ -749,7 +749,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
     }
     if ((found == 0) && (found_key == 0)) { 
       if (old_contact != NULL) { /* timed out, request/resend any missing */
-        request_and_resend (sock, old_contact, old_kset);
+        request_and_resend (sock, old_contact, old_kset, 0);
         old_contact = NULL;
         old_kset = -1;
       }
@@ -793,7 +793,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         if ((! broadcast) &&
             ((old_contact == NULL) ||
              (strcmp (old_contact, peer) != 0) || (old_kset != kset))) {
-          request_and_resend (sock, peer, kset);
+          request_and_resend (sock, peer, kset, 1);
           old_contact = peer;
           old_kset = kset;
         } else { /* same peer, do nothing */
