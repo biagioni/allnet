@@ -977,10 +977,10 @@ static int is_greater_than_power_two (unsigned long long int comparison,
   unsigned long long int power = 1;
   while (exp-- > 0) {
     power *= 2;
-    if (comparison > multiplier * power)
-      return 1;
+    if (comparison <= multiplier * power)
+      return 0;
   }
-  return 0;
+  return 1;
 }
 
 /* return 1 and update num_true_calls and last_true_time if one or more of:
@@ -999,7 +999,9 @@ int time_exp_interval (unsigned long long int * last_true_time,
     delta = now - *last_true_time;
   if ((*last_true_time == 0) || (delta > max) ||
       (is_greater_than_power_two (delta, min, *num_true_calls))) {
+/* printf ("%p has value %llu, ", num_true_calls, *num_true_calls); */
     *num_true_calls = *num_true_calls + 1; 
+/* printf ("updated to %p/%llu\n", num_true_calls, *num_true_calls); */
     *last_true_time = now; 
     return 1;
   }
