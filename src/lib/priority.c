@@ -76,7 +76,9 @@ unsigned int compute_priority (unsigned int size,
     hops_carried_priority =
       ALLNET_PRIORITY_MAX - ALLNET_ONE_EIGHT * (hops_already - 1);
   if (debug) print_fraction (hops_carried_priority, "hops_carried");
-  int hops_total_priority = power_half_fraction (hops_max - 1);
+  int hops_total_priority = 
+    (hops_max > 0) ? power_half_fraction (hops_max - 1)
+                   : ALLNET_PRIORITY_EPSILON;  /* illegal packet anyway */
   if (hops_total_priority <= 0) /* multiplication below is 0, make epsilon */
     hops_total_priority = ALLNET_PRIORITY_EPSILON;
   if (debug) print_fraction (hops_total_priority, "hops_total");
@@ -106,7 +108,7 @@ unsigned int compute_priority (unsigned int size,
     else
       result += result / 10;
   }
-if ((result <= 0) && (hops_max < 15)) debug = 1;
+if ((result <= 0) && (hops_max < 15) && (hops_max > 0)) debug = 1;
   if (debug)
     printf ("compute_priority (%d, %d, %d, %d, %d, %d, %d, %d)\n",
             size, sbits, dbits, hops_already,
