@@ -172,6 +172,12 @@ static void save_ack_data (int fd, int always)
   static unsigned long long int last_saved = 0;
   static unsigned long long int num_saves = 0;
   if (time_to_save (&last_saved, &num_saves, always)) {
+#ifdef DEBUG_PRINT
+    static unsigned long long int debug = 0;
+    printf ("time %llu (delta %llus) count %llu, saving\n", last_saved,
+            (last_saved - debug) / ALLNET_US_PER_S, num_saves);
+    debug = last_saved;
+#endif /* DEBUG_PRINT */
     write_at_pos (fd, (char *) acks, sizeof (struct ack_entry) * ack_space, 0);
     fsync (fd);
   }
@@ -1084,6 +1090,8 @@ static int hash_random_match (int fd, unsigned int max_size,
   int match = packet_matches (rd, *message, *msize, ptime);
   if (match == 0)
     return 0;
+  if (! is_valid_message (*message, *msize))
+    return 0;   /* message may have expired */
   set_bit (bf, bf_index);   /* mark it as sent */
   return 1;
 }
@@ -1151,6 +1159,8 @@ static int hash_next_match (int fd, unsigned int max_size, int first_call,
     int match = packet_matches (rd, *message, *msize, ptime);
     if (match == 0)
       continue;   /* try again with the next entry */
+    if (! is_valid_message (*message, *msize))
+      continue;   /* message may have expired, try again with the next entry */
 #ifdef ALLNET_USE_THREADS
     pthread_mutex_unlock (&mutex);
 #endif /* ALLNET_USE_THREADS */
@@ -1174,6 +1184,11 @@ static int delete_gc_message (char * message, unsigned int msize,
   if ((msize <= ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE) || (msize > ALLNET_MTU) ||
       (id_off < ALLNET_HEADER_SIZE) || (id_off + MESSAGE_ID_SIZE > msize))
     return 1;  /* bad message, no need to keep */
+  if (! is_valid_message (message, msize)) {
+    print_packet (message, msize,
+                  "acache delete_gc_message deleting invalid message", 1); 
+    return 1;  /* message may have expired, no need to keep */
+  }
   int file_pos = (int)next_prev_position (end_pos, msize);
   struct allnet_header * hp = (struct allnet_header *) message;
   /* we should delete something, so at least the first 6% of the file */
