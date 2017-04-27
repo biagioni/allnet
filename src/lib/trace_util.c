@@ -351,11 +351,11 @@ static int print_times (struct allnet_mgmt_trace_entry * entry,
   int off = 0;
   if ((start != NULL) && (now != NULL)) {
     unsigned long long int fraction = readb64u (entry->seconds_fraction);
-    if (entry->precision <= 64)
+    if (entry->precision <= 64)  /* binary precision */
       fraction = fraction / (((unsigned long long int) (-1LL)) / 1000000LL);
     else if (entry->precision <= 70)  /* decimal in low-order bits */
       fraction = fraction * (power10 (70 - entry->precision));
-    else
+    else                              /* more than 6 digits of precision */
       fraction = fraction / (power10 (entry->precision - 70));
     if (fraction >= 1000000LL) {  /* should be converted to microseconds */
       printf ("error: fraction (%u) %lld gives %lld >= 1000000 microseconds\n",
@@ -371,8 +371,8 @@ static int print_times (struct allnet_mgmt_trace_entry * entry,
           timestamp.tv_sec, timestamp.tv_usec,
           start->tv_sec, start->tv_usec, delta); */
     if (print_details) {
-      if ((delta > 0) && (now > start) &&
-          (delta < ((unsigned long long int)(now - start) * 1000000LL)))
+      unsigned long long int now_delta = delta_us (now, start);
+      if ((delta > 0) && (now_delta > 0) && (delta < now_delta))
         off += snprintf (buf + off, bsize - off,
                          " %5lld.%06llds timestamp, ", delta / 1000000LL,
                          delta % 1000000LL);
@@ -556,14 +556,13 @@ static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
                                 int null_term,
                                 int fd_out, struct allnet_queue * queue,
                                 char * rememberedh, int nh, int * positionh,
+                                struct timeval tv_start,
                                 struct allnet_log * alog)
 {
   num_arrivals = 0;   /* not received anything yet */
   unsigned long long int max_ms = ((sec <= 0) ? 1 : sec) * 1000;
   unsigned long long int time_spent = 0;
   unsigned long long int start = allnet_time_ms ();
-  struct timeval tv_start;
-  gettimeofday (&tv_start, NULL);
   while ((sec < 0) || (time_spent < max_ms)) {
     int pipe;
     unsigned int pri;
@@ -610,13 +609,16 @@ void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
 /* printf ("%d/%d\n", count, repeat); */
     random_bytes (trace_id, sizeof (trace_id));
     random_bytes ((char *) my_addr, sizeof (my_addr));
+    struct timeval tv_start;
+    gettimeofday (&tv_start, NULL);
     send_trace (sock, address, abits, trace_id, my_addr, 5, nhops,
                 no_intermediates, alog);
     sent_count++;
     wait_for_responses (sock, p, trace_id, sleep, count,
                         match_only, no_intermediates, null_term,
                         fd_out, queue, remembered_hashes,
-                        NUM_REMEMBERED_HASHES, &remembered_position, alog);
+                        NUM_REMEMBERED_HASHES, &remembered_position,
+                        tv_start, alog);
   }
   print_summary_file (0, null_term, fd_out, queue);
   print_details = 1;
