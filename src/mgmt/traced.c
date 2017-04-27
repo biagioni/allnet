@@ -37,13 +37,15 @@ static int do_respond_to_trace ()
 
 static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
                               int hops, struct timeval * now,
-                              unsigned char * my_address, int abits)
+                              unsigned char * my_address, int abits, int local)
 {
   bzero (new_entry, sizeof (struct allnet_mgmt_trace_entry));
-  /* assume accuracy is 1ms, or 3 decimal digits */
-  new_entry->precision = 64 + 3;
+  /* assume accuracy is 1ms, or 3 decimal digits,
+   * unless the hop count is 0, in which case accuracy is 1us or 6 digits */
+  new_entry->precision = 64 + 3 + (local ? 3 : 0);
   writeb64u (new_entry->seconds, now->tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX);
-  writeb64u (new_entry->seconds_fraction, now->tv_usec / 1000);
+  writeb64u (new_entry->seconds_fraction,
+             now->tv_usec / (local ? 1 : 1000));
   if (now->tv_sec <= ALLNET_Y2K_SECONDS_IN_UNIX) { /* clock is wrong */
     writeb64u (new_entry->seconds, 0);
     writeb64u (new_entry->seconds_fraction, 0);
@@ -92,7 +94,8 @@ static unsigned int add_my_entry (char * in, unsigned int insize,
       ((*result) + ALLNET_MGMT_HEADER_SIZE (t));
   trp->num_entries = n;
   struct allnet_mgmt_trace_entry * new_entry = trp->trace + (n - 1);
-  init_trace_entry (new_entry, inhp->hops, now, my_address, abits);
+  init_trace_entry (new_entry, inhp->hops, now, my_address, abits,
+                    inhp->hops == 0);
   if (k > 0) {
     char * inkey = ((char *) (intrp->trace)) +
                    (sizeof (struct allnet_mgmt_trace_entry) * (n - 1));
@@ -166,7 +169,8 @@ static int make_trace_reply (struct allnet_header * inhp, unsigned int insize,
   for (i = 0; i + 1 < num_entries; i++)
     trp->trace [i] = intrp->trace [i + intrp->num_entries - (num_entries - 1)];
   struct allnet_mgmt_trace_entry * new_entry = trp->trace + (num_entries - 1);
-  init_trace_entry (new_entry, inhp->hops, now, my_address, abits);
+  init_trace_entry (new_entry, inhp->hops, now, my_address, abits,
+                    inhp->hops == 0);
 
   int ksize = readb16u (intrp->pubkey_size);
   if (ksize > 0) {
