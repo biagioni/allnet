@@ -1184,11 +1184,8 @@ static int delete_gc_message (char * message, unsigned int msize,
   if ((msize <= ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE) || (msize > ALLNET_MTU) ||
       (id_off < ALLNET_HEADER_SIZE) || (id_off + MESSAGE_ID_SIZE > msize))
     return 1;  /* bad message, no need to keep */
-  if (! is_valid_message (message, msize)) {
-    print_packet (message, msize,
-                  "acache delete_gc_message deleting invalid message", 1); 
+  if (! is_valid_message (message, msize))
     return 1;  /* message may have expired, no need to keep */
-  }
   int file_pos = (int)next_prev_position (end_pos, msize);
   struct allnet_header * hp = (struct allnet_header *) message;
   /* we should delete something, so at least the first 6% of the file */
