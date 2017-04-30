@@ -687,9 +687,11 @@ else {
   (*message) [msize] = '\0';   /* null-terminate the message */
 
   send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
-  /* contact may be reachable, resend up to 10 unacked messages */
+  /* contact may be reachable, try to resend anything missing */
+  request_and_resend (sock, *contact, *kset, 1);
+  /* request_and_resend is more general than what we had before 2017/04/29,
   resend_unacked (*contact, *kset, sock, hops + 2,
-                  ALLNET_PRIORITY_LOCAL_LOW, 10);
+                  ALLNET_PRIORITY_LOCAL_LOW, 10); */
   free (text);
   return msize;
 }
