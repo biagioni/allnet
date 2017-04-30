@@ -533,9 +533,9 @@ struct allnet_header *
   hp->src_nbits = sbits;
   hp->dst_nbits = dbits;
   hp->sig_algo = sig_algo;
-  if ((sbits > 0) && (source != NULL))
+  if ((sbits > 0) && (sbits <= MESSAGE_ID_BITS) && (source != NULL))
     memcpy (hp->source, source, (sbits + 7) / 8);
-  if ((dbits > 0) && (dest != NULL))
+  if ((dbits > 0) && (dbits <= MESSAGE_ID_BITS) && (dest != NULL))
     memcpy (hp->destination, dest, (dbits + 7) / 8);
   hp->transport = transport;
   char * sid = ALLNET_STREAM_ID (hp, hp->transport, (unsigned int) psize);
