@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+#include <pthread.h>
 
 #include "chat.h"
 #include "message.h"
@@ -321,6 +322,106 @@ char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
 }
 #endif /* GET_MISSING_SINGLES_ONLY */
 
+struct unacked_cache_record {
+  keyset k;
+  int singles;
+  int ranges;
+  const char * result;
+};
+
+static struct unacked_cache_record * unacked_cache = NULL;
+static unsigned int unacked_cache_num_entries = 0;
+static pthread_mutex_t unacked_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+static unsigned long long int unacked_restart = 0;  /* renew every minute */
+
+/* called with unacked_cache_mutex held */
+static void print_unacked_cache (int return_value, keyset k)
+{
+  printf ("%d unacked cache entries, cache %p, time %llu (%llu)",
+          unacked_cache_num_entries, unacked_cache, unacked_restart,
+          allnet_time () - unacked_restart);
+  if (return_value != -1)
+    printf (", k %d, r %d", k, return_value);
+  printf ("\n");
+  if ((unacked_cache_num_entries > 0) && (unacked_cache != NULL)) {
+    int i;
+    for (i = 0; i < unacked_cache_num_entries; i++) {
+      printf ("%d [%d]: %d, %d, %p\n", unacked_cache [i].k, i,
+              unacked_cache [i].singles, unacked_cache [i].ranges,
+              unacked_cache [i].result);
+    }
+  }
+}
+
+static void reset_unacked_cache ()
+{
+  pthread_mutex_lock (&unacked_cache_mutex);
+  if (unacked_cache != NULL)
+    free (unacked_cache);
+  unacked_cache = NULL;
+  unacked_cache_num_entries = 0;
+  unacked_restart = allnet_time ();
+  pthread_mutex_unlock (&unacked_cache_mutex);
+printf ("reset unacked cache, time %llu\n", unacked_restart);
+}
+
+static int found_in_unacked_cache (const char * contact, keyset k,
+                                   int * singles, int * ranges, char ** result)
+{
+  *singles = 0;
+  *ranges = 0;
+  *result = NULL;
+  int return_value = 0;
+  if (allnet_time () > unacked_restart + 60) {
+print_unacked_cache (0, k);
+    reset_unacked_cache ();
+    return 0;
+  }
+  pthread_mutex_lock (&unacked_cache_mutex);
+  int i;
+  for (i = 0; i < unacked_cache_num_entries; i++) {
+    if (k == unacked_cache [i].k) {
+      *singles = unacked_cache [i].singles;
+      *ranges = unacked_cache [i].ranges;
+      size_t size = (*singles + 2 * (*ranges)) * COUNTER_SIZE;
+      if ((size > 0) && (unacked_cache [i].result != NULL))
+        *result = memcpy_malloc (unacked_cache [i].result, size,
+                                 "message.c found_in_unacked_cache");
+      return_value = 1;
+      break;
+    }
+  }
+/* print_unacked_cache (return_value, k); */
+  pthread_mutex_unlock (&unacked_cache_mutex);
+  return return_value;
+}
+
+static void add_to_unacked_cache (const char * contact, keyset k,
+                                  int singles, int ranges, const char * result)
+{
+  pthread_mutex_lock (&unacked_cache_mutex);
+  unacked_cache_num_entries++;  /* adding a new entry, at the end */
+  unacked_cache = realloc (unacked_cache,
+                           sizeof (struct unacked_cache_record) *
+                           unacked_cache_num_entries);
+  if (unacked_cache == NULL) { /* if realloc failed, just discard the cache */
+    unacked_cache_num_entries = 0;
+    unacked_restart = allnet_time ();
+  } else {
+    unacked_cache [unacked_cache_num_entries - 1].k = k;
+    unacked_cache [unacked_cache_num_entries - 1].singles = singles;
+    unacked_cache [unacked_cache_num_entries - 1].ranges = ranges;
+    size_t size = (singles + 2 * ranges) * COUNTER_SIZE;
+    if ((size > 0) && (result != NULL))
+      unacked_cache [unacked_cache_num_entries - 1].result =
+        memcpy_malloc (result, size, "message.c add_to_unacked_cache");
+    else
+      unacked_cache [unacked_cache_num_entries - 1].result = NULL;
+  }
+print_unacked_cache (1, k);
+  pthread_mutex_unlock (&unacked_cache_mutex);
+}
+
 /* returns a new (malloc'd) array, or NULL in case of error
  * the new array has (singles + 2 * ranges) * COUNTER_SIZE bytes.
  * the first *singles sequence numbers are individual sequence numbers
@@ -329,14 +430,17 @@ char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
  * not received acks for the sequence numbers a <= seq <= b */
 char * get_unacked (const char * contact, keyset k, int * singles, int * ranges)
 {
-  uint64_t last = max_seq (contact, k, MSG_TYPE_SENT);
   *singles = 0;
   *ranges = 0;
+  char * result = NULL;
+  if (found_in_unacked_cache (contact, k, singles, ranges, &result))
+    return result;
+  uint64_t last = max_seq (contact, k, MSG_TYPE_SENT);
   if (last < 1)
     return NULL;
 /* the current implementation is quite simple and only returns singles */
 #define MAX_UNACKED	MAX_MISSING
-  char * result = malloc_or_fail (MAX_UNACKED * COUNTER_SIZE, "get_unacked");
+  result = malloc_or_fail (MAX_UNACKED * COUNTER_SIZE, "get_unacked");
   int unacked = 0;
   uint64_t i;
   unsigned long long int now = allnet_time ();
@@ -353,16 +457,19 @@ char * get_unacked (const char * contact, keyset k, int * singles, int * ranges)
          unacked++;
          if (unacked >= MAX_UNACKED) {
            *singles = unacked;
+add_to_unacked_cache (contact, k, *singles, *ranges, result);
            return result;
         }
       }
     }
   }
-  if (unacked == 0) {
+  if (unacked == 0) {   /* everything has been acked for this contact and key */
     free (result);
+add_to_unacked_cache (contact, k, *singles, *ranges, NULL);
     return NULL;
   }
   *singles = unacked;
+add_to_unacked_cache (contact, k, *singles, *ranges, result);
   return result;
 }
 
