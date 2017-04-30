@@ -1519,6 +1519,10 @@ ah->version = 0;
 printf ("time to crash %d\n", 1000 / ah->version); */
     return 0;
   }
+  if ((ah->message_type < ALLNET_TYPE_DATA) ||
+      (ah->message_type > ALLNET_TYPE_MGMT)) {  /* nonsense packet */
+    return 0;
+  }
 /* check the validity of the packet, as defined in packet.h */
   if (((ah->message_type == ALLNET_TYPE_ACK) ||
        (ah->message_type == ALLNET_TYPE_DATA_REQ)) &&
