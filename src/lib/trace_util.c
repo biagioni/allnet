@@ -244,11 +244,23 @@ static void send_trace (int sock, unsigned char * address, int abits,
   log_print (alog);
 }
 
+/* in case of overflow, returns ULLONG_MAX */
 static unsigned long long int power10 (int n)
 {
-  if (n < 1)
+  if (n < 0)
     return 1;
-  return 10 * power10 (n - 1);
+  static unsigned long long int results [] =
+    { 1ULL, 10ULL, 100ULL,
+      1000ULL, 10000ULL, 100000ULL,
+      1000000ULL, 10000000ULL, 100000000ULL,
+      1000000000ULL, 10000000000ULL, 100000000000ULL,
+      1000000000000ULL, 10000000000000ULL, 100000000000000ULL,
+      1000000000000000ULL, 10000000000000000ULL, 100000000000000000ULL,
+      1000000000000000000ULL, 10000000000000000000ULL };
+  static int max_index = sizeof (results) / sizeof (unsigned long long int) - 1;
+  if (n > max_index)
+    return ULLONG_MAX;
+  return results [n];
 }
 
 struct arrival {
