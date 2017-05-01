@@ -78,6 +78,10 @@ extern char * get_missing (const char * contact, keyset k,
  * such that any seq such that a <= seq <= b has no acknowledged */
 extern char * get_unacked (const char * contact, keyset k,
                            int * singles, int * ranges);
+/* if there is a cache of unacked messages, reload.
+ * call if you send a message to this contact
+ * called internally by ack_received if the ack is new */
+extern void reload_unacked_cache (const char * contact, keyset k);
 
 /* returns 1 if this sequence number has been acked by all the recipients,
  * 0 otherwise */

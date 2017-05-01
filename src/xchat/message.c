@@ -203,6 +203,7 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
         if (! find_ack (contacts [c], ksets [k], message_ack, MSG_TYPE_ACK)) {
           save_record (contacts [c], ksets [k], MSG_TYPE_ACK, seq,
                        0, 0, 0, message_ack, NULL, 0);
+          reload_unacked_cache (contacts [c], ksets [k]);
         }
         if (contact != NULL)
           *contact = strcpy_malloc (contacts [c], "ack_received");
@@ -326,20 +327,18 @@ struct unacked_cache_record {
   keyset k;
   int singles;
   int ranges;
-  const char * result;
+  char * result;
 };
 
 static struct unacked_cache_record * unacked_cache = NULL;
 static unsigned int unacked_cache_num_entries = 0;
 static pthread_mutex_t unacked_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
-static unsigned long long int unacked_restart = 0;  /* renew every minute */
 
 /* called with unacked_cache_mutex held */
 static void print_unacked_cache (int return_value, keyset k)
 {
-  printf ("%d unacked cache entries, cache %p, time %llu (%llu)",
-          unacked_cache_num_entries, unacked_cache, unacked_restart,
-          allnet_time () - unacked_restart);
+  printf ("%d unacked cache entries, cache %p",
+          unacked_cache_num_entries, unacked_cache);
   if (return_value != -1)
     printf (", k %d, r %d", k, return_value);
   printf ("\n");
@@ -356,13 +355,19 @@ static void print_unacked_cache (int return_value, keyset k)
 static void reset_unacked_cache ()
 {
   pthread_mutex_lock (&unacked_cache_mutex);
-  if (unacked_cache != NULL)
+  print_unacked_cache (-4, -2);
+  if (unacked_cache != NULL) {
+    int i;
+    for (i = 0; i < unacked_cache_num_entries; i++) {
+      if (unacked_cache [i].result != NULL)
+        free (unacked_cache [i].result);
+    }
     free (unacked_cache);
+  }
   unacked_cache = NULL;
   unacked_cache_num_entries = 0;
-  unacked_restart = allnet_time ();
   pthread_mutex_unlock (&unacked_cache_mutex);
-printf ("reset unacked cache, time %llu\n", unacked_restart);
+printf ("reset unacked cache\n");
 }
 
 static int found_in_unacked_cache (const char * contact, keyset k,
@@ -372,11 +377,6 @@ static int found_in_unacked_cache (const char * contact, keyset k,
   *ranges = 0;
   *result = NULL;
   int return_value = 0;
-  if (allnet_time () > unacked_restart + 60) {
-print_unacked_cache (0, k);
-    reset_unacked_cache ();
-    return 0;
-  }
   pthread_mutex_lock (&unacked_cache_mutex);
   int i;
   for (i = 0; i < unacked_cache_num_entries; i++) {
@@ -391,7 +391,9 @@ print_unacked_cache (0, k);
       break;
     }
   }
-/* print_unacked_cache (return_value, k); */
+#ifdef DEBUG_PRINT
+  print_unacked_cache (return_value, k);
+#endif /* DEBUG_PRINT */
   pthread_mutex_unlock (&unacked_cache_mutex);
   return return_value;
 }
@@ -400,25 +402,56 @@ static void add_to_unacked_cache (const char * contact, keyset k,
                                   int singles, int ranges, const char * result)
 {
   pthread_mutex_lock (&unacked_cache_mutex);
-  unacked_cache_num_entries++;  /* adding a new entry, at the end */
-  unacked_cache = realloc (unacked_cache,
-                           sizeof (struct unacked_cache_record) *
-                           unacked_cache_num_entries);
-  if (unacked_cache == NULL) { /* if realloc failed, just discard the cache */
-    unacked_cache_num_entries = 0;
-    unacked_restart = allnet_time ();
+  int position = -1;  /* index where we will insert the new entry */
+  int i;
+  for (i = 0; i < unacked_cache_num_entries; i++) {
+    if (unacked_cache [i].k == k) {
+      position = i;
+      if (unacked_cache [i].result != NULL)
+        free (unacked_cache [i].result);
+      unacked_cache [i].result = NULL;
+      break;
+    }
+  }
+  if (position == -1) {
+    for (i = 0; i < unacked_cache_num_entries; i++) {
+      if (unacked_cache [i].k == -1) {  /* free entry */
+        position = i;
+        if (unacked_cache [i].result != NULL)
+          free (unacked_cache [i].result);
+        unacked_cache [i].result = NULL;
+        break;
+      }
+    }
+  }
+  struct unacked_cache_record * old_unacked_cache = NULL;
+  if ((unacked_cache == NULL) || (position == -1)) {
+    /* not found and none free, add a new entry to the end of the cache */
+    old_unacked_cache = unacked_cache;
+    position = unacked_cache_num_entries;
+    unacked_cache_num_entries++;
+    /* realloc works like malloc if unacked_cache is NULL */
+    unacked_cache = realloc (unacked_cache,
+                             sizeof (struct unacked_cache_record) *
+                             unacked_cache_num_entries);
+  }
+  if (unacked_cache == NULL) { /* realloc failed, just discard the cache */
+    unacked_cache = old_unacked_cache;  /* the one that might not be NULL */
+    reset_unacked_cache ();
   } else {
-    unacked_cache [unacked_cache_num_entries - 1].k = k;
-    unacked_cache [unacked_cache_num_entries - 1].singles = singles;
-    unacked_cache [unacked_cache_num_entries - 1].ranges = ranges;
+    unacked_cache [position].k = k;
+    unacked_cache [position].singles = singles;
+    unacked_cache [position].ranges = ranges;
     size_t size = (singles + 2 * ranges) * COUNTER_SIZE;
     if ((size > 0) && (result != NULL))
-      unacked_cache [unacked_cache_num_entries - 1].result =
+      unacked_cache [position].result =
         memcpy_malloc (result, size, "message.c add_to_unacked_cache");
     else
-      unacked_cache [unacked_cache_num_entries - 1].result = NULL;
+      unacked_cache [position].result = NULL;
   }
-print_unacked_cache (1, k);
+#ifdef DEBUG_PRINT
+  print_unacked_cache (1, k);
+#endif /* DEBUG_PRINT */
   pthread_mutex_unlock (&unacked_cache_mutex);
 }
 
@@ -457,7 +490,7 @@ char * get_unacked (const char * contact, keyset k, int * singles, int * ranges)
          unacked++;
          if (unacked >= MAX_UNACKED) {
            *singles = unacked;
-add_to_unacked_cache (contact, k, *singles, *ranges, result);
+           add_to_unacked_cache (contact, k, *singles, *ranges, result);
            return result;
         }
       }
@@ -465,12 +498,45 @@ add_to_unacked_cache (contact, k, *singles, *ranges, result);
   }
   if (unacked == 0) {   /* everything has been acked for this contact and key */
     free (result);
-add_to_unacked_cache (contact, k, *singles, *ranges, NULL);
+    add_to_unacked_cache (contact, k, *singles, *ranges, NULL);
     return NULL;
   }
   *singles = unacked;
-add_to_unacked_cache (contact, k, *singles, *ranges, result);
+  add_to_unacked_cache (contact, k, *singles, *ranges, result);
   return result;
+}
+
+/* if there is a cache of unacked messages, reload.
+ * call if you send a message to this contact
+ * called internally by ack_received if the ack is new */
+void reload_unacked_cache (const char * contact, keyset k)
+{
+  pthread_mutex_lock (&unacked_cache_mutex);
+  int i;
+  for (i = 0; i < unacked_cache_num_entries; i++) {
+    if (k == unacked_cache [i].k) {
+      unacked_cache [i].k = -1;  /* disable this entry for now */
+      unacked_cache [i].singles = 0;
+      unacked_cache [i].ranges = 0;
+      if (unacked_cache [i].result != NULL)
+        free (unacked_cache [i].result);
+      unacked_cache [i].result = NULL;
+      break;
+    }
+  }
+#ifdef DEBUG_PRINT
+  print_unacked_cache (2, k);
+#endif /* DEBUG_PRINT */
+  pthread_mutex_unlock (&unacked_cache_mutex);
+  /* now refill the cache entry by calling get_unacked */
+  int singles;
+  int ranges;
+  char * result = get_unacked (contact, k, &singles, &ranges);
+  if (result != NULL)
+    free (result);    /* never used */
+#ifdef DEBUG_PRINT
+  printf ("reloaded unacked cache for %s, %d\n", contact, k);
+#endif /* DEBUG_PRINT */
 }
 
 /* returns 1 if this sequence number has been acked by all the recipients,

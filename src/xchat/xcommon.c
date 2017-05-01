@@ -1085,6 +1085,13 @@ long long int send_data_message (int sock, const char * peer,
     send_to_contact (data_with_cd, dsize, peer, sock,
                      6, ALLNET_PRIORITY_LOCAL, 1);
   free (data_with_cd);
+  int i;
+  keyset * ks = NULL;
+  int nks = all_keys (peer, &ks);
+  for (i = 0; i < nks; i++)
+    reload_unacked_cache (peer, ks [i]);
+  if (ks != NULL)
+    free (ks);
 #ifdef DEBUG_PRINT
   printf ("sent seq %ju:\n", (uintmax_t)seq);
   print_buffer (data_with_cd, dsize, "sending", 64, 1);
