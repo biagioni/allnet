@@ -27,6 +27,7 @@ struct abc_iface_ip_priv {
 } abc_iface_ip_priv;
 
 abc_iface abc_iface_ip = {
+  .iface_name = NULL,
   .iface_type = ABC_IFACE_TYPE_IP,
   .iface_is_managed = 0,
   .iface_type_args = NULL,

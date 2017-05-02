@@ -336,15 +336,25 @@ static void unmanaged_send_pending (int new_only)
   int priority;
   int backoff;
   queue_iter_start ();
+  static int printed_sendto_error = 0;
   while (queue_iter_next (&message, &nsize, &priority, &backoff)) {
     /* new (unsent) messages have a backoff value of 0 */
     if ((new_only && backoff) || (!new_only && cycle % (1 << backoff) != 0))
       continue;
     if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
                 BC_ADDR (iface), iface->sockaddr_size) < nsize) {
-      if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
-        perror ("abc: sendto");
+      if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {
+        if (! printed_sendto_error) {
+          char error_string [10000];
+          snprintf (error_string, sizeof (error_string),
+                    "abc (%s): sendto", iface->iface_name);
+          perror (error_string);
+          printed_sendto_error = 1;
+        }
+      }
       continue;
+    } else {  /* successful send */
+      printed_sendto_error = 0;
     }
     struct allnet_header * hp = (struct allnet_header *) message;
     if (hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE)
@@ -635,6 +645,10 @@ static void handle_network_message (const char * message, int msize,
     /* check for high-priority message */
     struct allnet_header * hp = (struct allnet_header *) message;
     int cacheable = ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0);
+    if (hp->max_hops <= 0) {  /* got a strange local packet, try to debug */
+      printf ("abc: %d/%d hops\n", hp->hops, hp->max_hops);
+      pipemsg_debug_last_received ("abc");
+    }
     int msgpriority = compute_priority (msize, hp->src_nbits, hp->dst_nbits,
                                         hp->hops, hp->max_hops,
                                         UNKNOWN_SOCIAL_TIER, 1, cacheable);
@@ -939,9 +953,12 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
   if (iface == NULL)
     iface = iface_types [0];   /* ip is the default */
 
-  snprintf (alog->b, alog->s, "read pipe is fd %d, write pipe fd %d\n",
-            rpipe, wpipe);
+  snprintf (alog->b, alog->s, "abc %s, read pipe is fd %d, write pipe fd %d\n",
+            interface, rpipe, wpipe);
   log_print (alog);
+  if ((iface != NULL) && (iface->iface_name == NULL))
+    iface->iface_name = strcpy_malloc (interface, "abc_main iface_name");
+
   struct sigaction sa;
   sa.sa_handler = term_handler;
   sa.sa_flags = 0;

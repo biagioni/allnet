@@ -46,6 +46,8 @@ typedef enum abc_iface_type {
 } abc_iface_type;
 
 typedef struct abc_iface {
+  /* useful for debugging */
+  const char * iface_name;
   /** The interface type this set of callbacks represents */
   abc_iface_type iface_type;
   int iface_is_managed;
