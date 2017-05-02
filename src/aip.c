@@ -1091,14 +1091,14 @@ static int dht_filter_senders (struct sockaddr * sap, socklen_t sasize,
                                struct allnet_mgmt_dht * mdp)
 {
   int result = 0;
-  int n_sender = mdp->num_sender & 0xff;
+  unsigned int n_sender = mdp->num_sender;
 #ifdef DEBUG_PRINT
   snprintf (alog->b, alog->s, "dht_filter_senders %d senders\n", n_sender);
   log_print (alog);
 #endif /* DEBUG_PRINT */
   if (n_sender == 0)
     return 0;   /* nothing to do */
-  int n_dht = mdp->num_dht_nodes & 0xff;
+  unsigned int n_dht = mdp->num_dht_nodes;
   struct sockaddr_in * sin = (struct sockaddr_in *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
 #ifdef DEBUG_PRINT
@@ -1136,7 +1136,7 @@ static int dht_filter_senders (struct sockaddr * sap, socklen_t sasize,
   }
   /* eliminate all non-matching sender addrs */
   if (((found >= 0) && (n_sender > 1)) || ((found < 0) && (n_sender > 0))) {
-    int offset = 0;
+    unsigned int offset = 0;
     if (found >= 0)
       offset = 1;
     if (found > 0)
@@ -1144,7 +1144,7 @@ static int dht_filter_senders (struct sockaddr * sap, socklen_t sasize,
     if (n_sender > 0)
       for (i = 0; i < n_dht; i++)
         mdp->nodes [i + offset] = mdp->nodes [i + n_sender];
-    result = (mdp->num_sender - offset) * sizeof (struct addr_info);
+    result = (n_sender - offset) * sizeof (struct addr_info);
     mdp->num_sender = offset;
   }
   return result;
@@ -1250,6 +1250,9 @@ record_message (p);
 snprintf (alog->b, alog->s, "%d senders, %d nodes\n",
 mdp->num_sender, mdp->num_dht_nodes);
 log_print (alog);
+    if (msize < ALLNET_DHT_SIZE (hp->transport,
+                                 (mdp->num_sender + mdp->num_dht_nodes)))
+      return 0;
     if ((mdp->num_sender == 0) && (mdp->num_dht_nodes == 0)) {
       /* ping req from behind a NAT/firewall */
       send_dht_ping_response (sap, sasize, hp, udp);
