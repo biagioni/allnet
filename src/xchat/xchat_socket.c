@@ -351,7 +351,7 @@ static char * find_java_path ()
 #define CYGDRIVE_STR	"/cygdrive/"
 #define CYGDRIVE_LEN	(strlen (CYGDRIVE_STR))
     if (strncmp (test, CYGDRIVE_STR, CYGDRIVE_LEN) == 0) {
-      char drive [2] = "C:";  /* usually the C drive, but you never know */
+      char drive [] = "C:";  /* usually the C drive, but you never know */
       drive [0] = toupper (test [CYGDRIVE_LEN]);
       char * test2 =
         strcat_malloc (drive, test + CYGDRIVE_LEN + 1, "find_java_path 3");
