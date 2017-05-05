@@ -415,7 +415,7 @@ static void main_loop (int wsock, pd p,
 #ifdef DEBUG_PRINT
     print_packet (message, found, "traced received", 1);
 #endif /* DEBUG_PRINT */
-    if ((found > 0) && (is_valid_message (message, found))) {
+    if ((found > 0) && (is_valid_message (message, found, NULL))) {
       acknowledge_bcast (wsock, message, (unsigned int) found);
       respond_to_trace (wsock, message, (unsigned int) found,
                         pri + 1, my_address, nbits, match_only, forward_only);

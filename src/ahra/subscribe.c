@@ -65,9 +65,12 @@ static int send_key_request (int sock, char * phrase, char * source, int slen,
 static int handle_packet (char * message, int msize,
                           char * ahra, char * address, int alen, int debug)
 {
-  if (! is_valid_message (message, msize)) {
-    if (debug)
-      print_buffer (message, msize, "got invalid message", 32, 1);
+  char * reason = NULL;
+  if (! is_valid_message (message, msize, &reason)) {
+    if (debug) {
+      printf ("got invalid message: %s ", reason);
+      print_buffer (message, msize, NULL, 32, 1);
+    }
     return 0;
   }
   if (debug)

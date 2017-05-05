@@ -127,7 +127,8 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
                         unsigned char * dst, unsigned int dbits,
                         unsigned int hops, unsigned int priority,
                         const char * expiration,
-                        int do_ack, const unsigned char * ack, int do_save)
+                        int do_ack, const unsigned char * ack, int do_save,
+                        int debug_sending)
 {
   if (dsize <= 0)
     return 0;
@@ -257,6 +258,10 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
     exit (1);
   }
   char * message = (char *) hp;
+if (0 && debug_sending) {
+print_buffer (message, psize, "created packet", psize, 1);
+print_buffer (encrypted, esize, "encrypted", esize, 1);
+if (ssize > 0) print_buffer (signature, ssize, "sig", ssize, 1); }
 
   memcpy (message + hsize, encrypted, esize);
   if (encrypted != NULL) free (encrypted);
@@ -274,6 +279,7 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
 #ifdef DEBUG_PRINT
   print_packet (message, msize, "sending", 1);
 #endif /* DEBUG_PRINT */
+if ((readb16 (message + hsize + esize + ssize) != 512)) print_buffer (message, msize, "final", msize, 1);
   int result = 1;
   if (! send_pipe_message_free (sock, message, msize, priority, log)) {
     perror ("send_pipe_message_free");
@@ -296,7 +302,7 @@ int resend_packet (char * data, unsigned int dsize, const char * contact,
   unsigned char ack [MESSAGE_ID_SIZE];
   memcpy (ack, data, MESSAGE_ID_SIZE);
   return send_to_one (key, data, dsize, contact, sock, NULL, ADDRESS_BITS,
-                      NULL, ADDRESS_BITS, hops, priority, NULL, 1, ack, 0);
+                      NULL, ADDRESS_BITS, hops, priority, NULL, 1, ack, 0, 1);
 }
 
 /* send to the contact's specific key, returning 1 if successful, 0 otherwise */
@@ -312,7 +318,7 @@ int send_to_key (char * data, unsigned int dsize,
   unsigned int dbits = get_remote (key, dst);
   return send_to_one (key, data, dsize, contact, sock,
                       src, sbits, dst, dbits, hops, priority,
-                      expiration, do_ack, NULL, do_save);
+                      expiration, do_ack, NULL, do_save, 0);
 }
 
 static unsigned long long int

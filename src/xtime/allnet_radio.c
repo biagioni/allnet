@@ -22,9 +22,12 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   struct timeval receive_time;
   gettimeofday (&receive_time, NULL);
 
-  if (! is_valid_message (message, msize)) {
-    if (debug)
+  char * reason;
+  if (! is_valid_message (message, msize, &reason)) {
+    if (debug) {
+      printf ("%s ", reason);
       print_buffer (message, msize, "got invalid message", 32, 1);
+    }
     return 0;
   }
   if (debug)

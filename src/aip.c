@@ -449,8 +449,13 @@ static void forward_message (int * fds, int num_fds, int udp, void * udp_cache,
   snprintf (alog->b, alog->s, "forward_message %d fds\n", num_fds);
   log_print (alog);
 #endif /* LOG_PACKETS */
-  if (! is_valid_message (message, msize))
+  char * reason = NULL;
+  if (! is_valid_message (message, msize, &reason)) {
+#ifdef DEBUG_PRINT
+    printf ("message is not valid: %s\n", reason);
+#endif /* DEBUG_PRINT */
     return;
+  }
   struct allnet_header * hp = (struct allnet_header *) message;
   dht_save_cached (hp, msize);
 
@@ -1326,12 +1331,13 @@ record_message (info->pipe_descriptor);
     int result = receive_pipe_message_fd (info->pipe_descriptor, 1000,
                                           &message, udp, sap, &sasize,
                                           &fd, &priority);
-    int valid = ((result > 0) && (is_valid_message (message, result)));
+    char * reason = NULL;
+    int valid = ((result > 0) && (is_valid_message (message, result, &reason)));
     if ((result > 0) && (! valid)) {  /* not a valid message */
       int off =
         snprintf (alog->b, alog->s,
-                  "aip invalid packet from %d/udp %d ad %d, size %d pri %d\n",
-                  fd, udp, rpipe, result, priority);
+                  "aip invalid (%s) from %d/udp %d ad %d, size %d pri %d\n",
+                  reason, fd, udp, rpipe, result, priority);
       off += buffer_to_string (message, result, "aip invalid packet", 100, 1,
                                alog->b + off, alog->s - off);
       log_print (alog);

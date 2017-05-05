@@ -335,6 +335,7 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
  * no need to try again with write. */
   int is_partial_send =
     ((w > 0) && (w < blen) &&
+/* On some systems, e.g. linux in 2017, EAGAIN is the same as EWOULDBLOCK */
 /* I am not sure why we get enotsock on partial sends, but we do */
      ((errno == EAGAIN) || (errno == EWOULDBLOCK) || (errno == ENOTSOCK)));
   if ((w < 0) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
@@ -346,7 +347,7 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
     static int partial_printed = -1;
     if (partial_printed != pipe) {
       snprintf (log->b, log->s,
-                "pipe %d, result %d, wanted %d, original errno %d\n",
+                "pipe %d, partial result %d, wanted %d, original errno %d\n",
                 pipe, (int)w, blen, save_errno);
       log_error (log, "send_pipe_msg partial send");
       partial_printed = pipe;
@@ -368,8 +369,8 @@ print_result_of_write = 1;
 }
       w = write (pipe, buffer, blen); 
 if (print_result_of_write) {
-snprintf (log->b, log->s, "result of write %zd, errno %d on fd %d\n",
-          w, errno, pipe);
+snprintf (log->b, log->s, "result of write %zd/%d, errno %d on fd %d\n",
+          w, blen, errno, pipe);
 log_print (log);
 }
       is_send = 0;

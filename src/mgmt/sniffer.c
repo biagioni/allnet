@@ -51,7 +51,9 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
   gettimeofday (&receive_time, NULL);
   int max = (full_payloads ? msize : 40);
 
-  if (! is_valid_message (message, msize)) {
+  char * reason = NULL;
+  if (! is_valid_message (message, msize, &reason)) {
+    printf ("%s: ", reason);
     print_buffer (message, msize, "got invalid message", max, 1);
     return 0;
   }

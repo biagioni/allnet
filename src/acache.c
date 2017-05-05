@@ -1090,7 +1090,7 @@ static int hash_random_match (int fd, unsigned int max_size,
   int match = packet_matches (rd, *message, *msize, ptime);
   if (match == 0)
     return 0;
-  if (! is_valid_message (*message, *msize))
+  if (! is_valid_message (*message, *msize, NULL))
     return 0;   /* message may have expired */
   set_bit (bf, bf_index);   /* mark it as sent */
   return 1;
@@ -1159,7 +1159,7 @@ static int hash_next_match (int fd, unsigned int max_size, int first_call,
     int match = packet_matches (rd, *message, *msize, ptime);
     if (match == 0)
       continue;   /* try again with the next entry */
-    if (! is_valid_message (*message, *msize))
+    if (! is_valid_message (*message, *msize, NULL))
       continue;   /* message may have expired, try again with the next entry */
 #ifdef ALLNET_USE_THREADS
     pthread_mutex_unlock (&mutex);
@@ -1184,7 +1184,7 @@ static int delete_gc_message (char * message, unsigned int msize,
   if ((msize <= ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE) || (msize > ALLNET_MTU) ||
       (id_off < ALLNET_HEADER_SIZE) || (id_off + MESSAGE_ID_SIZE > msize))
     return 1;  /* bad message, no need to keep */
-  if (! is_valid_message (message, msize))
+  if (! is_valid_message (message, msize, NULL))
     return 1;  /* message may have expired, no need to keep */
   int file_pos = (int)next_prev_position (end_pos, msize);
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -1287,6 +1287,21 @@ static void gc (int fd, unsigned int max_size)
   print_stats (1, copied, "gc");
 }
 
+static void debug_message_sig_size (char * message, int msize,
+                                    const char * action)
+{
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if (hp->sig_algo != ALLNET_SIGTYPE_NONE) {
+    int length = readb16 (message + (msize - 2));
+    if (length != 512) {
+      printf ("%s cached message with weird signature size %d\n",
+              action, length);
+      print_packet (message, msize, "message", 1);
+      print_buffer (message, msize, "message bytes", msize, 1);
+    }
+  }
+}
+
 static unsigned long long int num_msg_saves = 0;
 static unsigned long long int last_msg_time = 0;
 
@@ -1304,10 +1319,11 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
     log_print (alog);
     return;
   }
+debug_message_sig_size (message, msize, "saving");
   writeb16 (mbuffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET, msize);
   writeb16 (mbuffer + MESSAGE_ENTRY_HEADER_IDOFF_OFFSET, id_off);
   writeb32 (mbuffer + MESSAGE_ENTRY_HEADER_PRIORITY_OFFSET, priority);
-  long long int now = allnet_time ();
+  unsigned long long int now = allnet_time ();
   writeb64 (mbuffer + MESSAGE_ENTRY_HEADER_TIME_OFFSET, now);
   memcpy (mbuffer + MESSAGE_ENTRY_HEADER_SIZE, message, msize);
   int count = 0;
@@ -1499,6 +1515,11 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
                  ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
                  hp->source, hp->src_nbits, NULL, NULL);
   int hsize = ALLNET_SIZE (reply->transport);
+  /* sanity checks.  acks should have transport = 0, so a header size of 24 */
+  if (hsize != 24)
+    printf ("acache error, hsize %d\n", hsize);
+  if (reply->transport != 0)
+    printf ("acache error 1, transport %d\n", hp->transport);
   char * message_acks = packet + hsize;
   /* add as many acks as possible, beginning from a random starting point. */
   unsigned char zero [MESSAGE_ID_SIZE];
@@ -1525,7 +1546,12 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
     /* if we are done, or if we have max_acks to send, send what we have */
     if ((msg_index > 0) && (finished || (msg_index == ALLNET_MAX_ACKS))) {
       int send_size = hsize + msg_index * MESSAGE_ID_SIZE;
+      /* more sanity checks, trying to find who is sending bogus packets */
+      if (reply->transport != 0)
+        printf ("acache error 2, transport %d\n", hp->transport);
       send_pipe_message (sock, packet, send_size, priority, alog);
+      if (reply->transport != 0)
+        printf ("acache error 3, transport %d\n", hp->transport);
       count += msg_index;
       msg_index = 0;
     }
@@ -1533,11 +1559,11 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
   return count;
 }
 
+/*
 static void debug_resend_message (char * message, int msize,
                                   struct allnet_header * hp,
                                   int local_request, int64_t position)
 {
-#if 0  /* not ready for prime time */
   if (hp->sig_algo != ALLNET_SIGTYPE_NONE) {
     int length = readb16 (message + (msize - 2));
     if (length != 512) {
@@ -1546,8 +1572,8 @@ static void debug_resend_message (char * message, int msize,
       print_buffer (message, msize, "message bytes", msize, 1);
     }
   }
-#endif /* 0 */
 }
+*/
 
 static void resend_message (char * message, int msize, int64_t position,
                             int *priorityp, int local_request, int sock)
@@ -1560,7 +1586,7 @@ static void resend_message (char * message, int msize, int64_t position,
   log_print (alog);
 #endif /* LOG_PACKETS */
   struct allnet_header * send_hp = (struct allnet_header *) message;
-debug_resend_message (message, msize, send_hp, local_request, position);
+debug_message_sig_size (message, msize, "sending");
   int saved_max = send_hp->max_hops;
   if (local_request)  /* only forward locally */
     send_hp->max_hops = send_hp->hops;

@@ -282,7 +282,7 @@ void keyd_thread (char * pname, int rpipe, int wpipe)
       log_print (private_log);
       exit (1);
     }
-    if ((found > 0) && (is_valid_message (message, found)))
+    if ((found > 0) && (is_valid_message (message, found, NULL)))
       handle_packet (wpipe, message, found);
     if (found > 0)
       free (message);
@@ -310,7 +310,7 @@ void keyd_main (char * pname)
       log_print (alog);
       exit (1);
     }
-    if ((found > 0) && (is_valid_message (message, found)))
+    if ((found > 0) && (is_valid_message (message, found, NULL)))
       handle_packet (sock, message, found);
     if (found > 0)
       free (message);

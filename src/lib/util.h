@@ -252,8 +252,11 @@ extern void writeb64u (unsigned char * p, unsigned long long int value);
 /* essentially the same as htons, but sometimes easier to find */
 extern int allnet_htons (int hostshort);
 
-/* returns 1 if the message is valid, 0 otherwise */
-extern int is_valid_message (const char * packet, unsigned int size);
+/* returns 1 if the message is valid, 0 otherwise.
+ * If returns zero and error_desc is not NULL, it is filled with
+ * a description of the error -- do not modify in any way. */
+extern int is_valid_message (const char * packet, unsigned int size,
+                             char ** error_desc);
 
 extern void print_gethostbyname_error (const char * hostname,
                                        struct allnet_log * log);

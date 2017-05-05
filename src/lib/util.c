@@ -365,9 +365,10 @@ void packet_to_string (const char * buffer, unsigned int bsize,
   int off = 0;
   if ((desc != NULL) && (strlen (desc) > 0))
     off = snprintf (to, itsize, "%s ", desc);
-  if (! is_valid_message (buffer, bsize)) {
-    snprintf (to + off, minz (itsize, off), "invalid message of size %d%s",
-              bsize, (print_eol) ? "\n" : "");
+  char * reason = NULL;
+  if (! is_valid_message (buffer, bsize, &reason)) {
+    snprintf (to + off, minz (itsize, off), "invalid message (%s) of size %d%s",
+              reason, bsize, (print_eol) ? "\n" : "");
     return;
   }
   struct allnet_header * hp = (struct allnet_header *) buffer;
@@ -1493,14 +1494,18 @@ int allnet_htons (int hostshort)
   return readb16 (buffer);
 }
 
-/* returns 1 if the message is valid, 0 otherwise */
-int is_valid_message (const char * packet, unsigned int size)
+/* returns 1 if the message is valid, 0 otherwise
+ * If returns zero and error_desc is not NULL, it is filled with
+ * a description of the error -- do not modify in any way. */
+extern int is_valid_message (const char * packet, unsigned int size,
+                             char ** error_desc)
 {
   if (size < (int) ALLNET_HEADER_SIZE) {
 /*
     printf ("received a packet with %d bytes, %zd required\n",
             size, ALLNET_HEADER_SIZE);
 */
+    if (error_desc != NULL) *error_desc = "packet size less than header size";
     return 0;
   }
 /* received a message with a header */
@@ -1517,10 +1522,17 @@ int is_valid_message (const char * packet, unsigned int size)
 sleep (60);
 ah->version = 0;
 printf ("time to crash %d\n", 1000 / ah->version); */
+    if (error_desc != NULL) {
+      if (ah->hops > ah->max_hops) *error_desc = "hops > max_hops";
+      if (ah->dst_nbits > ADDRESS_BITS) *error_desc = "dst_nbits > 64";
+      if (ah->src_nbits > ADDRESS_BITS) *error_desc = "src_nbits > 64";
+      if (ah->version != ALLNET_VERSION) *error_desc = "version number";
+    }
     return 0;
   }
   if ((ah->message_type < ALLNET_TYPE_DATA) ||
       (ah->message_type > ALLNET_TYPE_MGMT)) {  /* nonsense packet */
+    if (error_desc != NULL) *error_desc = "bad message type";
     return 0;
   }
 /* check the validity of the packet, as defined in packet.h */
@@ -1532,6 +1544,7 @@ printf ("time to crash %d\n", 1000 / ah->version); */
               "received message type %d, transport 0x%x != 0",
               ah->message_type, ah->transport);
 pipemsg_debug_last_received (buffer);
+    if (error_desc != NULL) *error_desc = "ack or req with nonzero transport";
     return 0;
   }
   int payload_size = size -
@@ -1541,17 +1554,20 @@ pipemsg_debug_last_received (buffer);
     printf ("received ack message, but size %d(%d) mod %d == %d != 0\n",
             payload_size, size, MESSAGE_ID_SIZE,
             payload_size % MESSAGE_ID_SIZE);
+    if (error_desc != NULL) *error_desc = "ack size not multiple of 16";
     return 0;
   }
   if (((ah->transport & ALLNET_TRANSPORT_ACK_REQ) != 0) &&
       (payload_size < MESSAGE_ID_SIZE)) {
     printf ("message has size %d (%d), min %d\n",
             payload_size, size, MESSAGE_ID_SIZE);
+    if (error_desc != NULL) *error_desc = "insufficient room for message ID";
     return 0;
   }
   if (((ah->transport & ALLNET_TRANSPORT_ACK_REQ) == 0) &&
       ((ah->transport & ALLNET_TRANSPORT_LARGE) != 0)) {
     printf ("large message missing ack bit\n");
+    if (error_desc != NULL) *error_desc = "large message missing ack bit";
     return 0;
   }
   if (((ah->transport & ALLNET_TRANSPORT_EXPIRATION) != 0)) {
@@ -1562,18 +1578,25 @@ pipemsg_debug_last_received (buffer);
    /* fairly common, no need to print
       printf ("expired packet, %lld < %ld (ep %p)\n",
               readb64 (ep), now - ALLNET_Y2K_SECONDS_IN_UNIX, ep); */
+      if (error_desc != NULL) *error_desc = "expired packet";
       return 0;
     }
   }
   if (ah->sig_algo != ALLNET_SIGTYPE_NONE) {
     unsigned int hsize = ALLNET_SIZE (ah->transport);
-    if (size <= hsize + 2)  /* not enough room for signature length */
+    if (size <= hsize + 2) { /* not enough room for signature length */
+      if (error_desc != NULL) *error_desc = "too small for signature length";
       return 0;
+    }
     unsigned int length = readb16 (packet + (size - 2));
-    if (length <= 0)         /* not enough room for a signature */ 
+    if (length <= 0) {       /* not enough room for a signature */ 
+      if (error_desc != NULL) *error_desc = "too small for signature";
       return 0;
-    if (size <= length + 2)  /* not enough room for any data */ 
+    }
+    if (size <= length + 2) { /* not enough room for any data */ 
+      if (error_desc != NULL) *error_desc = "too small for data";
       return 0;
+    }
   }
   return 1;
 }

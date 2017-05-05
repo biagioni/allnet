@@ -1016,7 +1016,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
   do_request_and_resend (sock);
   if (acks != NULL)
     acks->num_acks = 0;
-  if (! is_valid_message (packet, psize))
+  if (! is_valid_message (packet, psize, NULL))
     return 0;
 
   struct allnet_header * hp = (struct allnet_header *) packet;

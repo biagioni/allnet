@@ -512,8 +512,12 @@ static void handle_packet (char * message, int msize, char * seeking,
                            struct allnet_log * alog)
 {
 /* print_packet (message, msize, "handle_packet got", 1); */
-  if (! is_valid_message (message, msize))
+  char * reason = NULL;
+  if (! is_valid_message (message, msize, &reason)) {
+    snprintf (alog->b, alog->s, "trace_util invalid packet: %s\n",
+              reason);
     return;
+  }
   struct allnet_header * hp = (struct allnet_header *) message;
 
   int min_size = ALLNET_TRACE_REPLY_SIZE (0, 1);

@@ -681,9 +681,10 @@ static void handle_quiet (struct timeval * quiet_end, pd p,
     unsigned int priority;
     int msize = receive_until (quiet_end, &message, p, &from_fd, &priority);
     if (msize > 0) {
-      if (is_valid_message (message, msize)) {
-        /* printf ("abc.c handle_quiet: %d-byte message from %d (ad is %d)\n",
-                msize, from_fd, rpipe); */
+      char * reason = NULL;
+      if (is_valid_message (message, msize, &reason)) {
+        /* printf ("abc.c handle_quiet: (%s) %d-byte message from %d (ad is %d)\n",
+                reason, msize, from_fd, rpipe); */
         if (from_fd == rpipe)
           handle_ad_message (message, msize, priority);
         else
@@ -711,7 +712,7 @@ static void unmanaged_handle_until (struct timeval * t, pd p,
     unsigned int priority;
     int msize = receive_until (t, &message, p, &fd, &priority);
     if (msize > 0) {
-      if (is_valid_message (message, msize)) {
+      if (is_valid_message (message, msize, NULL)) {
         if (fd == rpipe) {
           handle_ad_message (message, msize, priority);
           unmanaged_send_pending (1);
@@ -743,7 +744,7 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     enum abc_send_type send_type = ABC_SEND_TYPE_NONE;
     int send_size = 0;
     static char send_message [ALLNET_MTU];
-    if ((msize > 0) && (is_valid_message (message, msize))) {
+    if ((msize > 0) && (is_valid_message (message, msize, NULL))) {
       if (fd == rpipe)
         handle_ad_message (message, msize, priority);
       else
