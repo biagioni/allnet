@@ -262,6 +262,7 @@ static void init_pipes (int * pipes, int num_pipes)
   for (i = 0; i < num_pipes; i++) {
     int pipefd [2];
 #ifdef ALLNET_USE_FORK
+#ifdef USE_PIPES
     if (pipe (pipefd) < 0) {
       perror ("pipe");
       printf ("error creating pipe set %d\n", i);
@@ -269,6 +270,15 @@ static void init_pipes (int * pipes, int num_pipes)
       log_print (alog);
       exit (1);
     }
+#else /* ! USE_PIPES */
+    if (socketpair (AF_LOCAL, SOCK_STREAM, 0, pipefd) < 0) {
+      perror ("socketpair");
+      printf ("error creating socket pair %d\n", i);
+      snprintf (alog->b, alog->s, "error creating socket pair %d\n", i);
+      log_print (alog);
+      exit (1);
+    }
+#endif /* USE_PIPES */
     set_nonblock (pipefd [0]);
     set_nonblock (pipefd [1]);
 #else /* ! ALLNET_USE_FORK -- create queues instead */
