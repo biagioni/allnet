@@ -1287,7 +1287,7 @@ static void gc (int fd, unsigned int max_size)
   print_stats (1, copied, "gc");
 }
 
-static void debug_message_sig_size (char * message, int msize,
+static int debug_message_sig_size (char * message, int msize,
                                     const char * action)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -1298,8 +1298,10 @@ static void debug_message_sig_size (char * message, int msize,
               action, length);
       print_packet (message, msize, "message", 1);
       print_buffer (message, msize, "message bytes", msize, 1);
+      return 1;
     }
   }
+  return 0;
 }
 
 static unsigned long long int num_msg_saves = 0;
@@ -1319,7 +1321,10 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
     log_print (alog);
     return;
   }
-debug_message_sig_size (message, msize, "saving");
+if (debug_message_sig_size (message, msize, "saving")) {
+snprintf (alog->b, alog->s, "odd signature size, not saving packet\n");
+log_print (alog);
+return;   }
   writeb16 (mbuffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET, msize);
   writeb16 (mbuffer + MESSAGE_ENTRY_HEADER_IDOFF_OFFSET, id_off);
   writeb32 (mbuffer + MESSAGE_ENTRY_HEADER_PRIORITY_OFFSET, priority);
@@ -1586,7 +1591,10 @@ static void resend_message (char * message, int msize, int64_t position,
   log_print (alog);
 #endif /* LOG_PACKETS */
   struct allnet_header * send_hp = (struct allnet_header *) message;
-debug_message_sig_size (message, msize, "sending");
+if (debug_message_sig_size (message, msize, "sending")) {
+snprintf (alog->b, alog->s, "odd signature size, not sending packet\n");
+log_print (alog);
+return;   }
   int saved_max = send_hp->max_hops;
   if (local_request)  /* only forward locally */
     send_hp->max_hops = send_hp->hops;
