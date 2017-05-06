@@ -484,6 +484,8 @@ snprintf (ebadfbuf, EBADFBUFS,
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
   close (fd);
+/* printf ("load_peers complete:\n");
+print_dht (0); */
   int i;
   int cpeers = 0;
   int cpings = 0;
@@ -731,22 +733,30 @@ static void delete_ping (struct addr_info * addr)
 
 /* either adds or refreshes a DHT entry.
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
-int routing_add_dht (struct addr_info * addr)
+int routing_add_dht (struct addr_info * addrp)
 {
   int result = -1;
+  struct addr_info addr = *addrp;
+  /* sanity check first */
+  if (addr.nbits > ADDRESS_BITS) {
+    printf ("routing_add_dht given address with %d > %d bits, not saving\n",
+            addr.nbits, ADDRESS_BITS);
+    print_addr_info (&addr);
+    return -1;
+  }
   pthread_mutex_lock (&mutex);
   init_peers (0);
-  if ((addr->nbits == ADDRESS_BITS) &&
-      (addr->type == ALLNET_ADDR_INFO_TYPE_DHT)) {
-    int bit_pos = matching_bits (addr->destination, ADDRESS_BITS,
+  if ((addr.nbits == ADDRESS_BITS) &&
+      (addr.type == ALLNET_ADDR_INFO_TYPE_DHT)) {
+    int bit_pos = matching_bits (addr.destination, ADDRESS_BITS,
                                  (unsigned char *) my_address, ADDRESS_BITS);
 #ifdef DEBUG_PRINT
     printf ("adding at bit position %d, address ", bit_pos);
     print_addr_info (addr);
 #endif /* DEBUG_PRINT */
     int index = bit_pos * PEERS_PER_BIT;
-    int found = find_peer (peers + index, PEERS_PER_BIT, addr);
-    int ip_index = find_ip (&(addr->ip));
+    int found = find_peer (peers + index, PEERS_PER_BIT, &addr);
+    int ip_index = find_ip (&(addr.ip));
     /* there should not be any others with the same IP.  If found, delete */
     if ((found < 0) && (ip_index >= 0))
       peers [ip_index].ai.nbits = 0;
@@ -765,10 +775,10 @@ int routing_add_dht (struct addr_info * addr)
     /* if found < 0 (limit is PEERS_PER_BIT - 1), drop the last address */
     for (i = limit; i > 0; i--)
       peers [index + i] = peers [index + i - 1]; 
-    peers [index].ai = *addr;   /* put this one in front */
+    peers [index].ai = addr;   /* put this one in front */
     peers [index].refreshed = 1;
     if (found < 0)   /* if it is in the ping list, delete it from there */
-      delete_ping (addr);
+      delete_ping (&addr);
   }
   static unsigned long long int last_saved = 0;
   int save = result > 0;
@@ -978,8 +988,14 @@ int routing_ping_iterator (int iter, struct addr_info * ai)
   if ((iter < MAX_PINGS) && (ai != NULL))
     *ai = pings [iter].ai;
   pthread_mutex_unlock (&mutex);
-  if (iter < MAX_PINGS)
+  if (iter < MAX_PINGS) {
+    if (pings [iter].ai.nbits > ADDRESS_BITS) {
+      printf ("error: routing_ping_iterator %d/%d returning %d > %d bits\n",
+              iter, MAX_PINGS, pings [iter].ai.nbits, ADDRESS_BITS);
+      print_addr_info (&(pings [iter].ai));
+    }
     return iter + 1;
+  }
   return -1;
 }
 
