@@ -153,7 +153,6 @@ int main (int argc, char ** argv)
   gettimeofday (&deadline, NULL);
   add_time (&deadline, wait_time);
   int max_wait = until_deadline (&deadline);
-  int ack_seen = 0;
   while (exchanging_key || (max_wait > 0)) {
     char * packet;
     int pipe;
@@ -196,25 +195,23 @@ int main (int argc, char ** argv)
       exchanging_key = 0;
     }
   /* handle_packet may change what has been acked */
-    if ((ack_expected) && (! ack_seen)) {
-      int i;
-      for (i = 0; (! ack_seen) && (i < acks.num_acks); i++) {
-        if ((seq == acks.acks [i]) && (strcmp (contact, acks.peers [i]) == 0)) {
-          struct timeval finish;
-          gettimeofday (&finish, NULL);   /* how long did the ack take? */
-          long long int delta = (finish.tv_sec  - start.tv_sec ) * 1000000LL +
-                                (finish.tv_usec - start.tv_usec);
-          printf ("got ack from %s in %lld.%06llds\n", contact,
-                  delta / 1000000, delta % 1000000);
-
-          gettimeofday (&deadline, NULL);   /* wait another wait_time */
-          add_time (&deadline, wait_time);  /* for additional messages */
-          ack_seen = 1;
-        }
+    int i;
+    for (i = 0; i < acks.num_acks; i++) {
+      if ((ack_expected) && (! (acks.duplicates [i])) &&
+          (seq == acks.acks [i]) && (strcmp (contact, acks.peers [i]) == 0)) {
+        struct timeval finish;
+        gettimeofday (&finish, NULL);   /* how long did the ack take? */
+        long long int delta = (finish.tv_sec  - start.tv_sec ) * 1000000LL +
+                              (finish.tv_usec - start.tv_usec);
+        printf ("got ack from %s in %lld.%06llds\n", contact,
+                delta / 1000000, delta % 1000000);
+        gettimeofday (&deadline, NULL);   /* wait another wait_time */
+        add_time (&deadline, wait_time);  /* for additional messages */
+        ack_expected = 0;
       }
-      for (i = 0; i < acks.num_acks; i++)
-        free (acks.peers [i]);
     }
+    for (i = 0; i < acks.num_acks; i++)
+      free (acks.peers [i]);
     if (mlen > 0) {
       free (peer);
       free (message);

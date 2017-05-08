@@ -57,9 +57,11 @@ extern void save_incoming (const char * contact, keyset k,
  * if contact is not NULL, the contact is set to point to the
  * contact name (dynamically allocated, must be free'd) and
  * if kset is not null, the location it points to is set to the keyset
+ * if new_ack is not null, the location it points to is set 1 if
+ * this is an ack we have not seen before
  */
 extern uint64_t ack_received (const char * message_ack,
-                              char ** contact, keyset * kset);
+                              char ** contact, keyset * kset, int * new_ack);
 
 /* returns a new (malloc'd) array, or NULL in case of error */
 /* the new array has (singles + 2 * ranges) * COUNTER_SIZE bytes. */
@@ -79,8 +81,8 @@ extern char * get_missing (const char * contact, keyset k,
 extern char * get_unacked (const char * contact, keyset k,
                            int * singles, int * ranges);
 /* if there is a cache of unacked messages, reload.
- * call if you send a message to this contact
- * called internally by ack_received if the ack is new */
+ * call if you send a message to this contact or
+ * if you get a new ack for this contact */
 extern void reload_unacked_cache (const char * contact, keyset k);
 
 /* returns 1 if this sequence number has been acked by all the recipients,

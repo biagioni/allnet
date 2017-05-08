@@ -182,14 +182,19 @@ void save_incoming (const char * contact, keyset k,
  * if contact is not NULL, the contact is set to point to the
  * contact name (dynamically allocated, must be free'd) and
  * if kset is not null, the location it points to is set to the keyset
+ * if new_ack is not null, the location it points to is set 1 if
+ * this is an ack we have not seen before
  */
-uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
+uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset,
+                       int * new_ack)
 {
   char ** contacts = NULL;
   if (contact != NULL)
     *contact = NULL;
   if (kset != NULL)
     *kset = -1;
+  if (new_ack != NULL)
+    *new_ack = 0;
   int nc = all_contacts (&contacts);
   int c;
   for (c = 0; c < nc; c++) {
@@ -203,7 +208,8 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset)
         if (! find_ack (contacts [c], ksets [k], message_ack, MSG_TYPE_ACK)) {
           save_record (contacts [c], ksets [k], MSG_TYPE_ACK, seq,
                        0, 0, 0, message_ack, NULL, 0);
-          reload_unacked_cache (contacts [c], ksets [k]);
+          if (new_ack != NULL)
+            *new_ack = 1;
         }
         if (contact != NULL)
           *contact = strcpy_malloc (contacts [c], "ack_received");

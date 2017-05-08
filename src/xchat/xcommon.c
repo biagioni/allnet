@@ -244,6 +244,7 @@ void xchat_end (int sock)
   close (sock);
 }
 
+#ifdef TRACK_RECENTLY_SENT_ACKS   /* no longer seems useful */
 #define NUM_ACKS	100
 /* initial contents should not matter, accidental match is unlikely */
 static char recently_sent_acks [NUM_ACKS] [MESSAGE_ID_SIZE];
@@ -257,6 +258,7 @@ static int is_recently_sent_ack (char * message_ack)
       return 1;
   return 0;
 }
+#endif /* TRACK_RECENTLY_SENT_ACKS */
 
 /* send an ack for the given message and message ID */
 static void send_ack (int sock, struct allnet_header * hp,
@@ -274,10 +276,12 @@ static void send_ack (int sock, struct allnet_header * hp,
     create_ack (hp, message_ack, NULL, ADDRESS_BITS, &size);
   if (ackp == NULL)
     return;
+#ifdef TRACK_RECENTLY_SENT_ACKS   /* no longer seems useful */
   /* also save in the (very likely) event that we receive our own ack */
   currently_sent_ack = (currently_sent_ack + 1) % NUM_ACKS;
   memcpy (recently_sent_acks [currently_sent_ack], message_ack,
           MESSAGE_ID_SIZE);
+#endif /* TRACK_RECENTLY_SENT_ACKS */
 #ifdef DEBUG_PRINT
   printf ("sending ack to contact %s: ", contact);
   print_packet ((char *) ackp, size, "ack", 1);
@@ -379,28 +383,35 @@ static void handle_ack (int sock, char * packet, unsigned int psize,
   for (i = 0; i < count; i++) {
     char * peer = NULL;
     keyset kset;
-    long long int ack_number = ack_received (ack, &peer, &kset);
+    int new_ack = 0;
+    long long int ack_number = ack_received (ack, &peer, &kset, &new_ack);
     int free_peer = (peer != NULL);
     if ((ack_number > 0) && (peer != NULL)) {
       if ((acks != NULL) && (ack_count < ALLNET_MAX_ACKS)) {
         acks->acks [ack_count] = ack_number;
         acks->peers [ack_count] = peer;
+        acks->duplicates [ack_count] = (! new_ack);
         free_peer = 0;   /* saving ack, do not free the peer string */
       }
       ack_count++;
+      if (new_ack) {
+        reload_unacked_cache (peer, kset);
+        request_and_resend (sock, peer, kset, 1);
+      }
 #ifdef DEBUG_PRINT
-      printf ("sequence number %lld acked\n", ack_number);
+      printf ("sequence number %lld acked%s\n", ack_number,
+              new_ack ? ", (new)" : "");
 #endif /* DEBUG_PRINT */
-      request_and_resend (sock, peer, kset, 1);
-/*    } else if (ack_number == -2) {
-      printf ("packet acked again\n"); */
-    } else if (is_recently_sent_ack (ack)) {
+    }
+#ifdef TRACK_RECENTLY_SENT_ACKS   /* no longer seems useful */
+      else if (is_recently_sent_ack (ack)) {
       /* printf ("received my own ack\n"); */
     } else {
       /* print_buffer (ack, MESSAGE_ID_SIZE, "unknown ack rcvd",
                     MESSAGE_ID_SIZE, 1); */
     }
     fflush (NULL);
+#endif /* TRACK_RECENTLY_SENT_ACKS */
     if (free_peer)
       free (peer);
     ack += MESSAGE_ID_SIZE;
