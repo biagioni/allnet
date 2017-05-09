@@ -1282,7 +1282,7 @@ log_print (alog);
 static void main_loop (int rpipe, int wpipe, struct listen_info * info)
 {
   int udp = udp_socket (100);
-  void * udp_cache = cache_init (128, free, "aip UPD cache");
+  void * udp_cache = cache_init (128, free, "aip UDP cache");
   int removed_listener = 0;
   time_t last_listen = 0;
   time_t last_keepalive = 0;
