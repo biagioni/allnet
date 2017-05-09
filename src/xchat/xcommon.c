@@ -1224,8 +1224,8 @@ int create_contact_send_key (int sock, const char * contact,
   keyset kset;
   *abits = 16;  /* static for now */
   if (num_keysets (contact) < 0) {
-    if (*abits > ADDRESS_SIZE * 8)
-      *abits = ADDRESS_SIZE * 8;
+    if (*abits > ADDRESS_BITS)
+      *abits = ADDRESS_BITS;
     bzero (addr, ADDRESS_SIZE);
     random_bytes ((char *) addr, (*abits + 7) / 8);
     kset = create_contact (contact, 4096, 1, NULL, 0, addr, *abits, NULL, 0);
