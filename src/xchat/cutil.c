@@ -258,10 +258,14 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
     exit (1);
   }
   char * message = (char *) hp;
-if (0 && debug_sending) {
-print_buffer (message, psize, "created packet", psize, 1);
-print_buffer (encrypted, esize, "encrypted", esize, 1);
-if (ssize > 0) print_buffer (signature, ssize, "sig", ssize, 1); }
+#ifdef DEBUG_PRINT
+  if (debug_sending) {
+    print_buffer (message, psize, "created packet", psize, 1);
+    print_buffer (encrypted, esize, "encrypted", esize, 1);
+    if (ssize > 0)
+      print_buffer (signature, ssize, "sig", ssize, 1);
+  }
+#endif /* DEBUG_PRINT */
 
   memcpy (message + hsize, encrypted, esize);
   if (encrypted != NULL) free (encrypted);
