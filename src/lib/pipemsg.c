@@ -338,8 +338,9 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
 /* On some systems, e.g. linux in 2017, EAGAIN is the same as EWOULDBLOCK */
 /* I am not sure why we get enotsock on partial sends, but we do */
      ((errno == EAGAIN) || (errno == EWOULDBLOCK) || (errno == ENOTSOCK)));
+/* this is a busy socket, not a partial send.  2017/05/08, try without
   if ((w < 0) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
-    is_partial_send = 1;
+    is_partial_send = 1; */
   if ((w < 0) && (errno == SIGPIPE)) {
       result = 0;
       printf ("sigpipe on fd %d\n", pipe);
