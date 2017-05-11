@@ -327,6 +327,12 @@ static int send_pipe_message_orig (int pipe, const char * message, int mlen,
 static int send_buffer (int pipe, char * buffer, int blen, int do_free,
                         struct allnet_log * log)
 {
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock (&mutex);
+  /* otherwise different threads might send at the same time, and
+   * their packets might overlap */
+  /* INVARIANT: this code always runs through to the unlock statement
+   * at the end.  Maintainers: please maintain this invariant */
   int result = 1;
   ssize_t w = send (pipe, buffer, blen, MSG_DONTWAIT); 
   int save_errno = errno;
@@ -406,6 +412,7 @@ log_print (log);
 #endif /* DEBUG_PRINT */
   if (do_free)
     free (buffer);
+  pthread_mutex_unlock (&mutex);
   return result;
 }
 
