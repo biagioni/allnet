@@ -1294,7 +1294,7 @@ static int debug_message_sig_size (char * message, int msize,
   if (hp->sig_algo != ALLNET_SIGTYPE_NONE) {
     int length = readb16 (message + (msize - 2));
     if (length != 512) {
-      printf ("%s cached message with weird signature size %d\n",
+      printf ("not %s cached message with weird signature size %d\n",
               action, length);
       print_packet (message, msize, "message", 1);
       print_buffer (message, msize, "message bytes", msize, 1);
