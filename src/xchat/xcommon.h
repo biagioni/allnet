@@ -94,6 +94,7 @@ extern int request_and_resend (int sock, char * peer, keyset kset, int eagerly);
 /* create the contact and key, and send
  * the public key followed by
  *   the hmac of the public key using the secret as the key for the hmac.
+ * the secrets should be normalized by the caller
  * the address (at least ADDRESS_SIZE bytes) and the number of bits are
  * filled in, should not be NULL.
  * secret2 may be NULL, secret1 should not be.
