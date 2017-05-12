@@ -43,11 +43,6 @@ struct allnet_pipe_info {
   char description [100];
 };
 
-/*
-static int num_pipes = 0;
-static struct allnet_pipe_info * buffers = NULL;
-*/
-
 #define MAX_PIPES	100
 struct pipedesc {
   int num_pipes;
@@ -1023,7 +1018,9 @@ save_received_message (p, pipe, bp->buffer, bp->bsize);
       bp->filled = 0;
       return result;
     }
-  } /* else buffer is not filled, just return to caller */
+  } else { /* buffer is not filled, just return to caller */
+    bp->filled = offset;  /* this is how many we've gotten */
+  }
   return 0;
 }
 
