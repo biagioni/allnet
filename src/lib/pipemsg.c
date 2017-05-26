@@ -319,6 +319,109 @@ static int send_pipe_message_orig (int pipe, const char * message, int mlen,
 }
 #endif /* 0 */
 
+struct saved_bytes_for_send {
+  int pipe;
+  int num_bytes;
+  char * buffer;
+};
+static struct saved_bytes_for_send * saved_records = NULL;
+static int num_saved_records = 0;
+
+/* if there are saved bytes for this pipe, replace buffer with those bytes
+ * concatenating the two if the result is short enough (arbitrarily, we
+ * set the limit to ALLNET_MTU) */
+/* invariant: after the call, this pipe is not in saved_records. */
+static void saved_bytes_for_pipe (int pipe, char ** buffer, int * blen,
+                                  int * do_free, struct allnet_log * log)
+{
+  int found = 0;  /* if true, found a match, replaced buffer */
+  int i;
+  for (i = 0; i < num_saved_records; i++) {
+    if (found) {
+      if (i <= 0) {   /* sanity check, if found, i should always be > 0 */
+        snprintf (log->b, log->s,
+                  "saved_bytes_for_pipe: found %d, i %d\n", found, i);
+        log_print (log);
+      } else {        /* i > 0, copy this record to previous location */
+        saved_records [i - 1] = saved_records [i];
+      }
+    } else if (saved_records [i].pipe == pipe) { /* match, replace buffer */
+      found = 1;   /* from here on up, copy records instead of searching */
+      /* save the new buffer with the old unless the result is large */
+      int combined_size = *blen + saved_records [i].num_bytes;
+      if (combined_size <= ALLNET_MTU) {  /* combine them */
+        char * new_buffer = memcat_malloc (saved_records [i].buffer,
+                                           saved_records [i].num_bytes,
+                                           *buffer, *blen,
+                                           "saved_bytes_for_pipe combine");
+        free (saved_records [i].buffer);  /* no longer needed */
+        saved_records [i].buffer = new_buffer; 
+        saved_records [i].num_bytes = combined_size;
+      }   /* else, just use the saved buffer without combining */
+      /* now, replace the caller's buffer with the new one */
+      if (*do_free)
+        free (*buffer);
+      *do_free = 1;  /* always free the returned buffer */
+      *buffer = saved_records [i].buffer;  /* will be free'd by caller */
+      *blen = saved_records [i].num_bytes;
+    }
+  }
+  /* finished loop.  If not found, we are done.  If found, reallocate
+   * saved_records to be one smaller, and decrement num_saved_records */
+  if (found) {   /* deleted something */
+    /* invariant: num_saved_records > 0 (otherwise found would be 0) */
+    num_saved_records--;
+    if (num_saved_records < 0) {   /* sanity check */
+      snprintf (log->b, log->s, "saved_bytes_for_pipe: %d saved records\n",
+                num_saved_records);
+      log_print (log);
+      num_saved_records = 0;
+    }
+    size_t size = num_saved_records * sizeof (struct saved_bytes_for_send);
+    if (size > 0) {
+      saved_records = realloc (saved_records, size);
+      if (saved_records == NULL)   /* realloc failed, should be rare */
+        num_saved_records = 0;
+    } else {
+      free (saved_records);
+      saved_records = NULL;
+    }
+  }
+}
+
+/* adds the record to the end of saved_records */
+/* invariant (must hold before the call): this pipe is not in saved_records.
+ * if save_remaining_bytes is called after saved_bytes_for_pipe,
+   the invariant should hold */
+static void save_remaining_bytes (int pipe, char * buffer, int blen) 
+{
+  if (blen <= 0)
+    return;
+  if ((saved_records == NULL) || (num_saved_records <= 0)) {
+    saved_records = malloc (sizeof (struct saved_bytes_for_send));
+    num_saved_records = 1;
+  } else {
+    num_saved_records++;
+    saved_records = realloc (saved_records,
+                             sizeof (struct saved_bytes_for_send) *
+                             num_saved_records);
+  }
+  if ((saved_records == NULL) ||  /* allocation error, abort */
+      (num_saved_records <= 0)) { /* sanity check */
+    num_saved_records = 0;
+    return;
+  }
+  /* invariants: num_saved_records > 0, saved_records != NULL */
+  int index = num_saved_records - 1;
+  saved_records [index].pipe = pipe;
+  saved_records [index].num_bytes = blen;
+  saved_records [index].buffer = memcpy_malloc (buffer, blen,
+                                                "save_remaining_bytes");
+}
+
+/* returns 1 if the send was "successful", i.e. the pipe is not dead --
+ * if the socket was busy, the packet may not actually have been sent,
+ * but still return 1.  Return 0 in case of actual errors */
 static int send_buffer (int pipe, char * buffer, int blen, int do_free,
                         struct allnet_log * log)
 {
@@ -328,81 +431,54 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
    * their packets might overlap */
   /* INVARIANT: this code always runs through to the unlock statement
    * at the end.  Maintainers: please maintain this invariant */
+  /* if we need to send the remainder of an earlier packet,
+   * discard this packet and replace it with those bytes,
+   * or (if the combined size is small enough) concatenate the two */
+  saved_bytes_for_pipe (pipe, &buffer, &blen, &do_free, log);
   int result = 1;
   ssize_t w = send (pipe, buffer, blen, MSG_DONTWAIT); 
   int save_errno = errno;
-  int is_send = 1;
-/* If it was a partial send, we just want to discard the packet,
- * no need to try again with write. */
-  int is_partial_send =
-    ((w > 0) && (w < blen) &&
-/* On some systems, e.g. linux in 2017, EAGAIN is the same as EWOULDBLOCK */
-/* I am not sure why we get enotsock on partial sends, but we do */
-     ((errno == EAGAIN) || (errno == EWOULDBLOCK) || (errno == ENOTSOCK)));
-/* this is a busy socket, not a partial send.  2017/05/08, try without
-  if ((w < 0) && ((errno == EAGAIN) || (errno == EWOULDBLOCK)))
-    is_partial_send = 1; */
-  if ((w < 0) && (errno == SIGPIPE)) {
-      result = 0;
-      printf ("sigpipe on fd %d\n", pipe);
-  } else if (is_partial_send) {
-    static int partial_printed = -1;
-    if (partial_printed != pipe) {
+  ssize_t save_w = w;
+  /* invariant: w shows the amount of data sent, or is -1 for error */
+  /* error may include EAGAIN, if the socket was full */
+  /* note on some systems EAGAIN and EWOULDBLOCK are the same */
+  if (w < blen) {   /* incomplete write or outright error */
+    result = 0;  /* it's an error */
+    if ((w >= 0) ||    /* partial send */
+        ((errno == EAGAIN) || (errno == EWOULDBLOCK))) { /* socket busy */
+      result = 1;  /* report as success, since the socket is not dead */
       snprintf (log->b, log->s,
-                "pipe %d, partial result %d, wanted %d, original errno %d\n",
-                pipe, (int)w, blen, save_errno);
+                "pipe %d, partial result %zd/%zd/%d, errno %d/%d, %d records\n",
+                pipe, w, save_w, blen, save_errno, errno, num_saved_records);
       log_error (log, "send_pipe_msg partial send");
-      partial_printed = pipe;
-    }
-    result = 0;
-  } else {
-    /* try to send with write */
-int print_result_of_write = 0;
-    if ((w < 0) && (errno == ENOTSOCK)) {
-static int notsock_printed = -1;
-static int print_count = 0;
-if ((print_count++ < 100) && (notsock_printed != pipe)) {
-snprintf (log->b, log->s,
-          "result %zd, errno %d, trying write instead of send on fd %d\n",
-          w, save_errno, pipe);
-log_print (log);
-notsock_printed = pipe;
-print_result_of_write = 1;
-}
-      w = write (pipe, buffer, blen); 
-if (print_result_of_write) {
-snprintf (log->b, log->s, "result of write %zd/%d, errno %d on fd %d\n",
-          w, blen, errno, pipe);
-log_print (log);
-}
-      is_send = 0;
-    }
-    if (w != blen) {
-      static int badwrite_printed = -1;
-      if (badwrite_printed != pipe) {
-        badwrite_printed = pipe;
-        char * name = "send_pipe_msg write";
-        if (is_send)
-          name = "send_pipe_msg send";
-#ifdef DEBUG_PRINT
-        if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
-          perror (name);
-#endif /* DEBUG_PRINT */
+      ssize_t save = w;  /* now save the unsent bytes */
+      if (save < 0)      /* send them next time we are called for this pipe */
+        save = 0;
+      /* if (w == 0), this code is just an optimization.
+       * if (w > 0) , this code is required to avoid creating hybrid packets */
+      save_remaining_bytes (pipe, buffer + save, blen - save); 
+    } else {  /* w < 0, this is an error */
+      if (errno == EPIPE) {
         snprintf (log->b, log->s,
-                  "pipe %d, result %d, wanted %d, original errno %d\n",
-                  pipe, (int)w, blen, save_errno);
-        log_error (log, name);
+                  "sigpipe/epipe %d/%d on pipe %d\n",
+                  errno, save_errno, pipe);
+        log_error (log, "send_pipe_msg send");
+        printf ("sigpipe on fd %d\n", pipe);
+      } else if (errno == ENOTSOCK) {
+        snprintf (log->b, log->s,
+                  "result %zd, errno %d, notsock, maybe try write on fd %d?\n",
+                  w, save_errno, pipe);
+        log_error (log, "send_pipe_msg send, not socket");
+      } else {
+        snprintf (log->b, log->s, "result of send is %zd, errno %d, fd %d\n",
+                  w, save_errno, pipe);
+        log_error (log, "send_pipe_msg send");
       }
-/* 2014/08/11 not sure if this is correct: should return 0 even if pipe is
- * busy, because we did not write.  But if we do this, daemons think their
- * pipe to ad has been closed, and terminate.  */
-      if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
-        result = 0;
     }
   }
 #ifdef DEBUG_PRINT
-  snprintf (log->b, log->s, "send_buffer sent %d/%d bytes on %s %d\n",
-            blen, (int)w, ((is_send) ? "socket" : "pipe"), pipe);
+  snprintf (log->b, log->s, "send_buffer sent %d/%zd bytes on socket %d\n",
+            blen, w, pipe);
   log_print (log);
 #endif /* DEBUG_PRINT */
   if (do_free)
@@ -443,7 +519,9 @@ static int send_header_data (int pipe, const char * message, int mlen,
   write_big_endian32 (header + MAGIC_SIZE + 4, mlen);
   memcpy (header + HEADER_SIZE, message, mlen);
 
-  return send_buffer (pipe, packet, HEADER_SIZE + mlen, 0, log);
+  int result = send_buffer (pipe, packet, HEADER_SIZE + mlen, 0, log);
+/* room for debugging code, when needed */
+  return result;
 }
 
 int send_pipe_message (int pipe, const char * message, unsigned int mlen,
