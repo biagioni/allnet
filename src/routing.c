@@ -384,7 +384,7 @@ static void load_peer (struct addr_info * peer, const char * line,
   if (end == line)
     return;
   if ((ipversion != 4) && (ipversion != 6)) {
-    printf ("error: IP version %d in '%s'\n", ipversion, original_line);
+    printf ("load_peers: IP version %d in '%s'\n", ipversion, original_line);
     return;
   }
   line = end;
