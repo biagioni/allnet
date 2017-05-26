@@ -106,6 +106,12 @@ static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
     sleep (1); /* sleep between messages, to avoid oveflowing the pipe */
     memcpy (hp->destination, ai.destination, ADDRESS_SIZE);
     hp->dst_nbits = ai.nbits;
+    if ((hp->dst_nbits > ADDRESS_BITS) || (hp->dst_nbits > 64)) {
+      printf ("error in ping_all_pending, %d destination bits > %d/64 (%d)\n",
+              hp->dst_nbits, ADDRESS_BITS, iter);
+      print_addr_info (&ai);
+      hp->dst_nbits = ADDRESS_BITS;
+    }
     packet_to_string (message, msize, "ping_all_pending sending", 1,
                       alog->b, alog->s);
     log_print (alog);
