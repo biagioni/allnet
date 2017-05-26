@@ -185,6 +185,10 @@ extern char * string_replace_once (const char * original, const char * pattern,
 /* copy memory to new storage, using malloc_or_fail to get the memory */
 extern void * memcpy_malloc (const void * bytes, size_t bsize,
                              const char * desc);
+/* copy two buffers to new storage, using malloc_or_fail to get the memory */
+extern void * memcat_malloc (const void * bytes1, size_t bsize1,
+                             const void * bytes2, size_t bsize2,
+                             const char * desc);
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
