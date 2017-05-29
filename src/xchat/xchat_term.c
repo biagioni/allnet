@@ -3,15 +3,15 @@
 /* once started, commands are: */
 
 #define XCHAT_TERM_HELP_MESSAGE	\
-"<typing>  send message to most recent contact (cannot begin with or .) \n\
-. m        start a multiline message, ending with .m \n\
-. c name   switch sending to contact 'name' \n\
-. q        quit \n\
-. h        print this help message \n\
-. l n      print the last n messages (n is optional, defaults to 10) \n\
-. t        trace (optionally an address, eg . t f0) \n\
-. k <new contact>           exchange a key with a new contact \n\
-. k <new contact> <secret>  one of the two must specify the other's secret \n\
+"<typing>  send message to most recent contact, cannot begin with . \n\
+.m        start a multiline message, ending with .m (cannot contain .m) \n\
+.c name   switch sending to contact 'name' \n\
+.q        quit \n\
+.h        print this help message \n\
+.l n      print the last n messages (n is optional, defaults to 10) \n\
+.t        trace (optionally an address, eg . t f0) \n\
+.k <new contact>           exchange a key with a new contact \n\
+.k <new contact> <secret>  one of the two must specify the other's secret \n\
 "
 
 #include <stdio.h>
