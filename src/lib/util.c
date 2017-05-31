@@ -1108,15 +1108,14 @@ void * memcat_malloc (const void * bytes1, size_t bsize1,
                       const void * bytes2, size_t bsize2,
                       const char * desc)
 {
-  if ((bsize1 < 0) || (bsize2 < 0))
-    return NULL;  /* illegal, and impossible if size_t is unsigned */
-  if ((bsize1 + bsize2) <= 0)  /* possible if both are 0 */
-    return NULL;
+  if (bsize1 <= 0)
+    return memcpy_malloc (bytes2, bsize2, desc);
+  if (bsize2 <= 0)
+    return memcpy_malloc (bytes1, bsize1, desc);
+  /* from here, bsize1 and bsize2 are both greater than 0 */
   char * result = malloc_or_fail (bsize1 + bsize2, desc);
-  if (bsize1 > 0)
-    memcpy (result, bytes1, bsize1);
-  if (bsize2 > 0)
-    memcpy (result + bsize1, bytes2, bsize2);
+  memcpy (result, bytes1, bsize1);
+  memcpy (result + bsize1, bytes2, bsize2);
   return result;
 }
 
