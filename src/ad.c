@@ -154,11 +154,14 @@ print_buffer (packet, size, NULL, size, 1);
 
   /* compute a forwarding priority for non-local packets */
   if (! is_local) {
+    if (ah->max_hops <= 0)   /* illegal */
+      return PROCESS_PACKET_DROP;
     *priority = packet_priority (packet, ah, size, soc);
     /* before forwarding, increment the number of hops seen */
     if (ah->hops < 255)   /* do not increment 255 to 0 */
       ah->hops++;
-  }
+  } else if (ah->max_hops <= 0) /* illegal local packet, forward locally only */
+    return PROCESS_PACKET_LOCAL;
 #ifdef LOG_PACKETS
   snprintf (alog->b, alog->s, "forwarding %s packet with %d/%d hops\n",
             (is_local ? "local" : "received"), ah->hops, ah->max_hops);
