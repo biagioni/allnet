@@ -300,14 +300,13 @@ void log_error (struct allnet_log * log, char * syscall)
   char ebuf [1000];
   strerror_r (errno, ebuf, sizeof (ebuf));
   char local_buf [LOG_SIZE + LOG_SIZE];
-  const char * indent = "";
   if (strlen (log->b) > 0)
-    indent = "  ";
-  snprintf (local_buf, sizeof (local_buf), "%s: %s (errno %d)\n%s",
-              syscall, ebuf, saved_errno, indent);
+    snprintf (local_buf, sizeof (local_buf), "%s: %s (errno %d)\n  %s",
+              syscall, ebuf, saved_errno, log->b);
+  else
+    snprintf (local_buf, sizeof (local_buf), "%s: %s (errno %d)",
+              syscall, ebuf, saved_errno);
   log_print_str (log, local_buf);
-  if (strlen (log->b) > 0)
-    log_print (log);
 }
 
 /* output everything to stdout as well as the log file if on != 0.
