@@ -456,7 +456,7 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
         save = 0;
       /* if (w == 0), this code is just an optimization.
        * if (w > 0) , this code is required to avoid creating hybrid packets */
-      save_remaining_bytes (pipe, buffer + save, blen - save); 
+      save_remaining_bytes (pipe, buffer + save, blen - (int)save); 
     } else {  /* w < 0, this is an error */
       if (errno == EPIPE) {
         snprintf (log->b, log->s,
@@ -1242,8 +1242,8 @@ static int receive_dgram (int fd, char ** message,
       if ((sa != NULL) && (new_salen > 0))
         buffer_to_string ((char *) sa, new_salen, NULL, 10, 0,
                           new_sa, sizeof (new_sa));
-      printf ("errno is %d, fd %d, pointers %p %p %p, salen %d/%d, sa %s/%s\n",
-              errno, fd, *message, sa, salen,
+      printf ("%s: errno %d, fd %d, pointers %p %p %p, salen %d/%d, sa %s/%s\n",
+              log->debug_info, errno, fd, *message, sa, salen,
               new_salen, old_salen, new_sa, old_sa);
     }
     free (*message);
