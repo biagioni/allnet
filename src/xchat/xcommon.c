@@ -211,6 +211,9 @@ static void * request_cached_data (void * arg)
   log_print (alog);
   return NULL;
 }
+
+static pthread_t request_thread;
+
 #endif /* HAVE_REQUEST_THREAD */
 
 /* returns the socket if successful, -1 otherwise */
@@ -229,11 +232,10 @@ int xchat_init (char * arg0, pd p)
     perror ("xchat_init setsockopt nosigpipe");
 #endif /* SO_NOSIGPIPE */
 #ifdef HAVE_REQUEST_THREAD
-  pthread_t thread;
   int * arg = malloc_or_fail (sizeof (int), "xchat_init");
   *arg = sock;
   /* request_cached_data loops forever, so do it in a separate thread */
-  pthread_create (&thread, NULL, request_cached_data, (void *)(arg));
+  pthread_create (&request_thread, NULL, request_cached_data, (void *)(arg));
 #endif /* HAVE_REQUEST_THREAD */
   return sock;
 }
@@ -242,6 +244,9 @@ int xchat_init (char * arg0, pd p)
 void xchat_end (int sock)
 {
   close (sock);
+#ifdef HAVE_REQUEST_THREAD
+  pthread_cancel (request_thread);
+#endif /* HAVE_REQUEST_THREAD */
 }
 
 #ifdef TRACK_RECENTLY_SENT_ACKS   /* no longer seems useful */
