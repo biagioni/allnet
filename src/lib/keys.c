@@ -68,14 +68,14 @@ struct key_info {
   int has_state;
   struct allnet_stream_encryption_state state;
 };
-struct key_info * kip = NULL;
-int num_key_infos = 0;
+static struct key_info * kip = NULL;
+static int num_key_infos = 0;
 
 /* contact names is set to the same size as kip, although if a contact
  * has multiple keys, in practice the number of contacts will be less
  * than the number of keysets */
-char * * cpx = NULL;
-int cp_used = 0;
+static char * * cpx = NULL;
+static int cp_used = 0;
 
 #ifdef DEBUG_PRINT
 static void print_contacts (char * desc, int individual_only)
@@ -470,13 +470,16 @@ static int read_key_info (const char * path, const char * file,
       result = allnet_rsa_read_prvkey (kname, &(info->my_key));
       free (kname);
       if (result) {
+/* to do:
+change so if only has local and secret, returns 0 but fills in incomplete info */
         char * pname = strcat_malloc (basename, "/contact_pubkey", "pub name");
         info->has_pub_key =
           allnet_rsa_read_pubkey (pname, &(info->contact_pubkey));
         free (pname);
         if (info->has_pub_key) {
           result = read_address_file (basename, "local", &(info->local));
-          result = read_address_file (basename, "remote", &(info->remote));
+          if (result)
+            result = read_address_file (basename, "remote", &(info->remote));
         }
       }
     }
@@ -525,7 +528,7 @@ static void init_from_file (const char * debug)
   /* all but one thread blocks here until initialized is set to 1 */
   pthread_mutex_lock (&mutex);
   if (initialized) {
-  /* and all but the first thread to get the lock returns here */
+  /* and all threads that get the lock, except the first, return here */
     pthread_mutex_unlock (&mutex);
     return;
   }
@@ -2004,6 +2007,14 @@ int mark_valid (const char * contact, keyset k)
   free (old_fname);
   free (fname);
   return result;
+}
+
+/* returns the number of contacts for which key exchange is incomplete,
+ * and fills in contacts in the same way as all_contacts */
+int incomplete_key_exchanges (char *** contacts)
+{
+  init_from_file ("incomplete_key_exchanges");
+  return 0;
 }
 
 /*************** operations on symmetric keys ********************/

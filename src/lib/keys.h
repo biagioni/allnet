@@ -142,6 +142,10 @@ extern int invalid_keys (const char * contact, keyset ** keysets);
 extern int mark_invalid (const char * contact, keyset k);
 extern int mark_valid (const char * contact, keyset k);
 
+/* returns the number of contacts for which key exchange is incomplete,
+ * and fills in contacts in the same way as all_contacts */
+extern int incomplete_key_exchanges (char *** contacts);
+
 /* create a spare key of the given size, returning the number of spare keys.
  * if random is not NULL and rsize >= keybits / 8, uses the bytes from
  * random to randomize the generated key
