@@ -2006,14 +2006,6 @@ int mark_valid (const char * contact, keyset k)
   return result;
 }
 
-/* returns the number of contacts for which key exchange is incomplete,
- * and fills in contacts in the same way as all_contacts */
-int incomplete_key_exchanges (char *** contacts)
-{
-  init_from_file ("incomplete_key_exchanges");
-  return 0;
-}
-
 /*************** operations on symmetric keys ********************/
 
 /* returns the index of the kip that has the symmetric key for this contact,
