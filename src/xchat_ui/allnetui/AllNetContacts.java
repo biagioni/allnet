@@ -217,4 +217,36 @@ public class AllNetContacts {
         // file system, and we detect that anyway.
     }
 
+    // delete the exchange file, if any
+    public static void completeExchange(String contact) {
+        java.nio.file.Path cpath = getContactsDir("contacts");
+        try (java.nio.file.DirectoryStream<java.nio.file.Path> stream =
+                 java.nio.file.Files.newDirectoryStream (cpath)) {
+            for (java.nio.file.Path p: stream) {
+                if (java.nio.file.Files.isDirectory(p)) {
+                    java.nio.file.Path name =
+                        java.nio.file.FileSystems.
+                            getDefault().getPath(p + "/name");
+                    java.nio.charset.Charset charset =
+                        java.nio.charset.Charset.forName("UTF-8");
+                    java.util.List<String> names =
+                        java.nio.file.Files.readAllLines(name, charset);
+                    for (String s: names) {
+                        if (contact.equals(s)) {
+                            java.nio.file.Path exchange =
+                                java.nio.file.FileSystems.
+                                    getDefault().getPath(p + "/exchange");
+                            java.nio.file.Files.deleteIfExists (exchange);
+                            return;
+                        }
+                    }
+                }
+            }
+        } catch (java.io.IOException e) {
+            System.out.println ("IO exception " + e +
+                                " iterating over directory " + cpath +
+                                ", aborting");
+        }
+    }
+
 };
