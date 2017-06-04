@@ -466,22 +466,19 @@ static int read_key_info (const char * path, const char * file,
     result = 2;  /* found a group */
   } else {  /* it's not a group */
     if (info != NULL) {
+      info->is_visible = 0;  /* hide contact unless has all info */
       char * kname = strcat_malloc (basename, "/my_key", "my key name");
-      result = allnet_rsa_read_prvkey (kname, &(info->my_key));
-      free (kname);
-      if (result) {
-/* to do:
-change so if only has local and secret, returns 0 but fills in incomplete info */
+      if (allnet_rsa_read_prvkey (kname, &(info->my_key))) {
         char * pname = strcat_malloc (basename, "/contact_pubkey", "pub name");
         info->has_pub_key =
           allnet_rsa_read_pubkey (pname, &(info->contact_pubkey));
         free (pname);
-        if (info->has_pub_key) {
-          result = read_address_file (basename, "local", &(info->local));
-          if (result)
-            result = read_address_file (basename, "remote", &(info->remote));
-        }
+        read_address_file (basename, "local", &(info->local));
+        read_address_file (basename, "remote", &(info->remote));
+        if (info->has_pub_key)
+          info->is_visible = 1;
       }
+      free (kname);
     }
   }
   if (info != NULL) {
