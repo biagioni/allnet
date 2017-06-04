@@ -123,12 +123,14 @@ static int process_mgmt (char * message, unsigned int msize, int is_local,
 static int process_packet (char * packet, int size, int is_local,
                            struct social_info * soc, unsigned int * priority)
 {
+#ifdef PRINT_MESSAGE_VALIDITY
   char * reason = NULL;
-if (! is_valid_message (packet, size, &reason))
-printf ("%s: got invalid %s packet of size %d, priority %d\n",
-        reason, (is_local) ? "local" : "remote", size, *priority);
-if (! is_valid_message (packet, size, NULL))
-print_buffer (packet, size, NULL, size, 1);
+  if (! is_valid_message (packet, size, &reason)) {
+    printf ("%s: got invalid %s packet of size %d, priority %d\n",
+            reason, (is_local) ? "local" : "remote", size, *priority);
+    print_buffer (packet, size, NULL, size, 1);
+  }
+#endif /* PRINT_MESSAGE_VALIDITY */
   if (! is_valid_message (packet, size, NULL))
     return PROCESS_PACKET_DROP;
 
