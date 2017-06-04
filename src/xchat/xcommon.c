@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <assert.h>
 #include <pthread.h>
+#include <sys/stat.h>
 
 #include "chat.h"
 #include "xcommon.h"
@@ -1115,6 +1116,147 @@ long long int send_data_message (int sock, const char * peer,
   return seq;
 }
 
+/* resend any pending keys: at most once a minute, with the time increasing
+ * in proportion to 1% of the time since the key was created */
+/* if not found, adds it to the list to be sent */
+/* returns 1 to resend, 0 to not resend */
+static int time_to_resend_key (keyset k, unsigned long long int now)
+{
+  struct key_info {
+    keyset k;
+    unsigned long long int sent_time;
+    unsigned long long int created_time;
+  };
+/* info can only grow, never shrink, but its size is limited
+ * to the number of keys */
+  static struct key_info * info = NULL;
+  static unsigned int num_info = 0;
+  int i;
+  for (i = 0; i < num_info; i++) {
+/* if info is NULL, num_info is 0, and we never enter loop */
+    if (info [i].k == k) {
+#define DENOMINATOR	100
+      unsigned long long int alive =  /* never less than DENOMINATOR */
+        (now > info [i].created_time + DENOMINATOR) ?
+        (now - info [i].created_time) : DENOMINATOR;
+      /* send at most once a minute, and at most every 1% of the
+       * time since creation */
+      if (now > info [i].sent_time + (60 + alive / DENOMINATOR)) {
+        info [i].sent_time = now;
+        return 1;
+      } else {  /* found, but too soon to send */
+        return 0;
+      }
+#undef DENOMINATOR
+    }
+  }  /* not found, add */
+  void * new_info = realloc (info, (num_info + 1) * sizeof (struct key_info));
+  if (new_info != NULL) { /* realloc succeeded, save */
+    info = new_info;
+    info [num_info].k = k;
+    info [num_info].sent_time = now;
+    info [num_info].created_time = now;  /* if we can't get creation time */
+    char * dir = key_dir (k);   /* find the creation time */
+    char * hs = NULL;
+    if (dir != NULL) {
+      hs = strcat_malloc (dir, "/exchange", "time_to_resend_keys exchange");
+      struct stat s;
+      if ((stat (hs, &s) == 0) && (s.st_mtime > ALLNET_Y2K_SECONDS_IN_UNIX))
+        info [num_info].created_time = s.st_mtime - ALLNET_Y2K_SECONDS_IN_UNIX;
+#ifdef DEBUG_PRINT
+      printf ("%s: creation time %llu (%lu), now %llu\n", hs,
+              info [num_info].created_time, s.st_mtime, now);
+#endif /* DEBUG_PRINT */
+      free (hs);
+      free (dir);
+    }
+    num_info++;
+  }
+  return 1;  /* saved or not, send the key */
+}
+
+/* contents should have a hop count, followed by one or two secrets,
+ * all separated by newlines. */
+/* returns 1 if successful, 0 otherwise */
+static int parse_exchange_info (char * contents, char ** secret1,
+                                char ** secret2, int * hops)
+{
+  *secret1 = NULL;
+  *secret2 = NULL;
+  *hops = 0;
+  if (contents == NULL)
+    return 0;
+  char * saveptr = NULL;
+  char * first = strtok_r (contents, "\n", &saveptr);
+  if (first == NULL)  /* there should be a hop count and a secret */
+    return 0;
+  *secret1 = strtok_r (NULL, "\n", &saveptr);
+  if (*secret1 == NULL) /* at least one secret is required */
+    return 0;
+  /* make sure the first string is a hop count */
+  char * endptr;
+  *hops = strtol (first, &endptr, 10);
+  if (endptr == first) { /* conversion failed */
+    *hops = 0;
+    *secret1 = NULL;
+    return 0;
+  }
+  /* secret2 is optional */
+  *secret2 = strtok_r (NULL, "\n", &saveptr);
+#ifdef DEBUG_PRINT
+  printf ("%d hops, secrets '%s' and (maybe) '%s'\n",
+          *hops, *secret1, *secret2);
+#endif /* DEBUG_PRINT */
+  return 1;
+}
+                       
+static void resend_pending_keys (int sock, unsigned long long int now)
+{
+  char ** contacts = NULL;
+  /* only individual contacts can have incomplete key exchanges */
+  int nc = all_individual_contacts (&contacts);
+  int ic;
+  for (ic = 0; ic < nc; ic++) {
+    keyset * keys = NULL;
+    int nk = all_keys (contacts [ic], &keys);
+    int ik;
+    for (ik = 0; ik < nk; ik++) {
+      keyset k = keys [ik];
+      allnet_rsa_pubkey pubkey;
+      if ((! get_contact_pubkey (k, &pubkey)) && /* incomplete exchange */
+          (time_to_resend_key (k, now))) {
+        char * dir = key_dir (k);
+        char * ne = NULL;  /* name of exchange file */
+        if (dir != NULL)
+          ne = strcat_malloc (dir, "/exchange", "resend_pending_keys exchange");
+        unsigned char local [ADDRESS_SIZE];
+        unsigned int lbits;
+        char * ce = NULL;  /* contents of exchange file */
+        if ((ne != NULL) && ((lbits = get_local (k, local)) > 0) &&
+            (read_file_malloc (ne, &ce, 0) > 0) && (ce != NULL)) {
+          char * secret1 = NULL;  /* if parse successful, points into ce */
+          char * secret2 = NULL;
+          int hops = 0;
+          if (parse_exchange_info (ce, &secret1, &secret2, &hops))
+            /* local address exists, so should resend */
+            create_contact_send_key (sock, contacts [ic], secret1, secret2,
+                                     local, &lbits, hops);
+        }
+        if (dir != NULL)
+          free (dir);
+        if (ne != NULL)
+          free (ne);
+        if (ce != NULL)
+          free (ce);
+      }
+      if (keys != NULL)
+        free (keys);
+    }
+  }
+  if (contacts != NULL)
+    free (contacts);
+}
+
 /* expiration must be at least ALLNET_TIME_SIZE, 8 bytes */
 static void compute_expiration (char * expiration, 
                                 unsigned long long int now,
@@ -1198,6 +1340,13 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
         result = 2;
     }
   }
+  /* resend pending keys, not more (and usually less) than once per minute */
+  /* ignore eagerly, since it doesn't apply to incomplete key exchanges */
+  static unsigned long long int last_key_resend = 0;
+  if (last_key_resend + 60 <= now) {
+    resend_pending_keys (sock, now);
+    last_key_resend = now;
+  }
   return result;
 }
 
@@ -1239,6 +1388,20 @@ int create_contact_send_key (int sock, const char * contact,
       printf ("contact %s already exists\n", contact);
       return 0;
     }
+    char * dir = key_dir (kset);   /* create the exchange file */
+    char * hs = NULL;
+    if (dir != NULL) {
+      hs = strcat_malloc (dir, "/exchange", "create_contact_send_key exchange");
+      char content [ALLNET_MTU];
+      if (secret2 != NULL)
+        snprintf (content, sizeof (content), "%d\n%s\n%s\n",
+                  hops, secret1, secret2);
+      else
+        snprintf (content, sizeof (content), "%d\n%s\n", hops, secret1);
+      write_file (hs, content, strlen (content), 1);
+      free (hs);
+    }
+    
   } else {  /* contact already exists, get the keyset and the address */
     keyset * keysets = NULL;
     int n = all_keys (contact, &keysets);
@@ -1251,12 +1414,14 @@ int create_contact_send_key (int sock, const char * contact,
     *abits = get_local (kset, addr);
   }
   if (send_key (sock, contact, kset, secret1, addr, *abits, hops)) {
-    printf ("send_key sent key to contact %s, %d hops, secret %s\n",
-            contact, hops, secret1);
+    char time_string [100];
+    allnet_time_string (allnet_time (), time_string);
+    printf ("%s: sent key to contact %s, %d hops, %s",
+            time_string, contact, hops, secret1);
     if ((secret2 != NULL) && (strlen (secret2) > 0) &&
         (send_key (sock, contact, kset, secret2, addr, *abits, hops)))
-      printf ("send_key also sent key to contact %s, %d hops, secret %s\n",
-              contact, hops, secret2);
+      printf ("+%s", secret2);
+    printf ("\n");
     return 1;
   }
   printf ("send_key failed for create_contact_send_key\n");
