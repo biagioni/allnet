@@ -364,14 +364,17 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     private void processKeyExchangePanelEvent(String[] actionCommand) {
+        String contact = getContactFromKeyExchangePanelId(actionCommand [0]);
         switch (actionCommand[1]) {
             case KeyExchangePanel.CLOSE_COMMAND:
                 myTabbedPane.removeTab(actionCommand[0]);
                 myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
+                AllNetContacts.completeExchange(contact);
                 break;
             case KeyExchangePanel.CANCEL_COMMAND:
                 myTabbedPane.removeTab(actionCommand[0]);
                 myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
+                AllNetContacts.completeExchange(contact);
                 break;
             case KeyExchangePanel.RESEND_KEY_COMMAND:
                 resendKey((KeyExchangePanel) myTabbedPane.getTabContent(actionCommand[0]));
@@ -994,6 +997,13 @@ class UIController implements ControllerInterface, UIAPI {
         String id = UI.KEY_EXCHANGE_PANEL_ID + "_" + contactName;
         KeyExchangePanel kep = (KeyExchangePanel) myTabbedPane.getTabContent(id);
         return (kep);
+    }
+
+    private String getContactFromKeyExchangePanelId(String panelId) {
+        if (panelId.startsWith(UI.KEY_EXCHANGE_PANEL_ID)) {
+            return panelId.substring (UI.KEY_EXCHANGE_PANEL_ID.length() + 1);
+        }
+        return null;
     }
 
     private KeyExchangePanel
