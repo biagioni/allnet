@@ -640,6 +640,20 @@ printf ("trace child exiting\n");
 
 int main (int argc, char ** argv)
 {
+int ni = incomplete_key_exchanges (NULL, NULL, NULL);
+if (ni > 0) {
+  printf ("%d incomplete key exchange(s)\n", ni);
+  int ii;
+  char ** contacts = NULL;
+  keyset * keys = NULL;
+  int * status = NULL;
+  ni = incomplete_key_exchanges (&contacts, &keys, &status);
+  for (ii = 0; ii < ni; ii++)
+    printf ("  %d: %s (%d, %x)\n", ii, contacts [ii], keys [ii], status [ii]);
+  free (contacts);
+  free (keys);
+  free (status);
+}
   log_to_output (get_option ('v', &argc, argv));
 #ifdef WINDOWS_ENVIRONMENT
   HWND hwNd = GetConsoleWindow ();
