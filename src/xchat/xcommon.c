@@ -1213,48 +1213,45 @@ static int parse_exchange_info (char * contents, char ** secret1,
 static void resend_pending_keys (int sock, unsigned long long int now)
 {
   char ** contacts = NULL;
-  /* only individual contacts can have incomplete key exchanges */
-  int nc = all_individual_contacts (&contacts);
+  keyset * keys = NULL;
+  int * status = NULL;
+  int nc = incomplete_key_exchanges (&contacts, &keys, &status);
   int ic;
   for (ic = 0; ic < nc; ic++) {
-    keyset * keys = NULL;
-    int nk = all_keys (contacts [ic], &keys);
-    int ik;
-    for (ik = 0; ik < nk; ik++) {
-      keyset k = keys [ik];
-      allnet_rsa_pubkey pubkey;
-      if ((! get_contact_pubkey (k, &pubkey)) && /* incomplete exchange */
-          (time_to_resend_key (k, now))) {
-        char * dir = key_dir (k);
-        char * ne = NULL;  /* name of exchange file */
-        if (dir != NULL)
-          ne = strcat_malloc (dir, "/exchange", "resend_pending_keys exchange");
-        unsigned char local [ADDRESS_SIZE];
-        unsigned int lbits;
-        char * ce = NULL;  /* contents of exchange file */
-        if ((ne != NULL) && ((lbits = get_local (k, local)) > 0) &&
-            (read_file_malloc (ne, &ce, 0) > 0) && (ce != NULL)) {
-          char * secret1 = NULL;  /* if parse successful, points into ce */
-          char * secret2 = NULL;
-          int hops = 0;
-          if (parse_exchange_info (ce, &secret1, &secret2, &hops))
-            /* local address exists, so should resend */
-            create_contact_send_key (sock, contacts [ic], secret1, secret2,
-                                     local, &lbits, hops);
-        }
-        if (dir != NULL)
-          free (dir);
-        if (ne != NULL)
-          free (ne);
-        if (ce != NULL)
-          free (ce);
+    keyset k = keys [ic];
+    /* we can only resend if there is an exchange file */
+    if (((status [ic] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE) != 0) &&
+        (time_to_resend_key (k, now))) {
+      char * content = NULL;
+      incomplete_exchange_file (contacts [ic], k, &content, NULL);
+      unsigned char local [ADDRESS_SIZE];
+      unsigned int lbits = 100;  /* illegal value, for error print below */
+      if ((content != NULL) && ((lbits = get_local (k, local)) > 0)) {
+        char * secret1 = NULL;  /* if parse successful, points into content */
+        char * secret2 = NULL;
+        int hops = 0;
+        if (parse_exchange_info (content, &secret1, &secret2, &hops))
+          /* local address exists, so should resend */
+          create_contact_send_key (sock, contacts [ic], secret1, secret2,
+                                   local, &lbits, hops);
+        else
+          printf ("exchange file parse error (%s) %p %p %d\n",
+                  content, secret1, secret2, hops);
+      } else {
+        printf ("likely error: content (%zd, %s), and %d lbits\n",
+                ((content == NULL) ? (-1) : (strlen (content))),
+                content, lbits);
       }
-      if (keys != NULL)
-        free (keys);
+      if (content != NULL)
+        free (content);
     }
   }
   if (contacts != NULL)
     free (contacts);
+  if (keys != NULL)
+    free (keys);
+  if (status != NULL)
+    free (status);
 }
 
 /* expiration must be at least ALLNET_TIME_SIZE, 8 bytes */
@@ -1489,4 +1486,3 @@ int subscribe_broadcast (int sock, char * ahra,
     return 0;
   return 1;
 }
-
