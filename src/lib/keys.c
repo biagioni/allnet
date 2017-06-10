@@ -2006,6 +2006,120 @@ int mark_valid (const char * contact, keyset k)
   return result;
 }
 
+/* returns the number of contacts with incomplete key exchanges,
+ * defined as contacts that have no contact public key, or have
+ * an exchange file, or both.
+ * if the number is greater than 0 and contacts is not NULL, fills contacts
+ * with the names of those contacts (must be free'd)
+ * likewise for keys -- exactly one key is returned per contact 
+ * likewise for status, which is the OR (|) of one or more constants below
+#define KEYS_INCOMPLETE_NO_CONTACT_PUBKEY
+#define KEYS_INCOMPLETE_HAS_EXCHANGE_FILE */
+int incomplete_key_exchanges (char *** result_contacts, keyset ** result_keys,
+                              int ** result_status)
+{
+  int result = 0;
+  if (result_contacts != NULL)
+    *result_contacts = NULL;
+  if (result_keys != NULL)
+    *result_keys = NULL;
+  if (result_status != NULL)
+    *result_status = NULL;
+  char ** local_contacts = NULL;
+  /* only individual contacts can have incomplete key exchanges */
+  int nc = all_individual_contacts (&local_contacts);
+  if ((nc <= 0) || (local_contacts == NULL))
+    return 0;
+  keyset * local_keys = malloc_or_fail (sizeof (keyset) * nc, "incomplete ks");
+  int * local_status = malloc_or_fail (sizeof (int) * nc, "incomplete status");
+  int ic;
+  for (ic = 0; ic < nc; ic++) {
+    keyset * keys = NULL;
+    int nk = all_keys (local_contacts [ic], &keys);
+    int ik;
+    for (ik = 0; ik < nk; ik++) {
+      keyset k = keys [ik];
+      int status = 0;
+      allnet_rsa_pubkey pubkey; /* test for incomplete key exchange */
+      if (! get_contact_pubkey (k, &pubkey)) /* incomplete */
+        status |= KEYS_INCOMPLETE_NO_CONTACT_PUBKEY;
+      /* test for existence of the exchange file */
+      char * dir = key_dir (k);
+      if (dir != NULL) {
+        char * fname = strcat_malloc (dir, "/exchange", "exchange file name");
+        if (fname != NULL) {
+          if (file_size (fname) >= 0)  /* file exists */
+            status |= KEYS_INCOMPLETE_HAS_EXCHANGE_FILE;
+          free (fname);
+        }
+        free (dir);
+      }
+      if (status) {   /* found an incomplete key exchange or exchange file */
+        /* invariant: result <= ic, so it's safe to overwrite the first
+         * result entries of local_contacts */
+        local_contacts [result] = local_contacts [ic];
+        local_keys [result] = keys [ik];
+        local_status [result] = status;
+        result++;
+        /* break out of inner (keys) loop, continue outer (contacts) loop */
+        break;
+        /* i.e. ignore any other keys, do not add this contact again */
+        /* (otherwise the invariant might not hold) */
+      }
+    }
+    if (keys != NULL)
+      free (keys);
+  }
+  if ((result_contacts != NULL) && (result > 0))
+    *result_contacts = local_contacts;
+  else
+    free (local_contacts);
+  if ((result_keys != NULL) && (result > 0))
+    *result_keys = local_keys;
+  else
+    free (local_keys);
+  if ((result_status != NULL) && (result > 0))
+    *result_status = local_status;
+  else
+    free (local_status);
+  return result;
+}
+
+/* manipulate the exchange file:
+ * if both old_content and new_content are NULL, deletes the file if any
+ * if old_content is not NULL, fills it in with the malloc'd contents of
+ *   the file (must be free'd) if any, or NULL if the file does not exist
+ * if new_content is not NULL, saves it as the new contents of the file,
+ *   or if it is NULL, leaves the file unchanged.
+ * except as described, always does what it can, without reporting errors */
+void incomplete_exchange_file (const char * contact, keyset k,
+                               char ** old_content,
+                               const char * new_content)
+{
+  if (old_content != NULL)
+    *old_content = NULL;
+  char * dir = key_dir (k);
+  if (dir != NULL) {
+    char * fname = strcat_malloc (dir, "/exchange", "incomplete exchange file");
+    if (fname != NULL) {
+      if ((old_content == NULL) && (new_content == NULL)) { /* delete */
+        unlink (fname);   /* ignore return value, only delete if it exists */
+      } else {
+        if (old_content != NULL) {   /* read the contents of the file */
+          int bytes = read_file_malloc (fname, old_content, 0);
+          if (bytes <= 0)
+            *old_content = NULL;
+        }
+        if (new_content != NULL) {   /* create or replace file */
+          write_file (fname, new_content, strlen (new_content), 1);
+        }
+      }
+      free (fname);
+    }
+    free (dir);
+  }
+}
+
 /*************** operations on symmetric keys ********************/
 
 /* returns the index of the kip that has the symmetric key for this contact,
