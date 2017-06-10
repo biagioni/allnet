@@ -142,6 +142,29 @@ extern int invalid_keys (const char * contact, keyset ** keysets);
 extern int mark_invalid (const char * contact, keyset k);
 extern int mark_valid (const char * contact, keyset k);
 
+/* returns the number of contacts with incomplete key exchanges,
+ * defined as contacts that have no contact public key, or have
+ * an exchange file, or both.
+ * if the number is greater than 0 and contacts is not NULL, fills contacts
+ * with the names of those contacts (must be free'd)
+ * likewise for keys -- exactly one key is returned per contact 
+ * likewise for status, which is the OR (|) of one or more constants below */
+#define KEYS_INCOMPLETE_NO_CONTACT_PUBKEY	1
+#define KEYS_INCOMPLETE_HAS_EXCHANGE_FILE	2
+extern int incomplete_key_exchanges (char *** contacts, keyset ** keys,
+                                     int ** status);
+
+/* manipulate the exchange file:
+ * if both old_content and new_content are NULL, deletes the file if any
+ * if old_content is not NULL, fills it in with the malloc'd contents of
+ *   the file (must be free'd) if any, or NULL if the file does not exist
+ * if new_content is not NULL, saves it as the new contents of the file,
+ *   or if it is NULL, leaves the file unchanged.
+ * except as described, always does what it can, without reporting errors */
+extern void incomplete_exchange_file (const char * contact, keyset k,
+                                      char ** old_content,
+                                      const char * new_content);
+
 /* create a spare key of the given size, returning the number of spare keys.
  * if random is not NULL and rsize >= keybits / 8, uses the bytes from
  * random to randomize the generated key
