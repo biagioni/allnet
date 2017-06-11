@@ -538,7 +538,7 @@ static int get_conn_obj ()
               char ssid[] = ALLNET_SSID_BYTE_ARRAY;
               char byte;
               int i = 0;
-              int has_next;
+              int has_next = 0;
               do {
                 assert (dbus_message_iter_get_arg_type (&carg_var[5]) == DBUS_TYPE_BYTE);
                 dbus_message_iter_get_basic (&carg_var[5], &byte);
@@ -628,7 +628,7 @@ static int abc_wifi_config_nm_is_device_busy ()
       dbus_message_unref (amsg);
       goto device_is_busy_cleanup;
     }
-    int our_conn;
+    int our_conn = 0;
     int our_dev = 0;
     do { /* loop over all properties */
       DBusMessageIter aarg_v[3];
