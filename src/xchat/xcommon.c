@@ -760,7 +760,12 @@ static int send_key (int sock, const char * contact, keyset kset,
                      int max_hops)
 {
   allnet_rsa_pubkey k;
-  get_my_pubkey (kset, &k);
+  int ksize = get_my_pubkey (kset, &k);
+  if (ksize <= 0) {
+    printf ("unable to send key, no public key found for contact %s (%d/%d)\n",
+            contact, kset, ksize);
+    return 0;
+  }
   char my_public_key [ALLNET_MTU];
   int pub_ksize = allnet_pubkey_to_raw (k, my_public_key,
                                         sizeof (my_public_key));
@@ -899,7 +904,12 @@ static int handle_key (int sock, struct allnet_header * hp,
   /* check to see if it is my own key */
   for (i = 0; i < nkeys; i++) {
     allnet_rsa_pubkey k;
-    get_my_pubkey (keys [i], &k);
+    int key_size = get_my_pubkey (keys [i], &k);
+    if (key_size <= 0) {
+      printf ("handle_key: %s keys [%d] = %d has %d-sized public key\n",
+              contact, i, keys [i], key_size);
+      continue;   /* skip this key */
+    }
     char test_key [ALLNET_MTU];
     int pub_ksize = allnet_pubkey_to_raw (k, test_key, sizeof (test_key));
     if ((pub_ksize == ksize) && (memcmp (received_key, test_key, ksize) == 0)) {
