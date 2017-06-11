@@ -763,7 +763,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       printf ("xchat_socket pipe closed, exiting\n");
       stop_chat_and_exit (0);
     }
-    if ((found == 0) && (found_key == 0)) { 
+    if ((found == 0) && (! found_key)) { 
       if (old_contact != NULL) { /* timed out, request/resend any missing */
         request_and_resend (sock, old_contact, old_kset, 0);
         old_contact = NULL;
@@ -776,6 +776,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       char * desc;
       char * message;
       struct allnet_ack_info acks;
+      acks.num_acks = 0;  /* in case we don't call handle_packet */
       time_t mtime = 0;
       int mlen = -1;  /* found a key, or the result of handle_packet */
       if (! found_key)
