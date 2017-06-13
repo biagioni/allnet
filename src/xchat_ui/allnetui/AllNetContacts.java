@@ -311,6 +311,7 @@ public class AllNetContacts {
 
     private enum fileActions { EXISTS,    // return non-null iff exists
                                GET,       // returns file contents if exists
+                               CREATE,    // creates file, returns null
                                DELETE };  // delete file if exists
     private static String fileAction(String contact, String fname,
                                      fileActions action) {
@@ -345,6 +346,15 @@ public class AllNetContacts {
                                 } catch (java.nio.file.NoSuchFileException e) {
                                     return null;  // fail gracefully
                                 } 
+                            case CREATE:
+                                try {
+                                    byte [] empty = new byte [0];
+                                    java.nio.file.Files.write (theFile, empty,
+                                      java.nio.file.StandardOpenOption.CREATE);
+                                } catch (java.lang.Exception e) {
+                                    return null;  // fail gracefully
+                                } 
+                                break;
                             case DELETE:
                                 java.nio.file.Files.deleteIfExists (theFile);
                                 break;
@@ -366,7 +376,11 @@ public class AllNetContacts {
         fileAction (contact, fname, fileActions.DELETE);
     }
 
-    private static Boolean fileExists (String contact, String fname) {
+    private static void createEmptyFile (String contact, String fname) {
+        fileAction (contact, fname, fileActions.CREATE);
+    }
+
+    private static boolean fileExists (String contact, String fname) {
         return (fileAction (contact, fname, fileActions.EXISTS) != null);
     }
 
@@ -377,6 +391,14 @@ public class AllNetContacts {
     // delete the hidden file, if any
     public static void unhideContact(String contact) {
         deleteFileIfAny (contact, "hidden");
+    }
+
+    public static void hideContact(String contact) {
+        createEmptyFile (contact, "hidden");
+    }
+
+    public static boolean isHiddenContact(String contact) {
+        return fileExists (contact, "hidden");
     }
 
     // delete the exchange and hidden files, if any
