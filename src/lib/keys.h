@@ -35,7 +35,8 @@ extern int all_individual_contacts (char *** contacts);
  * if feedback is nonzero, gives feedback while creating the key
  * If the contact was already created, but does not have the peer's
  * info, returns as if it were a newly created contact after replacing
- * the contents of local (as long as loc_nbits matches the original nbits) */
+ * the contents of local (as long as loc_nbits matches the original nbits)
+ * if there is no contact public key, marks the contact hidden */
 extern keyset create_contact (const char * contact, int keybits, int feedback,
                               char * contact_key, int contact_ksize,
                               unsigned char * local, int loc_nbits,

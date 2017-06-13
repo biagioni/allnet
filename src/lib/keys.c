@@ -826,6 +826,14 @@ static void save_contact (struct key_info * k)
     write_bytes_file (fname, k->symmetric_key, SYMMETRIC_KEY_SIZE);
     free (fname);
   }
+  /* create or delete the hidden file */
+  char * hidden_fname = strcat3_malloc (dirname, "/", "hidden", "mfile");
+  if (k->is_visible) {
+    unlink (hidden_fname);  /* delete the file, if any */
+  } else {
+    write_file (hidden_fname, "", 0, 0);  /* create the file */
+  }
+  free (hidden_fname);
 #ifdef DEBUG_PRINT
   printf ("save_contact %d file name is %s\n", ((int) (k - kip)), dirname);
 #endif /* DEBUG_PRINT */
@@ -980,7 +988,8 @@ int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
  * if feedback is nonzero, gives feedback while creating the key.
  * If the contact was already created, but does not have the peer's
  * info, returns as if it were a newly created contact after replacing
- * the contents of local (as long as loc_nbits matches the original nbits) */
+ * the contents of local (as long as loc_nbits matches the original nbits) 
+ * if there is no contact public key, marks the contact hidden */
 keyset create_contact (const char * contact, int keybits, int feedback,
                        char * contact_key, int contact_ksize,
                        unsigned char * local, int loc_nbits,
@@ -1010,7 +1019,7 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   struct key_info new;
   memset (&new, 0, sizeof (new));  /* for most fields 0 is a good default */
   new.contact_name = strcpy_malloc (contact, "create_contact");
-  new.is_visible = 1;
+  new.is_visible = ((contact_key != NULL) && (contact_ksize > 0));
   new.has_pub_key = 1;
   new.my_key = my_key;
   /* set defaults for the remaining values, then override them later if given */
