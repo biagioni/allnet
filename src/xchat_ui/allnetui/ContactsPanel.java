@@ -153,14 +153,16 @@ class ContactsPanel extends JPanel {
         buttonsPanel.removeAll();
         java.util.Collections.sort(topNames, comparator);
         for (String b : topNames) {
-            buttonsPanel.add(map.get(b));
+            if (! AllNetContacts.isHiddenContact(b))
+                buttonsPanel.add(map.get(b));
         }
         if (!topNames.isEmpty()) {
             buttonsPanel.add(Box.createRigidArea(new Dimension(0, 20)));
         }
         java.util.Collections.sort(bottomNames, comparator);
         for (String b : bottomNames) {
-            buttonsPanel.add(map.get(b));
+            if (! AllNetContacts.isHiddenContact(b))
+                buttonsPanel.add(map.get(b));
         }
         buttonsPanel.revalidate();
     }
