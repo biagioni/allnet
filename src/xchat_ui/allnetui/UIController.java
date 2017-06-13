@@ -161,8 +161,48 @@ class UIController implements ControllerInterface, UIAPI {
                 clientData.createContact(contactName, isBroadcast);
                 updateContactsPanel(contactName, isBroadcast);
                 KeyExchangePanel kep = getKeyExchangePanel(contactName);
-                if (kep != null) {
-                    showKeyExchangeSuccess(kep, contactName);
+                switch (AllNetContacts.contactComplete(contactName)) {
+                case COMPLETE:
+                    if (kep != null) {  /* get rid of Key Exchange panel */
+                        System.out.println("kep is not null, " +
+                                           "please report to maintainer(s)");
+                    }
+                    break;
+                case INCOMPLETE_NO_KEY:
+                case INCOMPLETE_WITH_KEY:
+                    if (kep == null) {
+                        int hops = 
+                            AllNetContacts.exchangeHopCount(contactName);
+                        if (hops > 0) {   // valid exchange file
+                            int button = 1;   // multi-hop exchange
+                            if (hops == 1) {
+                                button = 0;     // 1-hop exchange
+                            }
+                            String firstSecret =
+                                AllNetContacts.firstSecret(contactName);
+                            String secondSecret =
+                                AllNetContacts.secondSecret(contactName);
+                            // now put up a key exchange panel
+                            String[] middlePanelMsg
+                                = makeMiddlePanel(firstSecret, secondSecret);
+                            String[] bottomPanelMsg = new String[]{
+                                " Key exchange in progress",
+                                " Sent your key",
+                                " Waiting for key from " + contactName
+                            };
+                            kep = createKeyExchangePanel(contactName,
+                                middlePanelMsg, bottomPanelMsg, true, true);
+                            kep.setButtonState(button);
+                            kep.setSecret(firstSecret);
+                            if (secondSecret == null)
+                                secondSecret = "";
+                            kep.setVariableInput(secondSecret);
+                        }
+                    }
+                    if (AllNetContacts.contactComplete(contactName) ==
+                        AllNetContacts.keyExchangeComplete.INCOMPLETE_WITH_KEY) {
+                        showKeyExchangeSuccess(kep, contactName);
+                    }
                 }
             }
         };
@@ -187,8 +227,9 @@ class UIController implements ControllerInterface, UIAPI {
 
             @Override
             public void run() {
-                clientData.removeContact(contactName);
+                AllNetContacts.deleteEntireContact(contactName);
                 contactsPanel.removeName(contactName);
+                clientData.removeContact(contactName);
                 myTabbedPane.removeTab(contactName);
             }
         };
@@ -374,10 +415,11 @@ class UIController implements ControllerInterface, UIAPI {
             case KeyExchangePanel.CANCEL_COMMAND:
                 myTabbedPane.removeTab(actionCommand[0]);
                 myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
-                AllNetContacts.completeExchange(contact);
+                contactDeleted(contact);
                 break;
             case KeyExchangePanel.RESEND_KEY_COMMAND:
-                resendKey((KeyExchangePanel) myTabbedPane.getTabContent(actionCommand[0]));
+                resendKey((KeyExchangePanel)
+                          myTabbedPane.getTabContent(actionCommand[0]));
                 break;
         }
     }
@@ -525,6 +567,23 @@ class UIController implements ControllerInterface, UIAPI {
         updateConversationPanels();
     }
 
+    private String[] makeMiddlePanel(String firstSecret,
+                                     String secondSecret) {
+        if (secondSecret != null) {
+            return new String[]{
+                " Shared secret:",
+                " " + firstSecret,
+                " or:",
+                " " + secondSecret
+            };
+        } else {
+            return new String[]{
+                " Shared secret:",
+                " " + firstSecret
+            };
+        }
+    }
+
     private String[] makeMiddlePanel(boolean useLongSecret,
         String variableInput) {
         String secret = newContactPanel.getMySecretShort();
@@ -533,19 +592,10 @@ class UIController implements ControllerInterface, UIAPI {
             secret = newContactPanel.getMySecretLong();
             minLength = MIN_LENGTH_LONG;
         }
-        if (variableInput.length() >= minLength) {
-            return new String[]{
-                " Shared secret:",
-                " " + secret,
-                " or:",
-                " " + newContactPanel.getVariableInput()
-            };
-        }
-        else {
-            return new String[]{
-                " Shared secret:",
-                " " + secret
-            };
+        if (variableInput.length() < minLength) {
+            return makeMiddlePanel (secret, null);
+        } else {
+            return makeMiddlePanel (secret, variableInput);
         }
     }
 
@@ -991,6 +1041,7 @@ class UIController implements ControllerInterface, UIAPI {
         // if (contactName.equals("Bob"))
         //    return;
         kep.setSuccess(contactName);
+        AllNetContacts.unhideContact(contactName);  // make the contact visible
     }
 
     private KeyExchangePanel getKeyExchangePanel(String contactName) {
