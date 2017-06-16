@@ -293,113 +293,116 @@ public class ConversationData {
                                        // fname and messageCount for debugging
                                        String fname, int messageCount)
     {
-        String firstLine = "no first line read yet";
-        String secondLine = "no second line read yet";
-        try {
-            firstLine = in.readLine();
-            // firstLine = myReadLine(in);
-            if ((firstLine == null) || (firstLine.length() < 10))
-                return null;
-            String start = firstLine.substring(0, 8);
-            if (start.equals("got ack:")) {  
-                acks.add(firstLine.substring(9));
-                return readMessage(contact, in, acks, maxLine,
-                                   unreadOnly, lr, fname, messageCount + 1);
-            }   // there should be three or more lines for either sent or rcvd
-            String messageId = firstLine.substring(9);
-            boolean sentMessage = start.equals ("sent id:");
-            secondLine = in.readLine();
-            if ((secondLine == null) || (secondLine.length() < 46))
-                return null;
-            final String sequence = "sequence ";
-            String secondLineSeq = secondLine.substring(sequence.length());
-            long seq = 0;
-            int seqPos = secondLineSeq.indexOf(", ");
-            if (seqPos <= 0) {
-                System.out.println ("no sequence number in " + secondLine);
-                return null;
-            }
+        while (true) {
+            String firstLine = "no first line read yet";
+            String secondLine = "no second line read yet";
             try {
-                seq = Long.parseLong(secondLineSeq.substring(0, seqPos));
-            } catch (java.lang.NumberFormatException e) {
-                System.out.println ("no valid seq number in " + secondLine);
-                return null;
-            }
-            int timePos = secondLine.indexOf ("(") + 1;
-            if ((timePos <= 0) || (timePos + 9 > secondLine.length())) {
-                System.out.println ("no time in " + secondLine);
-                return null;
-            }
-            String timeStr = secondLine.substring(timePos);
-            int timeEnd = timeStr.indexOf (" ");
-            long time = 0;
-            final long y2kSecondsInUnix = 946720800;
-            try {
-                time = Long.parseLong(timeStr.substring(0, timeEnd))
-                     + y2kSecondsInUnix;
-            } catch (java.lang.NumberFormatException e) {
-                System.out.println ("no valid time in " + timeStr +
-                                    "/" + secondLine);
-                return null;
-            }
-            long rcvdTime = time;
-            int rcvdTimePos = secondLine.indexOf ("/") + 1;
-            if (rcvdTimePos > 0) {
-                String rcvdTimeStr = secondLine.substring(rcvdTimePos);
-                rcvdTime = Long.parseLong(rcvdTimeStr) + y2kSecondsInUnix;
-            }
-            String text = "";
-            in.mark(maxLine);  // if this is not a text line, we will reset
-            try {
-                String textLine = in.readLine();
-                while ((textLine != null) && (textLine.length() > 0) &&
-                       (textLine.charAt(0) == ' ')) {
-                    // get rid of the initial blank
-                    String realTextLine = textLine.substring(1);
-                    // add a newline separator if this is not the first line
-                    if (text.equals (""))
-                        text = realTextLine;
-                    else
-                        text = text + "\n" + realTextLine;
-                    in.mark(maxLine);
-                    textLine = in.readLine();
+                firstLine = in.readLine();
+                if ((firstLine == null) || (firstLine.length() < 10))
+                    return null;
+                String start = firstLine.substring(0, 8);
+                if (start.equals("got ack:")) {  
+                    acks.add(firstLine.substring(9));
+                    messageCount = messageCount + 1;  // restart loop
+                    continue;
+                }   // should be three or more lines for either sent or rcvd
+                String messageId = firstLine.substring(9);
+                boolean sentMessage = start.equals ("sent id:");
+                secondLine = in.readLine();
+                if ((secondLine == null) || (secondLine.length() < 46))
+                    return null;
+                final String sequence = "sequence ";
+                String secondLineSeq = secondLine.substring(sequence.length());
+                long seq = 0;
+                int seqPos = secondLineSeq.indexOf(", ");
+                if (seqPos <= 0) {
+                    System.out.println ("no sequence number in " + secondLine);
+                    return null;
                 }
-                // finished reading the text.  gracefully handle
-                // empty lines and other weird stuff, whether
-                // caused by bugs or manual editing of the text file
-                while ((textLine != null) && (textLine.length() < 10)) {
-                    in.mark(maxLine);
-                    textLine = in.readLine();
+                try {
+                    seq = Long.parseLong(secondLineSeq.substring(0, seqPos));
+                } catch (java.lang.NumberFormatException e) {
+                    System.out.println ("no valid seq number in " + secondLine);
+                    return null;
                 }
-                // found a line that is not a text line and length >= 10
-                in.reset();
-            } catch (java.io.IOException e) {   // reached EOF, text is good
+                int timePos = secondLine.indexOf ("(") + 1;
+                if ((timePos <= 0) || (timePos + 9 > secondLine.length())) {
+                    System.out.println ("no time in " + secondLine);
+                    return null;
+                }
+                String timeStr = secondLine.substring(timePos);
+                int timeEnd = timeStr.indexOf (" ");
+                long time = 0;
+                final long y2kSecondsInUnix = 946720800;
+                try {
+                    time = Long.parseLong(timeStr.substring(0, timeEnd))
+                         + y2kSecondsInUnix;
+                } catch (java.lang.NumberFormatException e) {
+                    System.out.println ("no valid time in " + timeStr +
+                                        "/" + secondLine);
+                    return null;
+                }
+                long rcvdTime = time;
+                int rcvdTimePos = secondLine.indexOf ("/") + 1;
+                if (rcvdTimePos > 0) {
+                    String rcvdTimeStr = secondLine.substring(rcvdTimePos);
+                    rcvdTime = Long.parseLong(rcvdTimeStr) + y2kSecondsInUnix;
+                }
+                String text = "";
+                in.mark(maxLine);  // if this is not a text line, we will reset
+                try {
+                    String textLine = in.readLine();
+                    while ((textLine != null) && (textLine.length() > 0) &&
+                           (textLine.charAt(0) == ' ')) {
+                        // get rid of the initial blank
+                        String realTextLine = textLine.substring(1);
+                        // add a newline separator if this is not the first line
+                        if (text.equals (""))
+                            text = realTextLine;
+                        else
+                            text = text + "\n" + realTextLine;
+                        in.mark(maxLine);
+                        textLine = in.readLine();
+                    }
+                    // finished reading the text.  gracefully handle
+                    // empty lines and other weird stuff, whether
+                    // caused by bugs or manual editing of the text file
+                    while ((textLine != null) && (textLine.length() < 10)) {
+                        in.mark(maxLine);
+                        textLine = in.readLine();
+                    }
+                    // found a line that is not a text line and length >= 10
+                    in.reset();
+                } catch (java.io.IOException e) {   // reached EOF, text is good
+                }
+                text = XchatSocket.sanitizeForHtml (text);
+                long lastReadSecond = 0;
+                if (lr != null)
+                    lastReadSecond =
+                        lr.to(java.util.concurrent.TimeUnit.SECONDS);
+                boolean isUnread = ((lr == null) ||
+                                    (lastReadSecond < rcvdTime));
+                // if unreadOnly is specified, ignore sent messages and any
+                // messages that have been read already (aka not unread)
+                if (unreadOnly) {
+                    if (sentMessage || (! isUnread))
+                        messageCount = messageCount + 1;  // restart loop
+                        continue;
+                }
+                if (sentMessage)
+                    return new Message(Message.SELF, contact, time * 1000, seq,
+                                       text, messageId);
+                else  // received message
+                    return new Message(contact, Message.SELF, time * 1000,
+                                       rcvdTime * 1000, text, false, isUnread);
+            } catch (java.io.IOException e) {
+                System.out.println ("I/O error " + e + " on file " + fname +
+                                    " message number " + messageCount +
+                                    " in ReadMessage for contact " + contact);
+                System.out.println ("line 1: " + firstLine);
+                System.out.println ("line 2: " + secondLine);
+                return null;
             }
-            text = XchatSocket.sanitizeForHtml (text);
-            long lastReadSecond = 0;
-            if (lr != null)
-                lastReadSecond = lr.to(java.util.concurrent.TimeUnit.SECONDS);
-            boolean isUnread = ((lr == null) || (lastReadSecond < rcvdTime));
-            // if unreadOnly is specified, ignore sent messages and any
-            // messages that have been read already (aka not unread)
-            if (unreadOnly) {
-                if (sentMessage || (! isUnread))
-                    return readMessage(contact, in, acks, maxLine,
-                                       unreadOnly, lr, fname, messageCount + 1);
-            }
-            if (sentMessage)
-                return new Message(Message.SELF, contact, time * 1000, seq,
-                                   text, messageId);
-            else  // received message
-                return new Message(contact, Message.SELF, time * 1000,
-                                   rcvdTime * 1000, text, false, isUnread);
-        } catch (java.io.IOException e) {
-            System.out.println ("I/O error " + e + " on file " + fname +
-                                " message number " + messageCount +
-                                " in ReadMessage for contact " + contact);
-            System.out.println ("line 1: " + firstLine);
-            System.out.println ("line 2: " + secondLine);
-            return null;
         }
     }
 }
