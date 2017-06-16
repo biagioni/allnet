@@ -546,13 +546,6 @@ class UIController implements ControllerInterface, UIAPI {
             // display the conversation on the new panel
             Conversation conv = clientData.getConversation(contactName);
             initializeConversation(cp, conv, true);
-
-//            Iterator<Message> it = conv.getIterator();
-//            Message msg;
-//            while (it.hasNext()) {
-//                msg = it.next();
-//                cp.addMsg(formatMessage(msg, maxLineLength), msg);
-//            }
             myTabbedPane.addTabWithClose(contactName, cp.getTitle(), cp, ConversationPanel.CLOSE_COMMAND);
             myTabbedPane.setSelected(cp);
         }
@@ -820,14 +813,6 @@ class UIController implements ControllerInterface, UIAPI {
                 // out of order, so delete everything, then add everything back
                 // System.out.println ("received out-of-order message");
                 initializeConversation(cp, conv, true);
-
-//                cp.clearMsgs();
-//                Iterator<Message> it = conv.getIterator();
-//                Message savedMsg;
-//                while (it.hasNext()) {
-//                    savedMsg = it.next();
-//                   cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
-//                }
             }
             // if the tab is currently selected, then mark message as read
             String selectedName = myTabbedPane.getSelectedID();
@@ -842,22 +827,6 @@ class UIController implements ControllerInterface, UIAPI {
             boolean isBroadcast = clientData.isBroadcast(contactName);
             updateContactsPanel(contactName, isBroadcast);
             updateConversationPanels();
-        }
-    }
-
-    private void initializeConversationOld(ConversationPanel cp, Conversation conv, boolean scrollToBottom) {
-        cp.clearMsgs();
-        Iterator<Message> it = conv.getIterator();
-        Message savedMsg;
-        while (it.hasNext()) {
-            savedMsg = it.next();
-            cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
-        }
-        if (scrollToBottom) {
-            cp.validateToBottom();
-        }
-        else {
-            cp.validateToTop();
         }
     }
 
