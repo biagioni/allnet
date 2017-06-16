@@ -267,7 +267,7 @@ class ConversationPanel extends JPanel {
     }
 
     public void validateToTop() {
-        // tell scroll panel to scroll to the bottom the next time it adjusts,
+        // tell scroll panel to scroll to the top the next time it adjusts,
         // which will be triggered right now when it validates.  there is 
         // apparently no other way to do this 
         scrollToTop = true;
