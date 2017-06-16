@@ -463,7 +463,7 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
                   "sigpipe/epipe %d/%d on pipe %d\n",
                   errno, save_errno, pipe);
         log_error (log, "send_pipe_msg send");
-        printf ("sigpipe on fd %d\n", pipe);
+        printf ("%s: sigpipe on fd %d\n", log->debug_info, pipe);
       } else if (errno == ENOTSOCK) {
         snprintf (log->b, log->s,
                   "result %zd, errno %d, notsock, maybe try write on fd %d?\n",
