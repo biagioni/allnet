@@ -780,7 +780,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       time_t mtime = 0;
       int mlen = -1;  /* found a key, or the result of handle_packet */
       if (! found_key)
-        mlen = handle_packet (sock, packet, found, &peer, &kset, &acks,
+        mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
                               &message, &desc, &verified, &mtime, &duplicate,
                               &broadcast, key_contact, key_secret, 
                               key_secret2, kaddr, kabits, num_hops,

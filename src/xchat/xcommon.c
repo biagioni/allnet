@@ -20,6 +20,7 @@
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/pipemsg.h"
+#include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
@@ -250,6 +251,51 @@ void xchat_end (int sock)
 #endif /* HAVE_REQUEST_THREAD */
 }
 
+/* 1 ID hash for each of the data messages and the acks, and
+ * one for the acks of the data messages (which is hashed on the message ID,
+ * not the ack) */
+#define ID_HASH_COUNT	    16384  /* *MESSAGE_ID_SIZE = 256K bytes each */
+#define ID_HASH_COUNT_BITS  14     /* log_2(ID_HASH_COUNT) */
+
+#define MESSAGE_ID_HASH_INDEX	0
+#define  MESSAGE_ID_ACK_INDEX	1   /* not actually a hash */
+#define      ACK_ID_HASH_INDEX	2
+/* C initializes static data to 0, which is good */
+static unsigned char id_hashes [3] [ID_HASH_COUNT] [MESSAGE_ID_SIZE];
+
+static int idhash_index (const unsigned char * id)
+{
+  uint32_t index = ((uint32_t) readb32u (id)) >> (32 - ID_HASH_COUNT_BITS);
+#if 0
+  static int first = 10;
+  if ((first > 0) || (index >= ID_HASH_COUNT)) {
+printf ("%lx >> %d = %x (*4 = %x)\n", readb32u (id), (32 - ID_HASH_COUNT_BITS), index, index * 4);
+    first--;
+  }
+#endif /* 0 */
+  return (int)index;
+}
+
+/* returns 1 if already found in hash.
+ * if not found, returns 0.
+ * ID must be at least MESSAGE_ID_SIZE */
+static int idhash_check (int hash_index, const unsigned char * id)
+{
+  int index = idhash_index (id);
+  if (memcmp (id_hashes [hash_index] [index], id, MESSAGE_ID_SIZE) == 0)
+    return 1;
+  return 0;
+}
+
+static int idhash_check_and_add (int hash_index, const unsigned char * id)
+{
+  int index = idhash_index (id);
+  if (memcmp (id_hashes [hash_index] [index], id, MESSAGE_ID_SIZE) == 0)
+    return 1;
+  memcpy (id_hashes [hash_index] [index], id, MESSAGE_ID_SIZE);
+  return 0;
+}
+
 #ifdef TRACK_RECENTLY_SENT_ACKS   /* no longer seems useful */
 #define NUM_ACKS	100
 /* initial contents should not matter, accidental match is unlikely */
@@ -277,6 +323,8 @@ static void send_ack (int sock, struct allnet_header * hp,
 #endif /* DEBUG_PRINT */
     return;
   }
+  /* make sure the ack is in the hash */
+  idhash_check_and_add (ACK_ID_HASH_INDEX, message_ack);
   unsigned int size;
   struct allnet_header * ackp =
     create_ack (hp, message_ack, NULL, ADDRESS_BITS, &size);
@@ -387,20 +435,24 @@ static void handle_ack (int sock, char * packet, unsigned int psize,
   int i;
   unsigned int ack_count = 0;
   for (i = 0; i < count; i++) {
+    if (idhash_check_and_add (ACK_ID_HASH_INDEX, (unsigned char *) ack)) {
+      /* the ack has already been seen, do not return it to the caller */
+      ack += MESSAGE_ID_SIZE;
+      continue;     /* go on to the next ack */
+    }  /* otherwise, not found, but added.  Record for the caller */
     char * peer = NULL;
     keyset kset;
     int new_ack = 0;
     long long int ack_number = ack_received (ack, &peer, &kset, &new_ack);
     int free_peer = (peer != NULL);
     if ((ack_number > 0) && (peer != NULL)) {
-      if ((acks != NULL) && (ack_count < ALLNET_MAX_ACKS)) {
-        acks->acks [ack_count] = ack_number;
-        acks->peers [ack_count] = peer;
-        acks->duplicates [ack_count] = (! new_ack);
-        free_peer = 0;   /* saving ack, do not free the peer string */
-      }
-      ack_count++;
       if (new_ack) {
+        if ((acks != NULL) && (ack_count < ALLNET_MAX_ACKS)) {
+          acks->acks [ack_count] = ack_number;
+          acks->peers [ack_count] = peer;
+          free_peer = 0;   /* saving ack, do not free the peer string */
+        }
+        ack_count++;
         reload_unacked_cache (peer, kset);
         request_and_resend (sock, peer, kset, 1);
       }
@@ -550,8 +602,16 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
   char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, psize);
   char message_ack [MESSAGE_ID_SIZE];
 /* relatively quick check to see if we may have gotten this message before */
+#ifdef USE_MESSAGE_ID_IS_IN_SAVED_CACHE
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
       (message_id_is_in_saved_cache (message_id, message_ack))) {
+#else /* ! USE_MESSAGE_ID_IS_IN_SAVED_CACHE -- use idhash_check */
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
+      (idhash_check (MESSAGE_ID_HASH_INDEX, (unsigned char *) message_id))) {
+    int index = idhash_index ((unsigned char *)message_id);
+    memcpy (message_ack, id_hashes [MESSAGE_ID_ACK_INDEX] [index],
+            MESSAGE_ID_SIZE);
+#endif /* USE_MESSAGE_ID_IS_IN_SAVED_CACHE */
 #ifdef DEBUG_PRINT
     print_buffer (message_ack, MESSAGE_ID_SIZE,
                   "xcommon handle_data sending quick ack",
@@ -635,6 +695,15 @@ else {
 #endif /* DEBUG_PRINT */
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
 
+  /* save in the hash */
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL)) {
+    int index = idhash_index ((unsigned char *) message_id);
+    memcpy (id_hashes [MESSAGE_ID_HASH_INDEX] [index],
+            message_id, MESSAGE_ID_SIZE);
+    memcpy (id_hashes [MESSAGE_ID_ACK_INDEX] [index],
+            cdp->message_ack, MESSAGE_ID_SIZE);
+  }
+
   unsigned long int app = readb32u (cdp->app_media.app);
   if (app != XCHAT_ALLNET_APP_ID) {
 #ifdef DEBUG_PRINT
@@ -686,8 +755,8 @@ else {
   *duplicate = 0;
   if (was_received (*contact, *kset, seq))
     *duplicate = 1;
-
-  save_incoming (*contact, *kset, cdp, cleartext, msize);
+  else
+    save_incoming (*contact, *kset, cdp, cleartext, msize);
 
   if (media == ALLNET_MEDIA_PUBLIC_KEY) {
     cleartext = "received a key for an additional device";
@@ -1030,6 +1099,7 @@ int key_received (int sock, char * contact, char * secret1, char * secret2,
  * the address in the packet and addr/nbits (or if nbits is 0).
  */
 int handle_packet (int sock, char * packet, unsigned int psize,
+                   unsigned int priority,
                    char ** contact, keyset * kset,
                    struct allnet_ack_info * acks,
                    char ** message, char ** desc,
@@ -1040,7 +1110,6 @@ int handle_packet (int sock, char * packet, unsigned int psize,
                    char * subscription, 
                    unsigned char * addr, unsigned int nbits)
 {
-  do_request_and_resend (sock);
   if (acks != NULL)
     acks->num_acks = 0;
   if (! is_valid_message (packet, psize, NULL))
@@ -1051,6 +1120,36 @@ int handle_packet (int sock, char * packet, unsigned int psize,
   if (psize < hsize)
     return 0;
 
+  int result = 0;
+
+  /* drop packets if we are spending too much time on incoming messages */
+  long long int start_time = allnet_time_us();
+  static long long int no_sooner_than_high_priority = 0;
+  static long long int no_sooner_than_mid_priority = 0;
+  static long long int no_sooner_than_low_priority = 0;
+  static long long int no_sooner_than_ack = 0;
+  long long int * nstp = NULL;
+  long long int multiplier = 100;
+  if (hp->message_type == ALLNET_TYPE_ACK) {  /* acks are special */
+    nstp = &no_sooner_than_ack;
+    multiplier = 3;   /* allow acks to consume 33% of the time */
+  } else if (priority >= ALLNET_PRIORITY_FRIENDS_HIGH) {
+    nstp = &no_sooner_than_high_priority;
+    multiplier = 5;   /* allow receipt of my packets to take 20% of the time */
+  } else if (priority >= ALLNET_PRIORITY_FRIENDS_LOW) {
+    nstp = &no_sooner_than_mid_priority;
+    multiplier = 20;  /* packet receipt for friends may take 5% of the time */
+  } else {            /* lowest priority traffic */
+    nstp = &no_sooner_than_low_priority;
+    multiplier = 100;   /* allow packet receipt to consume 1% of the time */
+  }
+  if (start_time < *nstp)   /* too soon to process this packet */
+    return 0;               /* drop the packet */
+  if (*nstp == 0)
+    multiplier = 1;         /* give a free pass to the first packet */
+
+  do_request_and_resend (sock);
+
 #ifdef DEBUG_PRINT
   if (hp->hops > 0)  /* not my own packet */
     print_packet (packet, psize, "xcommon received", 1);
@@ -1058,10 +1157,8 @@ int handle_packet (int sock, char * packet, unsigned int psize,
 
   if (hp->message_type == ALLNET_TYPE_ACK) {
     handle_ack (sock, packet, psize, hsize, acks);
-    return -3;
-  }
-
-  if (hp->message_type == ALLNET_TYPE_CLEAR) { /* a broadcast packet */
+    result = -3;
+  } else if (hp->message_type == ALLNET_TYPE_CLEAR) { /* a broadcast packet */
     if ((subscription != NULL) && (addr != NULL)) {
       int sub = handle_sub (sock, hp, packet + hsize, psize - hsize,
                             subscription, addr, nbits);
@@ -1071,27 +1168,39 @@ int handle_packet (int sock, char * packet, unsigned int psize,
               addr, nbits, sub);
 #endif /* DEBUG_PRINT */
       if (sub > 0)   /* received a key in response to our subscription */
-        return -2;
+        result = -2;
     }
 #ifdef DEBUG_PRINT
     else
       printf ("subscription %p, addr %p, did not call handle_sub\n",
               subscription, addr);
 #endif /* DEBUG_PRINT */
-    return handle_clear (hp, packet + hsize, psize - hsize,
+    result = handle_clear (hp, packet + hsize, psize - hsize,
                          contact, message, verified, duplicate, broadcast);
-  }
-
-  if (hp->message_type == ALLNET_TYPE_DATA) /* an encrypted data packet */
-    return handle_data (sock, hp, psize, packet + hsize, psize - hsize,
+  } else if (hp->message_type == ALLNET_TYPE_DATA) { /* encrypted data packet */
+    result = handle_data (sock, hp, psize, packet + hsize, psize - hsize,
                         contact, kset, message, desc, verified, sent,
                         duplicate, broadcast);
-
-  if (hp->message_type == ALLNET_TYPE_KEY_XCHG)
-    return handle_key (sock, hp, packet + hsize, psize - hsize,
+  } else if (hp->message_type == ALLNET_TYPE_KEY_XCHG) {
+    result = handle_key (sock, hp, packet + hsize, psize - hsize,
                        kcontact, ksecret1, ksecret2, kaddr, kbits, kmax_hops);
+  }
 
-  return 0;
+  long long int finish_time = allnet_time_us();
+  *nstp = finish_time + (finish_time - start_time) * multiplier;
+#if 0
+/* *nstp = finish_time;   // for profiling */
+static long long int debug_largest = 0;
+if ((finish_time - start_time) > debug_largest) {
+debug_largest = (finish_time - start_time);
+printf ("debug_largest is now %lld, waiting %lld for ",
+debug_largest, *nstp - finish_time);
+print_fraction (priority, NULL);
+printf ("\n");
+if ((debug_largest > 1000000) || (multiplier < 2)) debug_largest = 0;
+}
+#endif /* 0 */
+  return result;
 }
 
 /* send this message and save it in the xchat log. */
@@ -1205,7 +1314,7 @@ static int parse_exchange_info (char * contents, char ** secret1,
     return 0;
   /* make sure the first string is a hop count */
   char * endptr;
-  *hops = strtol (first, &endptr, 10);
+  *hops = (int)strtol (first, &endptr, 10);
   if (endptr == first) { /* conversion failed */
     *hops = 0;
     *secret1 = NULL;
@@ -1405,7 +1514,7 @@ int create_contact_send_key (int sock, const char * contact,
                   hops, secret1, secret2);
       else
         snprintf (content, sizeof (content), "%d\n%s\n", hops, secret1);
-      write_file (hs, content, strlen (content), 1);
+      write_file (hs, content, (int)strlen (content), 1);
       free (hs);
     }
     

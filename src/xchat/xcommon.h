@@ -12,11 +12,11 @@ extern int xchat_init (char * program_name, pd p);
 /* optional... */
 extern void xchat_end (int sock);
 
+/* only returns new acks, discarding acks received previously */
 struct allnet_ack_info {
   int num_acks;        /* num acks received */
   long long int acks [ALLNET_MAX_ACKS];
   char * peers [ALLNET_MAX_ACKS];
-  int duplicates [ALLNET_MAX_ACKS];
 };
 
 /* handle an incoming packet, acking it if it is a data packet for us
@@ -57,6 +57,7 @@ struct allnet_ack_info {
  * the address in the packet and addr/nbits (or if nbits is 0).
  */
 extern int handle_packet (int sock, char * packet, unsigned int psize,
+                          unsigned int priority,
                           char ** contact, keyset * kset,
                           struct allnet_ack_info * acks,
                           char ** message, char ** desc, int * verified,

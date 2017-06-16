@@ -84,7 +84,7 @@ static void * receive_thread (void * arg)
       char * desc;
       char * message;
       struct allnet_ack_info acks;
-      int mlen = handle_packet (a.sock, packet, found, &peer, &kset, &acks,
+      int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset, &acks,
                                 &message, &desc, &verified, NULL, &duplicate,
                                 &broadcast, NULL, NULL, NULL,
                                 NULL, 0, 0, NULL, NULL, 0);
@@ -131,17 +131,15 @@ static void * receive_thread (void * arg)
       if (acks.num_acks > 0) {
         int i;
         for (i = 0; i < acks.num_acks; i++) {
-          if (! acks.duplicates [i]) {
-            char string [PRINT_BUF_SIZE];
-            if (strcmp (prompt, acks.peers [i]) != 0)
-              snprintf (string, sizeof (string),
-                        "from '%s' got ack for seq %llu\n", acks.peers [i],
-                        acks.acks [i]);
-            else
-              snprintf (string, sizeof (string),
-                        "got ack for seq %llu\n", acks.acks [i]);
-            print_to_output (string);
-          }
+          char string [PRINT_BUF_SIZE];
+          if (strcmp (prompt, acks.peers [i]) != 0)
+            snprintf (string, sizeof (string),
+                      "from '%s' got ack for seq %llu\n", acks.peers [i],
+                      acks.acks [i]);
+          else
+            snprintf (string, sizeof (string),
+                      "got ack for seq %llu\n", acks.acks [i]);
+          print_to_output (string);
         }
       }
     }

@@ -168,7 +168,7 @@ int main (int argc, char ** argv)
     char * peer = NULL;
     struct allnet_ack_info acks;
     keyset kset = -1;
-    int mlen = handle_packet (sock, packet, found, &peer, &kset, &acks,
+    int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
                               &message, &desc, &verified, NULL, &duplicate,
                               &broadcast, kcontact, my_secret, peer_secret,
                               my_addr, my_bits, kmax_hops, NULL, NULL, 0);
@@ -197,8 +197,8 @@ int main (int argc, char ** argv)
   /* handle_packet may change what has been acked */
     int i;
     for (i = 0; i < acks.num_acks; i++) {
-      if ((ack_expected) && (! (acks.duplicates [i])) &&
-          (seq == acks.acks [i]) && (strcmp (contact, acks.peers [i]) == 0)) {
+      if ((ack_expected) && (seq == acks.acks [i]) &&
+          (strcmp (contact, acks.peers [i]) == 0)) {
         struct timeval finish;
         gettimeofday (&finish, NULL);   /* how long did the ack take? */
         long long int delta = (finish.tv_sec  - start.tv_sec ) * 1000000LL +

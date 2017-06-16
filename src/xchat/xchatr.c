@@ -67,7 +67,7 @@ int main (int argc, char ** argv)
       keyset kset;
       char * desc;
       char * message;
-      int mlen = handle_packet (sock, packet, found, &peer, &kset, NULL,
+      int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, NULL,
                                 &message, &desc, &verified, NULL, &duplicate,
                                 &broadcast, NULL, NULL, NULL,
                                 NULL, 0, 0, NULL, NULL, 0);
