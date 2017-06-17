@@ -22,6 +22,9 @@
 #include <string.h>
 #include <inttypes.h>
 #include <pthread.h>
+#ifdef CHECK_ASSERTIONS
+#include <assert.h>
+#endif /* CHECK_ASSERTIONS */
 
 #include "chat.h"
 #include "message.h"
@@ -57,6 +60,17 @@ uint64_t get_last_received (const char * contact, keyset k)
   return highest_seq_value (contact, k, MSG_TYPE_RCVD);
 }
 
+/* returns 1 if they are the same, 0 if different */
+static inline int same_message_id (const char * id1, const char * id2)
+{
+#ifdef CHECK_ASSERTIONS
+  assert (sizeof (uint64_t) * 2 == MESSAGE_ID_SIZE);
+#endif /* CHECK_ASSERTIONS */
+  const uint64_t * i1 = (uint64_t *) id1;
+  const uint64_t * i2 = (uint64_t *) id2;
+  return ((i1 [0] == i2 [0]) && (i1 [1] == i2 [1]));
+}
+
 /* search for a message with a message ack matching "wanted", and of wtype.
  * if not found, return 0
  * if found, and:
@@ -64,23 +78,31 @@ uint64_t get_last_received (const char * contact, keyset k)
  *   otherwise, return the sequence number of the matching message
  */
 static uint64_t find_ack (const char * contact, keyset k, const char * wanted,
-                          int wtype)
+                          int wtype, int * report_ack_found)
 {
+  if (report_ack_found != NULL)
+    *report_ack_found = 0;
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)
     return 0;
   int type;
   uint64_t seq = 0;
   char ack [MESSAGE_ID_SIZE];
+  int ack_found = 0;
   while ((type = prev_message (iter, &seq, NULL, NULL, NULL, ack, NULL, NULL))
          != MSG_TYPE_DONE) {
-    if ((type == wtype) &&
-        (memcmp (wanted, ack, MESSAGE_ID_SIZE) == 0)) {
+    if ((type == wtype) && (same_message_id (wanted, ack))) {
       free_iter (iter);
-      if (wtype == MSG_TYPE_ACK)  /* seq is not set */
+      if (wtype == MSG_TYPE_ACK) { /* seq is not set */
         return 1;
-      else
+      } else {
+        if (report_ack_found != NULL)
+          *report_ack_found = ack_found;
         return seq;
+      }
+    } else if ((wtype != MSG_TYPE_ACK) && (type == MSG_TYPE_ACK) &&
+               (same_message_id (wanted, ack))) {
+      ack_found = 1;
     }
   }
   free_iter (iter);
@@ -167,7 +189,7 @@ void save_incoming (const char * contact, keyset k,
   int tz;
   get_time_tz (readb64 ((char *) (cp->timestamp)), &time, &tz);
   char * ack = (char *) (cp->message_ack);
-  if (find_ack (contact, k, ack, MSG_TYPE_RCVD) == 0) {
+  if (find_ack (contact, k, ack, MSG_TYPE_RCVD, NULL) == 0) {
     eliminate_nulls (text, tsize);
     save_record (contact, k, MSG_TYPE_RCVD, readb64u (cp->counter),
                  time, tz, allnet_time (), ack, text, tsize);
@@ -202,10 +224,22 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset,
     int nk = all_keys (contacts [c], &ksets);
     int k;
     for (k = 0; k < nk; k++) {
+      int found_ack = 0;
       uint64_t seq = find_ack (contacts [c], ksets [k], message_ack,
-                               MSG_TYPE_SENT);
+                               MSG_TYPE_SENT, &found_ack);
       if (seq > 0) {
-        if (! find_ack (contacts [c], ksets [k], message_ack, MSG_TYPE_ACK)) {
+#ifdef VERIFY_20170616_ACK_FINDER
+        uint64_t a =
+          find_ack (contacts [c], ksets [k], message_ack, MSG_TYPE_ACK, NULL);
+        int x = (a != 0);  /* x is the boolean equivalent of a */
+        if (x != found_ack) {
+          printf ("find_ack %d (%ld), found_ack %d for %s, %d\n",
+                  x, a, found_ack, contacts [c], ksets [k]);
+          print_buffer (message_ack, MESSAGE_ID_SIZE, "ack",
+                        MESSAGE_ID_SIZE, 1);
+        }
+#endif /* VERIFY_20170616_ACK_FINDER */
+        if (! found_ack) {
           save_record (contacts [c], ksets [k], MSG_TYPE_ACK, seq,
                        0, 0, 0, message_ack, NULL, 0);
           if (new_ack != NULL)
@@ -583,7 +617,7 @@ int is_acked_one (const char * contact, keyset k, uint64_t wanted,
 /* this is the first (most recent) message sent with this sequence number.
  * we simply report whether this one has been acked -- the others are not
  * so important */
-      uint64_t result_seq = find_ack (contact, k, ack, MSG_TYPE_ACK);
+      uint64_t result_seq = find_ack (contact, k, ack, MSG_TYPE_ACK, NULL);
       free_iter (iter);
       return (result_seq > 0);
     }
@@ -825,8 +859,8 @@ static int is_in_message_id_cache (const char * message_id, char * message_ack)
 #endif /* DEBUG_PRINT */
   int i;
   for (i = 0; i < current_cache_index; i++) {
-    if (memcmp (message_id_cache + (i * MESSAGE_ID_SIZE),
-                message_id, MESSAGE_ID_SIZE) == 0) {
+    if (same_message_id (message_id_cache + (i * MESSAGE_ID_SIZE),
+                         message_id)) {
       memcpy (message_ack,  /* fill in the message ack */
               message_ack_cache + (i * MESSAGE_ID_SIZE), MESSAGE_ID_SIZE);
 #ifdef DEBUG_PRINT
