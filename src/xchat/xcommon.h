@@ -3,6 +3,8 @@
 #ifndef ALLNET_XCHAT_COMMON_H
 #define ALLNET_XCHAT_COMMON_H
 
+#include <inttypes.h>
+
 #include "chat.h"
 #include "lib/keys.h"
 #include "lib/pipemsg.h"
@@ -15,8 +17,8 @@ extern void xchat_end (int sock);
 /* only returns new acks, discarding acks received previously */
 struct allnet_ack_info {
   int num_acks;        /* num acks received */
-  long long int acks [ALLNET_MAX_ACKS];
-  char * peers [ALLNET_MAX_ACKS];
+  uint64_t acks [ALLNET_MAX_ACKS];  /* seq numbers acknowledged */
+  char * peers [ALLNET_MAX_ACKS];   /* for these peers */
 };
 
 /* handle an incoming packet, acking it if it is a data packet for us
@@ -30,7 +32,7 @@ struct allnet_ack_info {
  * if it is a valid data message from a peer or a broadcaster,
  * fills in verified and broadcast
  * fills in contact, message (to point to malloc'd buffers, must be freed)
- * if not broadcast, fills in desc (also malloc'd), sent (if not null)
+ * if not broadcast, fills in desc (also malloc'd), seq, sent (if not null)
  * and duplicate.
  * if verified and not broadcast, fills in kset.
  * the data message (if any) is null-terminated
@@ -61,7 +63,8 @@ extern int handle_packet (int sock, char * packet, unsigned int psize,
                           char ** contact, keyset * kset,
                           struct allnet_ack_info * acks,
                           char ** message, char ** desc, int * verified,
-                          time_t * sent, int * duplicate, int * broadcast,
+                          uint64_t * seq, time_t * sent,
+                          int * duplicate, int * broadcast,
                           char * kcontact, char * ksecret1, char * ksecret2,
                           unsigned char * kaddr, int kbits, int kmax_hops,
                           char * subscription,
@@ -69,8 +72,8 @@ extern int handle_packet (int sock, char * packet, unsigned int psize,
 
 /* send this message and save it in the xchat log. */
 /* returns the sequence number of this message, or 0 for errors */
-extern long long int send_data_message (int sock, const char * peer,
-                                        const char * message, int mlen);
+extern uint64_t send_data_message (int sock, const char * peer,
+                                   const char * message, int mlen);
 
 /* if a previously received key matches one of the secrets, returns 1,
  * otherwise returns 0 */

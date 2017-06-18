@@ -771,6 +771,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       }
     } else {    /* found > 0, got a packet, or found_key, got a key */
       int verified, duplicate, broadcast;
+      uint64_t seq;
       char * peer;
       keyset kset;
       char * desc;
@@ -781,8 +782,8 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
       int mlen = -1;  /* found a key, or the result of handle_packet */
       if (! found_key)
         mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
-                              &message, &desc, &verified, &mtime, &duplicate,
-                              &broadcast, key_contact, key_secret, 
+                              &message, &desc, &verified, &seq, &mtime,
+                              &duplicate, &broadcast, key_contact, key_secret, 
                               key_secret2, kaddr, kabits, num_hops,
                               subscription, saddr, sbits);
       if ((mlen > 0) && (verified)) {

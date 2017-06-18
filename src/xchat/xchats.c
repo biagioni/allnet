@@ -57,7 +57,7 @@ int main (int argc, char ** argv)
     return 1;
 
   int ack_expected = 0;
-  long long int seq = 0;
+  uint64_t sent_seq = 0;
   char * contact = argv [1];  /* contact we send to, peer we receive from */
 
   char * kcontact = NULL;
@@ -133,7 +133,9 @@ int main (int argc, char ** argv)
         size -= n;
       }
   /*  printf ("sending %d chars: '%s'\n", printed, text); */
-      seq = send_data_message (sock, contact, text, printed);
+      sent_seq = send_data_message (sock, contact, text, printed);
+      if (sent_seq == 0)
+        printf ("error sending message\n");
       ack_expected = 1;
       free (keys);
     } else if (nkeys > 0) {
@@ -163,14 +165,16 @@ int main (int argc, char ** argv)
       exit (1);
     }
     int verified, duplicate, broadcast;
+    uint64_t rcvd_seq;
     char * desc;
     char * message;
     char * peer = NULL;
     struct allnet_ack_info acks;
     keyset kset = -1;
     int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
-                              &message, &desc, &verified, NULL, &duplicate,
-                              &broadcast, kcontact, my_secret, peer_secret,
+                              &message, &desc, &verified, &rcvd_seq, NULL,
+                              &duplicate, &broadcast,
+                              kcontact, my_secret, peer_secret,
                               my_addr, my_bits, kmax_hops, NULL, NULL, 0);
     if (mlen > 0) {
       /* time_t rtime = time (NULL); */
@@ -197,7 +201,7 @@ int main (int argc, char ** argv)
   /* handle_packet may change what has been acked */
     int i;
     for (i = 0; i < acks.num_acks; i++) {
-      if ((ack_expected) && (seq == acks.acks [i]) &&
+      if ((ack_expected) && (sent_seq == acks.acks [i]) &&
           (strcmp (contact, acks.peers [i]) == 0)) {
         struct timeval finish;
         gettimeofday (&finish, NULL);   /* how long did the ack take? */

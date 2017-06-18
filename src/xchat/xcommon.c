@@ -443,7 +443,7 @@ static void handle_ack (int sock, char * packet, unsigned int psize,
     char * peer = NULL;
     keyset kset;
     int new_ack = 0;
-    long long int ack_number = ack_received (ack, &peer, &kset, &new_ack);
+    uint64_t ack_number = ack_received (ack, &peer, &kset, &new_ack);
     int free_peer = (peer != NULL);
     if ((ack_number > 0) && (peer != NULL)) {
       if (new_ack) {
@@ -591,7 +591,8 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
                         char * data, unsigned int dsize,
                         char ** contact, keyset * kset,
                         char ** message, char ** desc, int * verified,
-                        time_t * sent, int * duplicate, int * broadcast)
+                        uint64_t * seqp, time_t * sent,
+                        int * duplicate, int * broadcast)
 {
   if (hp->sig_algo == ALLNET_SIGTYPE_NONE) {
 #ifdef DEBUG_PRINT
@@ -656,17 +657,17 @@ else {
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
   if (tsize > (int)CHAT_DESCRIPTOR_SIZE) {
-    intmax_t seq = readb64 (text + 24);
-    if (seq == -1) {
-      printf ("from %s received control seq %jd, %d bytes\n",
-              *contact, seq, tsize);
+    int64_t print_seq = readb64 (text + 24);
+    if (print_seq == -1) {
+      printf ("from %s received control seq %" PRI64d ", %d bytes\n",
+              *contact, print_seq, tsize);
     } else {
       int msize = tsize - CHAT_DESCRIPTOR_SIZE;
       char * debug = malloc_or_fail (msize + 1, "debugging in xcommon.c");
       memcpy (debug, text + CHAT_DESCRIPTOR_SIZE, msize);
       debug [msize] = '\0';
-      printf ("from %s received seq %jd, %d bytes, '%s'\n",
-      *contact, seq, msize, debug);
+      printf ("from %s received seq %" PRI64d ", %d bytes, '%s'\n",
+              *contact, print_seq, msize, debug);
     }
   }
 #endif /* DEBUG_PRINT */
@@ -714,7 +715,7 @@ else {
     return 0;
   }
   unsigned long int media = readb32u (cdp->app_media.media);
-  unsigned long long int seq = readb64u (cdp->counter);
+  uint64_t seq = readb64u (cdp->counter);
   if (seq == COUNTER_FLAG) {
     if (media == ALLNET_MEDIA_DATA) {
 #ifdef DEBUG_PRINT
@@ -764,6 +765,7 @@ else {
   }
 
   *desc = chat_descriptor_to_string (cdp, 0, 0);
+  *seqp = seq;
   *verified = verif;
   if (sent != NULL)
     *sent = (readb64u (cdp->timestamp) >> 16) & 0xffffffff;
@@ -1072,7 +1074,7 @@ int key_received (int sock, char * contact, char * secret1, char * secret2,
  * if it is a valid data message from a peer or a broadcaster,
  * fills in verified and broadcast
  * fills in contact, message (to point to malloc'd buffers, must be freed)
- * if not broadcast, fills in desc (also malloc'd), sent (if not null)
+ * if not broadcast, fills in desc (also malloc'd), seq, sent (if not null)
  * and duplicate.
  * if verified and not broadcast, fills in kset.
  * the data message (if any) is null-terminated
@@ -1103,7 +1105,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
                    char ** contact, keyset * kset,
                    struct allnet_ack_info * acks,
                    char ** message, char ** desc,
-                   int * verified, time_t * sent,
+                   int * verified, uint64_t * seq, time_t * sent,
                    int * duplicate, int * broadcast,
                    char * kcontact, char * ksecret1, char * ksecret2,
                    unsigned char * kaddr, int kbits, int kmax_hops,
@@ -1176,14 +1178,14 @@ int handle_packet (int sock, char * packet, unsigned int psize,
               subscription, addr);
 #endif /* DEBUG_PRINT */
     result = handle_clear (hp, packet + hsize, psize - hsize,
-                         contact, message, verified, duplicate, broadcast);
+                           contact, message, verified, duplicate, broadcast);
   } else if (hp->message_type == ALLNET_TYPE_DATA) { /* encrypted data packet */
     result = handle_data (sock, hp, psize, packet + hsize, psize - hsize,
-                        contact, kset, message, desc, verified, sent,
-                        duplicate, broadcast);
+                          contact, kset, message, desc, verified, seq, sent,
+                          duplicate, broadcast);
   } else if (hp->message_type == ALLNET_TYPE_KEY_XCHG) {
     result = handle_key (sock, hp, packet + hsize, psize - hsize,
-                       kcontact, ksecret1, ksecret2, kaddr, kbits, kmax_hops);
+                         kcontact, ksecret1, ksecret2, kaddr, kbits, kmax_hops);
   }
 
   long long int finish_time = allnet_time_us();
@@ -1205,8 +1207,8 @@ if ((debug_largest > 1000000) || (multiplier < 2)) debug_largest = 0;
 
 /* send this message and save it in the xchat log. */
 /* returns the sequence number of this message, or 0 for errors */
-long long int send_data_message (int sock, const char * peer,
-                                 const char * message, int mlen)
+uint64_t send_data_message (int sock, const char * peer,
+                            const char * message, int mlen)
 {
   if (mlen <= 0) {
     printf ("unable to send a data message of size %d\n", mlen);
@@ -1217,9 +1219,8 @@ long long int send_data_message (int sock, const char * peer,
   char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
   /* send_to_contact initializes the message ack in data_with_cd/cp */
-  unsigned long long int seq =
-    send_to_contact (data_with_cd, dsize, peer, sock,
-                     6, ALLNET_PRIORITY_LOCAL, 1);
+  uint64_t seq = send_to_contact (data_with_cd, dsize, peer, sock,
+                                  6, ALLNET_PRIORITY_LOCAL, 1);
   free (data_with_cd);
   int i;
   keyset * ks = NULL;

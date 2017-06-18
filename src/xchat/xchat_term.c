@@ -79,14 +79,15 @@ static void * receive_thread (void * arg)
     }
     if (found > 0) {	/* found > 0, got a packet */
       int verified, duplicate, broadcast;
+      uint64_t seq;
       char * peer;
       keyset kset;
       char * desc;
       char * message;
       struct allnet_ack_info acks;
       int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset, &acks,
-                                &message, &desc, &verified, NULL, &duplicate,
-                                &broadcast, NULL, NULL, NULL,
+                                &message, &desc, &verified, &seq, NULL,
+                                &duplicate, &broadcast, NULL, NULL, NULL,
                                 NULL, 0, 0, NULL, NULL, 0);
       if (mlen > 0) {
         /* time_t rtime = time (NULL); */
@@ -134,11 +135,11 @@ static void * receive_thread (void * arg)
           char string [PRINT_BUF_SIZE];
           if (strcmp (prompt, acks.peers [i]) != 0)
             snprintf (string, sizeof (string),
-                      "from '%s' got ack for seq %llu\n", acks.peers [i],
+                      "from '%s' got ack for seq %" PRIu64 "\n", acks.peers [i],
                       acks.acks [i]);
           else
             snprintf (string, sizeof (string),
-                      "got ack for seq %llu\n", acks.acks [i]);
+                      "got ack for seq %" PRIu64 "\n", acks.acks [i]);
           print_to_output (string);
         }
       }

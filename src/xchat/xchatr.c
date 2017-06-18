@@ -63,13 +63,14 @@ int main (int argc, char ** argv)
       timeout = PIPE_MESSAGE_WAIT_FOREVER; /* cancel future timeouts */
     } else {    /* found > 0, got a packet */
       int verified, duplicate, broadcast;
+      uint64_t seq;
       char * peer;
       keyset kset;
       char * desc;
       char * message;
       int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, NULL,
-                                &message, &desc, &verified, NULL, &duplicate,
-                                &broadcast, NULL, NULL, NULL,
+                                &message, &desc, &verified, &seq, NULL,
+                                &duplicate, &broadcast, NULL, NULL, NULL,
                                 NULL, 0, 0, NULL, NULL, 0);
       if (mlen > 0) {
         /* time_t rtime = time (NULL); */
