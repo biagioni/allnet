@@ -111,7 +111,7 @@ class ConversationPanel extends JPanel {
         // limit number of lines 
         MyDocumentFilter filter = new MyDocumentFilter(CHARS_PER_LINE, MAX_LINES, true);
         AbstractDocument doc = (AbstractDocument) inputArea.getDocument();
-        doc.setDocumentFilter(filter);
+        // doc.setDocumentFilter(filter);
         Border inner = BorderFactory.createLineBorder(Color.WHITE, 4);
         Border outer = BorderFactory.createLineBorder(Color.BLACK, 1);
         Border textAreaBorder = BorderFactory.createCompoundBorder(outer, inner);
