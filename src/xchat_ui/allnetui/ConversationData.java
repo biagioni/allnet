@@ -389,12 +389,14 @@ public class ConversationData {
                         messageCount = messageCount + 1;  // restart loop
                         continue;
                 }
+                boolean isNotBroadcast = false; // true for broadcast
                 if (sentMessage)
                     return new Message(Message.SELF, contact, time * 1000, seq,
                                        text, messageId);
                 else  // received message
                     return new Message(contact, Message.SELF, time * 1000,
-                                       rcvdTime * 1000, text, false, isUnread);
+                                       rcvdTime * 1000, seq, text,
+                                       isNotBroadcast, isUnread);
             } catch (java.io.IOException e) {
                 System.out.println ("I/O error " + e + " on file " + fname +
                                     " message number " + messageCount +
