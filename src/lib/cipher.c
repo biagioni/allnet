@@ -131,7 +131,12 @@ int allnet_encrypt (const char * text, int tsize,
 int allnet_decrypt (const char * cipher, int csize,
                     allnet_rsa_prvkey key, char ** res)
 {
+#ifdef DEBUG_PRINT
+#define DEBUG_PRINT_TIMES
+#endif /* DEBUG_PRINT */
+#ifdef DEBUG_PRINT_TIMES
   unsigned long long int start = allnet_time_us ();
+#endif /* DEBUG_PRINT_TIMES */
   if ((cipher == NULL) || (res == NULL) || (csize < 0)) {
     printf ("cipher.c decrypt: %p %p %d, returning 0\n", cipher, res, csize);
     return 0;
@@ -183,9 +188,11 @@ int allnet_decrypt (const char * cipher, int csize,
 #ifdef DEBUG_PRINT
   print_buffer (result, rsize, "decrypted", 16, 1);
 #endif /* DEBUG_PRINT */
+#ifdef DEBUG_PRINT_TIMES
   unsigned long long int time_delta = allnet_time_us () - start;
   printf ("successful decryption took %lld.%06lld seconds\n",
           time_delta / 1000000, time_delta % 1000000);
+#endif /* DEBUG_PRINT_TIMES */
   return rsize;
 }
 
