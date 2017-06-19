@@ -11,7 +11,7 @@ public interface UIAPI {
     
     // the application should call this method after a valid message
     // is received
-    public void messageReceived(String from, long sentTime,
+    public void messageReceived(String from, long sentTime, long seq,
                                 String text, boolean broadcast);
     // initialization should call this method at startup with older messages
     public void savedMessages(Message[] message);

@@ -61,11 +61,11 @@ class UIController implements ControllerInterface, UIAPI {
     // the application should call this method after a valid message is received
     @Override
     public void messageReceived(final String from, final long sentTime,
-        final String text, final boolean broadcast) {
+        final long seq, final String text, final boolean broadcast) {
         Runnable r = new Runnable() {
             long rcvdTime = java.util.Calendar.getInstance().getTimeInMillis();
             Message message = new Message(from, Message.SELF, sentTime,
-                rcvdTime, text, broadcast, true);
+                rcvdTime, seq, text, broadcast, true);
 
             @Override
             public void run() {
@@ -804,12 +804,18 @@ class UIController implements ControllerInterface, UIAPI {
         ConversationPanel cp
             = (ConversationPanel) myTabbedPane.getTabContent(contactName);
         if (cp != null) {
-            // add the message to it
             if (addedAtEnd) {
+                if (msg.isReceivedMessage()) {
+                    long lastReceived = cp.getLastReceived();
+                    if ((lastReceived >= 0) &&
+                        (msg.sequence() > lastReceived + 1)) {
+                        cp.addMissing(msg.sequence() - (lastReceived + 1));
+                    }
+                    cp.setLastReceived (msg.sequence());
+                }
                 cp.addMsg(formatMessage(msg, maxLineLength), msg);
                 cp.validateToBottom();
-            }
-            else {
+            } else {
                 // out of order, so delete everything, then add everything back
                 // System.out.println ("received out-of-order message");
                 initializeConversation(cp, conv, true);
@@ -830,7 +836,9 @@ class UIController implements ControllerInterface, UIAPI {
         }
     }
 
-    private void initializeConversation(ConversationPanel cp, Conversation conv, boolean scrollToBottom) {
+    private void initializeConversation(ConversationPanel cp,
+                                        Conversation conv,
+                                        boolean scrollToBottom) {
         cp.clearMsgs();
         ArrayList<Message> msgs = conv.getMessages();
         int numToDisplay = cp.getNumMsgsToDisplay();
@@ -844,11 +852,19 @@ class UIController implements ControllerInterface, UIAPI {
             }
         }
         startIdx = Math.min(startIdx, earliest);
-        Message savedMsg;
+        long lastReceived = -1;  // needed to mark missing messages
         for (int i = startIdx; i < msgs.size(); i++) {
-            savedMsg = msgs.get(i);
+            Message savedMsg = msgs.get(i);
+            if (savedMsg.isReceivedMessage()) {
+                if ((lastReceived >= 0) &&
+                    (savedMsg.sequence() > lastReceived + 1)) {
+                    cp.addMissing(savedMsg.sequence() - (lastReceived + 1));
+                }
+                lastReceived = savedMsg.sequence();
+            }
             cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
         }
+        cp.setLastReceived (lastReceived);
         if (scrollToBottom) {
             cp.validateToBottom();
         }

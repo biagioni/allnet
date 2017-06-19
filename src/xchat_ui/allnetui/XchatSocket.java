@@ -222,6 +222,9 @@ public class XchatSocket extends Thread {
     debugPacket (false, data, dlen, code, peer);
     if ((code == codeDataMessage) || (code == codeBroadcastMessage)) {
       String message = bString (data, nextIndex.value, dlen, nextIndex);
+// System.out.print (" index is " + nextIndex.value + ", dlen " + dlen + ", ");
+      long seq = b64 (data, nextIndex.value, dlen);
+// System.out.println ("received sequence number is " + seq);
       // System.out.println ("message '" + message + "' from " + peer);
       message = sanitizeForHtml(message);
       boolean broadcastReceived = (code == codeBroadcastMessage);
@@ -229,7 +232,7 @@ public class XchatSocket extends Thread {
         time = System.currentTimeMillis();
       else
         time *= 1000;  // convert seconds to milliseconds
-      api.messageReceived (peer, time, message, broadcastReceived);
+      api.messageReceived (peer, time, seq, message, broadcastReceived);
     } else if (code == codeNewContact) {
       System.out.println ("new key from " + peer);
       api.contactCreated(peer);

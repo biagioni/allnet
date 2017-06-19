@@ -104,12 +104,13 @@ class UITester extends JFrame implements ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
+        long rcvdSeq = 0;
         String cmd = e.getActionCommand();
         switch (cmd) {
             case receiveStr:
                 controller.messageReceived(toFrom.getText(),
-                        System.currentTimeMillis() - 1000, msg.getText(),
-                        broadcastCheckBox.isSelected());
+                        System.currentTimeMillis() - 1000, rcvdSeq++,
+                        msg.getText(), broadcastCheckBox.isSelected());
                 break;
             case sendStr:
                 controller.messageSent(toFrom.getText(),

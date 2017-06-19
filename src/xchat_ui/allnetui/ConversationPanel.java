@@ -61,10 +61,12 @@ class ConversationPanel extends JPanel {
     // default colors to use
     private static Color background = Color.GRAY, foreground = Color.WHITE;
     private static Color broadcastColor = Color.LIGHT_GRAY;
+    private static Color missingColor = Color.RED;
     private static Color ackedColor = Color.GREEN;
     private static Color newColor = Color.CYAN;
     // keep list of the message bubbles that have yet to be acked
     private ArrayList<MessageBubble<Message>> unackedBubbles;
+    private long lastReceived;  // used by caller
 
     ConversationPanel(String info, String commandPrefix, String contactName,
         boolean createDialogBox) {
@@ -168,6 +170,7 @@ class ConversationPanel extends JPanel {
             gbc.weightx = 0.0;
             add(sendPanel, gbc);
         }
+        lastReceived = -1;
     }
 
     public static int getDefaultNumMsgsToDisplay() {
@@ -274,35 +277,48 @@ class ConversationPanel extends JPanel {
         messagePanel.revalidate();
     }
 
-    public void addMsg(String text, Message msg) {
-        boolean isReceived = msg.to.equals(Message.SELF);
-        boolean broadcast = msg.isBroadcast();
-        boolean acked = msg.acked();
-        boolean isNew = (msg.isNewMessage()
-            || (isReceived && (msg.receivedAt() + DAY > System.currentTimeMillis())));
-        String[] lines = text.split("\n");
-
-        Color bg = getMsgColor(msg, isReceived);
-
-        // Color bg = broadcast ? broadcastColor : acked ? ackedColor
-        //    : isNew ? newColor : Color.WHITE;
-//
-        MessageBubble<Message> bubble = new MessageBubble<>(msg, isReceived, bg, lines);
-        bubble.setBorder(new RoundedBorder(borderColor, borderWidth, borderRadius, borderInset));
+    private void addBubble(MessageBubble<Message> bubble, boolean left) {
+        bubble.setBorder(new RoundedBorder(borderColor, borderWidth,
+                                           borderRadius, borderInset));
         JPanel inner = new JPanel();
         inner.setBackground(background);
         inner.setLayout(new BoxLayout(inner, BoxLayout.X_AXIS));
-        if (isReceived) {
+        if (left) {
             inner.add(bubble);
             inner.add(Box.createHorizontalGlue());
-        }
-        else {
+        } else {
             inner.add(Box.createHorizontalGlue());
             inner.add(bubble);
         }
         messagePanel.add(inner);
         messagePanel.add(Box.createRigidArea(new Dimension(0, 4)));
-        //
+    }
+
+    public void addMissing(long numMissing) {
+        String line = (numMissing + " messages missing");
+        if (numMissing == 1) {
+            line = "1 message missing";
+        }
+        String[] lines = new String [1];
+        lines [0] = line;
+        Color bg = missingColor;
+        MessageBubble<Message> bubble = new MessageBubble<>(true, bg, lines);
+        addBubble (bubble, true);
+    }
+
+    public void addMsg(String text, Message msg) {
+        boolean isReceived = msg.to.equals(Message.SELF);
+        boolean broadcast = msg.isBroadcast();
+        boolean acked = msg.acked();
+        boolean isNew = ((msg.isNewMessage() ||
+                         (isReceived &&
+                          (msg.receivedAt() + DAY >
+                              System.currentTimeMillis()))));
+        String[] lines = text.split("\n");
+        Color bg = getMsgColor(msg, isReceived);
+        MessageBubble<Message> bubble =
+            new MessageBubble<>(msg, isReceived, bg, lines);
+        addBubble (bubble, isReceived);
         // update ack tracking
         if (!acked) {
             // i.e. only add if not acked
@@ -329,6 +345,7 @@ class ConversationPanel extends JPanel {
         messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
         messagePanel.add(morePanel);
         messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        lastReceived = -1;
     }
 
     void setTopLabelText(String... lines) {
@@ -443,6 +460,14 @@ class ConversationPanel extends JPanel {
             }
             return (lines <= maxLines);
         }
+    }
+
+    // kind of a hack, but useful to track missing messages
+    public long getLastReceived() {
+        return this.lastReceived;
+    }
+    public void setLastReceived(long value) {
+        this.lastReceived = value;
     }
 
 }
