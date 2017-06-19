@@ -7,6 +7,9 @@ package allnetui;
 public class Message implements java.lang.Comparable<Message> {
 
     static final String SELF = "self";
+
+    // a message is either sent or received
+    boolean received;
     // the contact name of the sender
     final String from, to;
     final long sentTime;
@@ -18,41 +21,30 @@ public class Message implements java.lang.Comparable<Message> {
     final String messageId;   // only meaningful for sent messages, may be null
     boolean isAcked;          // only meaningful for sent messages
     // set to false by the client when message has been read
-    private boolean newMessageFlag;  // only meaningful for received messages
-    
-//    Message(String from, String to, long sentTime, String text, boolean broadcast) {
-//        this.from = from;
-//        this.to = to;
-//        this.sentTime = sentTime;
-//        this.sequence = -1;
-//        this.text = text;
-//        this.broadcast = broadcast;
-//        this.sentNotReceived = true;
-//        this.messageId = null;
-//        this.isAcked = false;
-//        newMessageFlag = false;
-//    }
+    boolean newMessageFlag;  // only meaningful for received messages
     
 // use this for received messages only
-    Message(String from, String to, long sentTime, long receivedTime,
+    Message(String from, String to, long sentTime, long receivedTime, long seq,
             String text, boolean broadcast, boolean newMessage) {
+        this.received = true;
         this.from = from;
         this.to = to;
         this.sentTime = sentTime;
         this.receivedTime = receivedTime;
-        this.sequence = -1;
+        this.sequence = seq;
         this.text = text;
         this.broadcast = broadcast;
         this.sentNotReceived = false;
         this.messageId = null;
         this.isAcked = false;
-        newMessageFlag = newMessage;
+        this.newMessageFlag = newMessage;
     }
 
     // sent messages should have a message ID, so we can figure out when they
     // are acked
     Message(String from, String to, long sentTime, long seq, String text,
             String messageId) {
+        this.received = false;
         this.from = from;
         this.to = to;
         this.sentTime = sentTime;
@@ -63,7 +55,11 @@ public class Message implements java.lang.Comparable<Message> {
         this.broadcast = false;
         this.messageId = messageId;
         this.isAcked = false;
-        newMessageFlag = false;
+        this.newMessageFlag = false;
+    }
+
+    boolean isReceivedMessage() {
+        return this.received;
     }
 
     boolean isNewMessage() {
@@ -146,6 +142,10 @@ public class Message implements java.lang.Comparable<Message> {
     // only meaningful for received packets
     public long receivedAt() {
         return this.receivedTime;
+    }
+
+    public long sequence() {
+        return this.sequence;
     }
 
 }
