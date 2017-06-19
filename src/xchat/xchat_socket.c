@@ -42,31 +42,41 @@
 /* length (4 bytes, big-endian order) includes everything.
  * time (6 bytes, big-endian order) is the time of original transmission,
  *   in the os's local epoch
- * code is 1 byte,
- * - code value 0 identifies a data message: the peer name and the
- *   message are null-terminated
- * when sent from the GUI to this code, this code replies
- * with a message of type 5, CODE_SEQ */
+ * code is 1 byte, */
 /* to establish the connection, the GUI initially sends an arbitrary
  * message (really, "hello world\n") */
+
+/* - code value 0 identifies a data message: the peer name and the
+ *   message are null-terminated
+ * when sent from the GUI to this code, this code replies
+ * with a message of type 5, CODE_SEQ
+ * when sent from this code to the GUI, this code adds a sequence number
+ * at the very end. */
 #define	CODE_DATA_MESSAGE	0
+
 /* - code value 1 identifies a broadcast message: the peer name and the
  *   message are null-terminated */
 #define	CODE_BROADCAST_MESSAGE	1
+
 /* - code value 2 identifies a new contact, stored in the peer name.  In
  *   messages received by xchat_socket, this is followed by one or two
  *   null-terminated secret strings. */
 #define	CODE_NEW_CONTACT	2
+
 /* - code value 3 identifies an ahra, stored in the peer name, to which
  *   we want to subscribe or have subscribed */
 #define	CODE_AHRA		3
+
 /* - code value 4 identifies a seq.  text of the message is an 8-byte seq.
  *   sent from the GUI to xchat_socket */
 #define CODE_SEQ                4
+
 /* - code value 5 identifies an ack.  text of the message is an 8-byte ack */
 #define CODE_ACK                5
+
 /* - code value 6 is a trace request.  text is a 1-byte hop count */
 #define CODE_TRACE              6
+
 /* - code value 7 is a trace response.  text is the text of the response */
 #define CODE_TRACE_RESPONSE     7
 
@@ -106,13 +116,15 @@ static void stop_chat_and_exit (int exit_code)
 
 static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
                           int code, time_t time, const char * peer,
-                          const char * message)
+                          const char * message, uint64_t seq)
 {
   int plen = strlen (peer) + 1;     /* include the null character */
   int mlen = 8;                     /* fixed size for SEQ and ACK */
   if ((code != CODE_SEQ) && (code != CODE_ACK))  /* null terminated */
     mlen = strlen (message) + 1;    /* include the null character */
   int length = 11 + plen + mlen;
+  if (code == CODE_DATA_MESSAGE)
+    length += 8;                    /* include the sequence number */
   int n;
   char buf [ALLNET_MTU];
   if (length > ALLNET_MTU) {
@@ -125,6 +137,8 @@ static void send_message (int sock, struct sockaddr * sap, socklen_t slen,
   buf [10] = code;
   memcpy (buf + 11, peer, plen);
   memcpy (buf + 11 + plen, message, mlen);
+  if (code == CODE_DATA_MESSAGE)
+    writeb64 (buf + 11 + plen + mlen, seq);
 #ifndef MSG_NOSIGNAL  /* undefined on mac and windows */
 #define MSG_NOSIGNAL	0    /* don't provide it if it is not supported */
 #endif /* MSG_NOSIGNAL */
@@ -150,7 +164,7 @@ static void send_seq_ack (int sock, struct sockaddr * sap, socklen_t slen,
     printf ("error: illegal code %d in send_seq_ack\n", code);
   char buf [8];
   writeb64 (buf, seq_ack);
-  send_message (sock, sap, slen, code, time, peer, buf);
+  send_message (sock, sap, slen, code, time, peer, buf, 0);
 }
 
 /* return the message length if a message was received, and 0 otherwise */
@@ -589,7 +603,7 @@ static void * trace_thread (void * a)
     buffer [n] = '\0';
 /* printf ("partial result of trace was '%s'\n", buffer); */
     send_message (arg->forwarding_socket, arg->fwd_addr, arg->slen,
-                  CODE_TRACE_RESPONSE, 0, "trace", buffer);
+                  CODE_TRACE_RESPONSE, 0, "trace", buffer, 0);
   }  /* weak synchronization, but better than nothing */
   if (trace_pid == initial_trace_pid)
     trace_pid = -1;
@@ -633,7 +647,7 @@ printf ("trace child exiting\n");
     char * result = trace_string (tmp_dir, time, NULL, hops, 1, 0, 1);
 /* printf ("result of trace was '%s'\n", result); */
     send_message (forwarding_socket, fwd_addr, slen,
-                  CODE_TRACE_RESPONSE, 0, "trace", result);
+                  CODE_TRACE_RESPONSE, 0, "trace", result, 0);
     free (result);
   }
 }
@@ -794,7 +808,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
           struct sockaddr * sap = (struct sockaddr *) (&fwd_addr);
           if (is_visible (peer))
             send_message (forwarding_socket, sap, fwd_addr_size,
-                          mtype, mtime, peer, message);
+                          mtype, mtime, peer, message, seq);
           char ** groups = NULL;
           int ngroups = member_of_groups_recursive (peer, &groups);
           if (ngroups > 0) {
@@ -802,7 +816,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
             for (ig = 0; ig < ngroups; ig++) {
               if (is_visible (groups [ig]))
                 send_message (forwarding_socket, sap, fwd_addr_size,
-                              mtype, mtime, groups [ig], message);
+                              mtype, mtime, groups [ig], message, seq);
             }
           }
           if (groups != NULL)
@@ -824,7 +838,7 @@ printf ("sending subscription to %s/%s\n", peer, sbuf);
         mtime = time (NULL);
         send_message (forwarding_socket,
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                       CODE_NEW_CONTACT, mtime, key_contact, "");
+                       CODE_NEW_CONTACT, mtime, key_contact, "", 0);
         key_contact = NULL;
         key_secret = NULL;
         key_secret2 = NULL;
@@ -836,7 +850,7 @@ printf ("got subscription but subscription is null\n");
 printf ("got subscription\n");
           send_message (forwarding_socket,
                         (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                         CODE_AHRA, 0, subscription, "");
+                         CODE_AHRA, 0, subscription, "", 0);
           subscription = NULL;
         }
       }
