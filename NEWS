@@ -1,3 +1,7 @@
+2017/06/19: release 3.2.2
+  Improved reliability of message delivery, is now usable on iOS and is
+  available for generic arm linux computers
+
 2016/05/10: release 3.2.1
   Works well on linux, Mac/OSX, and Windows under Cygwin.  Main improvement
   is more reliable delivery of messages, but many other improvements too.
