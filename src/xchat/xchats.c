@@ -149,6 +149,8 @@ int main (int argc, char ** argv)
   unsigned long long int send_time = allnet_time_ms () - start_time;
   if (20 * send_time > wait_time)
     wait_time = 20 * send_time;
+  if (exchanging_key && (send_time > 1000))
+    printf ("took %lld seconds to generate the key\n", (send_time / 1000));
 
   struct timeval start, deadline;
   gettimeofday (&start, NULL);
