@@ -9,7 +9,7 @@
 .q        quit \n\
 .h        print this help message \n\
 .l n      print the last n messages (n is optional, defaults to 10) \n\
-.t        trace (optionally an address, eg . t f0) \n\
+.t        trace (optionally a hop count and an address, eg . t 1, . t 1 f0) \n\
 .k <new contact>           exchange a key with a new contact \n\
 .k <new contact> <secret>  one of the two must specify the other's secret \n\
 "
@@ -29,6 +29,7 @@
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
+#include "lib/trace_util.h"
 #include "chat.h"
 #include "cutil.h"
 #include "store.h"
@@ -281,6 +282,108 @@ static void switch_to_contact (char * new_peer, char ** peer)
   }
 }
 
+/* get_nybble, get_byte, get_address are copied from trace.c, as is
+ * the core of run_trace */
+static int get_nybble (const char * string, int * offset)
+{
+  const char * p = string + *offset;
+  while ((*p == ':') || (*p == ',') || (*p == '.'))
+    p++;
+  *offset = (int)((p + 1) - string);
+  if ((*p >= '0') && (*p <= '9'))
+    return *p - '0';
+  if ((*p >= 'a') && (*p <= 'f'))
+    return 10 + *p - 'a';
+  if ((*p >= 'A') && (*p <= 'F'))
+    return 10 + *p - 'A';
+  *offset = (int)(p - string);   /* point to the offending character */
+  return -1;
+}
+
+static int get_byte (const char * string, int * offset, unsigned char * result)
+{
+  int first = get_nybble (string, offset);
+  if (first == -1)
+    return 0;
+  *result = (first << 4);
+  int second = get_nybble (string, offset);
+  if (second == -1)
+      return 4;
+  *result = (first << 4) | second;
+  /* printf ("get_byte returned %x\n", (*result) & 0xff); */
+  return 8;
+}
+
+static int get_address (const char * address, unsigned char * result, int rsize)
+{
+  int offset = 0;
+  int index = 0;
+  int bits = 0;
+  while (index < rsize) {
+    int new_bits = get_byte (address, &offset, result + index);
+    if (new_bits <= 0)
+      break;
+    bits += new_bits;
+    if (new_bits < 8)
+      break;
+    index++;
+  }
+  if (address [offset] == '/') { /* number of bits follows */
+    char * end;
+    long given_bits = strtol (address + offset + 1, &end, 10);
+    if ((end != address + offset + 1) && (given_bits <= bits))
+      bits = (int)given_bits;
+  }
+  return bits;
+}
+
+static void run_trace (int sock, pd p, struct allnet_log * log, char * params)
+{
+  strip_final_newline (params);
+  int hops = 5;
+  int abits = 0;
+  unsigned char address [ADDRESS_SIZE];
+  if (strlen (params) > 0) {
+    char * finish = NULL;
+    hops = strtol (params, &finish, 10);
+    if (finish == params)
+      hops = 5;
+    params = finish;
+    while (*params == ' ')
+      params++;
+    if (strlen (params) > 0) {
+      abits = get_address (params, address, sizeof (address));
+      if (abits <= 0) {
+        printf ("params %s, invalid number of bits %d, should be > 0\n",
+                params, abits);
+        abits = 0;
+      }
+    }
+  }
+#ifdef DEBUG_PRINT
+  if (abits > 0) {
+    printf ("run_trace (%d, %d bits, ", hops, abits);
+    print_buffer ((char *)address, ((abits + 7) / 8), NULL, ADDRESS_SIZE, 0);
+    printf (")\n");
+  } else if (strlen (params) > 0) {
+    printf ("run_trace (%d, %s)\n", hops, params);
+  } else {
+    printf ("run_trace (%d)\n", hops);
+  }
+#endif /* DEBUG_PRINT */
+  int repeat = 1;
+  int sleep = 5;  /* seconds */
+  int match_only = 1;
+  int no_intermediates = 1;
+  int wide = 1;
+  int null_term = 0;
+  int fd_out = STDOUT_FILENO;
+  do_trace_loop (sock, p, address, abits, repeat, sleep,
+                 hops, match_only, no_intermediates, wide,
+                 null_term, fd_out, NULL, log);
+  print_to_output (NULL);
+}
+
 static void send_message (int sock, const char * peer, const char * message)
 {
   if ((peer == NULL) || (message == NULL)) {
@@ -310,6 +413,7 @@ int main (int argc, char ** argv)
   log_to_output (get_option ('v', &argc, argv));
   struct allnet_log * log = init_log ("xt");
   pd p = init_pipe_descriptor (log);
+
   int sock = xchat_init (argv [0], p);
   if (sock < 0)
     return 1;
@@ -386,7 +490,7 @@ int main (int argc, char ** argv)
         print_n_messages (peer, next, 10);
         break;
       case 't':  /* trace */
-        print_to_output ("trace not implemented (yet)\n");
+        run_trace (sock, p, log, next);
         break;
       case 'k':  /* exchange a key with a new contact, optional secret */
         print_to_output ("key exchange not implemented (yet)\n");
