@@ -188,7 +188,7 @@ AC_FUNC_MALLOC
 AC_FUNC_STRCOLL
 AC_CHECK_FUNCS([bzero dup2 getcwd gethostbyname gethostname gettimeofday inet_ntoa localtime_r memset mkdir select socket strstr strtol tzset])
 
-AC_CONFIG_FILES([Makefile src/Makefile src/abc/Makefile src/ahra/Makefile src/lib/Makefile src/mgmt/Makefile src/voa/Makefile src/xchat/Makefile src/xchat_ui/Makefile src/xtime/Makefile doc/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/abc/Makefile src/ahra/Makefile src/lib/Makefile src/mgmt/Makefile src/voa/Makefile src/xchat/Makefile src/gui/Makefile src/xtime/Makefile doc/Makefile])
 AC_OUTPUT
 
 echo ""
