@@ -188,7 +188,7 @@ public class XchatSocket extends Thread {
     debugPacket (true, packet.getData (), packet.getLength (), code, peer);
   }
 
-  static String sanitizeForHtml (String message) {
+  public static String sanitizeForHtml (String message) {
     java.util.regex.Pattern ltPat = java.util.regex.Pattern.compile ("<");
     java.util.regex.Matcher ltMat = ltPat.matcher (message);
     String noLt = ltMat.replaceAll ("&lt;");

@@ -4,8 +4,11 @@ ALLNETUI_TARGET=$(ALLNET_BINDIR)/$(ALLNETUI_JAR)
 JAVASOURCELIST= \
     allnetui/AllNetContacts.java \
     allnetui/CDTester.java \
-    allnetui/ClientData.java \
+    allnetui/Contact.java \
     allnetui/ContactComparator.java \
+    allnetui/ContactConfigPanel.java \
+    allnetui/ContactData.java \
+    allnetui/ContactType.java \
     allnetui/ContactsPanel.java \
     allnetui/ConversationData.java \
     allnetui/Conversation.java \
@@ -21,9 +24,14 @@ JAVASOURCELIST= \
     allnetui/XchatSocket.java \
     utils/ApplicationFrame.java \
     utils/BijectiveList.java \
+    utils/CheckBoxPanel.java \
+    utils/ComboBoxPanel.java \
+    utils/ContactButtonPanel.java \
     utils/ControllerInterface.java \
     utils/HtmlLabel.java \
+    utils/MessageBubble.java \
     utils/MyFrame.java \
+    utils/RenamePanel.java \
     utils/RoundedBorder.java \
     utils/StatusPanel.java \
     utils/tabbedpane/MyTabbedPane.java \

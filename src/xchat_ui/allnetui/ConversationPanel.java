@@ -299,10 +299,9 @@ class ConversationPanel extends JPanel {
         if (numMissing == 1) {
             line = "1 message missing";
         }
-        String[] lines = new String [1];
-        lines [0] = line;
         Color bg = missingColor;
-        MessageBubble<Message> bubble = new MessageBubble<>(true, bg, lines);
+        MessageBubble<Message> bubble
+            = new MessageBubble<>(null, true, bg, line, messagePanel);
         addBubble (bubble, true);
     }
 
@@ -317,7 +316,7 @@ class ConversationPanel extends JPanel {
         String[] lines = text.split("\n");
         Color bg = getMsgColor(msg, isReceived);
         MessageBubble<Message> bubble =
-            new MessageBubble<>(msg, isReceived, bg, lines);
+            new MessageBubble<>(msg, isReceived, bg, text, messagePanel);
         addBubble (bubble, isReceived);
         // update ack tracking
         if (!acked) {

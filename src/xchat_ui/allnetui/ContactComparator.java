@@ -2,12 +2,13 @@ package allnetui;
 
 public class ContactComparator implements java.util.Comparator<String> {
 
-    private ClientData clientData = null;
+    private ContactData clientData = null;
 
-    public ContactComparator(ClientData data) {
+    public ContactComparator(ContactData data) {
         clientData = data;
     }
 
+    @Override
     public int compare(String s1, String s2) {
         if (s1 == s2)
             return 0;

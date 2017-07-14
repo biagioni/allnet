@@ -12,9 +12,10 @@ import utils.ScrollPaneResizeAdapter;
 
 /**
  * Keep 2 panels of buttons, keyed by name, and provide methods to add/delete
- * the buttons, to set their displayed text, and to move them between the 2 panels.  
- * 
- * 
+ * the buttons, to set their displayed text, and to move them between the 2
+ * panels.
+ *
+ *
  * @author Henry
  */
 class ContactsPanel extends JPanel {
@@ -37,13 +38,15 @@ class ContactsPanel extends JPanel {
     private Color broadcastColor;
     private java.util.Comparator<String> comparator;
     private JScrollPane scrollPane;
+    private ContactData contactData;
 
     ContactsPanel(String info, Color background, Color foreground,
-            Color broadcastColor, ClientData clientData) {
+        Color broadcastColor, ContactData contactData) {
         super();
         this.broadcastColor = broadcastColor;
+        this.contactData = contactData;
         map = new HashMap<>();
-        comparator = new ContactComparator(clientData);
+        comparator = new ContactComparator(contactData);
         setBackground(background);
         // make the info label for the top of the panel
         topLabel = new HtmlLabel(info);
@@ -86,12 +89,12 @@ class ContactsPanel extends JPanel {
         buttonsPanel.setBackground(background);
         scrollPane = makeScrollPane(buttonsPanel);
         scrollPane.getVerticalScrollBar().addComponentListener(
-                new ScrollPaneResizeAdapter(scrollPane, false));
+            new ScrollPaneResizeAdapter(scrollPane, false));
     }
 
     private JScrollPane makeScrollPane(JPanel panel) {
-        JScrollPane scrP =
-                new JScrollPane(
+        JScrollPane scrP
+            = new JScrollPane(
                 ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
                 // ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,
                 ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
@@ -123,8 +126,8 @@ class ContactsPanel extends JPanel {
     }
 
     private void placeIt(String name, String text,
-            ArrayList<String> toNames, ArrayList<String> otherNames,
-            boolean broadcast) {
+        ArrayList<String> toNames, ArrayList<String> otherNames,
+        boolean broadcast) {
         boolean changed = false;
         JButton button = map.get(name);
         if (button == null) {
@@ -149,20 +152,24 @@ class ContactsPanel extends JPanel {
         }
     }
 
-    private void updateButtonsPanel() {
+    public void updateButtonsPanel() {
         buttonsPanel.removeAll();
         java.util.Collections.sort(topNames, comparator);
         for (String b : topNames) {
-            if (! AllNetContacts.isHiddenContact(b))
+            // if (! AllNetContacts.isHiddenContact(b))
+            if (contactData.isVisible(b)) {
                 buttonsPanel.add(map.get(b));
+            }
         }
         if (!topNames.isEmpty()) {
             buttonsPanel.add(Box.createRigidArea(new Dimension(0, 20)));
         }
         java.util.Collections.sort(bottomNames, comparator);
         for (String b : bottomNames) {
-            if (! AllNetContacts.isHiddenContact(b))
+            // if (! AllNetContacts.isHiddenContact(b))
+            if (contactData.isVisible(b)) {
                 buttonsPanel.add(map.get(b));
+            }
         }
         buttonsPanel.revalidate();
     }

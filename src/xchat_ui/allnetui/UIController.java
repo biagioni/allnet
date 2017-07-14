@@ -1,4 +1,3 @@
-
 package allnetui;
 
 import java.awt.Component;
@@ -40,17 +39,16 @@ class UIController implements ControllerInterface, UIAPI {
     //
     // will need a references to the ui panels
     private ContactsPanel contactsPanel;
+    private ContactConfigPanel contactConfigPanel;
     private NewContactPanel newContactPanel;
     private MorePanel morePanel;
     private MyTabbedPane myTabbedPane;
     // need to keep client data (contacts, keys, conversations, etc.)
-    private ClientData clientData;
-    // for formatting text messages 
-    private int maxLineLength = 30;
+    private ContactData contactData;
 
     // constructor
-    UIController(ClientData clientData) {
-        this.clientData = clientData;
+    UIController(ContactData contactData) {
+        this.contactData = contactData;
     }
 
     //-----------------------------------------
@@ -105,10 +103,10 @@ class UIController implements ControllerInterface, UIAPI {
         Runnable r = new Runnable() {
             @Override
             public void run() {
-                Iterator<String> it = clientData.getContactIterator();
+                Iterator<String> it = contactData.getContactIterator();
                 while (it.hasNext()) {
                     String contactName = it.next();
-                    boolean bc = clientData.isBroadcast(contactName);
+                    boolean bc = contactData.isBroadcast(contactName);
                     updateContactsPanel(contactName, bc);
                 }
                 updateConversationPanels();
@@ -152,57 +150,60 @@ class UIController implements ControllerInterface, UIAPI {
 
     // the application should call this method to tell the UI about a new contact
     @Override
-    public void contactCreated(final String contactName,
-        final boolean isBroadcast) {
+    public void contactCreated(final String contactName, final boolean isBroadcast) {
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
-                clientData.createContact(contactName, isBroadcast);
+                contactData.createContact(contactName,
+                    isBroadcast ? ContactType.BROADCAST : ContactType.PERSONAL);
                 updateContactsPanel(contactName, isBroadcast);
+                contactConfigPanel.update();
                 KeyExchangePanel kep = getKeyExchangePanel(contactName);
                 switch (AllNetContacts.contactComplete(contactName)) {
-                case COMPLETE:
-                    if (kep != null) {  /* get rid of Key Exchange panel */
-                        System.out.println("kep is not null, " +
-                                           "please report to maintainer(s)");
-                    }
-                    break;
-                case INCOMPLETE_NO_KEY:
-                case INCOMPLETE_WITH_KEY:
-                    if (kep == null) {
-                        int hops = 
-                            AllNetContacts.exchangeHopCount(contactName);
-                        if (hops > 0) {   // valid exchange file
-                            int button = 1;   // multi-hop exchange
-                            if (hops == 1) {
-                                button = 0;     // 1-hop exchange
-                            }
-                            String firstSecret =
-                                AllNetContacts.firstSecret(contactName);
-                            String secondSecret =
-                                AllNetContacts.secondSecret(contactName);
-                            // now put up a key exchange panel
-                            String[] middlePanelMsg
-                                = makeMiddlePanel(firstSecret, secondSecret);
-                            String[] bottomPanelMsg = new String[]{
-                                " Key exchange in progress",
-                                " Sent your key",
-                                " Waiting for key from " + contactName
-                            };
-                            kep = createKeyExchangePanel(contactName,
-                                middlePanelMsg, bottomPanelMsg, true, true);
-                            kep.setButtonState(button);
-                            kep.setSecret(firstSecret);
-                            if (secondSecret == null)
-                                secondSecret = "";
-                            kep.setVariableInput(secondSecret);
+                    case COMPLETE:
+                        if (kep != null) {  /* get rid of Key Exchange panel */
+
+                            System.out.println("kep is not null, "
+                                + "please report to maintainer(s)");
                         }
-                    }
-                    if (AllNetContacts.contactComplete(contactName) ==
-                        AllNetContacts.keyExchangeComplete.INCOMPLETE_WITH_KEY) {
-                        showKeyExchangeSuccess(kep, contactName);
-                    }
+                        break;
+                    case INCOMPLETE_NO_KEY:
+                    case INCOMPLETE_WITH_KEY:
+                        if (kep == null) {
+                            int hops
+                                = AllNetContacts.exchangeHopCount(contactName);
+                            if (hops > 0) {   // valid exchange file
+                                int button = 1;   // multi-hop exchange
+                                if (hops == 1) {
+                                    button = 0;     // 1-hop exchange
+                                }
+                                String firstSecret
+                                    = AllNetContacts.firstSecret(contactName);
+                                String secondSecret
+                                    = AllNetContacts.secondSecret(contactName);
+                                // now put up a key exchange panel
+                                String[] middlePanelMsg
+                                    = makeMiddlePanel(firstSecret, secondSecret);
+                                String[] bottomPanelMsg = new String[]{
+                                    " Key exchange in progress",
+                                    " Sent your key",
+                                    " Waiting for key from " + contactName
+                                };
+                                kep = createKeyExchangePanel(contactName,
+                                    middlePanelMsg, bottomPanelMsg, true, true);
+                                kep.setButtonState(button);
+                                kep.setSecret(firstSecret);
+                                if (secondSecret == null) {
+                                    secondSecret = "";
+                                }
+                                kep.setVariableInput(secondSecret);
+                            }
+                        }
+                        if (AllNetContacts.contactComplete(contactName)
+                            == AllNetContacts.keyExchangeComplete.INCOMPLETE_WITH_KEY) {
+                            showKeyExchangeSuccess(kep, contactName);
+                        }
                 }
             }
         };
@@ -229,8 +230,47 @@ class UIController implements ControllerInterface, UIAPI {
             public void run() {
                 AllNetContacts.deleteEntireContact(contactName);
                 contactsPanel.removeName(contactName);
-                clientData.removeContact(contactName);
+                contactData.removeContact(contactName);
+                contactConfigPanel.update();
                 myTabbedPane.removeTab(contactName);
+            }
+        };
+        // schedule it in the event disp thread, but don't wait for it to execute
+        SwingUtilities.invokeLater(r);
+    }
+
+    // the application should call this method to tell the UI that contact has been modified
+    @Override
+    public void contactModified(final String contactName) {
+        Runnable r = new Runnable() {
+
+            @Override
+            public void run() {
+                contactsPanel.updateButtonsPanel();
+                if (!contactData.isVisible(contactName)) {
+                    myTabbedPane.removeTab(contactName);
+                }
+            }
+        };
+        // schedule it in the event disp thread, but don't wait for it to execute
+        SwingUtilities.invokeLater(r);
+    }
+
+    // the application should call this method to tell the UI to clear a conversation
+    @Override
+    public void clearConversation(final String contactName) {
+        Runnable r = new Runnable() {
+
+            @Override
+            public void run() {
+                AllNetContacts.clearConversation(contactName);
+                contactData.clearConversation(contactName);
+                updateContactsPanel(contactName, false);
+                // clear it in the conversation panel
+                ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(contactName);
+                if (cp != null) {
+                    cp.clearMsgs();
+                }
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
@@ -244,7 +284,7 @@ class UIController implements ControllerInterface, UIAPI {
 //
 //            @Override
 //            public void run() {
-//                clientData.setKey(contactName, key);
+//                contactData.setKey(contactName, key);
 //            }
 //        };
 //        // schedule it in the event disp thread, but don't wait for it to execute
@@ -273,13 +313,17 @@ class UIController implements ControllerInterface, UIAPI {
     void setContactsPanel(ContactsPanel contactsPanel) {
         this.contactsPanel = contactsPanel;
         // add all contacts to the contacts panel
-        Iterator<String> it = clientData.getContactIterator();
+        Iterator<String> it = contactData.getContactIterator();
         while (it.hasNext()) {
             String contactName = it.next();
-            boolean bc = clientData.isBroadcast(contactName);
+            boolean bc = contactData.isBroadcast(contactName);
             updateContactsPanel(contactName, bc);
         }
         contactsPanel.setActionListener(this);
+    }
+
+    public void setContactConfigPanel(ContactConfigPanel contactConfigPanel) {
+        this.contactConfigPanel = contactConfigPanel;
     }
 
     void setNewContactPanel(NewContactPanel newContactPanel) {
@@ -294,10 +338,6 @@ class UIController implements ControllerInterface, UIAPI {
     void setMorePanel(MorePanel morePanel) {
         this.morePanel = morePanel;
         morePanel.setActionListener(this);
-    }
-
-    void setMaxLineLength(int maxLineLength) {
-        this.maxLineLength = maxLineLength;
     }
 
     // allow us to get a ConversationPanel by name.  need this when we receive
@@ -405,7 +445,7 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     private void processKeyExchangePanelEvent(String[] actionCommand) {
-        String contact = getContactFromKeyExchangePanelId(actionCommand [0]);
+        String contact = getContactFromKeyExchangePanelId(actionCommand[0]);
         switch (actionCommand[1]) {
             case KeyExchangePanel.CLOSE_COMMAND:
                 myTabbedPane.removeTab(actionCommand[0]);
@@ -418,8 +458,7 @@ class UIController implements ControllerInterface, UIAPI {
                 contactDeleted(contact);
                 break;
             case KeyExchangePanel.RESEND_KEY_COMMAND:
-                resendKey((KeyExchangePanel)
-                          myTabbedPane.getTabContent(actionCommand[0]));
+                resendKey((KeyExchangePanel) myTabbedPane.getTabContent(actionCommand[0]));
                 break;
         }
     }
@@ -446,7 +485,7 @@ class UIController implements ControllerInterface, UIAPI {
             return;
             // throw new RuntimeException("tried to update contacts panel for null contact name");
         }
-        Conversation conv = clientData.getConversation(contact);
+        Conversation conv = contactData.getConversation(contact);
         if (conv == null) {
             return;   // there is no conversation, that's OK
             // throw new RuntimeException("tried to update contacts panel for invalid contact name: " + contact);
@@ -476,8 +515,8 @@ class UIController implements ControllerInterface, UIAPI {
 
     // give method package access so that it can be called at startup
     void updateContactsPanelStatus() {
-        int n = clientData.getNumContacts();
-        int m = clientData.getNumContactsWithNewMsgs();
+        int n = contactData.getNumContacts();
+        int m = contactData.getNumContactsWithNewMsgs();
         String line1 = " " + m + " contact";
         if (m != 1) {
             line1 = line1 + "s";
@@ -494,7 +533,7 @@ class UIController implements ControllerInterface, UIAPI {
 //            tabTitle = "Contacts (" 
 //                     + contactsWithNewMessages + "/" + newMessages + ")";
             tabTitle = "Contacts (" + m + "/"
-                + clientData.getTotalNewMsgs() + ")";
+                + contactData.getTotalNewMsgs() + ")";
         }
         myTabbedPane.setTitle(UI.CONTACTS_PANEL_ID, tabTitle);
     }
@@ -514,17 +553,17 @@ class UIController implements ControllerInterface, UIAPI {
             return;
         }
         // assume the conversation tab name is the same as the respective contact 
-        if (!clientData.contactExists(contactName)) {
+        if (!contactData.contactExists(contactName)) {
             // not a conversation tab; no action to take
             return;
         }
         // it's a conversation tab. 
-        Conversation conv = clientData.getConversation(contactName);
+        Conversation conv = contactData.getConversation(contactName);
         if (conv == null) {
             throw new RuntimeException("no Conversation Object for contact: " + contactName);
         }
         conv.setReadAll();
-        updateContactsPanel(contactName, clientData.isBroadcast(contactName));
+        updateContactsPanel(contactName, contactData.isBroadcast(contactName));
         updateConversationPanels();
         AllNetContacts.messagesHaveBeenRead(contactName);
     }
@@ -535,7 +574,7 @@ class UIController implements ControllerInterface, UIAPI {
         if (cp == null) {
             // no such tab, so make the conversation panel
             // (the contact's name is also the command prefix)
-            if (!clientData.isBroadcast(contactName)) {
+            if (!contactData.isBroadcast(contactName)) {
                 cp = new ConversationPanel(" conversation with " + contactName, contactName, contactName, true);
             }
             else {
@@ -544,7 +583,7 @@ class UIController implements ControllerInterface, UIAPI {
             cp.setName(contactName);
             cp.setListener(this);
             // display the conversation on the new panel
-            Conversation conv = clientData.getConversation(contactName);
+            Conversation conv = contactData.getConversation(contactName);
             initializeConversation(cp, conv, true);
             myTabbedPane.addTabWithClose(contactName, cp.getTitle(), cp, ConversationPanel.CLOSE_COMMAND);
             myTabbedPane.setSelected(cp);
@@ -555,13 +594,13 @@ class UIController implements ControllerInterface, UIAPI {
             myTabbedPane.setSelected(contactName);
         }
         // it's a conversation tab, so update the contacts panel
-        updateContactsPanel(contactName, clientData.isBroadcast(contactName));
+        updateContactsPanel(contactName, contactData.isBroadcast(contactName));
         // update the stats at top of all conversation panels
         updateConversationPanels();
     }
 
     private String[] makeMiddlePanel(String firstSecret,
-                                     String secondSecret) {
+        String secondSecret) {
         if (secondSecret != null) {
             return new String[]{
                 " Shared secret:",
@@ -569,7 +608,8 @@ class UIController implements ControllerInterface, UIAPI {
                 " or:",
                 " " + secondSecret
             };
-        } else {
+        }
+        else {
             return new String[]{
                 " Shared secret:",
                 " " + firstSecret
@@ -586,9 +626,10 @@ class UIController implements ControllerInterface, UIAPI {
             minLength = MIN_LENGTH_LONG;
         }
         if (variableInput.length() < minLength) {
-            return makeMiddlePanel (secret, null);
-        } else {
-            return makeMiddlePanel (secret, variableInput);
+            return makeMiddlePanel(secret, null);
+        }
+        else {
+            return makeMiddlePanel(secret, variableInput);
         }
     }
 
@@ -752,7 +793,7 @@ class UIController implements ControllerInterface, UIAPI {
                 // go back a large number of messages
                 currentNum *= 2;
                 cp.setNumMsgsToDisplay(currentNum);
-                Conversation conv = clientData.getConversation(cp.getContactName());
+                Conversation conv = contactData.getConversation(cp.getContactName());
                 initializeConversation(cp, conv, false);
                 break;
             case ConversationPanel.SEND_COMMAND:
@@ -792,13 +833,13 @@ class UIController implements ControllerInterface, UIAPI {
     // in this method
     private void processReceivedMessage(Message msg, boolean isNew) {
         String contactName = msg.from;
-        if (!clientData.contactExists(contactName)) {
+        if (!contactData.contactExists(contactName)) {
             // maybe should throw Exception here, in production code?
             System.out.println("got message from unknown contact "
                 + contactName + " (self is " + Message.SELF + ")");
             return;
         }
-        Conversation conv = clientData.getConversation(contactName);
+        Conversation conv = contactData.getConversation(contactName);
         boolean addedAtEnd = conv.add(msg);
         // see if there is a tab open for this conversation
         ConversationPanel cp
@@ -807,15 +848,16 @@ class UIController implements ControllerInterface, UIAPI {
             if (addedAtEnd) {
                 if (msg.isReceivedMessage()) {
                     long lastReceived = cp.getLastReceived();
-                    if ((lastReceived >= 0) &&
-                        (msg.sequence() > lastReceived + 1)) {
+                    if ((lastReceived >= 0)
+                        && (msg.sequence() > lastReceived + 1)) {
                         cp.addMissing(msg.sequence() - (lastReceived + 1));
                     }
-                    cp.setLastReceived (msg.sequence());
+                    cp.setLastReceived(msg.sequence());
                 }
-                cp.addMsg(formatMessage(msg, maxLineLength), msg);
+                cp.addMsg(formatMessage(msg), msg);
                 cp.validateToBottom();
-            } else {
+            }
+            else {
                 // out of order, so delete everything, then add everything back
                 // System.out.println ("received out-of-order message");
                 initializeConversation(cp, conv, true);
@@ -830,15 +872,15 @@ class UIController implements ControllerInterface, UIAPI {
         // finally, update the contacts panel 
         // (new messages or time of last msg for this contact)
         if (isNew) {  // don't update during initialization
-            boolean isBroadcast = clientData.isBroadcast(contactName);
+            boolean isBroadcast = contactData.isBroadcast(contactName);
             updateContactsPanel(contactName, isBroadcast);
             updateConversationPanels();
         }
     }
 
     private void initializeConversation(ConversationPanel cp,
-                                        Conversation conv,
-                                        boolean scrollToBottom) {
+        Conversation conv,
+        boolean scrollToBottom) {
         cp.clearMsgs();
         ArrayList<Message> msgs = conv.getMessages();
         int numToDisplay = cp.getNumMsgsToDisplay();
@@ -856,15 +898,15 @@ class UIController implements ControllerInterface, UIAPI {
         for (int i = startIdx; i < msgs.size(); i++) {
             Message savedMsg = msgs.get(i);
             if (savedMsg.isReceivedMessage()) {
-                if ((lastReceived >= 0) &&
-                    (savedMsg.sequence() > lastReceived + 1)) {
+                if ((lastReceived >= 0)
+                    && (savedMsg.sequence() > lastReceived + 1)) {
                     cp.addMissing(savedMsg.sequence() - (lastReceived + 1));
                 }
                 lastReceived = savedMsg.sequence();
             }
-            cp.addMsg(formatMessage(savedMsg, maxLineLength), savedMsg);
+            cp.addMsg(formatMessage(savedMsg), savedMsg);
         }
-        cp.setLastReceived (lastReceived);
+        cp.setLastReceived(lastReceived);
         if (scrollToBottom) {
             cp.validateToBottom();
         }
@@ -874,7 +916,7 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     private void updateConversationPanels() {
-        Iterator<String> it = clientData.getContactIterator();
+        Iterator<String> it = contactData.getContactIterator();
         String contact;
         ConversationPanel panel;
         while (it.hasNext()) {
@@ -891,7 +933,7 @@ class UIController implements ControllerInterface, UIAPI {
     private void updateConversationPanel(String contact,
         ConversationPanel panel) {
         String line1 = " conversation with " + contact;
-        if (clientData.isBroadcast(contact)) {
+        if (contactData.isBroadcast(contact)) {
             int pos = contact.indexOf("@");
             if (pos > 0) {   // put spaces around @ so will wrap lines
                 String id = contact.substring(0, pos);
@@ -900,7 +942,7 @@ class UIController implements ControllerInterface, UIAPI {
             }
             line1 = "broadcast from " + contact;
         }
-        int m = clientData.getNumContactsWithNewMsgs();
+        int m = contactData.getNumContactsWithNewMsgs();
         String line2;
         if (m == 0) {
             line2 = " no unread messages";
@@ -914,28 +956,15 @@ class UIController implements ControllerInterface, UIAPI {
         panel.setTopLabelText(line1, line2);
     }
 
-    // convert a message to text form for display on conversation panel
-    // add a line at top for the date/time, and enforce a max line length
-    private String formatMessage(Message msg, int maxChars) {
-        String[] lines = msg.text.split("\n");
-        ArrayList<String> list = new ArrayList<>();
-        for (String line : lines) {
-            if (line.length() <= maxChars) {
-                list.add(line);
-            }
-            else {
-                list.addAll(splitUpLine(line, maxChars));
-            }
-        }
+    // add a line at top for the date/time, clear out html tags
+    private String formatMessage(Message msg) {
         Date date = new Date();
         date.setTime(msg.sentTime);
         String timeText = formatter.format(date);
         StringBuilder sb = new StringBuilder(timeText);
-        for (String line : list) {
-            sb.append("\n");
-            sb.append(line);
-        }
-        return (XchatSocket.sanitizeForHtml (sb.toString()));
+        sb.append("\n");
+        sb.append(msg.text);
+        return (XchatSocket.sanitizeForHtml(sb.toString()));
     }
 
     // chop a line up into pieces <= max length
@@ -984,16 +1013,16 @@ class UIController implements ControllerInterface, UIAPI {
     // called from the event disp thread, so can do what we want with the UI
     // in this method
     private void displaySentMessage(Message msg) {
-        if (!clientData.contactExists(msg.to)) {
+        if (!contactData.contactExists(msg.to)) {
             return;
         }
-        Conversation conv = clientData.getConversation(msg.to);
+        Conversation conv = contactData.getConversation(msg.to);
         conv.add(msg);
         // see if there is a tab open for this conversation
         ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(msg.to);
         if (cp != null) {
             // add the message to it
-            cp.addMsg(formatMessage(msg, maxLineLength), msg);
+            cp.addMsg(formatMessage(msg), msg);
             cp.validateToBottom();
             // mark the message as read, even though this is not checked at present
             msg.setRead();
@@ -1003,10 +1032,10 @@ class UIController implements ControllerInterface, UIAPI {
     // called from the event disp thread, so can do what we want with the UI
     // in this method
     private void ackMessage(String peer, long seq) {
-        if (!clientData.contactExists(peer)) {
+        if (!contactData.contactExists(peer)) {
             return;
         }
-        Conversation conv = clientData.getConversation(peer);
+        Conversation conv = contactData.getConversation(peer);
         // see if there is a tab open for this conversation
         Iterator<Message> it = conv.getIterator();
         while (it.hasNext()) {
@@ -1037,15 +1066,15 @@ class UIController implements ControllerInterface, UIAPI {
 
     private String getContactFromKeyExchangePanelId(String panelId) {
         if (panelId.startsWith(UI.KEY_EXCHANGE_PANEL_ID)) {
-            return panelId.substring (UI.KEY_EXCHANGE_PANEL_ID.length() + 1);
+            return panelId.substring(UI.KEY_EXCHANGE_PANEL_ID.length() + 1);
         }
         return null;
     }
 
-    private KeyExchangePanel
-        createKeyExchangePanel(String contactName, String[] middlePanelText,
-            String[] bottomPanelText, boolean selectIt,
-            boolean isKeyExchange) {
+    private KeyExchangePanel createKeyExchangePanel(
+        String contactName, String[] middlePanelText,
+        String[] bottomPanelText, boolean selectIt,
+        boolean isKeyExchange) {
         KeyExchangePanel keyExchangePanel
             = new KeyExchangePanel(contactName, new int[]{2, 6, 4},
                 isKeyExchange);

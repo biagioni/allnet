@@ -23,7 +23,7 @@ public class Message implements java.lang.Comparable<Message> {
     // set to false by the client when message has been read
     boolean newMessageFlag;  // only meaningful for received messages
     
-// use this for received messages only
+    // use this for received messages only
     Message(String from, String to, long sentTime, long receivedTime, long seq,
             String text, boolean broadcast, boolean newMessage) {
         this.received = true;

@@ -9,7 +9,7 @@ import java.util.Iterator;
  * 
  * @author Henry
  */
-class Conversation {
+public class Conversation {
 
     private static final long serialVersionUID = 1L;
     // list of messages in order received

@@ -34,6 +34,12 @@ public interface UIAPI {
     // the application should call this method to tell the UI to
     // remove a contact
     public void contactDeleted(String contactName);
+    //
+    public void contactModified(String contactName);
+
+    // the application should call this method to tell the UI to
+    // clear a conversation
+    public void clearConversation(String contactName);
     
 //    // the application should call this method to update a user's key
 //    public void updateKey(String contactName, String key);
