@@ -420,7 +420,7 @@ System.out.println("clear conversation not implemented yet");
         fileAction(contact, fname, fileActions.CREATE);
     }
 
-    private static boolean fileExists(String contact, String fname) {
+    public static boolean fileExists(String contact, String fname) {
         return (fileAction(contact, fname, fileActions.EXISTS) != null);
     }
 

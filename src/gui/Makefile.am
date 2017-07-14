@@ -13,6 +13,8 @@ JAVASOURCELIST= \
     allnetui/ConversationData.java \
     allnetui/Conversation.java \
     allnetui/ConversationPanel.java \
+    allnetui/CoreAPI.java \
+    allnetui/CoreConnect.java \
     allnetui/KeyExchangePanel.java \
     allnetui/Message.java \
     allnetui/MorePanel.java \
