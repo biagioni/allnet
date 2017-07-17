@@ -1,7 +1,6 @@
 
 package allnetui;
 
-
 /**
  * This class implements the AllNet API methods for the UI client by 
  * communicating with the AllNet daemon
@@ -13,27 +12,249 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // from lib/packet.h
     static final int allNetMTU = 12288;
-    
-    UIAPI handlers = null;
+    static final int xchatSocketPort = 41244; // 0xA11C, ALLnet Chat
+    static final int allnetY2kSecondsInUnix = 946720800;
 
-    // track pending key exchanges?
-//    String[] keyExchangeContacts = null;
-//    String[] keyExchangeSecret1 = null;
-//    String[] keyExchangeSecret2 = null;
-//    int[] keyExchangehops = null;
+    UIAPI handlers = null;
+    java.net.Socket sock;
+    java.io.DataInputStream sockIn;
+    java.io.DataOutputStream sockOut;
+    byte[] bufferedResponse = null;
+    // mutex is used to serialize access to bufferedResponse and sockIn
+    private final Object mutex = new Object();
+
+    static final byte guiContacts = 1;
+    static final byte guiSubscriptions = 2;
+    static final byte guiContactExists = 3;
+    static final byte guiContactIsGroup = 4;
+    static final byte guiHasPeerKey = 5;
+
+    static final byte guiCreateGroup = 10;
+    static final byte guiMembers = 11;
+    static final byte guiMembersRecursive = 12;
+    static final byte guiMemberOfGroups = 13;
+    static final byte guiMemberOfGroupsRecursive = 14;
+
+    static final byte guiRenameContact = 20;
+
+    static final byte guiQueryVariable = 30;
+    static final byte guiSetVariable = 31;
+    static final byte guiUnsetVariable = 32;
+
+    // the variables that can be queried, set, or unset
+    static final byte guiVariableVisible = 1;
+    static final byte guiVariableNotify = 2;
+    static final byte guiVariableSavingMessages = 3;
+    static final byte guiVariableComplete = 4;  // no unsetComplete
+
+    static final byte guiGetMessages = 40;
+    static final byte guiSendMessage = 41;
+    static final byte guiSendBroadcast = 42;
+
+    static final byte guiKeyExchange = 50;
+    static final byte guiSubscribe = 51;
+    static final byte guiTrace = 52;
+
+    static final byte guiBusyWait = 60;
+
+    // callbacks from the core to the GUI, with no response
+    static final byte guiCallbackMessageReceived      = 70;
+    static final byte guiCallbackMessageAcked         = 71;
+    static final byte guiCallbackContactCreated       = 72;
+    static final byte guiCallbackSubscriptionComplete = 73;
+    static final byte guiCallbackTraceResponse        = 74;
 
     // design principle: this API provides access to allnet lib and xchat
     // methods needed to implement the functionality of the user interface.
     public CoreConnect(UIAPI handlers) {
         super ();   // initialize thread
         this.handlers = handlers;
-        // to do: initialize socket to communicate with C code
+        try {
+            this.sock = new java.net.Socket("127.0.0.1", xchatSocketPort);
+System.out.println("new socket is " + this.sock);
+            this.sockIn =
+                new java.io.DataInputStream(this.sock.getInputStream());
+            this.sockOut =
+                new java.io.DataOutputStream(this.sock.getOutputStream());
+        } catch (java.lang.Exception e) {
+            System.out.println("exception " + e + " creating socket");
+        }
+    }
+
+    private void callbackMessageReceived(byte[] value) {
+        assert(value.length > 18);
+        boolean isBroadcast = (value[1] != 0);
+        long seq = SocketUtils.b64(value, 2);
+        // for the time, convert to the unix epoch and seconds to milliseconds
+        long time = (SocketUtils.b64(value, 10) + allnetY2kSecondsInUnix)
+                  * 1000;
+        String peer = SocketUtils.bString(value, 18);
+        int peerEnd = 18 + peer.length() + 1;
+        String message = SocketUtils.bString(value, peerEnd);
+        int messageEnd = peerEnd + message.length() + 1;
+        String desc = SocketUtils.bString(value, messageEnd);
+        int descEnd = messageEnd + desc.length() + 1;
+        assert(descEnd == value.length);
+        String dm = desc + "\n" + message;
+System.out.println("time of message " + message + " is " + time);
+        handlers.messageReceived(peer, time, seq, message, isBroadcast);
+    }
+
+    private void callbackMessageAcked(byte[] value) {
+        assert(value.length > 9);
+        long ack = SocketUtils.b64(value, 1);
+        String peer = SocketUtils.bString(value, 9);
+        handlers.messageAcked(peer, ack);
+    }
+
+    // send callbacks to the right place
+    // if it is not a callback, returns false
+    private boolean dispatch(byte[] value) {
+        switch(value[0]) {
+        case guiCallbackMessageReceived:
+            callbackMessageReceived(value);
+            return true;
+        case guiCallbackMessageAcked:
+            callbackMessageAcked(value);
+            return true;
+        case guiCallbackContactCreated:
+System.out.println("guiCallbackContactCreated not implemented yet\n");
+            return true;
+        case guiCallbackSubscriptionComplete:
+System.out.println("guiCallbackSubscriptionComplete not implemented yet\n");
+            return true;
+        case guiCallbackTraceResponse:
+System.out.println("guiCallbackTraceResponse not implemented yet\n");
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    // send-and received and the synchronization codea are inspired by:
+    // https://stackoverflow.com/questions/1176135/java-socket-send-receive-byte-array and
+    // http://docs.oracle.com/javase/tutorial/essential/concurrency/syncrgb.html
+
+    // send and receive are synchronized separately for multiple reasons:
+    // 1. it's OK to send while receiving, there is no conflict
+    // 2. if the CoreConnect thread is stuck on receiving, we want it
+    //    to complete the receive and save the buffer
+
+    // synchronized, so nobody else gets to send on the same socket
+    // until we are done
+    private synchronized void sendRPC(byte[] arg) {
+        try {
+            this.sockOut.writeLong(arg.length);
+            this.sockOut.write(arg);
+        } catch (java.lang.Exception e) {
+            System.out.println("exception " + e + " writing to socket");
+            System.exit(0);
+        }
+    }
+
+    // synchronized by the caller
+    private byte[] receiveBuffer() {
+        if (this.bufferedResponse != null) {
+System.out.println("buffered response has length " +
+               this.bufferedResponse.length + 
+               ", code " + this.bufferedResponse[0]);
+            byte[] result = this.bufferedResponse;
+            this.bufferedResponse = null;
+            return result;
+        }
+        try {
+            long length = this.sockIn.readLong();
+            if (length > 0) {
+                    byte[] result = new byte[(int)length];
+                    this.sockIn.readFully(result, 0, result.length);
+                    return result;
+            }
+        } catch (java.lang.Exception e) {
+            System.out.println("exception " + e + " reading from socket");
+        }
+        return null;
+    }
+
+    // synchronized by the caller
+    private boolean saveBuffer(byte[] buffer) {
+        if (this.bufferedResponse == null) {
+            this.bufferedResponse = buffer;
+            return true;
+        } else {
+            System.out.println("saveBuffer discarding " + buffer.length +
+                               "-byte buffer with code " + buffer[0]);
+        }
+        return false;
+    }
+
+    // code is 0 to loop forever, just dispatching and/or saving the buffer
+    // multiple threads may call this at the same time, only one of them
+    // at a time should proceed through the synchronized block
+    private byte[] receiveRPC(byte code) {
+        while(true) {  // repeat until we get our match
+            boolean sleep = false;
+            synchronized (this.mutex) {
+                byte[] result = receiveBuffer();
+                if (result != null) {
+                    System.out.println ("receiveRPC (" + code + ") got " +
+                                        result.length + " bytes, code " +
+                                        result[0]);
+                    if ((code != 0) && (result[0] == code))   // rpc complete
+                        return result;
+                    if (! dispatch(result)) { // not a dispatch, save buffer
+                        saveBuffer(result);
+                        sleep = true;
+                    }
+                }
+            }
+            if (sleep) {
+                try {  // let somebody else run
+                    Thread.sleep(100);
+                } catch (Exception e) {} // ignore InterruptedException
+            }
+        }
+    }
+
+    private synchronized byte[] synchronizedDoRPC(byte[] arg) {
+System.out.println("calling sendRPC(" + arg[0] + ")");
+        sendRPC(arg);
+System.out.println("done calling sendRPC(" + arg[0] + ")");
+        return receiveRPC(arg[0]);
+    }
+
+    private byte[] doRPC(byte[] arg) {
+// System.out.println("calling doRPC(" + arg[0] + ")");
+//         byte[] result = synchronizedDoRPC(arg);
+// System.out.println("done calling doRPC(" + arg[0] + ")");
+System.out.println("calling sendRPC(" + arg[0] + ")");
+        sendRPC(arg);
+System.out.println("done calling sendRPC(" + arg[0] + ")");
+        byte[] result = receiveRPC(arg[0]);
+System.out.println("done calling receiveRPC, result " + result[0]);
+        return result;
     }
 
     // from lib/keys.h
 
     // return all the contacts, including all the groups
-    public String[] contacts() { return AllNetContacts.get(); } 
+    public String[] contacts() {
+        byte[] request = new byte[1];
+        request[0] = guiContacts;
+        byte[] response = doRPC(request);
+        long count = SocketUtils.b64(response, 1); 
+        String[] result = SocketUtils.bStringArray(response, 9, count);
+        return result;
+    } 
+
+    // return all the senders we subscribe to
+    public String[] subscriptions() {
+        byte[] request = new byte[1];
+        request[0] = guiSubscriptions;
+        byte[] response = doRPC(request);
+        long count = SocketUtils.b64(response, 1); 
+        String[] result = SocketUtils.bStringArray(response, 9, count);
+        return result;
+    } 
 
     public boolean contactExists(String contact) { 
         if (contact == null)
@@ -149,6 +370,9 @@ public class CoreConnect extends Thread implements CoreAPI {
     // @return up to the max latest saved messages to/from this contact
     //         a negative value of max requests all messages
     public Message[] getMessages(String contact, int max) {
+        if (max < 0) {
+            return ConversationData.getAll(contact);
+        }
         return ConversationData.get(contact, max);
     }
 
@@ -156,7 +380,16 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // @return sequence number
     public long sendMessage(String contact, String text) {
-        return XchatSocket.sendToPeer(contact, text);
+System.out.println("sendMessage called");
+        int length = 1 + contact.length() + 1 + text.length() + 1;
+        byte[] request = new byte[length];
+        request[0] = guiSendMessage;
+        int endContact = SocketUtils.wString (request, 1, contact);
+        int endText = SocketUtils.wString (request, endContact, text);
+        assert(endText == length);
+        byte[] response = doRPC(request);
+        long seq = SocketUtils.b64(response, 1);
+        return seq;
     }
 
     public void sendBroadcast(String myAhra, String text) {
@@ -170,34 +403,105 @@ public class CoreConnect extends Thread implements CoreAPI {
         System.out.println("busyWait not implemented yet");
     }
 
+    private static byte convertToByte(int n) {
+        byte result = 0;
+        if (n > 255) {
+            result = (byte)255;
+        } else if (n <= 0) {
+            result = 0;
+        } else {
+            result = (byte)n;
+        }
+        return result;
+    }
+
     // creates the contact -- 1 or 2 secrets may be specified
     //    (secret2 is null if only one secret is specified)
     // if the contact already exists, returns without doing anything
-    public void initKeyExchange(String contact, String secret1,
-                                String secret2, int hops) {
-        XchatSocket.sendKeyRequest(contact, secret1, secret2, hops);
-        System.out.println("initKeyExchange: should we save params?");
+    public boolean initKeyExchange(String contact, String secret1,
+                                   String secret2, int hops) {
+System.out.println("initKeyExchange called");
+        int length = 1 + 1 + contact.length() + 1 + secret1.length() + 1;
+        if ((secret2 != null) && (secret2.length() > 0))
+            length += secret2.length() + 1;
+        byte[] request = new byte[length];
+        request[0] = guiKeyExchange;
+        request[1] = convertToByte(hops);
+        int endContact = SocketUtils.wString (request, 2, contact);
+        int endSecret1 = SocketUtils.wString (request, endContact, secret1);
+        int endSecret2 = endSecret1;
+        if ((secret2 != null) && (secret2.length() > 0))
+            endSecret2 = SocketUtils.wString (request, endSecret1, secret2);
+        assert(endSecret2 == length);
+        byte[] response = doRPC(request);
+        if (response[1] == 0) {
+            System.out.println("initKeyExchange returned failure");
+            return false;
+        }
+        return true;
     }
 
     // address is an AllNet human-readable address, or ahra/AHRA
     // it has the form myString@some_set.of_wordpair
     // it must match the ahra created by the broadcaster, except
     //    it may have fewer (or no) word pairs
-    public void initSubscription(String address) {
-        XchatSocket.sendSubscription(address);
+    public boolean initSubscription(String address) {
+System.out.println("initSubscription called");
+        int length = 1 + address.length() + 1;
+        byte[] request = new byte[length];
+        request[0] = guiSubscribe;
+        int endAddress = SocketUtils.wString (request, 1, address);
+        assert(endAddress == length);
+        byte[] response = doRPC(request);
+        if (response[1] == 0) {
+            System.out.println("initSubscription returned failure");
+            return false;
+        }
+        return true;
     }
 
     // from lib/trace_util.h
     // @return a trace ID
-    public String initTrace(int nhops, byte[] addr, int abits,
-                     boolean recordIntermediates,
-                     boolean onlyMatchingAddressesOnly) {
-        System.out.println("initTrace not implemented yet");
-        return "foo.bar";
+    public byte[] initTrace(int nhops, byte[] addr, int abits,
+                            boolean recordIntermediates) {
+System.out.println("initTrace called");
+        int length = 1 + 1 + 1 + 1 + 8;
+        byte[] request = new byte[length];
+        request[0] = guiTrace;
+        request[1] = convertToByte(nhops);
+        request[2] = convertToByte(abits);
+        if (recordIntermediates)
+            request[3] = 1;
+        else
+            request[3] = 0;
+        SocketUtils.setZeros(request, 4);
+        if (addr != null)
+            System.arraycopy(addr, 0, request, 4, addr.length);
+        assert(12 == length);
+        byte[] response = doRPC(request);
+        assert(17 == response.length);
+        if (SocketUtils.allZeros(response, 1)) {
+            return null;
+        } else {
+            byte[] traceID = new byte[16];
+            System.arraycopy(response, 1, traceID, 0, 16);
+            for (int i = 0; i < traceID.length; i++)
+                System.out.print(((((int)traceID[i]) + 256) % 256) + ".");
+            System.out.println();
+            return traceID;
+        }
     }
 
     public void run() {
         System.out.println("AllNetConnect thread running");
-    // to do: connect socket, read from socket and write to socket
+        for (String contact: contacts()) {
+            this.handlers.contactCreated(contact);
+            Message[] msgs = getMessages(contact, -1);  // get all
+            this.handlers.savedMessages(msgs);
+        }
+        for (String sender: subscriptions()) {
+            this.handlers.subscriptionComplete(sender);
+        }
+        receiveRPC((byte)0);  // loop forever
     }
 }

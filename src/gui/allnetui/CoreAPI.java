@@ -21,6 +21,7 @@ public interface CoreAPI {
 
     // return all the contacts, including all the groups
     String[] contacts();
+    String[] subscriptions();  // contacts whose broadcast we subscribe to
     boolean contactExists(String contact);
     boolean contactIsGroup(String contact);  // false if contact does not exist
     // newly created contacts may not have the peer's key
@@ -88,18 +89,17 @@ public interface CoreAPI {
     // creates the contact -- 1 or 2 secrets may be specified
     //    (secret2 is null if only one secret is specified)
     // if the contact already exists, returns without doing anything
-    void initKeyExchange(String contact, String secret1, String secret2,
-                         int hops);
+    boolean initKeyExchange(String contact, String secret1, String secret2,
+                            int hops);
 
     // address is an AllNet human-readable address, or ahra/AHRA
     // it has the form myString@some_set.of_wordpair
     // it must match the ahra created by the broadcaster, except
     //    it may have fewer (or no) word pairs
-    void initSubscription(String address);
+    boolean initSubscription(String address);
 
     // from lib/trace_util.h
     // @return a trace ID
-    String initTrace(int nhops, byte[] addr, int abits,
-                     boolean recordIntermediates,
-                     boolean onlyMatchingAddressesOnly);
+    byte[] initTrace(int nhops, byte[] addr, int abits,
+                     boolean recordIntermediates);
 }

@@ -43,8 +43,11 @@ class UIController implements ControllerInterface, UIAPI {
     private NewContactPanel newContactPanel;
     private MorePanel morePanel;
     private MyTabbedPane myTabbedPane;
+    private CoreAPI coreAPI;
     // need to keep client data (contacts, keys, conversations, etc.)
     private ContactData contactData;
+    // keep track of the current trace, only accept responses for the same ID
+    private byte[] traceID = null;
 
     // constructor
     UIController(ContactData contactData) {
@@ -148,9 +151,9 @@ class UIController implements ControllerInterface, UIAPI {
         SwingUtilities.invokeLater(r);
     }
 
-    // the application should call this method to tell the UI about a new contact
-    @Override
-    public void contactCreated(final String contactName, final boolean isBroadcast) {
+    // tell the UI about a new contact
+    private void contactCreated(final String contactName,
+                                final boolean isBroadcast) {
         Runnable r = new Runnable() {
 
             @Override
@@ -211,13 +214,15 @@ class UIController implements ControllerInterface, UIAPI {
         SwingUtilities.invokeLater(r);
     }
 
+    // the application calls this method to tell the UI about a new contact
     @Override
     public void contactCreated(final String contactName) {
         contactCreated(contactName, false);
     }
 
+    // the application calls this method to tell the UI about a new contact
     @Override
-    public void broadcastContactCreated(final String contactName) {
+    public void subscriptionComplete(final String contactName) {
         contactCreated(contactName, true);
     }
 
@@ -292,16 +297,20 @@ class UIController implements ControllerInterface, UIAPI {
 //    }
     @Override
     // if a trace response is received, call this method
-    public void traceReceived(final String traceMessage) {
+    public void traceReceived(final byte[] receivedTraceID,
+                              final String traceMessageNarrow,
+                              final String traceMessageWide) {
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
-                morePanel.addTraceText(traceMessage);
+                    morePanel.addTraceText(traceMessageWide);
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
-        SwingUtilities.invokeLater(r);
+        if (SocketUtils.sameTraceID(this.traceID, receivedTraceID)) {
+            SwingUtilities.invokeLater(r);
+        }
     }
 
     //-----------------------------------------
@@ -333,6 +342,10 @@ class UIController implements ControllerInterface, UIAPI {
 
     void setMyTabbedPane(MyTabbedPane myTabbedPane) {
         this.myTabbedPane = myTabbedPane;
+    }
+
+    void setCore(CoreAPI coreAPI) {
+        this.coreAPI = coreAPI;
     }
 
     void setMorePanel(MorePanel morePanel) {
@@ -421,7 +434,7 @@ class UIController implements ControllerInterface, UIAPI {
                         " Shared secret:", " " + kep.getSecret(), " or:",
                         " " + variableInput, " ");
                 }
-                if (XchatSocket.sendKeyRequest(kep.getContactName(),
+                if (coreAPI.initKeyExchange(kep.getContactName(),
                     kep.getSecret(),
                     kep.getVariableInput(), hops)) {
                     System.out.println("resent key request");
@@ -432,7 +445,7 @@ class UIController implements ControllerInterface, UIAPI {
                 kep.setText(1, " Resent subscription request",
                     " requesting authentication for: " + ahra);
                 System.out.println("resending subscription for " + ahra);
-                if ((ahra != null) && (XchatSocket.sendSubscription(ahra))) {
+                if ((ahra != null) && (coreAPI.initSubscription(ahra))) {
                     System.out.println("sent ahra subscription");
                 }
                 else {
@@ -472,7 +485,8 @@ class UIController implements ControllerInterface, UIAPI {
             case MorePanel.TRACE_COMMAND:
 //              System.out.println ("trace command called");
                 morePanel.setTraceText("");
-                if (XchatSocket.sendTrace(5)) {
+                this.traceID = coreAPI.initTrace(5, null, 0, false);
+                if (this.traceID != null) {
 //                  System.out.println("sent trace request");
                 }
                 break;
@@ -584,7 +598,11 @@ class UIController implements ControllerInterface, UIAPI {
             cp.setListener(this);
             // display the conversation on the new panel
             Conversation conv = contactData.getConversation(contactName);
+            // add before init with conversation, so message bubbles' size calc is right
+            myTabbedPane.addTabWithClose(contactName, cp.getTitle(), cp, ConversationPanel.CLOSE_COMMAND);
+            // add msg bubbles
             initializeConversation(cp, conv, true);
+            // now select and make visible
             myTabbedPane.addTabWithClose(contactName, cp.getTitle(), cp, ConversationPanel.CLOSE_COMMAND);
             myTabbedPane.setSelected(cp);
         }
@@ -679,7 +697,7 @@ class UIController implements ControllerInterface, UIAPI {
                         kep.setSecret(secret);
                         kep.setVariableInput(variableInput);
                     }
-                    if (XchatSocket.sendKeyRequest(contact,
+                    if (coreAPI.initKeyExchange(contact,
                         secret, variableInput, HOPS_LOCAL)) {
                         System.out.println("sent direct wireless key request");
                         newContactPanel.setMySecret();
@@ -712,7 +730,7 @@ class UIController implements ControllerInterface, UIAPI {
                         kep.setVariableInput(variableInput);
                     }
                     //
-                    if (XchatSocket.sendKeyRequest(contact,
+                    if (coreAPI.initKeyExchange(contact,
                         newContactPanel.getMySecretLong(),
                         newContactPanel.getVariableInput(), HOPS_REMOTE)) {
                         System.out.println("sent key request with 6 hops");
@@ -751,7 +769,7 @@ class UIController implements ControllerInterface, UIAPI {
                             kep.setButtonState(button);
                             kep.setVariableInput(ahra);
                         }
-                        if (XchatSocket.sendSubscription(ahra)) {
+                        if (coreAPI.initSubscription(ahra)) {
                             System.out.println("sent ahra subscription");
                         }
                         else {
@@ -804,7 +822,7 @@ class UIController implements ControllerInterface, UIAPI {
                     break;
                 }
                 String peer = cp.getContactName();
-                long seq = XchatSocket.sendToPeer(peer, msgText);
+                long seq = coreAPI.sendMessage(peer, msgText);
                 if (seq > 0) {
                     long sentTime = new java.util.Date().getTime();
                     messageSent(peer, sentTime, seq, msgText);
@@ -964,7 +982,7 @@ class UIController implements ControllerInterface, UIAPI {
         StringBuilder sb = new StringBuilder(timeText);
         sb.append("\n");
         sb.append(msg.text);
-        return (XchatSocket.sanitizeForHtml(sb.toString()));
+        return (SocketUtils.sanitizeForHtml(sb.toString()));
     }
 
     // chop a line up into pieces <= max length
@@ -1041,6 +1059,7 @@ class UIController implements ControllerInterface, UIAPI {
         while (it.hasNext()) {
             Message msg = it.next();
             if (msg.setAcked(seq)) {  // set ack flag if this is the right seq
+System.out.println("set acked for message " + msg);
                 ConversationPanel cp
                     = (ConversationPanel) myTabbedPane.getTabContent(peer);
                 if (cp != null) {

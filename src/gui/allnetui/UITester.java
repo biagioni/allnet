@@ -118,7 +118,7 @@ class UITester extends JFrame implements ActionListener {
                 break;
             case createStr:
                 if (broadcastCheckBox.isSelected()) {
-                    controller.broadcastContactCreated(toFrom.getText());
+                    controller.subscriptionComplete(toFrom.getText());
                 }
                 else {
                     controller.contactCreated(toFrom.getText());

@@ -375,7 +375,7 @@ public class ConversationData {
                     in.reset();
                 } catch (java.io.IOException e) {   // reached EOF, text is good
                 }
-                text = XchatSocket.sanitizeForHtml (text);
+                text = SocketUtils.sanitizeForHtml (text);
                 long lastReadSecond = 0;
                 if (lr != null)
                     lastReadSecond =

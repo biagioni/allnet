@@ -219,7 +219,7 @@ static pthread_t request_thread;
 #endif /* HAVE_REQUEST_THREAD */
 
 /* returns the socket if successful, -1 otherwise */
-int xchat_init (char * arg0, pd p)
+int xchat_init (const char * arg0, pd p)
 {
   if (alog == NULL)
     alog = pipemsg_log (p);
@@ -351,7 +351,7 @@ static void send_ack (int sock, struct allnet_header * hp,
 /* call every once in a while, e.g. every 1-10s, to poke all our
  * contacts and get any outstanding messages. */
 /* each time it is called, queries a different contact or keyset */
-static void do_request_and_resend (int sock)
+void do_request_and_resend (int sock)
 {
   static char * * contacts = NULL;
   static int num_contacts = 0;
@@ -603,16 +603,11 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
   char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, psize);
   char message_ack [MESSAGE_ID_SIZE];
 /* relatively quick check to see if we may have gotten this message before */
-#ifdef USE_MESSAGE_ID_IS_IN_SAVED_CACHE
-  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
-      (message_id_is_in_saved_cache (message_id, message_ack))) {
-#else /* ! USE_MESSAGE_ID_IS_IN_SAVED_CACHE -- use idhash_check */
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
       (idhash_check (MESSAGE_ID_HASH_INDEX, (unsigned char *) message_id))) {
     int index = idhash_index ((unsigned char *)message_id);
     memcpy (message_ack, id_hashes [MESSAGE_ID_ACK_INDEX] [index],
             MESSAGE_ID_SIZE);
-#endif /* USE_MESSAGE_ID_IS_IN_SAVED_CACHE */
 #ifdef DEBUG_PRINT
     print_buffer (message_ack, MESSAGE_ID_SIZE,
                   "xcommon handle_data sending quick ack",
@@ -652,8 +647,7 @@ else {
   debug [msize] = '\0';
   printf ("%s %lx, ", debug, readb32 (text));
   print_buffer (text, msize, NULL, 16, 1);
-}
-}
+} }
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
   if (tsize > (int)CHAT_DESCRIPTOR_SIZE) {
@@ -784,46 +778,53 @@ else {
   return msize;
 }
 
+/* return 1 if successfully matched a pending subscription,
+ * 0 if it is not a key response,
+ * -1 if it is a non-matching key response */
 static int handle_sub (int sock, struct allnet_header * hp,
                        char * data, unsigned int dsize,
-                       char * subscription,
-                       const unsigned char * addr, int nbits)
+                       char ** subscription)
 {
-  if ((nbits == 0) ||
-      ((hp->dst_nbits == nbits) && 
-       (matches (hp->destination, nbits, addr, nbits)))) {
+  *subscription = NULL;
+  /* check the packet first */
+  struct allnet_app_media_header * amhp =
+    (struct allnet_app_media_header *) data;
+  assert (ALLNET_APP_ID_SIZE == 4);
+  assert (ALLNET_MEDIA_ID_SIZE == 4);
+  unsigned long int media = 0;
+  if (dsize >= sizeof (struct allnet_app_media_header) + 2 +
+               KEY_RANDOM_PAD_SIZE)
+    media = readb32u (amhp->media);
+  if ((memcmp ("keyd", &(amhp->app), ALLNET_APP_ID_SIZE) != 0) ||
+      (media != ALLNET_MEDIA_PUBLIC_KEY)) {
 #ifdef DEBUG_PRINT
-    printf ("handle_sub calling verify_bc_key\n");
+    printf ("handle_sub %s %ld, media type %08lx, dsize %u\n",
+            "ignoring unknown app", readb32u (amhp->app), media, dsize);
 #endif /* DEBUG_PRINT */
-    struct allnet_app_media_header * amhp =
-      (struct allnet_app_media_header *) data;
-    assert (ALLNET_APP_ID_SIZE == 4);
-    assert (ALLNET_MEDIA_ID_SIZE == 4);
-    unsigned long int media = 0;
-    if (dsize >=
-        sizeof (struct allnet_app_media_header) + 2 + KEY_RANDOM_PAD_SIZE)
-      media = readb32u (amhp->media);
-    if ((memcmp ("keyd", &(amhp->app), ALLNET_APP_ID_SIZE) != 0) ||
-        (media != ALLNET_MEDIA_PUBLIC_KEY)) {
-#ifdef DEBUG_PRINT
-      printf ("handle_sub %s %ld, media type %08lx, dsize %u\n",
-              "ignoring unknown app", readb32u (amhp->app), media, dsize);
-#endif /* DEBUG_PRINT */
-      return 0;
-    }
-    data += sizeof (struct allnet_app_media_header);
-    dsize -= sizeof (struct allnet_app_media_header) + KEY_RANDOM_PAD_SIZE;
-    int correct = verify_bc_key (subscription, data, dsize, "en", 16, 1);
-    if (correct)
-      printf ("received key does verify %s, saved\n", subscription);
-    else
-      printf ("received key does not verify\n");
-    return correct;
+    return 0;
   }
+  data += sizeof (struct allnet_app_media_header);
+  dsize -= sizeof (struct allnet_app_media_header) + KEY_RANDOM_PAD_SIZE;
+  char ** ahras = NULL;
+  int na = requested_bc_keys (&ahras);
+  if ((na > 0) && (ahras != NULL)) {
+    int ia;
+    for (ia = 0; ia < na; ia++) {
 #ifdef DEBUG_PRINT
-  printf ("handle_sub did not call verify_bc_key\n");
+      printf ("handle_sub calling verify_bc_key for %s (%d/%d)\n",
+              ahras [ia], ia, na);
 #endif /* DEBUG_PRINT */
-  return 0;
+      if (verify_bc_key (ahras [ia], data, dsize, "en", 16, 1)) {
+        printf ("received key does verify %s, saved\n", ahras [ia]);
+        *subscription = strcpy_malloc (ahras [ia], "handle_sub");
+        free (ahras);
+        finished_bc_key_request (*subscription);
+        return 1;
+      }
+    }
+    free (ahras);
+  }
+  return -1;
 }
 
 static int send_key (int sock, const char * contact, keyset kset,
@@ -919,139 +920,161 @@ static void save_key_in_cache (struct allnet_header * hp,
   key_cache [free].hp = *hp;
 }
 
+/* contents should have a hop count, followed by one or two secrets,
+ * all separated by newlines. */
+/* returns 1 if successful, 0 otherwise */
+static int parse_exchange_info (char * contents, char ** secret1,
+                                char ** secret2, int * hops)
+{
+  *secret1 = NULL;
+  *secret2 = NULL;
+  *hops = 0;
+  if (contents == NULL)
+    return 0;
+  char * saveptr = NULL;
+  char * first = strtok_r (contents, "\n", &saveptr);
+  if (first == NULL)  /* there should be a hop count and a secret */
+    return 0;
+  *secret1 = strtok_r (NULL, "\n", &saveptr);
+  if (*secret1 == NULL) /* at least one secret is required */
+    return 0;
+  /* make sure the first string is a hop count */
+  char * endptr;
+  *hops = (int)strtol (first, &endptr, 10);
+  if (endptr == first) { /* conversion failed */
+    *hops = 0;
+    *secret1 = NULL;
+    return 0;
+  }
+  /* secret2 is optional */
+  *secret2 = strtok_r (NULL, "\n", &saveptr);
+#ifdef DEBUG_PRINT
+  printf ("%d hops, secrets '%s' and (maybe) '%s'\n",
+          *hops, *secret1, *secret2);
+#endif /* DEBUG_PRINT */
+  return 1;
+}
+
+/* returns 1 for a successful parse, 0 otherwise */
+static int parse_exchange_file (const char * contact,
+                                char ** s1, char ** s2, int * nhops)
+{
+  char * content = NULL;
+  int size = contact_file_get (contact, "exchange", &content);
+  if (size <= 0)
+    return 0;
+  int result = parse_exchange_info (content, s1, s2, nhops);
+  free (content);
+  return result;
+}
+
+static int received_my_pubkey (keyset k, char * data, unsigned int dsize,
+                               unsigned int ksize)
+{
+  allnet_rsa_pubkey pubkey;
+  int key_size = get_my_pubkey (k, &pubkey);
+  if (key_size <= 0) {
+    printf ("received_my_pubkey: keyset %d has %d-sized public key\n",
+            k, key_size);
+    return 0;   /* not my key */
+  }
+  char test_key [ALLNET_MTU];
+  int pub_ksize = allnet_pubkey_to_raw (pubkey, test_key, sizeof (test_key));
+  if ((pub_ksize == ksize) && (memcmp (data, test_key, ksize) == 0)) {
+#ifdef DEBUG_PRINT
+    printf ("received_my_pubkey: got my own key\n");
+#endif /* DEBUG_PRINT */
+    return 1;
+  }
+  return 0;   /* keys do not match */
+}
+
+static int received_matching_key (keyset k, char * data, unsigned int dsize,
+                                  unsigned int ksize, const char * secret)
+{
+  char * received_hmac = data + ksize;
+  char hmac [SHA512_SIZE];
+  sha512hmac (data, ksize, secret, (int)strlen (secret), hmac);
+  return (memcmp (hmac, received_hmac, SHA512_SIZE) == 0);
+}
+
+static void resend_peer_key (const char * contact, keyset k,
+                             const char * secret,
+                             unsigned char * addr, unsigned int abits,
+                             int max_hops, int sock)
+{
+printf ("sending back key with secret %s\n", secret);
+print_buffer ((char *)addr, abits, "sending from", (abits + 7) / 8, 1);
+  if (! send_key (sock, contact, k, secret, addr, abits, max_hops))
+    printf ("send_key failed for key %d\n", k);
+}
+
 /* if successful, returns -1, otherwise 0 */
 static int handle_key (int sock, struct allnet_header * hp,
-                       char * data, unsigned int dsize, char * contact,
-                       char * secret1, char * secret2,
-                       unsigned char * my_addr, int my_bits, int max_hops)
+                       char * data, unsigned int dsize, char ** peer)
 {
 #ifdef DEBUG_PRINT
   printf ("in handle_key (%s, %s, %s)\n", contact, secret1, secret2);
 #endif /* DEBUG_PRINT */
   save_key_in_cache (hp, data, dsize);
-  if ((contact == NULL) || (secret1 == NULL))
-    return 0;
-  if (hp->hops > max_hops)
-    return 0;
+  char ** contacts = NULL;
   keyset * keys = NULL;
-  int nkeys = all_keys (contact, &keys);
-  if (nkeys < 1) {
-    printf ("error '%s'/%d: create own key before calling handle_key\n",
-            contact, nkeys);
+  int * status = NULL;
+  int ni = incomplete_key_exchanges (&contacts, &keys, &status);
+  if (ni <= 0)   /* we're not expecting any keys, and cannot respond */
     return 0;
-  }
-#ifdef DEBUG_PRINT
-  printf ("handle_key received key\n");
-#endif /* DEBUG_PRINT */
-  unsigned char peer_addr [ADDRESS_SIZE];
-  int peer_bits;
-  int key_index = -1;
-  int i;
-  for (i = 0; i < nkeys; i++) {
-    allnet_rsa_pubkey key;
-    peer_bits = get_remote (keys [i], peer_addr);
-    if ((get_contact_pubkey (keys [i], &key) <= 0) &&
-        ((peer_bits <= 0) ||
-         (matches (peer_addr, peer_bits, hp->source, hp->src_nbits) > 0))) {
-#ifdef DEBUG_PRINT
-      printf ("handle_key matches at index %d/%d\n", i, nkeys);
-#endif /* DEBUG_PRINT */
-      key_index = i;
-      break;
+  int result = 0;
+  if (dsize > SHA512_SIZE + KEY_RANDOM_PAD_SIZE + 2) {
+    unsigned int ksize = dsize - SHA512_SIZE - KEY_RANDOM_PAD_SIZE;
+    int ii;
+    /* find the incomplete contact if any for which this key matches a secret */
+    for (ii = 0; ii < ni; ii++) {
+      /* secrets are listed in exchange files, so check that this has a file */
+      int hops;
+      char * s1 = NULL;
+      char * s2 = NULL;
+      if ((status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE) &&
+          (parse_exchange_file (contacts [ii], &s1, &s2, &hops)) &&
+          (! received_my_pubkey (keys [ii], data, dsize, ksize))) {
+        int r1 = received_matching_key (keys [ii], data, dsize, ksize, s1);
+        int r2 = ((! r1) && (s2 != NULL) &&
+                  (received_matching_key (keys [ii], data, dsize, ksize, s2)));
+        if (r1 || r2) {
+          if (set_contact_pubkey (keys [ii], data, ksize)) {
+            if ((hp->src_nbits > 0) && (hp->src_nbits <= ADDRESS_BITS))
+              set_contact_remote_addr (keys [ii], hp->src_nbits, hp->source);
+          }
+          unsigned char my_addr [ADDRESS_SIZE];
+          unsigned int abits = get_local (keys [ii], my_addr);
+          if (r1)
+            resend_peer_key (contacts [ii], keys [ii], s1,
+                             my_addr, abits, hops, sock);
+          else
+            resend_peer_key (contacts [ii], keys [ii], s2,
+                             my_addr, abits, hops, sock);
+          *peer = strcpy_malloc (contacts [ii], "handle_key");
+          result = -1;   /* success */
+          break;  /* done */
+        }
+      }
     }
+    free (contacts);
+    free (keys);
+    free (status);
   }
-  if (key_index < 0) {
-    free (keys);  /* above we check to make sure nkeys > 0 */
-/* it is fairly normal to get multiple copies of the key.  Ignore. */
-    return 0;
-  }
-
-  char * received_key = data;
-  int ksize = dsize - SHA512_SIZE - KEY_RANDOM_PAD_SIZE;
-  if (ksize < 2) {
-    free (keys);  /* above we check to make sure nkeys > 0 */
-    return 0;
-  }
-  /* check to see if it is my own key */
-  for (i = 0; i < nkeys; i++) {
-    allnet_rsa_pubkey k;
-    int key_size = get_my_pubkey (keys [i], &k);
-    if (key_size <= 0) {
-      printf ("handle_key: %s keys [%d] = %d has %d-sized public key\n",
-              contact, i, keys [i], key_size);
-      continue;   /* skip this key */
-    }
-    char test_key [ALLNET_MTU];
-    int pub_ksize = allnet_pubkey_to_raw (k, test_key, sizeof (test_key));
-    if ((pub_ksize == ksize) && (memcmp (received_key, test_key, ksize) == 0)) {
-/* it is fairly normal to get my own key back.  Ignore.  */
-#ifdef DEBUG_PRINT
-      printf ("handle_key: got my own key\n");
-#endif /* DEBUG_PRINT */
-      free (keys);  /* above we check to make sure nkeys > 0 */
-      return 0;
-    }
-  }
-  char * received_hmac = data + ksize;
-  char hmac [SHA512_SIZE];
-  sha512hmac (received_key, ksize, secret1, (int)strlen (secret1), hmac);
-  int found1 = (memcmp (hmac, received_hmac, SHA512_SIZE) == 0);
-  int found2 = 0;
-  if ((! found1) && (secret2 != NULL)) {
-    sha512hmac (received_key, ksize, secret2, (int)strlen (secret2), hmac);
-    found2 = (memcmp (hmac, received_hmac, SHA512_SIZE) == 0);
-  }
-#ifdef DEBUG_PRINT
-  printf ("hmac gives %d/%d\n", found1, found2);
-#endif /* DEBUG_PRINT */
-  if ((found1) || (found2)) {
-#ifdef DEBUG_PRINT
-    printf ("received valid public key %p/%d for '%s'/%d\n", received_key,
-            ksize, contact, key_index);
-    print_buffer (received_key, ksize, "key", 10, 1);
-#endif /* DEBUG_PRINT */
-    if (set_contact_pubkey (keys [key_index], received_key, ksize)) {
-      if (hp->src_nbits > 0)
-        set_contact_remote_addr (keys [key_index], hp->src_nbits, hp->source);
-      /* send the key to the peer -- may be redundant, but may be useful */
-      char * secret = secret1;
-      if (found2)   /* use peer's secret */
-        secret = secret2;
-      /* else peer sent us a valid key, must know our secret1 */
-printf ("sending back key with secret %s\n", secret);
-print_buffer ((char *)my_addr, my_bits, "sending from", (my_bits + 7) / 8, 1);
-      if (! send_key (sock, contact, keys [key_index], secret,
-                      (unsigned char *) my_addr, my_bits, max_hops))
-/* if (! send_key (sock, contact, keys [key_index], secret,
-                      hp->source, hp->src_nbits, max_hops))
-*/
-        printf ("send_key failed for key index %d/%d\n", key_index, nkeys);
-      free (keys);  /* above we check to make sure nkeys > 0 */
-      return -1;  /* successful key exchange */
-    }
-    printf ("handle_key error: set_contact_pubkey returned 0\n");
-    free (keys);  /* above we check to make sure nkeys > 0 */
-    return 0;
-  }
-#ifdef DEBUG_PRINT
-  printf ("public key does not check with secrets %s %s\n", secret1, secret2);
-#endif /* DEBUG_PRINT */
-  free (keys);  /* above we check to make sure nkeys > 0 */
-  return 0;
+  return result;
 }
 
 /* if a previously received key matches one of the secrets, returns 1,
  * otherwise returns 0 */
-int key_received (int sock, char * contact, char * secret1, char * secret2,
-                  unsigned char * addr, int bits, int max_hops)
+int key_received (int sock, char ** peer)
 {
   init_key_cache ();
   int i;
   for (i = 0; i < KEY_CACHE_SIZE; i++) {
     if ((key_cache [i].dsize > 0) &&
-         (handle_key (sock, &(key_cache [i].hp), key_cache [i].buffer,
-                      key_cache [i].dsize, contact, secret1, secret2,
-                      addr, bits, max_hops) == -1)) {
+        (handle_key (sock, &(key_cache [i].hp), key_cache [i].buffer,
+                     key_cache [i].dsize, peer) == -1)) {
 #ifdef DEBUG_KEY_CACHE_PRINT
       printf ("using previously saved key, i %d, dsize %d\n",
               i, key_cache [i].dsize);
@@ -1061,6 +1084,36 @@ int key_received (int sock, char * contact, char * secret1, char * secret2,
     }
   }
   return 0;
+}
+
+  /* drop packets if we are spending too much time on incoming messages */
+static int too_much_time (int message_type, unsigned int priority,
+                          long long int start_time,
+                          long long int ** nstp,
+                          long long int *multiplier)
+{
+  static long long int no_sooner_than_high_priority = 0;
+  static long long int no_sooner_than_mid_priority = 0;
+  static long long int no_sooner_than_low_priority = 0;
+  static long long int no_sooner_than_ack = 0;
+  if (message_type == ALLNET_TYPE_ACK) {  /* acks are special */
+    *nstp = &no_sooner_than_ack;
+    *multiplier = 3;   /* allow acks to consume 33% of the time */
+  } else if (priority >= ALLNET_PRIORITY_FRIENDS_HIGH) {
+    *nstp = &no_sooner_than_high_priority;
+    *multiplier = 5;   /* allow receipt of my packets to take 20% of the time */
+  } else if (priority >= ALLNET_PRIORITY_FRIENDS_LOW) {
+    *nstp = &no_sooner_than_mid_priority;
+    *multiplier = 20;  /* packet receipt for friends may take 5% of the time */
+  } else {            /* lowest priority traffic */
+    *nstp = &no_sooner_than_low_priority;
+    *multiplier = 100;   /* allow packet receipt to consume 1% of the time */
+  }
+  if (start_time >= **nstp) { /* will process this packet */
+    if (**nstp == 0)          /* first packet */
+      *multiplier = 1;        /* give a free pass to the first packet */
+  }
+  return 0;                   /* too soon, drop the packet */
 }
 
 /* handle an incoming packet, acking it if it is a data packet for us
@@ -1082,23 +1135,11 @@ int key_received (int sock, char * contact, char * secret1, char * secret2,
  * if it is an ack to something we sent, saves it in the xchat log
  * and if acks is not null, fills it in.
  *
- * if kcontact and ksecret1 are not NULL, assumes we are also looking
- * for key exchange messages sent to us matching either of ksecret1 or
- * (if not NULL) ksecret2.  If such a key is found, returns -1.
- * there are two ways of calling this:
- * - if the user specified the peer's secret, first send initial key,
- *   then call handle_packet with our secret in ksecret1, and our
- *   peer's secret in ksecret2.
- * - otherwise, put our secret in ksecret1, make ksecret2 NULL,
- *   and handle_packet is ready to receive a key.
- * In either case, if a matching key is received, it is saved and a
- * response is sent (if a response is a duplicate, it does no harm).
- * kmax_hops specifies the maximum hop count of incoming acceptable keys,
- * and the hop count used in sending the key.
+ * if it is a key exchange message matching one of my pending key
+ * exchanges, saves the key, fills in *peer, and returns -1.
  *
- * if subscription is not null, listens for a reply containing a key
- * matching the subscription, returning -2 if a match is found between
- * the address in the packet and addr/nbits (or if nbits is 0).
+ * if it is a broadcast key message matching a pending key request,
+ * saves the key, fills in *peer, and returns -2.
  */
 int handle_packet (int sock, char * packet, unsigned int psize,
                    unsigned int priority,
@@ -1106,11 +1147,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
                    struct allnet_ack_info * acks,
                    char ** message, char ** desc,
                    int * verified, uint64_t * seq, time_t * sent,
-                   int * duplicate, int * broadcast,
-                   char * kcontact, char * ksecret1, char * ksecret2,
-                   unsigned char * kaddr, int kbits, int kmax_hops,
-                   char * subscription, 
-                   unsigned char * addr, unsigned int nbits)
+                   int * duplicate, int * broadcast)
 {
   if (acks != NULL)
     acks->num_acks = 0;
@@ -1124,31 +1161,12 @@ int handle_packet (int sock, char * packet, unsigned int psize,
 
   int result = 0;
 
-  /* drop packets if we are spending too much time on incoming messages */
   long long int start_time = allnet_time_us();
-  static long long int no_sooner_than_high_priority = 0;
-  static long long int no_sooner_than_mid_priority = 0;
-  static long long int no_sooner_than_low_priority = 0;
-  static long long int no_sooner_than_ack = 0;
   long long int * nstp = NULL;
   long long int multiplier = 100;
-  if (hp->message_type == ALLNET_TYPE_ACK) {  /* acks are special */
-    nstp = &no_sooner_than_ack;
-    multiplier = 3;   /* allow acks to consume 33% of the time */
-  } else if (priority >= ALLNET_PRIORITY_FRIENDS_HIGH) {
-    nstp = &no_sooner_than_high_priority;
-    multiplier = 5;   /* allow receipt of my packets to take 20% of the time */
-  } else if (priority >= ALLNET_PRIORITY_FRIENDS_LOW) {
-    nstp = &no_sooner_than_mid_priority;
-    multiplier = 20;  /* packet receipt for friends may take 5% of the time */
-  } else {            /* lowest priority traffic */
-    nstp = &no_sooner_than_low_priority;
-    multiplier = 100;   /* allow packet receipt to consume 1% of the time */
-  }
-  if (start_time < *nstp)   /* too soon to process this packet */
+  if (too_much_time (hp->message_type, priority, start_time,
+                     &nstp, &multiplier))
     return 0;               /* drop the packet */
-  if (*nstp == 0)
-    multiplier = 1;         /* give a free pass to the first packet */
 
   do_request_and_resend (sock);
 
@@ -1161,31 +1179,24 @@ int handle_packet (int sock, char * packet, unsigned int psize,
     handle_ack (sock, packet, psize, hsize, acks);
     result = -3;
   } else if (hp->message_type == ALLNET_TYPE_CLEAR) { /* a broadcast packet */
-    if ((subscription != NULL) && (addr != NULL)) {
-      int sub = handle_sub (sock, hp, packet + hsize, psize - hsize,
-                            subscription, addr, nbits);
+    int sub = handle_sub (sock, hp, packet + hsize, psize - hsize, contact);
+    if (sub > 0) {
 #ifdef DEBUG_PRINT
       printf ("handle_sub (%d, %p, %p, %d, %s, %p, %d) ==> %d\n",
-              sock, hp, packet + hsize, psize - hsize, subscription,
-              addr, nbits, sub);
+              sock, hp, packet + hsize, psize - hsize);
 #endif /* DEBUG_PRINT */
-      if (sub > 0)   /* received a key in response to our subscription */
-        result = -2;
+      /* received a key in response to our subscription */
+      result = -2;
+    } else if (sub == 0) {  /* not a subscription packet */
+      result = handle_clear (hp, packet + hsize, psize - hsize,
+                             contact, message, verified, duplicate, broadcast);
     }
-#ifdef DEBUG_PRINT
-    else
-      printf ("subscription %p, addr %p, did not call handle_sub\n",
-              subscription, addr);
-#endif /* DEBUG_PRINT */
-    result = handle_clear (hp, packet + hsize, psize - hsize,
-                           contact, message, verified, duplicate, broadcast);
   } else if (hp->message_type == ALLNET_TYPE_DATA) { /* encrypted data packet */
     result = handle_data (sock, hp, psize, packet + hsize, psize - hsize,
                           contact, kset, message, desc, verified, seq, sent,
                           duplicate, broadcast);
   } else if (hp->message_type == ALLNET_TYPE_KEY_XCHG) {
-    result = handle_key (sock, hp, packet + hsize, psize - hsize,
-                         kcontact, ksecret1, ksecret2, kaddr, kbits, kmax_hops);
+    result = handle_key (sock, hp, packet + hsize, psize - hsize, contact);
   }
 
   long long int finish_time = allnet_time_us();
@@ -1295,41 +1306,6 @@ static int time_to_resend_key (keyset k, unsigned long long int now)
   return 1;  /* saved or not, send the key */
 }
 
-/* contents should have a hop count, followed by one or two secrets,
- * all separated by newlines. */
-/* returns 1 if successful, 0 otherwise */
-static int parse_exchange_info (char * contents, char ** secret1,
-                                char ** secret2, int * hops)
-{
-  *secret1 = NULL;
-  *secret2 = NULL;
-  *hops = 0;
-  if (contents == NULL)
-    return 0;
-  char * saveptr = NULL;
-  char * first = strtok_r (contents, "\n", &saveptr);
-  if (first == NULL)  /* there should be a hop count and a secret */
-    return 0;
-  *secret1 = strtok_r (NULL, "\n", &saveptr);
-  if (*secret1 == NULL) /* at least one secret is required */
-    return 0;
-  /* make sure the first string is a hop count */
-  char * endptr;
-  *hops = (int)strtol (first, &endptr, 10);
-  if (endptr == first) { /* conversion failed */
-    *hops = 0;
-    *secret1 = NULL;
-    return 0;
-  }
-  /* secret2 is optional */
-  *secret2 = strtok_r (NULL, "\n", &saveptr);
-#ifdef DEBUG_PRINT
-  printf ("%d hops, secrets '%s' and (maybe) '%s'\n",
-          *hops, *secret1, *secret2);
-#endif /* DEBUG_PRINT */
-  return 1;
-}
-                       
 static void resend_pending_keys (int sock, unsigned long long int now)
 {
   char ** contacts = NULL;
@@ -1344,23 +1320,19 @@ static void resend_pending_keys (int sock, unsigned long long int now)
         (time_to_resend_key (k, now))) {
       char * content = NULL;
       incomplete_exchange_file (contacts [ic], k, &content, NULL);
-      unsigned char local [ADDRESS_SIZE];
-      unsigned int lbits = 100;  /* illegal value, for error print below */
-      if ((content != NULL) && ((lbits = get_local (k, local)) > 0)) {
+      if (content != NULL) {
         char * secret1 = NULL;  /* if parse successful, points into content */
         char * secret2 = NULL;
         int hops = 0;
         if (parse_exchange_info (content, &secret1, &secret2, &hops))
-          /* local address exists, so should resend */
-          create_contact_send_key (sock, contacts [ic], secret1, secret2,
-                                   local, &lbits, hops);
+          /* should resend */
+          create_contact_send_key (sock, contacts [ic], secret1, secret2, hops);
         else
           printf ("exchange file parse error (%s) %p %p %d\n",
                   content, secret1, secret2, hops);
       } else {
-        printf ("likely error: content (%zd, %s), and %d lbits\n",
-                ((content == NULL) ? (-1) : (strlen (content))),
-                content, lbits);
+        printf ("likely error: content (%zd, %s)\n",
+                ((content == NULL) ? (-1) : (strlen (content))), content);
       }
       if (content != NULL)
         free (content);
@@ -1471,16 +1443,15 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
  * the public key followed by
  *   the hmac of the public key using the secret as the key for the hmac.
  * the secrets should be normalized by the caller
- * the address (at least ADDRESS_SIZE bytes) and the number of bits are
- * filled in, should not be NULL.
  * secret2 may be NULL, secret1 should not be.
  * return 1 if successful, 0 for failure (usually if the contact already
  * exists, but other errors are possible) */
 int create_contact_send_key (int sock, const char * contact,
                              const char * secret1, const char * secret2,
-                             unsigned char * addr, unsigned int * abits,
                              unsigned int hops)
 {
+  unsigned char addr [ADDRESS_SIZE];
+  unsigned int abits;
   if ((contact == NULL) || (strlen (contact) == 0)) {
     printf ("empty contact, cannot send key\n");
 #ifdef DEBUG_PRINT
@@ -1494,13 +1465,13 @@ int create_contact_send_key (int sock, const char * contact,
     return 0;
   }
   keyset kset;
-  *abits = 16;  /* static for now */
+  abits = 16;  /* static for now */
   if (num_keysets (contact) < 0) {
-    if (*abits > ADDRESS_BITS)
-      *abits = ADDRESS_BITS;
+    if (abits > ADDRESS_BITS)
+      abits = ADDRESS_BITS;
     bzero (addr, ADDRESS_SIZE);
-    random_bytes ((char *) addr, (*abits + 7) / 8);
-    kset = create_contact (contact, 4096, 1, NULL, 0, addr, *abits, NULL, 0);
+    random_bytes ((char *) addr, (abits + 7) / 8);
+    kset = create_contact (contact, 4096, 1, NULL, 0, addr, abits, NULL, 0);
     if (kset < 0) {
       printf ("contact %s already exists\n", contact);
       return 0;
@@ -1528,15 +1499,15 @@ int create_contact_send_key (int sock, const char * contact,
     }
     kset = keysets [0];
     free (keysets);
-    *abits = get_local (kset, addr);
+    abits = get_local (kset, addr);
   }
-  if (send_key (sock, contact, kset, secret1, addr, *abits, hops)) {
+  if (send_key (sock, contact, kset, secret1, addr, abits, hops)) {
     char time_string [100];
     allnet_time_string (allnet_time (), time_string);
     printf ("%s: sent key to contact %s, %d hops, %s",
             time_string, contact, hops, secret1);
     if ((secret2 != NULL) && (strlen (secret2) > 0) &&
-        (send_key (sock, contact, kset, secret2, addr, *abits, hops)))
+        (send_key (sock, contact, kset, secret2, addr, abits, hops)))
       printf ("+%s", secret2);
     printf ("\n");
     return 1;
@@ -1545,8 +1516,7 @@ int create_contact_send_key (int sock, const char * contact,
   return 0;
 }
 
-static int send_key_request (int sock, char * phrase,
-                             unsigned char * addr, unsigned int * nbits)
+static int send_key_request (int sock, const char * phrase)
 {
   /* compute the destination address from the phrase */
   unsigned char destination [ADDRESS_SIZE];
@@ -1555,13 +1525,11 @@ static int send_key_request (int sock, char * phrase,
   sha512_bytes (mapped, mlen, (char *) destination, 1);
   free (mapped);
 
-  random_bytes ((char *) addr, ADDRESS_SIZE);
-  *nbits = 8;
   unsigned int dsize = 1;  /* nbits_fingerprint with no key */
   unsigned int psize = 0;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
-                   addr, *nbits, destination, *nbits, NULL, NULL, &psize);
+                   NULL, 0, destination, ADDRESS_BITS, NULL, NULL, &psize);
   
   if (hp == NULL) {
     printf ("send_key_request: unable to create packet of size %d/%d\n",
@@ -1592,9 +1560,8 @@ static int send_key_request (int sock, char * phrase,
 }
 
 /* sends out a request for a key matching the subscription.
- * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
-int subscribe_broadcast (int sock, char * ahra,
-                         unsigned char * my_addr, unsigned int * nbits)
+ * returns 1 for success, 0 for failure */
+int subscribe_broadcast (int sock, char * ahra)
 {
   char * phrase;
   char * reason;
@@ -1602,7 +1569,7 @@ int subscribe_broadcast (int sock, char * ahra,
     printf ("subcribe_broadcast unable to parse '%s': %s\n", ahra, reason);
     return 0;
   }
-  if (! send_key_request (sock, phrase, my_addr, nbits))
+  if (! send_key_request (sock, phrase))
     return 0;
   return 1;
 }

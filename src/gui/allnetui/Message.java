@@ -1,3 +1,4 @@
+
 package allnetui;
 
 /**
@@ -79,12 +80,16 @@ public class Message implements java.lang.Comparable<Message> {
     }
 
     void setAcked(String ack) {
-        if ((! isAcked) && (messageId != null) && (ack.equals(messageId)))
+        if ((! isAcked) && (messageId != null) && (ack.equals(messageId)) &&
+            (sentNotReceived))
             isAcked = true;
     }
 
     boolean setAcked(long ack) {
-        if (ack == sequence) {
+if (ack == sequence)
+System.out.println("message " + text + " has sequence " + sequence + 
+" and sentNotReceived " + sentNotReceived);
+        if ((ack == sequence) && (sentNotReceived)) {
             isAcked = true;
             return true;
         }
@@ -102,7 +107,8 @@ public class Message implements java.lang.Comparable<Message> {
     }
 
     public boolean equals(Message m) {
-        return m.sequence == sequence;
+        return ((m.sequence == sequence) &&
+                (m.sentNotReceived == sentNotReceived));
     }
 
     public int compareTo(Message m) {
@@ -135,7 +141,7 @@ public class Message implements java.lang.Comparable<Message> {
         if (t == null)
             return false;
         long ft = t.toMillis();
-// System.out.println ("Message.java/newer: comparing " + ft + " to " + receivedTime);
+// System.out.printnl ("Message.java/newer: comparing " + ft + " to " + receivedTime);
         return ft <= this.receivedTime;
     }
 

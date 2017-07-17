@@ -10,7 +10,7 @@
 #include "lib/pipemsg.h"
 
 /* returns the socket if successful, -1 otherwise */
-extern int xchat_init (char * program_name, pd p);
+extern int xchat_init (const char * program_name, pd p);
 /* optional... */
 extern void xchat_end (int sock);
 
@@ -40,23 +40,11 @@ struct allnet_ack_info {
  * if it is an ack to something we sent, saves it in the xchat log
  * and if acks is not null, fills it in.
  *
- * if kcontact and ksecret1 are not NULL, assumes we are also looking
- * for key exchange messages sent to us matching either of ksecret1 or
- * (if not NULL) ksecret2.  If such a key is found, returns -1.
- * there are two ways of calling this:
- * - if the user specified the peer's secret, first send initial key,
- *   then call handle_packet with our secret in ksecret1, and our
- *   peer's secret in ksecret2.
- * - otherwise, put our secret in ksecret1, make ksecret2 NULL,
- *   and handle_packet is ready to receive a key.
- * In either case, if a matching key is received, it is saved and a
- * response is sent (if a response is a duplicate, it does no harm).
- * kmax_hops specifies the maximum hop count of incoming acceptable keys,
- * and the hop count used in sending the key.
+ * if it is a key exchange message matching one of my pending key
+ * exchanges, saves the key, fills in *peer, and returns -1.
  *
- * if subscription is not null, listens for a reply containing a key
- * matching the subscription, returning -2 if a match is found between
- * the address in the packet and addr/nbits (or if nbits is 0).
+ * if it is a broadcast key message matching a pending key request,
+ * saves the key, fills in *peer, and returns -2.
  */
 extern int handle_packet (int sock, char * packet, unsigned int psize,
                           unsigned int priority,
@@ -64,11 +52,7 @@ extern int handle_packet (int sock, char * packet, unsigned int psize,
                           struct allnet_ack_info * acks,
                           char ** message, char ** desc, int * verified,
                           uint64_t * seq, time_t * sent,
-                          int * duplicate, int * broadcast,
-                          char * kcontact, char * ksecret1, char * ksecret2,
-                          unsigned char * kaddr, int kbits, int kmax_hops,
-                          char * subscription,
-                          unsigned char * addr, unsigned int nbits);
+                          int * duplicate, int * broadcast);
 
 /* send this message and save it in the xchat log. */
 /* returns the sequence number of this message, or 0 for errors */
@@ -77,9 +61,7 @@ extern uint64_t send_data_message (int sock, const char * peer,
 
 /* if a previously received key matches one of the secrets, returns 1,
  * otherwise returns 0 */
-extern int key_received (int sock, char * contact, char * secret1,
-                         char * secret2, unsigned char * addr, int bits,
-                         int max_hops);
+extern int key_received (int sock, char ** peer);
 
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it */
@@ -95,24 +77,25 @@ extern int key_received (int sock, char * contact, char * secret1,
  * time since the last request */
 extern int request_and_resend (int sock, char * peer, keyset kset, int eagerly);
 
+/* call every once in a while, e.g. every 1-10s, to poke all our
+ * contacts and get any outstanding messages. */
+/* each time it is called, queries a different contact or keyset */
+extern void do_request_and_resend (int sock);
+
 /* create the contact and key, and send
  * the public key followed by
  *   the hmac of the public key using the secret as the key for the hmac.
  * the secrets should be normalized by the caller
- * the address (at least ADDRESS_SIZE bytes) and the number of bits are
- * filled in, should not be NULL.
  * secret2 may be NULL, secret1 should not be.
  * return 1 if successful, 0 for failure (usually if the contact already
  * exists, but other errors are possible) */
 extern int create_contact_send_key (int sock, const char * contact,
                                     const char * secret1,
                                     const char * secret2,
-                                    unsigned char * addr, unsigned int * abits,
                                     unsigned int hops);
 
 /* sends out a request for a key matching the subscription.
  * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
-extern int subscribe_broadcast (int sock, char * ahra,
-                                unsigned char * my_addr, unsigned int * nbits);
+extern int subscribe_broadcast (int sock, char * ahra);
 
 #endif /* ALLNET_XCHAT_COMMON_H */

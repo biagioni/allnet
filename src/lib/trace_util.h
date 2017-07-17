@@ -30,4 +30,11 @@ extern void get_my_addr (unsigned char * my_addr, int my_addr_size,
 /* print to stdout the summary line for a trace */
 extern void trace_print_summary (int signal);
 
+/* just start a trace, returning 1 for success, 0 failure
+ * trace_id must have MESSAGE_ID_SIZE or be NULL */
+extern int start_trace (int sock,
+                        const unsigned char * addr, unsigned int nbits,
+                        unsigned int nhops, int record_intermediates,
+                        char * trace_id);
+
 #endif /* ALLNET_TRACE_UTIL_H */

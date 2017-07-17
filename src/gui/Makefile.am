@@ -23,7 +23,6 @@ JAVASOURCELIST= \
     allnetui/UIController.java \
     allnetui/UI.java \
     allnetui/UITester.java \
-    allnetui/XchatSocket.java \
     utils/ApplicationFrame.java \
     utils/BijectiveList.java \
     utils/CheckBoxPanel.java \

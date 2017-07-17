@@ -32,12 +32,12 @@ extern int map_string (const char * string, char ** result);
  * is greater than or equal to 2^14 (16384), returns NULL */
 /* if the language is unavailable, returns an available language,
  * usually english */
-extern char * aaddr_encode_value (int value, char * lang); 
+extern char * aaddr_encode_value (int value, const char * lang); 
 
 /* return a value encoded by the string, or -1 in case of errors. */
 extern int aaddr_decode_value (char * string, int slen); 
 
 /* returns the maximum length of a pair in the given language */
-extern int max_pair_len (char * lang);
+extern int max_pair_len (const char * lang);
 
 #endif /* ALLNET_MAPCHAR_H */

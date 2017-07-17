@@ -45,12 +45,12 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     private JButton cancelButton;
 
     public ContactConfigPanel(ContactData contactData,
-                              UIController controller) {
+        UIController controller) {
         this.contactData = contactData;
         this.controller = controller;
         setBackground(bgndColor);
         // make the info label for the top of the panel
-        topLabel = new HtmlLabel("Edit Contact: " + "<br>&nbsp;");
+        topLabel = new HtmlLabel("Contact Configuration and Management" + "<br>&nbsp;");
         topLabel.setOpaque(true);
         topLabel.setBackground(otherColor);
         topLabel.setLineBorder(Color.BLACK, 1, false);
@@ -58,10 +58,10 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         contactSelectPanel = new ComboBoxPanel("Contact:", CONTACT_SELECT);
         contactSelectPanel.setBackground(bgndColor);
         contactSelectPanel.setBorder(makeMarginBorder(5, "Select"));
-        contactSelectPanel.getComboBoxes()[0].addActionListener(this);
+        contactSelectPanel.getComboBoxes().get(0).addActionListener(this);
         //
         groupsPanel = new ComboBoxPanel("Add to Group:", "",
-                                        "Remove from Group:", "");
+            "Remove from Group:", "");
         groupsPanel.setBackground(bgndColor);
         //
         configPanel = new CheckBoxPanel("Notify", "Save Messages", "Visible");
@@ -130,7 +130,7 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     }
 
     public void update() {
-        JComboBox<String> contactBox = contactSelectPanel.getComboBoxes()[0];
+        JComboBox<String> contactBox = contactSelectPanel.getComboBoxes().get(0);
         contactBox.removeAllItems();
         ArrayList<String> list = contactData.getContactsList();
         for (String contact : list) {
@@ -140,11 +140,11 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     }
 
     public final void init() {
-        JComboBox contactBox = contactSelectPanel.getComboBoxes()[0];
+        JComboBox contactBox = contactSelectPanel.getComboBoxes().get(0);
         contactBox.setSelectedIndex(-1);
-        JComboBox[] groupsBoxes = groupsPanel.getComboBoxes();
-        groupsBoxes[0].removeAllItems();
-        groupsBoxes[1].removeAllItems();
+        ArrayList<JComboBox<String>> groupsBoxes = groupsPanel.getComboBoxes();
+        groupsBoxes.get(0).removeAllItems();
+        groupsBoxes.get(1).removeAllItems();
         groupsPanel.setEnabled(false, false);
         configPanel.init();
         renamePanel.init();
@@ -157,8 +157,8 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         cbs[1].setSelected(contact.isSaveMessages());
         cbs[2].setSelected(contact.isVisible());
         //
-        JComboBox<String>[] groupsBoxes = groupsPanel.getComboBoxes();
-        groupsBoxes[0].removeAllItems();
+        ArrayList<JComboBox<String>> groupsBoxes = groupsPanel.getComboBoxes();
+        groupsBoxes.get(0).removeAllItems();
         ArrayList<String> allGroups = contactData.getGroupsList();
         if (allGroups.isEmpty()) {
             groupsPanel.setEnabled(false, false);
@@ -167,15 +167,15 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
             groupsPanel.setEnabled(true, true);
             for (String gpName : allGroups) {
                 if (!contact.getGroups().contains(gpName)) {
-                    groupsBoxes[0].addItem(gpName);
+                    groupsBoxes.get(0).addItem(gpName);
                 }
             }
-            groupsBoxes[1].removeAllItems();
+            groupsBoxes.get(1).removeAllItems();
             for (String gpName : contact.getGroups()) {
-                groupsBoxes[1].addItem(gpName);
+                groupsBoxes.get(1).addItem(gpName);
             }
             if (contact.getGroups().isEmpty()) {
-                groupsBoxes[1].setEnabled(false);
+                groupsBoxes.get(1).setEnabled(false);
             }
         }
     }
@@ -184,7 +184,7 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         Border outer = BorderFactory.createLineBorder(Color.BLACK, 1);
         Border titled = BorderFactory.createTitledBorder(outer, title);
         Border inner = BorderFactory.createEmptyBorder(margin, margin,
-                                                       margin, margin);
+            margin, margin);
         Border border = BorderFactory.createCompoundBorder(titled, inner);
         return (border);
     }
@@ -224,7 +224,7 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     }
 
     private void processContactSelect() {
-        JComboBox contactBox = contactSelectPanel.getComboBoxes()[0];
+        JComboBox<String> contactBox = contactSelectPanel.getComboBoxes().get(0);
         if (contactBox.getSelectedIndex() == -1) {
             init();
         }
@@ -235,6 +235,7 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     }
 
     private void saveChanges() {
+        // options are right to left, ie cancel will be on right
         Object[] options = {"Cancel", "Save Changes"};
         int n = JOptionPane.showOptionDialog(this,
             "The Save Changes operation cannot be undone.  ",
@@ -244,11 +245,12 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
             null,
             options,
             options[0]);
+        // NO_OPTION actually means the elft button, ie do it
         if (n != JOptionPane.NO_OPTION) {
             return;
         }
         // that's a go, so let's do it
-        JComboBox contactBox = contactSelectPanel.getComboBoxes()[0];
+        JComboBox<String> contactBox = contactSelectPanel.getComboBoxes().get(0);
         String contactName = (String) contactBox.getSelectedItem();
         Contact contact = contactData.getContact(contactName);
         JCheckBox[] cbs = configPanel.getCheckBoxes();
@@ -256,12 +258,12 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         contact.setSaveMessages(cbs[1].isSelected());
         contact.setVisible(cbs[2].isSelected());
         //
-        JComboBox[] groupsBoxes = groupsPanel.getComboBoxes();
-        String groupToAdd = (String) groupsBoxes[0].getSelectedItem();
+        ArrayList<JComboBox<String>> groupsBoxes = groupsPanel.getComboBoxes();
+        String groupToAdd = (String) groupsBoxes.get(0).getSelectedItem();
         if (groupToAdd != null) {
             contact.getGroups().add(groupToAdd);
         }
-        String groupToDelete = (String) groupsBoxes[1].getSelectedItem();
+        String groupToDelete = (String) groupsBoxes.get(1).getSelectedItem();
         if (groupToDelete != null) {
             contact.getGroups().remove(groupToDelete);
         }
@@ -282,8 +284,8 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
             options[0]); //default button title
         // NO_OPTION means the left button
         if (n == JOptionPane.NO_OPTION) {
-            // that's a go, so tell the UICOntroller to do it
-            JComboBox contactBox = contactSelectPanel.getComboBoxes()[0];
+            // that's a go, so tell the UIController to do it
+            JComboBox contactBox = contactSelectPanel.getComboBoxes().get(0);
             String contact = (String) contactBox.getSelectedItem();
             controller.clearConversation(contact);
         }
@@ -295,6 +297,7 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     }
 
     private void deleteContact() {
+        // cancel will be on right
         Object[] options = {"Cancel", "DELETE CONTACT"};
         int n = JOptionPane.showOptionDialog(this,
             "The Delete Contact operation cannot be undone.  ",
@@ -304,9 +307,10 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
             null,
             options,
             options[0]);
+        // NO_OPTION means the left button, so do it
         if (n == JOptionPane.NO_OPTION) {
-            // that's a go, so tell the UICOntroller to do it
-            JComboBox contactBox = contactSelectPanel.getComboBoxes()[0];
+            // that's a go, so tell the UIController to do it
+            JComboBox<String> contactBox = contactSelectPanel.getComboBoxes().get(0);
             String contact = (String) contactBox.getSelectedItem();
             controller.contactDeleted(contact);
         }

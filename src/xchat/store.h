@@ -110,4 +110,18 @@ extern int reduce_conversation (const char * contact, uint64_t max_size);
 /* returns 1 for success, 0 for failure. */
 extern int delete_conversation (const char * contact);
 
+/* manipulate config files in an xchat directory */
+
+/* return -1 if the file does not exist, the size otherwise.
+ * if content is not NULL, malloc's enough space to hold the
+ * content (with null termination), and returns it */
+extern int xchat_file_get (const char * contact, keyset k,
+                           const char * fname, char ** content);
+/* write the content to the file, returning 0 in case of error, 1 otherwise */
+extern int xchat_file_write (const char * contact, keyset k,
+                             const char * fname, char * content, int clength);
+/* return 1 if the file was deleted, 0 otherwise */
+extern int xchat_file_delete (const char * contact, keyset k,
+                              const char * fname);
+
 #endif /* ALLNET_CHAT_STORE_H */

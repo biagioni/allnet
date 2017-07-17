@@ -52,7 +52,8 @@ static void del_string (char * string, char * substring)
 }
 
 /* returned value is malloc'd. */
-static char * make_program_path (char * path, char * program, char * debug)
+static char * make_program_path (char * path, char * program,
+                                 const char * debug)
 {
   char * result = strcat3_malloc (path, "/", program,
                                   "app_util/make_program_path");
@@ -67,7 +68,7 @@ static char * make_program_path (char * path, char * program, char * debug)
   return result;
 }
 
-static void exec_allnet (char * arg)
+static void exec_allnet (const char * arg)
 {
   pid_t child = fork ();
   if (child < 0) {
@@ -78,7 +79,8 @@ static void exec_allnet (char * arg)
   if (child == 0) {  /* all this code is in the child process */
     char * path;
     char * pname;
-    find_path (arg, &path, &pname);
+    char * arg_copy = strcpy_malloc (arg, "exec_allnet");
+    find_path (arg_copy, &path, &pname);
     char * astart = make_program_path (path, "allnet", arg);
     if ((astart == NULL) || (access (astart, X_OK) != 0)) {
       perror ("access, unable to find allnet executable");
@@ -89,7 +91,7 @@ static void exec_allnet (char * arg)
     printf ("calling ");
     int i;
     for (i = 0; args [i] != NULL; i++)
-    printf (" %s", args [i]);
+      printf (" %s", args [i]);
     printf ("\n");
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
@@ -256,7 +258,7 @@ static void * receive_ignore (void * arg)
 
 /* returns the socket, or -1 in case of failure */
 /* arg0 is the first argument that main gets -- useful for finding binaries */
-int connect_to_local (char * program_name, char * arg0, pd p)
+int connect_to_local (const char * program_name, const char * arg0, pd p)
 {
   seed_rng ();
   int sock = connect_once (0);

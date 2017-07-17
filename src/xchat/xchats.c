@@ -60,15 +60,9 @@ int main (int argc, char ** argv)
   uint64_t sent_seq = 0;
   char * contact = argv [1];  /* contact we send to, peer we receive from */
 
-  char * kcontact = NULL;
-  char * my_secret = NULL;
-  char * peer_secret = NULL;
-  unsigned char my_addr [ADDRESS_SIZE];
-  unsigned int my_bits;
 #define MAX_SECRET	15  /* including a terminating null character */
   char my_secret_buf [MAX_SECRET];
   char peer_secret_buf [200];
-  unsigned int kmax_hops = 0;
   unsigned int wait_time = 5000;   /* 5 seconds to wait for acks and such */
   unsigned long long int start_time = allnet_time_ms ();
 
@@ -80,7 +74,7 @@ int main (int argc, char ** argv)
               argv [0], argc);
       return 1;
     }
-    kcontact = argv [2];
+    char * kcontact = argv [2];
     unsigned int hops = 1;
     if (argc >= 4) {
       char * end;
@@ -94,19 +88,15 @@ int main (int argc, char ** argv)
     printf ("%d hops, my secret string is '%s'", hops, my_secret_buf);
     normalize_secret (my_secret_buf);
     printf (" (or %s)\n", my_secret_buf);
-    my_secret = my_secret_buf;
     if (argc >= 5) {
       snprintf (peer_secret_buf, sizeof (peer_secret_buf), "%s", argv [4]);
       printf ("peer secret string is '%s'", peer_secret_buf);
       normalize_secret (peer_secret_buf);
       printf (" (or %s)\n", peer_secret_buf);
-      peer_secret = peer_secret_buf;
     }
-    kmax_hops = hops;
     wait_time = 10 * 24 * 3600 * 1000;   /* wait up to 10 days for a key */
-    char * send_secret = my_secret;
-    if (! create_contact_send_key (sock, kcontact, send_secret,
-                                   peer_secret, my_addr, &my_bits, hops))
+    if (! create_contact_send_key (sock, kcontact, my_secret_buf,
+                                   peer_secret_buf, hops))
       return 1;
   } else { /* send the data packet */
     int i;
@@ -175,9 +165,7 @@ int main (int argc, char ** argv)
     keyset kset = -1;
     int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
                               &message, &desc, &verified, &rcvd_seq, NULL,
-                              &duplicate, &broadcast,
-                              kcontact, my_secret, peer_secret,
-                              my_addr, my_bits, kmax_hops, NULL, NULL, 0);
+                              &duplicate, &broadcast);
     if (mlen > 0) {
       /* time_t rtime = time (NULL); */
       char * ver_mess = "";
@@ -195,7 +183,7 @@ int main (int argc, char ** argv)
       printf ("from '%s'%s got %s%s%s\n  %s\n",
               peer, ver_mess, dup_mess, bc_mess, desc, message);
     } else if (mlen == -1) {  /* successful key exchange */
-      printf ("success!  got remote key for %s\n", kcontact);
+      printf ("success!  got remote key for %s\n", peer);
       gettimeofday (&deadline, NULL);
       add_time (&deadline, 5000);  /* wait 5 more seconds */
       exchanging_key = 0;

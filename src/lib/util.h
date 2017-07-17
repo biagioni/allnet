@@ -192,8 +192,8 @@ extern void * memcat_malloc (const void * bytes1, size_t bsize1,
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
- * one extra byte is allocated at the end to allow null termination.
- * in case of problems, returns 0, and prints the error if print_errors != 0 */
+ * one extra byte is allocated at the end and the content is null terminated.
+ * in case of problems, returns -1, and prints the error if print_errors != 0 */
 extern int read_file_malloc (const char * file_name, char ** content_p,
                              int print_errors);
 /* same, but fd must have been opened, and is closed if close_fd is nonzero */

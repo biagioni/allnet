@@ -270,6 +270,8 @@ printf ("debug time: %d\n", 5 / debug);  /* crash */
   iter->current_fname = greatest_less_than_current;
   iter->current_size = read_file_malloc (greatest_less_than_current,
                                          &(iter->current_file), 1);
+  if (iter->current_size < 0)
+    iter->current_size = 0;
   iter->current_pos = iter->current_size;  /* decremented before use */
 /*
 printf ("loaded file %s, size %ju, pos %ju\n",

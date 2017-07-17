@@ -192,9 +192,9 @@ void get_my_addr (unsigned char * my_addr, int my_addr_size,
   }
 }
 
-static void send_trace (int sock, unsigned char * address, int abits,
+static void send_trace (int sock, const unsigned char * address, int abits,
                         char * trace_id, unsigned char * my_address,
-                        int my_abits, int max_hops, int no_intermediates,
+                        int my_abits, int max_hops, int record_intermediates,
                         struct allnet_log * alog)
 {
   unsigned int total_size = ALLNET_TRACE_REQ_SIZE (0, 1, 0);
@@ -221,7 +221,7 @@ static void send_trace (int sock, unsigned char * address, int abits,
 
   mp->mgmt_type = ALLNET_MGMT_TRACE_REQ;
 
-  trp->intermediate_replies = ! no_intermediates;
+  trp->intermediate_replies = record_intermediates;
   trp->num_entries = 1;
   writeb16u (trp->pubkey_size, 0);
   /* pubkey_size is 0, so no public key */
@@ -628,7 +628,7 @@ void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
     struct timeval tv_start;
     gettimeofday (&tv_start, NULL);
     send_trace (sock, address, abits, trace_id, my_addr, 5, nhops,
-                no_intermediates, alog);
+                ! no_intermediates, alog);
     sent_count++;
     wait_for_responses (sock, p, trace_id, sleep, count,
                         match_only, no_intermediates, null_term,
@@ -702,4 +702,19 @@ void trace_pipe (int pipe, struct allnet_queue * queue,
                  no_intermediates, wide, 1, pipe, queue, alog);
 }
 
+/* just start a trace, returning 1 for success, 0 failure
+ * trace_id must have MESSAGE_ID_SIZE or be NULL */
+int start_trace (int sock, const unsigned char * addr, unsigned int abits,
+                 unsigned int nhops, int record_intermediates,
+                 char * trace_id)
+{
+  random_bytes (trace_id, MESSAGE_ID_SIZE);
+print_buffer(trace_id, MESSAGE_ID_SIZE, "trace ID", MESSAGE_ID_SIZE, 1); 
+  unsigned char my_addr [ADDRESS_SIZE];
+  random_bytes ((char *) my_addr, sizeof (my_addr));
+  struct allnet_log * alog = init_log ("start_trace");
+  send_trace (sock, addr, abits, trace_id, my_addr, 5, nhops,
+              record_intermediates, alog);
+  return 1;
+}
 

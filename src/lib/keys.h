@@ -36,7 +36,7 @@ extern int all_individual_contacts (char *** contacts);
  * If the contact was already created, but does not have the peer's
  * info, returns as if it were a newly created contact after replacing
  * the contents of local (as long as loc_nbits matches the original nbits)
- * if there is no contact public key, marks the contact hidden */
+ * if there is no contact public key, marks the contact not visible */
 extern keyset create_contact (const char * contact, int keybits, int feedback,
                               char * contact_key, int contact_ksize,
                               unsigned char * local, int loc_nbits,
@@ -48,20 +48,35 @@ extern keyset create_contact (const char * contact, int keybits, int feedback,
  * returns 1 for success */
 extern int rename_contact (const char * old, const char * new);
 
-/* a contact may be marked as hidden.  Nothing is deleted,
- * but the contact can no longer be accessed unless unhidden again.
- * hidden_contacts returns the number of deleted contacts, or 0.
+/* a contact may be marked as not visible.  Nothing is deleted,
+ * but the contact can no longer be accessed unless made visible again.
+ * invisible_contacts returns the number of hidden contacts, or 0.
  * if not 0 and contacts is not NULL, the contacts array is malloc'd,
  * should be free'd. */
-extern int hidden_contacts (char *** contacts);
-/* un/hide_contact return 1 for success, 0 if not successful */
-extern int hide_contact (const char * contact);
-extern int unhide_contact (const char * contact);
-/* returns 1 if the contact exists and is hidden */
-extern int is_hidden (const char * contact);
+extern int invisible_contacts (char *** contacts);
+/* make_in/visible return 1 for success, 0 if not successful */
+extern int make_invisible (const char * contact);
+extern int make_visible (const char * contact);
+/* returns 1 if the contact exists and is visible */
+extern int is_visible (const char * contact);
+/* returns 1 if the contact exists and is not visible */
+extern int is_invisible (const char * contact);
 
 /* this is the actual deletion. return 1 for success, 0 otherwise */
 extern int delete_contact (const char * contact);
+
+/*************** file state storage for contacts ******************/
+
+/* return -1 if the file does not exist, the size otherwise.
+ * if content is not NULL, malloc's enough space to hold the 
+ * content (with null termination), and returns it */
+extern int contact_file_get (const char * contact,
+                             const char * fname, char ** content);
+/* write the content to the file, returning 0 in case of error, 1 otherwise */
+extern int contact_file_write (const char * contact, const char * fname,
+                               const char * content, int clength);
+/* return 1 if the file was deleted, 0 otherwise */
+extern int contact_file_delete (const char * contact, const char * fname);
 
 /*************** operations on groups of contacts ******************/
 
@@ -285,5 +300,15 @@ extern struct bc_key_info * get_other_bc_key (char * ahra);
 extern int parse_ahra (char * ahra,
                        char ** phrase, int ** positions, int * num_positions,
                        char ** language, int * matching_bits, char ** reason);
+
+/* record that we are requesting a broadcast key */
+/* to do: in the future, may associate addresses and nbits with such keys */
+extern void requesting_bc_key (const char * ahra);
+/* return the number of requested broadcast keys.  For each, if the
+ * variables is not NULL, return the AHRA -- dynamically allocated,
+ * must be free'd (with a single free operation) */
+extern int requested_bc_keys (char *** ahras);
+/* record that the broadcast key request is no longer active */
+extern void finished_bc_key_request (const char * ahra);
 
 #endif /* ALLNET_KEYS_H */

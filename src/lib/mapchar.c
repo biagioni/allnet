@@ -296,7 +296,7 @@ static char * default_post [NUM_CODE_WORDS] = {
  * is greater than or equal to 2^14 (16384), returns NULL */
 /* if the language is unavailable, returns an available language,
  * usually english */
-char * aaddr_encode_value (int value, char * lang)
+char * aaddr_encode_value (int value, const char * lang)
 {
   if (value > MAX_AADDR_CODE)
     return NULL;
@@ -370,7 +370,7 @@ int aaddr_decode_value (char * string, int slen)
 }
 
 /* returns the maximum length of a pair in the given language */
-int max_pair_len (char * lang)
+int max_pair_len (const char * lang)
 {
   int pre = 0;
   int post = 0;

@@ -1,6 +1,6 @@
 package utils;
 
-import allnetui.XchatSocket;
+import allnetui.SocketUtils;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.event.ActionEvent;
@@ -130,7 +130,7 @@ public class MessageBubble<MESSAGE> extends JPanel
             sb.append(line);
             sb.append("\n");
         }
-        String temp = XchatSocket.sanitizeForHtml(sb.toString());
+        String temp = SocketUtils.sanitizeForHtml(sb.toString());
         return (temp.split("\n"));
     }
 

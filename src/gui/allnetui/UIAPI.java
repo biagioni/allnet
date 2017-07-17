@@ -27,24 +27,22 @@ public interface UIAPI {
     
     // the application should call this method to tell the UI about
     // a new contact
-    public void contactCreated(final String contactName, boolean isBroadcast);
     public void contactCreated(final String contactName);
-    public void broadcastContactCreated(final String contactName);
-    
+    public void subscriptionComplete(final String contactName);
+ 
     // the application should call this method to tell the UI to
     // remove a contact
     public void contactDeleted(String contactName);
-    //
+    // re-read a contact
     public void contactModified(String contactName);
 
     // the application should call this method to tell the UI to
     // clear a conversation
     public void clearConversation(String contactName);
     
-//    // the application should call this method to update a user's key
-//    public void updateKey(String contactName, String key);
-
     // if a trace response is received, call this method
-    public void traceReceived(String traceMessage);
+    public void traceReceived(byte[] traceID,
+                              String traceMessageWide,
+                              String traceMessageNarrow);
     
 }

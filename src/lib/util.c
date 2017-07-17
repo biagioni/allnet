@@ -1206,17 +1206,24 @@ int read_fd_malloc (int fd, char ** content_p, int print_errors, int close_fd,
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
- * in case of problems, returns 0
- */
+ * one extra byte is allocated at the end and the content is null terminated.
+ * in case of problems, returns -1, and prints the error if print_errors != 0 */
 int read_file_malloc (const char * file_name, char ** content_p,
                       int print_errors)
 {
-  int size = (int)file_size (file_name);
+  if (content_p != NULL)
+    *content_p = NULL;
+  long long int size = file_size (file_name);
+  if (size < 0) {
+    if (print_errors)
+      printf ("%s: file not found\n", file_name);
+    return -1;
+  }
   if (content_p == NULL) {  /* if we can read it, just return the size */
     if (access (file_name, R_OK) == 0)
-      return minz (size, 0);
+      return size;  /* size >= 0 */
     else
-      return 0;
+      return -1;
   }
   *content_p = NULL;
   int fd = open (file_name, O_RDONLY);

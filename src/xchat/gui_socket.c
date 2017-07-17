@@ -1,4 +1,5 @@
-/* xchat_socket.c: send and receive xchat messages over a socket */
+/* gui_socket.c: implement functions needed by the GUI and send and receive
+ * information across a socket */
 
 #if defined(WIN32) || defined(WIN64)
 #ifndef WINDOWS_ENVIRONMENT
@@ -7,6 +8,139 @@
 #endif /* WINDOWS_ENVIRONMENT */
 #endif /* WIN32 || WIN64 */
 
+#include <stdio.h>
+#include <unistd.h>
+#include <stdlib.h>
+#include <pthread.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <netinet/ip.h>
+
+#ifdef WINDOWS_ENVIRONMENT
+#include <windows.h>
+#endif /* WINDOWS_ENVIRONMENT */
+
+#include "lib/util.h"
+#include "lib/pipemsg.h"
+#include "xcommon.h"
+#include "gui_socket.h"
+
+static pid_t xchat_socket_pid = -1;
+static pid_t xchat_ui_pid = -1;
+
+static void kill_if_not_self (pid_t pid, const char * desc)
+{
+  if ((pid != -1) && (pid != getpid ())) {
+/* printf ("process %d killing %s process %d\n", getpid (), desc, pid); */
+    kill (pid, SIGKILL);
+  }
+}
+
+/* exit code should be 0 for normal exit, 1 for error exit */
+void stop_chat_and_exit (int exit_code)
+{
+  kill_if_not_self (xchat_socket_pid, "xchat_socket");
+  kill_if_not_self (xchat_ui_pid, "xchat_ui");
+  exit (exit_code);
+}
+
+static int create_allnet_sock (const char * program_name, pd * p)
+{
+  struct allnet_log * log = init_log ("xchat_socket");
+  *p = init_pipe_descriptor (log);
+  int sock = xchat_init (program_name, *p);
+  return sock;
+}
+
+static int create_listen_socket ()
+{
+  int result = socket (AF_INET, SOCK_STREAM, 0);
+  if (result < 0) {
+    perror ("socket");
+    return -1;
+  }
+  struct sockaddr_in sin;
+  sin.sin_family = AF_INET;
+  sin.sin_port = XCHAT_SOCKET_PORT;
+  sin.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+  if (bind (result, (struct sockaddr *) (&sin), sizeof (sin)) < 0) {
+    perror ("bind");
+    printf ("unable to run xchat, maybe already running?\n");
+    close (result);
+    return -1;
+  }
+  if (listen (result, 1) < 0) {
+    perror ("listen");
+    printf ("unable to run xchat, listen failed\n");
+  }
+  return result;
+}
+
+static int accept_incoming (int listen_sock)
+{
+  struct sockaddr_in sin;
+  socklen_t alen = sizeof (sin);
+  int result = accept (listen_sock, (struct sockaddr *) (&sin), &alen);
+  if (result < 0)
+    perror ("accept");
+else
+printf ("got connection from %d.%d.%d.%d port %d\n", 
+        ((unsigned char *)(&(sin.sin_addr.s_addr))) [0],
+        ((unsigned char *)(&(sin.sin_addr.s_addr))) [1],
+        ((unsigned char *)(&(sin.sin_addr.s_addr))) [2],
+        ((unsigned char *)(&(sin.sin_addr.s_addr))) [3],
+        (((unsigned char *)(&(sin.sin_port))) [0] * 256 +
+         ((unsigned char *)(&(sin.sin_port))) [1]));
+  return result;
+}
+
+/* create the process to run the gui, return the socket (or -1 for errors) */
+static int create_gui_sock (const char * arg)
+{
+  int listen_sock = create_listen_socket ();
+  if (listen_sock < 0)
+    return listen_sock;
+  xchat_ui_pid = start_java (arg);
+  if (xchat_ui_pid < 0) {
+    close (listen_sock);
+    return -1;
+  }
+  return accept_incoming (listen_sock);
+}
+
+int main (int argc, char ** argv)
+{
+  /* general initialization */
+  xchat_socket_pid = getpid ();  /* needed to properly kill other procs */
+  log_to_output (get_option ('v', &argc, argv));
+#ifdef WINDOWS_ENVIRONMENT
+  HWND hwNd = GetConsoleWindow ();
+  ShowWindow (hwNd, SW_HIDE);
+#endif /* WINDOWS_ENVIRONMENT */
+
+  /* create the allnet socket and the GUI socket */
+  pd p;
+  int allnet_sock = create_allnet_sock (argv [0], &p);
+  if (allnet_sock < 0)
+    return 1;
+  int gui_sock = create_gui_sock (argv [0]);
+  if (gui_sock < 0)
+    return 1;
+
+  /* create the thread to handle messages from the GUI */
+  void * args = malloc_or_fail (sizeof (int) * 2, "gui_socket main");
+  ((int *) args) [0] = gui_sock;
+  ((int *) args) [1] = allnet_sock;
+  pthread_t t;
+  pthread_create (&t, NULL, gui_respond_thread, args);
+
+  gui_socket_main_loop (gui_sock, allnet_sock, p);  /* run until exit */
+
+  stop_chat_and_exit (0);
+  return 0;   /* should never be called */
+}
+
+#if 0  /* code from xchat_socket.c, kept for future reference */
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -314,6 +448,16 @@ static void find_path (char * arg, char ** path, char ** program)
   }
 }
 
+/* return 1 if the contact is visible (no file "hidden"), 0 otherwise */
+static int is_visible (const char * contact)
+{
+#ifdef DEBUG_PRINT
+  printf ("visible %s is %d\n", contact,
+          (config_file_mod_time ("contacts", "hidden") == 0));
+#endif /* DEBUG_PRINT */
+  return (config_file_mod_time ("contacts", "hidden") == 0);
+}
+
 /* returned value is malloc'd. */
 static char * make_program_path (char * path, char * program)
 {
@@ -522,6 +666,7 @@ static void * child_wait_thread (void * arg)
   return NULL;
 }
 
+#if 0
 struct unacked {
   long long int seq;
   int contact_index;
@@ -567,6 +712,7 @@ static void add_to_unacked (long long int seq, char * contact)
   unacked_seqs [unacked_count].contact_index = contact_index;
   unacked_count++;
 }
+#endif /* 0 */
 
 static void thread_for_child_completion ()
 {
@@ -693,6 +839,16 @@ if (ni > 0) {
   int timeout = 100;      /* sleep up to 1/10 second */
   char * old_contact = NULL;
   keyset old_kset = -1;
+  char * key_contact = NULL;
+  char * key_secret = NULL;
+  char * key_secret2 = NULL;
+  char kbuf1 [ALLNET_MTU];  /* key buffer to hold the contact name */
+  char kbuf2 [ALLNET_MTU];  /* key buffer to hold the first secret */
+  char kbuf3 [ALLNET_MTU];  /* key buffer to hold the second secret, if any */
+  unsigned char kaddr [ADDRESS_SIZE];
+  unsigned int kabits;
+  int check_for_key = 0;
+  unsigned int num_hops = 0;
   while (1) {
 /* use temp (loop local) buffers, then copy them to kbuf* if code is 2 */
     char to_send [ALLNET_MTU];
@@ -706,31 +862,31 @@ if (ni > 0) {
       if (code == CODE_DATA_MESSAGE) {
         long long int seq =
           send_data_message (sock, peer, to_send, strlen (to_send));
-        add_to_unacked (seq, peer);
+        /* add_to_unacked (seq, peer); */
         send_seq_ack (forwarding_socket,
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
                       CODE_SEQ, time (NULL), peer, seq);
       } else if (code == CODE_NEW_CONTACT) {
-        normalize_secret (peer);
-        char * s2 = extra;
-        if (strlen (s2) > 0)
-          normalize_secret (s2);
-        else
-          s2 = NULL;
-printf ("sending key to peer %s/%s, secret %s/%s, %d hops\n",
-peer, peer, to_send, extra, (int)rtime);
-        create_contact_send_key (sock, peer, to_send, extra, (int)rtime);
-        char * pptr = peer;
-        if (key_received (sock, &pptr)) {
-          /* received the key before we created the contact */
-          time_t mtime = time (NULL);
-          send_message (forwarding_socket,
-                        (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                         CODE_NEW_CONTACT, mtime, pptr, "", 0);
+        snprintf (kbuf1, sizeof (kbuf1), "%s", peer);
+        snprintf (kbuf2, sizeof (kbuf2), "%s", to_send);
+        key_contact = kbuf1;
+        key_secret = kbuf2;
+        normalize_secret (key_secret);
+        if (strlen (extra) > 0) {
+          snprintf (kbuf3, sizeof (kbuf3), "%s", extra);
+          key_secret2 = kbuf3;
+          normalize_secret (key_secret2);
         }
+        num_hops = rtime;
+printf ("sending key to peer %s/%s, secret %s/%s/%s, %d hops\n",
+peer, key_contact, to_send, key_secret, key_secret2, num_hops);
+        create_contact_send_key (sock, key_contact, key_secret, key_secret2,
+                                 kaddr, &kabits, num_hops);
+        check_for_key = 1;
       } else if (code == CODE_AHRA) { /* subscribe -- peer is only field */
+printf ("sending subscription to %s\n", peer);
         if (! subscribe_broadcast (sock, peer))
-          printf ("unable to subscribe to %s\n", peer);
+          printf ("subscription to %s failed\n", peer);
       } else if (code == CODE_TRACE) {
         do_trace (30, 5, forwarding_socket, (struct sockaddr *) (&fwd_addr),
                   fwd_addr_size);
@@ -741,18 +897,24 @@ peer, peer, to_send, extra, (int)rtime);
     char * packet;
     int pipe;
     unsigned int pri;
-    int found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
+    int found_key = 0;
+    if (check_for_key)  /* was a key received earlier? */
+      found_key = key_received (sock, key_contact, key_secret, key_secret2,
+                                kaddr, kabits, num_hops); 
+    int found = 0;
+    if (! found_key)
+      found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchat_socket pipe closed, exiting\n");
       stop_chat_and_exit (0);
     }
-    if (found == 0) { 
+    if ((found == 0) && (! found_key)) { 
       if (old_contact != NULL) { /* timed out, request/resend any missing */
         request_and_resend (sock, old_contact, old_kset, 0);
         old_contact = NULL;
         old_kset = -1;
       }
-    } else {    /* found > 0, got a packet */
+    } else {    /* found > 0, got a packet, or found_key, got a key */
       int verified, duplicate, broadcast;
       uint64_t seq;
       char * peer;
@@ -760,10 +922,14 @@ peer, peer, to_send, extra, (int)rtime);
       char * desc;
       char * message;
       struct allnet_ack_info acks;
+      acks.num_acks = 0;  /* in case we don't call handle_packet */
       time_t mtime = 0;
-      int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
-                                &message, &desc, &verified, &seq, &mtime,
-                                &duplicate, &broadcast);
+      int mlen = -1;  /* found a key, or the result of handle_packet */
+      if (! found_key)
+        mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
+                              &message, &desc, &verified, &seq, &mtime,
+                              &duplicate, &broadcast, key_contact, key_secret, 
+                              key_secret2, kaddr, kabits, num_hops);
       if ((mlen > 0) && (verified)) {
         int mtype = CODE_DATA_MESSAGE; /* data */
         if (broadcast)
@@ -802,8 +968,14 @@ peer, peer, to_send, extra, (int)rtime);
         mtime = time (NULL);
         send_message (forwarding_socket,
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
-                       CODE_NEW_CONTACT, mtime, peer, "", 0);
+                       CODE_NEW_CONTACT, mtime, key_contact, "", 0);
+        key_contact = NULL;
+        key_secret = NULL;
+        key_secret2 = NULL;
+        num_hops = 0;
+        check_for_key = 0;
       } else if (mlen == -2) {   /* confirm successful subscription */
+printf ("got subscription %s\n", peer);
         send_message (forwarding_socket,
                       (struct sockaddr *) (&fwd_addr), fwd_addr_size,
                        CODE_AHRA, 0, peer, "", 0);
@@ -819,3 +991,4 @@ peer, peer, to_send, extra, (int)rtime);
     }
   }
 }
+#endif /* 0 */  /* code from xchat_socket.c, kept for future reference */

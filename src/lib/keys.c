@@ -439,6 +439,8 @@ static int read_key_info (const char * path, const char * file,
   int mlen = 0;  /* some things we only do if the group has members */
   if (file_size (members_name) > 0)
     mlen = read_file_malloc (members_name, &members_content, 0);
+  if (mlen < 0)
+    mlen = 0;
 #ifdef DEBUG_GROUP
   if (found_members && (contact != NULL))
     printf ("found group %s in %s, mlen %d\n", *contact, members_name, mlen);
@@ -1105,13 +1107,13 @@ int rename_contact (const char * old, const char * new)
   return renamed;
 }
 
-/* a contact may be marked as hidden.  Nothing is deleted,
- * but the contact can no longer be accessed unless unhidden again.
- * hidden_contacts returns the number of hidden contacts, or 0.
- * if not 0 and contacts is not NULL, the contacts array is malloc'd, 
- * should be free'd. */
 /* sort of the complement of all_contacts */
-int hidden_contacts (char *** contacts)
+/* a contact may be marked as not visible.  Nothing is deleted,
+ * but the contact can no longer be accessed unless made visible again.
+ * invisible_contacts returns the number of hidden contacts, or 0.
+ * if not 0 and contacts is not NULL, the contacts array is malloc'd,
+ * should be free'd. */
+int invisible_contacts (char *** contacts)
 {
   init_from_file ("hidden_contacts");
 #ifdef DEBUG_PRINT
@@ -1137,23 +1139,17 @@ int hidden_contacts (char *** contacts)
   return cp_used - delta;
 }
 
-/* notice -- moving keys around causes existing keysets to be invalidated
- * if we were to actually delete contacts, this would cause a race
- * condition if free_key_info is called in one thread while another
- * thread is working through the keyset for a contact
- * so instead, just mark a key info as invalid */
-
-/* un/hide_contact return 1 for success, 0 if not successful */
-int hide_contact (const char * contact)
+/* make_in/visible return 1 for success, 0 if not successful */
+int make_invisible (const char * contact)
 {
-  init_from_file ("hide_contact");
+  init_from_file ("make_invisible");
   int key;
   int hidden = 0;
   for (key = 0; key < cp_used; key++) {
     if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
         (strcmp (cpx [key], contact) == 0)) {
       char * file_name =
-        strcat_malloc (kip [key].dir_name, "/hidden", "hide_contact");
+        strcat_malloc (kip [key].dir_name, "/hidden", "make_invisible");
       write_file (file_name, "", 0, 0);  /* create the file */
       free (file_name);
  /* now hide in the data structure */
@@ -1165,9 +1161,9 @@ int hide_contact (const char * contact)
   return hidden;
 }
 
-int unhide_contact (const char * contact)
+int make_visible (const char * contact)
 {
-  init_from_file ("unhide_contact");
+  init_from_file ("make_visible");
   int key;
   for (key = 0; key < cp_used; key++) {
     if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
@@ -1181,7 +1177,7 @@ int unhide_contact (const char * contact)
     if ((! kip [key].is_visible) && (! kip [key].is_deleted) &&
         (strcmp (cpx [key], contact) == 0)) {
       char * file_name =
-        strcat_malloc (kip [key].dir_name, "/hidden", "hide_contact");
+        strcat_malloc (kip [key].dir_name, "/hidden", "make_visible");
  /* remove .allnet/contacts/x/hidden */
       if (unlink (file_name) == 0) {
  /* now un-hide in the data structure */
@@ -1197,9 +1193,24 @@ int unhide_contact (const char * contact)
   return success;
 }
 
-/* returns 1 if the contact exists and is hidden */
-int is_hidden (const char * contact)
+/* returns 1 if the contact exists and is visible */
+int is_visible (const char * contact)
 {
+  init_from_file ("is_visible");
+  int key;
+  for (key = 0; key < cp_used; key++) {
+    if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
+        (strcmp (cpx [key], contact) == 0)) {
+      return 1;
+    }
+  }
+  return 0;  /* is invisible, or deleted, or does not exist */
+}
+
+/* returns 1 if the contact exists and is not visible */
+int is_invisible (const char * contact)
+{
+  init_from_file ("is_invisible");
   int key;
   for (key = 0; key < cp_used; key++) {
     if ((! kip [key].is_deleted) && (! kip [key].is_visible) &&
@@ -1207,8 +1218,14 @@ int is_hidden (const char * contact)
       return 1;
     }
   }
-  return 0;
+  return 0;  /* is visible, or deleted, or does not exist */
 }
+
+/* notice -- moving keys around causes existing keysets to be invalidated
+ * if we were to actually delete contacts, this would cause a race
+ * condition if free_key_info is called in one thread while another
+ * thread is working through the keyset for a contact
+ * so instead, just mark a key info as invalid */
 
 /* this is the actual deletion. return 1 for success, 0 otherwise */
 int delete_contact (const char * contact)
@@ -1230,6 +1247,64 @@ printf ("error: deleting contact %s which is not hidden\n", contact);
     }
   }
   return result;
+}
+
+/* return -1 if the file does not exist, the size otherwise.
+ * if content is not NULL, malloc's enough space to hold the 
+ * content (with null termination), and returns it */
+int contact_file_get (const char * contact, const char * fname, char ** content)
+{
+  init_from_file ("contact_file_get");
+  int key;
+  for (key = 0; key < cp_used; key++) {
+    if ((! kip [key].is_deleted) && (strcmp (cpx [key], contact) == 0)) {
+      char * path = strcat3_malloc (kip [key].dir_name, "/", fname,
+                                    "contact_file_get");
+      int result = read_file_malloc (path, content, 0);
+      free (path);
+      return result;
+    }
+  }
+  if (content != NULL)
+    *content = NULL;
+  return -1;
+}
+
+/* write the content to the file, returning 0 in case of error, 1 otherwise */
+int contact_file_write (const char * contact, const char * fname,
+                        const char * content, int clength)
+{
+  init_from_file ("contact_file_write");
+  int key;
+  for (key = 0; key < cp_used; key++) {
+    if ((! kip [key].is_deleted) && (strcmp (cpx [key], contact) == 0)) {
+      char * path = strcat3_malloc (kip [key].dir_name, "/", fname,
+                                    "contact_file_write");
+      int result = write_file (path, content, clength, 0);
+      free (path);
+      return result;
+    }
+  }
+  return 0;  /* contact not found */
+}
+
+/* return 1 if the file was deleted, 0 otherwise */
+int contact_file_delete (const char * contact, const char * fname)
+{
+  init_from_file ("contact_file_delete");
+  int key;
+  for (key = 0; key < cp_used; key++) {
+    if ((! kip [key].is_deleted) && (strcmp (cpx [key], contact) == 0)) {
+      char * path = strcat3_malloc (kip [key].dir_name, "/", fname,
+                                    "contact_file_delete");
+      int result = unlink (path);
+      free (path);
+      if (result < 0)
+        return 0;
+      return 1;  /* success */
+    }
+  }
+  return 0;  /* contact not found */
 }
 
 /* create a spare key of the given size, returning the number of spare keys.
@@ -1345,6 +1420,8 @@ static int reload_members_from_file (int ki)
     result = 1;
   if (file_size (fname) > 0)  /* file has some content, read it */
     mlen = read_file_malloc (fname, &members_content, 0);
+  if (mlen < 0)
+    mlen = 0;
   free (fname);
   if (result) {
     if ((kip [ki].num_group_members > 0) && (kip [ki].members != NULL))
@@ -1410,7 +1487,7 @@ int remove_from_group (const char * group, const char * contact)
                                 "remove_from_group members-name");
   char * members_content;
   int mlen = read_file_malloc (fname, &members_content, 0);
-  if ((members_content == NULL) || (mlen < 0)) {
+  if ((members_content == NULL) || (mlen <= 0)) {
     free (fname);
     return 0;
   }
@@ -2370,7 +2447,7 @@ int num_other_bc_keys = -1;  /* not initialized */
 
 extern void ** keyd_debug;
 
-static int count_keys (char * path)
+static int count_keys (const char * path)
 {
   DIR * dir = opendir (path);
   if (dir == NULL) {
@@ -2605,8 +2682,8 @@ int parse_ahra (char * ahra,
 }
 
 static char * make_address (allnet_rsa_pubkey key, int key_bits,
-                            char * phrase, char * lang, int bitstring_bits,
-                            int min_bitstrings)
+                            const char * phrase, const char * lang,
+                            int bitstring_bits, int min_bitstrings)
 {
   int rsa_size = allnet_rsa_pubkey_size (key);
 
@@ -2681,7 +2758,7 @@ static char * make_address (allnet_rsa_pubkey key, int key_bits,
               max_pair_len (lang) * nmatches;
   char * result = malloc_or_fail (rsize, "make_address result");
   char * p = result;
-  char * next;
+  const char * next;
 /* we use map_char to decide whether to copy a char, replace it with _, or
  * consider it the end of the phrase */
   int map = map_char (phrase, &next);
@@ -2984,6 +3061,92 @@ struct bc_key_info * get_other_bc_key (char * ahra)
 {
   init_bc_keys ();
   return find_bc_key (ahra, other_bc_keys, num_other_bc_keys);
+}
+
+/* record that we are requesting a broadcast key */
+void requesting_bc_key (const char * ahra)
+{
+  char * fname = NULL;
+  if (config_file_name ("requested_bc_keys", ahra, &fname) < 0) {
+    printf ("unable to save key request to ~/.allnet/requested_bc_keys/%s\n",
+            ahra);
+  } else {
+    char content [10];
+    write_file (fname, content, 0, 1);
+    free (fname);
+  }
+}
+
+/* return the number of requested broadcast keys.  For each, if the
+ * variables is not NULL, return the AHRA -- dynamically allocated, 
+ * must be free'd (with a single free operation) */
+int requested_bc_keys (char *** ahras)
+{
+  if (ahras != NULL)
+    *ahras = NULL;
+  char * config_dir;
+  if (config_file_name ("requested_bc_keys", "", &config_dir) < 0) {
+    /* this is OK -- no requests
+       printf ("unable to open key directory ~/.allnet/requested_bc_keys\n"); */
+    return 0;
+  }
+  DIR * dir = opendir (config_dir);
+  if (dir == NULL) {
+    perror ("requested_bc_keys opendir");
+    printf ("unable to open %s\n", config_dir);
+    return 0;
+  }
+  int count = 0;
+  size_t size = 0;
+  struct dirent * ent = readdir (dir);
+  while (ent != NULL) {
+    if (parse_ahra (ent->d_name, NULL, NULL, NULL, NULL, NULL, NULL)) {
+      /* printf ("counting %s\n", ent->d_name); */
+      count++;
+      size += (sizeof (char *)) + strlen (ent->d_name) + 1;
+    }
+    ent = readdir (dir);
+  }
+  closedir (dir);
+  if (ahras == NULL) {  /* done */
+    free (config_dir);
+    return count;
+  }
+  dir = opendir (config_dir);  /* repeat the search */
+  if (dir == NULL) {
+    perror ("requested_bc_keys opendir2");
+    printf ("unable to open %s (2)\n", config_dir);
+    return 0;
+  }
+  char * ahra_storage = malloc_or_fail (size, "requested_bc_keys");
+  *ahras = (char **) ahra_storage;
+  char * string_storage = ahra_storage + sizeof (char *) * count;
+  ent = readdir (dir);
+  int new_count = 0;
+  while ((ent != NULL) && (new_count < count)) {
+    if (parse_ahra (ent->d_name, NULL, NULL, NULL, NULL, NULL, NULL)) {
+      strcpy (string_storage, ent->d_name);
+      (*ahras) [new_count] = string_storage;
+      string_storage += strlen ((*ahras) [new_count]) + 1;
+      new_count++;
+    }
+    ent = readdir (dir);
+  }
+  closedir (dir);
+  return new_count;
+}
+
+/* record that the broadcast key request is no longer active */
+void finished_bc_key_request (const char * ahra)
+{
+  char * fname = NULL;
+  if (config_file_name ("requested_bc_keys", ahra, &fname) < 0) {
+    printf ("unable to save key request to ~/.allnet/requested_bc_keys/%s\n",
+            ahra);
+  } else {
+    unlink (fname);
+    free (fname);
+  }
 }
 
 #ifdef TEST_KEYS
