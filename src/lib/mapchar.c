@@ -54,7 +54,7 @@ static int known_cjk (long long int c)
 }
 
 /* return -1 for an invalid character, or the character encoding otherwise */
-static long long int get_next_char (char * string, char ** next)
+static long long int get_next_char (const char * string, const char ** next)
 {
   long long int first = (*string) & 0xff;
   if (first < 0x80) {  /* ASCII character */
@@ -116,7 +116,7 @@ static long long int get_next_char (char * string, char ** next)
   }
 }
 
-static int prefix_match (char * s1, char * s2, size_t length)
+static int prefix_match (const char * s1, const char * s2, size_t length)
 {
   size_t i;
   for (i = 0; i < length; i++)
@@ -125,7 +125,7 @@ static int prefix_match (char * s1, char * s2, size_t length)
   return 1;
 }
 
-static int string_length (char * s)
+static int string_length (const char * s)
 {
   int result = 0;
   while (s [result] != '\0')
@@ -134,8 +134,8 @@ static int string_length (char * s)
 }
 
 /* return 1 if the substring is found in string, 0 otherwise */
-static int string_in_string (char * substring, size_t substring_length,
-                             char * string)
+static int string_in_string (const char * substring, size_t substring_length,
+                             const char * string)
 {
   if (substring_length == 1) {   /* optimization for common case */
     while (*string != '\0') {
@@ -161,7 +161,7 @@ static int string_in_string (char * substring, size_t substring_length,
 /* the second argument is set to point to the next character,
  * except in the case of MAPCHAR_EOS, when it is set to the first argument
  * in case of errors, it is not set. */
-int map_char (char * string, char ** next)
+int map_char (const char * string, const char ** next)
 {
   /* printf ("mapchar (%s) ==> ", string); */
   long long int unicode = get_next_char (string, next);
@@ -200,12 +200,12 @@ int map_char (char * string, char ** next)
  * char array with the mapped characters.  The number of bytes in the newly
  * allocated char array is returned.
  * If the last byte only has one character, it is padded with 4 zero bits */
-int map_string (char * string, char ** result)
+int map_string (const char * string, char ** result)
 {
-  char * p = string;
+  const char * p = string;
   int count = 0;
   while (1) {
-    char * next;
+    const char * next;
     int c = map_char (p, &next);
     if ((c == MAPCHAR_EOS) || (c == MAPCHAR_UNKNOWN_CHAR))
       break;
@@ -228,7 +228,7 @@ int map_string (char * string, char ** result)
   int index = 0;
   int odd = 0;
   while (1) {
-    char * next;
+    const char * next;
     int c = map_char (p, &next);
     if ((c == MAPCHAR_EOS) || (c == MAPCHAR_UNKNOWN_CHAR))
       break;

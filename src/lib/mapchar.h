@@ -16,13 +16,13 @@
  * string. */
 /* the second argument is set to point to the next character,
  * except in the case of MAPCHAR_EOS, when it is set to the first argument */
-extern int map_char (char * string, char ** end);
+extern int map_char (const char * string, const char ** end);
 
 /* convert each character in the string, and return a newly allocated
  * char array with the mapped characters.  The number of bytes in the newly
  * allocated char array is returned.
  * If the last byte only has one character, it is padded with 4 zero bits */
-extern int map_string (char * string, char ** result);
+extern int map_string (const char * string, char ** result);
 
 /* functions to encode numeric positions as memorable strings */ 
 
