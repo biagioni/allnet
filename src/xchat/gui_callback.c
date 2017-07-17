@@ -1,6 +1,7 @@
 /* gui_callback.c: send callbacks to the GUI */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "lib/util.h"
