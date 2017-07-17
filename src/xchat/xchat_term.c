@@ -3,15 +3,16 @@
 /* once started, commands are: */
 
 #define XCHAT_TERM_HELP_MESSAGE	\
-"<typing>  send message to most recent contact, cannot begin with . \n\
-.m        start a multiline message, ending with .m (cannot contain .m) \n\
-.c name   switch sending to contact 'name' \n\
+"<typing> send message to current contact (no . at start)\n\
+.m        multiline message ending with .m, no .m in text\n\
+.c <name> switch sending to contact 'name', or list all \n\
+.c        list all contacts \n\
 .q        quit \n\
 .h        print this help message \n\
-.l n      print the last n messages (n is optional, defaults to 10) \n\
-.t        trace (optionally a hop count and an address, eg . t 1, . t 1 f0) \n\
-.k <new contact>           exchange a key with a new contact \n\
-.k <new contact> <secret>  one of the two must specify the other's secret \n\
+.l n      print the last n messages (n defaults to 10)\n\
+.t        trace (hop count, . t 1, address . t 1 f0)\n\
+.k name <secret> exchange a key with a new contact \n\
+                 one of the two gives the other's secret\n\
 "
 
 #include <stdio.h>
@@ -273,13 +274,50 @@ static void switch_to_contact (char * new_peer, char ** peer)
       free (*peer);   /* free earlier peer */
     *peer = strcpy_malloc (new_peer, "xchat_term peer");
     prompt = *peer;
-    print_to_output (NULL);
   } else {                             /* no such peer */
-    char string [PRINT_BUF_SIZE];
-    snprintf (string, sizeof (string),
-              "contact '%s' does not exist\n", new_peer);
-    print_to_output (string);
+    int print_peers = 1;               /* turn off if numeric selector */
+    char ** contacts = NULL;
+    int n = all_contacts (&contacts);
+    if (strlen (new_peer) > 0) {
+      char * endp = NULL;
+      long int index = strtol (new_peer, &endp, 10);
+      if ((endp != NULL) && (endp != new_peer) &&
+          (index > 0) && (index <= n)) {  /* numeric selector */
+        if (*peer != NULL)
+          free (*peer);   /* free earlier peer */
+        *peer = strcpy_malloc (contacts [index - 1], "xchat_term peer");
+        prompt = *peer;
+        print_peers = 0;
+      } else {                     /* contact specified, but does not exist */
+        char string [PRINT_BUF_SIZE];
+        snprintf (string, sizeof (string),
+                  "contact '%s' does not exist\n", new_peer);
+        print_to_output (string);
+      }
+    }
+    /* print available peers */
+    if (print_peers && (n > 0) && (contacts != NULL)) {
+      char peers [PRINT_BUF_SIZE];
+      size_t size = PRINT_BUF_SIZE;
+      char * p = peers;
+      int i;
+      for (i = 0; ((i < n) && (size > 0)); i++) {
+        int off = printf ("%d: %s\n", i + 1, contacts [i]);
+        /* int off = printf (p, size, "%d: %s\n", i + 1, contacts [i]); */
+        if (off < 0)
+          return;
+        else if (off > size)    /* finished buffer */
+          size = 0;
+        else {
+          size -= off;
+          p += off;
+        }
+      }
+    }
+    if (contacts != NULL)
+      free (contacts);
   }
+  print_to_output (NULL);
 }
 
 /* get_nybble, get_byte, get_address are copied from trace.c, as is
