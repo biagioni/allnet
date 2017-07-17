@@ -14,6 +14,7 @@
 #include <inttypes.h>
 #include <pthread.h>
 #include <fcntl.h>
+#include <errno.h>
 
 #ifdef WINDOWS_ENVIRONMENT
 #include <windows.h>
