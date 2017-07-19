@@ -86,9 +86,6 @@ public class Message implements java.lang.Comparable<Message> {
     }
 
     boolean setAcked(long ack) {
-if (ack == sequence)
-System.out.println("message " + text + " has sequence " + sequence + 
-" and sentNotReceived " + sentNotReceived);
         if ((ack == sequence) && (sentNotReceived)) {
             isAcked = true;
             return true;
