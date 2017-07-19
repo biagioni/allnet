@@ -235,9 +235,7 @@ System.out.println("guiCallbackSubscriptionComplete not implemented yet\n");
             synchronized (this.mutex) {
                 byte[] result = receiveBuffer();
                 if (result != null) {
-                    System.out.println ("receiveRPC (" + code + ") got " +
-                                        result.length + " bytes, code " +
-                                        result[0]);
+// System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, code " + result[0]);
                     if ((code != 0) && (result[0] == code))   // rpc complete
                         return result;
                     if (! dispatch(result)) { // not a dispatch, save buffer
