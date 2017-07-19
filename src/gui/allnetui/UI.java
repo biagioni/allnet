@@ -154,21 +154,8 @@ class UI extends ApplicationFrame {
                         CoreConnect coreAPI = new CoreConnect (controller);
                         controller.setCore (coreAPI);
                         coreAPI.start ();
-//                      String[] contacts = AllNetContacts.get();
-//                      for (String contact: contacts) {
-//                          controller.contactCreated(contact);
-//                          Message [] msgs = ConversationData.getAll(contact);
-//                          //  ConversationData.get(contact, 100);
-//                          controller.savedMessages(msgs);
-//                      }
-//                      for (String contactName:
-//                             AllNetContacts.getBroadcast()) {
-//                          controller.subscriptionComplete(contactName);
-//                      }
                     }
                     controller.initializationComplete();
-//                  XchatSocket s = new XchatSocket(controller);
-//                  s.start();
                 }
             }); // end of invokeAndWait
         }
