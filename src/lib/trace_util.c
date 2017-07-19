@@ -709,7 +709,6 @@ int start_trace (int sock, const unsigned char * addr, unsigned int abits,
                  char * trace_id)
 {
   random_bytes (trace_id, MESSAGE_ID_SIZE);
-print_buffer(trace_id, MESSAGE_ID_SIZE, "trace ID", MESSAGE_ID_SIZE, 1); 
   unsigned char my_addr [ADDRESS_SIZE];
   random_bytes ((char *) my_addr, sizeof (my_addr));
   struct allnet_log * alog = init_log ("start_trace");
