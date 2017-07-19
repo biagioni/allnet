@@ -68,9 +68,9 @@ int main (int argc, char ** argv)
       keyset kset;
       char * desc;
       char * message;
-      int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, NULL,
+      int mlen = handle_packet (sock, packet, found, pri, &peer, &kset,
                                 &message, &desc, &verified, &seq, NULL,
-                                &duplicate, &broadcast);
+                                &duplicate, &broadcast, NULL, NULL);
       if (mlen > 0) {
         /* time_t rtime = time (NULL); */
         char * ver_mess = "";

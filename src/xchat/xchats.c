@@ -163,9 +163,9 @@ int main (int argc, char ** argv)
     char * peer = NULL;
     struct allnet_ack_info acks;
     keyset kset = -1;
-    int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
+    int mlen = handle_packet (sock, packet, found, pri, &peer, &kset,
                               &message, &desc, &verified, &rcvd_seq, NULL,
-                              &duplicate, &broadcast);
+                              &duplicate, &broadcast, &acks, NULL);
     if (mlen > 0) {
       /* time_t rtime = time (NULL); */
       char * ver_mess = "";

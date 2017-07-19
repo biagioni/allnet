@@ -761,9 +761,9 @@ peer, peer, to_send, extra, (int)rtime);
       char * message;
       struct allnet_ack_info acks;
       time_t mtime = 0;
-      int mlen = handle_packet (sock, packet, found, pri, &peer, &kset, &acks,
+      int mlen = handle_packet (sock, packet, found, pri, &peer, &kset,
                                 &message, &desc, &verified, &seq, &mtime,
-                                &duplicate, &broadcast);
+                                &duplicate, &broadcast, &acks, NULL);
       if ((mlen > 0) && (verified)) {
         int mtype = CODE_DATA_MESSAGE; /* data */
         if (broadcast)

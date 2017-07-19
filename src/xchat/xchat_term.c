@@ -87,9 +87,9 @@ static void * receive_thread (void * arg)
       char * desc;
       char * message;
       struct allnet_ack_info acks;
-      int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset, &acks,
+      int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset,
                                 &message, &desc, &verified, &seq, NULL,
-                                &duplicate, &broadcast);
+                                &duplicate, &broadcast, &acks, NULL);
       if (mlen > 0) {
         /* time_t rtime = time (NULL); */
         char * ver_mess = "";

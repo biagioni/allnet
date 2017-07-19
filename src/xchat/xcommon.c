@@ -1065,6 +1065,85 @@ static int handle_key (int sock, struct allnet_header * hp,
   return result;
 }
 
+/* result is -4 if this is a trace reply, 0 otherwise */
+static int handle_mgmt (int sock, struct allnet_header * hp,
+                        char * packet, unsigned int psize,
+                        struct allnet_mgmt_trace_reply ** trace_reply)
+{
+  if (trace_reply == NULL)
+    return 0;
+  if (ALLNET_TRACE_REPLY_SIZE (hp->transport, 1) < psize) {
+    struct allnet_mgmt_header * mp =
+      (struct allnet_mgmt_header *) (packet + ALLNET_SIZE (hp->transport));
+    if (mp->mgmt_type == ALLNET_MGMT_TRACE_REPLY) {
+      struct allnet_mgmt_trace_reply * trp =
+        (struct allnet_mgmt_trace_reply *)
+          (packet + ALLNET_MGMT_HEADER_SIZE (hp->transport));
+      size_t size = sizeof (struct allnet_mgmt_trace_reply)
+                  + trp->num_entries * sizeof (struct allnet_mgmt_trace_entry);
+      *trace_reply = malloc_or_fail (size, "handle_mgmt");
+      struct allnet_mgmt_trace_reply * fill = *trace_reply;
+      *fill = *trp;   /* copy all the basic fields */
+      int i;
+      for (i = 0; i < trp->num_entries; i++)
+        fill->trace [i] = trp->trace [i];
+      return -4;
+    }
+  }
+  return 0;
+}
+
+static char packet_cache [ALLNET_MTU * 10];  /* about 128K */
+static int packet_cache_used = 0; /* how many bytes are in the packet cache */
+static pthread_mutex_t packet_cache_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int packet_cache_get (char ** packet_result, int * should_free)
+{
+  *packet_result = NULL;
+  *should_free = 0;
+  pthread_mutex_lock (&packet_cache_mutex);
+  int size = 0;
+  if (packet_cache_used > 2) {
+    size = readb16 (packet_cache);
+    int size_with_length = 2 + size;
+    if (packet_cache_used >= size_with_length) {
+      *packet_result = memcpy_malloc (packet_cache + 2, size,
+                                      "packet_cache_get");
+      *should_free = 1;
+      packet_cache_used -= size_with_length;  /* new size */
+      if (packet_cache_used > 0)
+        /* shift the other cached packets to the front of the cache */
+        /* use memmove instead of memcpy because copying within same array */
+        memmove (packet_cache, packet_cache + size_with_length,
+                 packet_cache_used);
+    } else {
+      printf ("error sizes: packet %d, cache %d\n", size, packet_cache_used);
+      size = 0;                /* invalid cache size, return no packet */
+      packet_cache_used = 0;   /* clear cache too */
+    }
+  } else if (packet_cache_used > 0) { /* some error */
+    printf ("error sizes 2: packet %d, cache %d\n", size, packet_cache_used);
+    size = 0;                /* invalid cache size, return no packet */
+    packet_cache_used = 0;   /* clear cache too */
+  }
+  pthread_mutex_unlock (&packet_cache_mutex);
+  return size;
+}
+
+static void packet_cache_save (char * packet, int psize)
+{
+  if ((packet == NULL) || (psize <= 0))
+    return;
+  int size_with_length = 2 + psize;
+  pthread_mutex_lock (&packet_cache_mutex);
+  if (packet_cache_used + size_with_length <= sizeof (packet_cache)) {
+    writeb16 (packet_cache + packet_cache_used, psize);
+    memcpy (packet_cache + packet_cache_used + 2, packet, psize);
+    packet_cache_used += size_with_length;
+  }  /* else do nothing, the packet is discarded */
+  pthread_mutex_unlock (&packet_cache_mutex);
+}
+
 /* if a previously received key matches one of the secrets, returns 1,
  * otherwise returns 0 */
 int key_received (int sock, char ** peer)
@@ -1086,7 +1165,7 @@ int key_received (int sock, char ** peer)
   return 0;
 }
 
-  /* drop packets if we are spending too much time on incoming messages */
+/* drop packets if we are spending too much time on incoming messages */
 static int too_much_time (int message_type, unsigned int priority,
                           long long int start_time,
                           long long int ** nstp,
@@ -1117,10 +1196,14 @@ static int too_much_time (int message_type, unsigned int priority,
 }
 
 /* handle an incoming packet, acking it if it is a data packet for us
+ * if psize is 0, checks internal buffer for previously unprocessed packets
+ * and behaves as if a data packet was received.
+ *
  * returns the message length > 0 if this was a valid data message from a peer.
  * if it gets a valid key, returns -1 (details below)
  * if it gets a new valid subscription, returns -2 (details below)
  * if it gets a new valid ack, returns -3 (details below)
+ * if it gets a new valid trace message, returns -4 (details below)
  * Otherwise returns 0 and does not fill in any of the following results.
  *
  * if it is a data message, it is saved in the xchat log
@@ -1132,43 +1215,57 @@ static int too_much_time (int message_type, unsigned int priority,
  * if verified and not broadcast, fills in kset.
  * the data message (if any) is null-terminated
  *
- * if it is an ack to something we sent, saves it in the xchat log
- * and if acks is not null, fills it in.
- *
  * if it is a key exchange message matching one of my pending key
  * exchanges, saves the key, fills in *peer, and returns -1.
  *
  * if it is a broadcast key message matching a pending key request,
  * saves the key, fills in *peer, and returns -2.
+ *
+ * if it is a new ack to something we sent, saves it in the xchat log
+ * and if acks is not null, fills it in.  Returns -3
+ *
+ * if it is a trace reply, fills in trace_reply if not null (must be free'd),
+ * and returns -4
  */
 int handle_packet (int sock, char * packet, unsigned int psize,
                    unsigned int priority,
                    char ** contact, keyset * kset,
+                   char ** message, char ** desc, int * verified,
+                   uint64_t * seq, time_t * sent,
+                   int * duplicate, int * broadcast,
                    struct allnet_ack_info * acks,
-                   char ** message, char ** desc,
-                   int * verified, uint64_t * seq, time_t * sent,
-                   int * duplicate, int * broadcast)
+                   struct allnet_mgmt_trace_reply ** trace_reply)
 {
   if (acks != NULL)
     acks->num_acks = 0;
-  if (! is_valid_message (packet, psize, NULL))
+  if (trace_reply != NULL)
+    *trace_reply = NULL;
+  int free_packet = 0;
+  if ((psize == 0) || (packet == NULL)) /* may have a cached packet */
+    psize = packet_cache_get (&packet, &free_packet);
+  if ((packet == NULL) || (! is_valid_message (packet, psize, NULL)))
     return 0;
 
   struct allnet_header * hp = (struct allnet_header *) packet;
   unsigned int hsize = ALLNET_SIZE (hp->transport);
-  if (psize < hsize)
+  if (psize < hsize) {
     return 0;
-
-  int result = 0;
+  }
 
   long long int start_time = allnet_time_us();
   long long int * nstp = NULL;
   long long int multiplier = 100;
   if (too_much_time (hp->message_type, priority, start_time,
-                     &nstp, &multiplier))
+                     &nstp, &multiplier)) {
+    packet_cache_save (packet, psize); /* can't handle it now, try later */
+    if (free_packet)
+      free (packet);
     return 0;               /* drop the packet */
+  }
 
   do_request_and_resend (sock);
+
+  int result = 0;
 
 #ifdef DEBUG_PRINT
   if (hp->hops > 0)  /* not my own packet */
@@ -1197,22 +1294,14 @@ int handle_packet (int sock, char * packet, unsigned int psize,
                           duplicate, broadcast);
   } else if (hp->message_type == ALLNET_TYPE_KEY_XCHG) {
     result = handle_key (sock, hp, packet + hsize, psize - hsize, contact);
+  } else if (hp->message_type == ALLNET_TYPE_MGMT) {
+    result = handle_mgmt (sock, hp, packet, psize, trace_reply);
   }
 
   long long int finish_time = allnet_time_us();
   *nstp = finish_time + (finish_time - start_time) * multiplier;
-#if 0
-/* *nstp = finish_time;   // for profiling */
-static long long int debug_largest = 0;
-if ((finish_time - start_time) > debug_largest) {
-debug_largest = (finish_time - start_time);
-printf ("debug_largest is now %lld, waiting %lld for ",
-debug_largest, *nstp - finish_time);
-print_fraction (priority, NULL);
-printf ("\n");
-if ((debug_largest > 1000000) || (multiplier < 2)) debug_largest = 0;
-}
-#endif /* 0 */
+  if (free_packet)
+    free (packet);
   return result;
 }
 

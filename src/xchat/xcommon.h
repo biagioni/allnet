@@ -8,6 +8,7 @@
 #include "chat.h"
 #include "lib/keys.h"
 #include "lib/pipemsg.h"
+#include "lib/mgmt.h"  /* struct allnet_mgmt_trace_reply */
 
 /* returns the socket if successful, -1 otherwise */
 extern int xchat_init (const char * program_name, pd p);
@@ -22,10 +23,14 @@ struct allnet_ack_info {
 };
 
 /* handle an incoming packet, acking it if it is a data packet for us
+ * if psize is 0, checks internal buffer for previously unprocessed packets
+ * and behaves as if a data packet was received.
+ *
  * returns the message length > 0 if this was a valid data message from a peer.
  * if it gets a valid key, returns -1 (details below)
  * if it gets a new valid subscription, returns -2 (details below)
  * if it gets a new valid ack, returns -3 (details below)
+ * if it gets a new valid trace message, returns -4 (details below)
  * Otherwise returns 0 and does not fill in any of the following results.
  *
  * if it is a data message, it is saved in the xchat log
@@ -37,22 +42,26 @@ struct allnet_ack_info {
  * if verified and not broadcast, fills in kset.
  * the data message (if any) is null-terminated
  *
- * if it is an ack to something we sent, saves it in the xchat log
- * and if acks is not null, fills it in.
- *
  * if it is a key exchange message matching one of my pending key
  * exchanges, saves the key, fills in *peer, and returns -1.
  *
  * if it is a broadcast key message matching a pending key request,
  * saves the key, fills in *peer, and returns -2.
+ *
+ * if it is a new ack to something we sent, saves it in the xchat log
+ * and if acks is not null, fills it in.  Returns -3
+ *
+ * if it is a trace reply, fills in trace_reply if not null (must be free'd),
+ * and returns -4
  */
 extern int handle_packet (int sock, char * packet, unsigned int psize,
                           unsigned int priority,
                           char ** contact, keyset * kset,
-                          struct allnet_ack_info * acks,
                           char ** message, char ** desc, int * verified,
                           uint64_t * seq, time_t * sent,
-                          int * duplicate, int * broadcast);
+                          int * duplicate, int * broadcast,
+                          struct allnet_ack_info * acks,
+                          struct allnet_mgmt_trace_reply ** trace_reply);
 
 /* send this message and save it in the xchat log. */
 /* returns the sequence number of this message, or 0 for errors */
