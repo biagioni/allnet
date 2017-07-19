@@ -83,14 +83,16 @@ static int accept_incoming (int listen_sock)
   int result = accept (listen_sock, (struct sockaddr *) (&sin), &alen);
   if (result < 0)
     perror ("accept");
-else
-printf ("got connection from %d.%d.%d.%d port %d\n", 
-        ((unsigned char *)(&(sin.sin_addr.s_addr))) [0],
-        ((unsigned char *)(&(sin.sin_addr.s_addr))) [1],
-        ((unsigned char *)(&(sin.sin_addr.s_addr))) [2],
-        ((unsigned char *)(&(sin.sin_addr.s_addr))) [3],
-        (((unsigned char *)(&(sin.sin_port))) [0] * 256 +
-         ((unsigned char *)(&(sin.sin_port))) [1]));
+#ifdef DEBUG_PRINT
+  else
+    printf ("got connection from %d.%d.%d.%d port %d\n", 
+            ((unsigned char *)(&(sin.sin_addr.s_addr))) [0],
+            ((unsigned char *)(&(sin.sin_addr.s_addr))) [1],
+            ((unsigned char *)(&(sin.sin_addr.s_addr))) [2],
+            ((unsigned char *)(&(sin.sin_addr.s_addr))) [3],
+            (((unsigned char *)(&(sin.sin_port))) [0] * 256 +
+             ((unsigned char *)(&(sin.sin_port))) [1]));
+#endif /* DEBUG_PRINT */
   return result;
 }
 

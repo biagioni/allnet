@@ -65,6 +65,45 @@ static void gui_callback_created (int code, const char * peer, int gui_sock)
   free (reply);
 }
 
+static void gui_callback_trace_response (struct allnet_mgmt_trace_reply * trp,
+                                         int gui_sock)
+{
+/* format: code, 1-byte intermediate (0 final), 1-byte num entries,
+ * 16-byte trace-id (19 bytes), then for each entry:
+ * 1-byte precision, 1-byte nbits, 1-byte hops, 8-byte seconds, 8-byte fraction,
+ * and 8-byte address (27 bytes per entry) */
+#define RECEIVED_TRACE_HEADER_SIZE	(1 + 1 + 1 + MESSAGE_ID_SIZE) /* 19 */
+#define RECEIVED_TRACE_ENTRY_SIZE	(1 + 1 + 1 + ALLNET_TIME_SIZE /* 27 */ \
+                                        + ALLNET_TIME_SIZE + ADDRESS_SIZE)
+  size_t alloc = RECEIVED_TRACE_HEADER_SIZE
+               + trp->num_entries * RECEIVED_TRACE_ENTRY_SIZE;
+  char * reply = malloc_or_fail (alloc, "gui_callback_trace_received");
+  reply [0] = GUI_CALLBACK_TRACE_RESPONSE;
+  reply [1] = trp->intermediate_reply;
+  reply [2] = trp->num_entries;
+  memcpy (reply + 3, trp->trace_id, MESSAGE_ID_SIZE);
+  int index = RECEIVED_TRACE_HEADER_SIZE;
+  int ie;
+  for (ie = 0; ie < trp->num_entries; ie++) {
+    reply [index    ] = trp->trace [ie].precision;
+    reply [index + 1] = trp->trace [ie].nbits;
+    reply [index + 2] = trp->trace [ie].hops_seen;
+    memcpy (reply + index + 3, trp->trace [ie].seconds, ALLNET_TIME_SIZE);
+    memcpy (reply + index + 3 + ALLNET_TIME_SIZE,
+            trp->trace [ie].seconds_fraction, ALLNET_TIME_SIZE);
+    memcpy (reply + index + 3 + ALLNET_TIME_SIZE + ALLNET_TIME_SIZE,
+            trp->trace [ie].address, ADDRESS_SIZE);
+    index += RECEIVED_TRACE_ENTRY_SIZE;
+  }
+  if (index != alloc)
+    printf ("error in gui_callback_trace_response: alloc %zd, index %d\n",
+            alloc, index);
+  gui_send_buffer (gui_sock, reply, alloc);
+  free (reply);
+#undef RECEIVED_TRACE_ENTRY_SIZE
+#undef RECEIVED_TRACE_HEADER_SIZE
+}
+
 void gui_socket_main_loop (int gui_sock, int allnet_sock, pd p)
 {
   int rcvd = 0;
@@ -83,11 +122,12 @@ void gui_socket_main_loop (int gui_sock, int allnet_sock, pd p)
     char * desc;
     char * message;
     struct allnet_ack_info acks;
+    struct allnet_mgmt_trace_reply * trace = NULL;
     time_t mtime = 0;
     int mlen = handle_packet (allnet_sock, packet, rcvd, pri,
-                              &peer, &kset, &acks, &message, &desc,
+                              &peer, &kset, &message, &desc,
                               &verified, &seq, &mtime,
-                              &duplicate, &broadcast);
+                              &duplicate, &broadcast, &acks, &trace);
     if ((mlen > 0) && (verified) && (! duplicate)) {
       if (! duplicate) {
         if (is_visible (peer))
@@ -122,6 +162,8 @@ void gui_socket_main_loop (int gui_sock, int allnet_sock, pd p)
       gui_callback_created (GUI_CALLBACK_CONTACT_CREATED, peer, gui_sock);
     } else if (mlen == -2) {   /* confirm successful subscription */
       gui_callback_created (GUI_CALLBACK_SUBSCRIPTION_COMPLETE, peer, gui_sock);
+    } else if (mlen == -4) {   /* got a trace reply */
+      gui_callback_trace_response (trace, gui_sock);
     }
     /* handle_packet may have changed what has and has not been acked */
     int i;

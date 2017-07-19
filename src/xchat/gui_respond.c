@@ -646,7 +646,9 @@ void * gui_respond_thread (void * arg)
   int gui_sock = socks [0];
   int allnet_sock = socks [1];
   free (arg);
+#ifdef DEBUG_PRINT
   printf ("gui_respond_thread (%d, %d) started\n", gui_sock, allnet_sock);
+#endif /* DEBUG_PRINT */
   char * message = NULL;
   int64_t mlen = 0;
   while ((mlen = receive_buffer (gui_sock, &message)) > 0) {
