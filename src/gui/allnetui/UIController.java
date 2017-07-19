@@ -48,6 +48,9 @@ class UIController implements ControllerInterface, UIAPI {
     private ContactData contactData;
     // keep track of the current trace, only accept responses for the same ID
     private byte[] traceID = null;
+    // must also check the time sent and of messages already received
+    private long traceTime = 0;
+    private java.util.HashSet<String> traceReceived = null;
 
     // constructor
     UIController(ContactData contactData) {
@@ -295,22 +298,91 @@ class UIController implements ControllerInterface, UIAPI {
 //        // schedule it in the event disp thread, but don't wait for it to execute
 //        SwingUtilities.invokeLater(r);
 //    }
+
+    // I imagine these three methods belong in a different file somewhere
+    private String formatHex(int hexByte) {
+        assert(hexByte < 16);
+        assert(hexByte >= 0);
+        if (hexByte < 10)
+            return "" + hexByte;
+        switch (hexByte) {
+        case 10: return "a";
+        case 11: return "b";
+        case 12: return "c";
+        case 13: return "d";
+        case 14: return "e";
+        case 15: return "f";
+        default: return "X";
+        }
+    }
+    private String formatAddress(byte[] address, int nbits) {
+        String result = "";
+        int index = 0;
+        int remainingBits = nbits;
+        while ((index < address.length) && (remainingBits > 0)) {
+            int b = address [index];
+            if (b < 0) {
+                b = b + 256;
+            }
+            result = result + formatHex(b / 16);
+            if (remainingBits > 4) {
+                result = result + formatHex(b % 16);
+            }
+            if (remainingBits > 8) {
+                result = result + ".";
+            }
+            remainingBits -= 8;
+            index++;
+        }
+        result = result + "/" + nbits;
+        return result;
+    }
+    private String formatTime(long time) {
+        long ms = time % 1000;
+        String printedMs = "00" + ms;
+        if (ms >= 10)
+            printedMs = "0" + ms;
+        if (ms >= 100)
+            printedMs = "" + ms;
+        return ("" + (time / 1000) + "." + printedMs);
+    }
+    
     @Override
     // if a trace response is received, call this method
     public void traceReceived(final byte[] receivedTraceID,
-                              final String traceMessageNarrow,
-                              final String traceMessageWide) {
+                              long timestamp, int hops,
+                              byte[] address, int nbits) {
+        if (! SocketUtils.sameTraceID(this.traceID, receivedTraceID)) {
+            return;
+        }
+        String addressString = formatAddress(address, nbits);
+        if ((this.traceReceived == null) ||
+            (this.traceReceived.contains(addressString))) {
+            return;
+        }
+        this.traceReceived.add(addressString);
+        long receivedTime = System.currentTimeMillis();
+        long delta = receivedTime - this.traceTime;
+        long deltaTimestamp = timestamp - this.traceTime;
+        String timestampString = "";
+        if ((timestamp > this.traceTime) && (timestamp < receivedTime)) {
+            timestampString = ",   " + formatTime(deltaTimestamp)
+                            + "s timestamp";
+        }
+        String traceMessage = " " + addressString + "   "
+                                  + hops + "   "
+                                  + formatTime(delta) + "s rtt"
+                                  + timestampString + "\n";
+
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
-                    morePanel.addTraceText(traceMessageWide);
+                    morePanel.addTraceText(traceMessage);
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
-        if (SocketUtils.sameTraceID(this.traceID, receivedTraceID)) {
-            SwingUtilities.invokeLater(r);
-        }
+        SwingUtilities.invokeLater(r);
     }
 
     //-----------------------------------------
@@ -485,7 +557,9 @@ class UIController implements ControllerInterface, UIAPI {
             case MorePanel.TRACE_COMMAND:
 //              System.out.println ("trace command called");
                 morePanel.setTraceText("");
+                this.traceTime = System.currentTimeMillis();
                 this.traceID = coreAPI.initTrace(5, null, 0, false);
+                this.traceReceived = new java.util.HashSet();
                 if (this.traceID != null) {
 //                  System.out.println("sent trace request");
                 }

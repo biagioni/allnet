@@ -42,7 +42,7 @@ public interface UIAPI {
     
     // if a trace response is received, call this method
     public void traceReceived(byte[] traceID,
-                              String traceMessageWide,
-                              String traceMessageNarrow);
+                              long timestamp, int hops,
+                              byte[] address, int nbits);
     
 }

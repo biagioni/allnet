@@ -71,7 +71,6 @@ public class CoreConnect extends Thread implements CoreAPI {
         this.handlers = handlers;
         try {
             this.sock = new java.net.Socket("127.0.0.1", xchatSocketPort);
-System.out.println("new socket is " + this.sock);
             this.sockIn =
                 new java.io.DataInputStream(this.sock.getInputStream());
             this.sockOut =
@@ -96,7 +95,6 @@ System.out.println("new socket is " + this.sock);
         int descEnd = messageEnd + desc.length() + 1;
         assert(descEnd == value.length);
         String dm = desc + "\n" + message;
-System.out.println("time of message " + message + " is " + time);
         handlers.messageReceived(peer, time, seq, message, isBroadcast);
     }
 
@@ -105,6 +103,50 @@ System.out.println("time of message " + message + " is " + time);
         long ack = SocketUtils.b64(value, 1);
         String peer = SocketUtils.bString(value, 9);
         handlers.messageAcked(peer, ack);
+    }
+
+    private void callbackTraceResponse(byte[] value) {
+        assert(value.length >= 19);
+        assert(((value.length - 19) % 27) == 0);
+        boolean intermediate = (value[1] != 0);
+        int numEntries = convertFromByte(value[2]);
+        byte[] traceID = new byte[16];
+        System.arraycopy(value, 3, traceID, 0, 16);
+        int index = 19;
+        long timestamp = 0;
+        int hops = -1;
+        byte[] address = new byte[8];
+        int nbits = -1;
+        for (int i = 0; i < numEntries; i++) {
+            int precision = convertFromByte(value[index    ]);
+            nbits         = convertFromByte(value[index + 1]);
+            hops          = convertFromByte(value[index + 2]);
+            long seconds  = SocketUtils.b64(value, index + 3);
+            long fraction = SocketUtils.b64(value, index + 3 + 8);
+            System.arraycopy(value, index + 3 + 8 + 8, address, 0, 8);
+            long millis = 0;
+            if (precision > 64) {  // decimal precision
+                millis = fraction * 100;  // correct if precision is 65
+                while (precision > 65) {
+                    millis = millis / 10;
+                    precision --;
+                }
+            } else {  // ignore the precision
+                millis = fraction / 18446744073709551L;
+                if (millis < 0) {
+                    millis = millis + 1000;
+                }
+            }
+            final long y2kSecondsInUnix = 946720800;
+            timestamp = ((seconds + y2kSecondsInUnix) * 1000) + millis;
+            index += 27;
+        }
+        if (numEntries > 0) {
+            handlers.traceReceived(traceID, timestamp, hops, address, nbits);
+        } else {
+            System.out.println ("error: trace response with " +
+                                numEntries + " entries");
+        }
     }
 
     // send callbacks to the right place
@@ -124,7 +166,7 @@ System.out.println("guiCallbackContactCreated not implemented yet\n");
 System.out.println("guiCallbackSubscriptionComplete not implemented yet\n");
             return true;
         case guiCallbackTraceResponse:
-System.out.println("guiCallbackTraceResponse not implemented yet\n");
+            callbackTraceResponse(value);
             return true;
         default:
             return false;
@@ -155,9 +197,6 @@ System.out.println("guiCallbackTraceResponse not implemented yet\n");
     // synchronized by the caller
     private byte[] receiveBuffer() {
         if (this.bufferedResponse != null) {
-System.out.println("buffered response has length " +
-               this.bufferedResponse.length + 
-               ", code " + this.bufferedResponse[0]);
             byte[] result = this.bufferedResponse;
             this.bufferedResponse = null;
             return result;
@@ -215,22 +254,9 @@ System.out.println("buffered response has length " +
         }
     }
 
-    private synchronized byte[] synchronizedDoRPC(byte[] arg) {
-System.out.println("calling sendRPC(" + arg[0] + ")");
-        sendRPC(arg);
-System.out.println("done calling sendRPC(" + arg[0] + ")");
-        return receiveRPC(arg[0]);
-    }
-
     private byte[] doRPC(byte[] arg) {
-// System.out.println("calling doRPC(" + arg[0] + ")");
-//         byte[] result = synchronizedDoRPC(arg);
-// System.out.println("done calling doRPC(" + arg[0] + ")");
-System.out.println("calling sendRPC(" + arg[0] + ")");
         sendRPC(arg);
-System.out.println("done calling sendRPC(" + arg[0] + ")");
         byte[] result = receiveRPC(arg[0]);
-System.out.println("done calling receiveRPC, result " + result[0]);
         return result;
     }
 
@@ -403,6 +429,7 @@ System.out.println("sendMessage called");
         System.out.println("busyWait not implemented yet");
     }
 
+    // unsigned conversion
     private static byte convertToByte(int n) {
         byte result = 0;
         if (n > 255) {
@@ -413,6 +440,13 @@ System.out.println("sendMessage called");
             result = (byte)n;
         }
         return result;
+    }
+
+    // unsigned conversion
+    private static int convertFromByte(byte n) {
+        if (n >= 0)
+            return (int)n;
+        return 256 + (int)n;
     }
 
     // creates the contact -- 1 or 2 secrets may be specified
@@ -485,15 +519,12 @@ System.out.println("initTrace called");
         } else {
             byte[] traceID = new byte[16];
             System.arraycopy(response, 1, traceID, 0, 16);
-            for (int i = 0; i < traceID.length; i++)
-                System.out.print(((((int)traceID[i]) + 256) % 256) + ".");
-            System.out.println();
             return traceID;
         }
     }
 
     public void run() {
-        System.out.println("AllNetConnect thread running");
+        // System.out.println("AllNetConnect thread running");
         for (String contact: contacts()) {
             this.handlers.contactCreated(contact);
             Message[] msgs = getMessages(contact, -1);  // get all
