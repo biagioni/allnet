@@ -1133,7 +1133,6 @@ class UIController implements ControllerInterface, UIAPI {
         while (it.hasNext()) {
             Message msg = it.next();
             if (msg.setAcked(seq)) {  // set ack flag if this is the right seq
-System.out.println("set acked for message " + msg);
                 ConversationPanel cp
                     = (ConversationPanel) myTabbedPane.getTabContent(peer);
                 if (cp != null) {
