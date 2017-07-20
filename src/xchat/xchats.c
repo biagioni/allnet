@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <time.h>
 
@@ -61,42 +62,44 @@ int main (int argc, char ** argv)
   char * contact = argv [1];  /* contact we send to, peer we receive from */
 
 #define MAX_SECRET	15  /* including a terminating null character */
-  char my_secret_buf [MAX_SECRET];
-  char peer_secret_buf [200];
+  char secret_buf [MAX_SECRET + 1000];
   unsigned int wait_time = 5000;   /* 5 seconds to wait for acks and such */
   unsigned long long int start_time = allnet_time_ms ();
 
   int exchanging_key = 0;
+  int print_duplicates = 1;
+  char * kcontact = "no contact";
+  unsigned int khop = 1;
   if (strcmp (contact, "-k") == 0) {   /* send a key */
     exchanging_key = 1;
+    print_duplicates = 0;
     if ((argc != 3) && (argc != 4) && (argc != 5)) {
       printf ("usage: %s -k contact-name [hops [secret]] (%d)\n",
               argv [0], argc);
       return 1;
     }
-    char * kcontact = argv [2];
-    unsigned int hops = 1;
+    kcontact = argv [2];
     if (argc >= 4) {
       char * end;
       int n = strtol (argv [3], &end, 10);
       if (end != argv [3])
-        hops = n;
+        khop = n;
     }
-    random_string (my_secret_buf, MAX_SECRET);
-    if (hops <= 1)
-      my_secret_buf [6] = '\0';   /* for direct contacts, truncate to 6 chars */
-    printf ("%d hops, my secret string is '%s'", hops, my_secret_buf);
-    normalize_secret (my_secret_buf);
-    printf (" (or %s)\n", my_secret_buf);
+    char * whose = "peer";
     if (argc >= 5) {
-      snprintf (peer_secret_buf, sizeof (peer_secret_buf), "%s", argv [4]);
-      printf ("peer secret string is '%s'", peer_secret_buf);
-      normalize_secret (peer_secret_buf);
-      printf (" (or %s)\n", peer_secret_buf);
+      snprintf (secret_buf, sizeof (secret_buf), "%s", argv [4]);
+    } else {
+      whose = "my";
+      random_string (secret_buf, MAX_SECRET);
+      if (khop <= 1)
+        secret_buf [6] = '\0';   /* for direct contacts, truncate to 6 chars */
     }
+    printf ("%d hops, %s secret string is '%s'", khop, whose, secret_buf);
+    normalize_secret (secret_buf);
+    printf (" (or %s)\n", secret_buf);
+
     wait_time = 10 * 24 * 3600 * 1000;   /* wait up to 10 days for a key */
-    if (! create_contact_send_key (sock, kcontact, my_secret_buf,
-                                   peer_secret_buf, hops))
+    if (! create_contact_send_key (sock, kcontact, secret_buf, NULL, khop))
       return 1;
   } else { /* send the data packet */
     int i;
@@ -137,7 +140,7 @@ int main (int argc, char ** argv)
     }
   }
   unsigned long long int send_time = allnet_time_ms () - start_time;
-  if (20 * send_time > wait_time)
+  if ((! exchanging_key) && (20 * send_time > wait_time))
     wait_time = 20 * send_time;
   if (exchanging_key && (send_time > 1000))
     printf ("took %lld seconds to generate the key\n", (send_time / 1000));
@@ -147,11 +150,14 @@ int main (int argc, char ** argv)
   gettimeofday (&deadline, NULL);
   add_time (&deadline, wait_time);
   int max_wait = until_deadline (&deadline);
+  int key_received = 0;
+  keyset kcontact_kset = -1;
   while (exchanging_key || (max_wait > 0)) {
     char * packet;
     int pipe;
     unsigned int pri;
-    int found = receive_pipe_message_any (p, max_wait, &packet, &pipe, &pri);
+    int actual_wait = ((max_wait > 100) ? 100 : max_wait);
+    int found = receive_pipe_message_any (p, actual_wait, &packet, &pipe, &pri);
     if (found < 0) {
       printf ("xchats pipe closed, exiting\n");
       exit (1);
@@ -180,13 +186,19 @@ int main (int argc, char ** argv)
         dup_mess = "";
         desc = "";
       }
-      printf ("from '%s'%s got %s%s%s\n  %s\n",
-              peer, ver_mess, dup_mess, bc_mess, desc, message);
+      if ((! duplicate) || print_duplicates)
+        printf ("from '%s'%s got %s%s%s\n  %s\n",
+                peer, ver_mess, dup_mess, bc_mess, desc, message);
     } else if (mlen == -1) {  /* successful key exchange */
-      printf ("success!  got remote key for %s\n", peer);
-      gettimeofday (&deadline, NULL);
-      add_time (&deadline, 5000);  /* wait 5 more seconds */
-      exchanging_key = 0;
+      if (strcmp (peer, kcontact) == 0) {
+        if (! key_received) {
+          kcontact_kset = kset;
+          printf ("success!  got remote key for %s\n", peer);
+          printf ("please press <enter> once your contact has %s\n",
+                  "also received the key");
+          key_received = 1;
+        }
+      }
     }
   /* handle_packet may change what has been acked */
     int i;
@@ -213,6 +225,25 @@ int main (int argc, char ** argv)
         free (desc);
     }
     max_wait = until_deadline (&deadline);
+    if (key_received) {
+      struct timeval tv;
+      tv.tv_usec = 0;
+      tv.tv_sec = 0;
+      fd_set fds;
+      FD_ZERO (&fds);
+      FD_SET (STDIN_FILENO, &fds);
+      int ready = select (STDIN_FILENO + 1, &fds, NULL, NULL, &tv);
+      if (ready > 0) {
+        printf ("confirmed, thank you\n");
+        /* complete the exchange */
+        incomplete_exchange_file (kcontact, kcontact_kset, NULL, NULL);
+        /* make contact visible */
+        make_visible (kcontact);
+        break;
+      } else if (ready < 0) {
+        perror ("select(stdin)");
+      }
+    }
   }
 printf ("xchats main exiting\n");
   return 0;
