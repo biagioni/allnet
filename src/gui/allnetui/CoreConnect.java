@@ -105,6 +105,18 @@ public class CoreConnect extends Thread implements CoreAPI {
         handlers.messageAcked(peer, ack);
     }
 
+    private void callbackContactCreated(byte[] value) {
+        assert(value.length > 2);
+        String peer = SocketUtils.bString(value, 1);
+        handlers.contactCreated(peer);
+    }
+
+    private void callbackSubscriptionComplete(byte[] value) {
+        assert(value.length > 2);
+        String sender = SocketUtils.bString(value, 1);
+        handlers.subscriptionComplete(sender);
+    }
+
     private void callbackTraceResponse(byte[] value) {
         assert(value.length >= 19);
         assert(((value.length - 19) % 27) == 0);
@@ -160,10 +172,10 @@ public class CoreConnect extends Thread implements CoreAPI {
             callbackMessageAcked(value);
             return true;
         case guiCallbackContactCreated:
-System.out.println("guiCallbackContactCreated not implemented yet\n");
+            callbackContactCreated(value);
             return true;
         case guiCallbackSubscriptionComplete:
-System.out.println("guiCallbackSubscriptionComplete not implemented yet\n");
+            callbackSubscriptionComplete(value);
             return true;
         case guiCallbackTraceResponse:
             callbackTraceResponse(value);
