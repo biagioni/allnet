@@ -921,10 +921,11 @@ static void save_key_in_cache (struct allnet_header * hp,
 }
 
 /* contents should have a hop count, followed by one or two secrets,
- * all separated by newlines. */
-/* returns 1 if successful, 0 otherwise */
-static int parse_exchange_info (char * contents, char ** secret1,
-                                char ** secret2, int * hops)
+ * all separated by newlines.
+ * if successful, points secret1, and possibly secret2, into contents.
+ * returns 1 if successful, 0 otherwise */
+static int parse_exchange_info (char * contents, int * hops,
+                                char ** secret1, char ** secret2)
 {
   *secret1 = NULL;
   *secret2 = NULL;
@@ -949,21 +950,32 @@ static int parse_exchange_info (char * contents, char ** secret1,
   /* secret2 is optional */
   *secret2 = strtok_r (NULL, "\n", &saveptr);
 #ifdef DEBUG_PRINT
-  printf ("%d hops, secrets '%s' and (maybe) '%s'\n",
-          *hops, *secret1, *secret2);
+  printf ("%d hops, secrets '%s' (%p) and (maybe) '%s' (%p)\n",
+          *hops, *secret1, *secret1, *secret2, *secret2);
 #endif /* DEBUG_PRINT */
   return 1;
 }
 
-/* returns 1 for a successful parse, 0 otherwise */
-static int parse_exchange_file (const char * contact,
-                                char ** s1, char ** s2, int * nhops)
+/* returns 1 for a successful parse, 0 otherwise
+ * s1 and s2 must be allocated by the caller and have size at least ssize */
+static int parse_exchange_file (const char * contact, int * nhops,
+                                char * s1, char * s2, size_t ssize)
 {
+  s1 [0] = '\0';
+  s2 [0] = '\0';
   char * content = NULL;
   int size = contact_file_get (contact, "exchange", &content);
   if (size <= 0)
     return 0;
-  int result = parse_exchange_info (content, s1, s2, nhops);
+  char * s1p = NULL;
+  char * s2p = NULL;
+  int result = parse_exchange_info (content, nhops, &s1p, &s2p);
+  if (result) {    /* copy the secrets before freeing contents */
+    if (s1p != NULL)
+      snprintf (s1, ssize, "%s", s1p);
+    if (s2p != NULL)
+      snprintf (s2, ssize, "%s", s2p);
+  }
   free (content);
   return result;
 }
@@ -1003,24 +1015,27 @@ static void resend_peer_key (const char * contact, keyset k,
                              unsigned char * addr, unsigned int abits,
                              int max_hops, int sock)
 {
-printf ("sending back key with secret %s\n", secret);
-print_buffer ((char *)addr, abits, "sending from", (abits + 7) / 8, 1);
   if (! send_key (sock, contact, k, secret, addr, abits, max_hops))
     printf ("send_key failed for key %d\n", k);
 }
 
 /* if successful, returns -1, otherwise 0 */
 static int handle_key (int sock, struct allnet_header * hp,
-                       char * data, unsigned int dsize, char ** peer)
+                       char * data, unsigned int dsize,
+                       char ** peer, keyset * kset)
 {
 #ifdef DEBUG_PRINT
-  printf ("in handle_key (%s, %s, %s)\n", contact, secret1, secret2);
+  printf ("in handle_key ()\n");
 #endif /* DEBUG_PRINT */
   save_key_in_cache (hp, data, dsize);
   char ** contacts = NULL;
   keyset * keys = NULL;
   int * status = NULL;
   int ni = incomplete_key_exchanges (&contacts, &keys, &status);
+#ifdef DEBUG_PRINT
+  if (ni <= 0)   /* we're not expecting any keys, and cannot respond */
+    printf ("got key, but no incomplete key exchanges %d\n", ni);
+#endif /* DEBUG_PRINT */
   if (ni <= 0)   /* we're not expecting any keys, and cannot respond */
     return 0;
   int result = 0;
@@ -1031,14 +1046,22 @@ static int handle_key (int sock, struct allnet_header * hp,
     for (ii = 0; ii < ni; ii++) {
       /* secrets are listed in exchange files, so check that this has a file */
       int hops;
-      char * s1 = NULL;
-      char * s2 = NULL;
+      char s1 [ALLNET_MTU];
+      char s2 [ALLNET_MTU];
+#ifdef DEBUG_PRINT
+      printf ("testing contact %s, status %x & %x\n",
+              contacts [ii], status [ii], KEYS_INCOMPLETE_HAS_EXCHANGE_FILE);
+#endif /* DEBUG_PRINT */
       if ((status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE) &&
-          (parse_exchange_file (contacts [ii], &s1, &s2, &hops)) &&
+          (parse_exchange_file (contacts [ii], &hops, s1, s2, sizeof (s1))) &&
           (! received_my_pubkey (keys [ii], data, dsize, ksize))) {
         int r1 = received_matching_key (keys [ii], data, dsize, ksize, s1);
-        int r2 = ((! r1) && (s2 != NULL) &&
+        int r2 = ((! r1) && (strlen (s2) > 0) &&
                   (received_matching_key (keys [ii], data, dsize, ksize, s2)));
+#ifdef DEBUG_PRINT
+      printf ("contact %s, received matching key %d, r1 %d, r2 %d\n",
+              contacts [ii], keys [ii], r1, r2);
+#endif /* DEBUG_PRINT */
         if (r1 || r2) {
           if (set_contact_pubkey (keys [ii], data, ksize)) {
             if ((hp->src_nbits > 0) && (hp->src_nbits <= ADDRESS_BITS))
@@ -1053,6 +1076,7 @@ static int handle_key (int sock, struct allnet_header * hp,
             resend_peer_key (contacts [ii], keys [ii], s2,
                              my_addr, abits, hops, sock);
           *peer = strcpy_malloc (contacts [ii], "handle_key");
+          *kset = keys [ii];
           result = -1;   /* success */
           break;  /* done */
         }
@@ -1146,14 +1170,14 @@ static void packet_cache_save (char * packet, int psize)
 
 /* if a previously received key matches one of the secrets, returns 1,
  * otherwise returns 0 */
-int key_received (int sock, char ** peer)
+int key_received_before (int sock, char ** peer, keyset * kset)
 {
   init_key_cache ();
   int i;
   for (i = 0; i < KEY_CACHE_SIZE; i++) {
     if ((key_cache [i].dsize > 0) &&
         (handle_key (sock, &(key_cache [i].hp), key_cache [i].buffer,
-                     key_cache [i].dsize, peer) == -1)) {
+                     key_cache [i].dsize, peer, kset) == -1)) {
 #ifdef DEBUG_KEY_CACHE_PRINT
       printf ("using previously saved key, i %d, dsize %d\n",
               i, key_cache [i].dsize);
@@ -1293,7 +1317,8 @@ int handle_packet (int sock, char * packet, unsigned int psize,
                           contact, kset, message, desc, verified, seq, sent,
                           duplicate, broadcast);
   } else if (hp->message_type == ALLNET_TYPE_KEY_XCHG) {
-    result = handle_key (sock, hp, packet + hsize, psize - hsize, contact);
+    result = handle_key (sock, hp, packet + hsize, psize - hsize,
+                         contact, kset);
   } else if (hp->message_type == ALLNET_TYPE_MGMT) {
     result = handle_mgmt (sock, hp, packet, psize, trace_reply);
   }
@@ -1413,7 +1438,7 @@ static void resend_pending_keys (int sock, unsigned long long int now)
         char * secret1 = NULL;  /* if parse successful, points into content */
         char * secret2 = NULL;
         int hops = 0;
-        if (parse_exchange_info (content, &secret1, &secret2, &hops))
+        if (parse_exchange_info (content, &hops, &secret1, &secret2))
           /* should resend */
           create_contact_send_key (sock, contacts [ic], secret1, secret2, hops);
         else

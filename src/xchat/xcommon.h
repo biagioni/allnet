@@ -70,7 +70,7 @@ extern uint64_t send_data_message (int sock, const char * peer,
 
 /* if a previously received key matches one of the secrets, returns 1,
  * otherwise returns 0 */
-extern int key_received (int sock, char ** peer);
+extern int key_received_before (int sock, char ** peer, keyset * kset);
 
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it */
