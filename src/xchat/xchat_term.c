@@ -79,70 +79,69 @@ static void * receive_thread (void * arg)
       printf ("xt pipe closed, thread exiting\n");
       exit (1);
     }
-    if (found > 0) {	/* found > 0, got a packet */
-      int verified, duplicate, broadcast;
-      uint64_t seq;
-      char * peer;
-      keyset kset;
-      char * desc;
-      char * message;
-      struct allnet_ack_info acks;
-      int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset,
-                                &message, &desc, &verified, &seq, NULL,
+    /* it's good to call handle_packet even if we didn't get a packet */
+    int verified, duplicate, broadcast;
+    uint64_t seq;
+    char * peer;
+    keyset kset;
+    char * desc;
+    char * message;
+    struct allnet_ack_info acks;
+    int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset,
+                              &message, &desc, &verified, &seq, NULL,
                                 &duplicate, &broadcast, &acks, NULL);
-      if (mlen > 0) {
-        /* time_t rtime = time (NULL); */
-        char * ver_mess = "";
-        if (! verified)
-          ver_mess = " (not verified)";
-        char * dup_mess = "";
-        if (duplicate)
-          dup_mess = "duplicate ";
-        char * bc_mess = "";
-        if (broadcast) {
-          bc_mess = "broacast ";
-          dup_mess = "";
-          desc = "";
-        }
-        if ((! duplicate) || (a.print_duplicates)) {
-          char string [PRINT_BUF_SIZE];
-          if (strcmp (prompt, peer) != 0)
-            snprintf (string, sizeof (string),
-                      "from '%s'%s got %s%s%s\n  %s\n",
-                      peer, ver_mess, dup_mess, bc_mess, desc, message);
-          else
-            snprintf (string, sizeof (string),
-                      "got %s%s%s\n  %s\n", dup_mess, bc_mess, desc, message);
-          print_to_output (string);
-        }
-        if ((! broadcast) &&
-            ((old_contact == NULL) ||
-             (strcmp (old_contact, peer) != 0) || (old_kset != kset))) {
-          request_and_resend (a.sock, peer, kset, 1);
-          if (old_contact != NULL)
-            free (old_contact);
-          old_contact = peer;
-          old_kset = kset;
-        } else {  /* same peer */
-          free (peer);
-        }
-        free (message);
-        if (! broadcast)
-          free (desc);
-      } 
-      if (acks.num_acks > 0) {
-        int i;
-        for (i = 0; i < acks.num_acks; i++) {
-          char string [PRINT_BUF_SIZE];
-          if (strcmp (prompt, acks.peers [i]) != 0)
-            snprintf (string, sizeof (string),
-                      "from '%s' got ack for seq %" PRIu64 "\n", acks.peers [i],
-                      acks.acks [i]);
-          else
-            snprintf (string, sizeof (string),
-                      "got ack for seq %" PRIu64 "\n", acks.acks [i]);
-          print_to_output (string);
-        }
+    if (mlen > 0) {
+      /* time_t rtime = time (NULL); */
+      char * ver_mess = "";
+      if (! verified)
+        ver_mess = " (not verified)";
+      char * dup_mess = "";
+      if (duplicate)
+        dup_mess = "duplicate ";
+      char * bc_mess = "";
+      if (broadcast) {
+        bc_mess = "broacast ";
+        dup_mess = "";
+        desc = "";
+      }
+      if ((! duplicate) || (a.print_duplicates)) {
+        char string [PRINT_BUF_SIZE];
+        if (strcmp (prompt, peer) != 0)
+          snprintf (string, sizeof (string),
+                    "from '%s'%s got %s%s%s\n  %s\n",
+                    peer, ver_mess, dup_mess, bc_mess, desc, message);
+        else
+          snprintf (string, sizeof (string),
+                    "got %s%s%s\n  %s\n", dup_mess, bc_mess, desc, message);
+        print_to_output (string);
+      }
+      if ((! broadcast) &&
+          ((old_contact == NULL) ||
+           (strcmp (old_contact, peer) != 0) || (old_kset != kset))) {
+        request_and_resend (a.sock, peer, kset, 1);
+        if (old_contact != NULL)
+          free (old_contact);
+        old_contact = peer;
+        old_kset = kset;
+      } else {  /* same peer */
+        free (peer);
+      }
+      free (message);
+      if (! broadcast)
+        free (desc);
+    } 
+    if (acks.num_acks > 0) {
+      int i;
+      for (i = 0; i < acks.num_acks; i++) {
+        char string [PRINT_BUF_SIZE];
+        if (strcmp (prompt, acks.peers [i]) != 0)
+          snprintf (string, sizeof (string),
+                    "from '%s' got ack for seq %" PRIu64 "\n", acks.peers [i],
+                    acks.acks [i]);
+        else
+          snprintf (string, sizeof (string),
+                    "got ack for seq %" PRIu64 "\n", acks.acks [i]);
+        print_to_output (string);
       }
     }
   }
