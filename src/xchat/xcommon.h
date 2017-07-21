@@ -102,6 +102,8 @@ extern int create_contact_send_key (int sock, const char * contact,
                                     const char * secret1,
                                     const char * secret2,
                                     unsigned int hops);
+/* return 1 if successful, 0 for failure */
+extern int resend_contact_key (int sock, const char * contact);
 
 /* sends out a request for a key matching the subscription.
  * returns 1 for success (and fills in my_addr and nbits), 0 for failure */

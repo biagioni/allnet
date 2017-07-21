@@ -961,6 +961,8 @@ static int parse_exchange_info (char * contents, int * hops,
 static int parse_exchange_file (const char * contact, int * nhops,
                                 char * s1, char * s2, size_t ssize)
 {
+  if (ssize <= 0)
+    return 0;
   s1 [0] = '\0';
   s2 [0] = '\0';
   char * content = NULL;
@@ -978,6 +980,18 @@ static int parse_exchange_file (const char * contact, int * nhops,
   }
   free (content);
   return result;
+}
+
+/* return 1 if successful, 0 for failure */
+int resend_contact_key (int sock, const char * contact)
+{
+  char s1 [ALLNET_MTU];
+  char s2 [ALLNET_MTU];
+  int nhops;
+  if (parse_exchange_file (contact, &nhops, s1, s2, sizeof (s1))) {
+    return create_contact_send_key (sock, contact, s1, s2, nhops);
+  }
+  return 0;
 }
 
 static int received_my_pubkey (keyset k, char * data, unsigned int dsize,
@@ -1439,17 +1453,16 @@ static void resend_pending_keys (int sock, unsigned long long int now)
         char * secret2 = NULL;
         int hops = 0;
         if (parse_exchange_info (content, &hops, &secret1, &secret2))
-          /* should resend */
+          /* resend */
           create_contact_send_key (sock, contacts [ic], secret1, secret2, hops);
         else
           printf ("exchange file parse error (%s) %p %p %d\n",
                   content, secret1, secret2, hops);
-      } else {
-        printf ("likely error: content (%zd, %s)\n",
-                ((content == NULL) ? (-1) : (strlen (content))), content);
-      }
-      if (content != NULL)
         free (content);
+      } else {
+        printf ("likely error: no key exchange file for contact %s",
+                contacts [ic]);
+      }
     }
   }
   if (contacts != NULL)
