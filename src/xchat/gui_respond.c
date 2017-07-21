@@ -140,8 +140,21 @@ static void gui_contacts (int sock)
 /* format: code, 64-bit number of contacts, null-terminated contacts */
   char ** contacts = NULL;
   int nc = all_contacts (&contacts);
-  gui_send_string_array (GUI_CONTACTS, contacts, nc, sock, "gui_contacts");
-  free (contacts);
+  char ** incompletes = NULL;
+  int ni = incomplete_key_exchanges (&incompletes, NULL, NULL);
+  char ** both = malloc_or_fail (sizeof(char*) * (nc + ni), "gui_contacts 1");
+  int ib;
+  for (ib = 0; ib < nc; ib++)
+    both [ib] = contacts [ib];
+  for (ib = 0; ib < ni; ib++)
+    both [ib + nc] = incompletes [ib];
+  gui_send_string_array (GUI_CONTACTS, both, nc + ni, sock, "gui_contacts");
+  if (contacts != NULL)
+    free (contacts);
+  if (incompletes != NULL)
+    free (incompletes);
+  if (both != NULL)
+    free (both);
 }
 
 /* send all the subscriptions to the gui, null-separated */
