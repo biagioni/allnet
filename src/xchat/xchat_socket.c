@@ -721,7 +721,8 @@ printf ("sending key to peer %s/%s, secret %s/%s, %d hops\n",
 peer, peer, to_send, extra, (int)rtime);
         create_contact_send_key (sock, peer, to_send, extra, (int)rtime);
         char * pptr = peer;
-        if (key_received (sock, &pptr)) {
+        keyset kset = -1;
+        if (key_received_before (sock, &pptr, &kset)) {
           /* received the key before we created the contact */
           time_t mtime = time (NULL);
           send_message (forwarding_socket,
