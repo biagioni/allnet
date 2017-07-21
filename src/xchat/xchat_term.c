@@ -4,15 +4,26 @@
 
 #define XCHAT_TERM_HELP_MESSAGE	\
 "<typing> send message to current contact (no . at start)\n\
-.m        multiline message ending with .m, no .m in text\n\
-.c <name> switch sending to contact 'name', or list all \n\
-.c        list all contacts \n\
-.q        quit \n\
-.h        print this help message \n\
-.l n      print the last n messages (n defaults to 10)\n\
-.t        trace (hop count, . t 1, address . t 1 f0)\n\
-.k name <secret> exchange a key with a new contact \n\
-                 one of the two gives the other's secret\n\
+.m       multiline message ending with .m, no .m in text\n\
+.c name  switch sending to contact 'name', or list all \n\
+.c       list all contacts \n\
+.q       quit \n\
+.h       print this help message \n\
+.l n     print the last n messages (n defaults to 10)\n\
+.t       trace (hop count .t 1, address .t 1 f0)\n\
+.k name hops          exchange a key with a new contact\n\
+.k name hops secret   one side gives the other's secret\n\
+.k                    list incomplete key exchanges \n\
+.k +number/name resend key, -number/name end exchange\n\
+"
+
+#define XCHAT_TERM_KEY_SUBMENU	  /* same as the last part of the above */ \
+".k name <hops>        exchange a key with a new contact\n\
+         <hops> defaults to 1 if not specified\n\
+.k name hops secret   one side gives the other's secret\n\
+.k                    list incomplete key exchanges \n\
+.k + number/name      resend a key in an exchange \n\
+.k - number/name      end or complete an exchange \n\
 "
 
 #include <stdio.h>
@@ -420,6 +431,208 @@ static void run_trace (int sock, pd p, struct allnet_log * log, char * params)
   print_to_output (NULL);
 }
 
+static void xt_delete_contact (char * contact, char ** peer)
+{
+  strip_final_newline (contact);
+  printf ("contact deletion cannot be undone.  Type Y to delete contact %s\n",
+          contact);
+  char response [MESSAGE_BUF_SIZE];
+  if ((fgets (response, sizeof (response), stdin) != NULL) &&
+      (*response == 'Y')) {
+    printf ("deleting contact %s\n", contact);
+    delete_conversation (contact);
+    make_invisible (contact);
+    delete_contact (contact);
+    /* reset the prompt if necessary */
+    if ((peer != NULL) && (*peer != NULL) && (strcmp (*peer, contact) == 0)) {
+      /* reset the prompt */
+      char * new = most_recent_contact ();
+      switch_to_contact (new, peer);
+      return;  /* no print_to_output required, done by switch_to_contact */
+    }
+  } else {
+    printf ("contact %s is not deleted\n", contact);
+  }
+  print_to_output (NULL);
+}
+
+/* if contact is not NULL, selects that incomplete (if any)
+ * otherwise, if select is > 0, selects that incomplete (if any)
+ * if selects a valid contact and key/received_key is not NULL,
+ *   sets *key to the keyset corresponding to the contact
+ *   sets *received_key to whether the key was received
+ * if a valid contact was selected, returns a malloc'd copy of the contact name
+ * otherwise, if select is == 0, prints the status of all the incompletes,
+ *   returns NULL */
+static char * list_incompletes (const char * contact, int select,
+                                keyset * key, int * received_key)
+{
+  char * result = NULL;
+  char ** contacts = NULL;
+  keyset * keys = NULL;
+  int * status = NULL;
+  int ni = incomplete_key_exchanges (&contacts, &keys, &status);
+  if ((ni > 0) && (contacts != NULL) && (keys != NULL) && (status != NULL)) {
+    if (contact != NULL) {
+      int ii;
+      for (ii = 0; ii < ni; ii++) {
+        if (strcmp (contact, contacts [ii]) == 0) { /* found it */
+          if (key != NULL)
+            *key = keys [ii];
+          if (received_key != NULL)
+            *received_key = 
+              ((status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY) == 0);
+          result = strcpy_malloc (contacts [ii], "list_incompletes 1");
+          break;
+        }
+      }
+    } else if ((select < 0) || (select > ni)) {
+      printf ("valid selectors are %d..%d\n", 1, ni);
+    } else if (select != 0) {  /* valid select */
+      result = strcpy_malloc (contacts [select - 1], "list_incompletes 2");
+      if (key != NULL)
+        *key = keys [select - 1];
+      if (received_key != NULL)
+        *received_key = 
+          ((status [select - 1] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY) == 0);
+    } else {                   /* select == 0, list all */
+      int ii;
+      for (ii = 0; ii < ni; ii++) {
+        char * pr_status = NULL;
+        if ((status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY) &&
+            (status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE))
+          pr_status = "no key received";
+        else if (status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY)
+          pr_status = "no key received (and no exchange file, may be an error)";
+        else if (status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE)
+          pr_status = "key received";
+        else
+          pr_status = "key exchange is complete (this may be an error)";
+        printf ("%d: contact  %s,   status: %s\n",
+                ii + 1, contacts [ii], pr_status);
+      }
+    }
+    free (contacts);
+    free (keys);
+    free (status);
+  } else {
+    if ((contact == NULL) && (select == 0))
+      printf ("there are no incomplete key exchanges\n");
+  }
+  return result;
+}
+
+static void key_exchange (int sock, pd p, struct allnet_log * log,
+                          char * params, char ** peer)
+{
+/*
+".k name <hops>        exchange a key with a new contact\n\
+         <hops> defaults to 1 if not specified\n\
+.k name hops secret   one side gives the other's secret\n\
+.k                    list incomplete key exchanges \n\
+.k + number/name      resend a key in an exchange \n\
+.k - number/name      end or complete an exchange \n\
+*/
+  int hops_or_selector = -1;
+  char * first = strtok (params, " \t\n");
+  char * second = NULL;
+  if (first != NULL) {
+    if ((*first == '+') && (strlen (first) > 1)) {
+      second = first + 1;
+      first = "+";
+    } else if ((*first == '-') && (strlen (first) > 1)) {
+      second = first + 1;
+      first = "-";
+    } else {
+      second = strtok (NULL, " \t\n");
+    }
+  }
+  if (second != NULL) {
+    char * finish = NULL;
+    hops_or_selector = strtol (second, &finish, 10);
+    if ((finish == second) && (*first != '+') && (*first != '-')) {
+      printf ("second parameter in key exchange (%s) should be hop count\n",
+              second);
+      printf (XCHAT_TERM_KEY_SUBMENU);
+      print_to_output (NULL);
+      return;
+    }
+  }
+  char * third = NULL;
+  if (second != NULL)
+    third = strtok (NULL, " \t\n");
+#ifdef DEBUG_PRINT
+  printf ("parameters are %s/%p, %s/%p, %s/%p\n", first, first, second,
+          second, third, third);
+#endif /* DEBUG_PRINT */
+
+  if (first == NULL) {          /* just list the incompletes */
+    list_incompletes (NULL, 0, NULL, NULL);
+  } else if ((second != NULL) &&
+             ((strcmp ("-", first) == 0) || (strcmp ("+", first) == 0))) {
+    int got_key;
+    keyset k;
+    char * name = list_incompletes (second, hops_or_selector, &k, &got_key);
+    if (name == NULL)
+      name = list_incompletes (NULL, hops_or_selector, &k, &got_key);
+    if (name != NULL) {
+      if (strcmp ("-", first) == 0) { /* end the key exchange */
+        printf ("ending key exchange with %s/%d, %s the contact's key\n",
+                name, k, got_key ? "got" : "did not get");
+        if (got_key) {
+          /* complete the exchange and make the contact visible */
+          incomplete_exchange_file (name, k, NULL, NULL);
+          if (is_invisible (name))
+            make_visible (name);
+        } else {       /* delete the contact */
+          printf ("deleting contact %s, for which never got a key\n", name);
+          xt_delete_contact (name, peer);
+          free (name);
+          return;
+        }
+      } else { /* resend the key */
+        if (resend_contact_key (sock, name))
+          printf ("resent key to %s\n", name);
+        else
+          printf ("error resending key to %s\n", name);
+      }
+      free (name);
+    } else {
+      printf ("%s does not identify an incomplete key exchange\n", second);
+      printf (XCHAT_TERM_KEY_SUBMENU);
+    }
+  } else {             /* initiate a key exchange */
+    int hops = 1;  /* default */
+    if (second != NULL) {
+      hops = hops_or_selector;
+      if ((hops < 1) || (hops > 30)) {
+        printf ("invalid hop count %s (1-30 required)\n", second);
+        print_to_output (NULL);
+        return;
+      }
+    }
+    char * secret = third;
+    char secret_buf [1000];
+    if (secret == NULL) {   /* generate secret */
+      if (hops == 1)
+        random_string (secret_buf, 7);
+      else
+        random_string (secret_buf, 15);
+      secret = secret_buf;
+      normalize_secret (secret);
+      printf ("generated secret %s\n", secret);
+    } else {
+      normalize_secret (secret);
+    }
+    printf ("key exchange for new contact %s, %d hops, secret %s\n",
+            first, hops, secret);
+    if (! create_contact_send_key (sock, first, secret, NULL, hops))
+      printf ("unable to send key for new contact %s, %d hops, secret %s\n",
+              first, hops, secret);
+  }
+  print_to_output (NULL);
+}
+
 static void send_message (int sock, const char * peer, const char * message)
 {
   if ((peer == NULL) || (message == NULL)) {
@@ -528,8 +741,11 @@ int main (int argc, char ** argv)
       case 't':  /* trace */
         run_trace (sock, p, log, next);
         break;
+      case 'd':  /* delete contact, not listed in menu */
+        xt_delete_contact (next, &peer);
+        break;
       case 'k':  /* exchange a key with a new contact, optional secret */
-        print_to_output ("key exchange not implemented (yet)\n");
+        key_exchange (sock, p, log, next, &peer);
         break;
       default:   /* send as a message */
         print_to_output ("unknown command\n");;
