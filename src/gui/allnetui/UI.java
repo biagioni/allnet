@@ -155,7 +155,6 @@ class UI extends ApplicationFrame {
                         controller.setCore (coreAPI);
                         coreAPI.start ();
                     }
-                    controller.initializationComplete();
                 }
             }); // end of invokeAndWait
         }

@@ -543,6 +543,7 @@ System.out.println("initTrace called");
         for (String sender: subscriptions()) {
             this.handlers.subscriptionComplete(sender);
         }
+        this.handlers.initializationComplete();
         receiveRPC((byte)0);  // loop forever
     }
 }
