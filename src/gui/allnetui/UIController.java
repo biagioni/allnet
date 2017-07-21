@@ -752,8 +752,8 @@ class UIController implements ControllerInterface, UIAPI {
                     if (variableInput.length() < MIN_LENGTH_SHORT) {
                         variableInput = "";
                     }
-                    System.out.println("new 1-hop contact " + contact + ", "
-                        + ", secret " + variableInput + "/" + secret);
+                    System.out.println("new 1-hop contact " + contact
+                        + ", secret " + variableInput + "+" + secret);
                     // create the key exchange panel if it doesn't already exist
                     kep = getKeyExchangePanel(contact);
                     if (kep == null) {
