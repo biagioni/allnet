@@ -184,13 +184,11 @@ class UIController implements ControllerInterface, UIAPI {
                                 if (hops == 1) {
                                     button = 0;     // 1-hop exchange
                                 }
-                                String firstSecret
+                                String secret
                                     = AllNetContacts.firstSecret(contactName);
-                                String secondSecret
-                                    = AllNetContacts.secondSecret(contactName);
                                 // now put up a key exchange panel
                                 String[] middlePanelMsg
-                                    = makeMiddlePanel(firstSecret, secondSecret);
+                                    = makeMiddlePanel(secret);
                                 String[] bottomPanelMsg = new String[]{
                                     " Key exchange in progress",
                                     " Sent your key",
@@ -199,11 +197,7 @@ class UIController implements ControllerInterface, UIAPI {
                                 kep = createKeyExchangePanel(contactName,
                                     middlePanelMsg, bottomPanelMsg, true, true);
                                 kep.setButtonState(button);
-                                kep.setSecret(firstSecret);
-                                if (secondSecret == null) {
-                                    secondSecret = "";
-                                }
-                                kep.setVariableInput(secondSecret);
+                                kep.setSecret(secret);
                             }
                         }
                         if (AllNetContacts.contactComplete(contactName)
@@ -559,7 +553,7 @@ class UIController implements ControllerInterface, UIAPI {
                 morePanel.setTraceText("");
                 this.traceTime = System.currentTimeMillis();
                 this.traceID = coreAPI.initTrace(5, null, 0, false);
-                this.traceReceived = new java.util.HashSet();
+                this.traceReceived = new java.util.HashSet<String>();
                 if (this.traceID != null) {
 //                  System.out.println("sent trace request");
                 }
@@ -572,6 +566,9 @@ class UIController implements ControllerInterface, UIAPI {
         if (contact == null) {
             return;
             // throw new RuntimeException("tried to update contacts panel for null contact name");
+        }
+        if (! coreAPI.isVisible(contact)) {  // nothing to see here
+            return;
         }
         Conversation conv = contactData.getConversation(contact);
         if (conv == null) {
@@ -691,38 +688,11 @@ class UIController implements ControllerInterface, UIAPI {
         updateConversationPanels();
     }
 
-    private String[] makeMiddlePanel(String firstSecret,
-        String secondSecret) {
-        if (secondSecret != null) {
-            return new String[]{
-                " Shared secret:",
-                " " + firstSecret,
-                " or:",
-                " " + secondSecret
-            };
-        }
-        else {
-            return new String[]{
-                " Shared secret:",
-                " " + firstSecret
-            };
-        }
-    }
-
-    private String[] makeMiddlePanel(boolean useLongSecret,
-        String variableInput) {
-        String secret = newContactPanel.getMySecretShort();
-        int minLength = MIN_LENGTH_SHORT;
-        if (useLongSecret) {
-            secret = newContactPanel.getMySecretLong();
-            minLength = MIN_LENGTH_LONG;
-        }
-        if (variableInput.length() < minLength) {
-            return makeMiddlePanel(secret, null);
-        }
-        else {
-            return makeMiddlePanel(secret, variableInput);
-        }
+    private String[] makeMiddlePanel(String secret) {
+        return new String[] {
+            " Shared secret:",
+            " " + secret.toUpperCase()
+        };
     }
 
     private void processNewContactEvent(String command) {
@@ -751,15 +721,16 @@ class UIController implements ControllerInterface, UIAPI {
                     secret = newContactPanel.getMySecretShort();
                     if (variableInput.length() < MIN_LENGTH_SHORT) {
                         variableInput = "";
+                    } else {
+                        secret = variableInput;
                     }
                     System.out.println("new 1-hop contact " + contact
-                        + ", secret " + variableInput + "+" + secret);
+                        + ", secret " + secret);
                     // create the key exchange panel if it doesn't already exist
                     kep = getKeyExchangePanel(contact);
                     if (kep == null) {
                         // now put up a key exchange panel
-                        String[] middlePanelMsg
-                            = makeMiddlePanel(false, variableInput);
+                        String[] middlePanelMsg = makeMiddlePanel(secret);
                         String[] bottomPanelMsg = new String[]{
                             " Key exchange in progress",
                             " Sent your key",
@@ -784,14 +755,15 @@ class UIController implements ControllerInterface, UIAPI {
                     secret = newContactPanel.getMySecretLong();
                     if (variableInput.length() < MIN_LENGTH_LONG) {
                         variableInput = "";
+                    } else {
+                        secret = variableInput;
                     }
                     System.out.println("new long-distance contact " + contact
-                        + ", secret " + variableInput + "/" + secret);
+                        + ", secret " + secret);
                     kep = getKeyExchangePanel(contact);
                     if (kep == null) {
                         // now put up a key exchange panel
-                        String[] middlePanelMsg
-                            = makeMiddlePanel(true, variableInput);
+                        String[] middlePanelMsg = makeMiddlePanel(secret);
                         String[] bottomPanelMsg = new String[]{
                             " Key exchange in progress",
                             " Sent your key",
@@ -1148,6 +1120,7 @@ class UIController implements ControllerInterface, UIAPI {
         //    return;
         kep.setSuccess(contactName);
         AllNetContacts.unhideContact(contactName);  // make the contact visible
+        updateContactsPanel(contactName, false);
     }
 
     private KeyExchangePanel getKeyExchangePanel(String contactName) {
