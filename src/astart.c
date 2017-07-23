@@ -569,7 +569,7 @@ static void my_call_thread (char * argv, int alen, char * program,
 #endif /* ALLNET_USE_FORK */
 
 #ifdef ALLNET_USE_FORK
-static int connect_to_local ()
+static int astart_connect_to_local ()
 {
   int sock = socket (AF_INET, SOCK_STREAM, 0);
   struct sockaddr_in sin;
@@ -577,7 +577,7 @@ static int connect_to_local ()
   sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
   sin.sin_port = allnet_htons (ALLNET_LOCAL_PORT);
   int success = (connect (sock, (struct sockaddr *) &sin, sizeof (sin)) == 0);
-  debug_close (sock, "connect_to_local");
+  debug_close (sock, "astart_connect_to_local");
   return success;
 }
 #endif /* ALLNET_USE_FORK */
@@ -613,7 +613,7 @@ static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
   log_print (alog);
   do {   /* wait for alocal to start and open its socket */
     usleep (10 * 1000);
-  } while (! connect_to_local());
+  } while (! astart_connect_to_local());
 #else /* ! ALLNET_USE_FORK */
 printf ("allocating %d pipes for rcopy and same for wcopy\n", num_pipes);
   int * rcopy = memcpy_malloc (rpipes, num_pipes * sizeof (int),
