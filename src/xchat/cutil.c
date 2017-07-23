@@ -31,8 +31,8 @@ void normalize_secret (char * s)
       while (*from != '\0')
         *(to++) = *(from++);
       *to = '\0';
-    } else if ((*s == '0') /* zero */ || (toupper (*s) == 'Q')) {
-      *s = 'O';  /* use O as in Oscar for either zero or q */
+    } else if ((*s == '0') /* zero */ || (toupper (*s) == 'O')) {
+      *s = 'Q';  /* use Q as in Quebec for either zero or o/Oscar */
       s++;
     } else if ((*s == '1') || (toupper (*s) == 'I')) {
       *s = 'L';  /* use L for 1 or i */
