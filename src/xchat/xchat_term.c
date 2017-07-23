@@ -11,19 +11,17 @@
 .h       print this help message \n\
 .l n     print the last n messages (n defaults to 10)\n\
 .t       trace (hop count .t 1, address .t 1 f0)\n\
-.k name hops          exchange a key with a new contact\n\
-.k name hops secret   one side gives the other's secret\n\
-.k                    list incomplete key exchanges \n\
-.k +number/name resend key, -number/name end exchange\n\
+.k       key exchanges \n\
 "
 
-#define XCHAT_TERM_KEY_SUBMENU	  /* same as the last part of the above */ \
-".k name <hops>        exchange a key with a new contact\n\
-         <hops> defaults to 1 if not specified\n\
-.k name hops secret   one side gives the other's secret\n\
-.k                    list incomplete key exchanges \n\
-.k + number/name      resend a key in an exchange \n\
-.k - number/name      end or complete an exchange \n\
+#define XCHAT_TERM_KEY_SUBMENU	  \
+".k usage: \n\
+.k name <hops>      exchange a key with a new contact\n\
+        <hops>      defaults to 1 if not specified\n\
+.k name hops secret one side gives the other's secret\n\
+.k                  list incomplete key exchanges \n\
+.k + number or name resend a key in an exchange \n\
+.k - number or name end or complete an exchange \n\
 "
 
 #include <stdio.h>
@@ -427,7 +425,7 @@ static void run_trace (int sock, pd p, struct allnet_log * log, char * params)
   int fd_out = STDOUT_FILENO;
   do_trace_loop (sock, p, address, abits, repeat, sleep,
                  hops, match_only, no_intermediates, wide,
-                 null_term, fd_out, NULL, log);
+                 null_term, fd_out, 1, NULL, log);
   print_to_output (NULL);
 }
 
@@ -508,8 +506,16 @@ static char * list_incompletes (const char * contact, int select,
           pr_status = "key received";
         else
           pr_status = "key exchange is complete (this may be an error)";
-        printf ("%d: contact  %s,   status: %s\n",
-                ii + 1, contacts [ii], pr_status);
+        char * s1 = NULL;
+        char * s2 = NULL;
+        int ns = key_exchange_secrets (contacts [ii], &s1, &s2);
+        char secrets [ALLNET_MTU] = "";
+        if (ns == 1)
+          snprintf (secrets, sizeof (secrets), ", secret %s", s1);
+        else if (ns == 2)
+          snprintf (secrets, sizeof (secrets), ", secrets %s and %s", s1, s2);
+        printf ("%d: contact  %s,   status: %s%s\n",
+                ii + 1, contacts [ii], pr_status, secrets);
       }
     }
     free (contacts);
@@ -568,6 +574,7 @@ static void key_exchange (int sock, pd p, struct allnet_log * log,
 
   if (first == NULL) {          /* just list the incompletes */
     list_incompletes (NULL, 0, NULL, NULL);
+    printf (XCHAT_TERM_KEY_SUBMENU);
   } else if ((second != NULL) &&
              ((strcmp ("-", first) == 0) || (strcmp ("+", first) == 0))) {
     int got_key;
