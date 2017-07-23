@@ -10,7 +10,8 @@
 extern void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
                            int repeat, int sleep, int nhops, int match_only,
                            int no_intermediates, int wide, int null_term,
-                           int fd_out, struct allnet_queue * queue,
+                           int fd_out, int reset_counts,
+                           struct allnet_queue * queue,
                            struct allnet_log * alog);
 
 /* returns a (malloc'd) string representation of the trace result */

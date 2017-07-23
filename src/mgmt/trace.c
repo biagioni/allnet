@@ -194,7 +194,7 @@ int trace_main (int argc, char ** argv)
       nhops = n;
   }
   do_trace_loop (sock, p, address, abits, repeat, sleep, nhops, match_only,
-                 no_intermediates, 1, 0, STDOUT_FILENO, NULL, alog);
+                 no_intermediates, 1, 0, STDOUT_FILENO, 0, NULL, alog);
   return 0;
 }
 

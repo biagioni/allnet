@@ -606,9 +606,17 @@ static void wait_for_responses (int sock, pd p, char * trace_id, int sec,
 
 void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
                     int repeat, int sleep, int nhops, int match_only,
-                    int no_intermediates, int wide, int null_term, int fd_out,
+                    int no_intermediates, int wide, int null_term,
+                    int fd_out, int reset_counts,
                     struct allnet_queue * queue, struct allnet_log * alog)
 {
+  if (reset_counts) {
+    sent_count = 0;
+    received_count = 0;
+    min_rtt = -1;
+    max_rtt = -1;
+    sum_rtt = 0;
+  }
 #define NUM_REMEMBERED_HASHES	1000
   char remembered_hashes [NUM_REMEMBERED_HASHES * MESSAGE_ID_SIZE];
   int remembered_position = 0;
@@ -666,7 +674,7 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
     return strcat_malloc ("unable to open file ", fname, "trace_string");
 
   do_trace_loop (sock, p, address, abits, 1, sleep, nhops, match_only,
-                 no_intermediates, wide, 0, fd, NULL, alog);
+                 no_intermediates, wide, 0, fd, 0, NULL, alog);
   close (fd);
   char * result;
   size_t success = read_file_malloc (fname, &result, 0);
@@ -699,7 +707,7 @@ void trace_pipe (int pipe, struct allnet_queue * queue,
   }
 
   do_trace_loop (sock, p, address, abits, 1, sleep, nhops, match_only,
-                 no_intermediates, wide, 1, pipe, queue, alog);
+                 no_intermediates, wide, 1, pipe, 0, queue, alog);
 }
 
 /* just start a trace, returning 1 for success, 0 failure
