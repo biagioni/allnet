@@ -956,42 +956,75 @@ static int parse_exchange_info (char * contents, int * hops,
   return 1;
 }
 
-/* returns 1 for a successful parse, 0 otherwise
- * s1 and s2 must be allocated by the caller and have size at least ssize */
+/* returns 1 for a successful parse, 0 otherwise */
+/* *s1 and *s2, if not NULL, are malloc'd (as needed), should be free'd */
 static int parse_exchange_file (const char * contact, int * nhops,
-                                char * s1, char * s2, size_t ssize)
+                                char ** s1, char ** s2)
 {
-  if (ssize <= 0)
-    return 0;
-  s1 [0] = '\0';
-  s2 [0] = '\0';
+  if (s1 != NULL)
+    *s1 = NULL;
+  if (s2 != NULL)
+    *s2 = NULL;
   char * content = NULL;
   int size = contact_file_get (contact, "exchange", &content);
   if (size <= 0)
     return 0;
+  /* s1p and s2p point into "content", cannot be returned directly */
   char * s1p = NULL;
   char * s2p = NULL;
   int result = parse_exchange_info (content, nhops, &s1p, &s2p);
   if (result) {    /* copy the secrets before freeing contents */
     if (s1p != NULL)
-      snprintf (s1, ssize, "%s", s1p);
+      *s1 = strcpy_malloc (s1p, "parse_exchange_file secret 1");
     if (s2p != NULL)
-      snprintf (s2, ssize, "%s", s2p);
+      *s2 = strcpy_malloc (s2p, "parse_exchange_file secret 2");
   }
   free (content);
   return result;
 }
 
-/* return 1 if successful, 0 for failure */
+/* for an incomplete key exchange, resends the key
+ * return 1 if successful, 0 for failure (e.g. the key exchange is complete) */
 int resend_contact_key (int sock, const char * contact)
 {
-  char s1 [ALLNET_MTU];
-  char s2 [ALLNET_MTU];
+  char * s1 = NULL;
+  char * s2 = NULL;
   int nhops;
-  if (parse_exchange_file (contact, &nhops, s1, s2, sizeof (s1))) {
-    return create_contact_send_key (sock, contact, s1, s2, nhops);
+  int result = 0;
+  if (parse_exchange_file (contact, &nhops, &s1, &s2))
+    result = create_contact_send_key (sock, contact, s1, s2, nhops);
+  if (s1 != NULL)
+    free (s1);
+  if (s2 != NULL)
+    free (s2);
+  return result;
+}
+
+/* return the number of secrets returned, 0, 1 (only s1), or 2 */
+int key_exchange_secrets (const char * contact, char ** s1, char ** s2)
+{
+  int nhops;
+  char * s1p = NULL;
+  char * s2p = NULL;
+  int result = 0;
+  if (parse_exchange_file (contact, &nhops, &s1p, &s2p)) {
+    /* get the right result, being tolerant of NULL s1 and/or s2 */
+    if (s1p != NULL) {
+      result = 1;
+      if (s1 != NULL)
+        *s1 = s1p;
+      else
+        free (s1p);
+      if (s2p != NULL) {
+        result = 2;
+        if (s2 != NULL)
+          *s2 = s2p;
+        else
+          free (s2p);
+      }
+    }
   }
-  return 0;
+  return result;
 }
 
 static int received_my_pubkey (keyset k, char * data, unsigned int dsize,
@@ -1018,6 +1051,8 @@ static int received_my_pubkey (keyset k, char * data, unsigned int dsize,
 static int received_matching_key (keyset k, char * data, unsigned int dsize,
                                   unsigned int ksize, const char * secret)
 {
+  if (secret == NULL)
+    return 0;
   char * received_hmac = data + ksize;
   char hmac [SHA512_SIZE];
   sha512hmac (data, ksize, secret, (int)strlen (secret), hmac);
@@ -1060,17 +1095,17 @@ static int handle_key (int sock, struct allnet_header * hp,
     for (ii = 0; ii < ni; ii++) {
       /* secrets are listed in exchange files, so check that this has a file */
       int hops;
-      char s1 [ALLNET_MTU];
-      char s2 [ALLNET_MTU];
+      char * s1 = NULL;
+      char * s2 = NULL;
 #ifdef DEBUG_PRINT
       printf ("testing contact %s, status %x & %x\n",
               contacts [ii], status [ii], KEYS_INCOMPLETE_HAS_EXCHANGE_FILE);
 #endif /* DEBUG_PRINT */
       if ((status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE) &&
-          (parse_exchange_file (contacts [ii], &hops, s1, s2, sizeof (s1))) &&
+          (parse_exchange_file (contacts [ii], &hops, &s1, &s2)) &&
           (! received_my_pubkey (keys [ii], data, dsize, ksize))) {
         int r1 = received_matching_key (keys [ii], data, dsize, ksize, s1);
-        int r2 = ((! r1) && (strlen (s2) > 0) &&
+        int r2 = ((! r1) && (s2 != NULL) && (strlen (s2) > 0) &&
                   (received_matching_key (keys [ii], data, dsize, ksize, s2)));
 #ifdef DEBUG_PRINT
       printf ("contact %s, received matching key %d, r1 %d, r2 %d\n",
@@ -1095,6 +1130,10 @@ static int handle_key (int sock, struct allnet_header * hp,
           break;  /* done */
         }
       }
+      if (s1 != NULL)
+        free (s1);
+      if (s2 != NULL)
+        free (s2);
     }
     free (contacts);
     free (keys);

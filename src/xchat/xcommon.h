@@ -102,8 +102,13 @@ extern int create_contact_send_key (int sock, const char * contact,
                                     const char * secret1,
                                     const char * secret2,
                                     unsigned int hops);
-/* return 1 if successful, 0 for failure */
+/* for an incomplete key exchange, resends the key
+ * return 1 if successful, 0 for failure (e.g. the key exchange is complete) */
 extern int resend_contact_key (int sock, const char * contact);
+/* return the number of secrets returned, 0, 1 (only s1), or 2 */
+/* the secret(s) are malloc'd (must be freed) and assigned to s1
+ * and s2 if not NULL */
+extern int key_exchange_secrets (const char * contact, char ** s1, char ** s2);
 
 /* sends out a request for a key matching the subscription.
  * returns 1 for success (and fills in my_addr and nbits), 0 for failure */
