@@ -28,6 +28,7 @@
 #include "lib/trace_util.h"
 #include "xcommon.h"
 #include "store.h"
+#include "cutil.h"
 #include "gui_socket.h"
 
 static int send_bytes (int sock, char *buffer, int64_t length)
@@ -143,12 +144,26 @@ static void gui_contacts (int sock)
   char ** incompletes = NULL;
   int ni = incomplete_key_exchanges (&incompletes, NULL, NULL);
   char ** both = malloc_or_fail (sizeof(char*) * (nc + ni), "gui_contacts 1");
-  int ib;
+  int ib;    /* counts through the "both" array */
   for (ib = 0; ib < nc; ib++)
     both [ib] = contacts [ib];
-  for (ib = 0; ib < ni; ib++)
-    both [ib + nc] = incompletes [ib];
-  gui_send_string_array (GUI_CONTACTS, both, nc + ni, sock, "gui_contacts");
+  int ii;    /* counts through the "incompletes" array */
+  for (ii = 0; ii < ni; ii++) {
+    int ic;  /* counts through the "contacts" array */
+    int found = 0;
+    for (ic = 0; ic < nc; ic++) {
+      if (strcmp (contacts [ic], incompletes [ii]) == 0) {
+        found = 1;
+        break;
+      }
+    }
+    if (! found) {    /* incomplete contact is not also in contacts, add */
+      both [ib] = incompletes [ii];
+      ib++;
+    } /* else incompletes is also in contacts, do not add */
+  }
+  /* ib has the count of names in the "both" array */
+  gui_send_string_array (GUI_CONTACTS, both, ib, sock, "gui_contacts");
   if (contacts != NULL)
     free (contacts);
   if (incompletes != NULL)
@@ -517,9 +532,12 @@ static void gui_init_key_exchange (char * message, int64_t length,
       printf ("gui_init_key_exchange error: length %" PRId64
               ", contact %s (%zd)\n", length, contact, strlen (contact));
     char * secret1 = contact + (strlen (contact) + 1);
+    normalize_secret (secret1);
     char * secret2 = NULL;
-    if (length > (1 + strlen (contact) + 1 + strlen (secret1) + 1))
+    if (length > (1 + strlen (contact) + 1 + strlen (secret1) + 1)) {
       secret2 = contact + (strlen (contact) + 1 + strlen (secret1) + 1);
+      normalize_secret (secret2);
+    }
     reply_header [1] =
       create_contact_send_key (allnet_sock, contact, secret1, secret2, hops);
   }
