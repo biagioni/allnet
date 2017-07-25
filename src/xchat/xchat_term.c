@@ -4,14 +4,13 @@
 
 #define XCHAT_TERM_HELP_MESSAGE	\
 "<typing> send message to current contact (no . at start)\n\
-.m       multiline message ending with .m, no .m in text\n\
-.c name  switch sending to contact 'name', or list all \n\
-.c       list all contacts \n\
-.q       quit \n\
-.h       print this help message \n\
-.l n     print the last n messages (n defaults to 10)\n\
-.t       trace (hop count .t 1, address .t 1 f0)\n\
-.k       key exchanges \n\
+.m    multiline message ending with .m, no .m in text\n\
+.c    list all contacts, .c n  start sending to contact n\n\
+.q    quit \n\
+.h    print this help message \n\
+.l n  print the last n messages (n defaults to 10)\n\
+.t    trace (hop count .t 1, address .t 1 f0)\n\
+.k    key exchanges (type .k for more information) \n\
 "
 
 #define XCHAT_TERM_KEY_SUBMENU	  \
