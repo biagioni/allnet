@@ -9,6 +9,7 @@
 #include "lib/keys.h"
 #include "gui_socket.h"
 #include "xcommon.h"
+#include "cutil.h"
 
 static void gui_callback_message_received (const char * peer,
                                            const char * message,
@@ -128,6 +129,9 @@ void gui_socket_main_loop (int gui_sock, int allnet_sock, pd p)
                               &peer, &kset, &message, &desc,
                               &verified, &seq, &mtime,
                               &duplicate, &broadcast, &acks, &trace);
+#ifdef DEBUG_PRINT
+if (mlen != 0) printf ("handle_packet returned %d\n", mlen);
+#endif /* DEBUG_PRINT */
     if ((mlen > 0) && (verified) && (! duplicate)) {
       if (! duplicate) {
         if (is_visible (peer))
