@@ -230,7 +230,7 @@ void log_print_str (struct allnet_log * log, char * string)
               n.tm_mon + 1, n.tm_mday, n.tm_hour, n.tm_min, n.tm_sec,
               (long int) (now.tv_usec), process, thread);
   /* add a newline if it is not already at the end of the string */
-  char * last_nl = rindex (string, '\n');
+  char * last_nl = strrchr (string, '\n');
   char * add_nl = "\n";
   if ((last_nl != NULL) && (last_nl - string + 1 == ((int) strlen (string))))
     add_nl = "";   /* already present */

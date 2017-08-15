@@ -37,7 +37,7 @@ int create_dir (const char * path)
   }
 
   /* ENOENT: a previous component does not exist, attempt to create it */
-  char * last_slash = rindex (path, '/');
+  char * last_slash = strrchr (path, '/');
   if (last_slash == NULL) /* nothing we can try to create, give up */
     return 0;
   *last_slash = '\0';

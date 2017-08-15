@@ -257,7 +257,7 @@ static void print_n_messages (const char * peer, const char * arg, int def)
 /* strip closing newline, if any */
 static void strip_final_newline (char * string)
 {
-  char * nl = rindex (string, '\n');
+  char * nl = strrchr (string, '\n');
   if ((nl != NULL) && (*(nl + 1) == '\0'))
     *nl = '\0';
 }
