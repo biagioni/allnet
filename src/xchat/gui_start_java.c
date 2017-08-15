@@ -99,9 +99,12 @@ static char * find_java ()
   return NULL;
 }
 
+/* #define HIDE_JAVA_OUTPUT */
+#ifdef HIDE_JAVA_OUTPUT
 #define LOG_FILE_NAME	"xchat-java-log.txt"
 #define TMP_DIR_INITIALIZER	"/tmp"
 static char * tmp_dir = TMP_DIR_INITIALIZER;
+#endif /* HIDE_JAVA_OUTPUT */
 
 static pid_t exec_java_ui (const char * arg)
 {
@@ -165,6 +168,7 @@ static pid_t exec_java_ui (const char * arg)
             jarfile, debug);
 #endif /* DEBUG_EXEC_JAVA */
 
+#ifdef HIDE_JAVA_OUTPUT
 /* unfortunately, we get lots of messages such as the following:
         ** (java:14856): CRITICAL **: murrine_scrollbar_get_junction: assertion 'GTK_IS_RANGE (widget)' failed
         ** (java:14856): CRITICAL **: murrine_scrollbar_visible_steppers: assertion 'GTK_IS_RANGE (widget)' failed
@@ -190,14 +194,17 @@ static pid_t exec_java_ui (const char * arg)
       }
     }
     if (log_fd >= 0) {
-      dup2 (STDOUT_FILENO, log_fd);  /* write stdout to the log file */
-      dup2 (STDERR_FILENO, log_fd);  /* write stderr to the log file */
+      setbuf (stdout, NULL);  /* make stdout/stderr unbuffered */
+      setbuf (stderr, NULL);  /* so the file is written */
+      dup2 (log_fd, STDOUT_FILENO);  /* write stdout to the log file */
+      dup2 (log_fd, STDERR_FILENO);  /* write stderr to the log file */
       close (log_fd);  /* no longer needed as a separate fd */
     } else {
 #ifdef DEBUG_EXEC_JAVA
       perror ("xchat_socket unable to create or write temp file\n");
 #endif /* DEBUG_EXEC_JAVA */
     }
+#endif /* HIDE_JAVA_OUTPUT */
     if (args [0] != NULL) {
       args [1] = "-jar";
       args [2] = jarfile;
