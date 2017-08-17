@@ -19,6 +19,7 @@
 #include "wp_arith.h"
 /* for random number generation in the absence of /dev/[u]random may use AES */
 #include "wp_aes.h"
+#include "sha.h"
 
 typedef uint64_t rsa_int    [WP_RSA_MAX_KEY_WORDS ];
 typedef uint64_t rsa_half   [WP_RSA_HALF_KEY_WORDS];
