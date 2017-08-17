@@ -1608,7 +1608,7 @@ void record_message (pd p)  /* call after snprintf to ebadfbuf */
   time_t now = time (NULL);
   char ctime_buf [100];
   ctime_r (&now, ctime_buf);
-  char * nl = index (ctime_buf, '\n');
+  char * nl = strchr (ctime_buf, '\n');
   if (nl != NULL)
     *nl = '\0';  /* no newlines */
   snprintf (p->ebadbufs [idx], EBADBUFS, "%s %s", ctime_buf, ebadbuf);

@@ -365,7 +365,7 @@ static int get_members (const char * members_content, int mlen,
       exit (1);
     }
     int slen = plen;
-    char * nl = index (p, '\n');
+    char * nl = strchr (p, '\n');
     if (nl != NULL)
       slen = (int)(nl - p);
     if (s + slen > ((char *) result) + size) {
@@ -3015,13 +3015,13 @@ unsigned int get_other_keys (struct bc_key_info ** keys)
 static struct bc_key_info * find_bc_key (char * address,
                                          struct bc_key_info * keys, int nkeys)
 {
-  char * outer_index = index (address, '@');
+  char * outer_index = strchr (address, '@');
   if (outer_index == NULL)
     return NULL;
   size_t alen = outer_index - address;
   int i;
   for (i = 0; i < nkeys; i++) {
-    char * loop_index = index (keys [i].identifier, '@');
+    char * loop_index = strchr (keys [i].identifier, '@');
     if (loop_index == NULL)
       continue;  /* skip the rest of the loop; */
     size_t idlen = loop_index - keys [i].identifier;

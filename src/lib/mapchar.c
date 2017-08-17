@@ -326,11 +326,11 @@ static void aaddr_copy (char * buf, int bsize, char * in)
 /* return a value encoded by the string, or -1 in case of errors. */
 int aaddr_decode_value (char * string, int slen) 
 {
-  char * middle = index (string, '_');
+  char * middle = strchr (string, '_');
   if (middle == NULL) 
-    middle = index (string, '-');
+    middle = strchr (string, '-');
   if (middle == NULL) 
-    middle = index (string, ' ');  /* using spaces is bad form */
+    middle = strchr (string, ' ');  /* using spaces is bad form */
   if (middle == NULL) { 
     printf ("unable to decode value %s, no underscore\n", string);
     return -1;
