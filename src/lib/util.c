@@ -1221,7 +1221,7 @@ int read_file_malloc (const char * file_name, char ** content_p,
   }
   if (content_p == NULL) {  /* if we can read it, just return the size */
     if (access (file_name, R_OK) == 0)
-      return size;  /* size >= 0 */
+      return (int)size;  /* size >= 0 */
     else
       return -1;
   }

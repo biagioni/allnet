@@ -2197,7 +2197,7 @@ void incomplete_exchange_file (const char * contact, keyset k,
             *old_content = NULL;
         }
         if (new_content != NULL) {   /* create or replace file */
-          write_file (fname, new_content, strlen (new_content), 1);
+          write_file (fname, new_content, (int)strlen (new_content), 1);
         }
       }
       free (fname);

@@ -265,7 +265,7 @@ int connect_to_local (const char * program_name, const char * arg0, pd p)
   if (sock < 0) {
     /* printf ("%s(%s) unable to connect to alocal, starting allnet\n",
             program_name, arg0); */
-    exec_allnet (arg0);
+    exec_allnet (strcpy_malloc (arg0, "connect_to_local exec_allnet"));
     sleep (1);
     sock = connect_once (1);
     if (sock < 0) {
