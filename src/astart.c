@@ -850,6 +850,7 @@ static void debug_print_flags (char * name, int flags)
 }
 #endif /* DEBUG_PRINT */
 
+#ifndef ANDROID  /* android doesn't provide getifaddrs */
 static int is_bc_interface (struct ifaddrs * interface)
 {
 #ifdef DEBUG_PRINT
@@ -945,6 +946,7 @@ static int default_interfaces (char * * * interfaces_p)
   freeifaddrs (ap);
   return result;
 }
+#endif /* ANDROID */
 
 static void find_path (char * arg, char ** path, char ** program)
 {
@@ -1019,6 +1021,7 @@ int astart_main (int argc, char ** argv)
 #define NUM_INTERFACE_PIPES	2 
   char ** interfaces = NULL;
   int num_interfaces = argc - 1;
+#ifndef ANDROID  /* android doesn't provide getifaddrs */
   if ((argc > 1) && (strncmp (argv [1], "def", 3) == 0))
     num_interfaces = default_interfaces (&interfaces);
   else if (argc == 1)
@@ -1030,6 +1033,9 @@ int astart_main (int argc, char ** argv)
     for (i = 0; i < (argc - 1); i++)
       interfaces [i] = strcpy_malloc (argv [i + 1], "specific interface");
   }
+#else /* ANDROID */
+  num_interfaces = 0;
+#endif /* ANDROID */
   int num_pipes = NUM_FIXED_PIPES + NUM_INTERFACE_PIPES * num_interfaces;
   int ad_pipes = num_pipes;
 #ifndef ALLNET_USE_FORK  /* create queues for 4 of the 5 daemons and xchat */
@@ -1098,7 +1104,7 @@ int astart_main (int argc, char ** argv)
   alog = init_log ("astart");  /* now we can do logging */
   snprintf (alog->b, alog->s, "astart called with %d arguments\n", argc);
   log_print (alog);
-  for (i = 0; i < argc + 1; i++) {
+  for (i = 0; i < argc + 1; i++) {  /* argc+1 to print the final null pointer */
     snprintf (alog->b, alog->s, "argument %d: %s\n", i, argv [i]);
     log_print (alog);
   }
