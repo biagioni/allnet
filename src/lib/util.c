@@ -533,7 +533,7 @@ struct allnet_header *
     return NULL;
   if ((sbits > ADDRESS_BITS) || (dbits > ADDRESS_BITS))
     return NULL;
-  bzero (packet, psize);   /* clear all unused fields */
+  memset (packet, 0, psize);   /* clear all unused fields */
   hp->version = ALLNET_VERSION;
   hp->message_type = message_type;
   hp->hops = 0;

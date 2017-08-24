@@ -59,7 +59,7 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
   int bsize = 1;
   if (power_two > 3)
     bsize = 1 << (power_two - 3);
-  bzero (bitmap, bsize);
+  memset (bitmap, 0, bsize);
   char ** contacts = NULL;
   int ncontacts = all_contacts (&contacts);
   int icontact;
@@ -163,7 +163,7 @@ static int send_data_request (int sock, int priority, char * start)
   struct allnet_data_request * adr =
     (struct allnet_data_request *)
        (ALLNET_DATA_START (hp, hp->transport, size));
-  bzero (adr->since, sizeof (adr->since));
+  memset (adr->since, 0, sizeof (adr->since));
   if (start != NULL)
     memcpy (adr->since, start, ALLNET_TIME_SIZE);
   adr->dst_bits_power_two = BITMAP_BITS_LOG;
@@ -403,7 +403,7 @@ void do_request_and_resend (int sock)
       time_t now = time (NULL);
       char * now_string = ctime (&now);
       char start_string [20];
-      bzero (start_string, sizeof (start_string));
+      memset (start_string, 0, sizeof (start_string));
       memcpy (start_string, now_string, sizeof (start_string) - 1);
       printf ("%s: request_and_resend %d for %s(%d/%d)/%d(%d/%d)\n",
               start_string, r,
@@ -1637,7 +1637,7 @@ int create_contact_send_key (int sock, const char * contact,
   if (num_keysets (contact) < 0) {
     if (abits > ADDRESS_BITS)
       abits = ADDRESS_BITS;
-    bzero (addr, ADDRESS_SIZE);
+    memset (addr, 0, ADDRESS_SIZE);
     random_bytes ((char *) addr, (abits + 7) / 8);
     kset = create_contact (contact, 4096, 1, NULL, 0, addr, abits, NULL, 0);
     if (kset < 0) {

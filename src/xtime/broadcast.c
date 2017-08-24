@@ -65,7 +65,7 @@ static void broadcast (int sock, char * data, int dsize, int hops,
                        struct allnet_log * log)
 {
   static char buffer [ALLNET_MTU];
-  bzero (buffer, sizeof (buffer));
+  memset (buffer, 0, sizeof (buffer));
   struct allnet_header * hp =
     init_packet (buffer, sizeof (buffer), ALLNET_TYPE_CLEAR, hops,
                  ALLNET_SIGTYPE_NONE, source, sbits, dest, dbits, NULL, NULL);

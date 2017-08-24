@@ -445,9 +445,9 @@ int main (int argc, char ** argv)
      17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32};
 
   /* ECBVarTxt256.rsp, test 1, the key is all zeros */
-  bzero (key, sizeof (key));
+  memset (key, 0, sizeof (key));
   char data [WP_AES_BLOCK_SIZE];
-  bzero (data, sizeof (data));
+  memset (data, 0, sizeof (data));
   data [0] = 0x80;
   char result [WP_AES_BLOCK_SIZE];
   char expected [] = { 0xdd, 0xc6, 0xbf, 0x79, 0x0c, 0x15, 0x76, 0x0d,

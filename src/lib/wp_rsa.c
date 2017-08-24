@@ -778,7 +778,7 @@ int wp_rsa_generate_key_pair_e (int nbits, wp_rsa_key_pair * key, long int e,
     }
     if (! do_over) {
       char test [WP_RSA_MAX_KEY_BYTES];
-      bzero (test, sizeof (test));
+      memset (test, 0, sizeof (test));
       test [nbits / 8 - 1] = 99;
       char testc [WP_RSA_MAX_KEY_BYTES];   /* cipher */
       char testp [WP_RSA_MAX_KEY_BYTES];   /* deciphered plaintext */

@@ -335,7 +335,7 @@ void sha512_bytes (const char * data, int dsize, char * result, int rsize)
     memcpy (result, sha, rsize);
   } else {
     memcpy (result, sha, SHA512_SIZE);
-    bzero (result + SHA512_SIZE, rsize - SHA512_SIZE);
+    memset (result + SHA512_SIZE, 0, rsize - SHA512_SIZE);
   }
 }
 
@@ -523,7 +523,7 @@ void sha1_bytes (const char * data, int dsize, char * result, int rsize)
     memcpy (result, sha, rsize);
   } else {
     memcpy (result, sha, SHA1_SIZE);
-    bzero (result + SHA1_SIZE, rsize - SHA1_SIZE);
+    memset (result + SHA1_SIZE, 0, rsize - SHA1_SIZE);
   }
 }
 
@@ -546,7 +546,7 @@ void sha512hmac (const char * data, int dsize, const char * key, int ksize,
                  char * result)
 {
   char key_copy [SHA512_BLOCK_SIZE];
-  bzero (key_copy, sizeof (key_copy));
+  memset (key_copy, 0, sizeof (key_copy));
   if (ksize <= SHA512_BLOCK_SIZE) {
     memcpy (key_copy, key, ksize);
   } else {

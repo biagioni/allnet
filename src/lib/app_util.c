@@ -159,7 +159,7 @@ static int connect_once (int print_error)
 #ifndef ANDROID  /* android doesn't support initstate */
 static void read_n_bytes (int fd, char * buffer, int bsize)
 {
-  bzero (buffer, bsize);
+  memset (buffer, 0, bsize);
   int i;
   for (i = 0; i < bsize; i++) {
     if (read (fd, buffer + i, 1) != 1) {
@@ -177,7 +177,7 @@ static void weak_seed_rng (char * buffer, int bsize)
 {
   char results [12]; 
   char rcopy [12]; 
-  bzero (results, sizeof (results));
+  memset (results, 0, sizeof (results));
 
   /* the number of microseconds in the current hour or so should give
    * 4 fairly random bytes -- actually use slightly more than an hour,

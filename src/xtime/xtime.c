@@ -220,7 +220,7 @@ static void announce (time_t interval, int sock,
                           are on the same second */
 
   static char buffer [ALLNET_MTU];
-  bzero (buffer, sizeof (buffer));
+  memset (buffer, 0, sizeof (buffer));
 
   int blen = make_announcement (buffer, sizeof (buffer),
                                 announce_time - ALLNET_Y2K_SECONDS_IN_UNIX,

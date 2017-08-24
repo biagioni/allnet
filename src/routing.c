@@ -375,7 +375,7 @@ static void load_peer (struct addr_info * peer, const char * line,
     return;
   line = end + 8;
   char address [ADDRESS_SIZE];
-  bzero (address, sizeof (address));
+  memset (address, 0, sizeof (address));
   line = read_buffer (line, (nbits + 7) / 8, address, sizeof (address));
   if (memcmp (line, ", v ", 4) != 0)
     return;
@@ -404,7 +404,7 @@ static void load_peer (struct addr_info * peer, const char * line,
   char storage [sizeof (struct in6_addr)];
   if (inet_pton (af, line, storage) != 1)
     return;
-  bzero (((char *) (peer)), sizeof (struct addr_info));
+  memset (((char *) (peer)), 0, sizeof (struct addr_info));
   peer->ip.ip.s6_addr [10] = 0xff;
   peer->ip.ip.s6_addr [11] = 0xff;
   if (ipversion == 4)
@@ -433,9 +433,9 @@ static void load_peers (int only_if_newer)
     return;
   peers_file_time = mtime;
   /* an unused entry has nbits set to 0 -- might as well clear everything */
-  bzero ((char *) (peers), sizeof (peers));
-  bzero ((char *) (pings), sizeof (pings));
-  bzero (my_address, sizeof (my_address));
+  memset ((char *) (peers), 0, sizeof (peers));
+  memset ((char *) (pings), 0, sizeof (pings));
+  memset (my_address, 0, sizeof (my_address));
   char line [1000];
   int fd = open_read_config ("adht", "my_id", 1);
   if (fd < 0) {
@@ -1006,7 +1006,7 @@ int init_own_routing_entries (struct addr_info * entry, int max,
 {
   int result = 0;
   if (entry != NULL)
-    bzero (entry, sizeof (struct addr_info) * max);
+    memset (entry, 0, sizeof (struct addr_info) * max);
 
   struct ifaddrs * ifap;
   if (getifaddrs (&ifap) != 0) {

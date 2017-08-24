@@ -163,10 +163,9 @@ int trace_main (int argc, char ** argv)
   }
 
   unsigned char address [ADDRESS_SIZE];
-  bzero (address, sizeof (address));  /* set any unused part to all zeros */
+  memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
   int abits = 0;
   if (argc > optind) {   /* use the address specified on the command line */
-    bzero (address, sizeof (address));  /* set unused part to all zeros */
     abits = get_address (argv [optind], address, sizeof (address));
     if (abits <= 0) {
       printf ("argc %d/%d/%s, invalid number of bits, should be > 0\n",

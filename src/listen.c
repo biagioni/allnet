@@ -438,7 +438,7 @@ static void listen_get_reservation_with_lock_held (struct addr_info * ai,
   unsigned long long int oldest = now; /* should be nothing older than now */
   int use_index = 0;
   struct addr_info zero;
-  bzero (&zero, sizeof (zero));
+  memset (&zero, 0, sizeof (zero));
   for (i = 0; i < info->max_num_fds; i++) {
     if (same_ai (info->reserved + i, &zero)) {
       use_index = i;
@@ -459,7 +459,7 @@ static void listen_clear_reservation_with_lock_held (struct addr_info * ai,
   int i;
   for (i = 0; i < info->max_num_fds; i++) {
     if (same_ai (info->reserved + i, ai)) {
-      bzero (info->reserved + i, sizeof (struct addr_info));
+      memset (info->reserved + i, 0, sizeof (struct addr_info));
       info->reservation_times [i] = 0;
     }
   }

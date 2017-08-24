@@ -114,8 +114,8 @@ static void init_data ()
   data.my_addr_bits = 0;
   data.dest_addr_bits = 0;
   /* set any unused address parts to all zeros */
-  bzero (data.my_address, ADDRESS_SIZE);
-  bzero (data.dest_address, ADDRESS_SIZE);
+  memset (data.my_address, 0, ADDRESS_SIZE);
+  memset (data.dest_address, 0, ADDRESS_SIZE);
 }
 
 /**
@@ -1091,7 +1091,7 @@ static int init_audio (int is_encoder)
 
   } else {
     /* decoder */
-    bzero (data.stream_id, STREAM_ID_SIZE);
+    memset (data.stream_id, 0, STREAM_ID_SIZE);
     data.dec.stream_id_set = 0;
     data.dec.voa_source = gst_element_factory_make ("appsrc", "voa_source");
 #ifdef RTP

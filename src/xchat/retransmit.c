@@ -74,7 +74,7 @@ static char * create_chat_control_request (const char * contact, char * missing,
   if (request == NULL)
     return NULL;
 
-  bzero (request, size);
+  memset (request, 0, size);
   struct chat_control_request * ccrp = (struct chat_control_request *) request;
   writeb32u (ccrp->app_media.app, XCHAT_ALLNET_APP_ID);
   writeb32u (ccrp->app_media.media, ALLNET_MEDIA_DATA);
@@ -341,7 +341,7 @@ static void resend_message (uint64_t seq, const char * contact,
   record_resend (seq, contact, k);
 #endif /* LIMIT_RETRANSMIT_RATE */
   char * message = malloc_or_fail (size + CHAT_DESCRIPTOR_SIZE, "resend_msg");
-  bzero (message, CHAT_DESCRIPTOR_SIZE);
+  memset (message, 0, CHAT_DESCRIPTOR_SIZE);
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
   memcpy (cdp->message_ack, message_ack, MESSAGE_ID_SIZE);
   writeb64u (cdp->counter, seq);

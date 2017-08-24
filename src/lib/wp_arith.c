@@ -55,7 +55,7 @@ void wp_init (int nbits, uint64_t * n, int value)
     my_assert (0, "value >= 0 in wp_init");
   }
   int nwords = NUM_WORDS (nbits);
-  bzero (n, nbits / 8 - sizeof (uint64_t));
+  memset (n, 0, nbits / 8 - sizeof (uint64_t));
   n [nwords - 1] = value;
 }
 
@@ -114,7 +114,7 @@ void wp_extend (int new_bits, uint64_t * new,
   int old_words = NUM_WORDS (old_bits);
   int new_words = NUM_WORDS (new_bits);
   int diff = new_words - old_words;
-  bzero (new, diff * sizeof (uint64_t));
+  memset (new, 0, diff * sizeof (uint64_t));
   memcpy (new + diff, old, old_bits / 8);
 }
 
@@ -544,7 +544,7 @@ void wp_multiply (int rbits, uint64_t * res,
   int vbytes = vbits / 8;
   
   my_assert (rwords == 2 * vwords, "wp_multiply rwords != 2 * vwords");
-  bzero (res, vbytes);
+  memset (res, 0, vbytes);
   memcpy (res + vwords, v1, vbytes);
   int i;
   for (i = 0; i < vbits; i++) {
@@ -937,7 +937,7 @@ static void init_shifted_montgomery (int nbits_plus, uint64_t * shifted,
 {
   int nwords = NUM_WORDS (nbits);
   int nwords_plus = NUM_WORDS (nbits_plus);
-  bzero (shifted, nwords_plus * sizeof (uint64_t));
+  memset (shifted, 0, nwords_plus * sizeof (uint64_t));
   memcpy (shifted + 1, mod, nwords * sizeof (uint64_t));
   size_t size = nwords_plus * sizeof (uint64_t);
   uint64_t * prev = shifted;
@@ -1255,7 +1255,7 @@ void wp_exp_mod_montgomery (int nbits, uint64_t * res, const uint64_t * base,
 static void my_init (int nbits, uint64_t * n, uint64_t value)
 {
   int nwords = NUM_WORDS (nbits);
-  bzero (n, nbits / 8 - sizeof (uint64_t));
+  memset (n, 0, nbits / 8 - sizeof (uint64_t));
   n [nwords - 1] = value;
 }
 

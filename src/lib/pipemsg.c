@@ -68,7 +68,7 @@ pd init_pipe_descriptor (struct allnet_log * log)
   result->log = log;
   pthread_mutex_init (&(result->receive_mutex), NULL);
 #ifdef DEBUG_EBADFD
-  bzero (&(result->ebadbufs [0] [0]), sizeof (result->ebadbufs));
+  memset (&(result->ebadbufs [0] [0]), 0, sizeof (result->ebadbufs));
   result->ebadbufindex = 0;
   result->ebadbufcount = 0;
 #endif /* DEBUG_EBADFD */
@@ -1268,7 +1268,7 @@ static void clear_addr (struct sockaddr * sa, socklen_t * salen)
 {
   if (salen != NULL) {
     if ((sa != NULL) && (*salen > 0)) {
-      bzero (sa, *salen);
+      memset (sa, 0, *salen);
       sa->sa_family = -1; /* debug */
     }
     *salen = 0;

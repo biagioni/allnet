@@ -340,7 +340,7 @@ static int send_udp_addr (int udp, char * message, unsigned int msize,
                           struct internet_addr * addr)
 {
   struct sockaddr_storage sas;
-  bzero (&sas, sizeof (sas));
+  memset (&sas, 0, sizeof (sas));
   struct sockaddr     * sap  = (struct sockaddr     *) (&sas);
   if (! ia_to_sockaddr (addr, sap, NULL)) {
     snprintf (alog->b, alog->s,
@@ -824,7 +824,7 @@ static void create_connect_thread (struct listen_info * info,
 {
   struct connect_thread_arg * arg =
     malloc_or_fail (sizeof (struct connect_thread_arg), "connect_thread");
-  bzero (arg, sizeof (struct connect_thread_arg));
+  memset (arg, 0, sizeof (struct connect_thread_arg));
   arg->address [0] = (listener_index / 2) << (8 - LISTEN_BITS);
   /* printf ("index %02x, new address %02x\n", listener_index,
           arg->address [0] & 0xff); */
@@ -966,9 +966,9 @@ void send_keepalive (void * udp_cache, int udp,
 {
   unsigned int max_size = ALLNET_MGMT_HEADER_SIZE (0xff);
   char keepalive [ALLNET_MTU];
-  bzero (keepalive, max_size);
+  memset (keepalive, 0, max_size);
   unsigned char address [ADDRESS_SIZE];
-  bzero (address, sizeof (address));
+  memset (address, 0, sizeof (address));
   struct allnet_header * hp =
     init_packet (keepalive, sizeof (keepalive), ALLNET_TYPE_MGMT, 1,
                  ALLNET_SIGTYPE_NONE, address, 0, address, 0, NULL, NULL);
@@ -1047,7 +1047,7 @@ static void send_dht_ping_response (struct sockaddr * sap, socklen_t sasize,
 #endif /* DEBUG_PRINT */
   log_print (alog);
   unsigned char message [ADHT_MAX_PACKET_SIZE];
-  bzero (message, sizeof (message));
+  memset (message, 0, sizeof (message));
   struct allnet_header * hp =
     init_packet ((char *) message, sizeof (message), ALLNET_TYPE_MGMT, 1,
                  ALLNET_SIGTYPE_NONE, in_hp->destination, in_hp->dst_nbits,

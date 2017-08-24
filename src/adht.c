@@ -86,7 +86,7 @@ static void ping_all_pending (int sock, unsigned char * my_address, int nbits)
   }
   int t = hp->transport;
   char * message = (char *) hp;
-  bzero (message + ALLNET_SIZE (t), msize - ALLNET_SIZE (t));
+  memset (message + ALLNET_SIZE (t), 0, msize - ALLNET_SIZE (t));
   struct allnet_mgmt_header * mhp = 
     (struct allnet_mgmt_header *) (message + ALLNET_SIZE (t));
   struct allnet_mgmt_dht * mdp = 

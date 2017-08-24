@@ -151,7 +151,7 @@ void allnet_rsa_null_pubkey (allnet_rsa_pubkey * rsa)
 #ifdef HAVE_OPENSSL
   *rsa = NULL;
 #else /* HAVE_OPENSSL */
-  bzero (rsa, sizeof (*rsa));
+  memset (rsa, 0, sizeof (*rsa));
 #endif /* HAVE_OPENSSL */
 }
 
@@ -160,7 +160,7 @@ void allnet_rsa_null_prvkey (allnet_rsa_prvkey * rsa)
 #ifdef HAVE_OPENSSL
   *rsa = NULL;
 #else /* HAVE_OPENSSL */
-  bzero (rsa, sizeof (*rsa));
+  memset (rsa, 0, sizeof (*rsa));
 #endif /* HAVE_OPENSSL */
 }
 

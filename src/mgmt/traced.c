@@ -39,7 +39,7 @@ static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
                               int hops, struct timeval * now,
                               unsigned char * my_address, int abits, int local)
 {
-  bzero (new_entry, sizeof (struct allnet_mgmt_trace_entry));
+  memset (new_entry, 0, sizeof (struct allnet_mgmt_trace_entry));
   /* assume accuracy is 1ms, or 3 decimal digits,
    * unless the hop count is 0, in which case accuracy is 1us or 6 digits */
   new_entry->precision = 64 + 3 + (local ? 3 : 0);
@@ -429,7 +429,7 @@ void traced_thread (char * pname, int rpipe, int wpipe)
 {
 printf ("traced_thread (%s), sockets %d %d\n", pname, rpipe, wpipe);
   unsigned char address [ADDRESS_SIZE];
-  bzero (address, sizeof (address));  /* set any unused part to all zeros */
+  memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
   unsigned int abits = 16;
   get_my_addr (address, sizeof (address), alog);
   if (alog == NULL)
@@ -447,7 +447,7 @@ printf ("traced_thread (%s), sockets %d %d\n", pname, rpipe, wpipe);
 void traced_main (char * pname)
 {
   unsigned char address [ADDRESS_SIZE];
-  bzero (address, sizeof (address));  /* set any unused part to all zeros */
+  memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
   unsigned int abits = 16;
   get_my_addr (address, sizeof (address), alog);
 

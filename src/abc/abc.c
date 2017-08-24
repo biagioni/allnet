@@ -165,12 +165,12 @@ static void term_handler (int sig) {
 static void clear_nonces (int mine, int other)
 {
   if (mine) {
-    bzero (my_beacon_rnonce, NONCE_SIZE);
-    bzero (my_beacon_snonce, NONCE_SIZE);
+    memset (my_beacon_rnonce, 0, NONCE_SIZE);
+    memset (my_beacon_snonce, 0, NONCE_SIZE);
   }
   if (other) {
-    bzero (other_beacon_rnonce, NONCE_SIZE);
-    bzero (other_beacon_snonce, NONCE_SIZE);
+    memset (other_beacon_rnonce, 0, NONCE_SIZE);
+    memset (other_beacon_snonce, 0, NONCE_SIZE);
   }
 }
 
@@ -253,7 +253,7 @@ static void send_beacon (int awake_ms)
 {
   char buf [ALLNET_BEACON_SIZE (0)];
   int size = sizeof (buf);
-  bzero (buf, size);
+  memset (buf, 0, size);
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buf + ALLNET_SIZE (0));
   struct allnet_mgmt_beacon * mbp =
@@ -896,7 +896,7 @@ static void main_loop (const char * interface, int rpipe, int wpipe)
   pd p = init_pipe_descriptor (alog);
   add_pipe (p, rpipe, "abc.c main_loop");  /* tell pipemsg to receive from ad */
   if (iface->iface_is_managed)
-    bzero (zero_nonce, NONCE_SIZE);
+    memset (zero_nonce, 0, NONCE_SIZE);
   restart = 1;                /* make sure we start the interfaces */
   while (! terminate) {
     if ((! restart) || ((restart) && (start_interface (interface)))) {

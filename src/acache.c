@@ -198,11 +198,11 @@ static void init_acks (int fd, unsigned int max_acks)
   ack_space = max_acks;
   acks = malloc_or_fail (max_size, "acache init_acks");
   /* if file is smaller than max_size, the last part should be zeros */
-  bzero (acks, max_size);
+  memset (acks, 0, max_size);
   read_ack_data (fd);
   /* find the last non-zero ack position */
   struct ack_entry empty;
-  bzero (&empty, sizeof (struct ack_entry));
+  memset (&empty, 0, sizeof (struct ack_entry));
   read_ack_data (fd);
   /* if all filled, we start at random */
   save_ack_pos = (int)random_int (0, max_acks - 1);
@@ -232,7 +232,7 @@ static int ack_add (char * ack, char * id, int ack_fd)
   memcpy (acks [save_ack_pos].message_id , id , MESSAGE_ID_SIZE);
   /* clear the next location, to mark it in the file */
   int next_ack = (save_ack_pos + 1) % ack_space;
-  bzero (&(acks [next_ack]), sizeof (struct ack_entry));
+  memset (&(acks [next_ack]), 0, sizeof (struct ack_entry));
   save_ack_data (ack_fd, 0);
   save_ack_pos = next_ack;
   return 1;
@@ -299,7 +299,7 @@ static void build_request_details (char * message, int msize,
     int max_bits = bsize * 8;
     result->since = drp->since;
     char empty_time [ALLNET_TIME_SIZE];
-    bzero (empty_time, sizeof (empty_time));
+    memset (empty_time, 0, sizeof (empty_time));
     if (memcmp (empty_time, result->since, sizeof (empty_time)) == 0)
       result->since = NULL;  /* time is zero, so don't use in comparisons */
     result->dpower_two = 0;
@@ -780,7 +780,7 @@ static void hash_add_message (char * message, unsigned int msize, char * id,
   struct hash_entry * entry = message_hash_free;
   message_hash_free = entry->next_by_hash;
   /* initialize the entry */
-  bzero (entry, sizeof (struct hash_entry));
+  memset (entry, 0, sizeof (struct hash_entry));
   memcpy (entry->id, id, MESSAGE_ID_SIZE);
   entry->file_position = position;
   entry->src_nbits = hp->src_nbits;
@@ -890,7 +890,7 @@ static int64_t assign_matching (struct hash_entry * matching, int fd, int fsize,
   if (msize != NULL) *msize = 0;
   if (id_off != NULL) *id_off = 0;
   if (priority != NULL) *priority = 0;
-  if (time != NULL) bzero (time, ALLNET_TIME_SIZE);
+  if (time != NULL) memset (time, 0, ALLNET_TIME_SIZE);
   if (matching == NULL)
     return -1;
   /* static makes it OK to set message to point into here */
@@ -1392,7 +1392,7 @@ static void remove_cached_message (int fd, unsigned int max_size, char * id,
                     alog->b, alog->s);
   log_print (alog);
   /* mark it as erased, but keep the size so we can later skip */
-  bzero (buffer, fsize);
+  memset (buffer, 0, fsize);
   writeb16 (buffer + MESSAGE_ENTRY_HEADER_MSIZE_OFFSET, msize);
   write_at_pos (fd, buffer, fsize, position);
   if (time_to_save (&last_msg_time, &num_msg_saves, 0))
@@ -1514,7 +1514,7 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
   if (ack_space <= 0)
     return 0;
   char packet [ALLNET_MTU];
-  bzero (packet, sizeof (packet));
+  memset (packet, 0, sizeof (packet));
   struct allnet_header * reply =
     init_packet (packet, sizeof (packet), ALLNET_TYPE_ACK, hp->hops + 1,
                  ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
@@ -1528,7 +1528,7 @@ static int send_outstanding_acks (struct allnet_header * hp, int sock,
   char * message_acks = packet + hsize;
   /* add as many acks as possible, beginning from a random starting point. */
   unsigned char zero [MESSAGE_ID_SIZE];
-  bzero (zero, sizeof (zero));
+  memset (zero, 0, sizeof (zero));
   int count = 0;
   int ack_index = (int)random_int (0, ack_space - 1); /* index into ack table */
   int initial_ack_index = ack_index;
@@ -1631,7 +1631,7 @@ static int respond_to_request (int fd, unsigned int max_size, char * in_message,
 #ifdef HASH_RANDOM_MATCH
 #define BF_SIZE 		10000
   unsigned char bloom [BF_SIZE];
-  bzero (bloom, BF_SIZE);
+  memset (bloom, 0, BF_SIZE);
   int bbits = BF_SIZE * 8;
 #undef BF_SIZE
 #endif /* HASH_RANDOM_MATCH */
@@ -2085,7 +2085,7 @@ void print_caches (int print_msgs, int print_acks)
   printf ("cache sizes are %d for messages, %d for acks\n",
           max_msg_size, max_acks);
   char zero [MESSAGE_ID_SIZE];
-  bzero (zero, sizeof (zero));
+  memset (zero, 0, sizeof (zero));
   if (print_msgs > 0) {
     int count = 0;
     int ecount = 0;

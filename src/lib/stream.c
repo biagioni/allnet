@@ -47,7 +47,7 @@ void allnet_stream_init (struct allnet_stream_encryption_state * state,
 static void update_counter (char * bytes, uint64_t value)
 {
   int write_offset = WP_AES_BLOCK_SIZE - sizeof (uint64_t);
-  bzero (bytes, write_offset);
+  memset (bytes, 0, write_offset);
   writeb64 (bytes + write_offset, value);
 }
 
@@ -107,7 +107,7 @@ int allnet_stream_encrypt_buffer (struct allnet_stream_encryption_state * sp,
   if (sp->counter_size > 0) {
     char send_counter_bytes [sizeof (uint64_t)];
     writeb64 (send_counter_bytes, send_counter);
-    bzero (result + tsize, sp->counter_size);
+    memset (result + tsize, 0, sp->counter_size);
     unsigned int num_bytes = sp->counter_size;
     char * send_pointer = result + tsize;
     if (num_bytes > sizeof (uint64_t)) {
@@ -125,7 +125,7 @@ int allnet_stream_encrypt_buffer (struct allnet_stream_encryption_state * sp,
     sha512hmac (result, written, sp->secret, ALLNET_STREAM_SECRET_SIZE, hmac);
     int num_bytes = sp->hash_size;
     if (sp->hash_size > SHA512_SIZE) {
-      bzero (result + written, sp->hash_size - SHA512_SIZE);
+      memset (result + written, 0, sp->hash_size - SHA512_SIZE);
       written += sp->hash_size - SHA512_SIZE;
       num_bytes = SHA512_SIZE;
     }
@@ -186,7 +186,7 @@ int allnet_stream_decrypt_buffer (struct allnet_stream_encryption_state * sp,
   uint64_t counter = sp->counter * WP_AES_BLOCK_SIZE + sp->block_offset;
   if (sp->counter_size > 0) {
     char counter_bytes [sizeof (uint64_t)];
-    bzero (counter_bytes, sizeof (counter_bytes));
+    memset (counter_bytes, 0, sizeof (counter_bytes));
     unsigned int num_bytes = sp->counter_size;
     if (num_bytes > sizeof (uint64_t))
       num_bytes = sizeof (uint64_t);
@@ -237,8 +237,8 @@ print_buffer (secret, sizeof (secret), "secret", 35, 1);
     original [i] = i + 100;
 #define NUM_LOOPS	1000
   for (i = 0; i < NUM_LOOPS; i++) {
-    bzero (transmitted, sizeof (transmitted));
-    bzero (decoded, sizeof (decoded));
+    memset (transmitted, 0, sizeof (transmitted));
+    memset (decoded, 0, sizeof (decoded));
     int esize =
       allnet_stream_encrypt_buffer (&sender, original, DATA_SIZE,
                                     transmitted, sizeof (transmitted));

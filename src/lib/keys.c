@@ -238,7 +238,7 @@ static char * s_to_bytes (char * hex, char * result, int rbytes)
 
 static int read_bytes_file (char * fname, char * bytes, int nbytes)
 {
-  bzero (bytes, nbytes);
+  memset (bytes, 0, nbytes);
   char * data;
   int size = read_file_malloc (fname, &data, 0);
   if (size <= 0)
@@ -257,7 +257,7 @@ static int read_address_file (const char * basename, const char * name,
                               struct key_address * addr)
 {
   char * path = strcat3_malloc (basename, "/", name, "read_address_file name");
-  bzero (addr->address, ADDRESS_SIZE);
+  memset (addr->address, 0, ADDRESS_SIZE);
   addr->nbits = 0;
   char * bytes = NULL;
   int size = read_file_malloc (path, &bytes, 0);
@@ -290,7 +290,7 @@ static int read_address_file (const char * basename, const char * name,
 static int read_symmetric_state (char * fname,
                                  struct allnet_stream_encryption_state * state)
 {
-  bzero (state, sizeof (struct allnet_stream_encryption_state));
+  memset (state, 0, sizeof (struct allnet_stream_encryption_state));
   char * data;
   int size = read_file_malloc (fname, &data, 0);
   if (size <= 0) return 0;
@@ -489,7 +489,7 @@ static int read_key_info (const char * path, const char * file,
     if (n >= SYMMETRIC_KEY_SIZE) {
       info->has_symmetric_key = 1;
     } else if (n < SYMMETRIC_KEY_SIZE) {
-      bzero (info->symmetric_key, SYMMETRIC_KEY_SIZE);
+      memset (info->symmetric_key, 0, SYMMETRIC_KEY_SIZE);
       if ((n < SYMMETRIC_KEY_SIZE) && (n > 0))
         printf ("found symmetric key in %s, but lenght %d < minimum %d\n",
                 name, n, SYMMETRIC_KEY_SIZE);
@@ -2501,7 +2501,7 @@ static void init_key_info (char * config_dir, char * file,
                            struct bc_key_info * key, char * phrase,
                            int expect_private)
 {
-  bzero (key, sizeof (struct bc_key_info));  /* in case of error return */
+  memset (key, 0, sizeof (struct bc_key_info));  /* in case of error return */
 
   char * mapped;
   int mlen = map_string (phrase, &mapped);
@@ -2704,7 +2704,7 @@ static char * make_address (allnet_rsa_pubkey key, int key_bits,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
   char * padded = malloc_or_fail (rsa_size, "make_address padded");
-  bzero (padded, rsa_size);
+  memset (padded, 0, rsa_size);
   memcpy (padded + (rsa_size - msize), mapped, msize);
   free (mapped);
   int esize = allnet_rsa_encrypt (key, padded, rsa_size, encrypted, rsa_size,
@@ -2946,7 +2946,7 @@ unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
  * in this application we want the remote system to be able to perform the
  * same encryption and give the same result, so no padding is appropriate */
   char * padded = malloc_or_fail (rsa_size, "verify_bc_key padded");
-  bzero (padded, rsa_size);
+  memset (padded, 0, rsa_size);
   memcpy (padded + (rsa_size - msize), mapped, msize);
   free (mapped);
   int esize = allnet_rsa_encrypt (rsa, padded, rsa_size, encrypted, rsa_size,

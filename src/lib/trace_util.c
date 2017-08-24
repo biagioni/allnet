@@ -136,7 +136,7 @@ static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
                               int hops, struct timeval * now,
                               unsigned char * my_address, int abits)
 {
-  bzero (new_entry, sizeof (struct allnet_mgmt_trace_entry));
+  memset (new_entry, 0, sizeof (struct allnet_mgmt_trace_entry));
   /* assume accuracy is 1ms, or 3 decimal digits */
   new_entry->precision = 64 + 3;
   writeb64u (new_entry->seconds, now->tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX);
@@ -653,7 +653,7 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
                      int nhops, int no_intermediates, int match_only, int wide)
 {
   unsigned char address [ADDRESS_SIZE];
-  bzero (address, sizeof (address));  /* set any unused part to all zeros */
+  memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
   int abits = 0;
   if ((dest != NULL) && (strlen (dest) > 0)) {
     abits = get_address (dest, address, sizeof (address));
@@ -690,7 +690,7 @@ void trace_pipe (int pipe, struct allnet_queue * queue,
                  int match_only, int wide)
 {
   unsigned char address [ADDRESS_SIZE];
-  bzero (address, sizeof (address));  /* set any unused part to all zeros */
+  memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
   int abits = 0;
   if ((dest != NULL) && (strlen (dest) > 0)) {
     abits = get_address (dest, address, sizeof (address));

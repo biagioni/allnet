@@ -388,7 +388,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
   if (tz != NULL)
     *tz = 0;
   if (message_ack != NULL)
-    bzero (message_ack, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, MESSAGE_ID_SIZE);
   if (message != NULL)
     *message = NULL;
   if (msize != NULL)
@@ -409,7 +409,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
   char * mp = record + strlen (PATTERN_SENT);
   if ((message_ack != NULL) &&
       (! parse_hex (message_ack, mp, MESSAGE_ID_SIZE))) {
-    bzero (message_ack, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, MESSAGE_ID_SIZE);
     return MSG_TYPE_DONE;
   }
   if (type == MSG_TYPE_ACK) /* should all be on the first line */
@@ -418,7 +418,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
    * of second_line should still have worked */
 
   if (! parse_seq_time (second_line, seq, time, tz, rcvd_time)) {
-    bzero (message_ack, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;
     if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
@@ -426,14 +426,14 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
 
   char * user_data = strchr (second_line, '\n');
   if (user_data == NULL) {
-    bzero (message_ack, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;
     if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
   }
   user_data++;
   if (*user_data != ' ') {
-    bzero (message_ack, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;
     if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
