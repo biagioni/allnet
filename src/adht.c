@@ -303,7 +303,9 @@ void adht_main (char * pname)
     int found = receive_pipe_message_any (p, timeout, &message, &pipe, &pri);
     if (found < 0) {
       /* printf ("adht: pipe closed, exiting\n"); */
+#ifndef ANDROID   /* android doesn't have pthread_cancel */
       pthread_cancel (send_thread);
+#endif /* ANDROID */
       return;
     }
     /* found >= 0 */

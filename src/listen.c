@@ -138,10 +138,14 @@ static void * listen_loop (void * arg)
   log_print (alog);
 
   /* allow the main thread to kill this thread at any time */
+#ifndef ANDROID
+#ifdef PTHREAD_CANCEL_ASYNCHRONOUS
   int notinteresting;
   pthread_setcanceltype (PTHREAD_CANCEL_ASYNCHRONOUS, &notinteresting);
-  int failure_count = 0;
+#endif /* PTHREAD_CANCEL_ASYNCHRONOUS */
+#endif /* ANDROID */
 
+  int failure_count = 0;
   while (1) {   /* repeat, in case the listen socket is closed, e.g. in iOS */
     if (version == 4)
       usleep (100 * 1000);  /* give IPv6 a chance to bind the port first */
@@ -303,7 +307,9 @@ snprintf (ebadbuf, EBADBUFS,
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
     close (info->listen_fd6);
+#ifndef ANDROID   /* android doesn't have pthread_cancel */
     pthread_cancel (info->thread6);
+#endif /* ANDROID */
   }
   if (info->listen_fd4 >= 0) {
 #ifdef DEBUG_EBADFD
@@ -312,7 +318,9 @@ snprintf (ebadbuf, EBADBUFS,
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
     close (info->listen_fd4);
+#ifndef ANDROID   /* android doesn't have pthread_cancel */
     pthread_cancel (info->thread4);
+#endif /* ANDROID */
   }
   FREE_NULL (info->fds);
   FREE_NULL (info->peers);

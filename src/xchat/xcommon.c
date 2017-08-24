@@ -247,7 +247,9 @@ void xchat_end (int sock)
 {
   close (sock);
 #ifdef HAVE_REQUEST_THREAD
+#ifndef ANDROID   /* android doesn't have pthread_cancel */
   pthread_cancel (request_thread);
+#endif /* ANDROID */
 #endif /* HAVE_REQUEST_THREAD */
 }
 

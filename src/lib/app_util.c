@@ -156,6 +156,7 @@ static int connect_once (int print_error)
   return -1;
 }
 
+#ifndef ANDROID  /* android doesn't support initstate */
 static void read_n_bytes (int fd, char * buffer, int bsize)
 {
   bzero (buffer, bsize);
@@ -233,6 +234,7 @@ static void seed_rng ()
   unsigned int seed = (unsigned int)readb32 (buffer);
   initstate (seed, state, sizeof (state));
 }
+#endif /* ANDROID */
 
 #ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */
 /* need to keep reading and emptying the socket buffer, otherwise
@@ -260,7 +262,9 @@ static void * receive_ignore (void * arg)
 /* arg0 is the first argument that main gets -- useful for finding binaries */
 int connect_to_local (const char * program_name, const char * arg0, pd p)
 {
+#ifndef ANDROID
   seed_rng ();
+#endif /* ANDROID */
   int sock = connect_once (0);
   if (sock < 0) {
     /* printf ("%s(%s) unable to connect to alocal, starting allnet\n",
