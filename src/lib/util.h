@@ -290,7 +290,7 @@ extern int binary_log (unsigned long long int value);
 
 /* in case of error on iOS, don't kill the process, only the thread (since
  * in iOS, we only have one process */
-#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+#if defined(__IPHONE_OS_VERSION_MIN_REQUIRED) || defined(ANDROID)
 #include <pthread.h>
 #define exit(n)        pthread_exit(NULL)
 #define ALLNET_USE_THREADS
