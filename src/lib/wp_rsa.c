@@ -857,7 +857,7 @@ static int get_byte (int nbits, uint64_t * dest, int offset)
 /* documented in appendix B.2.1 of RFC 3447 */
 static void mgf1_sha1_mask (char * seed, int ssize, char * result, int rsize)
 {
-  bzero (result, rsize);
+  memset (result, 0, rsize);
   if (ssize > WP_RSA_MAX_KEY_BYTES) {
     printf ("error: seed size %d, max %d\n", ssize, WP_RSA_MAX_KEY_BYTES);
     exit (1);   /* a serious error in the caller */
@@ -868,7 +868,7 @@ static void mgf1_sha1_mask (char * seed, int ssize, char * result, int rsize)
   int i;
   for (i = 0; i < limit; i++) {
     char concat [WP_RSA_MAX_KEY_BYTES + 4 /* 32-bit integer size */ ];
-    bzero (concat, sizeof (concat));
+    memset (concat, 0, sizeof (concat));
     memcpy (concat, seed, ssize);
     concat [ssize    ] = (i >> 24) & 0xff;
     concat [ssize + 1] = (i >> 16) & 0xff;
@@ -958,7 +958,7 @@ static int rsa_pad (int nbits, uint64_t * result, int rsize,
     }
     /* step 2.c: concatenate lhash, PS, a byte of 1, and the message */
     char * rb = (char *) result;  /* use rb as the buffer for step 2.c */
-    bzero (rb, nbytes);           /* any uninitialized bytes are set to 0 */
+    memset (rb, 0, nbytes);           /* any uninitialized bytes are set to 0 */
     int db_offset = SHA1_SIZE + 1;   /* db/maskedDB is stored from here */
     int db_size = nbytes - db_offset;
     memcpy (rb + db_offset, default_sha1, SHA1_SIZE);
@@ -1035,7 +1035,7 @@ static int rsa_unpad (int nbits, char * result, int rsize,
     int data_start = i + 1;
     bytes_in_payload = nbytes - data_start;
     memmove (result, result + data_start, bytes_in_payload);
-    bzero (result + bytes_in_payload, rsize - bytes_in_payload);
+    memset (result + bytes_in_payload, 0, rsize - bytes_in_payload);
     return bytes_in_payload;
   }
   if (padding == WP_RSA_PADDING_PKCS1_OAEP) { /* based on RFC 3447 sec 7.1.2 */
@@ -1045,7 +1045,7 @@ static int rsa_unpad (int nbits, char * result, int rsize,
      * avoid giving information to someone who can observe our timings.
      * so don't return right away, just set bad_result to 1 */
     int bad_result = 0;
-    bzero (result, rsize);
+    memset (result, 0, rsize);
     /* step 3.b: separate Y, seed, and maskedDB */
     char * datab = (char *) data;
     int i;
@@ -1492,7 +1492,7 @@ static int test_openssl_sign_verify (wp_rsa_key_pair * key, RSA * openssl_key)
           time_usec_since (&start));
 
   /* sign with RSA_sign, verify with wp_rsa_verify */
-  bzero (sig, sizeof (sig));  /* no cheating! */
+  memset (sig, 0, sizeof (sig));  /* no cheating! */
   if (! RSA_sign (NID_sha512, (unsigned char *) hash, SHA512_SIZE,
                   (unsigned char *) sig, &ssize, openssl_key)) {
     printf ("openssl unable to sign hash\n");
@@ -1524,8 +1524,8 @@ static int test_with_openssl (wp_rsa_key_pair * key, int padding)
 
   char encrypted [WP_RSA_MAX_KEY_BYTES + 1];
   char decrypted [WP_RSA_MAX_KEY_BYTES + 1];
-  bzero (encrypted, sizeof (encrypted));
-  bzero (decrypted, sizeof (decrypted));
+  memset (encrypted, 0, sizeof (encrypted));
+  memset (decrypted, 0, sizeof (decrypted));
 
   int nbytes = key->nbits / 8;
   if (((padding == WP_RSA_PADDING_PKCS1_OAEP) && (nbytes < tsize + 42)) ||

@@ -945,7 +945,7 @@ static unsigned long long int random_mod (unsigned long long int mod)
   }
   while (1) {  /* loop until random value <= rand_max - rand_excess */
                /* usually one loop is enough */
-    bzero (rbytes, sizeof (rbytes));
+    memset (rbytes, 0, sizeof (rbytes));
     /* set the low order nbytes of rbytes to random values */
     random_bytes (rbytes + (sizeof (rbytes) - nbytes), nbytes);
     unsigned long long int result = readb64 (rbytes);
