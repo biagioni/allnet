@@ -2,12 +2,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
+#include "allnet_log.h"
 #include "configfiles.h"
 
 #define ROOT		"~/.allnet"
@@ -79,7 +82,17 @@ int config_file_name (const char * program, const char * file, char ** name)
       root_length = strlen (root);
     } else {
       char * home_env = getenv (HOME_ENV);
-      if ((home_env == NULL) || (strcmp (home_env, "/nonexistent") == 0)) {
+      if ((home_env != NULL) && (strcmp (home_env, "/nonexistent") == 0))
+        home_env = NULL;  /* simplify subsequent tests */
+      if (home_env == NULL) { /* see if we can return the current directory */
+        static char buf [PATH_MAX];
+        char * cwd = getcwd (buf, sizeof (buf));
+        /* in weird cases the result may not begin with '/' */
+        if ((cwd != NULL) && (*cwd == '/')) {
+          home_env = cwd;
+        }
+      }
+      if (home_env == NULL) {
         static int printed = 0;
         if (! printed)
           printf ("no home environment (%s), running without configs\n",
