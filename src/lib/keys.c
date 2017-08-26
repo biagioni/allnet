@@ -527,13 +527,19 @@ static void init_from_file (const char * debug)
   /* all but one thread blocks here until initialized is set to 1 */
   pthread_mutex_lock (&mutex);
   if (initialized) {
-  /* and all threads that get the lock, except the first, return here */
+  /* all the threads that get the lock, except the first, return here */
     pthread_mutex_unlock (&mutex);
     return;
   }
   /* first count the number of keys */
-  char * dirname;
+  char * dirname = NULL;
   int dirnamesize = config_file_name ("contacts", "", &dirname);
+  if (dirnamesize < 0) {  /* no config file names */
+    printf ("init_from_file unable to access config files\n");
+    initialized = 1; /* don't try again on the next call */
+    pthread_mutex_unlock (&mutex);
+    return;
+  }
   char * last = dirname + dirnamesize - 2;
   if (*last == '/')
     *last = '\0';
@@ -541,7 +547,7 @@ static void init_from_file (const char * debug)
   if (dir == NULL) {
     perror ("opendir in init_from_file");
     printf ("unable to open directory %s (called by %s)\n", dirname, debug);
-    initialized = 1; /* should we try again on the next call? here we don't */
+    initialized = 1; /* don't try again on the next call */
     pthread_mutex_unlock (&mutex);
     return;
   }
