@@ -32,6 +32,9 @@ static char * find_java_path ()
   static char * result = NULL;
   if (result != NULL)   /* found it before */
     return result;
+  char * path_env = getenv ("PATH");
+  if (path_env == NULL)
+    return result;
   char * path = strcpy_malloc (getenv ("PATH"), "find_java_path 1");
   char * free_path = path;   /* for calls to free, free the original */
   char * colon = strchr (path, ':');
@@ -159,9 +162,6 @@ static pid_t exec_java_ui (const char * arg)
         jarfile = JAR_FILE_NAME;  /* cd successful, so use just the name */
     }
 #ifdef DEBUG_EXEC_JAVA
-#ifndef PATH_MAX
-#define PATH_MAX	4096
-#endif /* PATH_MAX */
     char debug [PATH_MAX + 1];
     getcwd (debug, sizeof (debug));
     printf ("exec_java_ui: final jarfile is %s, current dir %s\n",
