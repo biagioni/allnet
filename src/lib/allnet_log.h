@@ -3,7 +3,13 @@
 #ifndef ALLNET_LOG_H
 #define ALLNET_LOG_H
 
+#include <stdlib.h>    /* PATH_MAX */
+
 #define LOG_SIZE    1024
+
+#ifndef PATH_MAX        /* just define it */
+#define PATH_MAX        4096
+#endif /* PATH_MAX */
 
 /* given struct allnet_log * log, typically:
  *      snprintf (log->b, log->s, ...); log_print (log); */

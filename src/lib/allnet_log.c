@@ -25,13 +25,6 @@
  * compile with -DLOG_TO_FILE, or just look in the system logs */
 /* #define LOG_TO_FILE */
 
-#ifndef PATH_MAX	/* defined in a different place in some OS's */
-#include <sys/syslimits.h>
-#ifndef PATH_MAX	/* give up, just define it */
-#define PATH_MAX	4096
-#endif /* PATH_MAX */
-#endif /* PATH_MAX */
-
 #ifdef LOG_TO_FILE 
 #define LOG_DIR		"log"
 
