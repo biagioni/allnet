@@ -1004,86 +1004,95 @@ int routing_ping_iterator (int iter, struct addr_info * ai)
 int init_own_routing_entries (struct addr_info * entry, int max,
                               const unsigned char * dest, int nbits)
 {
+#ifdef DEBUG_PRINT
+  struct addr_info * original = entry;
+  int original_max = max;
+#endif /* DEBUG_PRINT */
   int result = 0;
   if (entry != NULL)
     memset (entry, 0, sizeof (struct addr_info) * max);
-
-  struct ifaddrs * ifap;
-  if (getifaddrs (&ifap) != 0) {
-    perror ("getifaddrs");
+  struct interface_addr * int_addrs;
+  int num_interfaces = interface_addrs (&int_addrs);
+  if (num_interfaces <= 0) {
     printf ("unable to obtain own IP addresses, ignoring\n");
     return 0;
   }
-  struct ifaddrs * next = ifap;
-  while ((max > 0) && (next != NULL)) {
-    int valid = 0;
-    if (next->ifa_flags & IFF_LOOPBACK) {
+  int i;
+  for (i = 0; ((max > 0) && (i < num_interfaces)); i++) {
+    if (int_addrs [i].is_loopback) {
 #ifdef DEBUG_PRINT
       printf ("skipping loopback address\n");
 #endif /* DEBUG_PRINT */
-    } else if (next->ifa_addr == NULL) {
-      static int printed = 0;
-      if (! printed)
-        printf ("null ifa_addr for interface %s, skipping\n", next->ifa_name);
-      printed = 1;
-    } else if (next->ifa_addr->sa_family == AF_INET) {
-      struct sockaddr_in * sinp = (struct sockaddr_in *) (next->ifa_addr);
-      int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
-      int next_byte = ((char *) (&(sinp->sin_addr.s_addr))) [1] & 0xff;
-      if ((high_byte != 10) &&  /* anything beginning with 10 is private */
-          ((high_byte != 172) || ((next_byte & 0xf0) != 16)) && /* 172.16/12 */
-          ((high_byte != 192) || (next_byte != 168))) {  /* as is 192.168/16 */
-        if (entry != NULL) {
+    } else {
+      int j;
+      for (j = 0; ((max > 0) && (j < int_addrs [i].num_addresses)); j++) {
+        int valid = 0;  /* set to 1 if we decide it's a valid entry */
+        struct sockaddr * sa =
+          (struct sockaddr *) (int_addrs [i].addresses + j);
+        if (sa->sa_family == AF_INET) {
+          struct sockaddr_in * sinp = (struct sockaddr_in *) (sa);
+          int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
+          int next_byte = ((char *) (&(sinp->sin_addr.s_addr))) [1] & 0xff;
+          if ((high_byte != 10) &&  /* anything beginning with 10 is private */
+              ((high_byte != 172) || ((next_byte & 0xf0) != 16)) && /* 172.16/12 */
+              ((high_byte != 192) || (next_byte != 168))) { /* 192.168/16 */
+            if (entry != NULL) {
 /* the address is already zeroed.  Assign the IP address to the last four
  * bytes (entry->ip.ip.s6_addr + 12), and 0xff to the immediately preceding
  * two bytes */
-          memcpy (entry->ip.ip.s6_addr + 12, &(sinp->sin_addr.s_addr), 4);
-          entry->ip.ip.s6_addr [10] = entry->ip.ip.s6_addr [11] = 0xff;
-          entry->ip.ip_version = 4;
+              memcpy (entry->ip.ip.s6_addr + 12, &(sinp->sin_addr.s_addr), 4);
+              entry->ip.ip.s6_addr [10] = entry->ip.ip.s6_addr [11] = 0xff;
+              entry->ip.ip_version = 4;
+            }
+            valid = 1;
+          }
+        } else if (sa->sa_family == AF_INET6) {
+          struct sockaddr_in6 * sinp = (struct sockaddr_in6 *) (sa);
+          int high_byte = sinp->sin6_addr.s6_addr [0] & 0xff;
+          int next_bits = sinp->sin6_addr.s6_addr [1] & 0xc0;
+          if ((high_byte != 0xff) &&  /* 0xff/8 is a multicast address */
+                                      /* 0xfe80/10 is a link-local address */
+              ((high_byte != 0xfe) || (next_bits != 0x80))) {
+            if (entry != NULL) {
+              entry->ip.ip = sinp->sin6_addr;
+              entry->ip.ip_version = 6;
+            }
+            valid = 1;
+          } else {
+#ifdef DEBUG_PRINT
+            printf ("ignoring address %02x%02x::\n", high_byte, next_bits);
+#endif /* DEBUG_PRINT */
+          }
+        } else {  /* unknown address family, ignore */
+#ifdef DEBUG_PRINT
+          printf ("interface %s, ignoring address family %d\n", next->ifa_name,
+                  next->ifa_addr->sa_family);
+#endif /* DEBUG_PRINT */
         }
-        valid = 1;
-      }
-    } else if (next->ifa_addr->sa_family == AF_INET6) {
-      struct sockaddr_in6 * sinp = (struct sockaddr_in6 *) (next->ifa_addr);
-      int high_byte = sinp->sin6_addr.s6_addr [0] & 0xff;
-      int next_bits = sinp->sin6_addr.s6_addr [1] & 0xc0;
-      if ((high_byte != 0xff) &&  /* 0xff/8 is a multicast address */
-                                  /* 0xfe80/10 is a link-local address */
-          ((high_byte != 0xfe) || (next_bits != 0x80))) {
-        if (entry != NULL) {
-          entry->ip.ip = sinp->sin6_addr;
-          entry->ip.ip_version = 6;
+        if (valid) {
+          if (entry != NULL) {
+            entry->ip.port = allnet_htons (ALLNET_PORT);
+            memcpy (entry->destination, dest, ADDRESS_SIZE);
+            entry->nbits = nbits;
+            entry->type = ALLNET_ADDR_INFO_TYPE_DHT;
+#ifdef DEBUG_PRINT
+            printf ("%d/%d: added own address: ", result, max);
+            print_addr_info (entry);
+#endif /* DEBUG_PRINT */
+            entry++;
+          }
+          result++;
+          max--;
         }
-        valid = 1;
-      } else {
-#ifdef DEBUG_PRINT
-        printf ("ignoring address %02x%02x::\n", high_byte, next_bits);
-#endif /* DEBUG_PRINT */
       }
-    } else {  /* unknown address family, ignore */
-#ifdef DEBUG_PRINT
-      printf ("interface %s, ignoring address family %d\n", next->ifa_name,
-              next->ifa_addr->sa_family);
-#endif /* DEBUG_PRINT */
     }
-    if (valid) {
-      if (entry != NULL) {
-        entry->ip.port = allnet_htons (ALLNET_PORT);
-        memcpy (entry->destination, dest, ADDRESS_SIZE);
-        entry->nbits = nbits;
-        entry->type = ALLNET_ADDR_INFO_TYPE_DHT;
-#ifdef DEBUG_PRINT
-        printf ("%d/%d: added own address: ", result, max);
-        print_addr_info (entry);
-#endif /* DEBUG_PRINT */
-        entry++;
-      }
-      result++;
-      max--;
-    }
-    next = next->ifa_next;
   }
-  freeifaddrs (ifap);
+#ifdef DEBUG_PRINT
+  for (i = 0; i < (original_max - max); i++) {
+    printf("result %d: ", i);
+    print_addr_info (original + i);
+  }
+#endif /* DEBUG_PRINT */
   return result;
 }
 
