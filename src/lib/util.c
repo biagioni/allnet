@@ -1692,7 +1692,7 @@ int get_option (char option_letter, int * argcp, char ** argv)
   for (i = 1; i < orig_argc; i++) {
     if (strcmp (argv [i], buf) == 0) {  /* found a match */
       int j;
-      for (j = i; j + 1 < orig_argc; j++)
+      for (j = i; j < orig_argc; j++)
         argv [j] = argv [j + 1];
       *argcp = orig_argc - 1;
       return 1;
