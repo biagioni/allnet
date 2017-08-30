@@ -32,6 +32,7 @@
 #include "lib/packet.h"
 #include "lib/configfiles.h"
 #include "lib/allnet_queue.h"
+#include "lib/ai.h"
 
 extern void ad_main (int npipes, int * rpipes, int * wpipes);
 extern void alocal_main (int pipe1, int pipe2,
@@ -850,37 +851,20 @@ static void debug_print_flags (char * name, int flags)
 }
 #endif /* DEBUG_PRINT */
 
-#ifndef ANDROID  /* android doesn't provide getifaddrs */
-static int is_bc_interface (struct ifaddrs * interface)
+static char * interface_extra (struct interface_addr * interface)
 {
-#ifdef DEBUG_PRINT
-  debug_print_flags (interface->ifa_name, interface->ifa_flags);
-#endif /* DEBUG_PRINT */
-  return (((interface->ifa_flags & IFF_LOOPBACK) == 0) &&
-/*          ((interface->ifa_flags & IFF_UP) != 0) && */
-          ((interface->ifa_flags & IFF_BROADCAST) != 0));
-}
-
-static int in_interface_array (char * name, char ** interfaces, int count)
-{
-  int i;
-  for (i = 0; i < count; i++)
-    /* only check that the first |name| characters are the same */
-    if (strncmp (name, interfaces [i], strlen (name)) == 0)
-      return 1;
-  return 0;
-}
-
-static char * interface_extra (struct ifaddrs * next)
-{
-  if (next->ifa_addr == NULL)  /* can happen */
+  if (interface == NULL)  /* can happen */
     return "";
-  if (next->ifa_addr->sa_family == AF_INET) /* || when add ipv6 to abc-ip.c
-      (next->ifa_addr->sa_family == AF_INET6)) */
-    return "ip";
-  if ((strncmp (next->ifa_name, "wlan", 4) == 0) ||
-      (strncmp (next->ifa_name, "wlx", 3) == 0) ||
-      (strncmp (next->ifa_name, "wlo", 3) == 0)) {
+  int i;
+  for (i = 0; i < interface->num_addresses; i++) {
+    struct sockaddr * sa = (struct sockaddr *) ((interface->addresses) + i);
+    if (sa->sa_family == AF_INET) /* || when add ipv6 to abc-ip.c
+        (sa->sa_family == AF_INET6)) */
+      return "ip";
+  }
+  if ((strncmp (interface->interface_name, "wlan", 4) == 0) ||
+      (strncmp (interface->interface_name, "wlx", 3) == 0) ||
+      (strncmp (interface->interface_name, "wlo", 3) == 0)) {
     if (geteuid () == 0)
       return "wifi";
     else
@@ -891,51 +875,42 @@ static char * interface_extra (struct ifaddrs * next)
 
 static int default_interfaces (char * * * interfaces_p)
 {
+  struct interface_addr * int_addrs;
+  int num_interfaces = interface_addrs (&int_addrs);
   *interfaces_p = NULL;
-  struct ifaddrs * ap;
-  if (getifaddrs (&ap) != 0) {
-    perror ("getifaddrs");
-    return 0;
-  }
-  int count = 0;
-  int length = 0;
-  struct ifaddrs * next = ap;
+  int i;
   /* compute the buffer size needed to store all interface information */
-  while (next != NULL) {
-    if (is_bc_interface (next)) {
-      size_t extra_len = strlen (interface_extra (next));
+  int count = 0;
+  size_t length = 0;
+  for (i = 0; i < num_interfaces; i++) {
+    if ((! int_addrs [i].is_loopback) && (int_addrs [i].is_broadcast)) {
+      /* run abc for this interface */
+      size_t extra_len = strlen (interface_extra (int_addrs + i));
       if (extra_len != 0) {
         count++; /* and add interface/extra and the null char */
-        length += strlen (next->ifa_name) + 1 + extra_len + 1;
+        length += strlen (int_addrs [i].interface_name) + 1 + extra_len + 1;
       }
     }
-    next = next->ifa_next;
   }
   int result = 0;
   if (count > 0) {
-    int size = count * sizeof (char *) + length;
+    size_t size = count * sizeof (char *) + length;
     *interfaces_p = malloc_or_fail (size, "default_interfaces");
     char * * interfaces = *interfaces_p;
     /* copy the names/extra to the malloc'd space after the pointers */
     char * write_to = ((char *) (interfaces + count));
     int write_len = length;
-    int accept_non_ip; /* favor /ip over /wifi, so on first pass only take ip */
-    for (accept_non_ip = 0; accept_non_ip < 2; accept_non_ip++) {
-      next = ap;
-      while ((write_len > 0) && (next != NULL)) {
-        char * extra = interface_extra (next);
-        if ((! in_interface_array (next->ifa_name, interfaces, result)) &&
-            (is_bc_interface (next)) &&
-            (strlen (extra) != 0) &&
-            ((accept_non_ip) || (strcmp (extra, "ip") == 0))) {
+    for (i = 0; ((write_len > 0) && (i < num_interfaces)); i++) {
+      if ((! int_addrs [i].is_loopback) && (int_addrs [i].is_broadcast)) {
+        char * extra = interface_extra (int_addrs + i);
+        if (strlen (extra) > 0) {
           interfaces [result++] = write_to;
-          int slen = snprintf (write_to, write_len,
-                               "%s/%s", next->ifa_name, interface_extra (next))
+          int slen = snprintf (write_to, write_len, "%s/%s",
+                               int_addrs [i].interface_name, extra)
                    + 1;  /* for the null character */
           write_len -= slen;
           write_to += slen;
         }
-        next = next->ifa_next;
       }
     }
     if (result <= 0) {
@@ -943,10 +918,8 @@ static int default_interfaces (char * * * interfaces_p)
       *interfaces_p = NULL;
     }
   }
-  freeifaddrs (ap);
   return result;
 }
-#endif /* ANDROID */
 
 static void find_path (char * arg, char ** path, char ** program)
 {
@@ -996,6 +969,15 @@ static void do_root_init ()
 
 int astart_main (int argc, char ** argv)
 {
+  int ix, jx;
+  for (ix = 1; ix + 1 < argc; ix++) {
+    if (strcmp (argv [ix], "-d") == 0) {
+      set_home_directory (argv [ix + 1]);
+      for (jx = ix; jx + 1 < argc; jx++) /* replace lower with higher args */
+        argv [jx] = argv [jx + 2];
+      argc -= 2;   /* and delete */
+    }
+  }
   log_to_output (get_option ('v', &argc, argv));
   int alen = (int)strlen (argv [0]);
   char * path;
@@ -1021,7 +1003,7 @@ int astart_main (int argc, char ** argv)
 #define NUM_INTERFACE_PIPES	2 
   char ** interfaces = NULL;
   int num_interfaces = argc - 1;
-#ifndef ANDROID  /* android doesn't provide getifaddrs */
+#ifndef ANDROID  /* for now, don't run abc on android */
   if ((argc > 1) && (strncmp (argv [1], "def", 3) == 0))
     num_interfaces = default_interfaces (&interfaces);
   else if (argc == 1)
