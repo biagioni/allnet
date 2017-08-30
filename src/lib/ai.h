@@ -53,4 +53,21 @@ extern void standardize_ip (struct sockaddr * ap, socklen_t asize);
 /* is this address a local IP? */
 extern int is_loopback_ip (struct sockaddr * ap, socklen_t asize);
 
+struct interface_addr {
+  char * interface_name;
+  int is_loopback;
+  int is_broadcast;
+  int is_up;
+  int num_addresses;
+  struct sockaddr_storage * addresses;
+};
+
+/* getifaddrs is not completely portable, so this is implemented in
+ * any way the local system supports.
+ * returns the number n of interface addresses.
+ * if interfaces is not NULL, *interfaces is assigned to point to malloc'd
+ * storage with n addresses, may be free'd (as a block -- interface_name
+ * and addresses point to within *interfaces) */
+extern int interface_addrs (struct interface_addr ** interfaces);
+
 #endif /* ALLNET_AI_H */
