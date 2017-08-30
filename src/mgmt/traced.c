@@ -427,6 +427,8 @@ static void main_loop (int wsock, pd p,
 /* called in iOS, which does not start separate processes */
 void traced_thread (char * pname, int rpipe, int wpipe)
 {
+  if (alog == NULL)
+    alog = init_log ("traced_thread");
 printf ("traced_thread (%s), sockets %d %d\n", pname, rpipe, wpipe);
   unsigned char address [ADDRESS_SIZE];
   memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
