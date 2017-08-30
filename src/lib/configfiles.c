@@ -12,6 +12,7 @@
 
 #include "allnet_log.h"
 #include "configfiles.h"
+#include "util.h"
 
 #define ROOT		"~/.allnet"
 #define HOME_EXT	"/.allnet"
@@ -20,6 +21,8 @@
 /* and if it does, maybe save xchat files in Documents/allnet */
 /* and log files in Library/Caches/" */
 /* except chat files are done in xchat/store.c... */
+
+static char * global_home_directory = NULL;
 
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
 int create_dir (const char * path)
@@ -75,6 +78,11 @@ int config_file_name (const char * program, const char * file, char ** name)
     closedir (d);
     root = IOS_ROOT;
     root_length = strlen (root);
+  } else if (global_home_directory != NULL) {  /* use global_home_directory */
+    root = strcat_malloc (global_home_directory, HOME_EXT,
+                          "config_file_name global home directory");
+    root_length = strlen (root);
+    free_root = 1;
   } else {
     char * allnet_config_env = getenv ("ALLNET_CONFIG");
     if (allnet_config_env != NULL) {
@@ -136,7 +144,7 @@ int config_file_name (const char * program, const char * file, char ** name)
   snprintf (*name, total_length, "%s/%s", root, program);
   create_dir (*name);
   snprintf (*name, total_length, "%s/%s/%s", root, program, file);
-  /* printf ("file path is %s\n", *name); */
+/* printf ("file path for %s %s is %s\n", program, file, *name); */
   if (free_root) free (root);
   return total_length;
 }
@@ -203,3 +211,12 @@ int open_rw_config (const char * program, const char * file, int print_errors)
   int flags = O_RDWR | O_CREAT;
   return open_config (program, file, flags, print_errors, "open_write_config");
 }
+
+/* tell configfiles where the home directory is.  Should be called
+ * before calling any other function */
+void set_home_directory (const char * root)
+{
+printf ("setting global home directory to %s\n", root);
+  global_home_directory = strcpy_malloc (root, "set_home_directory");
+}
+

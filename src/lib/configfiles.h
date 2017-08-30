@@ -38,4 +38,8 @@ extern int open_rw_config (const char * program, const char * file,
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
 extern int create_dir (const char * path);
 
+/* tell configfiles where the home directory is.  Should be called
+ * before calling any other function */
+extern void set_home_directory (const char * root);
+
 #endif /* CONFIG_FILES_H */
