@@ -156,7 +156,6 @@ class ContactsPanel extends JPanel {
         buttonsPanel.removeAll();
         java.util.Collections.sort(topNames, comparator);
         for (String b : topNames) {
-            // if (! AllNetContacts.isHiddenContact(b))
             if (contactData.isVisible(b)) {
                 buttonsPanel.add(map.get(b));
             }
@@ -166,7 +165,6 @@ class ContactsPanel extends JPanel {
         }
         java.util.Collections.sort(bottomNames, comparator);
         for (String b : bottomNames) {
-            // if (! AllNetContacts.isHiddenContact(b))
             if (contactData.isVisible(b)) {
                 buttonsPanel.add(map.get(b));
             }
