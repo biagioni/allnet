@@ -239,7 +239,7 @@ static void gui_contact_has_peer_key (char * message, int64_t length, int sock)
 /* message format: contact name (not null terminated) */
 /* reply format: 1-byte code, 1-byte response */
   char reply [2];
-  reply [0] = GUI_CONTACT_IS_GROUP;
+  reply [0] = GUI_HAS_PEER_KEY;
   reply [1] = 0;   /* by default, no peer key */
   if (length > 0) {
     char * contact = contact_name_from_buffer (message, length);
