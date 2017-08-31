@@ -9,6 +9,11 @@
 #ifndef ANDROID
 #include <ifaddrs.h>
 #include <net/if.h>  /* IFF_LOOPBACK, etc */
+#else /* ANDROID */
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <linux/if.h>
+#include <arpa/inet.h>
 #endif /* ANDROID */
 #include <sys/ioctl.h>
 
