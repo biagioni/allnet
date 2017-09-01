@@ -296,7 +296,7 @@ void keyd_main (char * pname)
 {
   alog = init_log ("keyd");
   pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local (pname, pname, p);
+  int sock = connect_to_local (pname, pname, NULL, p);
   if (sock < 0)
     return;
 

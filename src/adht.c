@@ -284,7 +284,7 @@ void adht_main (char * pname)
   alog = init_log ("adht");
   pd p = init_pipe_descriptor (alog);
   static int sock;   /* must be static to pass its addr to send_loop */
-  sock = connect_to_local ("adht", pname, p);
+  sock = connect_to_local ("adht", pname, NULL, p);
   if (sock < 0) {
     printf ("adht unable to connect to alocal, exiting\n");
     return;

@@ -44,11 +44,12 @@ void stop_chat_and_exit (int exit_code)
   exit (exit_code);
 }
 
-static int create_allnet_sock (const char * program_name, pd * p)
+static int create_allnet_sock (const char * program_name,
+                               const char * path, pd * p)
 {
   struct allnet_log * log = init_log ("xchat_socket");
   *p = init_pipe_descriptor (log);
-  int sock = xchat_init (program_name, *p);
+  int sock = xchat_init (program_name, path, *p);
   return sock;
 }
 
@@ -122,7 +123,8 @@ int main (int argc, char ** argv)
 
   /* create the allnet socket and the GUI socket */
   pd p;
-  int allnet_sock = create_allnet_sock (argv [0], &p);
+  /* argv [1] is normally NULL, unless someone specified a config directory */
+  int allnet_sock = create_allnet_sock (argv [0], argv [1], &p);
   if (allnet_sock < 0)
     return 1;
   int gui_sock = create_gui_sock (argv [0]);

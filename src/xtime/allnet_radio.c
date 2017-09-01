@@ -154,7 +154,7 @@ int main (int argc, char ** argv)
   log_to_output (verbose);
 
   pd p = init_pipe_descriptor (log);
-  int sock = connect_to_local (argv [0], argv [0], p);
+  int sock = connect_to_local (argv [0], argv [0], NULL, p);
   if (sock < 0)
     return 1;
 

@@ -176,7 +176,7 @@ int trace_main (int argc, char ** argv)
   }
   alog = init_log ("trace");
   pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local (argv [0], argv [0], p);
+  int sock = connect_to_local (argv [0], argv [0], NULL, p);
   if (sock < 0)
     return 1;
 /* print_buffer (address, abits, "argument address", 8, 1); */

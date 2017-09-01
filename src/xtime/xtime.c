@@ -248,7 +248,7 @@ static void announce (time_t interval, int sock,
 
 static int init_xtime (char * arg0, pd p)
 {
-  int sock = connect_to_local ("xtime", arg0, p);
+  int sock = connect_to_local ("xtime", arg0, NULL, p);
   if (sock < 0)
     exit (1);
   return sock;

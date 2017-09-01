@@ -276,7 +276,7 @@ int main (int argc, char ** argv)
   struct allnet_log * log = init_log ("allnet_sniffer");
 
   pd p = init_pipe_descriptor (log);
-  int sock = connect_to_local (argv [0], argv [0], p);
+  int sock = connect_to_local (argv [0], argv [0], NULL, p);
   if (sock < 0)
     return 1;
 

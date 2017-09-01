@@ -669,16 +669,20 @@ int main (int argc, char ** argv)
   struct allnet_log * log = init_log ("xt");
   pd p = init_pipe_descriptor (log);
 
-  int sock = xchat_init (argv [0], p);
-  if (sock < 0)
-    return 1;
-
   int print_duplicates = 0;
+  char * path = NULL;
   int i;
   for (i = 1; i < argc; i++) {
     if (strcmp (argv [i], "-a") == 0)
       print_duplicates = 1;
+    else if ((i + 1 < argc) && (strcmp (argv [i], "-d") == 0))
+      path = argv [i + 1];
   }
+
+  int sock = xchat_init (argv [0], path, p);
+  if (sock < 0)
+    return 1;
+
   static struct receive_thread_args rta;
   rta.p = p;
   rta.sock = sock;

@@ -663,7 +663,7 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
 
   struct allnet_log * alog = init_log ("trace_string");
   pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local ("trace_string", "trace_string", p);
+  int sock = connect_to_local ("trace_string", "trace_string", NULL, p);
   if (sock < 0)
     return strcpy_malloc ("unable to connect to allnet", "trace_string");
 
@@ -700,7 +700,7 @@ void trace_pipe (int pipe, struct allnet_queue * queue,
 
   struct allnet_log * alog = init_log ("trace_string");
   pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local ("trace_pipe", "trace_pipe", p);
+  int sock = connect_to_local ("trace_pipe", "trace_pipe", NULL, p);
   if (sock < 0) {
     printf ("unable to connect to allnet\n");
     return;

@@ -68,7 +68,7 @@ static char * make_program_path (char * path, char * program,
   return result;
 }
 
-static void exec_allnet (const char * arg)
+static void exec_allnet (const char * arg, const char * config_path)
 {
   pid_t child = fork ();
   if (child < 0) {
@@ -87,7 +87,12 @@ static void exec_allnet (const char * arg)
       printf ("unable to start AllNet daemon %s\n", astart);
       exit (1);   /* only exits the child */
     }
-    char * args [] = { astart, "default", NULL };
+    char * args [] = { astart, "-d", NULL, "default", NULL };
+    if (config_path == NULL) {
+      args [1] = "default";  /* replace "-d" */
+    } else {                 /* replace the NULL with the path */
+      args [2] = strcpy_malloc (config_path, "exec_allnet thread path");
+    }
     printf ("calling ");
     int i;
     for (i = 0; args [i] != NULL; i++)
@@ -112,20 +117,23 @@ static void exec_allnet (const char * arg)
 
 extern int astart_main (int, char **);
 
-static void * call_allnet_main (void * unused_arg)
+static void * call_allnet_main (void * path)
 {
-  if (unused_arg != NULL)  /* check arg to prevent warnings */
-    printf ("error: argument to call_allnet_main should be NULL\n");
-  char * args [] = { "allnet", NULL };
-  /* could be: char * args [] = { "allnet", "-v", "def", NULL }; */
-  astart_main (1, args);
+  if (path == NULL) {
+    char * args [] = { "allnet", NULL };
+    astart_main (1, args);
+  } else {
+    char * args [] = { "allnet", "-d", path, NULL };
+    astart_main (3, args);
+  }
   return NULL;
 }
 
-static void exec_allnet (char * arg)  /* iOS version, threads instead of fork */
+static void exec_allnet (char * arg, const char * path)
+* iOS/android version, threads instead of fork */
 {
   pthread_t thread;
-  int error = pthread_create (&thread, NULL, call_allnet_main, NULL);
+  int error = pthread_create (&thread, NULL, call_allnet_main, path);
   if (error) {
     printf ("ios exec_allnet unable to create thread for allnet main\n");
     exit (1);  /* no point continuing */
@@ -258,9 +266,16 @@ static void * receive_ignore (void * arg)
 }
 #endif /* CREATE_READ_IGNORE_THREAD */
 
-/* returns the socket, or -1 in case of failure */
-/* arg0 is the first argument that main gets -- useful for finding binaries */
-int connect_to_local (const char * program_name, const char * arg0, pd p)
+/* returns a TCP socket used to send messages to the allnet daemon
+ * (specifically, alocal) or receive messages from alocal
+ * returns -1 in case of failure
+ * arg0 is the first argument that main gets -- useful for finding binaries
+ * path, if not NULL, tells allnet what path to use for config files
+ * the application MUST receive messages, even if it ignores them all.
+ * otherwise, after a while (once the buffer is full) allnet/alocal
+ * will close the socket. */
+int connect_to_local (const char * program_name, const char * arg0,
+                      const char * path, pd p)
 {
 #ifndef ANDROID
   seed_rng ();
@@ -269,7 +284,8 @@ int connect_to_local (const char * program_name, const char * arg0, pd p)
   if (sock < 0) {
     /* printf ("%s(%s) unable to connect to alocal, starting allnet\n",
             program_name, arg0); */
-    exec_allnet (strcpy_malloc (arg0, "connect_to_local exec_allnet"));
+    exec_allnet (strcpy_malloc (arg0, "connect_to_local exec_allnet"),
+                 path);
     sleep (1);
     sock = connect_once (1);
     if (sock < 0) {

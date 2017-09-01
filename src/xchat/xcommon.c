@@ -219,13 +219,13 @@ static pthread_t request_thread;
 #endif /* HAVE_REQUEST_THREAD */
 
 /* returns the socket if successful, -1 otherwise */
-int xchat_init (const char * arg0, pd p)
+int xchat_init (const char * arg0, const char * path, pd p)
 {
   if (alog == NULL)
     alog = pipemsg_log (p);
   if (alog == NULL)
     alog = init_log ("xchat/xcommon");
-  int sock = connect_to_local ("xcommon", arg0, p);
+  int sock = connect_to_local ("xcommon", arg0, path, p);
   if (sock < 0)
     return -1;
 #ifdef SO_NOSIGPIPE

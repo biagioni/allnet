@@ -2143,7 +2143,7 @@ void acache_main (char * pname)
 #ifndef ALLNET_USE_FORK   /* if the connection is closed, keep trying */
   while (1) {
 #endif /* ALLNET_USE_FORK */
-    int sock = connect_to_local ("acache", pname, p);
+    int sock = connect_to_local ("acache", pname, NULL, p);
     snprintf (alog->b, alog->s, "acache connected to local, fd %d\n", sock);
     log_print (alog);
     if (sock >= 0) {

@@ -11,7 +11,10 @@
 #include "lib/mgmt.h"  /* struct allnet_mgmt_trace_reply */
 
 /* returns the socket if successful, -1 otherwise */
-extern int xchat_init (const char * program_name, pd p);
+/* path is usually NULL.  It should be non-null only when the system
+ * has a hard-to-find path to config files, and the caller can
+ * specify the path to the directory to use. */
+extern int xchat_init (const char * program_name, const char * path, pd p);
 /* optional... */
 extern void xchat_end (int sock);
 

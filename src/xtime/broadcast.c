@@ -27,7 +27,7 @@ static struct allnet_log * log = NULL;
 
 static int init_broadcast (char * arg0, pd p)
 {
-  int sock = connect_to_local ("cmdline_broadcast", arg0, p);
+  int sock = connect_to_local ("cmdline_broadcast", arg0, NULL, p);
   if (sock < 0)
     exit (1);
   return sock;

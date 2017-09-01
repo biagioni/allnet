@@ -9,11 +9,14 @@
  * (specifically, alocal) or receive messages from alocal
  * returns -1 in case of failure
  * arg0 is the first argument that main gets -- useful for finding binaries
+ * path, if not NULL, tells allnet what path to use for config files
  * the application MUST receive messages, even if it ignores them all.
  * otherwise, after a while (once the buffer is full) allnet/alocal
  * will close the socket. */
 extern int connect_to_local (const char * program_name,
-                             const char * arg0, pd p);
+                             const char * arg0,
+                             const char * path,
+                             pd p);
 
 /* since allnet may run on devices with limited power, some things
  * (speculative computation, i.e. stuff that is not needed immediately)

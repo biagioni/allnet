@@ -20,7 +20,7 @@ int main (int argc, char ** argv)
   log_to_output (get_option ('v', &argc, argv));
   struct allnet_log * log = init_log ("xchatr");
   pd p = init_pipe_descriptor (log);
-  int sock = xchat_init (argv [0], p);
+  int sock = xchat_init (argv [0], NULL, p);
   if (sock < 0)
     return 1;
 
