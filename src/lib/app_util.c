@@ -318,7 +318,7 @@ int connect_to_local (const char * program_name, const char * arg0,
   return sock;
 }
 
-int ok_for_speculative_computation = 1;
+static int ok_for_speculative_computation = 1;
 /* since allnet may run on devices with limited power, some things
  * (speculative computation, i.e. stuff that is not needed immediately)
  * may be postponed if we are not plugged in to power */
