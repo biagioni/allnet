@@ -130,7 +130,7 @@ static void * call_allnet_main (void * path)
 }
 
 static void exec_allnet (char * arg, const char * path)
-* iOS/android version, threads instead of fork */
+/* iOS/android version, threads instead of fork */
 {
   pthread_t thread;
   int error = pthread_create (&thread, NULL, call_allnet_main, path);
