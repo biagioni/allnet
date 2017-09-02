@@ -156,54 +156,52 @@ class UIController implements ControllerInterface, UIAPI {
 
     // tell the UI about a new contact
     private void contactCreated(final String contactName,
-                                final boolean isBroadcast) {
+                                final boolean isBroadcast,
+                                final boolean isGroup) {
         Runnable r = new Runnable() {
 
             @Override
             public void run() {
-                contactData.createContact(contactName,
-                    isBroadcast ? ContactType.BROADCAST : ContactType.PERSONAL);
+                ContactType t = (isGroup ? ContactType.GROUP :
+                                 (isBroadcast ? ContactType.BROADCAST :
+                                  ContactType.PERSONAL));
+                contactData.createContact(contactName, t);
                 updateContactsPanel(contactName, isBroadcast);
                 contactConfigPanel.update();
                 KeyExchangePanel kep = getKeyExchangePanel(contactName);
-                switch (AllNetContacts.contactComplete(contactName)) {
-                    case COMPLETE:
-                        if (kep != null) {  /* get rid of Key Exchange panel */
-
-                            System.out.println("kep is not null, "
-                                + "please report to maintainer(s)");
-                        }
-                        break;
-                    case INCOMPLETE_NO_KEY:
-                    case INCOMPLETE_WITH_KEY:
-                        if (kep == null) {
-                            int hops
-                                = AllNetContacts.exchangeHopCount(contactName);
-                            if (hops > 0) {   // valid exchange file
-                                int button = 1;   // multi-hop exchange
-                                if (hops == 1) {
-                                    button = 0;     // 1-hop exchange
-                                }
-                                String secret
-                                    = AllNetContacts.firstSecret(contactName);
-                                // now put up a key exchange panel
-                                String[] middlePanelMsg
-                                    = makeMiddlePanel(secret);
-                                String[] bottomPanelMsg = new String[]{
-                                    " Key exchange in progress",
-                                    " Sent your key",
-                                    " Waiting for key from " + contactName
-                                };
-                                kep = createKeyExchangePanel(contactName,
-                                    middlePanelMsg, bottomPanelMsg, true, true);
-                                kep.setButtonState(button);
-                                kep.setSecret(secret);
+                if (coreAPI.isComplete(contactName)) {  // key xchg completed
+                    if (kep != null) {  /* get rid of Key Exchange panel */
+                        System.out.println("kep is not null, "
+                            + "please report to maintainer(s)");
+                        System.out.println("kep is " + kep);
+                    }
+                 } else {    // incomplete key exchange
+                    if (kep == null) {
+                        int hops = AllNetContacts.exchangeHopCount(contactName);
+                        if (hops > 0) {   // valid exchange file
+                            int button = 1;   // multi-hop exchange
+                            if (hops == 1) {
+                                button = 0;     // 1-hop exchange
                             }
+                            String secret
+                                = AllNetContacts.firstSecret(contactName);
+                            // now put up a key exchange panel
+                            String[] middlePanelMsg = makeMiddlePanel(secret);
+                            String[] bottomPanelMsg = new String[]{
+                                " Key exchange in progress",
+                                " Sent your key",
+                                " Waiting for key from " + contactName
+                            };
+                            kep = createKeyExchangePanel(contactName,
+                                middlePanelMsg, bottomPanelMsg, true, true);
+                            kep.setButtonState(button);
+                            kep.setSecret(secret);
                         }
-                        if (AllNetContacts.contactComplete(contactName)
-                            == AllNetContacts.keyExchangeComplete.INCOMPLETE_WITH_KEY) {
+                    }
+                    if ((kep != null) &&
+                        (coreAPI.contactHasPeerKey(contactName))) {
                             showKeyExchangeSuccess(kep, contactName);
-                        }
+                    }
                 }
             }
         };
@@ -214,13 +212,13 @@ class UIController implements ControllerInterface, UIAPI {
     // the application calls this method to tell the UI about a new contact
     @Override
     public void contactCreated(final String contactName) {
-        contactCreated(contactName, false);
+        contactCreated(contactName, false, false);
     }
 
     // the application calls this method to tell the UI about a new contact
     @Override
     public void subscriptionComplete(final String contactName) {
-        contactCreated(contactName, true);
+        contactCreated(contactName, true, false);
     }
 
     // the application should call this method to tell the UI to remove a contact
@@ -230,11 +228,12 @@ class UIController implements ControllerInterface, UIAPI {
 
             @Override
             public void run() {
-                AllNetContacts.deleteEntireContact(contactName);
-                contactsPanel.removeName(contactName);
-                contactData.removeContact(contactName);
-                contactConfigPanel.update();
-                myTabbedPane.removeTab(contactName);
+                if (coreAPI.deleteEntireContact(contactName)) {
+                    contactsPanel.removeName(contactName);
+                    contactData.removeContact(contactName);
+                    contactConfigPanel.update();
+                    myTabbedPane.removeTab(contactName);
+                }
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
@@ -825,7 +824,12 @@ class UIController implements ControllerInterface, UIAPI {
                     break;
                 case 3:
                     System.out.println("create new group " + contact);
-                    System.out.println("  (not implemented)");
+                    if (coreAPI.createGroup (contact)) {
+                        contactCreated(contact, false, true);
+                    } else {
+                        System.out.println("unable to create new group "
+                                          + contact);
+                    }
                     break;
 //                case 4:
 //                    System.out.println("new common contact for " + contact + " is "
