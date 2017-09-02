@@ -1106,6 +1106,8 @@ static int handle_key (int sock, struct allnet_header * hp,
       if ((status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE) &&
           (parse_exchange_file (contacts [ii], &hops, &s1, &s2)) &&
           (! received_my_pubkey (keys [ii], data, dsize, ksize))) {
+        int key_is_new = ((status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY)
+                          != 0);
         int r1 = received_matching_key (keys [ii], data, dsize, ksize, s1);
         int r2 = ((! r1) && (s2 != NULL) && (strlen (s2) > 0) &&
                   (received_matching_key (keys [ii], data, dsize, ksize, s2)));
@@ -1114,7 +1116,7 @@ static int handle_key (int sock, struct allnet_header * hp,
               contacts [ii], keys [ii], r1, r2);
 #endif /* DEBUG_PRINT */
         if (r1 || r2) {
-          if (set_contact_pubkey (keys [ii], data, ksize)) {
+          if ((key_is_new) && (set_contact_pubkey (keys [ii], data, ksize))) {
             if ((hp->src_nbits > 0) && (hp->src_nbits <= ADDRESS_BITS))
               set_contact_remote_addr (keys [ii], hp->src_nbits, hp->source);
           }
@@ -1126,10 +1128,12 @@ static int handle_key (int sock, struct allnet_header * hp,
           else
             resend_peer_key (contacts [ii], keys [ii], s2,
                              my_addr, abits, hops, sock);
-          *peer = strcpy_malloc (contacts [ii], "handle_key");
-          *kset = keys [ii];
-          result = -1;   /* success */
-          break;  /* done */
+          if (key_is_new) {
+            *peer = strcpy_malloc (contacts [ii], "handle_key");
+            *kset = keys [ii];
+            result = -1;   /* success */
+          }
+          break;           /* found a match, so we are done */
         }
       }
       if (s1 != NULL)
