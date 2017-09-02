@@ -141,12 +141,20 @@ static void gui_contacts (int sock)
 /* format: code, 64-bit number of contacts, null-terminated contacts */
   char ** contacts = NULL;
   int nc = all_contacts (&contacts);
+  char ** invisibles = NULL;
+  int ninv = invisible_contacts (&invisibles);
   char ** incompletes = NULL;
   int ni = incomplete_key_exchanges (&incompletes, NULL, NULL);
-  char ** both = malloc_or_fail (sizeof(char*) * (nc + ni), "gui_contacts 1");
-  int ib;    /* counts through the "both" array */
-  for (ib = 0; ib < nc; ib++)
-    both [ib] = contacts [ib];
+  char ** all = malloc_or_fail (sizeof(char*) * (nc + ni + ninv),
+                                "gui_contacts 1");
+  int ia;    /* counts through the "all" array */
+  for (ia = 0; ia < nc; ia++)
+    all [ia] = contacts [ia];
+  int iinv;    /* counts through the "invisibles" array */
+  for (iinv = 0; iinv < ninv; iinv++) {
+    all [ia] = invisibles [iinv];
+    ia++;
+  }
   int ii;    /* counts through the "incompletes" array */
   for (ii = 0; ii < ni; ii++) {
     int ic;  /* counts through the "contacts" array */
@@ -158,18 +166,20 @@ static void gui_contacts (int sock)
       }
     }
     if (! found) {    /* incomplete contact is not also in contacts, add */
-      both [ib] = incompletes [ii];
-      ib++;
+      all [ia] = incompletes [ii];
+      ia++;
     } /* else incompletes is also in contacts, do not add */
   }
-  /* ib has the count of names in the "both" array */
-  gui_send_string_array (GUI_CONTACTS, both, ib, sock, "gui_contacts");
+  /* ia has the count of names in the "all" array */
+  gui_send_string_array (GUI_CONTACTS, all, ia, sock, "gui_contacts");
   if (contacts != NULL)
     free (contacts);
+  if (invisibles != NULL)
+    free (invisibles);
   if (incompletes != NULL)
     free (incompletes);
-  if (both != NULL)
-    free (both);
+  if (all != NULL)
+    free (all);
 }
 
 /* send all the subscriptions to the gui, null-separated */
@@ -335,6 +345,21 @@ static void gui_rename_contact (char * message, int64_t length, int gui_sock)
       if ((strlen (old) > 0) && (strlen (new) > 0) && (rename (old, new)))
         reply [1] = 1;    /* success */
     }
+  }
+  gui_send_buffer (gui_sock, reply, sizeof (reply));
+}
+
+static void gui_delete_contact (char * message, int64_t length, int gui_sock)
+{
+/* message format: contact name (not null terminated) */
+/* reply format: 1-byte code, 1-byte response */
+  char reply [2];
+  reply [0] = GUI_DELETE_CONTACT;
+  reply [1] = 0;   /* failure */
+  if (length > 1) {   /* shortest is a single-character names */
+    char * contact = contact_name_from_buffer (message, length);
+    delete_conversation (contact);  /* ignore the result, not relevant */
+    reply [1] = delete_contact (contact);  /* this is the one we report */
   }
   gui_send_buffer (gui_sock, reply, sizeof (reply));
 }
@@ -630,6 +655,10 @@ static void interpret_from_gui (char * message, int64_t length,
   case GUI_RENAME_CONTACT:
     gui_rename_contact (message + 1, length - 1, gui_sock);
     break;
+  case GUI_DELETE_CONTACT:
+    gui_delete_contact (message + 1, length - 1, gui_sock);
+    break;
+
 
   case GUI_QUERY_VARIABLE:
     gui_variable (message + 1, length - 1, -1, gui_sock);
