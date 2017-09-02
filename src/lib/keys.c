@@ -427,7 +427,7 @@ static int read_key_info (const char * path, const char * file,
 #endif /* DEBUG_PRINT */
     info->contact_name = contact_value;
     char * hidden_name = strcat_malloc (basename, "/hidden", "hidden-path");
-    if  (file_size (hidden_name) < 0)
+    if (file_size (hidden_name) < 0)
       info->is_visible = 1;  /* no "/hidden" file in the directory */
     free (hidden_name);
   }
@@ -468,7 +468,6 @@ static int read_key_info (const char * path, const char * file,
     result = 2;  /* found a group */
   } else {  /* it's not a group */
     if (info != NULL) {
-      info->is_visible = 0;  /* hide contact unless has all info */
       char * kname = strcat_malloc (basename, "/my_key", "my key name");
       if (allnet_rsa_read_prvkey (kname, &(info->my_key))) {
         char * pname = strcat_malloc (basename, "/contact_pubkey", "pub name");
@@ -477,8 +476,6 @@ static int read_key_info (const char * path, const char * file,
         free (pname);
         read_address_file (basename, "local", &(info->local));
         read_address_file (basename, "remote", &(info->remote));
-        if (info->has_pub_key)
-          info->is_visible = 1;
       }
       free (kname);
     }
@@ -1247,7 +1244,6 @@ int delete_contact (const char * contact)
         kip [key].is_deleted = 1;
         result = 1;
       } else {
-printf ("error: deleting contact %s which is not hidden\n", contact);
         return 0;
       }
     }
