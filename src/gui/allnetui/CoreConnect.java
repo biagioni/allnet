@@ -36,6 +36,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     static final byte guiMemberOfGroupsRecursive = 14;
 
     static final byte guiRenameContact = 20;
+    static final byte guiDeleteContact = 21;
 
     static final byte guiQueryVariable = 30;
     static final byte guiSetVariable = 31;
@@ -107,6 +108,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     private void callbackContactCreated(byte[] value) {
         assert(value.length > 2);
+        cachedContacts = null;   // reset the cache
         String peer = SocketUtils.bString(value, 1);
         handlers.contactCreated(peer);
     }
@@ -220,6 +222,9 @@ public class CoreConnect extends Thread implements CoreAPI {
                     this.sockIn.readFully(result, 0, result.length);
                     return result;
             }
+        } catch (java.io.EOFException e) {
+            System.out.println("exception " + e + " reading from socket");
+            System.exit(1);  // the socket is closed
         } catch (java.lang.Exception e) {
             System.out.println("exception " + e + " reading from socket");
         }
@@ -247,7 +252,7 @@ public class CoreConnect extends Thread implements CoreAPI {
             synchronized (this.mutex) {
                 byte[] result = receiveBuffer();
                 if (result != null) {
-// System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, code " + result[0]);
+System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, code " + result[0]);
                     if ((code != 0) && (result[0] == code))   // rpc complete
                         return result;
                     if (! dispatch(result)) { // not a dispatch, save buffer
@@ -272,13 +277,25 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // from lib/keys.h
 
+    // to refill the cache when something changes, just set it back to null
+    java.util.Vector<String> cachedContacts = null;
+
     // return all the contacts, including all the groups
     public String[] contacts() {
-        byte[] request = new byte[1];
-        request[0] = guiContacts;
-        byte[] response = doRPC(request);
-        long count = SocketUtils.b64(response, 1); 
-        String[] result = SocketUtils.bStringArray(response, 9, count);
+        String[] result = null;
+        if (cachedContacts == null) {
+            byte[] request = new byte[1];
+            request[0] = guiContacts;
+            byte[] response = doRPC(request);
+            long count = SocketUtils.b64(response, 1); 
+            result = SocketUtils.bStringArray(response, 9, count);
+            cachedContacts = new java.util.Vector<String>();
+            for (String contact: result) {
+                cachedContacts.add(contact);
+            }
+        } else {
+           result = cachedContacts.toArray(new String[0]);
+        }
         return result;
     } 
 
@@ -293,30 +310,42 @@ public class CoreConnect extends Thread implements CoreAPI {
     } 
 
     public boolean contactExists(String contact) { 
-        if (contact == null)
-            return false;
-        for (String existingContact: contacts()) {
-            if (contact.equals (existingContact)) {
-                return true;
+        boolean result = false;
+        if (contact != null) {
+            if (cachedContacts != null) {
+                result = cachedContacts.contains(contact); 
+            } else {
+                for (String existingContact: contacts()) {
+                    if (contact.equals (existingContact)) {
+                        result = true;
+                    }
+                }
             }
         }
-        return false;
+        return result;
     } 
 
     public boolean contactIsGroup(String contact) {
-       if (! contactExists(contact)) {
-           return false;  // false if contact does not exist
-       }
-       return AllNetContacts.fileExists(contact, "members");
+        if (! contactExists(contact)) {
+            return false;  // false if contact does not exist
+        }
+        byte[] request = new byte[1 + contact.length() + 1];
+        request[0] = guiContactIsGroup;
+        SocketUtils.wString(request, 1, contact); 
+        byte[] response = doRPC(request);
+        return (response [1] != 0);
     }
 
     // newly created contacts may not have the peer's key
     public boolean contactHasPeerKey(String contact) {
-        AllNetContacts.keyExchangeComplete status =
-            AllNetContacts.contactComplete(contact);
-        return ((status ==
-                     AllNetContacts.keyExchangeComplete.INCOMPLETE_WITH_KEY) ||
-                (status == AllNetContacts.keyExchangeComplete.COMPLETE));
+        if (! contactExists(contact)) {
+            return false;  // false if contact does not exist
+        }
+        byte[] request = new byte[1 + contact.length() + 1];
+        request[0] = guiHasPeerKey;
+        SocketUtils.wString(request, 1, contact); 
+        byte[] response = doRPC(request);
+        return (response [1] != 0);
     }
 
 // not obviously useful for now
@@ -328,6 +357,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // @return true if was able to create the group
     public boolean createGroup(String name) {
+        cachedContacts = null;   // reset the cache
         System.out.println ("createGroup not implemented yet");
         return false;
     }
@@ -355,8 +385,24 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // @return true if was able to rename the contact
     public boolean renameContact(String oldName, String newName) {
-        System.out.println ("renameContact not implemented yet");
-        return false;
+        cachedContacts = null;   // reset the cache
+        byte[] request = new byte[1 + oldName.length() + newName.length() + 2];
+        request[0] = guiRenameContact;
+        SocketUtils.wString(request, 1, oldName); 
+        SocketUtils.wString(request, 1 + oldName.length() + 1, newName); 
+        byte[] response = doRPC(request);
+        return (response [1] != 0);
+    }
+
+    // @return true if the contact existed, and now no longer does
+    public boolean deleteEntireContact(String contact) {
+        cachedContacts = null;   // reset the cache
+        byte[] request = new byte[1 + contact.length() + 1];
+        request[0] = guiDeleteContact;
+        SocketUtils.wString(request, 1, contact); 
+        byte[] response = doRPC(request);
+System.out.println ("deleting contact " + contact + " gave " + response[1]);
+        return (response [1] != 0);
     }
 
     public boolean isVisible(String contact) {

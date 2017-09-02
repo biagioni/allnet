@@ -74,6 +74,11 @@ public interface CoreAPI {
     //         a negative value of max requests all messages
     Message[] getMessages(String contact, int max);
 
+    // combines lib/keys.h and xchat/store.h
+
+    // @return true if the contact existed, and now no longer does
+    boolean deleteEntireContact(String contact);
+
     // ultimately from xchat/xcommon.h
 
     // @return sequence number
