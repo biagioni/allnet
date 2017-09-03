@@ -129,11 +129,14 @@ static void * call_allnet_main (void * path)
   return NULL;
 }
 
-static void exec_allnet (char * arg, const char * path)
+static void exec_allnet (char * arg, const char * const_path)
 /* iOS/android version, threads instead of fork */
 {
   pthread_t thread;
-  int error = pthread_create (&thread, NULL, call_allnet_main, path);
+  char * path = NULL;
+  if (const_path != NULL)
+    path = strcpy_malloc (const_path, "exec_allnet path");
+  int error = pthread_create (&thread, NULL, call_allnet_main, (void *)path);
   if (error) {
     printf ("ios exec_allnet unable to create thread for allnet main\n");
     exit (1);  /* no point continuing */
