@@ -332,12 +332,18 @@ class UIController implements ControllerInterface, UIAPI {
     }
     private String formatTime(long time) {
         long ms = time % 1000;
+        long s = time / 1000;
         String printedMs = "00" + ms;
         if (ms >= 10)
             printedMs = "0" + ms;
         if (ms >= 100)
             printedMs = "" + ms;
-        return ("" + (time / 1000) + "." + printedMs);
+        String prefix = "  ";
+        if (s > 9)
+            prefix = " ";
+        if (s > 99)
+            prefix = "";
+        return (prefix + (time / 1000) + "." + printedMs);
     }
     
     @Override
@@ -363,7 +369,7 @@ class UIController implements ControllerInterface, UIAPI {
                             + "s timestamp";
         }
         String traceMessage = " " + addressString + "   "
-                                  + hops + "   "
+                                  + hops + " "
                                   + formatTime(delta) + "s rtt"
                                   + timestampString + "\n";
 
