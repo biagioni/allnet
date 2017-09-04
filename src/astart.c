@@ -899,14 +899,14 @@ static int default_interfaces (char * * * interfaces_p)
     char * * interfaces = *interfaces_p;
     /* copy the names/extra to the malloc'd space after the pointers */
     char * write_to = ((char *) (interfaces + count));
-    int write_len = length;
+    size_t write_len = length;
     for (i = 0; ((write_len > 0) && (i < num_interfaces)); i++) {
       if ((! int_addrs [i].is_loopback) && (int_addrs [i].is_broadcast)) {
         char * extra = interface_extra (int_addrs + i);
         if (strlen (extra) > 0) {
           interfaces [result++] = write_to;
-          int slen = snprintf (write_to, write_len, "%s/%s",
-                               int_addrs [i].interface_name, extra)
+          off_t slen = snprintf (write_to, write_len, "%s/%s",
+                                 int_addrs [i].interface_name, extra)
                    + 1;  /* for the null character */
           write_len -= slen;
           write_to += slen;
