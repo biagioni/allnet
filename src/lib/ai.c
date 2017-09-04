@@ -374,16 +374,18 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
 #endif /* DEBUG_PRINT */
   next = ap;
   int i;
+  int assigned_interfaces = 0;
   for (i = 0; ((next != NULL) && (i < num_interfaces)); i++) {
     int j;
     int found = 0;
-    for (j = 0; j < i; j++) {
+    for (j = 0; j < assigned_interfaces; j++) {
       if (strcmp (next->ifa_name, ((*interfaces) [j].interface_name)) == 0)
         found = 1;
     }
     if (found)
       continue;   /* already assigned, move on to the next */
-    struct interface_addr * current = (*interfaces) + i;
+    struct interface_addr * current = (*interfaces) + assigned_interfaces;
+    assigned_interfaces++;
     /* copy the name */
     current->interface_name = strings;
     strcpy (current->interface_name, next->ifa_name);
