@@ -72,6 +72,100 @@ struct receive_thread_args {
   int print_duplicates;
 };
 
+static char expecting_trace [MESSAGE_ID_SIZE];  /* trace we are looking for */
+static int trace_count = 0;  /* changes every time we start a new trace */
+static unsigned long int trace_start_time = 0;
+
+static int trace_seen_before (unsigned char * addr, int abits)
+{
+  if (abits > 64)
+    return 1;    /* don't print this one */
+  if (trace_count == 0)  /* never started a trace */
+    return 1;    /* don't print this one */
+#define MAX_SEEN	4096
+  static unsigned char seen_addrs [MAX_SEEN] [ADDRESS_SIZE];
+  static int seen_bits [MAX_SEEN];
+  static int seen_count = 0;  /* how many entries are used in seen_adrs/bits */
+  static int trace_count_seen = 0;  /* value of trace_count on the last call */
+  if (trace_count_seen != trace_count) {  /* new trace, re-initialize */
+    memset (seen_addrs, 0, sizeof (seen_addrs));
+    memset (seen_bits, 0, sizeof (seen_bits));
+    trace_count_seen = trace_count;
+    memcpy (seen_addrs [0], addr, ADDRESS_SIZE);  /* record this trace */
+    seen_bits [0] = abits;
+    seen_count = 1;
+    return 0;                                     /* never seen before */
+  }
+  int i;
+  for (i = 0; i < seen_count; i++) {
+    if ((abits == seen_bits [i]) &&
+        (matches (addr, abits, seen_addrs [i], seen_bits [i]) >= abits)) {
+      return 1;  /* seen before */
+    }
+  }  /* not found, add it (if there is room) */
+     /* if we run out of room, we will print duplicates */
+  if (seen_count < MAX_SEEN) {
+    memcpy (seen_addrs [seen_count], addr, ADDRESS_SIZE);
+    seen_bits [seen_count] = abits;
+    seen_count++;
+  }
+#undef MAX_SEEN
+  return 0;
+}
+
+/* returns a pointer to a static buffer */
+static char * print_addr (unsigned char * addr, int abits)
+{
+  if (abits > 64)
+    return "";
+  static char result [100];  /* 27 should be enough */
+  if (abits == 0) {          /* special case */
+    snprintf (result, sizeof (result), "00/0");
+    return result;
+  }
+  char * ptr = result;
+  size_t remaining = sizeof (result);
+  int bits_left = abits;
+  while ((bits_left > 0) && (remaining > 0)) {
+    int value = (*addr) & 0xff;
+    if (bits_left < 8) {
+      value = value >> (8 - bits_left);  /* clear low-order bits */
+      value = value << (8 - bits_left);  /* and restore the number */
+    }
+    size_t off = snprintf (ptr, remaining, "%02x%s", value,
+                           ((bits_left > 8) ? "." : ""));
+    bits_left = bits_left - 8;
+    addr++;
+    ptr += off;
+    if (remaining >= off)
+      remaining -= off;
+    else
+      remaining = 0;
+  }
+  snprintf (ptr, remaining, "/%d", abits);
+  return result;
+}
+
+static void trace_to_string (char * string, size_t slen,
+                             struct allnet_mgmt_trace_reply * trace)
+{
+  snprintf (string, slen, "%s", "");   /* empty string */
+  if (trace->num_entries <= 0)
+    return;
+  unsigned int index = trace->num_entries - 1;
+  if (trace->intermediate_reply == 0) {   /* final reply */
+    struct allnet_mgmt_trace_entry * entry = trace->trace + index;
+    unsigned long long int now = allnet_time_ms ();
+    unsigned long long int delta = now - trace_start_time;
+    unsigned long long int sec = delta / 1000;
+    unsigned long long int msec = delta % 1000;
+    if (! trace_seen_before (entry->address, entry->nbits))
+      snprintf (string, slen, "%3d: %s  %d hops %3lld.%03llds rtt\n",
+                trace_count, print_addr (entry->address, entry->nbits),
+                entry->hops_seen, sec, msec);
+  }
+}
+
 static void * receive_thread (void * arg)
 {
   struct receive_thread_args a = *((struct receive_thread_args *) arg);
@@ -95,9 +189,10 @@ static void * receive_thread (void * arg)
     char * desc;
     char * message;
     struct allnet_ack_info acks;
+    struct allnet_mgmt_trace_reply * trace = NULL;
     int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset,
                               &message, &desc, &verified, &seq, NULL,
-                                &duplicate, &broadcast, &acks, NULL);
+                              &duplicate, &broadcast, &acks, &trace);
     if (mlen > 0) {
       /* time_t rtime = time (NULL); */
       char * ver_mess = "";
@@ -137,7 +232,23 @@ static void * receive_thread (void * arg)
       free (message);
       if (! broadcast)
         free (desc);
-    } 
+    } else if (mlen < 0) {
+      char string [PRINT_BUF_SIZE] = "";
+      if (mlen == -1)        /* confirm successful key exchange */
+        snprintf (string, sizeof (string), "from '%s' got key\n", peer);
+      else if (mlen == -2)   /* confirm successful subscription */
+        snprintf (string, sizeof (string), "subscription %s complete\n", peer);
+      else if ((mlen == -4)  /* got a trace reply */
+               && (trace != NULL)
+               && (memcmp (trace->trace_id, expecting_trace,
+                           MESSAGE_ID_SIZE) == 0)) {
+        trace_to_string (string, sizeof (string), trace);
+        printf ("%s", string);
+        string [0] = '\0';   /* do not call print_to_output */
+      }
+      if (strlen (string) > 0)
+        print_to_output (string);
+    }
     if (acks.num_acks > 0) {
       int i;
       for (i = 0; i < acks.num_acks; i++) {
@@ -358,7 +469,8 @@ static int get_byte (const char * string, int * offset, unsigned char * result)
   return 8;
 }
 
-static int get_address (const char * address, unsigned char * result, int rsize)
+static int get_address (const char * address, unsigned char * result, int rsize,
+                        int * consumed)
 {
   int offset = 0;
   int index = 0;
@@ -377,7 +489,10 @@ static int get_address (const char * address, unsigned char * result, int rsize)
     long given_bits = strtol (address + offset + 1, &end, 10);
     if ((end != address + offset + 1) && (given_bits <= bits))
       bits = (int)given_bits;
+    offset = end - address;
   }
+  if (consumed != NULL)
+    *consumed = offset;
   return bits;
 }
 
@@ -386,6 +501,7 @@ static void run_trace (int sock, pd p, struct allnet_log * log, char * params)
   strip_final_newline (params);
   int hops = 5;
   int abits = 0;
+  int sleep_sec = 5;
   unsigned char address [ADDRESS_SIZE];
   if (strlen (params) > 0) {
     char * finish = NULL;
@@ -395,13 +511,20 @@ static void run_trace (int sock, pd p, struct allnet_log * log, char * params)
     params = finish;
     while (*params == ' ')
       params++;
+    int consumed = 0;
     if (strlen (params) > 0) {
-      abits = get_address (params, address, sizeof (address));
-      if (abits <= 0) {
+      abits = get_address (params, address, sizeof (address), &consumed);
+      if (abits < 0) {
         printf ("params %s, invalid number of bits %d, should be > 0\n",
                 params, abits);
         abits = 0;
       }
+    }
+    if ((consumed > 0) && (strlen (params) > consumed)) {
+      finish = NULL;
+      sleep_sec = strtol (params + consumed, &finish, 10);
+      if (finish == params + consumed)
+        sleep_sec = 5;
     }
   }
 #ifdef DEBUG_PRINT
@@ -415,16 +538,11 @@ static void run_trace (int sock, pd p, struct allnet_log * log, char * params)
     printf ("run_trace (%d)\n", hops);
   }
 #endif /* DEBUG_PRINT */
-  int repeat = 1;
-  int sleep = 5;  /* seconds */
-  int match_only = 1;
-  int no_intermediates = 1;
-  int wide = 1;
-  int null_term = 0;
-  int fd_out = STDOUT_FILENO;
-  do_trace_loop (sock, p, address, abits, repeat, sleep,
-                 hops, match_only, no_intermediates, wide,
-                 null_term, fd_out, 1, NULL, log);
+  trace_count++;
+  trace_start_time = allnet_time_ms ();
+  if (! start_trace (sock, address, abits, hops, 0, expecting_trace))
+    printf ("unable to start trace\n");
+  sleep (sleep_sec);
   print_to_output (NULL);
 }
 
@@ -668,6 +786,9 @@ int main (int argc, char ** argv)
   log_to_output (get_option ('v', &argc, argv));
   struct allnet_log * log = init_log ("xt");
   pd p = init_pipe_descriptor (log);
+
+  /* not expecting any trace */
+  memset (expecting_trace, 0, sizeof (expecting_trace));
 
   int print_duplicates = 0;
   char * path = NULL;
