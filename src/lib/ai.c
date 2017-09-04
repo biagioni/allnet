@@ -438,6 +438,12 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
 
 #endif /* ANDROID */
 
+#ifdef LOG_PACKETS  /* if log_packets is defined, check this too */
+#define CHECK_INTERFACE_ADDRS
+#endif /* LOG_PACKETS */
+
+#if defined(ANDROID) || defined(CHECK_INTERFACE_ADDRS)
+
 /* similar to grep -c */
 static int number_matching_lines (const char * pattern, const char * file)
 {
@@ -521,7 +527,7 @@ static int read_special_file (const char * name, char ** contents)
   }
   close (fd);
   *contents = buffer;
-  return length;
+  return (int)length;
 }
 
 int ioctl_interface_addrs (struct interface_addr ** interfaces)
@@ -637,10 +643,7 @@ int ioctl_interface_addrs (struct interface_addr ** interfaces)
 #endif /* DEBUG_PRINT */
   return interface_count;
 }
-
-#ifdef LOG_PACKETS  /* if log_packets is defined, check this too */
-#define CHECK_INTERFACE_ADDRS
-#endif /* LOG_PACKETS */
+#endif /* defined(ANDROID) || defined(CHECK_INTERFACE_ADDRS) */
 
 #ifdef CHECK_INTERFACE_ADDRS
 static int same_interfaces (struct interface_addr * a1,
