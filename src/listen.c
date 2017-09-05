@@ -212,7 +212,7 @@ record_message (info->pipe_descriptor);
         }
         addr_size = sizeof (address);  /* reset for next call to accept */
       }
-      perror ("accept");
+      perror ("accept in listen.c listen_loop");
       printf ("error calling accept (%d)\n", fd);
       close (fd);    /* if still open */
     } else {  /* unable to create listen_socket: wait a while, try again */
