@@ -343,14 +343,15 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
   size_t str_length = 0;  /* compute the size needed for strings */
   struct ifaddrs * next = ap;
   while (next != NULL) {
-    if (! is_in_ap_list (next->ifa_name, next->ifa_next)) {
-      num_interfaces++;
-      str_length += strlen (next->ifa_name) + 1;
-    }
     if ((next->ifa_addr != NULL) &&
         ((next->ifa_addr->sa_family == AF_INET) ||
-         (next->ifa_addr->sa_family == AF_INET6)))
+         (next->ifa_addr->sa_family == AF_INET6))) {
       num_ifaddrs++;
+      if (! is_in_ap_list (next->ifa_name, next->ifa_next)) {
+        num_interfaces++;
+        str_length += strlen (next->ifa_name) + 1;
+      }
+    }
     next = next->ifa_next;
   }
   size_t size = num_interfaces * sizeof (struct interface_addr) +
@@ -373,21 +374,58 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
   printf ("partitioned into: %p, %p, %p\n", *interfaces, strings, addrs);
 #endif /* DEBUG_PRINT */
   next = ap;
-  int i;
   int assigned_interfaces = 0;
-  for (i = 0; ((next != NULL) && (i < num_interfaces)); i++) {
+  while (next != NULL) {
     int j;
     int found = 0;
     for (j = 0; j < assigned_interfaces; j++) {
       if (strcmp (next->ifa_name, ((*interfaces) [j].interface_name)) == 0)
         found = 1;
     }
-    if (found)
+    if (found) {
+      next = next->ifa_next;
       continue;   /* already assigned, move on to the next */
+    }
+    /* check to see whether this interface has IP addresses */
+    struct ifaddrs * loop = next;
+    int has_addresses = 0;
+    while (loop != NULL) {
+      if ((loop->ifa_name != NULL) &&
+          (strcmp (next->ifa_name, loop->ifa_name) == 0) &&
+          (loop->ifa_addr != NULL) &&
+          ((loop->ifa_addr->sa_family == AF_INET) ||
+           (loop->ifa_addr->sa_family == AF_INET6))) {
+        has_addresses = 1;
+        break;   /* found a valid address, no need to look further */
+      }
+      loop = loop->ifa_next;
+    }
+    if (! has_addresses) {
+      next = next->ifa_next;
+      continue;   /* no addresses, move on to the next */
+    }
+    if (assigned_interfaces >= num_interfaces) {  /* error */
+      printf ("error in %d getifaddrs interfaces\n", num_interfaces);
+      int i;
+      for (i = 0; i < num_interfaces; i++) {
+        printf ("interface %s: loop %d, bc %d, up %d, %d addrs\n",
+                (*interfaces) [i].interface_name,
+                (*interfaces) [i].is_loopback,
+                (*interfaces) [i].is_broadcast,
+                (*interfaces) [i].is_up,
+                (*interfaces) [i].num_addresses);
+        int ib;
+        for (ib = 0; ib < (*interfaces) [i].num_addresses; ib++)
+          print_buffer (((char *) ((*interfaces) [i].addresses + ib)),
+                        sizeof (struct sockaddr_storage), "  address",
+                        10000, 1);
+      }
+    /* if there is an error, should crash now, allowing use of the debugger */
+    }
     struct interface_addr * current = (*interfaces) + assigned_interfaces;
     assigned_interfaces++;
     /* copy the name */
-    current->interface_name = strings;
+    current->interface_name = strings;  /* point to available buffer space */
     strcpy (current->interface_name, next->ifa_name);
     strings += strlen (current->interface_name) + 1;
     /* set the variables */
@@ -396,7 +434,7 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
     current->is_up = ((next->ifa_flags & IFF_UP) != 0);
     /* set the addresses */
     int addr_count = 0;
-    struct ifaddrs * loop = next;
+    loop = next;
     current->addresses = addrs;
     while (loop != NULL) {
       if (strcmp (current->interface_name, loop->ifa_name) == 0) {
@@ -419,22 +457,31 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
     next = next->ifa_next;
   }
   freeifaddrs (ap);
-#ifdef DEBUG_PRINT
-  printf ("%d getifaddrs interfaces\n", num_interfaces);
-  for (i = 0; i < num_interfaces; i++) {
-    printf ("interface %s: loop %d, bc %d, up %d, %d addrs\n",
-            (*interfaces) [i].interface_name,
-            (*interfaces) [i].is_loopback,
-            (*interfaces) [i].is_broadcast,
-            (*interfaces) [i].is_up,
-            (*interfaces) [i].num_addresses);
-    int j;
-    for (j = 0; j < (*interfaces) [i].num_addresses; j++)
-      print_buffer (((char *) ((*interfaces) [i].addresses + j)),
-                    sizeof (struct sockaddr_storage), "  address", 10000, 1);
+  if (num_interfaces != assigned_interfaces) {
+    printf ("%d/%d getifaddrs interfaces\n",
+            num_interfaces, assigned_interfaces);
+    int i;
+    for (i = 0; i < num_interfaces; i++) {
+      printf ("interface %s: loop %d, bc %d, up %d, %d addrs\n",
+              (*interfaces) [i].interface_name,
+              (*interfaces) [i].is_loopback,
+              (*interfaces) [i].is_broadcast,
+              (*interfaces) [i].is_up,
+              (*interfaces) [i].num_addresses);
+      int j;
+      for (j = 0; j < (*interfaces) [i].num_addresses; j++)
+        print_buffer (((char *) ((*interfaces) [i].addresses + j)),
+                      sizeof (struct sockaddr_storage), "  address", 10000, 1);
+    }
   }
+#ifdef DEBUG_PRINT
   print_buffer (result, size, "result", size, 1);
 #endif /* DEBUG_PRINT */
+  if (num_interfaces != assigned_interfaces) {
+    printf ("error: num_interfaces %d, assigned_interfaces %d\n",
+            num_interfaces, assigned_interfaces);
+    exit (1);
+  }
   return num_interfaces;
 }
 
@@ -548,13 +595,16 @@ int ioctl_interface_addrs (struct interface_addr ** interfaces)
     int success = (ioctl (socket_fd, SIOCGIFNAME, &ifr) >= 0);
     if ((success) && (strlen (ifr.ifr_name) > 0)) {
       last_valid_interface = interface_index;
-      interface_count++;
       str_length += strlen (ifr.ifr_name) + 1;
       /* how many addresses does it have? */
+      int num_v4_addrs = 0;
+      if (ioctl (socket_fd, SIOCGIFADDR, &ifr) >= 0)
+        num_v4_addrs = 1;
       int num_v6_addrs = number_matching_lines (ifr.ifr_name, ipv6_file);
-      ifaddrs_count += num_v6_addrs;
-      if (ioctl (socket_fd, SIOCGIFADDR, &ifr) >= 0)  /* has IPv4 address */
-        ifaddrs_count += 1;
+      if ((num_v4_addrs > 0) || (num_v6_addrs > 0)) {
+        ifaddrs_count += num_v6_addrs + num_v4_addrs;
+        interface_count++;
+      }
     }
     memset (&ifr, 0, sizeof (ifr));  /* next */
     ifr.ifr_ifindex = interface_index;
@@ -587,6 +637,13 @@ int ioctl_interface_addrs (struct interface_addr ** interfaces)
        interface_index++) {
     ifr.ifr_ifindex = interface_index;
     if (ioctl (socket_fd, SIOCGIFNAME, &ifr) >= 0) {
+      int num_v6_addrs = number_matching_lines (ifr.ifr_name, ipv6_file);
+      int num_v4_addrs = 0;
+      if (ioctl (socket_fd, SIOCGIFADDR, &ifr) >= 0)  /* has IPv4 address */
+        num_v4_addrs = 1;
+      if ((num_v4_addrs == 0) && (num_v6_addrs == 0)) {
+        continue; /* do not return this interface */
+      }
       struct interface_addr * current = (*interfaces) + i;
       i++;   /* next interface will be in the next location in the result */
       /* copy the name */
@@ -604,14 +661,10 @@ int ioctl_interface_addrs (struct interface_addr ** interfaces)
       current->is_broadcast = ((flags_ifr.ifr_flags & IFF_BROADCAST) != 0);
       current->is_up = ((flags_ifr.ifr_flags & IFF_UP) != 0);
       /* set the addresses */
-      int num_v6_addrs = number_matching_lines (ifr.ifr_name, ipv6_file);
-      int has_local_address = 0;
-      if (ioctl (socket_fd, SIOCGIFADDR, &ifr) >= 0)  /* has IPv4 address */
-        has_local_address = 1;
-      int addr_count = has_local_address + num_v6_addrs;
+      int addr_count = num_v4_addrs + num_v6_addrs;
       memset (addrs, 0, addr_count * sizeof (struct sockaddr_storage));
       current->addresses = addrs;
-      if (has_local_address) {
+      if (num_v4_addrs > 0) {
         if (ifr.ifr_addr.sa_family == AF_INET)
           memcpy (addrs, &(ifr.ifr_addr), sizeof (struct sockaddr_in));
         else if (ifr.ifr_addr.sa_family == AF_INET6)
