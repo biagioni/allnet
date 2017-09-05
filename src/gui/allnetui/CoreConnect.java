@@ -278,7 +278,7 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
     // from lib/keys.h
 
     // to refill the cache when something changes, just set it back to null
-    java.util.Vector<String> cachedContacts = null;
+    java.util.ArrayList<String> cachedContacts = null;
 
     // return all the contacts, including all the groups
     public String[] contacts() {
@@ -289,7 +289,7 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
             byte[] response = doRPC(request);
             long count = SocketUtils.b64(response, 1); 
             result = SocketUtils.bStringArray(response, 9, count);
-            cachedContacts = new java.util.Vector<String>();
+            cachedContacts = new java.util.ArrayList<String>();
             for (String contact: result) {
                 cachedContacts.add(contact);
             }
