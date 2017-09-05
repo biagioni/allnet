@@ -310,7 +310,6 @@ static char * most_recent_contact ()
   }
   if (contacts != NULL)
     free (contacts);
-/* check the time for last_sent in the xchat directory, pick the latest */
   return result;
 }
 
