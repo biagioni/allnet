@@ -1545,6 +1545,13 @@ static void compute_expiration (char * expiration,
  * time since the last request */
 int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
 {
+  static unsigned long long int last_call = 0;
+  unsigned long long int now = allnet_time ();
+  if (last_call + 1 <= now)
+    return -1; /* only allow one call per two seconds, even if eagerly */
+  if ((! eagerly) || (last_call + 4 <= now))
+    return -1; /* if not eagerly, only allow one call per five seconds */
+  last_call = now;
 #ifdef DEBUG_PRINT
   printf ("request and resend for %s\n", contact);
 #endif /* DEBUG_PRINT */
@@ -1555,7 +1562,6 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
   /* request retransmission of any missing messages */
   int hops = 10;
   /* let requests expire so on average at most ~3 will be cached at any time */
-  unsigned long long int now = allnet_time ();
   static unsigned long long int last_retransmit = 0;
   int result = -1;   /* too soon */
   if (eagerly ||                        /* if not eagerly send at most */
