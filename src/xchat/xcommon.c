@@ -1547,10 +1547,10 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
 {
   static unsigned long long int last_call = 0;
   unsigned long long int now = allnet_time ();
-  if (last_call + 1 <= now)
-    return -1; /* only allow one call per two seconds, even if eagerly */
-  if ((! eagerly) || (last_call + 4 <= now))
-    return -1; /* if not eagerly, only allow one call per five seconds */
+  if (last_call >= now)
+    return -1; /* only allow one call per second, even if eagerly */
+  if ((! eagerly) || (last_call + 1 >= now))
+    return -1; /* if not eagerly, only allow one call per two seconds */
   last_call = now;
 #ifdef DEBUG_PRINT
   printf ("request and resend for %s\n", contact);
