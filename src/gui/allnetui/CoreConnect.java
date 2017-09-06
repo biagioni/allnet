@@ -278,7 +278,7 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
     // from lib/keys.h
 
     // to refill the cache when something changes, just set it back to null
-    java.util.ArrayList<String> cachedContacts = null;
+    java.util.List<String> cachedContacts = null;
 
     // return all the contacts, including all the groups
     public String[] contacts() {
