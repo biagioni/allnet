@@ -74,8 +74,13 @@ public interface CoreAPI {
     //         a negative value of max requests all messages
     Message[] getMessages(String contact, int max);
 
+    // set that the contact was read now
+    void setReadTime(String contact);
+
     // combines lib/keys.h and xchat/store.h
 
+    // @return true if the contact existed, and now its conversation is empty
+    boolean clearConversation(String contact);
     // @return true if the contact existed, and now no longer does
     boolean deleteEntireContact(String contact);
 

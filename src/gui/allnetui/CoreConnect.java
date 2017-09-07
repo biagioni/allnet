@@ -37,6 +37,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     static final byte guiRenameContact = 20;
     static final byte guiDeleteContact = 21;
+    static final byte guiClearConversation = 22;
 
     static final byte guiQueryVariable = 30;
     static final byte guiSetVariable = 31;
@@ -47,6 +48,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     static final byte guiVariableNotify = 2;
     static final byte guiVariableSavingMessages = 3;
     static final byte guiVariableComplete = 4;  // no unsetComplete
+    static final byte guiVariableReadTime = 5;  // only setReadTime
 
     static final byte guiGetMessages = 40;
     static final byte guiSendMessage = 41;
@@ -65,11 +67,15 @@ public class CoreConnect extends Thread implements CoreAPI {
     static final byte guiCallbackSubscriptionComplete = 73;
     static final byte guiCallbackTraceResponse        = 74;
 
+    // list of incomplete contacts, so we don't always have to check back
+    java.util.List<String> incompletes = new java.util.ArrayList<String>();
+
     // design principle: this API provides access to allnet lib and xchat
     // methods needed to implement the functionality of the user interface.
     public CoreConnect(UIAPI handlers) {
         super ();   // initialize thread
         this.handlers = handlers;
+        this.incompletes = new java.util.ArrayList<String>();
         try {
             this.sock = new java.net.Socket("127.0.0.1", xchatSocketPort);
             this.sockIn =
@@ -96,6 +102,10 @@ public class CoreConnect extends Thread implements CoreAPI {
         int descEnd = messageEnd + desc.length() + 1;
         assert(descEnd == value.length);
         String dm = desc + "\n" + message;
+        if (incompletes.contains(peer)) {   // complete the exchange
+            setComplete(peer);
+            setVisible(peer);
+        }
         handlers.messageReceived(peer, time, seq, message, isBroadcast);
     }
 
@@ -325,15 +335,36 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
         return result;
     } 
 
+    private byte[] doRPCWithCode(byte code, String contact) {
+        byte[] request = new byte[1 + contact.length() + 1];
+        request[0] = code;
+        SocketUtils.wString(request, 1, contact); 
+        return doRPC(request);
+    }
+
+    private boolean doRPCWithCodeNonZero(byte code, String contact) {
+        byte[] response = doRPCWithCode (code, contact);
+        return (response [1] != 0);
+    }
+
+    private byte[] doRPCWithCodeOp(byte code, byte op, String contact) {
+        byte[] request = new byte[1 + 1 + contact.length() + 1];
+        request[0] = code;
+        request[1] = op;
+        SocketUtils.wString(request, 2, contact); 
+        return doRPC(request);
+    }
+
+    private boolean doRPCWithCodeOpNonZero(byte code, byte op, String contact) {
+        byte[] response = doRPCWithCodeOp (code, op, contact);
+        return (response [1] != 0);
+    }
+
     public boolean contactIsGroup(String contact) {
         if (! contactExists(contact)) {
             return false;  // false if contact does not exist
         }
-        byte[] request = new byte[1 + contact.length() + 1];
-        request[0] = guiContactIsGroup;
-        SocketUtils.wString(request, 1, contact); 
-        byte[] response = doRPC(request);
-        return (response [1] != 0);
+        return doRPCWithCodeNonZero (guiContactIsGroup, contact);
     }
 
     // newly created contacts may not have the peer's key
@@ -341,11 +372,7 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
         if (! contactExists(contact)) {
             return false;  // false if contact does not exist
         }
-        byte[] request = new byte[1 + contact.length() + 1];
-        request[0] = guiHasPeerKey;
-        SocketUtils.wString(request, 1, contact); 
-        byte[] response = doRPC(request);
-        return (response [1] != 0);
+        return doRPCWithCodeNonZero (guiHasPeerKey, contact);
     }
 
 // not obviously useful for now
@@ -385,6 +412,9 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
 
     // @return true if was able to rename the contact
     public boolean renameContact(String oldName, String newName) {
+        if (! contactExists(oldName)) {
+            return false;  // false if contact does not exist
+        }
         cachedContacts = null;   // reset the cache
         byte[] request = new byte[1 + oldName.length() + newName.length() + 2];
         request[0] = guiRenameContact;
@@ -394,30 +424,56 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
         return (response [1] != 0);
     }
 
+    // @return true if the contact existed, and now its conversation is empty
+    public boolean clearConversation(String contact) {
+        if (! contactExists(contact)) {
+            return false;  // false if contact does not exist
+        }
+        return doRPCWithCodeNonZero (guiClearConversation, contact);
+    }
+
     // @return true if the contact existed, and now no longer does
     public boolean deleteEntireContact(String contact) {
+        if (! contactExists(contact)) {
+            return false;  // false if contact does not exist
+        }
+        if (isVisible(contact)) {
+            System.out.println("cannot delete a contact that is still visible");
+            System.out.println("deleting " + contact + " failed");
+            return false;
+        }
         cachedContacts = null;   // reset the cache
-        byte[] request = new byte[1 + contact.length() + 1];
-        request[0] = guiDeleteContact;
-        SocketUtils.wString(request, 1, contact); 
-        byte[] response = doRPC(request);
-System.out.println ("deleting contact " + contact + " gave " + response[1]);
-        return (response [1] != 0);
+        return doRPCWithCodeNonZero (guiDeleteContact, contact);
     }
 
     public boolean isVisible(String contact) {
-        return ! AllNetContacts.isHiddenContact(contact);
+        if (! contactExists(contact)) {
+            return false;  // false if contact does not exist
+        }
+        return doRPCWithCodeOpNonZero (guiQueryVariable, guiVariableVisible,
+                                       contact);
     }
     public void setVisible(String contact) {
-        AllNetContacts.unhideContact(contact);
+        byte [] response = doRPCWithCodeOp (guiSetVariable, guiVariableVisible,
+                                            contact);
+        if (response [1] == 0) {
+            System.out.println ("failed to make " + contact + " visible");
+        }
     }
     public void unsetVisible(String contact) {  // make not visible
-        AllNetContacts.hideContact(contact);
+        byte [] response = doRPCWithCodeOp (guiUnsetVariable,
+                                            guiVariableVisible, contact);
+        if (response [1] == 0) {
+            System.out.println ("failed to make " + contact + " invisible");
+        }
     }
 
     public boolean isNotify(String contact) {
-        System.out.println("isNotify not implemented yet");
-        return false;
+        if (! contactExists(contact)) {
+            return false;  // false if contact does not exist
+        }
+        return doRPCWithCodeOpNonZero (guiQueryVariable, guiVariableNotify,
+                                       contact);
     }
     public void setNotify(String contact) { 
         System.out.println("setNotify not implemented yet");
@@ -427,8 +483,11 @@ System.out.println ("deleting contact " + contact + " gave " + response[1]);
     }
 
     public boolean isSavingMessages(String contact) { 
-        System.out.println("isSavingMessages not implemented yet");
-        return ! contactIsGroup(contact);  // reasonable default
+        if (! contactExists(contact)) {
+            return false;  // false if contact does not exist
+        }
+        return doRPCWithCodeOpNonZero (guiQueryVariable,
+                                       guiVariableSavingMessages, contact);
     }
     public void setSavingMessages(String contact) { 
         System.out.println("setSavingMessages not implemented yet");
@@ -440,11 +499,24 @@ System.out.println ("deleting contact " + contact + " gave " + response[1]);
     // a key exchange is only complete once
     // (a) the user says so, or (b) we receive messages from the contact
     public boolean isComplete(String contact) {
-        return (AllNetContacts.contactComplete(contact) ==
-                AllNetContacts.keyExchangeComplete.COMPLETE);
+        if (! contactExists(contact)) {
+            return false;  // false if contact does not exist
+        }
+        return doRPCWithCodeOpNonZero (guiQueryVariable,
+                                       guiVariableComplete, contact);
+        // return (AllNetContacts.contactComplete(contact) ==
+        //         AllNetContacts.keyExchangeComplete.COMPLETE);
     }
+
     public void setComplete(String contact) {
-        AllNetContacts.completeExchange(contact);
+        byte[] response = doRPCWithCodeOp (guiSetVariable,
+                                           guiVariableComplete, contact);
+        if (response [1] == 0) {
+            System.out.println ("failed to make " + contact + " complete");
+        } else {
+            while (incompletes.remove (contact))
+                ;
+        }
     }
 
     // ultimately from xchat/store.h
@@ -456,6 +528,14 @@ System.out.println ("deleting contact " + contact + " gave " + response[1]);
             return ConversationData.getAll(contact);
         }
         return ConversationData.get(contact, max);
+    }
+
+    // set that the contact was read now
+    public void setReadTime(String contact) {
+        // ignore the response
+        doRPCWithCodeOp (guiSetVariable, guiVariableReadTime, contact);
+System.out.println ("set read time for " + contact);
+        // AllNetContacts.messagesHaveBeenRead(contact);
     }
 
     // ultimately from xchat/xcommon.h

@@ -349,6 +349,21 @@ static void gui_rename_contact (char * message, int64_t length, int gui_sock)
   gui_send_buffer (gui_sock, reply, sizeof (reply));
 }
 
+static void gui_clear_conversation (char * message, int64_t length,
+                                    int gui_sock)
+{
+/* message format: contact name (not null terminated) */
+/* reply format: 1-byte code, 1-byte response */
+  char reply [2];
+  reply [0] = GUI_CLEAR_CONVERSATION;
+  reply [1] = 0;   /* failure */
+  if (length > 1) {   /* shortest is a single-character name */
+    char * contact = contact_name_from_buffer (message, length);
+    reply [1] = clear_conversation (contact);
+  }
+  gui_send_buffer (gui_sock, reply, sizeof (reply));
+}
+
 static void gui_delete_contact (char * message, int64_t length, int gui_sock)
 {
 /* message format: contact name (not null terminated) */
@@ -356,7 +371,7 @@ static void gui_delete_contact (char * message, int64_t length, int gui_sock)
   char reply [2];
   reply [0] = GUI_DELETE_CONTACT;
   reply [1] = 0;   /* failure */
-  if (length > 1) {   /* shortest is a single-character names */
+  if (length > 1) {   /* shortest is a single-character name */
     char * contact = contact_name_from_buffer (message, length);
     delete_conversation (contact);  /* ignore the result, not relevant */
     reply [1] = delete_contact (contact);  /* this is the one we report */
@@ -368,14 +383,17 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
 {
 /* message format: variable code, contact name (not null terminated) */
 /* reply format: 1-byte code, 1-byte response */
-  char reply [2];
-  reply [0] = GUI_QUERY_VARIABLE;
-  if (op == 0)
+  char reply [2] = {0, 0};
+  if (op == -1)
+    reply [0] = GUI_QUERY_VARIABLE;
+  else if (op == 0)
     reply [0] = GUI_UNSET_VARIABLE;
   else if (op == 1)
     reply [0] = GUI_SET_VARIABLE;
+  else
+    printf ("gui_variable: unknown op %d\n", op);
   reply [1] = 0;   /* not set, or failure */
-  if (length > 1) {
+  if ((op >= -1) && (op <= 1) && (length > 1)) {
     int code = message [0];
     char * contact = contact_name_from_buffer (message + 1, length - 1);
     if (num_keysets (contact) > 0) {  /* contact exists */
@@ -387,8 +405,6 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
           reply [1] = make_invisible (contact);
         else if (op == 1)   /* make visible */
           reply [1] = make_visible (contact);
-        else
-          printf ("GUI_VARIABLE_VISIBLE: unknown op %d\n", op);
         break;
       case GUI_VARIABLE_NOTIFY:
         if (op == -1)       /* query */
@@ -398,8 +414,7 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
         else if (op == 1) { /* make notifiable by deleting "no_notify" if any */
           contact_file_delete (contact, "no_notify");
           reply [1] = 1;
-        } else
-          printf ("GUI_VARIABLE_NOTIFY: unknown op %d\n", op);
+        }
         break;
       case GUI_VARIABLE_SAVING_MESSAGES:
         if (op == -1)       /* query */
@@ -409,20 +424,55 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
         else if (op == 1) { /* save by deleting "no_saving" if any */
           contact_file_delete (contact, "no_saving");
           reply [1] = 1;
-        } else
-          printf ("GUI_VARIABLE_SAVING_MESSAGES: unknown op %d\n", op);
+        }
         break;
       case GUI_VARIABLE_COMPLETE:
-        if (op == -1)       /* query */
+        if (op == -1) {     /* query */
           reply [1] = (contact_file_get (contact, "exchange", NULL) < 0);
-        else if (op == 1) { /* delete exchange file if any */
+        } else if (op == 1) { /* delete exchange file if any */
           contact_file_delete (contact, "exchange");
+          if (is_invisible (contact))
+            make_visible (contact);
           reply [1] = 1;
-        } else
-          printf ("GUI_VARIABLE_COMPLETE: unknown op %d\n", op);
+        } else {
+          printf ("gui_variable_complete: unsupported %d/%d, %s\n",
+                  op, code, contact);
+        }
+        break;
+      case GUI_VARIABLE_READ_TIME:
+        if (op == 1) {      /* set */
+          keyset * k = NULL;
+          int nk = all_keys (contact, &k);
+          int ik;
+          for (ik = 0; ik < nk; ik++) 
+            xchat_file_write(contact, k [ik], "last_read", " ", 1);
+          if (k != NULL)
+            free (k);
+        } else {
+          printf ("gui_variable_read_time: unsupported %d/%d, %s\n",
+                  op, code, contact);
+        }
         break;
       default:
+        printf ("gui_variable: unsupported %d/%d, %s\n", op, code, contact);
         break;
+      }
+    } else if (strchr (contact, '@') != NULL) {  /* broadcast contact */
+      if (op == -1) {     /* query -- the only supported operation for now */
+        switch (code) {
+        case GUI_VARIABLE_VISIBLE:
+        case GUI_VARIABLE_COMPLETE:
+        case GUI_VARIABLE_NOTIFY:
+          reply [1] = (get_other_bc_key (contact) != NULL);
+          break;
+        case GUI_VARIABLE_SAVING_MESSAGES:
+          reply [1] = 0;   /* same for everyone */
+          break;
+        default:
+          printf ("gui_variable: unsupported %d/%d, %s\n", op, code, contact);
+        }
+      } else {
+        printf ("gui_variable: unsupported %d/%d for %s\n", op, code, contact);
       }
     }
     free (contact);
@@ -658,7 +708,9 @@ static void interpret_from_gui (char * message, int64_t length,
   case GUI_DELETE_CONTACT:
     gui_delete_contact (message + 1, length - 1, gui_sock);
     break;
-
+  case GUI_CLEAR_CONVERSATION:
+    gui_clear_conversation (message + 1, length - 1, gui_sock);
+    break;
 
   case GUI_QUERY_VARIABLE:
     gui_variable (message + 1, length - 1, -1, gui_sock);
