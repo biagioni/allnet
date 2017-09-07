@@ -1181,15 +1181,14 @@ int make_visible (const char * contact)
         (strcmp (cpx [key], contact) == 0)) {
       char * file_name =
         strcat_malloc (kip [key].dir_name, "/hidden", "make_visible");
- /* remove .allnet/contacts/x/hidden */
-      if (unlink (file_name) == 0) {
+ /* remove .allnet/contacts/x/hidden, if any */
+      if (unlink (file_name) != 0)  /* not really an error */
+        /* printf ("failed to remove '%s'\n", file_name) */
+        ;
  /* now un-hide in the data structure */
-        kip [key].is_visible = 1;
+      kip [key].is_visible = 1;
  /* record success */
-        success = 1;
-      } else {
-        printf ("failed to remove '%s'\n", file_name);
-      }
+      success = 1;
       free (file_name);
     }
   }
@@ -2629,6 +2628,8 @@ int parse_ahra (char * ahra,
                 char ** phrase, int ** positions, int * num_positions,
                 char ** language, int * matching_bits, char ** reason)
 {
+  if (matching_bits != NULL)
+    *matching_bits = BITSTRING_BITS;
   if (ahra == NULL) {
     if (reason != NULL) *reason = "AHRA is NULL";
     return 0;
@@ -3044,8 +3045,10 @@ static struct bc_key_info * find_bc_key (char * address,
     if (parse_ahra (address, NULL, NULL, NULL, NULL, &num_bits, NULL))
       success = verify_bc_key (address, key, klen, NULL, num_bits, 0);
     free (key);
+#ifdef DEBUG_PRINT
     if (success)
       printf ("address %s matches key %s\n", address, keys [i].identifier);
+#endif /* DEBUG_PRINT */
     if (success)
       return keys + i;
   }
