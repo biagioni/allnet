@@ -107,8 +107,13 @@ extern int64_t conversation_size (const char * contact);
  * is less than or equal to max_size
  * returns 1 for success, 0 for failure. */
 extern int reduce_conversation (const char * contact, uint64_t max_size);
-/* returns 1 for success, 0 for failure. */
+/* delete conversation deletes the entire conversation with its directory.
+ * clear conversation deletes the contents of the conversation, but
+ * keeps enough information (particularly sequence numbers) to allow the
+ * conversation to continue. */
+/* these return 1 for success, 0 for failure. */
 extern int delete_conversation (const char * contact);
+extern int clear_conversation (const char * contact);
 
 /* manipulate config files in an xchat directory */
 

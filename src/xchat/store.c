@@ -1532,6 +1532,70 @@ int delete_conversation (const char * contact)
   return 1;
 }
 
+/* returns 1 for success, 0 for failure. */
+int clear_conversation (const char * contact)
+{
+  if (contact == NULL)
+    return 0;
+  keyset * k = NULL;
+  int n = all_keys (contact, &k);
+  if (n <= 0)
+    return 0;
+  int i;
+  for (i = 0; i < n; i++) {
+    char * xchat_dir = get_xchat_dir (k [i]);
+    rmdir_matching (xchat_dir, ".txt");
+    free (xchat_dir);
+  }
+  return 1;
+}
+
+/* return -1 if the file does not exist, the size otherwise.
+ * if content is not NULL, malloc's enough space to hold the
+ * content (with null termination), and returns it */
+int xchat_file_get (const char * contact, keyset k,
+                    const char * fname, char ** content)
+{
+  char * path = get_xchat_path (k, fname);  /* must be free'd */
+  if (path == NULL)
+    return -1;
+  char * local_content = NULL;                   /* must be free'd */
+  int csize = read_file_malloc (path, &local_content, 0);
+  free (path);
+  if ((csize <= 0) || (local_content == NULL))
+    return 0;
+  if (content != NULL) {
+    *content = local_content;
+  } else {
+    free (local_content);
+  }
+  return csize;
+}
+
+/* write the content to the file, returning 0 in case of error, 1 otherwise */
+int xchat_file_write (const char * contact, keyset k,
+                      const char * fname, char * content, int clength)
+{
+  char * path = get_xchat_path (k, fname);  /* must be free'd */
+  if (path == NULL)
+    return 0;
+  write_file (path, content, clength, 0);
+  free (path);
+  return 1;
+}
+
+/* return 1 if the file was deleted, 0 otherwise */
+int xchat_file_delete (const char * contact, keyset k,
+                       const char * fname)
+{
+  char * path = get_xchat_path (k, fname);  /* must be free'd */
+  if (path == NULL)
+    return 0;
+  int result = (unlink (path) == 0);
+  free (path);
+  return result;
+}
+
 #ifdef TEST_STORE
 /* compile with:
    gcc -DTEST_STORE -g -o tstore store.c -I.. ../lib/ *.c -lcrypto
