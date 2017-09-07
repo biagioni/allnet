@@ -250,6 +250,17 @@ class UIController implements ControllerInterface, UIAPI {
                 contactsPanel.updateButtonsPanel();
                 if (!contactData.isVisible(contactName)) {
                     myTabbedPane.removeTab(contactName);
+                    if (coreAPI.isVisible(contactName)) {
+                        coreAPI.unsetVisible(contactName);
+                        updateContactsPanel(contactName, false);
+                        contactConfigPanel.update();
+                    }
+                } else {
+                    if (! coreAPI.isVisible(contactName)) {
+                        coreAPI.setVisible(contactName);
+                        updateContactsPanel(contactName, false);
+                        contactConfigPanel.update();
+                    }
                 }
             }
         };
@@ -264,7 +275,8 @@ class UIController implements ControllerInterface, UIAPI {
 
             @Override
             public void run() {
-                AllNetContacts.clearConversation(contactName);
+                // AllNetContacts.clearConversation(contactName);
+                coreAPI.clearConversation(contactName);
                 contactData.clearConversation(contactName);
                 updateContactsPanel(contactName, false);
                 // clear it in the conversation panel
@@ -534,7 +546,10 @@ class UIController implements ControllerInterface, UIAPI {
             case KeyExchangePanel.CLOSE_COMMAND:
                 myTabbedPane.removeTab(actionCommand[0]);
                 myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
-                AllNetContacts.completeExchange(contact);
+                coreAPI.setComplete(contact);
+                coreAPI.setVisible(contact);
+                updateContactsPanel(contact, false);
+                contactConfigPanel.update();
                 break;
             case KeyExchangePanel.CANCEL_COMMAND:
                 myTabbedPane.removeTab(actionCommand[0]);
@@ -542,7 +557,8 @@ class UIController implements ControllerInterface, UIAPI {
                 contactDeleted(contact);
                 break;
             case KeyExchangePanel.RESEND_KEY_COMMAND:
-                resendKey((KeyExchangePanel) myTabbedPane.getTabContent(actionCommand[0]));
+                resendKey((KeyExchangePanel)
+                          myTabbedPane.getTabContent(actionCommand[0]));
                 break;
         }
     }
@@ -620,8 +636,6 @@ class UIController implements ControllerInterface, UIAPI {
         contactsPanel.setTopLabelText(line1, line2);
         String tabTitle = "Contacts";
         if (m > 0) {
-//            tabTitle = "Contacts (" 
-//                     + contactsWithNewMessages + "/" + newMessages + ")";
             tabTitle = "Contacts (" + m + "/"
                 + contactData.getTotalNewMsgs() + ")";
         }
@@ -655,7 +669,8 @@ class UIController implements ControllerInterface, UIAPI {
         conv.setReadAll();
         updateContactsPanel(contactName, contactData.isBroadcast(contactName));
         updateConversationPanels();
-        AllNetContacts.messagesHaveBeenRead(contactName);
+        // AllNetContacts.messagesHaveBeenRead(contactName);
+        coreAPI.setReadTime(contactName);
     }
 
     private void processContactsEvent(String contactName) {
@@ -940,7 +955,8 @@ class UIController implements ControllerInterface, UIAPI {
             String selectedName = myTabbedPane.getSelectedID();
             if (selectedName.equals(contactName)) {
                 msg.setRead();
-                AllNetContacts.messagesHaveBeenRead(contactName);
+                // AllNetContacts.messagesHaveBeenRead(contactName);
+                coreAPI.setReadTime(contactName);
             }
         }
         // finally, update the contacts panel 
@@ -1129,7 +1145,8 @@ class UIController implements ControllerInterface, UIAPI {
         // if (contactName.equals("Bob"))
         //    return;
         kep.setSuccess(contactName);
-        AllNetContacts.unhideContact(contactName);  // make the contact visible
+        coreAPI.setVisible(contactName);  // make the contact visible
+        // AllNetContacts.unhideContact(contactName);
         updateContactsPanel(contactName, false);
     }
 
