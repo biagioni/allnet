@@ -18,6 +18,7 @@
 
 #define GUI_RENAME_CONTACT			20
 #define GUI_DELETE_CONTACT			21
+#define GUI_CLEAR_CONVERSATION			22
 
 #define GUI_QUERY_VARIABLE			30
 #define GUI_SET_VARIABLE			31
@@ -26,7 +27,8 @@
 #define GUI_VARIABLE_VISIBLE			1
 #define GUI_VARIABLE_NOTIFY			2
 #define GUI_VARIABLE_SAVING_MESSAGES		3
-#define GUI_VARIABLE_COMPLETE			4  /* no unsetComplete */
+#define GUI_VARIABLE_COMPLETE			4  /* only set/query Complete */
+#define GUI_VARIABLE_READ_TIME			5  /* only set ReadTime */
 
 #define GUI_GET_MESSAGES			40
 #define GUI_SEND_MESSAGE			41
