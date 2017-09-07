@@ -210,6 +210,9 @@ extern long long int file_size (const char * file_name);
 extern long long int fd_size (int fd);
 /* return 1 if successful, 0 in case of errors, e.g. if the dir doesn't exist */
 extern int rmdir_and_all_files (const char * dirname);
+/* return the number of deleted files, -1 in case of errors */
+/* pattern is a literal. The file is rm'd if part of the file name matches it */
+extern int rmdir_matching (const char * dirname, const char * pattern);
 
 /* fill this array with random bytes */
 extern void random_bytes (char * buffer, size_t bsize);

@@ -1136,6 +1136,29 @@ long long int fd_size (int fd)
   return st.st_size;
 }
 
+/* return the number of deleted files, -1 in case of errors */
+/* pattern is a literal. The file is rm'd if part of the file name matches it */
+int rmdir_matching (const char * dirname, const char * pattern)
+{
+  int deleted = 0;
+  DIR * dir = opendir (dirname);
+  if (dir == NULL)  /* cannot open */
+    return -1;
+  struct dirent * de;
+  while ((de = readdir (dir)) != NULL) {
+    if ((strcmp (de->d_name, ".") == 0) || (strcmp (de->d_name, "..") == 0))
+      continue;  /* don't delete current and parent directories */
+    if (strstr (de->d_name, pattern) == NULL)
+      continue;  /* no match, don't delete current */
+    char * name = strcat3_malloc (dirname, "/", de->d_name, "rmdir_matching");
+    if (unlink (name) < 0) /* recursively remove it, in case it's a dir */
+      printf ("rmdir_matching unable to delete %s\n", name);
+    free (name);
+  }
+  closedir (dir);
+  return deleted;
+}
+
 /* return 1 if successful, 0 in case of errors, e.g. if the dir doesn't exist */
 int rmdir_and_all_files (const char * dirname)
 {
