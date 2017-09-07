@@ -237,8 +237,11 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     private void saveChanges() {
         // options are right to left, ie cancel will be on right
         Object[] options = {"Cancel", "Save Changes"};
+        JComboBox<String> contactBox =
+            contactSelectPanel.getComboBoxes().get(0);
+        String contactName = (String) contactBox.getSelectedItem();
         int n = JOptionPane.showOptionDialog(this,
-            "The Save Changes operation cannot be undone.  ",
+            "Saving changes for " + contactName + " cannot be undone.  ",
             "Confirm Save Changes",
             JOptionPane.YES_NO_OPTION,
             JOptionPane.WARNING_MESSAGE,
@@ -250,8 +253,6 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
             return;
         }
         // that's a go, so let's do it
-        JComboBox<String> contactBox = contactSelectPanel.getComboBoxes().get(0);
-        String contactName = (String) contactBox.getSelectedItem();
         Contact contact = contactData.getContact(contactName);
         JCheckBox[] cbs = configPanel.getCheckBoxes();
         contact.setNotify(cbs[0].isSelected());
@@ -274,8 +275,10 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     private void clearConversation() {
         // right to left
         Object[] options = {"Cancel", "Clear Conversation"};
+        JComboBox contactBox = contactSelectPanel.getComboBoxes().get(0);
+        String contact = (String) contactBox.getSelectedItem();
         int n = JOptionPane.showOptionDialog(this,
-            "The Clear Conversation operation cannot be undone.  ",
+            "Clearing conversation for " + contact + " cannot be undone.  ",
             "Confirm Clear Conversation",
             JOptionPane.YES_NO_OPTION,
             JOptionPane.WARNING_MESSAGE,
@@ -285,8 +288,6 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         // NO_OPTION means the left button
         if (n == JOptionPane.NO_OPTION) {
             // that's a go, so tell the UIController to do it
-            JComboBox contactBox = contactSelectPanel.getComboBoxes().get(0);
-            String contact = (String) contactBox.getSelectedItem();
             controller.clearConversation(contact);
         }
 
@@ -299,8 +300,11 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     private void deleteContact() {
         // cancel will be on right
         Object[] options = {"Cancel", "DELETE CONTACT"};
+        JComboBox<String> contactBox
+            = contactSelectPanel.getComboBoxes().get(0);
+        String contact = (String) contactBox.getSelectedItem();
         int n = JOptionPane.showOptionDialog(this,
-            "The Delete Contact operation cannot be undone.  ",
+            "Deleting contact " + contact + " cannot be undone.  ",
             "Confirm Delete Contact",
             JOptionPane.YES_NO_OPTION,
             JOptionPane.WARNING_MESSAGE,
@@ -310,8 +314,6 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         // NO_OPTION means the left button, so do it
         if (n == JOptionPane.NO_OPTION) {
             // that's a go, so tell the UIController to do it
-            JComboBox<String> contactBox = contactSelectPanel.getComboBoxes().get(0);
-            String contact = (String) contactBox.getSelectedItem();
             controller.contactDeleted(contact);
         }
 
