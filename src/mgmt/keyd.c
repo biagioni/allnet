@@ -235,9 +235,11 @@ void keyd_generate (char * pname)
       gather_random_and_wait (gather_bytes, buffer + bytes_in_buffer, finish);
     existing_spares = create_spare_key (-1, NULL, 0);
     if (existing_spares < min_spares)  /* for now, report how many we have */
-      printf ("%ld: %d spares, min %d\n", start, existing_spares, min_spares);
+      printf ("%ld: %d spare keys, min %d\n",
+              start, existing_spares, min_spares);
 #ifdef DEBUG_PRINT_SPARES
-    printf ("%ld: %d spares, min %d\n", start, existing_spares, min_spares);
+    printf ("%ld: %d spare keys, min %d\n",
+            start, existing_spares, min_spares);
     printf ("gathered %d bytes, done waiting, now %ld (and %d spares)\n",
             bytes_in_buffer, time (NULL), create_spare_key (-1, NULL, 0));
 #endif /* DEBUG_PRINT_SPARES */
