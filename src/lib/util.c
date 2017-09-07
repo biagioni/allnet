@@ -1151,7 +1151,9 @@ int rmdir_matching (const char * dirname, const char * pattern)
     if (strstr (de->d_name, pattern) == NULL)
       continue;  /* no match, don't delete current */
     char * name = strcat3_malloc (dirname, "/", de->d_name, "rmdir_matching");
-    if (unlink (name) < 0) /* recursively remove it, in case it's a dir */
+    if (unlink (name) == 0) /* recursively remove it, in case it's a dir */
+      deleted++;
+    else
       printf ("rmdir_matching unable to delete %s\n", name);
     free (name);
   }
