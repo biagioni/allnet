@@ -177,14 +177,16 @@ class UIController implements ControllerInterface, UIAPI {
                     }
                  } else {    // incomplete key exchange
                     if (kep == null) {
-                        int hops = AllNetContacts.exchangeHopCount(contactName);
+                        int hops = coreAPI.incompleteHopCount(contactName);
+System.out.println("got " + hops + " hops for " + contactName);
                         if (hops > 0) {   // valid exchange file
                             int button = 1;   // multi-hop exchange
                             if (hops == 1) {
                                 button = 0;     // 1-hop exchange
                             }
                             String secret
-                                = AllNetContacts.firstSecret(contactName);
+                                = coreAPI.incompleteSecret(contactName);
+System.out.println("got secret " + secret + " for " + contactName);
                             // now put up a key exchange panel
                             String[] middlePanelMsg = makeMiddlePanel(secret);
                             String[] bottomPanelMsg = new String[]{
@@ -275,7 +277,6 @@ class UIController implements ControllerInterface, UIAPI {
 
             @Override
             public void run() {
-                // AllNetContacts.clearConversation(contactName);
                 coreAPI.clearConversation(contactName);
                 contactData.clearConversation(contactName);
                 updateContactsPanel(contactName, false);
@@ -669,7 +670,6 @@ class UIController implements ControllerInterface, UIAPI {
         conv.setReadAll();
         updateContactsPanel(contactName, contactData.isBroadcast(contactName));
         updateConversationPanels();
-        // AllNetContacts.messagesHaveBeenRead(contactName);
         coreAPI.setReadTime(contactName);
     }
 
@@ -955,7 +955,6 @@ class UIController implements ControllerInterface, UIAPI {
             String selectedName = myTabbedPane.getSelectedID();
             if (selectedName.equals(contactName)) {
                 msg.setRead();
-                // AllNetContacts.messagesHaveBeenRead(contactName);
                 coreAPI.setReadTime(contactName);
             }
         }
@@ -1146,7 +1145,6 @@ class UIController implements ControllerInterface, UIAPI {
         //    return;
         kep.setSuccess(contactName);
         coreAPI.setVisible(contactName);  // make the contact visible
-        // AllNetContacts.unhideContact(contactName);
         updateContactsPanel(contactName, false);
     }
 

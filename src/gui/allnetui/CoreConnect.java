@@ -49,6 +49,8 @@ public class CoreConnect extends Thread implements CoreAPI {
     static final byte guiVariableSavingMessages = 3;
     static final byte guiVariableComplete = 4;  // no unsetComplete
     static final byte guiVariableReadTime = 5;  // only setReadTime
+    static final byte guiVariableHopCount = 6;  // only query
+    static final byte guiVariableSecret = 7;    // only query
 
     static final byte guiGetMessages = 40;
     static final byte guiSendMessage = 41;
@@ -519,6 +521,22 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
         }
     }
 
+    public int incompleteHopCount(String contact) {
+        byte[] response = doRPCWithCodeOp (guiQueryVariable,
+                                           guiVariableHopCount, contact);
+        if (response [1] <= 0)
+            return -1;
+        return response[1];
+    }
+
+    public String incompleteSecret(String contact) {
+        byte[] response = doRPCWithCodeOp (guiQueryVariable,
+                                           guiVariableSecret, contact);
+        if (response [1] <= 0)
+            return null;
+        return SocketUtils.bString(response, 2);
+    }
+
     // ultimately from xchat/store.h
 
     // @return up to the max latest saved messages to/from this contact
@@ -534,7 +552,6 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
     public void setReadTime(String contact) {
         // ignore the response
         doRPCWithCodeOp (guiSetVariable, guiVariableReadTime, contact);
-System.out.println ("set read time for " + contact);
         // AllNetContacts.messagesHaveBeenRead(contact);
     }
 

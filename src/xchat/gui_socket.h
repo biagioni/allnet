@@ -29,6 +29,8 @@
 #define GUI_VARIABLE_SAVING_MESSAGES		3
 #define GUI_VARIABLE_COMPLETE			4  /* only set/query Complete */
 #define GUI_VARIABLE_READ_TIME			5  /* only set ReadTime */
+#define GUI_VARIABLE_HOP_COUNT			6  /* only query hop count */
+#define GUI_VARIABLE_SECRET			7  /* only query hop count */
 
 #define GUI_GET_MESSAGES			40
 #define GUI_SEND_MESSAGE			41

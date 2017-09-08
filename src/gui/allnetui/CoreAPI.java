@@ -65,8 +65,11 @@ public interface CoreAPI {
     // (a) the user says so, or (b) we receive messages from the contact
     boolean isComplete(String contact);
     void setComplete(String contact);
-    // unset complete doesn't seem to make any sense and doesn't seem useful
-    // void unsetComplete(String contact);
+
+    // incomplete key exchanges have a hop count and a secret
+    // complete key exchanges return -1 and null, respectively
+    int incompleteHopCount(String contact);
+    String incompleteSecret(String contact);
 
     // ultimately from xchat/store.h
 

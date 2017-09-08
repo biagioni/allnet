@@ -453,6 +453,48 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
                   op, code, contact);
         }
         break;
+      case GUI_VARIABLE_HOP_COUNT:
+      case GUI_VARIABLE_SECRET:
+        if (op == -1) {      /* query */
+          int hops = 0;
+          char * s1 = NULL;
+          char * s2 = NULL;
+          if (parse_exchange_file (contact, &hops, &s1, &s2)) {
+            if (code == GUI_VARIABLE_HOP_COUNT) {
+              if (s1 != NULL)
+                free (s1);
+              if (s2 != NULL)
+                free (s2);
+              reply [1] = hops;
+            } else {  /* code == GUI_VARIABLE_SECRET */
+              if ((s1 != NULL) || (s2 != NULL)) {
+printf ("secrets for %s are %s %s\n", contact, s1, s2);
+                char * secret = s1;
+                if (s2 != NULL)
+                  secret = s2;
+                int size = 2 + strlen (secret) + 1;
+                char * my_reply = malloc_or_fail (size, "gui_variable_secret");
+                my_reply [0] = GUI_QUERY_VARIABLE;
+                my_reply [1] = 1;
+                snprintf (my_reply + 2, size - 2, "%s", secret);
+                gui_send_buffer (gui_sock, my_reply, size);
+                if (s1 != NULL)
+                  free (s1);
+                if (s2 != NULL)
+                  free (s2);
+                /* do not send the reply, i.e. do not run the code at
+                   the end of the function */
+                return;
+              }
+            }
+          } else {
+            printf ("gui_variable_hop_count/secret: unable to parse file\n");
+          }
+        } else {
+          printf ("gui_variable_hop_count/secret: unsupported %d/%d, %s\n",
+                  op, code, contact);
+        }
+        break;
       default:
         printf ("gui_variable: unsupported %d/%d, %s\n", op, code, contact);
         break;
@@ -463,9 +505,14 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
         case GUI_VARIABLE_VISIBLE:
         case GUI_VARIABLE_COMPLETE:
         case GUI_VARIABLE_NOTIFY:
+        case GUI_VARIABLE_READ_TIME:
           reply [1] = (get_other_bc_key (contact) != NULL);
+printf ("%s: op %d, code %d (complete %d), result %d\n",
+        contact, op, code, GUI_VARIABLE_COMPLETE, reply [1]);
           break;
         case GUI_VARIABLE_SAVING_MESSAGES:
+        case GUI_VARIABLE_HOP_COUNT:
+        case GUI_VARIABLE_SECRET:
           reply [1] = 0;   /* same for everyone */
           break;
         default:
