@@ -75,6 +75,11 @@ extern uint64_t send_data_message (int sock, const char * peer,
  * otherwise returns 0 */
 extern int key_received_before (int sock, char ** peer, keyset * kset);
 
+/* returns 1 for a successful parse, 0 otherwise */
+/* *s1 and *s2, if not NULL, are malloc'd (as needed), should be free'd */
+extern int parse_exchange_file (const char * contact, int * nhops,
+                                char ** s1, char ** s2);
+
 /* if there is anyting unacked, resends it.  If any sequence number is known
  * to be missing, requests it */
 /* returns:

@@ -960,8 +960,8 @@ static int parse_exchange_info (char * contents, int * hops,
 
 /* returns 1 for a successful parse, 0 otherwise */
 /* *s1 and *s2, if not NULL, are malloc'd (as needed), should be free'd */
-static int parse_exchange_file (const char * contact, int * nhops,
-                                char ** s1, char ** s2)
+int parse_exchange_file (const char * contact, int * nhops,
+                         char ** s1, char ** s2)
 {
   if (s1 != NULL)
     *s1 = NULL;
@@ -976,9 +976,9 @@ static int parse_exchange_file (const char * contact, int * nhops,
   char * s2p = NULL;
   int result = parse_exchange_info (content, nhops, &s1p, &s2p);
   if (result) {    /* copy the secrets before freeing contents */
-    if (s1p != NULL)
+    if ((s1 != NULL) && (s1p != NULL))
       *s1 = strcpy_malloc (s1p, "parse_exchange_file secret 1");
-    if (s2p != NULL)
+    if ((s2 != NULL) && (s2p != NULL))
       *s2 = strcpy_malloc (s2p, "parse_exchange_file secret 2");
   }
   free (content);
