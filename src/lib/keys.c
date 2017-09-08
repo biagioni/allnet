@@ -1171,7 +1171,9 @@ int make_visible (const char * contact)
   for (key = 0; key < cp_used; key++) {
     if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
         (strcmp (cpx [key], contact) == 0)) {
-      printf ("unable to unhide contact %s, name conflict\n", contact);
+#ifdef DEBUG_PRINT
+      printf ("unable to unhide contact %s, already visible\n", contact);
+#endif /* DEBUG_PRINT */
       return 0;
     }
   }
