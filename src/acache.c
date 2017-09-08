@@ -749,11 +749,13 @@ static uint32_t hash_index (char * id)
   if (hash_div == 0) { /* initialize */
     hash_div = compute_hash_div ();
 #ifdef DEBUG_PRINT
-    printf ("hash_div is %d, hash_size %d, hash_pool_size %d, %d bits\n",
+    printf ("hash_div is %" PRIu32
+            ", hash_size %d, hash_pool_size %d, %d bits\n",
             hash_div, hash_size, hash_pool_size, bits_in_hash_table);
 #endif /* DEBUG_PRINT */
   }
-  return ((uint32_t)readb32 (id) / hash_div);
+  uint32_t id_value = readb32 (id);
+  return (id_value / hash_div);
 }
 
 static int hash_has_space (unsigned int max_size, unsigned int new_size, int fd)
@@ -791,18 +793,18 @@ static void hash_add_message (char * message, unsigned int msize, char * id,
   memcpy (entry->destination, hp->destination, (entry->dst_nbits + 7) / 8);
   memcpy (entry->received_at, time, ALLNET_TIME_SIZE);
   /* add the entry to the chain in the hash table */
-  int h_index = hash_index (id);
+  uint32_t h_index = hash_index (id);
   entry->next_by_hash = message_hash_table [h_index];
   message_hash_table [h_index] = entry;
   /* add the entry to the chain in the source table */
-  int s_index = hash_index ((char *) (entry->source));
+  uint32_t s_index = hash_index ((char *) (entry->source));
   entry->next_by_source = message_source_table [s_index];
   message_source_table [s_index] = entry;
 }
 
 static void update_hash_position (char * id, int64_t position)
 {
-  int index = hash_index (id);
+  uint32_t index = hash_index (id);
   struct hash_entry * entry = message_hash_table [index];
   while (entry != NULL) {
     if (memcmp (entry->id, id, MESSAGE_ID_SIZE) == 0)  /* found */
@@ -811,7 +813,7 @@ static void update_hash_position (char * id, int64_t position)
   }
 }
 
-static void remove_hash_entry (struct hash_entry * entry, int index)
+static void remove_hash_entry (struct hash_entry * entry, uint32_t index)
 {
   if (entry == NULL)
     return;
@@ -830,7 +832,7 @@ static void remove_hash_entry (struct hash_entry * entry, int index)
   }
 }
 
-static void remove_source_entry (struct hash_entry * entry, int index)
+static void remove_source_entry (struct hash_entry * entry, uint32_t index)
 {
   if (entry == NULL)
     return;
@@ -851,7 +853,7 @@ static void remove_source_entry (struct hash_entry * entry, int index)
 
 static struct hash_entry * hash_find (char * hash)
 {
-  int h_index = hash_index (hash);
+  uint32_t h_index = hash_index (hash);
   struct hash_entry * entry = message_hash_table [h_index];
   while (entry != NULL) {
     if (memcmp (hash, entry->id, MESSAGE_ID_SIZE) == 0)
@@ -923,7 +925,7 @@ static int64_t hash_get_next (int fd, int max, int64_t pos, char * hash,
 {
   if (pos < 0)
     return -1;
-  int h_index = hash_index (hash);
+  uint32_t h_index = hash_index (hash);
   int64_t least_not_less_than = -1;
   struct hash_entry * entry = message_hash_table [h_index];
   struct hash_entry * matching = NULL;
@@ -949,7 +951,7 @@ static int64_t source_get_next (int fd, int max, int pos,
 {
   if (pos < 0)
     return -1;
-  int s_index = hash_index ((char *) source);
+  unit32_t s_index = hash_index ((char *) source);
   int least_not_less_than = -1;
   struct hash_entry * entry = message_source_table [s_index];
   struct hash_entry * matching = NULL;
