@@ -264,7 +264,7 @@ public class CoreConnect extends Thread implements CoreAPI {
             synchronized (this.mutex) {
                 byte[] result = receiveBuffer();
                 if (result != null) {
-System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, code " + result[0]);
+                    // System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, code " + result[0]);
                     if ((code != 0) && (result[0] == code))   // rpc complete
                         return result;
                     if (! dispatch(result)) { // not a dispatch, save buffer
@@ -502,6 +502,7 @@ System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, 
     // (a) the user says so, or (b) we receive messages from the contact
     public boolean isComplete(String contact) {
         if (! contactExists(contact)) {
+System.out.println("contact " + contact + " does not exist");
             return false;  // false if contact does not exist
         }
         return doRPCWithCodeOpNonZero (guiQueryVariable,
