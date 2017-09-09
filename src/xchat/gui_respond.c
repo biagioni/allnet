@@ -507,8 +507,6 @@ printf ("secrets for %s are %s %s\n", contact, s1, s2);
         case GUI_VARIABLE_NOTIFY:
         case GUI_VARIABLE_READ_TIME:
           reply [1] = (get_other_bc_key (contact) != NULL);
-printf ("%s: op %d, code %d (complete %d), result %d\n",
-        contact, op, code, GUI_VARIABLE_COMPLETE, reply [1]);
           break;
         case GUI_VARIABLE_SAVING_MESSAGES:
         case GUI_VARIABLE_HOP_COUNT:
