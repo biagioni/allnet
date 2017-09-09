@@ -621,6 +621,8 @@ System.out.println("initKeyExchange called");
             endSecret2 = SocketUtils.wString (request, endSecret1, secret2);
         assert(endSecret2 == length);
         byte[] response = doRPC(request);
+        incompletes.add(contact);
+        cachedContacts = null;
         if (response[1] == 0) {
             System.out.println("initKeyExchange returned failure");
             return false;
