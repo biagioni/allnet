@@ -363,17 +363,11 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     public boolean contactIsGroup(String contact) {
-        if (! contactExists(contact)) {
-            return false;  // false if contact does not exist
-        }
         return doRPCWithCodeNonZero (guiContactIsGroup, contact);
     }
 
     // newly created contacts may not have the peer's key
     public boolean contactHasPeerKey(String contact) {
-        if (! contactExists(contact)) {
-            return false;  // false if contact does not exist
-        }
         return doRPCWithCodeNonZero (guiHasPeerKey, contact);
     }
 
@@ -414,9 +408,6 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // @return true if was able to rename the contact
     public boolean renameContact(String oldName, String newName) {
-        if (! contactExists(oldName)) {
-            return false;  // false if contact does not exist
-        }
         cachedContacts = null;   // reset the cache
         byte[] request = new byte[1 + oldName.length() + newName.length() + 2];
         request[0] = guiRenameContact;
@@ -428,17 +419,11 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // @return true if the contact existed, and now its conversation is empty
     public boolean clearConversation(String contact) {
-        if (! contactExists(contact)) {
-            return false;  // false if contact does not exist
-        }
         return doRPCWithCodeNonZero (guiClearConversation, contact);
     }
 
     // @return true if the contact existed, and now no longer does
     public boolean deleteEntireContact(String contact) {
-        if (! contactExists(contact)) {
-            return false;  // false if contact does not exist
-        }
         if (isVisible(contact)) {
             System.out.println("cannot delete a contact that is still visible");
             System.out.println("deleting " + contact + " failed");
@@ -449,9 +434,6 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     public boolean isVisible(String contact) {
-        if (! contactExists(contact)) {
-            return false;  // false if contact does not exist
-        }
         return doRPCWithCodeOpNonZero (guiQueryVariable, guiVariableVisible,
                                        contact);
     }
@@ -471,9 +453,6 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     public boolean isNotify(String contact) {
-        if (! contactExists(contact)) {
-            return false;  // false if contact does not exist
-        }
         return doRPCWithCodeOpNonZero (guiQueryVariable, guiVariableNotify,
                                        contact);
     }
@@ -485,9 +464,6 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     public boolean isSavingMessages(String contact) { 
-        if (! contactExists(contact)) {
-            return false;  // false if contact does not exist
-        }
         return doRPCWithCodeOpNonZero (guiQueryVariable,
                                        guiVariableSavingMessages, contact);
     }
@@ -501,10 +477,6 @@ public class CoreConnect extends Thread implements CoreAPI {
     // a key exchange is only complete once
     // (a) the user says so, or (b) we receive messages from the contact
     public boolean isComplete(String contact) {
-        if (! contactExists(contact)) {
-System.out.println("contact " + contact + " does not exist");
-            return false;  // false if contact does not exist
-        }
         return doRPCWithCodeOpNonZero (guiQueryVariable,
                                        guiVariableComplete, contact);
         // return (AllNetContacts.contactComplete(contact) ==
