@@ -199,7 +199,7 @@ System.out.println("got secret " + secret + " for " + contactName);
                             kep.setButtonState(button);
                             kep.setSecret(secret);
                         }
-                    }
+                    } 
                     if ((kep != null) &&
                         (coreAPI.contactHasPeerKey(contactName))) {
                             showKeyExchangeSuccess(kep, contactName);
@@ -250,7 +250,7 @@ System.out.println("got secret " + secret + " for " + contactName);
             @Override
             public void run() {
                 contactsPanel.updateButtonsPanel();
-                if (!contactData.isVisible(contactName)) {
+                if (! contactData.isVisible(contactName)) {
                     myTabbedPane.removeTab(contactName);
                     if (coreAPI.isVisible(contactName)) {
                         coreAPI.unsetVisible(contactName);
@@ -773,11 +773,10 @@ System.out.println("got secret " + secret + " for " + contactName);
                     break;
                 case 1:
                     secret = newContactPanel.getMySecretLong();
-                    if (variableInput.length() < MIN_LENGTH_LONG) {
-                        variableInput = "";
-                    } else {
+                    if (variableInput.length() >= MIN_LENGTH_LONG) {
                         secret = variableInput;
                     }
+                    variableInput = "";
                     System.out.println("new long-distance contact " + contact
                         + ", secret " + secret);
                     kep = getKeyExchangePanel(contact);
@@ -797,8 +796,7 @@ System.out.println("got secret " + secret + " for " + contactName);
                     }
                     //
                     if (coreAPI.initKeyExchange(contact,
-                        newContactPanel.getMySecretLong(),
-                        newContactPanel.getVariableInput(), HOPS_REMOTE)) {
+                        secret, variableInput, HOPS_REMOTE)) {
                         System.out.println("sent key request with 6 hops");
                         newContactPanel.setMySecret();
                     }
