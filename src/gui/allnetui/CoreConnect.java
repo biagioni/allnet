@@ -529,7 +529,6 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // @return sequence number
     public long sendMessage(String contact, String text) {
-System.out.println("sendMessage called");
         int length = 1 + contact.length() + 1 + text.length() + 1;
         byte[] request = new byte[length];
         request[0] = guiSendMessage;
@@ -577,7 +576,6 @@ System.out.println("sendMessage called");
     // if the contact already exists, returns without doing anything
     public boolean initKeyExchange(String contact, String secret1,
                                    String secret2, int hops) {
-System.out.println("initKeyExchange called");
         int length = 1 + 1 + contact.length() + 1 + secret1.length() + 1;
         if ((secret2 != null) && (secret2.length() > 0))
             length += secret2.length() + 1;
@@ -605,7 +603,6 @@ System.out.println("initKeyExchange called");
     // it must match the ahra created by the broadcaster, except
     //    it may have fewer (or no) word pairs
     public boolean initSubscription(String address) {
-System.out.println("initSubscription called");
         int length = 1 + address.length() + 1;
         byte[] request = new byte[length];
         request[0] = guiSubscribe;
@@ -623,7 +620,6 @@ System.out.println("initSubscription called");
     // @return a trace ID
     public byte[] initTrace(int nhops, byte[] addr, int abits,
                             boolean recordIntermediates) {
-System.out.println("initTrace called");
         int length = 1 + 1 + 1 + 1 + 8;
         byte[] request = new byte[length];
         request[0] = guiTrace;
