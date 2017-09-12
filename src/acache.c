@@ -87,9 +87,9 @@ static struct hash_entry * message_hash_pool;
 /* the head of the free list */
 static struct hash_entry * message_hash_free = NULL;
 /* hash table */
-static struct hash_entry * * message_hash_table;
+static struct hash_entry * * message_hash_table = NULL;
 /* entries sorted by source address */
-static struct hash_entry * * message_source_table;
+static struct hash_entry * * message_source_table = NULL;
 #endif /* SMALL_FIXED_SIZE */
 
 static struct allnet_log * alog = NULL;
@@ -767,6 +767,8 @@ static int hash_has_space (unsigned int max_size, unsigned int new_size, int fd)
 static void hash_add_message (char * message, unsigned int msize, char * id,
                               int64_t position, char * time)
 {
+  if (message_hash_table == NULL)           /* not initialized */
+    return;
   struct allnet_header * hp = (struct allnet_header *) message;
   if (msize < ALLNET_SIZE (hp->transport))  /* invalid header */
     return;
@@ -804,6 +806,8 @@ static void hash_add_message (char * message, unsigned int msize, char * id,
 
 static void update_hash_position (char * id, int64_t position)
 {
+  if (message_hash_table == NULL)
+    return;  /* not initialized */
   uint32_t index = hash_index (id);
   struct hash_entry * entry = message_hash_table [index];
   while (entry != NULL) {
@@ -817,6 +821,8 @@ static void remove_hash_entry (struct hash_entry * entry, uint32_t index)
 {
   if (entry == NULL)
     return;
+  if (message_hash_table == NULL)
+    return;  /* not initialized */
   if (entry == message_hash_table [index]) {
     message_hash_table [index] = entry->next_by_hash;
     return;
@@ -853,6 +859,8 @@ static void remove_source_entry (struct hash_entry * entry, uint32_t index)
 
 static struct hash_entry * hash_find (char * hash)
 {
+  if (message_hash_table == NULL)
+    return NULL;  /* not initialized */
   uint32_t h_index = hash_index (hash);
   struct hash_entry * entry = message_hash_table [h_index];
   while (entry != NULL) {
@@ -925,6 +933,8 @@ static int64_t hash_get_next (int fd, int max, int64_t pos, char * hash,
 {
   if (pos < 0)
     return -1;
+  if (message_hash_table == NULL)
+    return -1;  /* not initialized */
   uint32_t h_index = hash_index (hash);
   int64_t least_not_less_than = -1;
   struct hash_entry * entry = message_hash_table [h_index];
@@ -1002,6 +1012,8 @@ static int64_t list_next_matching (int fd, unsigned int max_size,
 {
   if (position < 0)
     return -1;
+  if (message_hash_table == NULL)
+    return -1;  /* not initialized */
   if ((rd == NULL) ||
       ((rd->empty) && (rd->src_nbits < bits_in_hash_table)))
     return get_next_message (fd, max_size, (int) position, NULL,
@@ -1052,6 +1064,8 @@ static int hash_random_match (int fd, unsigned int max_size,
                               struct request_details * rd,
                               char ** message, int * msize)
 {
+  if (message_hash_table == NULL)
+    return 0;  /* not initialized */
   static int initialized = 0;
   static int persistent_index = 0;
   if (! initialized)
@@ -1106,6 +1120,8 @@ static int hash_next_match (int fd, unsigned int max_size, int first_call,
                             struct request_details * rd,
                             char ** message, int * msize)
 {
+  if (message_hash_table == NULL)
+    return 0;  /* not initialized */
   static int persistent_index = -1;
   static struct hash_entry * persistent_entry = NULL;
   static int first_index = -1;
@@ -1314,6 +1330,8 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
 {
   if (id_off + MESSAGE_ID_SIZE > msize)
     return;
+  if (message_hash_table == NULL)
+    return;  /* not initialized */
   char mbuffer [MAX_MESSAGE_ENTRY_SIZE];
   unsigned int fsize = MESSAGE_ENTRY_HEADER_SIZE + msize;
   if ((fsize > max_size) || (fsize > MAX_MESSAGE_ENTRY_SIZE)) {
