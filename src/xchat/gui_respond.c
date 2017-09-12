@@ -687,7 +687,6 @@ static void gui_trace (char * message, int64_t length,
 /* message format: 1-byte nhops, 1-byte nbits, 1-byte record intermediates,
    8-byte address */
 /* reply format: 1-byte code, 16-byte trace ID (all 0s for failure) */
-printf ("gui_trace called\n");
   char reply_header [1 + MESSAGE_ID_SIZE];
   reply_header [0] = GUI_TRACE;
   memset (reply_header + 1, 0, sizeof (reply_header) - 1);
