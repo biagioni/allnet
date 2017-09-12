@@ -479,8 +479,6 @@ public class CoreConnect extends Thread implements CoreAPI {
     public boolean isComplete(String contact) {
         return doRPCWithCodeOpNonZero (guiQueryVariable,
                                        guiVariableComplete, contact);
-        // return (AllNetContacts.contactComplete(contact) ==
-        //         AllNetContacts.keyExchangeComplete.COMPLETE);
     }
 
     public void setComplete(String contact) {
@@ -525,7 +523,6 @@ public class CoreConnect extends Thread implements CoreAPI {
     public void setReadTime(String contact) {
         // ignore the response
         doRPCWithCodeOp (guiSetVariable, guiVariableReadTime, contact);
-        // AllNetContacts.messagesHaveBeenRead(contact);
     }
 
     // ultimately from xchat/xcommon.h
