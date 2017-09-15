@@ -34,23 +34,6 @@ static struct ack_entry * acks = NULL;
 static int ack_space = 0;
 static int save_ack_pos = 0;  /* save the next ack at this index */
 
-#ifdef USING_MESSAGE_LIST
-/* for now, a fixed-size entry, later, allocate dynamically according to size */
-/* or, may just delete -- only needed for list_next_matching, used to loop
- * over all the messages, but we could loop over the hash table instead */
-#ifdef SMALL_FIXED_SIZE
-#define LIST_SIZE	16
-#else /* ! SMALL_FIXED_SIZE */
-#define LIST_SIZE	1024 * 1024  /* 1Mi */
-#endif /* SMALL_FIXED_SIZE */
-
-struct list_entry {
-  char message_id  [MESSAGE_ID_SIZE];
-};
-static struct list_entry message_list [LIST_SIZE];
-static int message_list_used = 0;
-#endif /* USING_MESSAGE_LIST */
-
 struct hash_entry {
   struct hash_entry * next_by_hash;  /* this one also used for free list */
   struct hash_entry * next_by_source;
@@ -63,23 +46,6 @@ struct hash_entry {
   unsigned char destination [2];
 };
 
-#ifdef SMALL_FIXED_SIZE
-/* hash table for now is also fixed size -- same comment as for list */
-#define HASH_POOL_SIZE	LIST_SIZE
-static int hash_pool_size = HASH_POOL_SIZE;
-#define HASH_SIZE	(HASH_POOL_SIZE / 4)
-static int hash_size = HASH_SIZE;
-static int bits_in_hash_table = 4;   /* re-initialized by compute_hash_div */
-static struct hash_entry message_hash_pool [HASH_POOL_SIZE];
-/* the head of the free list */
-static struct hash_entry * message_hash_free = NULL;
-/* hash table */
-static struct hash_entry * message_hash_table [HASH_SIZE];
-/* entries sorted by source address */
-static struct hash_entry * message_source_table [HASH_SIZE];
-
-#else /* ! SMALL_FIXED_SIZE */
-
 static int hash_pool_size = 0;
 static int hash_size = 0;
 static int bits_in_hash_table = 0;   /* initialized by compute_hash_div */
@@ -90,7 +56,6 @@ static struct hash_entry * message_hash_free = NULL;
 static struct hash_entry * * message_hash_table = NULL;
 /* entries sorted by source address */
 static struct hash_entry * * message_source_table = NULL;
-#endif /* SMALL_FIXED_SIZE */
 
 static struct allnet_log * alog = NULL;
 
@@ -582,41 +547,6 @@ static int64_t get_next_message (int fd, unsigned int max_size,
   return -1;  /* reached the end */
 }
 
-#ifdef USING_MESSAGE_LIST
-static void list_add_message (char * id)
-{
-  int i;
-  int max_index = message_list_used;
-  if (max_index >= LIST_SIZE)
-    max_index = LIST_SIZE - 1;
-  else
-    message_list_used = max_index + 1;
-  for (i = max_index; i > 0; i--)
-    message_list [i] = message_list [i - 1];
-  memcpy (message_list [0].message_id, id, MESSAGE_ID_SIZE);
-}
-
-static void list_remove_message (char * id)
-{
-  int from;
-  int to = 0;
-  int loop_to = message_list_used;
-  for (from = 0; from < loop_to; from++) {
-    if (memcmp (message_list [from].message_id, id, MESSAGE_ID_SIZE) == 0) {
-      message_list_used--;  /* remove by not incrementing "to" */
-    } else {
-      if (from > to)        /* no need to copy if they are the same */
-        message_list [to] = message_list [from];
-      to++;
-    }
-  }
-  if (from == to) {
-    buffer_to_string (id, MESSAGE_ID_SIZE, "id not found, unable to delete from list", 16, 0, alog->b, alog->s);
-    log_print (alog);
-  }
-}
-#endif /* USING_MESSAGE_LIST */
-
 /* assume 32-bit ints */
 static int round_up (int n)
 {
@@ -631,8 +561,6 @@ static int round_up (int n)
  * list, the hash pool, and the hash table */
 static void init_hash_table (int max_msg_size)
 {
-#ifdef SMALL_FIXED_SIZE
-#else /* ! SMALL_FIXED_SIZE */
   hash_pool_size = round_up ((max_msg_size / sizeof (struct hash_entry)) / 10);
   if (hash_pool_size < 16)
     hash_pool_size = 16;
@@ -646,7 +574,6 @@ static void init_hash_table (int max_msg_size)
   message_source_table =
     malloc_or_fail (sizeof (struct hash_entry *) * hash_size,
                     "init_hash_table source table");
-#endif /* SMALL_FIXED_SIZE */
   message_hash_pool [0].next_by_hash = NULL;
   int i;
   for (i = 1; i < hash_pool_size; i++) {
@@ -693,36 +620,13 @@ static void print_stats (int exit_if_none_free, int must_match,
   int i;
   for (i = 0; i < hash_size; i++)
     hcount += count_list (message_hash_table [i], i);
-#ifdef USING_MESSAGE_LIST
-  int mcount = message_list_used;
-#endif /* USING_MESSAGE_LIST */
   int fcount = count_list (message_hash_free, -1);
   int off = (int)strlen (alog->b);
-#ifdef USING_MESSAGE_LIST
-  if (hcount == mcount)
-    snprintf (alog->b + off, alog->s - off,
-              "acache %s: %d in hash/list, %d free\n", caller, hcount, fcount);
-  else
-    snprintf (alog->b + off, alog->s - off,
-              "acache %s: %d in hash, %d in message list, %d free\n",
-              caller, hcount, mcount, fcount);
-#else /* ! USING_MESSAGE_LIST */
-    snprintf (alog->b + off, alog->s - off, "acache %s: %d in hash, %d free\n",
-              caller, hcount, fcount);
-#endif /* USING_MESSAGE_LIST */
+  snprintf (alog->b + off, alog->s - off, "acache %s: %d in hash, %d free\n",
+            caller, hcount, fcount);
   log_print (alog);
   if (exit_if_none_free && (fcount == 0))
     exit (1);
-#ifdef USING_MESSAGE_LIST
-  if ((must_match >= 0) && ((must_match != mcount) || (must_match != hcount))) {
-    snprintf (alog->b, alog->s,
-              "acache %s: %d in hash, %d in msglist, %d free, should have %d\n",
-              caller, hcount, mcount, fcount, must_match);
-    printf ("%s", alog->b);
-    log_print (alog);
-    exit (1);
-  }
-#else /* USING_MESSAGE_LIST */
   if ((must_match >= 0) && (must_match != hcount)) {
     snprintf (alog->b, alog->s,
               "acache %s: %d in hash, %d free, should have %d\n",
@@ -732,7 +636,6 @@ static void print_stats (int exit_if_none_free, int must_match,
     if (exit_if_none_free)
       exit (1);
   }
-#endif /* USING_MESSAGE_LIST */
 }
 
 static uint32_t compute_hash_div ()
@@ -953,167 +856,6 @@ static int64_t hash_get_next (int fd, int max, int64_t pos, char * hash,
                           id_off, priority, time);
 }
 
-#ifdef USE_LIST_NEXT_MATCHING
-static int64_t source_get_next (int fd, int max, int pos,
-                                unsigned char * source,
-                                char ** message, int * msize, int * id_off,
-                                int * priority, char * time)
-{
-  if (pos < 0)
-    return -1;
-  unit32_t s_index = hash_index ((char *) source);
-  int least_not_less_than = -1;
-  struct hash_entry * entry = message_source_table [s_index];
-  struct hash_entry * matching = NULL;
-  while (entry != NULL) {
-    if ((entry->file_position >= pos) &&
-        ((least_not_less_than == -1) ||
-         (least_not_less_than > entry->file_position))) {
-      matching = entry;
-      least_not_less_than = entry->file_position;
-    }
-    entry = entry->next_by_source;
-  }
-  return assign_matching (matching, fd, max, message, msize,
-                          id_off, priority, time);
-}
-
-static int hash_matches (struct request_details * req,
-                         struct hash_entry * entry)
-{
-  if (req->empty) {
-    if (matches (req->source, req->src_nbits,
-                 entry->destination, entry->dst_nbits))
-      return 1;
-    return 0;
-  }
-  /* anything not matching leads to the packet being excluded */
-  if (req->since != NULL) {
-    uint64_t since = readb64u (req->since);
-    uint64_t rcvd_at = readb64u (entry->received_at);
-    if (since > rcvd_at)
-      return 0;
-  }
-  if ((req->dbits > 0) && (req->dbitmap != NULL) &&
-      (! match_bitmap (req->dpower_two, req->dbits, req->dbitmap,
-                       entry->destination, entry->dst_nbits)))
-    return 0;
-  if ((req->sbits > 0) && (req->sbitmap != NULL) &&
-      (! match_bitmap (req->spower_two, req->sbits, req->sbitmap,
-                       entry->source, entry->src_nbits)))
-    return 0;
-  return 1;
-}
-
-static int64_t list_next_matching (int fd, unsigned int max_size,
-                                   int64_t position,
-                                   struct request_details * rd,
-                                   char ** message, int * msize)
-{
-  if (position < 0)
-    return -1;
-  if (message_hash_table == NULL)
-    return -1;  /* not initialized */
-  if ((rd == NULL) ||
-      ((rd->empty) && (rd->src_nbits < bits_in_hash_table)))
-    return get_next_message (fd, max_size, (int) position, NULL,
-                             message, msize, NULL, NULL, NULL);
-  if (rd->empty)   /* rd->src_nbits >= bits_in_hash_table */
-    return source_get_next (fd, max_size, (int) position, rd->source,
-                            message, msize, NULL, NULL, NULL);
-  int64_t index = position >> 32;
-  int64_t count = position & 0xffffffff;
-  if (index >= hash_size)
-    return -1;
-  struct hash_entry * entry = message_hash_table [index];
-  /* get to the right entry, as specified by count */
-  while ((entry != NULL) && (count > 0)) {
-    entry = entry->next_by_hash;
-    count--;
-  }  /* should now have the entry indicated by position -- may be null */
-  int64_t use_count = count;
-  while (index < hash_size) {
-    while ((entry != NULL) && (! (hash_matches (rd, entry)))) {
-      entry = entry->next_by_hash;
-      use_count++;   /* skip over this one when looking next time */
-    }
-    if (entry != NULL) {  /* hash must match */
-      assign_matching (entry, fd, max_size, message, msize, NULL, NULL, NULL);
-      /* return same index, use_count + 1 */
-      return (index << 32) | (use_count + 1);
-    }
-    /* not found at this hash index, continue with the next */
-    use_count = 0;
-    count = 0;
-    index++;
-    entry = message_hash_table [index];
-  }
-  return -1;  /* nothing found */
-}
-#endif /* USE_LIST_NEXT_MATCHING */
-
-#ifdef HASH_RANDOM_MATCH
-/* returns 1 if successful, 0 otherwise.  Can always call again. */
-/* not uniformly random -- (1) selects a random hash table index, then a
- * random entry at that index.  Some indices will have more entries,
- * and entries are less likely to be selected, and
- * (2) after the first call, continues with the next index */
-/* bf_bits gives the number of bits in the bloom filter */
-static int hash_random_match (int fd, unsigned int max_size,
-                              unsigned char * bf, int bf_bits,
-                              struct request_details * rd,
-                              char ** message, int * msize)
-{
-  if (message_hash_table == NULL)
-    return 0;  /* not initialized */
-  static int initialized = 0;
-  static int persistent_index = 0;
-  if (! initialized)
-    persistent_index = (int)random_int (0, hash_size - 1);
-  else
-    persistent_index = (persistent_index + 1) % hash_size;
-  initialized = 1;
-  struct hash_entry * entry = message_hash_table [persistent_index];
-  int loop_count = 0;
-  while ((entry == NULL) && (loop_count++ < hash_size))
-    persistent_index = (persistent_index + 1) % hash_size;
-  int count = 0;
-  while (entry != NULL) {
-    entry = entry->next_by_hash;
-    count++;
-  }
-  if (count <= 0)
-    return 0;
-  entry = message_hash_table [persistent_index];
-  int at = random_int (0, count - 1);
-  uint64_t position = (((uint64_t) persistent_index) << 32) | ((uint64_t) at);
-  uint64_t bf_index = position % bf_bits;
-  if (get_bit (bf, bf_index))
-  /* assume already sent -- may not be true, due to false positives */
-    return 0;
-  /* find the randomly selected entry */
-  while ((at-- > 0) && /* defensive programming */ (entry != NULL))
-    entry = entry->next_by_hash;
-  if (entry == NULL) /* defensive programming!!! */
-    return 0;
-  char ptime [ALLNET_TIME_SIZE];
-  int64_t res = assign_matching (entry, fd, max_size, message, msize,
-                                 NULL, NULL, ptime);
-  if (res < 0)
-    return 0;
-  if ((msize != NULL) && (*msize <= 0))
-    return 0;
-  int match = packet_matches (rd, *message, *msize, ptime);
-  if (match == 0)
-    return 0;
-  if (! is_valid_message (*message, *msize, NULL))
-    return 0;   /* message may have expired */
-  set_bit (bf, bf_index);   /* mark it as sent */
-  return 1;
-}
-
-#else /* ! HASH_RANDOM_MATCH */
-
 /* returns 1 if successful, 0 if we already returned all matching entries. */
 /* first_call should only be set on the first call in a loop */
 static int hash_next_match (int fd, unsigned int max_size, int first_call,
@@ -1192,7 +934,6 @@ static int hash_next_match (int fd, unsigned int max_size, int first_call,
   return 0;  /* should never be executed */
 #endif /* 0 */
 }
-#endif /* HASH_RANDOM_MATCH */
 
 /* returns 1 if this message is ready to be deleted, 0 otherwise */
 static int delete_gc_message (char * message, unsigned int msize,
@@ -1289,9 +1030,6 @@ static void gc (int fd, unsigned int max_size)
       copied++;
     } else {
       remove_from_hash_table (message + id_off);
-#ifdef USING_MESSAGE_LIST
-      list_remove_message (message + id_off);
-#endif /* USING_MESSAGE_LIST */
       deleted++;
     }
   }
@@ -1370,9 +1108,6 @@ return;   }
     fsync (fd);   /* only fsync once in a while, lessen the disk traffic */
   hash_add_message (message, msize, message + id_off, write_position,
                     mbuffer + MESSAGE_ENTRY_HEADER_TIME_OFFSET);
-#ifdef USING_MESSAGE_LIST
-  list_add_message (message + id_off);
-#endif /* USING_MESSAGE_LIST */
 snprintf (alog->b, alog->s, "saved message at position %d, hash index %d, ", (int) write_position, hash_index (message + id_off)); log_print (alog); print_stats (0, -1, "cache_message");
   count = 0;
   while (fd_size (fd) > max_size) {
@@ -1418,9 +1153,6 @@ static void remove_cached_message (int fd, unsigned int max_size, char * id,
   if (time_to_save (&last_msg_time, &num_msg_saves, 0))
     fsync (fd);   /* only fsync once in a while, lessen the disk traffic */
   remove_from_hash_table (id);
-#ifdef USING_MESSAGE_LIST
-  list_remove_message (id);
-#endif /* USING_MESSAGE_LIST */
 }
 
 /* if the header includes an id, returns a pointer to the ID field of hp */
@@ -1648,34 +1380,19 @@ static int respond_to_request (int fd, unsigned int max_size, char * in_message,
 
   int sent = 0;
   int count = 0;
-#ifdef HASH_RANDOM_MATCH
-#define BF_SIZE 		10000
-  unsigned char bloom [BF_SIZE];
-  memset (bloom, 0, BF_SIZE);
-  int bbits = BF_SIZE * 8;
-#undef BF_SIZE
-#endif /* HASH_RANDOM_MATCH */
   while (allnet_time_ms () < overall_limit) {
     char * message = NULL;
     int msize = 0;
-#ifdef HASH_RANDOM_MATCH
-    if (hash_random_match (fd, max_size, bloom, bbits,
-                           &rd, &message, &msize))
-#else /* ! HASH_RANDOM_MATCH */
     int first_call = (count++ == 0);
     if (hash_next_match (fd, max_size, first_call, &rd, &message, &msize))
-#endif /* HASH_RANDOM_MATCH */
     {
       sent++;
       int priority = ALLNET_PRIORITY_EPSILON;
       if (ALLNET_PRIORITY_CACHE_RESPONSE > ALLNET_PRIORITY_EPSILON + count)
         priority = ALLNET_PRIORITY_CACHE_RESPONSE - count;
       resend_message (message, msize, 0, &priority, local_request, sock);
-#ifdef HASH_RANDOM_MATCH
-#else /* ! HASH_RANDOM_MATCH */
     } else {
       break;  /* sequential search, none left, so done */
-#endif /* HASH_RANDOM_MATCH */
     }
   }
   snprintf (alog->b, alog->s, "respond_to_request: sent %d packets, %d acks\n",
@@ -1803,9 +1520,6 @@ static void init_msgs (int msg_fd, int max_msg_size)
     char *  id = message + id_off;
     if ((msize > 0) && (msize <= ALLNET_MTU) && (id_off != 0) &&
         (message_hash_free != NULL)) {
-#ifdef USING_MESSAGE_LIST
-      list_add_message (id);
-#endif /* USING_MESSAGE_LIST */
       hash_add_message (message, msize, id,
                         next_prev_position (read_position, msize), time);
       count++;
