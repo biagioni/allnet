@@ -25,6 +25,10 @@
 #include "lib/sha.h"
 #include "lib/cipher.h" /* for print_caches, in case we want to decrypt */
 
+#ifdef ANDROID
+#define DEBUG_UNINITIALIZED
+#endif /* ANDROID */
+
 struct ack_entry {
   char message_id  [MESSAGE_ID_SIZE];
   char message_ack [MESSAGE_ID_SIZE];
@@ -58,6 +62,29 @@ static struct hash_entry * * message_hash_table = NULL;
 static struct hash_entry * * message_source_table = NULL;
 
 static struct allnet_log * alog = NULL;
+
+static void debug_message_is_null (const char * message1, const char * message2)
+{
+  struct allnet_log * log = alog;
+  if (log == NULL)
+    log = init_log ("acache.c debugging");
+  if (log != NULL) {
+    snprintf (alog->b, alog->s,
+              "%s %s: hash_pool_size %d, hash_size %d, bits_in_hash_table %d, "
+              "message_hash_table %p, message_hash_free %p, "
+              "message_hash_pool %p, message_source_table %p\n",
+              message1, message2, hash_pool_size, hash_size, bits_in_hash_table,
+              message_hash_table, message_hash_free, message_hash_pool,
+              message_source_table);
+    log_print (alog);
+  }
+  printf ("%s %s: hash_pool_size %d, hash_size %d, bits_in_hash_table %d, "
+          "message_hash_table %p, message_hash_free %p, "
+          "message_hash_pool %p, message_source_table %p\n",
+          message1, message2, hash_pool_size, hash_size, bits_in_hash_table,
+          message_hash_table, message_hash_free, message_hash_pool,
+          message_source_table);
+}
 
 static unsigned long long int fd_size_or_zero (int fd)
 {
@@ -584,6 +611,9 @@ static void init_hash_table (int max_msg_size)
     message_hash_table [i] = NULL;
     message_source_table [i] = NULL;
   }
+#ifdef DEBUG_UNINITIALIZED
+  debug_message_is_null ("init_hash_table", "complete");
+#endif /* DEBUG_UNINITIALIZED */
 }
 
 static int count_list (struct hash_entry * entry, int index)
@@ -616,6 +646,10 @@ static int count_list (struct hash_entry * entry, int index)
 static void print_stats (int exit_if_none_free, int must_match,
                          const char * caller)
 {
+  if (message_hash_table == NULL) {
+    debug_message_is_null ("print_stats", caller);
+    return;
+  }
   int hcount = 0;
   int i;
   for (i = 0; i < hash_size; i++)
@@ -670,8 +704,10 @@ static int hash_has_space (unsigned int max_size, unsigned int new_size, int fd)
 static void hash_add_message (char * message, unsigned int msize, char * id,
                               int64_t position, char * time)
 {
-  if (message_hash_table == NULL)           /* not initialized */
+  if (message_hash_table == NULL) {         /* not initialized */
+    debug_message_is_null ("hash_add_message", "null message hash table");
     return;
+  }
   struct allnet_header * hp = (struct allnet_header *) message;
   if (msize < ALLNET_SIZE (hp->transport))  /* invalid header */
     return;
@@ -709,8 +745,10 @@ static void hash_add_message (char * message, unsigned int msize, char * id,
 
 static void update_hash_position (char * id, int64_t position)
 {
-  if (message_hash_table == NULL)
+  if (message_hash_table == NULL) {
+    debug_message_is_null ("update_hash_position", "null message hash table");
     return;  /* not initialized */
+  }
   uint32_t index = hash_index (id);
   struct hash_entry * entry = message_hash_table [index];
   while (entry != NULL) {
@@ -724,8 +762,10 @@ static void remove_hash_entry (struct hash_entry * entry, uint32_t index)
 {
   if (entry == NULL)
     return;
-  if (message_hash_table == NULL)
+  if (message_hash_table == NULL) {
+    debug_message_is_null ("remove_hash_entry", "null message hash table");
     return;  /* not initialized */
+  }
   if (entry == message_hash_table [index]) {
     message_hash_table [index] = entry->next_by_hash;
     return;
@@ -760,10 +800,12 @@ static void remove_source_entry (struct hash_entry * entry, uint32_t index)
   }
 }
 
-static struct hash_entry * hash_find (char * hash)
+static struct hash_entry * hash_find (char * hash, const char * from)
 {
-  if (message_hash_table == NULL)
+  if (message_hash_table == NULL) {
+    debug_message_is_null ("hash_find", from);
     return NULL;  /* not initialized */
+  }
   uint32_t h_index = hash_index (hash);
   struct hash_entry * entry = message_hash_table [h_index];
   while (entry != NULL) {
@@ -776,7 +818,7 @@ static struct hash_entry * hash_find (char * hash)
 
 static void remove_from_hash_table (char * id)
 {
-  struct hash_entry * entry = hash_find (id);
+  struct hash_entry * entry = hash_find (id, "remove_from_hash_table");
   if (entry != NULL) {
     /* delete from hash table chain */
     remove_hash_entry (entry, hash_index (id));
@@ -836,8 +878,10 @@ static int64_t hash_get_next (int fd, int max, int64_t pos, char * hash,
 {
   if (pos < 0)
     return -1;
-  if (message_hash_table == NULL)
+  if (message_hash_table == NULL) {
+    debug_message_is_null ("hash_get_next", "");
     return -1;  /* not initialized */
+  }
   uint32_t h_index = hash_index (hash);
   int64_t least_not_less_than = -1;
   struct hash_entry * entry = message_hash_table [h_index];
@@ -862,8 +906,10 @@ static int hash_next_match (int fd, unsigned int max_size, int first_call,
                             struct request_details * rd,
                             char ** message, int * msize)
 {
-  if (message_hash_table == NULL)
+  if (message_hash_table == NULL) {
+    debug_message_is_null ("hash_next_match", "");
     return 0;  /* not initialized */
+  }
   static int persistent_index = -1;
   static struct hash_entry * persistent_entry = NULL;
   static int first_index = -1;
@@ -1068,8 +1114,10 @@ static void cache_message (int fd, unsigned int max_size, unsigned int id_off,
 {
   if (id_off + MESSAGE_ID_SIZE > msize)
     return;
-  if (message_hash_table == NULL)
+  if (message_hash_table == NULL) {
+    debug_message_is_null ("cache_message", "");
     return;  /* not initialized */
+  }
   char mbuffer [MAX_MESSAGE_ENTRY_SIZE];
   unsigned int fsize = MESSAGE_ENTRY_HEADER_SIZE + msize;
   if ((fsize > max_size) || (fsize > MAX_MESSAGE_ENTRY_SIZE)) {
@@ -1186,7 +1234,7 @@ static int save_packet (int fd, unsigned int max_size, char * message,
                     alog->b, alog->s);
   log_print (alog);
 #endif /* DEBUG_PRINT */
-  if (hash_find (id) != NULL) {
+  if (hash_find (id, "save_packet") != NULL) {
 #ifdef LOG_PACKETS
     buffer_to_string (id, MESSAGE_ID_SIZE, "save_packet: found",
                       MESSAGE_ID_SIZE, 1, alog->b, alog->s);
@@ -1633,6 +1681,9 @@ static void main_loop (int rsock, int wsock, pd p)
   snprintf (alog->b, alog->s, "acache main_loop fds %d, %d, max %u\n",
             rsock, wsock, max_msg_size);
   log_print (alog);
+#ifdef DEBUG_UNINITIALIZED
+  debug_message_is_null ("main_loop", "after init_acache");
+#endif /* DEBUG_UNINITIALIZED */
   while (1) {
     char * message = NULL;
     unsigned int priority;
