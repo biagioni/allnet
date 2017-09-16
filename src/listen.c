@@ -484,6 +484,19 @@ static int listen_add_fd_with_lock_held (struct listen_info * info,
           printf ("     ");
           print_addr_info (addr);
 #endif /* DEBUG_PRINT */
+          if (alog != NULL) {
+            char b1 [1000];
+            char b2 [1000];
+            addr_info_to_string (info->peers + i, b1, sizeof (b1));
+            if ((strlen (b1) > 0) && (b1 [strlen (b1) - 1] == '\n'))
+              b1 [strlen (b1) - 1] = '\0';  /* eliminate final newline */
+            addr_info_to_string (addr, b2, sizeof (b2));
+            snprintf (alog->b, alog->s,
+                      "%s: unable to add fd %d %d/%d/%d dup %s =? %s",
+                      caller_description, fd, i, info->num_fds, info->fds [i],
+                      b1, b2);
+            log_print (alog);
+          }
           return 0;
         }
       }
@@ -523,6 +536,9 @@ int listen_add_fd (struct listen_info * info, int fd, struct addr_info * addr,
   pthread_mutex_lock (&(info->mutex));
   if ((info->num_fds >= info->max_num_fds) && (random () >= RAND_MAX / 2)) {
     /* if full, half the time just send a peer message and close the fd */
+#ifdef LOG_PACKETS
+printf ("closing incoming fd, %d %d\n", info->num_fds, info->max_num_fds);
+#endif /* LOG_PACKETS */
     send_peer_message (fd, info, -1);
     pthread_mutex_unlock (&(info->mutex));
 #ifdef DEBUG_EBADFD
