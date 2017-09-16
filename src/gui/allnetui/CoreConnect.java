@@ -69,15 +69,19 @@ public class CoreConnect extends Thread implements CoreAPI {
     static final byte guiCallbackSubscriptionComplete = 73;
     static final byte guiCallbackTraceResponse        = 74;
 
+    // to refill these caches when something changes, just set them to null
+    java.util.Collection<String> cachedContacts = null;
+    java.util.Collection<String> cachedSubscriptions = null;
+
     // list of incomplete contacts, so we don't always have to check back
-    java.util.List<String> incompletes = new java.util.ArrayList<String>();
+    java.util.Collection<String> incompletes = new java.util.HashSet<String>();
 
     // design principle: this API provides access to allnet lib and xchat
     // methods needed to implement the functionality of the user interface.
     public CoreConnect(UIAPI handlers) {
         super ();   // initialize thread
         this.handlers = handlers;
-        this.incompletes = new java.util.ArrayList<String>();
+        this.incompletes = new java.util.HashSet<String>();
         try {
             this.sock = new java.net.Socket("127.0.0.1", xchatSocketPort);
             this.sockIn =
@@ -127,6 +131,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     private void callbackSubscriptionComplete(byte[] value) {
         assert(value.length > 2);
+        cachedSubscriptions = null;   // reset the cache
         String sender = SocketUtils.bString(value, 1);
         handlers.subscriptionComplete(sender);
     }
@@ -289,9 +294,6 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // from lib/keys.h
 
-    // to refill the cache when something changes, just set it back to null
-    java.util.List<String> cachedContacts = null;
-
     // return all the contacts, including all the groups
     public String[] contacts() {
         String[] result = null;
@@ -301,7 +303,7 @@ public class CoreConnect extends Thread implements CoreAPI {
             byte[] response = doRPC(request);
             long count = SocketUtils.b64(response, 1); 
             result = SocketUtils.bStringArray(response, 9, count);
-            cachedContacts = new java.util.ArrayList<String>();
+            cachedContacts = new java.util.HashSet<String>();
             for (String contact: result) {
                 cachedContacts.add(contact);
             }
@@ -313,11 +315,20 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // return all the senders we subscribe to
     public String[] subscriptions() {
-        byte[] request = new byte[1];
-        request[0] = guiSubscriptions;
-        byte[] response = doRPC(request);
-        long count = SocketUtils.b64(response, 1); 
-        String[] result = SocketUtils.bStringArray(response, 9, count);
+        String[] result = null;
+        if (cachedSubscriptions == null) {
+            byte[] request = new byte[1];
+            request[0] = guiSubscriptions;
+            byte[] response = doRPC(request);
+            long count = SocketUtils.b64(response, 1); 
+            result = SocketUtils.bStringArray(response, 9, count);
+            cachedSubscriptions = new java.util.HashSet<String>();
+            for (String sub: result) {
+                cachedSubscriptions.add(sub);
+            }
+        } else {
+           result = cachedSubscriptions.toArray(new String[0]);
+        }
         return result;
     } 
 
@@ -337,6 +348,27 @@ public class CoreConnect extends Thread implements CoreAPI {
         return result;
     } 
 
+    public boolean subscriptionExists(String sub) { 
+        boolean result = false;
+        if (sub != null) {
+            if (cachedSubscriptions != null) {
+                result = cachedSubscriptions.contains(sub); 
+            } else {
+                for (String existingSub: subscriptions()) {
+                    if (sub.equals (existingSub)) {
+                        result = true;
+                    }
+                }
+            }
+        }
+        return result;
+    } 
+
+    // shall we bother to do an RPC on this name?
+    private boolean isValid(String name) { 
+        return(contactExists(name) || subscriptionExists(name));
+    }
+
     private byte[] doRPCWithCode(byte code, String contact) {
         byte[] request = new byte[1 + contact.length() + 1];
         request[0] = code;
@@ -345,6 +377,9 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     private boolean doRPCWithCodeNonZero(byte code, String contact) {
+        if (! isValid(contact)) {
+            return false;
+        }
         byte[] response = doRPCWithCode (code, contact);
         return (response [1] != 0);
     }
@@ -358,6 +393,9 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     private boolean doRPCWithCodeOpNonZero(byte code, byte op, String contact) {
+        if (! isValid(contact)) {
+            return false;
+        }
         byte[] response = doRPCWithCodeOp (code, op, contact);
         return (response [1] != 0);
     }
@@ -521,8 +559,10 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // set that the contact was read now
     public void setReadTime(String contact) {
-        // ignore the response
-        doRPCWithCodeOp (guiSetVariable, guiVariableReadTime, contact);
+        if (isValid(contact)) {
+            doRPCWithCodeOp (guiSetVariable, guiVariableReadTime, contact);
+            // ignore the response from the doRPC
+        }
     }
 
     // ultimately from xchat/xcommon.h
@@ -609,6 +649,7 @@ public class CoreConnect extends Thread implements CoreAPI {
         int endAddress = SocketUtils.wString (request, 1, address);
         assert(endAddress == length);
         byte[] response = doRPC(request);
+        cachedSubscriptions = null;   // reset the cache
         if (response[1] == 0) {
             System.out.println("initSubscription returned failure");
             return false;
