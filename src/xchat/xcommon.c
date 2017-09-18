@@ -167,7 +167,7 @@ static int send_data_request (int sock, int priority, char * start)
   /* adr is an allnet_data_request */
   /* adr_size has room for each of the bitmaps */
   unsigned int adr_size =
-    sizeof (struct allnet_data_request) + BITMAP_BYTES * 3;
+    sizeof (struct allnet_data_request) + BITMAP_BYTES * 2;
   int hops = random_hop_count ();
   struct allnet_header * hp =
     create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
@@ -180,18 +180,31 @@ static int send_data_request (int sock, int priority, char * start)
     memcpy (adr->since, start, ALLNET_TIME_SIZE);
   adr->dst_bits_power_two = BITMAP_BITS_LOG;
   adr->src_bits_power_two = BITMAP_BITS_LOG;
-  adr->mid_bits_power_two = BITMAP_BITS_LOG;
+  adr->mid_bits_power_two = 0;
   random_bytes ((char *) (adr->padding), sizeof (adr->padding));
   unsigned char * dst = adr->dst_bitmap;
   unsigned char * src = dst + BITMAP_BYTES;
-  unsigned char * ack = src + BITMAP_BYTES;
-  if ((fill_bits (dst, BITMAP_BITS_LOG, FILL_LOCAL_ADDRESS ) < 0) ||
-      (fill_bits (src, BITMAP_BITS_LOG, FILL_REMOTE_ADDRESS) < 0) ||
-      (fill_bits (ack, BITMAP_BITS_LOG, FILL_ACK           ) < 0)) {
-    size -= BITMAP_BYTES * 3;
+  unsigned char * ack = dst;
+  /* requesting acks is slow, so do it once every 10 times */
+  static int request_acks = 0;
+  if (request_acks < 9) {
+    if ((fill_bits (dst, BITMAP_BITS_LOG, FILL_LOCAL_ADDRESS ) < 0) ||
+        (fill_bits (src, BITMAP_BITS_LOG, FILL_REMOTE_ADDRESS) < 0)) {
+      size -= BITMAP_BYTES * 2;
+      adr->dst_bits_power_two = 0;
+      adr->src_bits_power_two = 0;
+    }
+    request_acks++;
+  } else {   /* time to request missing acks */
     adr->dst_bits_power_two = 0;
     adr->src_bits_power_two = 0;
-    adr->mid_bits_power_two = 0;
+    adr->mid_bits_power_two = BITMAP_BITS_LOG;
+    size -= BITMAP_BYTES;  /* just the mid instead of dst and src */
+    if (fill_bits (ack, BITMAP_BITS_LOG, FILL_ACK) < 0) {
+      size -= BITMAP_BYTES;
+      adr->mid_bits_power_two = 0;
+    }
+    request_acks = 0;
   }
 #ifdef DEBUG_PRINT
   print_packet (((const char *) hp), size, "sending data request", 1);
