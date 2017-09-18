@@ -369,6 +369,9 @@ struct allnet_app_media_header {
  * messages are sent back only if they match ALL the requested constraints.
  * a zero-bit bitmap will match all packets, as will a 0 time "since".
  *
+ * mid stands for message id, and can be used to request acks for message
+ * IDs known to be missing. 
+ *
  * the padding is set to random bytes.  This allows us to distinguish
  * retransmitted and looped packets from new transmissions.
  * It also allows for future compatible expansion of this message format.
@@ -382,7 +385,7 @@ struct allnet_data_request {
   unsigned char since [ALLNET_TIME_SIZE];
   unsigned char dst_bits_power_two;  /* bitmap has 2^this bits */
   unsigned char src_bits_power_two;  /* bitmap has 2^this bits */
-  unsigned char mid_bits_power_two;  /* bitmap has 2^this bits */
+  unsigned char mid_bits_power_two;  /* message ID bitmap has 2^this bits */
   unsigned char padding [5];	     /* sent as random, ignored on receipt */
   unsigned char dst_bitmap [0];
   unsigned char src_bitmap [0];
