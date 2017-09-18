@@ -375,7 +375,7 @@ static int bitmap_to_string (char * to, unsigned int tsize,
   off += snprintf (to + off, minz (tsize, off), " %d(%d)",
                    exponent, p2 (exponent));
   if (exponent <= 0)
-    return 0;
+    return off;
   off += snprintf (to + off, minz (tsize, off), ": ");
   int num_bits = p2 (exponent);
   int num_bytes = (num_bits + 7) / 8;
