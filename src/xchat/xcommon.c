@@ -1547,9 +1547,11 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
 {
   static unsigned long long int last_call = 0;
   unsigned long long int now = allnet_time ();
+/* printf ("request_and_resend: last %llu, now %llu, %s\n", last_call, now,
+eagerly ? "eager" : "not eager"); */
   if (last_call >= now)
     return -1; /* only allow one call per second, even if eagerly */
-  if ((! eagerly) || (last_call + 1 >= now))
+  if ((last_call + 1 >= now) && (! eagerly))
     return -1; /* if not eagerly, only allow one call per two seconds */
   last_call = now;
 #ifdef DEBUG_PRINT
@@ -1578,8 +1580,10 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
   /* send a data request, again at a very limited rate */
   static unsigned long long int last_data_request = 0;
   static unsigned long long int sleep_time = SLEEP_INITIAL_MIN;
-/* printf ("request_and_resend (sock %d, peer %s) => %d, sleep %llu\n",
-        sock, contact, result, sleep_time); */
+/* printf ("request_and_resend (sock %d, peer %s) => %d, ",
+        sock, contact, result);
+printf ("last %llu + sleep %llu = %llu <=> %llu\n",
+        last_data_request, sleep_time, last_data_request + sleep_time, now); */
   if (last_data_request + sleep_time <= now) {
     char start [ALLNET_TIME_SIZE];
     writeb64 (start, last_data_request);
