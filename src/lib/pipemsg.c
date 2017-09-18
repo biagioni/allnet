@@ -33,6 +33,8 @@
 #define LENGTH_SIZE	4
 #define HEADER_SIZE	(MAGIC_SIZE + PRIORITY_SIZE + LENGTH_SIZE)
 
+#define KILL_SOCKET_AFTER	100   /* after data pending for 100 seconds */
+
 struct allnet_pipe_info {
   int pipe_fd;	   /* file descriptor for input */
   int in_header;
@@ -321,7 +323,8 @@ static int send_pipe_message_orig (int pipe, const char * message, int mlen,
 
 struct saved_bytes_for_send {
   int pipe;
-  int num_bytes;
+  int num_saved_bytes;
+  unsigned long long first_created;
   char * buffer;
 };
 static struct saved_bytes_for_send * saved_records = NULL;
@@ -331,9 +334,12 @@ static int num_saved_records = 0;
  * concatenating the two if the result is short enough (arbitrarily, we
  * set the limit to ALLNET_MTU) */
 /* invariant: after the call, this pipe is not in saved_records. */
+/* fc records the time at which this record was first created (0 for none) */
 static void saved_bytes_for_pipe (int pipe, char ** buffer, int * blen,
+                                  unsigned long long int * fc,
                                   int * do_free, struct allnet_log * log)
 {
+  *fc = 0;
   int found = 0;  /* if true, found a match, replaced buffer */
   int i;
   for (i = 0; i < num_saved_records; i++) {
@@ -348,22 +354,23 @@ static void saved_bytes_for_pipe (int pipe, char ** buffer, int * blen,
     } else if (saved_records [i].pipe == pipe) { /* match, replace buffer */
       found = 1;   /* from here on up, copy records instead of searching */
       /* save the new buffer with the old unless the result is large */
-      int combined_size = *blen + saved_records [i].num_bytes;
+      *fc = saved_records [i].first_created;
+      int combined_size = *blen + saved_records [i].num_saved_bytes;
       if (combined_size <= ALLNET_MTU) {  /* combine them */
         char * new_buffer = memcat_malloc (saved_records [i].buffer,
-                                           saved_records [i].num_bytes,
+                                           saved_records [i].num_saved_bytes,
                                            *buffer, *blen,
                                            "saved_bytes_for_pipe combine");
         free (saved_records [i].buffer);  /* no longer needed */
         saved_records [i].buffer = new_buffer; 
-        saved_records [i].num_bytes = combined_size;
+        saved_records [i].num_saved_bytes = combined_size;
       }   /* else, just use the saved buffer without combining */
       /* now, replace the caller's buffer with the new one */
       if (*do_free)
         free (*buffer);
       *do_free = 1;  /* always free the returned buffer */
       *buffer = saved_records [i].buffer;  /* will be free'd by caller */
-      *blen = saved_records [i].num_bytes;
+      *blen = saved_records [i].num_saved_bytes;
     }
   }
   /* finished loop.  If not found, we are done.  If found, reallocate
@@ -393,7 +400,8 @@ static void saved_bytes_for_pipe (int pipe, char ** buffer, int * blen,
 /* invariant (must hold before the call): this pipe is not in saved_records.
  * if save_remaining_bytes is called after saved_bytes_for_pipe,
    the invariant should hold */
-static void save_remaining_bytes (int pipe, char * buffer, int blen) 
+static void save_remaining_bytes (int pipe, char * buffer, int blen,
+                                  unsigned long long int first_created) 
 {
   if (blen <= 0)
     return;
@@ -414,7 +422,8 @@ static void save_remaining_bytes (int pipe, char * buffer, int blen)
   /* invariants: num_saved_records > 0, saved_records != NULL */
   int index = num_saved_records - 1;
   saved_records [index].pipe = pipe;
-  saved_records [index].num_bytes = blen;
+  saved_records [index].num_saved_bytes = blen;
+  saved_records [index].first_created = first_created;
   saved_records [index].buffer = memcpy_malloc (buffer, blen,
                                                 "save_remaining_bytes");
 }
@@ -434,7 +443,8 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
   /* if we need to send the remainder of an earlier packet,
    * discard this packet and replace it with those bytes,
    * or (if the combined size is small enough) concatenate the two */
-  saved_bytes_for_pipe (pipe, &buffer, &blen, &do_free, log);
+  unsigned long long int created;
+  saved_bytes_for_pipe (pipe, &buffer, &blen, &created, &do_free, log);
   int result = 1;
   ssize_t w = send (pipe, buffer, blen, MSG_DONTWAIT); 
   int save_errno = errno;
@@ -447,16 +457,23 @@ static int send_buffer (int pipe, char * buffer, int blen, int do_free,
     if ((w >= 0) ||    /* partial send */
         ((errno == EAGAIN) || (errno == EWOULDBLOCK))) { /* socket busy */
       result = 1;  /* report as success, since the socket is not dead */
+      if (created == 0)   /* first time */
+        created = allnet_time ();
+      else if (created + KILL_SOCKET_AFTER < allnet_time ())
+        result = 0;  /* socket idle more than 100sec, close it */
       snprintf (log->b, log->s,
-                "pipe %d, partial result %zd/%zd/%d, errno %d/%d, %d records\n",
-                pipe, w, save_w, blen, save_errno, errno, num_saved_records);
+                "pipe %d, partial %zd/%zd/%d/%d, "
+                "time %llu/%llu, errno %d/%d, %d records\n",
+                pipe, w, save_w, blen, result, created, allnet_time (),
+                save_errno, errno, num_saved_records);
       log_error (log, "send_pipe_msg partial send");
       ssize_t save = w;  /* now save the unsent bytes */
       if (save < 0)      /* send them next time we are called for this pipe */
         save = 0;
       /* if (w == 0), this code is just an optimization.
        * if (w > 0) , this code is required to avoid creating hybrid packets */
-      save_remaining_bytes (pipe, buffer + save, blen - (int)save); 
+      if (result != 0)
+        save_remaining_bytes (pipe, buffer + save, blen - (int)save, created); 
     } else {  /* w < 0, this is an error */
       if (errno == EPIPE) {
         snprintf (log->b, log->s,
