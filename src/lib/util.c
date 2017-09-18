@@ -354,6 +354,52 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
   return r;
 }
 
+/* compute a power of two */
+static unsigned int p2 (unsigned int exponent)
+{
+  unsigned int result = 1;
+  while (exponent > 0) {
+    result = result + result;
+    exponent--;
+  }
+  return result;
+}
+
+static int bitmap_to_string (char * to, unsigned int tsize,
+                             unsigned int exponent,
+                             unsigned char ** my_bitmap, int add_slash)
+{
+  int off = 0;
+  if (add_slash)
+    off = snprintf (to, tsize, " /");
+  off += snprintf (to + off, minz (tsize, off), " %d(%d)",
+                   exponent, p2 (exponent));
+  if (exponent <= 0)
+    return 0;
+  off += snprintf (to + off, minz (tsize, off), ": ");
+  int num_bits = p2 (exponent);
+  int num_bytes = (num_bits + 7) / 8;
+  unsigned char * bitmap = *my_bitmap;
+  *my_bitmap = bitmap + num_bytes;  /* return value */
+  int i, b;
+  int found = 0;
+  for (i = 0; i < num_bytes; i++) {
+    unsigned char byte = bitmap [i];
+    if (byte != 0) {
+      for (b = 0; b < 8; b++) {
+        if ((byte >> b) & 1) {
+          off += snprintf (to + off, minz (tsize, off), "%s%x",
+                           ((found) ? ", " : ""), i * 8 + b);
+          found = 1;
+        }
+      }
+    }
+  }
+  if (! found)
+    off += snprintf (to + off, minz (tsize, off), "(empty)");
+  return off;
+}
+
 /* same as print_buffer, but prints to the given string */
 void packet_to_string (const char * buffer, unsigned int bsize,
                        const char * desc, int print_eol,
@@ -483,6 +529,21 @@ void packet_to_string (const char * buffer, unsigned int bsize,
         off += buffer_to_string (buffer + ALLNET_SIZE (hp->transport) +
                                  i * MESSAGE_ID_SIZE, MESSAGE_ID_SIZE,
                                  ", ", 5, 0, to + off, minz (itsize, off));
+    } else if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
+      struct allnet_data_request * adrp =
+        (struct allnet_data_request *) (buffer + (ALLNET_SIZE (hp->transport)));
+      char time_string [100];
+      allnet_time_string (readb64u (adrp->since), time_string);
+      off += snprintf (to + off, minz (itsize, off),
+                       ", requesting since %s, ", time_string);
+      off += snprintf (to + off, minz (itsize, off), "dst/src/mid bitmaps");
+      unsigned char * bitmap = adrp->dst_bitmap;
+      off += bitmap_to_string (to + off, minz (itsize, off),
+                               adrp->dst_bits_power_two, &bitmap, 0);
+      off += bitmap_to_string (to + off, minz (itsize, off),
+                               adrp->src_bits_power_two, &bitmap, 1);
+      off += bitmap_to_string (to + off, minz (itsize, off),
+                               adrp->mid_bits_power_two, &bitmap, 1);
     }
   }
   if (print_eol)
