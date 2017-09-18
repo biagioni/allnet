@@ -256,7 +256,7 @@ struct allnet_key_reply {
 
 /* the unix epoch begins Jan 1, 1970, the AllNet epoch on Jan 1, 2000.
  * The difference is: */
-#define ALLNET_Y2K_SECONDS_IN_UNIX	946720800
+#define ALLNET_Y2K_SECONDS_IN_UNIX	946684800
 
 /* a message with all possible header fields */
 struct allnet_header_max {
