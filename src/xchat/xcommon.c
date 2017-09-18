@@ -30,6 +30,7 @@
 
 /* #define DEBUG_PRINT */
 
+/* selector for fill_bits */
 #define FILL_LOCAL_ADDRESS	1
 #define FILL_REMOTE_ADDRESS	0
 #define FILL_ACK		2
@@ -47,7 +48,7 @@ static struct allnet_log * alog = NULL;
 
 /* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
  * and power_two must be less than 32.
- * if local_addrs, uses local adresses, otherwise remote addresses
+ * selector should be FILL_LOCAL/REMOTE_ADDRESS or FILL_ACK
  * returns the number of bits filled, or -1 for errors */
 static int fill_bits (unsigned char * bitmap, int power_two, int selector)
 {
@@ -110,15 +111,26 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
           nbits = get_local (keysets [ikeyset], addr);
         else
           nbits = get_remote (keysets [ikeyset], addr);
-        if (nbits >= power_two) {
+        if (nbits > 0) {
           uint32_t bits = (((uint32_t)readb32u (addr))) >> (32 - power_two);
+          if (nbits < power_two) {  /* to do: add a random factor */
+printf ("fill_bits (%p, %d, %d) found nbits %d < %d for (%s, %d)\n",
+bitmap, power_two, selector, nbits, power_two, contacts [icontact], keysets [ikeyset]);
+          }
           int mask = (1 << (bits % 8));
           if ((bitmap [bits / 8] & mask) == 0) {
             bitmap [bits / 8] |= mask;
             res++;  /* the point of the if is to increment this correctly */
           }
-        } else if (nbits >= 0) {
-          return -1;
+        } else if (nbits == 0) {  /* no address, ignore */
+          static int first_time = 1;
+          if (first_time) {
+            printf ("%s (%d) may be an incomplete contact:\n",
+                    contacts [icontact], keysets [ikeyset]);
+            printf ("  fill_bits (%p, %d, %d) found nbits %d\n",
+                    bitmap, power_two, selector, nbits);
+            first_time = 0;
+          }
         }
       }
     }
@@ -181,6 +193,9 @@ static int send_data_request (int sock, int priority, char * start)
     adr->src_bits_power_two = 0;
     adr->mid_bits_power_two = 0;
   }
+#ifdef DEBUG_PRINT
+  print_packet (((const char *) hp), size, "sending data request", 1);
+#endif /* DEBUG_PRINT */
   if (! send_pipe_message_free (sock, (char *) (hp), size, priority, alog)) {
     snprintf (alog->b, alog->s, "unable to request data on %d\n", sock);
     log_print (alog);
