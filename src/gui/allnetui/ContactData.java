@@ -45,25 +45,45 @@ public class ContactData {
     }
 
     public boolean isBroadcast(String contactName) {
-        return (contacts.get(contactName).isBroadcast());
+        try {
+            return (contacts.get(contactName).isBroadcast());
+        } catch (java.lang.NullPointerException e) {
+            return false;
+        }
     }
 
     public boolean isVisible(String contactName) {
-        return (contacts.get(contactName).isVisible());
+        try {
+            return (contacts.get(contactName).isVisible());
+        } catch (java.lang.NullPointerException e) {
+            return false;
+        }
     }
 
     public Conversation getConversation(String contactName) {
-        return (contacts.get(contactName).getConversation());
+        try {
+            return (contacts.get(contactName).getConversation());
+        } catch (java.lang.NullPointerException e) {
+            return null;
+        }
     }
 
     // get an iterator to allow us to iterate through
     // all contacts (contact names)
     public Iterator<String> getContactIterator() {
-        return (contacts.keySet().iterator());
+        try {
+            return (contacts.keySet().iterator());
+        } catch (java.lang.NullPointerException e) {
+            return null;
+        }
     }
 
     public Contact getContact(String contactName) {
-        return (contacts.get(contactName));
+        try {
+            return (contacts.get(contactName));
+        } catch (java.lang.NullPointerException e) {
+            return null;
+        }
     }
 
     public ArrayList<String> getGroupsList() {
@@ -71,7 +91,7 @@ public class ContactData {
         Contact contact;
         for (String contactName : contacts.keySet()) {
             contact = contacts.get(contactName);
-            if (contact.isGroup()) {
+            if ((contact != null) && (contact.isGroup())) {
                 list.add(contactName);
             }
         }
@@ -92,22 +112,27 @@ public class ContactData {
 
     public int getTotalNewMsgs() {
         Iterator<String> it = getContactIterator();
+        if (it == null)
+            return 0;
         int count = 0;
         Conversation conv;
         while (it.hasNext()) {
             conv = getConversation(it.next());
-            count += conv.getNumNewMsgs();
+            if (conv != null)
+                count += conv.getNumNewMsgs();
         }
         return (count);
     }
 
     public int getNumContactsWithNewMsgs() {
         Iterator<String> it = getContactIterator();
+        if (it == null)
+            return 0;
         int count = 0;
         Conversation conv;
         while (it.hasNext()) {
             conv = getConversation(it.next());
-            if (conv.getNumNewMsgs() > 0) {
+            if ((conv != null) && (conv.getNumNewMsgs() > 0)) {
                 count++;
             }
         }
@@ -116,11 +141,13 @@ public class ContactData {
 
     public int getNumNewMsgs(String contact) {
         Iterator<String> it = getContactIterator();
+        if (it == null)
+            return 0;
         int count = 0;
         Conversation conv;
         while (it.hasNext()) {
             conv = getConversation(it.next());
-            if (contact.equals(conv.getOtherParty())) {
+            if ((conv != null) && (contact.equals(conv.getOtherParty()))) {
                 count += conv.getNumNewMsgs();
             }
         }
