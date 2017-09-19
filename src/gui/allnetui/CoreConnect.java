@@ -168,8 +168,7 @@ public class CoreConnect extends Thread implements CoreAPI {
                     millis = millis + 1000;
                 }
             }
-            final long y2kSecondsInUnix = 946720800;
-            timestamp = ((seconds + y2kSecondsInUnix) * 1000) + millis;
+            timestamp = ((seconds + allnetY2kSecondsInUnix) * 1000) + millis;
             index += 27;
         }
         if (numEntries > 0) {

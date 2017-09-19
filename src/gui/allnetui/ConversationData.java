@@ -333,7 +333,7 @@ public class ConversationData {
                 String timeStr = secondLine.substring(timePos);
                 int timeEnd = timeStr.indexOf (" ");
                 long time = 0;
-                final long y2kSecondsInUnix = 946720800;
+                final long y2kSecondsInUnix = 946684800;
                 try {
                     time = Long.parseLong(timeStr.substring(0, timeEnd))
                          + y2kSecondsInUnix;
