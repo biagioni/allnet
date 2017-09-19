@@ -13,7 +13,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     // from lib/packet.h
     static final int allNetMTU = 12288;
     static final int xchatSocketPort = 41244; // 0xA11C, ALLnet Chat
-    static final int allnetY2kSecondsInUnix = 946720800;
+    static final int allnetY2kSecondsInUnix = 946684800;
 
     UIAPI handlers = null;
     java.net.Socket sock;
