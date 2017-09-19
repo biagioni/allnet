@@ -691,7 +691,7 @@ static uint32_t hash_index (char * id)
             hash_div, hash_size, hash_pool_size, bits_in_hash_table);
 #endif /* DEBUG_PRINT */
   }
-  uint32_t id_value = readb32 (id);
+  uint32_t id_value = (uint32_t) readb32 (id);
   return (id_value / hash_div);
 }
 
