@@ -149,6 +149,8 @@ class UI extends ApplicationFrame {
                         for (String contactName : debugContactNames) {
                             controller.contactCreated(contactName);
                         }
+                        CoreAPI coreAPI = new CoreDebug ();
+                        controller.setCore (coreAPI);
                     }
                     else {
                         CoreConnect coreAPI = new CoreConnect (controller);
