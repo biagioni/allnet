@@ -1,0 +1,36 @@
+{
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyRepositoryLocationsKey" : {
+
+  },
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyStatesKey" : {
+    "38522E00C3C4B04714191A2EBC8665F7426C8028" : 0,
+    "270307CA81D0D10E84B8FAA2C063C995A4624C79" : 0,
+    "0A938055A8E1692EB54241E606FB3CE88F748BF5" : 0
+  },
+  "DVTSourceControlWorkspaceBlueprintIdentifierKey" : "A2C32B68-0049-4DA3-9BA2-5B11BDE00BD9",
+  "DVTSourceControlWorkspaceBlueprintWorkingCopyPathsKey" : {
+    "38522E00C3C4B04714191A2EBC8665F7426C8028" : "allnet\/v3\/",
+    "270307CA81D0D10E84B8FAA2C063C995A4624C79" : "libressl-git\/openbsd\/",
+    "0A938055A8E1692EB54241E606FB3CE88F748BF5" : "libressl-git\/"
+  },
+  "DVTSourceControlWorkspaceBlueprintNameKey" : "allnet-xchat",
+  "DVTSourceControlWorkspaceBlueprintVersion" : 204,
+  "DVTSourceControlWorkspaceBlueprintRelativePathToProjectKey" : "allnet-xchat.xcodeproj",
+  "DVTSourceControlWorkspaceBlueprintRemoteRepositoriesKey" : [
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "https:\/\/github.com\/libressl-portable\/portable.git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "0A938055A8E1692EB54241E606FB3CE88F748BF5"
+    },
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "https:\/\/github.com\/libressl-portable\/openbsd.git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "270307CA81D0D10E84B8FAA2C063C995A4624C79"
+    },
+    {
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryURLKey" : "git:\/\/git.code.sf.net\/p\/allnet\/code",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositorySystemKey" : "com.apple.dt.Xcode.sourcecontrol.Git",
+      "DVTSourceControlWorkspaceBlueprintRemoteRepositoryIdentifierKey" : "38522E00C3C4B04714191A2EBC8665F7426C8028"
+    }
+  ]
+}

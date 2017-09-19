@@ -1,0 +1,48 @@
+
+/* Class = "UITextField"; placeholder = "contact's secret (if any)"; ObjectID = "26D-6Y-Fen"; */
+"26D-6Y-Fen.placeholder" = "contact's secret (if any)";
+
+/* Class = "UILabel"; text = "or within wireless range (10m/30ft)"; ObjectID = "2oe-FS-hxV"; */
+"2oe-FS-hxV.text" = "or within wireless range (10m/30ft)";
+
+/* Class = "UIButton"; normalTitle = "go"; ObjectID = "Dx7-HY-0T5"; */
+"Dx7-HY-0T5.normalTitle" = "go";
+
+/* Class = "UILabel"; text = "no contacts yet"; ObjectID = "KDd-Pa-Zen"; */
+"KDd-Pa-Zen.text" = "no contacts yet";
+
+/* Class = "UITextView"; text = "Key exchange in progress\nGenerating your key\nWaiting for key from: \n"; ObjectID = "KLN-zv-fA6"; */
+"KLN-zv-fA6.text" = "Key exchange in progress\nGenerating your key\nWaiting for key from: \n";
+
+/* Class = "UILabel"; text = "exchanging keys with: "; ObjectID = "PIA-Q0-ONC"; */
+"PIA-Q0-ONC.text" = "exchanging keys with: ";
+
+/* Class = "UITextField"; placeholder = "contact name or AllNet address"; ObjectID = "QpK-2a-6dR"; */
+"QpK-2a-6dR.placeholder" = "contact name or AllNet address";
+
+/* Class = "UIButton"; normalTitle = "resend key"; ObjectID = "TK5-cO-Voq"; */
+"TK5-cO-Voq.normalTitle" = "resend key";
+
+/* Class = "UILabel"; text = "new contact reachable via the internet"; ObjectID = "Xp3-IG-wA4"; */
+"Xp3-IG-wA4.text" = "new contact reachable via the internet";
+
+/* Class = "UITextField"; placeholder = "send message"; ObjectID = "YZ7-94-Fh1"; */
+"YZ7-94-Fh1.placeholder" = "send message";
+
+/* Class = "UILabel"; text = "exchange a key with a new contact"; ObjectID = "YxV-9Z-9rs"; */
+"YxV-9Z-9rs.text" = "exchange a key with a new contact";
+
+/* Class = "UITabBarItem"; title = "New Contact"; ObjectID = "cPa-gy-q4n"; */
+"cPa-gy-q4n.title" = "New Contact";
+
+/* Class = "UITextView"; text = "trace"; ObjectID = "cp9-q8-PuS"; */
+"cp9-q8-PuS.text" = "trace";
+
+/* Class = "UIButton"; normalTitle = "Trace"; ObjectID = "eD2-vn-kfO"; */
+"eD2-vn-kfO.normalTitle" = "Trace";
+
+/* Class = "UITextView"; text = "shared secret:"; ObjectID = "gpk-hl-aGN"; */
+"gpk-hl-aGN.text" = "shared secret:";
+
+/* Class = "UIButton"; normalTitle = "cancel"; ObjectID = "lkk-CG-dcu"; */
+"lkk-CG-dcu.normalTitle" = "cancel";
