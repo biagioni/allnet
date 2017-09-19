@@ -248,6 +248,10 @@ class ConversationPanel extends JPanel {
             long now = System.currentTimeMillis();
             if (msg.receivedAt() + DAY > now) {
                 double scale = ((double) (msg.receivedAt() + DAY - now)) / DAY;
+                if (scale > 1.0)  // if we get messages from the future
+                  scale = 1.0;
+                if (scale < 0.0)  // not likely
+                  scale = 0.0;
                 float r = (float) (newColor.getRed() / 255.0);
                 float g = (float) (newColor.getGreen() / 255.0);
                 float b = (float) (newColor.getBlue() / 255.0);
