@@ -477,16 +477,16 @@ public class CoreConnect extends Thread implements CoreAPI {
     public void setVisible(String contact) {
         byte [] response = doRPCWithCodeOp (guiSetVariable, guiVariableVisible,
                                             contact);
-        if (response [1] == 0) {
-            System.out.println ("failed to make " + contact + " visible");
-        }
+//        if (response [1] == 0) {
+//            System.out.println ("failed to make " + contact + " visible");
+//        }
     }
     public void unsetVisible(String contact) {  // make not visible
         byte [] response = doRPCWithCodeOp (guiUnsetVariable,
                                             guiVariableVisible, contact);
-        if (response [1] == 0) {
-            System.out.println ("failed to make " + contact + " invisible");
-        }
+//        if (response [1] == 0) {
+//            System.out.println ("failed to make " + contact + " invisible");
+//        }
     }
 
     public boolean isNotify(String contact) {
@@ -522,7 +522,7 @@ public class CoreConnect extends Thread implements CoreAPI {
         byte[] response = doRPCWithCodeOp (guiSetVariable,
                                            guiVariableComplete, contact);
         if (response [1] == 0) {
-            System.out.println ("failed to make " + contact + " complete");
+//            System.out.println ("failed to make " + contact + " complete");
         } else {
             while (incompletes.remove (contact))
                 ;
