@@ -152,6 +152,7 @@ static void print_pipes (pd p, const char * desc, int pipe)
   else
     snprintf (p->log->b, p->log->s, "%s %d/%d pipes%s\n",
               desc, p->num_pipes, p->num_queues, is_locked);
+  printf ("%s", p->log->b);
   log_print (p->log);
 if ((pipe > 1000) || (pipe < -1000)) die ("illegal pipe number");
   int i;
@@ -163,10 +164,12 @@ if ((pipe > 1000) || (pipe < -1000)) die ("illegal pipe number");
               p->buffers [i].pipe_fd, inhdr,
               p->buffers [i].header, p->buffers [i].buffer,
               p->buffers [i].filled, p->buffers [i].bsize);
-   log_print (p->log);
-   buffer_to_string (p->buffers [i].header, HEADER_SIZE, "header",
-                     HEADER_SIZE, 1, p->log->b, p->log->s);
-   log_print (p->log);
+    printf ("%s", p->log->b);
+    log_print (p->log);
+    buffer_to_string (p->buffers [i].header, HEADER_SIZE, "header",
+                      HEADER_SIZE, 1, p->log->b, p->log->s);
+    printf ("%s", p->log->b);
+    log_print (p->log);
   }
   for (i = 0; i < p->num_queues; i++) {
     int index = (- (p->queues [i])) - 1;
@@ -174,6 +177,7 @@ if ((pipe > 1000) || (pipe < -1000)) die ("illegal pipe number");
       struct allnet_queue * q = allnet_queues [index];
       snprintf (p->log->b, p->log->s, "  [%d/%d]: queue '%s', %d packets\n",
                 i, index, allnet_queue_info (q), allnet_queue_size (q)); 
+      printf ("%s", p->log->b);
       log_print (p->log);
     }
   }
@@ -776,6 +780,7 @@ static void debug_ebadf (pd p, int extra)
     printf ("[%d]: %s", i, p->ebadbufs [(i + p->ebadbufindex) % NUM_EBADBUFS]);
   }
 #endif /* DEBUG_EBADFD */
+  printf ("debug_ebadf, %d pipes, extra %d\n", p->num_pipes, extra);
   int old_do_not_print = do_not_print;
   do_not_print = 0;
   print_pipes (p, "debug_ebadf", -1);
