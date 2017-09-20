@@ -660,7 +660,6 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
   int k;
   for (k = 0; (k < num_dhts) && (result < 0); k++) {
     if (af == sas [k].ss_family) {
-      /* standard socket connection code supporting both IPv4 and IPv6 */
       socklen_t salen = 0;
       if (af == AF_INET)
         salen = sizeof (struct sockaddr_in);
@@ -676,9 +675,10 @@ static int connect_listener (unsigned char * address, struct listen_info * info,
       ai.nbits = LISTEN_BITS;
       int prev_fd = already_listening (&ai, info);
 /* printf ("initial prev_fd returned %d for ", prev_fd); print_addr_info (&ai); */
-      time_t start_time = time (NULL);
+      unsigned long long int start_time = allnet_time ();
+      /* if prev_fd is -2, somebody else is trying to connect to the same */
       int wait_time = 2000;   /* 2ms, doubled on each loop */
-      while ((prev_fd == -2) && (time (NULL) < start_time + 2)) {
+      while ((prev_fd == -2) && (allnet_time () < start_time + 5)) {
 /* printf ("prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (ai); */
         sleep_time_random_us (wait_time);  /* sleep for 0-2ms */
         wait_time += wait_time;            /* double the wait time */
@@ -1204,10 +1204,10 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
     struct allnet_mgmt_peers * mpp =
       (struct allnet_mgmt_peers *)
         (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-    int npeers = mpp->num_peers & 0xff;
+    unsigned int npeers = mpp->num_peers & 0xff;
     if (msize < ALLNET_PEER_SIZE(hp->transport, npeers))
       return 0;
-    int index;
+    unsigned int index;
     for (index = 0; index < npeers; index++) {
       struct internet_addr * ia = mpp->peers + index;
       struct sockaddr_storage sas;
@@ -1216,12 +1216,12 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
       if (ia_to_sockaddr (ia, sap2, &salen)) {
         int af = (ia->ip_version == 4) ? AF_INET : AF_INET6;
         int new_sock = socket (af, SOCK_STREAM, 0);
-        if (connect (new_sock, sap2, salen) < 0) {
+        if (connect (new_sock, sap2, salen) == 0) {  /* success */
 #ifdef DEBUG_EBADFD
-snprintf (ebadbuf, EBADBUFS,
-"handle_mgmt, connect failed, closing listeners [%d] = %d\n",
-listener_index, listeners [listener_index]);
-record_message (p);
+          snprintf (ebadbuf, EBADBUFS,
+                    "handle_mgmt, connect succeeded, closing list [%d] = %d\n",
+                    listener_index, listeners [listener_index]);
+          record_message (p);
 #endif /* DEBUG_EBADFD */
           close (listeners [listener_index]);
           listeners [listener_index] = new_sock;
@@ -1229,9 +1229,9 @@ record_message (p);
         } else {
           perror ("warning: connect/listener");  /* not really an error */
 #ifdef DEBUG_EBADFD
-snprintf (ebadbuf, EBADBUFS,
-"handle_mgmt, connect succeeded, closing %d\n", new_sock);
-record_message (p);
+          snprintf (ebadbuf, EBADBUFS,
+                    "handle_mgmt, connect failed, closing %d\n", new_sock);
+          record_message (p);
 #endif /* DEBUG_EBADFD */
           close (new_sock);
         }
