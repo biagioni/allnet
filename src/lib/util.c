@@ -357,12 +357,7 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
 /* compute a power of two */
 static unsigned int p2 (unsigned int exponent)
 {
-  unsigned int result = 1;
-  while (exponent > 0) {
-    result = result + result;
-    exponent--;
-  }
-  return result;
+  return 1 << exponent;
 }
 
 static int bitmap_to_string (char * to, unsigned int tsize,
