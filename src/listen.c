@@ -417,6 +417,7 @@ static int close_oldest_fd (struct listen_info * info)
     if (info->used [i] < info->used [min_index])
       min_index = i;
   int fd = info->fds [min_index];
+  /* we are closing this FD, tell the peer about others they may connect to */
   send_peer_message (fd, info, min_index);
   if (info->add_remove_pipe)
     remove_pipe (info->pipe_descriptor, fd);
@@ -473,6 +474,7 @@ static int listen_add_fd_with_lock_held (struct listen_info * info,
                                          int add_only_if_unique_ip,
                                          const char * caller_description)
 {
+  int index = -1;
   if (addr != NULL) {
     if (add_only_if_unique_ip) {
       int i;
@@ -497,18 +499,25 @@ static int listen_add_fd_with_lock_held (struct listen_info * info,
                       b1, b2);
             log_print (alog);
           }
-          return 0;
+          index = i;  /* found, replace it with new fd */
+          break;
         }
       }
     }  /* clear any reservation on this address */
     listen_clear_reservation_with_lock_held (addr, info);
   }
-  int index = close_oldest_fd (info);
+  if (index < 0)
+    index = close_oldest_fd (info);
+  else {
+    if (info->add_remove_pipe)
+      remove_pipe (info->pipe_descriptor, info->fds [index]);
+    close (info->fds [index]);  /* because replacing with the new one */
+  }
   info->fds [index] = fd;
   if (addr != NULL)
     info->peers [index] = *addr;
-  else
-    info->peers [index].ip.ip_version = 0;
+  else   /* clear the address */
+    memset (&(info->peers [index]), 0, sizeof (info->peers [index]));
   if (info->add_remove_pipe) {
     char * desc = strcat_malloc (caller_description,
                                  "/listen_add_fd_with_lock_held",
