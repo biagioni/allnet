@@ -74,7 +74,7 @@ struct receive_thread_args {
 
 static char expecting_trace [MESSAGE_ID_SIZE];  /* trace we are looking for */
 static int trace_count = 0;  /* changes every time we start a new trace */
-static unsigned long int trace_start_time = 0;
+static unsigned long long int trace_start_time = 0;
 
 static int trace_seen_before (unsigned char * addr, int abits)
 {
