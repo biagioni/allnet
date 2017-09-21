@@ -292,14 +292,13 @@ extern int minz (int from, int subtract);
 extern int binary_log (unsigned long long int value);
 
 /* 2017/09/20: android seems to support fork, so only use threads for iOS */
-/* #if defined(__IPHONE_OS_VERSION_MIN_REQUIRED) || defined(ANDROID) */
-#if defined(__IPHONE_OS_VERSION_MIN_REQUIRED)
+#if defined(__IPHONE_OS_VERSION_MIN_REQUIRED) || defined(ANDROID)
 #include <pthread.h>
 /* in case of error on iOS, don't kill the process, only the thread (since
  * in iOS, we only have one process */
 #define exit(n)        pthread_exit(NULL)
 #define ALLNET_USE_THREADS
-#else  /* ! __IPHONE_OS_VERSION_MIN_REQUIRED */
+#else  /* ! __IPHONE_OS_VERSION_MIN_REQUIRED || ANDROID */
 /* we use fork except on systems that don't support it */
 #define ALLNET_USE_FORK
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
