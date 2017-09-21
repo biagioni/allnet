@@ -1000,17 +1000,33 @@ keyset create_contact (const char * contact, int keybits, int feedback,
                        unsigned char * local, int loc_nbits,
                        unsigned char * remote, int rem_nbits)
 {
+  int preselected_index = -1;   /* no preselected index, yet */
   init_from_file ("create_contact");
-  int index_plus_one = contact_exists (contact);
+  keyset index_plus_one = contact_exists (contact);
   if (index_plus_one > 0) {  /* contact exists */
-    struct key_info * ki = kip + (index_plus_one - 1);
-    if (allnet_rsa_pubkey_is_null (ki->contact_pubkey) &&
-        ((ki->local.nbits == 0) || (loc_nbits == ki->local.nbits))) {
-      if (local != NULL)
-        memcpy (local, ki->local.address, ADDRESS_SIZE);
-      return index_plus_one - 1;  /* found an incomplete entry, use that */
+    keyset k = index_plus_one - 1;
+    struct key_info * ki = kip + k;
+    if (! ki->is_deleted) {  /* contact exists */
+      if (allnet_rsa_pubkey_is_null (ki->contact_pubkey) &&
+          ((ki->local.nbits == 0) || (loc_nbits == ki->local.nbits))) {
+        if (local != NULL)
+          memcpy (local, ki->local.address, ADDRESS_SIZE);
+        return k;  /* found an incomplete entry, use that */
+      }
+      return -1;   /* conflicts with a live entry */
+    } else {                 /* contact has been deleted, continue */
+      preselected_index = k;
+      /* free the memory used to store the previous contact */
+      if (ki->contact_name != NULL)
+        free (ki->contact_name);
+      ki->contact_name = NULL;
+      if (ki->dir_name != NULL)
+        free (ki->dir_name);
+      ki->dir_name = NULL;
+      if (ki->members != NULL)
+        free (ki->members);
+      ki->members = NULL;
     }
-    return -1;
   }
 
   allnet_rsa_prvkey my_key = get_spare_key (keybits);
@@ -1047,9 +1063,13 @@ keyset create_contact (const char * contact, int keybits, int feedback,
 
   /* save into the kip data structure */
   int new_contact = num_key_infos;
-  set_kip_size (new_contact + 1);   /* make room for the new entry */
+  if (preselected_index >= 0)         /* overwrite existing entry */
+    new_contact = preselected_index;
+  else
+    set_kip_size (new_contact + 1);   /* make room for the new entry */
   kip [new_contact] = new;
-  generate_contacts ();
+  if (preselected_index < 0)          /* re-initialize the list */
+    generate_contacts ();
 
 #ifdef DEBUG_PRINT
 #ifdef HAVE_OPENSSL
@@ -1881,7 +1901,11 @@ static int plain_num_keysets (const char * contact,
 int num_keysets (const char * contact)
 {
   init_from_file ("num_keysets");
-  if (! contact_exists (contact))
+  keyset k_plus_one = contact_exists (contact);
+  if (k_plus_one <= 0)
+    return -1;
+  keyset k = k_plus_one - 1;
+  if (! valid_keyset (k))
     return -1;
 #ifdef RECURSIVELY_INCLUDE_GROUP_KEYS
   return recursive_num_keysets (contact, num_key_infos + 1, NULL, 0);
