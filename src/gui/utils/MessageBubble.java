@@ -6,7 +6,6 @@ import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.ComponentEvent;
-import java.awt.event.ComponentListener;
 import java.util.ArrayList;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
@@ -23,14 +22,11 @@ import javax.swing.JTextPane;
  * @author henry
  * @param <MESSAGE>
  */
-public class MessageBubble<MESSAGE> extends JPanel
-    implements ActionListener, ComponentListener {
+public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
 
     private static final String COPY = "Copy";
     private static final String COPY_ALL = "Copy All";
 
-    // the component that contains this message bubble
-    // private JComponent container;
     // width of the container the last time this MessageBubble was resized
     private int lastContainerWidth;
 
@@ -45,28 +41,18 @@ public class MessageBubble<MESSAGE> extends JPanel
     private String text;
     private boolean leftJustified;
 
-    //public MessageBubble(boolean leftJustified, Color color,
-    //                     String text, JComponent container) {
-    //    this(null, leftJustified, color, text, container);
-    //}
-
     public MessageBubble(MESSAGE message, boolean leftJustified, Color color,
         String text, JComponent container) {
         super();
         this.message = message;
         this.leftJustified = leftJustified;
         this.text = text;
-        // for resizing
-        container.addComponentListener(this);
         setBackground(color);
         lastContainerWidth = container.getWidth();
         int charsPerLine = findCharsPerLine(lastContainerWidth);
         textPane = makeTextPane(color, leftJustified, charsPerLine);
         setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
         add(textPane);
-        //setBorder(new RoundedBorder(borderColor, borderWidth,
-        //                            borderRadius, borderInset));
-
         // make a context menu
         popup = new JPopupMenu();
         JMenuItem item = new JMenuItem(COPY);
@@ -76,11 +62,10 @@ public class MessageBubble<MESSAGE> extends JPanel
         item.addActionListener(this);
         popup.add(item);
         textPane.setComponentPopupMenu(popup);
-
     }
 
     private JTextPane makeTextPane(Color color, boolean leftJustified,
-                                   int charsPerLine) {
+        int charsPerLine) {
         JTextPane pane = new JTextPane();
         pane.setContentType("text/html");
         pane.setEditable(false);
@@ -110,7 +95,6 @@ public class MessageBubble<MESSAGE> extends JPanel
     }
 
     private int findCharsPerLine(int containerWidth) {
-
         return (Math.max(10, containerWidth / 10));
     }
 
@@ -135,7 +119,7 @@ public class MessageBubble<MESSAGE> extends JPanel
     }
 
     // chop a line up into pieces <= max length
-    private static ArrayList<String> splitUpLine(String oldLine, int maxChars) {
+    private ArrayList<String> splitUpLine(String oldLine, int maxChars) {
         ArrayList<String> lines = new ArrayList<>();
         String[] darkSpace = oldLine.split("\\s+");
         int i = 0;
@@ -155,8 +139,8 @@ public class MessageBubble<MESSAGE> extends JPanel
                 continue;
             }
             // line is not empty and next word fits, then add it and continue
-            else if ((sb.length() > 0) &&
-                     (sb.length() + 1 + nextWord.length() <= maxChars)) {
+            else if ((sb.length() > 0)
+                && (sb.length() + 1 + nextWord.length() <= maxChars)) {
                 sb.append(" ");
                 sb.append(nextWord);
                 i++;
@@ -219,30 +203,13 @@ public class MessageBubble<MESSAGE> extends JPanel
         }
     }
 
-    @Override
-    public void componentResized(ComponentEvent e) {
-        int width = e.getComponent().getWidth();
-        if (Math.abs(width - lastContainerWidth) / (1.0 * width) < 0.05) {
-            return;
-        }
-        lastContainerWidth = width;
+    // called from conv panel when need to resize
+    public void resizeBubble(int width) {
         remove(textPane);
         textPane = makeTextPane(textPane.getBackground(), leftJustified,
-                                findCharsPerLine(width));
+            findCharsPerLine(width));
         textPane.setComponentPopupMenu(popup);
-        add(textPane);
+        add(textPane);        
     }
-
-    @Override
-    public void componentMoved(ComponentEvent e) {
-    }
-
-    @Override
-    public void componentShown(ComponentEvent e) {
-    }
-
-    @Override
-    public void componentHidden(ComponentEvent e) {
-    }
-
+    
 }

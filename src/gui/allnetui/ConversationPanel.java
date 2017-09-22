@@ -1,4 +1,3 @@
-
 package allnetui;
 
 import java.awt.*;
@@ -19,7 +18,7 @@ import utils.ScrollPaneResizeAdapter;
  *
  * @author Henry
  */
-class ConversationPanel extends JPanel {
+class ConversationPanel extends JPanel implements ComponentListener {
 
     // just to avoid a warning
     private static final long serialVersionUID = 1L;
@@ -67,6 +66,10 @@ class ConversationPanel extends JPanel {
     // keep list of the message bubbles that have yet to be acked
     private ArrayList<MessageBubble<Message>> unackedBubbles;
     private long lastReceived;  // used by caller
+    // width of message panel the last time the msg bubbles were resized
+    private int lastMsgPanelWidth;
+    // list of msg bubbles (so we can resize them when indicated
+    private ArrayList<MessageBubble<Message>> bubbles;
 
     ConversationPanel(String info, String commandPrefix, String contactName,
         boolean createDialogBox) {
@@ -171,6 +174,10 @@ class ConversationPanel extends JPanel {
             add(sendPanel, gbc);
         }
         lastReceived = -1;
+        // for resize/relayout of message bubbles when panel is resized
+        lastMsgPanelWidth = 0;
+        bubbles = new ArrayList<>();
+        messagePanel.addComponentListener(this);
     }
 
     public static int getDefaultNumMsgsToDisplay() {
@@ -281,9 +288,19 @@ class ConversationPanel extends JPanel {
         messagePanel.revalidate();
     }
 
-    private void addBubble(MessageBubble<Message> bubble, boolean left) {
-        bubble.setBorder(new RoundedBorder(borderColor, borderWidth,
-                                           borderRadius, borderInset));
+    private void addBubble(MessageBubble<Message> bubble, boolean initial) {
+        Message message = bubble.getMessage();
+        boolean left = true;
+        if (message != null) {
+            left = message.to.equals(Message.SELF);
+        }
+        if (initial) {
+            // make bubble (obviously)
+            bubble.setBorder(new RoundedBorder(borderColor, borderWidth,
+                borderRadius, borderInset));
+            // save for resizing
+            bubbles.add(bubble);
+        }
         JPanel inner = new JPanel();
         inner.setBackground(background);
         inner.setLayout(new BoxLayout(inner, BoxLayout.X_AXIS));
@@ -306,22 +323,22 @@ class ConversationPanel extends JPanel {
         Color bg = missingColor;
         MessageBubble<Message> bubble
             = new MessageBubble<>(null, true, bg, line, messagePanel);
-        addBubble (bubble, true);
+        addBubble(bubble, true);
     }
 
     public void addMsg(String text, Message msg) {
         boolean isReceived = msg.to.equals(Message.SELF);
-        boolean broadcast = msg.isBroadcast();
+        // boolean broadcast = msg.isBroadcast();
         boolean acked = msg.acked();
-        boolean isNew = ((msg.isNewMessage() ||
-                         (isReceived &&
-                          (msg.receivedAt() + DAY >
-                              System.currentTimeMillis()))));
-        String[] lines = text.split("\n");
+        // boolean isNew = ((msg.isNewMessage() ||
+        //                 (isReceived &&
+        //                  (msg.receivedAt() + DAY >
+        //                      System.currentTimeMillis()))));
+        // String[] lines = text.split("\n");
         Color bg = getMsgColor(msg, isReceived);
-        MessageBubble<Message> bubble =
-            new MessageBubble<>(msg, isReceived, bg, text, messagePanel);
-        addBubble (bubble, isReceived);
+        MessageBubble<Message> bubble
+            = new MessageBubble<>(msg, isReceived, bg, text, messagePanel);
+        addBubble(bubble, true);
         // update ack tracking
         if (!acked) {
             // i.e. only add if not acked
@@ -342,17 +359,49 @@ class ConversationPanel extends JPanel {
 
     public void clearMsgs() {
         messagePanel.removeAll();
-        messagePanel.validate();
         unackedBubbles.clear();
+        bubbles.clear();
         // must restore the more msgs button at top of panel 
         messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
         messagePanel.add(morePanel);
         messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        messagePanel.validate();
         lastReceived = -1;
     }
 
     void setTopLabelText(String... lines) {
         topLabel.setText(lines);
+    }
+
+    @Override
+    public void componentResized(ComponentEvent e) {
+        int width = scrollPane.getViewport().getWidth();
+        if (Math.abs(width - lastMsgPanelWidth) / (1.0 * width) < 0.10) {
+            return;
+        }
+        lastMsgPanelWidth = width;
+
+        messagePanel = makeMessagePanel(background);
+
+        for (MessageBubble b : bubbles) {
+            b.resizeBubble(width);
+            addBubble(b, false);
+        }
+        scrollPane.setViewportView(messagePanel);
+        messagePanel.addComponentListener(this);
+        validateToBottom();
+    }
+
+    @Override
+    public void componentMoved(ComponentEvent e) {
+    }
+
+    @Override
+    public void componentShown(ComponentEvent e) {
+    }
+
+    @Override
+    public void componentHidden(ComponentEvent e) {
     }
 
     // used to make scroll pane scroll to the bottom on changes
@@ -469,6 +518,7 @@ class ConversationPanel extends JPanel {
     public long getLastReceived() {
         return this.lastReceived;
     }
+
     public void setLastReceived(long value) {
         this.lastReceived = value;
     }
