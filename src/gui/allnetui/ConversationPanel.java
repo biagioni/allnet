@@ -383,7 +383,7 @@ class ConversationPanel extends JPanel implements ComponentListener {
 
         messagePanel = makeMessagePanel(background);
 
-        for (MessageBubble b : bubbles) {
+        for (MessageBubble<Message> b : bubbles) {
             b.resizeBubble(width);
             addBubble(b, false);
         }
