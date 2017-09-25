@@ -29,6 +29,7 @@
 #include "lib/dcache.h"
 
 /* #define DEBUG_PRINT */
+#define HAVE_REQUEST_THREAD   /* run a thread to request data */
 
 /* selector for fill_bits */
 #define FILL_LOCAL_ADDRESS	1
@@ -38,8 +39,8 @@
 static struct allnet_log * alog = NULL;
 
 /* time constants for requesting cached and missing data */
-#define SLEEP_INITIAL_MIN	3    /* seconds */
-#define SLEEP_INITIAL_MAX	10   /* seconds */
+#define SLEEP_INITIAL_MIN	12   /* seconds -- should be 3 or more */
+#define SLEEP_INITIAL_MAX	20   /* seconds */
 #define SLEEP_INCREASE_NUMERATOR	12  /* 12/10, 20% increase */
 #define SLEEP_INCREASE_DENOMINATOR	10
 #define SLEEP_INCREASE_MIN	5    /* each time increase by at least 5s */
@@ -156,10 +157,25 @@ static int random_hop_count ()
   return hops;
 }
 
-/* returns 1 if successfully sent something, 0 otherwise */
-/* if not NULL, start must be at least ALLNET_TIME_SIZE, 8 bytes */
+/* returns 1 if successfully sent something,
+ * -1 if it is too soon to send,
+ * 0 otherwise
+ * if not NULL, start must be at least ALLNET_TIME_SIZE, 8 bytes
+ * send at most once every 10 seconds (independently of start) */
 static int send_data_request (int sock, int priority, char * start)
 {
+  static pthread_mutex_t sdr_mutex = PTHREAD_MUTEX_INITIALIZER;
+  static unsigned long long int last_sent = 0;
+  int do_execute = 1;
+  unsigned long long int now = allnet_time ();
+  pthread_mutex_lock (&sdr_mutex);
+  if (now < last_sent + (SLEEP_INITIAL_MIN - 2))
+    do_execute = 0;
+  else
+    last_sent = now;
+  pthread_mutex_unlock (&sdr_mutex);
+  if (! do_execute)
+    return -1;
 #define BITMAP_BITS_LOG	8  /* 11 or less to keep packet size below 1K */
 #define BITMAP_BITS	(1 << BITMAP_BITS_LOG)
 #define BITMAP_BYTES	(BITMAP_BITS / 8)
@@ -222,9 +238,9 @@ static void * request_cached_data (void * arg)
 {
   int sock = * (int *) arg;
   free (arg);
-  /* initial sleep is 3s-10s, slowly grow to ~20min */
+  /* initial sleep is 12s-20s, slowly grow to ~5min */
   int sleep_time = (int)random_int (SLEEP_INITIAL_MIN, SLEEP_INITIAL_MAX);
-  while (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW, NULL)) {
+  while (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW, NULL) != 0) {
     /* loop forever, unless the socket is closed */
     sleep (sleep_time);
     if (sleep_time >= SLEEP_MAX_THRESHOLD)
@@ -1615,7 +1631,7 @@ printf ("last %llu + sleep %llu = %llu <=> %llu\n",
   if (last_data_request + sleep_time <= now) {
     char start [ALLNET_TIME_SIZE];
     writeb64 (start, last_data_request);
-    if (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW, start)) {
+    if (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW, start) > 0) {
       last_data_request = now;
       sleep_time += SLEEP_INCREASE_MIN;  /* but may adjust downwards below */
       if (sleep_time >= SLEEP_MAX_THRESHOLD)
