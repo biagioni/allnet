@@ -5,7 +5,6 @@ import java.awt.event.*;
 import java.util.ArrayList;
 import javax.swing.*;
 import javax.swing.border.Border;
-import javax.swing.text.AbstractDocument;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DocumentFilter;
@@ -33,9 +32,10 @@ class ConversationPanel extends JPanel implements ComponentListener {
     private static final long DAY = 86400 * 1000;
     //
     // max height of input area
-    private static final int MAX_LINES = 10;
+    // private static final int MAX_LINES = 10;
     // assume that N chars will wrap around (a little rough I guess)
-    private static final int CHARS_PER_LINE = 40;
+    // private static final int CHARS_PER_LINE = 40;
+    //
     // how many msgs to display
     private static final int DEFAULT_NUM_MSGS_TO_DISPLAY = 20;
     private int numMsgsToDisplay = DEFAULT_NUM_MSGS_TO_DISPLAY;
@@ -54,15 +54,17 @@ class ConversationPanel extends JPanel implements ComponentListener {
     private JTextArea inputArea;
     // the buttons
     private JButton sendButton, moreMsgsButton;
+    // morePanel holds moreMsgs button, need ref here for when we make new message panels
     private JPanel morePanel;
     // the command prefix will identify which instance of the Class is sending the event
     private String commandPrefix;
     // default colors to use
-    private static Color background = Color.GRAY, foreground = Color.WHITE;
+    private static Color backgroundColor = Color.GRAY, foregroundColor = Color.WHITE;
     private static Color broadcastColor = Color.LIGHT_GRAY;
     private static Color missingColor = Color.RED;
     private static Color ackedColor = Color.GREEN;
     private static Color newColor = Color.CYAN;
+    //
     // keep list of the message bubbles that have yet to be acked
     private ArrayList<MessageBubble<Message>> unackedBubbles;
     private long lastReceived;  // used by caller
@@ -75,20 +77,28 @@ class ConversationPanel extends JPanel implements ComponentListener {
         boolean createDialogBox) {
         this.commandPrefix = commandPrefix;
         this.contactName = contactName;
-        setBackground(background);
+        setBackground(backgroundColor);
+        //
         // make the info label for the top of the panel
         topLabel = new HtmlLabel(info);
         topLabel.setOpaque(true);
-        topLabel.setBackground(foreground);
+        topLabel.setBackground(foregroundColor);
         topLabel.setLineBorder(Color.BLACK, 1, false);
-
+        //
+        // make morePanel before call to makeMessagePanel()
+        moreMsgsButton = makeButton("Display More Messages", DISPLAY_MORE_MSGS_COMMAND);
+        morePanel = new JPanel();
+        morePanel.setBackground(backgroundColor);
+        morePanel.setLayout(new BoxLayout(morePanel, BoxLayout.X_AXIS));
+        morePanel.add(Box.createHorizontalGlue());
+        morePanel.add(moreMsgsButton);
+        morePanel.add(Box.createHorizontalGlue());
         // make the panel to hold the messages
-        messagePanel = makeMessagePanel(background);
+        messagePanel = makeMessagePanel();
         scrollPane = new JScrollPane(messagePanel,
             ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED,
             ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
         // must set a min and preferred size for the scroll pane
-        // Dimension scrDim = new Dimension(250, 250);
         Dimension scrDim = new Dimension(1, 1);
         scrollPane.setMinimumSize(scrDim);
         scrollPane.setPreferredSize(scrDim);
@@ -114,34 +124,24 @@ class ConversationPanel extends JPanel implements ComponentListener {
         inputArea.setWrapStyleWord(true);
         inputArea.setLineWrap(true);
         // limit number of lines 
-        MyDocumentFilter filter = new MyDocumentFilter(CHARS_PER_LINE, MAX_LINES, true);
-        AbstractDocument doc = (AbstractDocument) inputArea.getDocument();
+        // MyDocumentFilter filter = new MyDocumentFilter(CHARS_PER_LINE, MAX_LINES, true);
+        // AbstractDocument doc = (AbstractDocument) inputArea.getDocument();
         // doc.setDocumentFilter(filter);
         Border inner = BorderFactory.createLineBorder(Color.WHITE, 4);
         Border outer = BorderFactory.createLineBorder(Color.BLACK, 1);
         Border textAreaBorder = BorderFactory.createCompoundBorder(outer, inner);
         inputArea.setBorder(textAreaBorder);
         //
-        sendButton = makeButton("Send", SEND_COMMAND);
-        //
-        moreMsgsButton = makeButton("Display More Messages", DISPLAY_MORE_MSGS_COMMAND);
-        messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
-        morePanel = new JPanel();
-        morePanel.setBackground(background);
-        morePanel.setLayout(new BoxLayout(morePanel, BoxLayout.X_AXIS));
-        morePanel.add(Box.createHorizontalGlue());
-        morePanel.add(moreMsgsButton);
-        morePanel.add(Box.createHorizontalGlue());
-        messagePanel.add(morePanel);
-        messagePanel.add(Box.createRigidArea(new Dimension(0, 10)));
-        //
+        // make "sendPanel"
         JPanel sendPanel = new JPanel();
         sendPanel.setOpaque(true);
-        sendPanel.setBackground(background);
+        sendPanel.setBackground(backgroundColor);
         sendPanel.setLayout(new BoxLayout(sendPanel, BoxLayout.Y_AXIS));
         sendPanel.add(Box.createVerticalGlue());
+        sendButton = makeButton("Send", SEND_COMMAND);
         sendPanel.add(sendButton);
-        // now add these components to our panel
+        //
+        // now add all these components to our main panel
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         // gbc.fill = GridBagConstraints.HORIZONTAL;
@@ -173,11 +173,11 @@ class ConversationPanel extends JPanel implements ComponentListener {
             gbc.weightx = 0.0;
             add(sendPanel, gbc);
         }
-        lastReceived = -1;
         // for resize/relayout of message bubbles when panel is resized
         lastMsgPanelWidth = 0;
         bubbles = new ArrayList<>();
-        messagePanel.addComponentListener(this);
+        // for tracking missing msgs
+        lastReceived = -1;
     }
 
     public static int getDefaultNumMsgsToDisplay() {
@@ -213,10 +213,10 @@ class ConversationPanel extends JPanel implements ComponentListener {
         return (msg);
     }
 
-    static void setDefaultColors(Color background, Color foreground,
+    static void setDefaultColors(Color backgroundColor, Color foregroundColor,
         Color broadcastColor, Color ackedColor) {
-        ConversationPanel.background = background;
-        ConversationPanel.foreground = foreground;
+        ConversationPanel.backgroundColor = backgroundColor;
+        ConversationPanel.foregroundColor = foregroundColor;
         ConversationPanel.broadcastColor = broadcastColor;
         ConversationPanel.ackedColor = ackedColor;
     }
@@ -234,10 +234,14 @@ class ConversationPanel extends JPanel implements ComponentListener {
         return (button);
     }
 
-    private JPanel makeMessagePanel(Color background) {
+    private JPanel makeMessagePanel() {
         JPanel panel = new JPanel();
+        panel.setBackground(backgroundColor);
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBackground(background);
+        panel.add(Box.createRigidArea(new Dimension(0, 10)));
+        panel.add(morePanel);
+        panel.add(Box.createRigidArea(new Dimension(0, 10)));
+        panel.addComponentListener(this);
         return (panel);
     }
 
@@ -301,13 +305,15 @@ class ConversationPanel extends JPanel implements ComponentListener {
             // save for resizing
             bubbles.add(bubble);
         }
+        //
         JPanel inner = new JPanel();
-        inner.setBackground(background);
+        inner.setBackground(backgroundColor);
         inner.setLayout(new BoxLayout(inner, BoxLayout.X_AXIS));
         if (left) {
             inner.add(bubble);
             inner.add(Box.createHorizontalGlue());
-        } else {
+        }
+        else {
             inner.add(Box.createHorizontalGlue());
             inner.add(bubble);
         }
@@ -327,6 +333,13 @@ class ConversationPanel extends JPanel implements ComponentListener {
     }
 
     public void addMsg(String text, Message msg) {
+        // this code should be in ComponentShown() but that event is no longer supported
+        if ((lastMsgPanelWidth == 0) && messagePanel.isValid()) {
+            // the first time that a message is added, after panel creation,
+            // lastMsgPanelWidth will be zero but we don't need to resize
+            lastMsgPanelWidth = scrollPane.getViewport().getWidth();
+        }
+
         boolean isReceived = msg.to.equals(Message.SELF);
         // boolean broadcast = msg.isBroadcast();
         boolean acked = msg.acked();
@@ -380,15 +393,12 @@ class ConversationPanel extends JPanel implements ComponentListener {
             return;
         }
         lastMsgPanelWidth = width;
-
-        messagePanel = makeMessagePanel(background);
-
+        messagePanel = makeMessagePanel();
         for (MessageBubble<Message> b : bubbles) {
             b.resizeBubble(width);
             addBubble(b, false);
         }
         scrollPane.setViewportView(messagePanel);
-        messagePanel.addComponentListener(this);
         validateToBottom();
     }
 
@@ -398,6 +408,7 @@ class ConversationPanel extends JPanel implements ComponentListener {
 
     @Override
     public void componentShown(ComponentEvent e) {
+        // this seems never to be called so can't use it
     }
 
     @Override
@@ -413,7 +424,6 @@ class ConversationPanel extends JPanel implements ComponentListener {
         @Override
         public void adjustmentValueChanged(final AdjustmentEvent e) {
             Runnable r = new Runnable() {
-
                 @Override
                 public void run() {
                     if (scrollToBottom) {
@@ -481,7 +491,8 @@ class ConversationPanel extends JPanel implements ComponentListener {
                 text = text + str;
             }
             else {
-                text = text.substring(0, offs) + str + text.substring(offs + length, text.length());
+                text = text.substring(0, offs) + str
+                    + text.substring(offs + length, text.length());
             }
             // System.out.println(text);
             if (goNoGo(text)) {
