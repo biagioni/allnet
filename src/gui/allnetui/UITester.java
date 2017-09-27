@@ -109,7 +109,7 @@ class UITester extends JFrame implements ActionListener {
         switch (cmd) {
             case receiveStr:
                 controller.messageReceived(toFrom.getText(),
-                        System.currentTimeMillis() - 1000, rcvdSeq++,
+                        System.currentTimeMillis(), rcvdSeq++,
                         msg.getText(), broadcastCheckBox.isSelected());
                 break;
             case sendStr:
