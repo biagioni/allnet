@@ -5,7 +5,6 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.awt.event.ComponentEvent;
 import java.util.ArrayList;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
@@ -49,8 +48,8 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         this.text = text;
         setBackground(color);
         lastContainerWidth = container.getWidth();
-        int charsPerLine = findCharsPerLine(lastContainerWidth);
-        textPane = makeTextPane(color, leftJustified, charsPerLine);
+        // int charsPerLine = findCharsPerLine(lastContainerWidth);
+        textPane = makeTextPane(color, leftJustified, lastContainerWidth);
         setLayout(new BoxLayout(this, BoxLayout.X_AXIS));
         add(textPane);
         // make a context menu
@@ -65,12 +64,24 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
     }
 
     private JTextPane makeTextPane(Color color, boolean leftJustified,
-        int charsPerLine) {
+        int containerWidth) {
+        JTextPane pane = null;
+        int width = containerWidth;
+        do {
+            pane = makeTextPaneQuick(color, leftJustified, width);
+            width = (9*width)/10;
+        } while (pane.getPreferredSize().width > (2*containerWidth)/3);
+        return(pane);
+    }
+        
+    private JTextPane makeTextPaneQuick(Color color, boolean leftJustified,
+        int containerWidth) {
         JTextPane pane = new JTextPane();
         pane.setContentType("text/html");
         pane.setEditable(false);
         pane.setBackground(color);
-        String[] lines = partitionText(text, charsPerLine);
+        // 5 pix per char is really small
+        String[] lines = partitionText(text, containerWidth/5);
         String htmlPrefix;
         if (leftJustified) {
             htmlPrefix = "<STYLE type=\"text/css\"> BODY {text-align: left} </STYLE> <BODY>";
@@ -94,10 +105,9 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         return (pane);
     }
 
-    private int findCharsPerLine(int containerWidth) {
-        return (Math.max(10, containerWidth / 10));
-    }
-
+    //private int findCharsPerLine(int containerWidth) {
+    //    return (Math.max(10, containerWidth / 10));
+    //}
     private String[] partitionText(String text, int maxChars) {
         String[] lines = text.split("\n");
         ArrayList<String> list = new ArrayList<>();
@@ -203,13 +213,12 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         }
     }
 
-    // called from conv panel when need to resize
     public void resizeBubble(int width) {
         remove(textPane);
-        textPane = makeTextPane(textPane.getBackground(), leftJustified,
-            findCharsPerLine(width));
+        textPane = makeTextPane(textPane.getBackground(), 
+            leftJustified, width);
         textPane.setComponentPopupMenu(popup);
         add(textPane);        
     }
-    
+
 }

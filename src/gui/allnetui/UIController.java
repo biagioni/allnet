@@ -680,12 +680,15 @@ System.out.println("got secret " + secret + " for " + contactName);
             // no such tab, so make the conversation panel
             // (the contact's name is also the command prefix)
             if (!contactData.isBroadcast(contactName)) {
-                cp = new ConversationPanel(" conversation with " + contactName, contactName, contactName, true);
+                cp = new ConversationPanel(" conversation with " + contactName, 
+                    contactName, contactName, true, myTabbedPane);
             }
             else {
-                cp = new ConversationPanel(" broadcast from " + contactName, contactName, contactName, false);
+                cp = new ConversationPanel(" broadcast from " + contactName, 
+                    contactName, contactName, false, myTabbedPane);
             }
             cp.setName(contactName);
+            // so it can send events back to us
             cp.setListener(this);
             // display the conversation on the new panel
             Conversation conv = contactData.getConversation(contactName);
@@ -981,6 +984,12 @@ System.out.println("got secret " + secret + " for " + contactName);
             }
         }
         startIdx = Math.min(startIdx, earliest);
+        if (startIdx == 0) {
+            cp.disableMoreMsgsButton();
+        }
+        else {
+            cp.enableMoreMsgsButton();            
+        }
         long lastReceived = -1;  // needed to mark missing messages
         for (int i = startIdx; i < msgs.size(); i++) {
             Message savedMsg = msgs.get(i);

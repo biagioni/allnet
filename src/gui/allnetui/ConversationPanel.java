@@ -68,15 +68,22 @@ class ConversationPanel extends JPanel implements ComponentListener {
     // keep list of the message bubbles that have yet to be acked
     private ArrayList<MessageBubble<Message>> unackedBubbles;
     private long lastReceived;  // used by caller
-    // width of message panel the last time the msg bubbles were resized
-    private int lastMsgPanelWidth;
+    // Component used for tracking / triggering resizing
+    private Component resizingKey;
+    // width of resizingKey when we last layed out message bubbles
+    private int lastResizingWidth;
     // list of msg bubbles (so we can resize them when indicated
     private ArrayList<MessageBubble<Message>> bubbles;
 
     ConversationPanel(String info, String commandPrefix, String contactName,
-        boolean createDialogBox) {
+        boolean createDialogBox, Component resizingKey) {
         this.commandPrefix = commandPrefix;
         this.contactName = contactName;
+        //
+        this.resizingKey = resizingKey;
+        resizingKey.addComponentListener(this);
+        lastResizingWidth = resizingKey.getWidth();
+        //
         setBackground(backgroundColor);
         //
         // make the info label for the top of the panel
@@ -108,10 +115,12 @@ class ConversationPanel extends JPanel implements ComponentListener {
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         // set it so the scroll wheel scrolls substantially
         scrollPane.getVerticalScrollBar().setUnitIncrement(10);
+        //
         // make it scroll to the bottom when we add something
         scrollPane.getVerticalScrollBar().addAdjustmentListener(
             new MyAdjustmentListener());
-        // make it scroll to the bottom when resized
+        // make it scroll to the bottom automatically when the scroll 
+        // pane contents are resized
         scrollPane.getVerticalScrollBar().addComponentListener(
             new ScrollPaneResizeAdapter(scrollPane, true));
         //
@@ -174,7 +183,6 @@ class ConversationPanel extends JPanel implements ComponentListener {
             add(sendPanel, gbc);
         }
         // for resize/relayout of message bubbles when panel is resized
-        lastMsgPanelWidth = 0;
         bubbles = new ArrayList<>();
         // for tracking missing msgs
         lastReceived = -1;
@@ -188,6 +196,14 @@ class ConversationPanel extends JPanel implements ComponentListener {
         return numMsgsToDisplay;
     }
 
+    public void disableMoreMsgsButton() {
+        moreMsgsButton.setEnabled(false);
+    }
+    
+    public void enableMoreMsgsButton() {
+        moreMsgsButton.setEnabled(true);
+    }
+    
     public void setNumMsgsToDisplay(int numMsgsToDisplay) {
         this.numMsgsToDisplay = numMsgsToDisplay;
     }
@@ -241,7 +257,6 @@ class ConversationPanel extends JPanel implements ComponentListener {
         panel.add(Box.createRigidArea(new Dimension(0, 10)));
         panel.add(morePanel);
         panel.add(Box.createRigidArea(new Dimension(0, 10)));
-        panel.addComponentListener(this);
         return (panel);
     }
 
@@ -259,10 +274,14 @@ class ConversationPanel extends JPanel implements ComponentListener {
             long now = System.currentTimeMillis();
             if (msg.receivedAt() + DAY > now) {
                 double scale = ((double) (msg.receivedAt() + DAY - now)) / DAY;
-                if (scale > 1.0)  // if we get messages from the future
-                  scale = 1.0;
-                if (scale < 0.0)  // not likely
-                  scale = 0.0;
+                if (scale > 1.0) // if we get messages from the future
+                {
+                    scale = 1.0;
+                }
+                if (scale < 0.0) // not likely
+                {
+                    scale = 0.0;
+                }
                 float r = (float) (newColor.getRed() / 255.0);
                 float g = (float) (newColor.getGreen() / 255.0);
                 float b = (float) (newColor.getBlue() / 255.0);
@@ -333,13 +352,6 @@ class ConversationPanel extends JPanel implements ComponentListener {
     }
 
     public void addMsg(String text, Message msg) {
-        // this code should be in ComponentShown() but that event is no longer supported
-        if ((lastMsgPanelWidth == 0) && messagePanel.isValid()) {
-            // the first time that a message is added, after panel creation,
-            // lastMsgPanelWidth will be zero but we don't need to resize
-            lastMsgPanelWidth = scrollPane.getViewport().getWidth();
-        }
-
         boolean isReceived = msg.to.equals(Message.SELF);
         // boolean broadcast = msg.isBroadcast();
         boolean acked = msg.acked();
@@ -388,18 +400,25 @@ class ConversationPanel extends JPanel implements ComponentListener {
 
     @Override
     public void componentResized(ComponentEvent e) {
-        int width = scrollPane.getViewport().getWidth();
-        if (Math.abs(width - lastMsgPanelWidth) / (1.0 * width) < 0.10) {
-            return;
+        if (e.getComponent() == resizingKey) {
+            int width = e.getComponent().getWidth();
+            if (Math.abs(width - lastResizingWidth) / (1.0 * width) < 0.10) {
+                return;
+            }
+            lastResizingWidth = width;
+            // scrollPane.setViewportView(null);
+            messagePanel = makeMessagePanel();
+            for (MessageBubble<Message> b : bubbles) {
+                b.resizeBubble(width);
+                addBubble(b, false);
+            }
+            scrollPane.setViewportView(messagePanel);
+            messagePanel.addComponentListener(this);
+            validateToBottom();
         }
-        lastMsgPanelWidth = width;
-        messagePanel = makeMessagePanel();
-        for (MessageBubble<Message> b : bubbles) {
-            b.resizeBubble(width);
-            addBubble(b, false);
+        else if (e.getComponent() == messagePanel) {
+            validateToBottom();
         }
-        scrollPane.setViewportView(messagePanel);
-        validateToBottom();
     }
 
     @Override
