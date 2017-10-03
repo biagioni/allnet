@@ -369,7 +369,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     private byte[] doRPCWithCode(byte code, String contact) {
-        byte[] request = new byte[1 + contact.length() + 1];
+        byte[] request = new byte[1 + SocketUtils.numBytes(contact) + 1];
         request[0] = code;
         SocketUtils.wString(request, 1, contact); 
         return doRPC(request);
@@ -384,7 +384,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     private byte[] doRPCWithCodeOp(byte code, byte op, String contact) {
-        byte[] request = new byte[1 + 1 + contact.length() + 1];
+        byte[] request = new byte[1 + 1 + SocketUtils.numBytes(contact) + 1];
         request[0] = code;
         request[1] = op;
         SocketUtils.wString(request, 2, contact); 
@@ -446,10 +446,11 @@ public class CoreConnect extends Thread implements CoreAPI {
     // @return true if was able to rename the contact
     public boolean renameContact(String oldName, String newName) {
         cachedContacts = null;   // reset the cache
-        byte[] request = new byte[1 + oldName.length() + newName.length() + 2];
+        byte[] request = new byte[1 + 1 + SocketUtils.numBytes(oldName) +
+                                  SocketUtils.numBytes(newName) + 2];
         request[0] = guiRenameContact;
-        SocketUtils.wString(request, 1, oldName); 
-        SocketUtils.wString(request, 1 + oldName.length() + 1, newName); 
+        int index = SocketUtils.wString(request, 1, oldName); 
+        SocketUtils.wString(request, index, newName); 
         byte[] response = doRPC(request);
         return (response [1] != 0);
     }
@@ -568,7 +569,8 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // @return sequence number
     public long sendMessage(String contact, String text) {
-        int length = 1 + contact.length() + 1 + text.length() + 1;
+        int length = 1 + SocketUtils.numBytes(contact) + 1 +
+                     SocketUtils.numBytes(text) + 1;
         byte[] request = new byte[length];
         request[0] = guiSendMessage;
         int endContact = SocketUtils.wString (request, 1, contact);
@@ -615,9 +617,10 @@ public class CoreConnect extends Thread implements CoreAPI {
     // if the contact already exists, returns without doing anything
     public boolean initKeyExchange(String contact, String secret1,
                                    String secret2, int hops) {
-        int length = 1 + 1 + contact.length() + 1 + secret1.length() + 1;
+        int length = 1 + 1 + SocketUtils.numBytes(contact) + 1 +
+                     SocketUtils.numBytes(secret1) + 1;
         if ((secret2 != null) && (secret2.length() > 0))
-            length += secret2.length() + 1;
+            length += SocketUtils.numBytes(secret2) + 1;
         byte[] request = new byte[length];
         request[0] = guiKeyExchange;
         request[1] = convertToByte(hops);
@@ -642,7 +645,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     // it must match the ahra created by the broadcaster, except
     //    it may have fewer (or no) word pairs
     public boolean initSubscription(String address) {
-        int length = 1 + address.length() + 1;
+        int length = 1 + SocketUtils.numBytes(address) + 1;
         byte[] request = new byte[length];
         request[0] = guiSubscribe;
         int endAddress = SocketUtils.wString (request, 1, address);
