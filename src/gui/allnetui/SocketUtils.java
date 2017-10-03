@@ -131,14 +131,20 @@ public class SocketUtils {
       return result;
   }
 
+  // returns the next index after the null byte
   public static int wString (byte[] data, int start, String s) {
     byte[] sbytes = s.getBytes(charset);
     int length = sbytes.length;
 // System.out.println("length for " + s + " is " + length + " in " + charset);
+// System.out.println("data has length " + data.length + ", offset " + start);
     System.arraycopy(sbytes, 0, data, start, length);
     int endIndex = start + length;
     data [endIndex] = 0;   // null byte, to terminate the string
     return endIndex + 1;   // return the next index after the null byte
+  }
+
+  public static int numBytes (String s) {
+    return s.getBytes(charset).length;
   }
 
   public static void debugPacket (boolean sent, byte[] data, int dlen,
