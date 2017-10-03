@@ -18,6 +18,7 @@ JAVASOURCELIST= \
     allnetui/Message.java \
     allnetui/MorePanel.java \
     allnetui/NewContactPanel.java \
+    allnetui/SocketUtils.java \
     allnetui/UIAPI.java \
     allnetui/UIController.java \
     allnetui/UI.java \
