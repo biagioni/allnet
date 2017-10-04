@@ -56,7 +56,8 @@ extern int receive_pipe_message (pd p, int pipe,
 /* keeps track of which pipes are needed for receive_pipe_message_any,
  * which buffers partial messages received on a socket. */
 extern void add_pipe (pd p, int pipe, const char * description);
-extern void remove_pipe (pd p, int pipe);
+/* return 1 if removed, 0 otherwise */
+extern int remove_pipe (pd p, int pipe);
 
 #define PIPE_MESSAGE_WAIT_FOREVER	-1
 #define PIPE_MESSAGE_NO_WAIT		0
@@ -126,12 +127,12 @@ extern int split_messages (char * data, unsigned int dlen, char *** messages,
                            unsigned int ** lengths, unsigned int ** priorities,
                            void ** buffer);
 
-/* #define DEBUG_EBADFD */
-#ifdef DEBUG_EBADFD
+/* #define DEBUG_EBADF */
+#ifdef DEBUG_EBADF
 /* temporary (I hope), for debugging of EBADF */
 #define EBADBUFS	10000
 extern char ebadbuf [EBADBUFS];
 extern void record_message (pd p);  /* call after snprintf to ebadfbuf */
-#endif /* DEBUG_EBADFD */
+#endif /* DEBUG_EBADF */
 
 #endif /* PIPEMSG_H */

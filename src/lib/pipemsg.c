@@ -53,12 +53,12 @@ struct pipedesc {
   int queues [MAX_PIPES];  /* negative integers -x, at index x - 1 */
   struct allnet_log * log;
   pthread_mutex_t receive_mutex;
-#ifdef DEBUG_EBADFD
+#ifdef DEBUG_EBADF
 #define NUM_EBADBUFS	20
 char ebadbufs [NUM_EBADBUFS] [EBADBUFS];
 int ebadbufindex;  /* index of first, i.e. earliest, message */
 int ebadbufcount;
-#endif /* DEBUG_EBADFD */
+#endif /* DEBUG_EBADF */
 };
 
 pd init_pipe_descriptor (struct allnet_log * log)
@@ -69,11 +69,11 @@ pd init_pipe_descriptor (struct allnet_log * log)
   result->num_queues = 0;
   result->log = log;
   pthread_mutex_init (&(result->receive_mutex), NULL);
-#ifdef DEBUG_EBADFD
+#ifdef DEBUG_EBADF
   memset (&(result->ebadbufs [0] [0]), 0, sizeof (result->ebadbufs));
   result->ebadbufindex = 0;
   result->ebadbufcount = 0;
-#endif /* DEBUG_EBADFD */
+#endif /* DEBUG_EBADF */
   return result;
 }
 
@@ -247,7 +247,8 @@ void add_pipe (pd p, int pipe, const char * description)
   print_pipes (p, "added", pipe);
 }
 
-void remove_pipe (pd p, int pipe)
+/* return 1 if removed, 0 otherwise */
+int remove_pipe (pd p, int pipe)
 {
   /* acquire the lock, so we only remove when we are not receiving */
   pthread_mutex_lock (&(p->receive_mutex));
@@ -255,7 +256,7 @@ void remove_pipe (pd p, int pipe)
   int index = (is_pipe) ? (pipe_index (p, pipe)) : (queue_index (p, pipe));
   if (index == -1) { /* nothing to delete */
     pthread_mutex_unlock (&(p->receive_mutex));
-    return;
+    return 0;
   }
   snprintf (p->log->b, p->log->s,
             "removing %s %d from data structure [%d]\n",
@@ -278,6 +279,7 @@ void remove_pipe (pd p, int pipe)
   }
   pthread_mutex_unlock (&(p->receive_mutex));
   print_pipes (p, "removed", pipe);
+  return 1;
 }
 
 static inline void write_big_endian32 (char * array, int value)
@@ -775,11 +777,11 @@ printf ("next_available err: fd %d at index %d\n", p->buffers [i].pipe_fd, i);*/
 static void debug_ebadf (pd p, int extra)
 {
   int i;
-#ifdef DEBUG_EBADFD
-  for (i = 0; i < p->ebadbufcount; i++) {
+#ifdef DEBUG_EBADF
+  printf ("ebadbufcount is %d, index %d\n", p->ebadbufcount, p->ebadbufindex);
+  for (i = 0; i < p->ebadbufcount; i++)
     printf ("[%d]: %s", i, p->ebadbufs [(i + p->ebadbufindex) % NUM_EBADBUFS]);
-  }
-#endif /* DEBUG_EBADFD */
+#endif /* DEBUG_EBADF */
   printf ("debug_ebadf, %d pipes, extra %d\n", p->num_pipes, extra);
   int old_do_not_print = do_not_print;
   do_not_print = 0;
@@ -1615,7 +1617,7 @@ int split_messages (char * data, unsigned int dlen,
   return mi;
 }
 
-#ifdef DEBUG_EBADFD
+#ifdef DEBUG_EBADF
 /* temporary (I hope), for debugging of EBADF */
 /* #define EBADBUFS       10000 */
 char ebadbuf [EBADBUFS];
@@ -1636,6 +1638,6 @@ void record_message (pd p)  /* call after snprintf to ebadfbuf */
   snprintf (p->ebadbufs [idx], EBADBUFS, "%s %s", ctime_buf, ebadbuf);
 }
 
-#endif /* DEBUG_EBADFD */
+#endif /* DEBUG_EBADF */
 
 
