@@ -105,12 +105,14 @@ static int init_listen_socket (int version, int port, int local)
                 version, ntohs (port), ntohs (port), addr_size);
       log_print (alog);
     }
+snprintf (alog->b, alog->s, "l i closing socket %d\n", fd); log_print (alog);
     close (fd);
     return -1;
   }
   /* specify the maximum queue length */
   if (listen (fd, 5) < 0) {
     perror("listen");
+snprintf (alog->b, alog->s, "l i2 closing socket %d\n", fd); log_print (alog);
     close (fd);
     return -1;
   }
@@ -179,6 +181,7 @@ static void * listen_loop (void * arg)
         if ((info->localhost_only) && (! is_loopback_ip (ap, addr_size))) {
           snprintf (alog->b, alog->s, "warning: loopback got from nonlocal\n");
           log_print (alog);
+snprintf (alog->b, alog->s, "l l closing socket %d\n", connection); log_print (alog);
           close (connection);
 #ifdef DEBUG_EBADFD
 snprintf (ebadbuf, EBADBUFS,
@@ -208,12 +211,14 @@ snprintf (ebadbuf, EBADBUFS,
 "listen_loop unable to listen_add_fd, closing %d\n", connection);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "l l2 closing socket %d\n", connection); log_print (alog);
           close (connection);
         }
         addr_size = sizeof (address);  /* reset for next call to accept */
       }
       perror ("accept in listen.c listen_loop");
       printf ("error calling accept (%d)\n", fd);
+snprintf (alog->b, alog->s, "l l3 closing socket %d\n", fd); log_print (alog);
       close (fd);    /* if still open */
     } else {  /* unable to create listen_socket: wait a while, try again */
       sleep (5);
@@ -299,13 +304,14 @@ void listen_init_info (struct listen_info * info, int max_fds, char * name,
 void listen_shutdown (struct listen_info * info)
 {
   while (info->num_fds > 0) 
-   listen_remove_fd (info, info->fds [0]);
+    listen_remove_fd (info, info->fds [0]);
   if (info->listen_fd6 >= 0) {
 #ifdef DEBUG_EBADFD
 snprintf (ebadbuf, EBADBUFS,
 "listen_shutdown closing ipv6 listen socket %d\n", info->listen_fd6);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "l s closing socket %d\n", info->listen_fd6); log_print (alog);
     close (info->listen_fd6);
 #ifndef ANDROID   /* android doesn't have pthread_cancel */
     pthread_cancel (info->thread6);
@@ -317,6 +323,7 @@ snprintf (ebadbuf, EBADBUFS,
 "listen_shutdown closing ipv4 listen socket %d\n", info->listen_fd6);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "l s2 closing socket %d\n", info->listen_fd4); log_print (alog);
     close (info->listen_fd4);
 #ifndef ANDROID   /* android doesn't have pthread_cancel */
     pthread_cancel (info->thread4);
@@ -419,13 +426,18 @@ static int close_oldest_fd (struct listen_info * info)
   int fd = info->fds [min_index];
   /* we are closing this FD, tell the peer about others they may connect to */
   send_peer_message (fd, info, min_index);
-  if (info->add_remove_pipe)
-    remove_pipe (info->pipe_descriptor, fd);
+  if (info->add_remove_pipe) {
+    if (! remove_pipe (info->pipe_descriptor, fd)) {
+      snprintf (alog->b, alog->s, "close_oldest_fd error removing %d\n", fd);
+      log_print (alog);
+    }
+  }
 #ifdef DEBUG_EBADFD
 snprintf (ebadbuf, EBADBUFS,
 "close_oldest_fd closing %d, a_r %d\n", fd, info->add_remove_pipe);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "l cof closing socket %d\n", fd); log_print (alog);
   close (fd);
   info->fds [min_index] = -1;
   return min_index;
@@ -509,9 +521,15 @@ static int listen_add_fd_with_lock_held (struct listen_info * info,
   if (index < 0)
     index = close_oldest_fd (info);
   else {
-    if (info->add_remove_pipe)
-      remove_pipe (info->pipe_descriptor, info->fds [index]);
-    close (info->fds [index]);  /* because replacing with the new one */
+    int cfd = info->fds [index];  /* fd to close */
+    if (info->add_remove_pipe) {
+      if (! remove_pipe (info->pipe_descriptor, cfd)) {
+        snprintf (alog->b, alog->s, "listen_add_fd error removing %d\n", cfd);
+        log_print (alog);
+      }
+    }
+snprintf (alog->b, alog->s, "l a closing socket %d [%d], replacing with %d\n", cfd, index, fd); log_print (alog);
+    close (cfd);  /* because replacing with the new one */
   }
   info->fds [index] = fd;
   if (addr != NULL)
@@ -554,6 +572,7 @@ printf ("closing incoming fd, %d %d\n", info->num_fds, info->max_num_fds);
 snprintf (ebadbuf, EBADBUFS, "listen_add_fd busy, closing fd %d\n", fd);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "l laf closing socket %d\n", fd); log_print (alog);
     close (fd);
     return 0;
   }
@@ -564,11 +583,16 @@ record_message (info->pipe_descriptor);
   return result;
 }
 
-void listen_remove_fd (struct listen_info * info, int fd)
+/* returns 1 if removed, 0 otherwise */
+int listen_remove_fd (struct listen_info * info, int fd)
 {
+  int result = 0;
   pthread_mutex_lock (&(info->mutex));
   if (info->add_remove_pipe) {
-    remove_pipe (info->pipe_descriptor, fd);
+    if (! remove_pipe (info->pipe_descriptor, fd)) {
+      snprintf (alog->b, alog->s, "listen_remove_fd error removing %d\n", fd);
+      log_print (alog);
+    }
 #ifdef DEBUG_EBADFD
     snprintf (ebadbuf, EBADBUFS, "listen_remove_fd removed_pipe (%d)\n", fd);
     record_message (info->pipe_descriptor);
@@ -580,10 +604,12 @@ void listen_remove_fd (struct listen_info * info, int fd)
       info->num_fds--;
       if (i < info->num_fds)
         info->fds [i] = info->fds [info->num_fds];
+      result = 1;
       break;      /* assume any fd only appears once */
     }
   }
   pthread_mutex_unlock (&(info->mutex));
+  return result;
 }
 
 /* returned addr_info is statically allocated (until remove_fd is called),

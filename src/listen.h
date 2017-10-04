@@ -66,7 +66,8 @@ extern int listen_add_fd (struct listen_info * info, int fd,
                           const char * caller_description);
 
 /* call to remove an fd from the data structure */
-extern void listen_remove_fd (struct listen_info * info, int fd);
+/* returns 1 if removed, 0 otherwise */
+extern int listen_remove_fd (struct listen_info * info, int fd);
 
 /* returned addr_info is statically allocated (until remove_fd is called),
  * do not modify in any way.  Returns NULL for no match */
