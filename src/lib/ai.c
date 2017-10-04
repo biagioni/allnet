@@ -347,10 +347,10 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
         ((next->ifa_addr->sa_family == AF_INET) ||
          (next->ifa_addr->sa_family == AF_INET6))) {
       num_ifaddrs++;
-      if (! is_in_ap_list (next->ifa_name, next->ifa_next)) {
-        num_interfaces++;
-        str_length += strlen (next->ifa_name) + 1;
-      }
+    }
+    if (! is_in_ap_list (next->ifa_name, next->ifa_next)) {
+      num_interfaces++;
+      str_length += strlen (next->ifa_name) + 1;
     }
     next = next->ifa_next;
   }
@@ -401,8 +401,10 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
       loop = loop->ifa_next;
     }
     if (! has_addresses) {
+#if 0   /* interfaces with no addresses can still be used in /wifi mode */
       next = next->ifa_next;
       continue;   /* no addresses, move on to the next */
+#endif /* 0 */
     }
     if (assigned_interfaces >= num_interfaces) {  /* error */
       printf ("error in %d getifaddrs interfaces\n", num_interfaces);
@@ -603,8 +605,8 @@ int ioctl_interface_addrs (struct interface_addr ** interfaces)
       int num_v6_addrs = number_matching_lines (ifr.ifr_name, ipv6_file);
       if ((num_v4_addrs > 0) || (num_v6_addrs > 0)) {
         ifaddrs_count += num_v6_addrs + num_v4_addrs;
-        interface_count++;
       }
+      interface_count++;  /* count it, even if it has no addresses */
     }
     memset (&ifr, 0, sizeof (ifr));  /* next */
     ifr.ifr_ifindex = interface_index;
