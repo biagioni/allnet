@@ -187,7 +187,7 @@ static int if_command (const char * basic_command, const char * interface,
         snprintf (alog->b, alog->s,
                   "abc-iw: call to '%s' failed, %s\n", command, fail_wireless);
         log_print (alog);
-        printf ("%s\n", fail_wireless);
+        printf ("%s: %s\n", interface, fail_wireless);
       }
       return 2;
     }
