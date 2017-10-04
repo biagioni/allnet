@@ -575,6 +575,7 @@ static int udp_socket (unsigned int max_depth)
             ALLNET_PORT, ALLNET_PORT);
 #ifndef ALLNET_USE_FORK
 /* keep trying -- we may be waking up from sleep */
+snprintf (alog->b, alog->s, "aip closing udp %d\n", udp); log_print (alog);
     close (udp);   /* may be closed already */
     sleep (5);
     if (max_depth > 0)
@@ -629,6 +630,8 @@ static pthread_mutex_t listener_mutex = PTHREAD_MUTEX_INITIALIZER;
  * while holding the mutex */
 static int active_listeners = 0;
 
+/* if successful, returns the socket to communicate as a listener
+ * if not successful, returns -1 */
 static int connect_listener (unsigned char * address, struct listen_info * info,
                              int af)
 {
@@ -695,7 +698,6 @@ sleep (1); */
 /* printf ("giving up: prev_fd = %d in thread %u proc %d interval %d for ", prev_fd, (unsigned int) pthread_self (), getpid (), wait_time); print_addr_info (&ai); */
         break;
       }
-
       /* standard socket connection code supporting both IPv4 and IPv6 */
       int s = socket (af, SOCK_STREAM, 0);
       if (s < 0) {
@@ -709,6 +711,7 @@ sleep (1); */
         int n = snprintf (alog->b, alog->s, "unable to connect %d to ", s);
         print_sockaddr_str (sap, salen, 1, alog->b + n, alog->s - n);
         log_error (alog, "listener connect");
+snprintf (alog->b, alog->s, "aip c closing socket %d\n", s); log_print (alog);
         close (s);
 #ifdef DEBUG_EBADFD
 snprintf (ebadbuf, EBADBUFS,
@@ -733,7 +736,8 @@ record_message (info->pipe_descriptor);
         offset += addr_info_to_string (&ai, alog->b + offset, alog->s - offset);
         log_print (alog);
         result = s;
-      } else {
+        break;   /* found our listener */
+      } else {   /* somebody else already has that address */
         int offset = snprintf (alog->b, alog->s,
                                "listen_add_fd => 0 for %x/%d on socket %d at ",
                                address [0] & 0xff, LISTEN_BITS, s);
@@ -743,6 +747,7 @@ snprintf (ebadbuf, EBADBUFS, "%s", alog->b);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
         log_print (alog);
+snprintf (alog->b, alog->s, "aip m closing socket %d\n", s); log_print (alog);
         close (s);
         listen_clear_reservation (&ai, info);
       }
@@ -798,8 +803,10 @@ snprintf (ebadbuf, EBADBUFS,
 listener_index, listener_fds [listener_index]);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
-      listen_remove_fd (info, fd);      /* remove from info */
-      close (fd);                       /* remove from kernel */
+      if (listen_remove_fd (info, fd)) {      /* remove from info */
+snprintf (alog->b, alog->s, "aip l closing socket %d\n", fd); log_print (alog);
+        close (fd);                       /* remove from kernel */
+      }
     }
     pthread_mutex_unlock (&listener_mutex);
   }
@@ -859,12 +866,14 @@ static void remove_listener (int fd, struct listen_info * info)
 #endif /* DEBUG_PRINT */
     }
   }
-  listen_remove_fd (info, fd); /* remove from info and pipemsg */
+  if (listen_remove_fd (info, fd)) { /* remove from info and pipemsg */
 #ifdef DEBUG_EBADFD
 snprintf (ebadbuf, EBADBUFS, "remove_listener removing fd %d\n", fd);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
-  close (fd);       /* remove from kernel */
+snprintf (alog->b, alog->s, "aip r closing socket %d\n", fd); log_print (alog);
+    close (fd);       /* remove from kernel */
+  }
   pthread_mutex_unlock (&listener_mutex);
 #ifdef DEBUG_PRINT
   if (debug_removed)
@@ -1223,6 +1232,7 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
                     listener_index, listeners [listener_index]);
           record_message (p);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "aip h closing socket %d [%d] for %d\n", listeners [listener_index], listener_index, new_sock); log_print (alog);
           close (listeners [listener_index]);
           listeners [listener_index] = new_sock;
           return 1;
@@ -1233,6 +1243,7 @@ static int handle_mgmt (int * listeners, int num_listeners, int peer,
                     "handle_mgmt, connect failed, closing %d\n", new_sock);
           record_message (p);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "aip h2 closing socket %d\n", new_sock); log_print (alog);
           close (new_sock);
         }
       }
@@ -1311,6 +1322,7 @@ snprintf (ebadbuf, EBADBUFS,
 "aip main loop, timeout, closing UDP socket %d\n", udp);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "aip ml closing udp %d\n", udp); log_print (alog);
         close (udp);
       }
 #ifdef DEBUG_PRINT
@@ -1425,6 +1437,7 @@ snprintf (ebadbuf, EBADBUFS,
 "aip main loop, exiting, closing UDP socket %d\n", udp);
 record_message (info->pipe_descriptor);
 #endif /* DEBUG_EBADFD */
+snprintf (alog->b, alog->s, "aip c closing udp %d\n", udp); log_print (alog);
   close (udp);  /* on iOS we may get restarted later */
   cache_close (udp_cache);
 }
