@@ -133,14 +133,14 @@ public class Message implements java.lang.Comparable<Message> {
       return 0;  // equal
     }
 
-    // always returns false if file time is null
-    public boolean newer(java.nio.file.attribute.FileTime t) {
-        if (t == null)
-            return false;
-        long ft = t.toMillis();
-// System.out.printnl ("Message.java/newer: comparing " + ft + " to " + receivedTime);
-        return ft <= this.receivedTime;
-    }
+// nobody uses this, and the UI code should have nothing to do with files 
+//    // always returns false if file time is null
+//    public boolean newer(java.nio.file.attribute.FileTime t) {
+//        if (t == null)
+//            return false;
+//        long ft = t.toMillis();
+//        return ft <= this.receivedTime;
+//    }
 
     // only meaningful for received packets
     public long receivedAt() {
