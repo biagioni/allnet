@@ -6,6 +6,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <dirent.h>
 #include <signal.h>
 #include <sys/types.h>
 
@@ -27,6 +28,42 @@ static void find_path (const char * arg, char ** path)
   }
 }
 
+/* windows Java is often in a directory named
+     "C:\\Program Files\\Java\\jdk*\\bin\\java" */
+static char * find_program_files_java ()
+{
+#define PREFIX "\\Program Files\\Java"
+  char * result = "";  /* if nothing found, return this */
+  DIR * dir = opendir (PREFIX);
+  if (dir != NULL) {
+    struct dirent * ent = NULL;
+    while ((ent = readdir (dir)) != NULL) {  /* for each dir/file in PREFIX */
+      if (strstr (ent->d_name, "jdk") != NULL) {  /* if it contains "jdk" */
+        /* copy the name (with strcat3_malloc) since the next call
+           to readdir will overwrite it with something else */
+        char * candidate = strcat3_malloc (PREFIX "\\", ent->d_name, "\\bin",
+                                           "find_program_files_java");
+        /* make sure PREFIX\jdk-whatever\bin has an executable java program */
+        char * java = strcat_malloc (candidate, "\\java",
+                                     "find_program_files: java");
+        if ((access (java, X_OK) == 0) &&
+            ((strlen (result) == 0) ||             /* first one */
+             (strcmp (candidate, result) > 0))) {  /* not first, use latest */
+          if (strlen (result) != 0)                /* was malloc'd */
+            free (result);
+          result = candidate;
+        } else {
+          free (candidate);
+        }
+        free (java);
+      }
+    }
+    closedir (dir);
+  }
+  return result;
+#undef PREFIX
+}
+
 static char * find_java_path ()
 {
   static char * result = NULL;
@@ -35,10 +72,20 @@ static char * find_java_path ()
   char * path_env = getenv ("PATH");
   if (path_env == NULL)
     return result;
-  char * path = strcpy_malloc (getenv ("PATH"), "find_java_path 1");
+  char * path = strcpy_malloc (getenv ("PATH"), "find_java_path");
+/* windows Java is often in a directory named
+     "C:\\Program Files\\Java\\jdk*\\bin\\java"
+   If found, add the latest of these at the end of the path */
+  char * extra = find_program_files_java ();
+  if (strlen (extra) > 0) {
+    char * new_path = strcat3_malloc (path, ":", extra, "find_java_path extra");
+    free (path);
+    free (extra);
+    path = new_path;
+  }
   char * free_path = path;   /* for calls to free, free the original */
   char * colon = strchr (path, ':');
-  do {
+  do {   /* look at each part of the path */
     char * next = NULL;
     if (colon != NULL) {
       next = colon + 1;
@@ -53,7 +100,7 @@ static char * find_java_path ()
     }
 
 /* windows compiled under cygwin has a path of the form "/cygdrive/c/..."  
-   We would like to rewrite it to "C:\...", replacing all / with \ */
+   We rewrite it to "C:\...", replacing all / with \ */
 #define CYGDRIVE_STR	"/cygdrive/"
 #define CYGDRIVE_LEN	(strlen (CYGDRIVE_STR))
     if (strncmp (test, CYGDRIVE_STR, CYGDRIVE_LEN) == 0) {
@@ -90,8 +137,7 @@ static char * find_java ()
     return path;
   char * candidates [] = { "/usr/bin/java", "C:\\winnt\\system32\\java",
                            "C:\\windows\\system\\java",
-                           "C:\\windows\\system32\\java",
-                           "C:\\Program Files\\Java\\jdk1.8.0_40\\bin\\java" };
+                           "C:\\windows\\system32\\java" };
   unsigned int i;
   for (i = 0; i < sizeof (candidates) / sizeof (char *); i++) {
     /* printf ("trying %s\n", candidates [i]); */
