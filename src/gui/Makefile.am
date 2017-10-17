@@ -2,14 +2,12 @@ ALLNETUI_JAR=AllNetUI.jar
 ALLNETUI_TARGET=$(ALLNET_BINDIR)/$(ALLNETUI_JAR)
 
 JAVASOURCELIST= \
-    allnetui/CDTester.java \
     allnetui/Contact.java \
     allnetui/ContactComparator.java \
     allnetui/ContactConfigPanel.java \
     allnetui/ContactData.java \
     allnetui/ContactType.java \
     allnetui/ContactsPanel.java \
-    allnetui/ConversationData.java \
     allnetui/Conversation.java \
     allnetui/ConversationPanel.java \
     allnetui/CoreAPI.java \
