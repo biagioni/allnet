@@ -98,8 +98,8 @@ static int get_address (const char * address, unsigned char * result, int rsize)
 
 static void trace_usage (char * pname)
 {
-  printf ("usage: %s [-v] [-f|-r n] [-m] [-i] %s\n",
-          "[<my_address_in_hex>[/<number_of_bits> [hops]]]\n", pname);
+  printf ("usage: %s [-f|-r n] [-m] [-i] [-v] [-t sec] %s\n",
+          pname, "[<my_address_in_hex>[/<number_of_bits> [hops]]]");
   printf ("       -f repeats forever, or -r n repeats n times\n");
   printf ("       -m only reports responses from matching addresses\n");
   printf ("       -i does not report intermediate nodes (a bit like ping)\n");
@@ -156,8 +156,8 @@ int trace_main (int argc, char ** argv)
 
   /* up to two non-option arguments */
   if (argc > optind + 2) {
-    printf ("%s: argc %d, optind %d, at most 2 allowed\n",
-            argv [0], argc, optind);
+    printf ("%s: argc %d, optind %d, %d non-options, at most 2 allowed\n",
+            argv [0], argc, optind, argc - (optind + 1));
     trace_usage (argv [0]);
     return 1;
   }
