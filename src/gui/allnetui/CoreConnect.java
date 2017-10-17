@@ -13,7 +13,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     // from lib/packet.h
     static final int allNetMTU = 12288;
     static final int xchatSocketPort = 41244; // 0xA11C, ALLnet Chat
-    static final int allnetY2kSecondsInUnix = 946684800;
+    static public final int allnetY2kSecondsInUnix = 946684800;
 
     UIAPI handlers = null;
     java.net.Socket sock;
@@ -243,6 +243,8 @@ public class CoreConnect extends Thread implements CoreAPI {
             System.exit(1);  // the socket is closed
         } catch (java.lang.Exception e) {
             System.out.println("exception " + e + " reading from socket");
+            e.printStackTrace();
+            System.exit(1);
         }
         return null;
     }
@@ -551,10 +553,21 @@ public class CoreConnect extends Thread implements CoreAPI {
     // @return up to the max latest saved messages to/from this contact
     //         a negative value of max requests all messages
     public Message[] getMessages(String contact, int max) {
-        if (max < 0) {
-            return ConversationData.getAll(contact);
-        }
-        return ConversationData.get(contact, max);
+        Message[] result = null;
+        if (! isValid(contact))
+            return result;
+        if (max == 0)
+            return result;
+        if (max < 0)
+            max = 0;  /* in gui_get_messages, 0 means all */
+        byte[] request = new byte[9 + SocketUtils.numBytes(contact) + 1];
+        request[0] = guiGetMessages;
+        SocketUtils.w64(request, 1, max); 
+        SocketUtils.wString(request, 9, contact); 
+        byte[] response = doRPC(request);
+        long count = SocketUtils.b64(response, 1); 
+        result = SocketUtils.bMessages(response, 9, count, contact, false);
+        return result;
     }
 
     // set that the contact was read now

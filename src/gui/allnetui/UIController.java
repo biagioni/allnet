@@ -68,7 +68,7 @@ class UIController implements ControllerInterface, UIAPI {
         final long seq, final String text, final boolean broadcast) {
         Runnable r = new Runnable() {
             long rcvdTime = java.util.Calendar.getInstance().getTimeInMillis();
-            Message message = new Message(from, Message.SELF, sentTime,
+            Message message = new Message(from, sentTime,
                 rcvdTime, seq, text, broadcast, true);
 
             @Override
@@ -129,8 +129,7 @@ class UIController implements ControllerInterface, UIAPI {
         final long seq, final String text) {
         Runnable r = new Runnable() {
 
-            Message message = new Message(Message.SELF, to, sentTime, seq,
-                text, null);
+            Message message = new Message(to, sentTime, seq, text, false);
 
             @Override
             public void run() {

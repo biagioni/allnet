@@ -445,7 +445,7 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
           int nk = all_keys (contact, &k);
           int ik;
           for (ik = 0; ik < nk; ik++) 
-            xchat_file_write(contact, k [ik], "last_read", " ", 1);
+            xchat_file_write (contact, k [ik], "last_read", " ", 1);
           if (k != NULL)
             free (k);
         } else {
@@ -529,7 +529,8 @@ printf ("secrets for %s are %s %s\n", contact, s1, s2);
 
 static void gui_send_result_messages (int code,
                                       struct message_store_info * msgs,
-                                      int count, int sock)
+                                      int count, int sock,
+                                      unsigned long long int lr)
 {
 /* format: code, 64-bit number of messages, then the messages
    each message has type, sequence, number of missing prior sequence
@@ -541,16 +542,19 @@ static void gui_send_result_messages (int code,
    time_sent           8 bytes    bytes 17..24
    timezone            2 bytes    bytes 25..26
    time_received       8 bytes    bytes 27..34
-   message             n+1 bytes  bytes 35..
+   is_new              1 byte     byte  35
+   message             n+1 bytes  bytes 36...
  */
 #define MESSAGE_ARRAY_HEADER_SIZE	9
-#define MESSAGE_HEADER_SIZE	35
+#define MESSAGE_HEADER_SIZE		36
   size_t message_alloc = 0;
   int i;
   for (i = 0; i < count; i++)
     message_alloc += (MESSAGE_HEADER_SIZE + strlen (msgs [i].message) + 1);
   size_t alloc = MESSAGE_ARRAY_HEADER_SIZE + message_alloc;
+/* printf ("gui_send_result_mesages (%d, %p, %d, %d, %llu) allocating %zd(%zd)\n", code, msgs, count, sock, lr, alloc, message_alloc); */
   char * reply = malloc_or_fail (alloc, "gui_send_messages");
+  memset (reply, 0, alloc);  /* clear everything */
   reply [0] = code;
   writeb64 (reply + 1, count);
   char * dest = reply + MESSAGE_ARRAY_HEADER_SIZE;
@@ -568,7 +572,15 @@ static void gui_send_result_messages (int code,
     writeb64 (dest + 17, msgs [i].time);
     writeb16 (dest + 25, msgs [i].tz_min);
     writeb64 (dest + 27, msgs [i].rcvd_time);
+    dest [35] = (lr <= msgs [i].rcvd_time);
     strcpy (dest + MESSAGE_HEADER_SIZE, msgs [i].message);
+/* if (i + 10 > count) {
+int len = MESSAGE_HEADER_SIZE + strlen (msgs [i].message) + 1;
+char s [1000];
+snprintf (s, sizeof (s), "%d/%d: bytes %zd..%zd of %zd",
+i, count, (dest - reply), ((dest + len - 1) - reply), alloc);
+print_buffer (dest, len, s, 40, 1);
+} */
     dest += MESSAGE_HEADER_SIZE + strlen (msgs [i].message) + 1;
   }
   gui_send_buffer (sock, reply, alloc);
@@ -580,17 +592,30 @@ static void gui_send_result_messages (int code,
 static void gui_get_messages (char * message, int64_t length, int gui_sock)
 {
 /* message format: 64-bit max, contact name (not null terminated) */
+/* max is zero to request all messages */
 /* reply format: 1-byte code, 64-bit number of messages, messages each
  * in the format shown under gui_send_result_messages */
   char reply_header [9];
   reply_header [0] = GUI_GET_MESSAGES;
-  writeb64 (reply_header + 1, 0);
+  writeb64 (reply_header + 1, 0);   /* in case of failure */
   if (length >= 9) {
     int64_t max = readb64 (message);
     message += 8;
     length -= 8;
     char * contact = contact_name_from_buffer (message, length);
-    if ((max > 0) && (num_keysets (contact) > 0)) {  /* contact exists */
+    keyset * k = NULL;
+    int nk = all_keys (contact, &k);
+    int ik;
+    unsigned long long int latest = 0;
+    for (ik = 0; ik < nk; ik++) {
+      unsigned long long int time =
+        xchat_file_time (contact, k [ik], "last_read") / ALLNET_US_PER_S;
+      if (time > latest)
+        latest = time;
+    }
+    if (k != NULL)
+      free (k);
+    if (nk > 0) {  /* contact exists */
       /* for now, use list_all_messages.  Later, modify list_all_messages
        * to accept a maximum number of messages */
       struct message_store_info * msgs = NULL;
@@ -598,9 +623,10 @@ static void gui_get_messages (char * message, int64_t length, int gui_sock)
       int num_used = 0;
       if (list_all_messages (contact, &msgs, &num_alloc, &num_used)) {
         int nresult = num_used;
-        if (nresult > max)
+        if ((max > 0) && (nresult > max))
           nresult = max;
-        gui_send_result_messages (GUI_GET_MESSAGES, msgs, nresult, gui_sock);
+        gui_send_result_messages (GUI_GET_MESSAGES, msgs, nresult,
+                                  gui_sock, latest);
         free_all_messages (msgs, num_used);
         return;
       }

@@ -7,46 +7,42 @@ package allnetui;
  */
 public class Message implements java.lang.Comparable<Message> {
 
-    static final String SELF = "self";
+    static final String SELF = "self-internal-unlikely-as-a-real-persons-name";
 
     // a message is either sent or received
     boolean received;
     // the contact name of the sender
-    final String from, to;
+    final String from, to;  // when sent/received, from/to may be SELF
     final long sentTime;
     final long receivedTime;  // only meaningful for received packets
     final long sequence;  // set to -1 if not known, e.g. for recv'd packets
     final String text;
     final boolean sentNotReceived;   // set to true if not known
     final boolean broadcast;  // only meaningful for received messages
-    final String messageId;   // only meaningful for sent messages, may be null
     boolean isAcked;          // only meaningful for sent messages
     // set to false by the client when message has been read
     boolean newMessageFlag;  // only meaningful for received messages
     
     // use this for received messages only
-    Message(String from, String to, long sentTime, long receivedTime, long seq,
+    Message(String from, long sentTime, long receivedTime, long seq,
             String text, boolean broadcast, boolean newMessage) {
         this.received = true;
         this.from = from;
-        this.to = to;
+        this.to = SELF;
         this.sentTime = sentTime;
         this.receivedTime = receivedTime;
         this.sequence = seq;
         this.text = text;
         this.broadcast = broadcast;
         this.sentNotReceived = false;
-        this.messageId = null;
         this.isAcked = false;
         this.newMessageFlag = newMessage;
     }
 
-    // sent messages should have a message ID, so we can figure out when they
-    // are acked
-    Message(String from, String to, long sentTime, long seq, String text,
-            String messageId) {
+    // use this for sent messages
+    Message(String to, long sentTime, long seq, String text, boolean isAcked) {
         this.received = false;
-        this.from = from;
+        this.from = SELF;
         this.to = to;
         this.sentTime = sentTime;
         this.receivedTime = sentTime;
@@ -54,8 +50,7 @@ public class Message implements java.lang.Comparable<Message> {
         this.text = text;
         this.sentNotReceived = true;
         this.broadcast = false;
-        this.messageId = messageId;
-        this.isAcked = false;
+        this.isAcked = isAcked;
         this.newMessageFlag = false;
     }
 
@@ -77,12 +72,6 @@ public class Message implements java.lang.Comparable<Message> {
 
     boolean acked() {
         return isAcked;
-    }
-
-    void setAcked(String ack) {
-        if ((! isAcked) && (messageId != null) && (ack.equals(messageId)) &&
-            (sentNotReceived))
-            isAcked = true;
     }
 
     boolean setAcked(long ack) {
@@ -132,15 +121,6 @@ public class Message implements java.lang.Comparable<Message> {
           return 1;
       return 0;  // equal
     }
-
-// nobody uses this, and the UI code should have nothing to do with files 
-//    // always returns false if file time is null
-//    public boolean newer(java.nio.file.attribute.FileTime t) {
-//        if (t == null)
-//            return false;
-//        long ft = t.toMillis();
-//        return ft <= this.receivedTime;
-//    }
 
     // only meaningful for received packets
     public long receivedAt() {
