@@ -78,8 +78,8 @@ struct message_store_info {
  * of type struct message_store_info.  list_all_messages may realloc this if
  * more space is needed.  Initially, *num_used must be 0.  After returning,
  * *num_used <= *num_alloc (both numbers may have changed)
- * if *msgs was previously used, its messages should have been freed
- * by calling free_all_messages
+ * if *msgs was previously used, caller must have freed its messages
+ * by calling free_all_messages before calling list_all_messages
  * return 1 if successful, 0 if not */
 extern int list_all_messages (const char * contact,
                               struct message_store_info ** msgs,
@@ -125,6 +125,10 @@ extern int xchat_file_get (const char * contact, keyset k,
 /* write the content to the file, returning 0 in case of error, 1 otherwise */
 extern int xchat_file_write (const char * contact, keyset k,
                              const char * fname, char * content, int clength);
+/* useful to find out when the file was last written
+ * time returned is allnet microseconds (see lib/util.h), or 0 for errors */
+extern long long int xchat_file_time (const char * contact, keyset k,
+                                      const char * fname);
 /* return 1 if the file was deleted, 0 otherwise */
 extern int xchat_file_delete (const char * contact, keyset k,
                               const char * fname);

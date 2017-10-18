@@ -1584,6 +1584,23 @@ int xchat_file_write (const char * contact, keyset k,
   return 1;
 }
 
+/* useful to find out when the file was last written
+ * time returned is allnet microseconds (see lib/util.h), or 0 for errors */
+/* because nano/microsecond resolution is not supported on older systems,
+ * for simplicity just return the seconds multiplied by 1,000,000 */
+long long int xchat_file_time (const char * contact, keyset k,
+                               const char * fname)
+{
+  char * path = get_xchat_path (k, fname);  /* must be free'd */
+  if (path == NULL)
+    return 0;
+  uint64_t file_time = file_mod_time (path);
+  free (path);
+  if (file_time > ALLNET_Y2K_SECONDS_IN_UNIX)
+    return (file_time - ALLNET_Y2K_SECONDS_IN_UNIX) * 1000LL * 1000LL;
+  return 0;
+}
+
 /* return 1 if the file was deleted, 0 otherwise */
 int xchat_file_delete (const char * contact, keyset k,
                        const char * fname)
