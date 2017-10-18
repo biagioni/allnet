@@ -764,7 +764,10 @@ static void send_message (int sock, const char * peer, const char * message)
     return;
   }
   if ((strlen (peer) <= 0) || (strlen (message) <= 0)) {
-    printf ("send_message: empty peer '%s' or message '%s'\n", peer, message);
+    if (strlen (peer) <= 0)
+      printf ("send_message: empty peer '%s'\n", peer);
+    if (strlen (message) <= 0)
+      printf ("send_message: empty message '%s'\n", message);
     print_to_output (XCHAT_TERM_HELP_MESSAGE);
     return;
   }
