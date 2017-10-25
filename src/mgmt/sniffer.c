@@ -44,7 +44,9 @@ static char * hms (char * time_string)
 }
 
 static int handle_packet (char * message, unsigned int msize, int * rcvd,
-                          int debug, int verify, int types, int full_payloads)
+                          int debug, int verify, int types, int full_payloads,
+                          unsigned char * src, unsigned int src_bits,
+                          unsigned char * dst, unsigned int dst_bits)
 {
   *rcvd = 0;
   struct timeval receive_time;
@@ -61,6 +63,13 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
   int type = hp->message_type;
   if ((type <= MAX_PACKET_TYPE) && (! ((1 << type) & types)))
     return 0;  /* do not print this type of packet */
+  if (((src_bits > 0) &&
+       (matching_bits (src, src_bits, hp->source, hp->src_nbits) < src_bits)) ||
+      ((dst_bits > 0) &&
+       (matching_bits (dst, dst_bits,
+                       hp->destination, hp->dst_nbits) < dst_bits))) {
+    return 0;  /* does not match the source or destination address */
+  }
   *rcvd = 1;
   char time_string [ALLNET_TIME_STRING_SIZE];
   allnet_localtime_string (allnet_time (), time_string);
@@ -175,7 +184,9 @@ static int received_before (char * message, unsigned int mlen)
 }
 
 static void main_loop (int sock, pd p, int debug,
-                       int max, int verify, int unique, int types, int full)
+                       int max, int verify, int unique, int types, int full,
+                       unsigned char * src, unsigned int src_bits,
+                       unsigned char * dst, unsigned int dst_bits)
 {
   while (1) {
     int pipe;
@@ -189,7 +200,8 @@ static void main_loop (int sock, pd p, int debug,
     }  /* found > 0 */
     if ((! unique) || (! received_before (message, found))) {
       int received = 0;
-      if (handle_packet (message, found, &received, debug, verify, types, full))
+      if (handle_packet (message, found, &received, debug, verify, types, full,
+                         src, src_bits, dst, dst_bits))
         return;
       if ((max > 0) && (received)) {
         max--;
@@ -220,6 +232,19 @@ static int debug_switch (int * argc, char ** argv)
 }
 #endif /* 0 */
 
+static void usage (const char * command)
+{
+  printf ("usage: %s [-v] [-d] [-y] [-u] [-f] [-t type]* "
+          " [-a destination address] [-s source] [number-of-messages]\n",
+          command);
+  printf ("       -v: verbose, -d: debug, -y: verify sig, -u: unique only");
+  printf ("       -f: print full message payloads, not abbreviated");
+  printf ("       -t n: only show messages of type n -- may be repeated\n");
+  printf ("       -a x, -s x: only show messages with source/dest x\n");
+  printf ("       (repeating the SAME type, toggles it)\n");
+  exit (1);
+}
+
 /* global debugging variable -- if 1, expect more debugging output */
 /* set in main */
 int allnet_global_debugging = 0;
@@ -238,14 +263,34 @@ int main (int argc, char ** argv)
   int types = ALL_PACKET_TYPES;
   int type;
   int opt;
-  while ((opt = getopt (argc, argv, "vdyuft:")) != -1) {
+  unsigned long long int addr_int = 0;
+  unsigned char dst [ADDRESS_SIZE];
+  unsigned char src [ADDRESS_SIZE];
+  memset (dst, 0, ADDRESS_SIZE);
+  memset (src, 0, ADDRESS_SIZE);
+  unsigned int dst_bits = 0;
+  unsigned int src_bits = 0;
+  char * end = NULL;
+  while ((opt = getopt (argc, argv, "vdyufa:s:t:")) != -1) {
     switch (opt) {
     case 'd': debug = 1; break;
     case 'v': verbose = 1; break;
     case 'y': verify = 1; break;
     case 'u': unique = 1; break;
     case 'f': full_payloads = 1; break;
-    case 't':
+    case 's': /* source address */
+      addr_int = strtoll (optarg, &end, 16);
+      src_bits = (end - optarg) * 4;
+      addr_int = addr_int << (64 - src_bits);  /* shift all the way left */
+      writeb64u (src, addr_int);
+      break;
+    case 'a': /* destination address */
+      addr_int = strtoll (optarg, &end, 16);
+      dst_bits = (end - optarg) * 4;
+      addr_int = addr_int << (64 - dst_bits);  /* shift all the way left */
+      writeb64u (dst, addr_int);
+      break;
+    case 't': /* packet type */
       type = atoi (optarg);
       if ((type != 0) && (type <= MAX_PACKET_TYPE)) {  /* valid parameter */
         int mask = 1 << type;
@@ -261,12 +306,7 @@ int main (int argc, char ** argv)
         break;
       }  /* else print usage */
     default:
-      printf ("usage: %s [-v] [-d] [-y] [-u] [-f] [-t type]* [number-of-messages]\n",
-              argv [0]);
-      printf ("       -v: verbose, -d: debug, -y: verify sig, -u: unique only");
-      printf ("       -f: print full message payloads, not abbreviated");
-      printf ("       -t n: only show messages of type n -- may be repeated\n");
-      printf ("       (repeating the SAME type, toggles it)\n");
+      usage (argv [0]);
       exit (1);
     }
   }
@@ -284,7 +324,8 @@ int main (int argc, char ** argv)
   if (argc > optind)
     max = atoi (argv [optind]);
 
-  main_loop (sock, p, debug, max, verify, unique, types, full_payloads);
+  main_loop (sock, p, debug, max, verify, unique, types, full_payloads,
+             src, src_bits, dst, dst_bits);
   return 0;
 }
 
