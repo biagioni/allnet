@@ -681,7 +681,8 @@ static void my_call_aip (char * argv, int alen, char * program,
 #endif /* ALLNET_USE_FORK */
 }
 
-static void my_call_abc (char * argv, int alen, char * program,
+static void my_call_abc (int argc, char ** argv, int alen, int alen_arg,
+                         char * program,
                          int rpipe, int wpipe, int ppipe1, int ppipe2,
                          char * ifopts, pid_t * pid, pid_t parent)
 {
@@ -689,9 +690,11 @@ static void my_call_abc (char * argv, int alen, char * program,
   pid_t child = fork ();
   if (child == 0) {
     debug_process_name = "abc";
-    replace_command (argv, alen, program);
+    replace_command (argv [0], alen, program);
+    if ((argc > 1) && (alen_arg > 0) && (ifopts != NULL))
+      replace_command (argv [1], alen_arg, ifopts);
 #ifdef DEBUG_PRINT
-    printf ("calling %s %d %d %d %d %s\n", program, rpipe, wpipe,
+    printf ("calling %s %s %d %d %d %d %s\n", program, interface, rpipe, wpipe,
                ppipe1, ppipe2, ifopts);
 #endif /* DEBUG_PRINT */
     daemon_name = "abc";
@@ -980,6 +983,7 @@ int astart_main (int argc, char ** argv)
   }
   log_to_output (get_option ('v', &argc, argv));
   int alen = (int)strlen (argv [0]);
+  int alen_arg = ((argc > 1) ? (int)strlen (argv [1]) : 0);
   char * path;
   char * pname;
   find_path (argv [0], &path, &pname);
@@ -1051,7 +1055,8 @@ int astart_main (int argc, char ** argv)
     printf ("calling abc %s, pipes %d %d %d %d\n", interface,
             rpipe, wpipe, ppipe1, ppipe2);
 #endif /* DEBUG_PRINT */
-    my_call_abc (argv [0], alen, "abc", rpipe, wpipe, ppipe1, ppipe2,
+    my_call_abc (argc, argv, alen, alen_arg, "abc",
+                 rpipe, wpipe, ppipe1, ppipe2,
                  interface, abc_pids + i, astart_pid);
   }
   make_root_other (0); /* if we were root, become the caller or allnet/nobody */
