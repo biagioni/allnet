@@ -572,7 +572,7 @@ static void gui_send_result_messages (int code,
     writeb64 (dest + 17, msgs [i].time);
     writeb16 (dest + 25, msgs [i].tz_min);
     writeb64 (dest + 27, msgs [i].rcvd_time);
-    dest [35] = (lr <= msgs [i].rcvd_time);
+    dest [35] = (lr < msgs [i].rcvd_time);
     strcpy (dest + MESSAGE_HEADER_SIZE, msgs [i].message);
 /* if (i + 10 > count) {
 int len = MESSAGE_HEADER_SIZE + strlen (msgs [i].message) + 1;
