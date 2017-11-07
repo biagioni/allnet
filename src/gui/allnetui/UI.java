@@ -68,7 +68,6 @@ class UI extends ApplicationFrame {
 
     
     // application entry point, call with contact name if desired,
-    // otherwise defaults to henry
     public static void main(String... args) {
         if (args != null) {
             for (String arg : args) {
@@ -80,6 +79,8 @@ class UI extends ApplicationFrame {
                 }
             }
         }
+        // use a default font
+        System.setProperty("awt.useSystemAAFontSettings", "on");
         try {
             // NOTE: if we set a L&F, then we won't be able to
             // set button colors easily
