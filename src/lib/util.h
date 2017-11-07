@@ -151,6 +151,7 @@ extern int is_before (struct timeval * t);
 extern time_t compute_next (time_t from, time_t granularity, int immediate_ok);
 
 /* set result to a random time between start + min and start + max */
+/* it's ok for start and result to refer to the same struct */
 extern void set_time_random (const struct timeval * start,
                              unsigned long long min,
                              unsigned long long max, struct timeval * result);
