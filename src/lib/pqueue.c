@@ -32,14 +32,16 @@ void queue_init (int max_bytes)
 /** Remove the last element (if any) from the queue */
 static void remove_tail ()
 {
-  if (tail == NULL)
+  if (tail == NULL)   /* queue is empty */
     return;
   if (current_size < tail->size) {
     printf ("error in remove_tail: current size %d, tail size %d\n",
             current_size, tail->size);
     current_size = 0;
-  } else
+  } else {
     current_size -= tail->size;
+  }
+  struct queue_element * saved_tail = tail;
   if ((head == tail) || (tail->prev == NULL)) {
     tail = NULL;
     head = NULL;
@@ -47,6 +49,7 @@ static void remove_tail ()
     tail->prev->next = NULL;
     tail = tail->prev;
   }
+  free (saved_tail);
 }
 
 /**
@@ -194,7 +197,7 @@ int queue_iter_inc_backoff ()
 {
   if (iter_remove == NULL)
     return 0; /* item doesn't exist */
-  ++iter_remove->backoff;
+  (iter_remove->backoff)++;
   long p = iter_remove->priority;
   if (iter_remove->backoff > ALLNET_PQUEUE_BACKOFF_THRESHOLD (p)) {
     queue_iter_remove ();
