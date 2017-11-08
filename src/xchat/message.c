@@ -241,7 +241,7 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset,
 #endif /* VERIFY_20170616_ACK_FINDER */
         if (! found_ack) {
           save_record (contacts [c], ksets [k], MSG_TYPE_ACK, seq,
-                       0, 0, 0, message_ack, NULL, 0);
+                       0, 0, allnet_time (), message_ack, NULL, 0);
           if (new_ack != NULL)
             *new_ack = 1;
         }

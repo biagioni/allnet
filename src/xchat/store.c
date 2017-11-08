@@ -540,7 +540,7 @@ static int prev_message_in_memory
 #endif /* DEBUG_PRINT */
   if (iter->ack_returned) {  /* msg_type should be MSG_TYPE_SENT */
     set_result (seq, msgs [pos].seq, time, msgs [pos].time,
-                tz_min, msgs [pos].tz_min, rcvd_time, msgs [pos].rcvd_time,
+                tz_min, msgs [pos].tz_min, rcvd_time, msgs [pos].rcvd_ackd_time,
                 message_ack, msgs [pos].ack,
                 message, msgs [pos].message, msize, msgs [pos].msize);
     /* do not change last_message_index, just clear ack_returned */
@@ -565,7 +565,7 @@ static int prev_message_in_memory
     return MSG_TYPE_ACK;
   }   /* else, return this message */
   set_result (seq, msgs [pos].seq, time, msgs [pos].time,
-              tz_min, msgs [pos].tz_min, rcvd_time, msgs [pos].rcvd_time,
+              tz_min, msgs [pos].tz_min, rcvd_time, msgs [pos].rcvd_ackd_time,
               message_ack, msgs [pos].ack,
               message, msgs [pos].message, msize, msgs [pos].msize);
   return msgs [pos].msg_type;
@@ -952,7 +952,7 @@ static void set_missing (struct message_store_info * msgs, int num_used,
 
 /* set the message_has_been_acked of each sent message acked by this message */
 static void ack_one_message (struct message_store_info * msgs, int num_used,
-                             const char * ack)
+                             const char * ack, uint64_t ack_time)
 {
   int i;
   for (i = 0; i < num_used; i++) {
@@ -960,6 +960,7 @@ static void ack_one_message (struct message_store_info * msgs, int num_used,
     if ((msgs [i].msg_type == MSG_TYPE_SENT) &&
         (! msgs [i].message_has_been_acked) &&
         (memcmp (msgs [i].ack, ack, MESSAGE_ID_SIZE) == 0)) {
+      msgs [i].rcvd_ackd_time = ack_time;
       msgs [i].message_has_been_acked = 1;
     }
   }
@@ -984,10 +985,11 @@ static void ack_all_messages (struct message_store_info * msgs, int num_used,
     return;
   }
   char ack [MESSAGE_ID_SIZE];
-  int next = prev_message (&iter, NULL, NULL, NULL, NULL, ack, NULL, NULL);
+  uint64_t ack_time;
+  int next = prev_message (&iter, NULL, &ack_time, NULL, NULL, ack, NULL, NULL);
   while (next != MSG_TYPE_DONE) {
     if (next == MSG_TYPE_ACK)
-      ack_one_message (msgs, num_used, ack);
+      ack_one_message (msgs, num_used, ack, ack_time);
     next = prev_message (&iter, NULL, NULL, NULL, NULL, ack, NULL, NULL);
   }
   free_unallocated_iter (&iter);
@@ -1160,7 +1162,7 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
                           message_cache [index].num_used, contact, k);
     } else if (type == MSG_TYPE_ACK) {
       ack_one_message (message_cache [index].msgs,
-                       message_cache [index].num_used, message_ack);
+                       message_cache [index].num_used, message_ack, rcvd_time);
     }
   }
   /* save the sequence number if it is a new maximum */
@@ -1183,7 +1185,7 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
 int add_message (struct message_store_info ** msgs, int * num_alloc,
                  int * num_used, int position, keyset keyset,
                  int type, uint64_t seq, uint64_t missing,
-                 uint64_t time, int tz_min, uint64_t rcvd_time,
+                 uint64_t time, int tz_min, uint64_t rcvd_ackd_time,
                  int acked, const char * ack,
                  const char * message, int msize)
 {
@@ -1222,7 +1224,7 @@ int add_message (struct message_store_info ** msgs, int * num_alloc,
   p->prev_missing = missing;
   p->time = time;
   p->tz_min = tz_min;
-  p->rcvd_time = rcvd_time;
+  p->rcvd_ackd_time = rcvd_ackd_time;
   p->message_has_been_acked = acked;
   if (ack != NULL)
     memcpy (p->ack, ack, MESSAGE_ID_SIZE);

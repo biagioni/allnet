@@ -65,7 +65,7 @@ struct message_store_info {
                                  * numbers missing before this one */
   uint64_t time; /* sender's idea of when sent */
   int tz_min;    /* sender's idea of timezone, in minutes */
-  uint64_t rcvd_time;
+  uint64_t rcvd_ackd_time;     /* time received or acked, or 0 if neither */
   int message_has_been_acked;  /* for MSG_TYPE_SENT, 1 if acked, 0 otherwise */
   char ack [MESSAGE_ID_SIZE];  /* for acked MSG_TYPE_SENT, the ack */
   const char * message;
