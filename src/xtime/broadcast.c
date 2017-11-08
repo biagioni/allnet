@@ -77,8 +77,8 @@ static void broadcast (int sock, char * data, int dsize, int hops,
             hsize, h2size, dsize, rsa_size, ALLNET_MTU);
     return;
   }
-  struct allnet_app_media_header * amhp =
-    (struct allnet_app_media_header *) (buffer + hsize);
+  char * sp = buffer + hsize;
+  struct allnet_app_media_header * amhp = (struct allnet_app_media_header *) sp;
   writeb32u (amhp->app, 0);
   writeb32u (amhp->media, ALLNET_MEDIA_TEXT_PLAIN);
   char * dp = buffer + hsize + h2size;
@@ -86,7 +86,7 @@ static void broadcast (int sock, char * data, int dsize, int hops,
   int ssize = 0;
   if (rsa_size > 0) {
     char * sig;
-    ssize = allnet_sign (dp, dsize, key, &sig);
+    ssize = allnet_sign (sp, h2size + dsize, key, &sig);
     if (ssize > 0) {
       int size = hsize + dsize + ssize + 2;
       if (size > ALLNET_MTU) {
@@ -104,8 +104,8 @@ static void broadcast (int sock, char * data, int dsize, int hops,
     }
   }
   int send_size = hsize + h2size + dsize + ssize;
-printf ("sending %d = %d + %d + %d + %d bytes\n",
-send_size, hsize, h2size, dsize, ssize);
+/* printf ("sending %d = %d + %d + %d + %d bytes\n",
+send_size, hsize, h2size, dsize, ssize); */
   /* send with relatively low priority */
   send_pipe_message (sock, buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW, log);
 }
