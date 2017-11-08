@@ -105,6 +105,15 @@ static void gui_callback_trace_response (struct allnet_mgmt_trace_reply * trp,
 #undef RECEIVED_TRACE_HEADER_SIZE
 }
 
+/* returns 1 if the contact is visible, 0 otherwise.
+ * needed because is_visible only works for non-broadcast contacts */
+static int local_is_visible (const char * contact, int broadcast)
+{
+  if (broadcast)
+    return (get_other_bc_key (contact) != NULL);
+  return is_visible (contact);
+}
+
 void gui_socket_main_loop (int gui_sock, int allnet_sock, pd p)
 {
   int rcvd = 0;
@@ -134,7 +143,9 @@ if (mlen != 0) printf ("handle_packet returned %d\n", mlen);
 #endif /* DEBUG_PRINT */
     if ((mlen > 0) && (verified) && (! duplicate)) {
       if (! duplicate) {
-        if (is_visible (peer))
+        if (broadcast) /* broadcast messages don't have time in their header */
+          mtime = allnet_time ();
+        if (local_is_visible (peer, broadcast))
           gui_callback_message_received (peer, message, desc, seq,
                                          mtime, broadcast, gui_sock);
         char ** groups = NULL;
