@@ -2650,7 +2650,7 @@ static int parse_position (char * p, int * result)
 }
 
 /* returns 1 for a successful parse, 0 otherwise */
-int parse_ahra (char * ahra,
+int parse_ahra (const char * ahra,
                 char ** phrase, int ** positions, int * num_positions,
                 char ** language, int * matching_bits, char ** reason)
 {
@@ -2696,13 +2696,13 @@ int parse_ahra (char * ahra,
         q += parse_position (q, (*positions) + i);
     }
   }
-  if (*p != ',')
+  if (*p != ',')  /* no language or bits specified */
     return 1;
   p++;
   char * next_comma = strchr (p, ',');
-  if (next_comma == NULL) {
+  if (next_comma == NULL) {    /* no bits or no language specified */
     assign_lang_bits (p, (int)strlen (p), language, matching_bits);
-  } else {
+  } else {                     /* both bits and language are specified */
     assign_lang_bits (p, (int)(next_comma - p), language, matching_bits);
     p = next_comma + 1;
     assign_lang_bits (p, (int)strlen (p), language, matching_bits);
@@ -2932,8 +2932,8 @@ int get_temporary_key (char ** pubkey, allnet_rsa_prvkey * prvkey)
 /* verifies that a key obtained by a key exchange matches the address */
 /* the default lang and bits are used if they are not part of the address */
 /* if save_if_correct != 0, also saves it to a file using the given address */
-unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
-                            char * default_lang, int bitstring_bits,
+unsigned int verify_bc_key (const char * ahra, const char * key, int key_bytes,
+                            const char * default_lang, int bitstring_bits,
                             int save_if_correct)
 {
   if (((key != NULL) && (key_bytes > 0)) &&
@@ -2954,7 +2954,7 @@ unsigned int verify_bc_key (char * ahra, char * key, int key_bytes,
   int num_positions;
   char * reason;
   if (! parse_ahra (ahra, &phrase, &positions, &num_positions,
-                    &default_lang, &bitstring_bits, &reason)) {
+                    NULL, &bitstring_bits, &reason)) {
     printf ("unable to parse allnet human-readable address '%s', %s\n",
             ahra, reason);
     allnet_rsa_free_pubkey (rsa);
@@ -3041,7 +3041,7 @@ unsigned int get_other_keys (struct bc_key_info ** keys)
   return num_other_bc_keys;
 }
 
-static struct bc_key_info * find_bc_key (char * address,
+static struct bc_key_info * find_bc_key (const char * address,
                                          struct bc_key_info * keys, int nkeys)
 {
   char * outer_index = strchr (address, '@');
@@ -3082,13 +3082,13 @@ static struct bc_key_info * find_bc_key (char * address,
 }
 
 /* return the specified key (statically allocated, do not modify), or NULL */
-struct bc_key_info * get_own_bc_key (char * ahra)
+struct bc_key_info * get_own_bc_key (const char * ahra)
 {
   init_bc_keys ();
   return find_bc_key (ahra, own_bc_keys, num_own_bc_keys);
 }
 
-struct bc_key_info * get_other_bc_key (char * ahra)
+struct bc_key_info * get_other_bc_key (const char * ahra)
 {
   init_bc_keys ();
   return find_bc_key (ahra, other_bc_keys, num_other_bc_keys);

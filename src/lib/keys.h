@@ -267,8 +267,9 @@ extern int get_temporary_key (char ** pubkey, allnet_rsa_prvkey * prvkey);
 /* verifies that a key obtained by a key exchange matches the ahra */
 /* the default lang and bits are used if they are not part of the address */
 /* if save_is_correct != 0, also saves it to a file using the given address */
-extern unsigned int verify_bc_key (char * ahra, char * key, int key_bits,
-                                   char * default_lang, int default_bits,
+extern unsigned int verify_bc_key (const char * ahra,
+                                   const char * key, int key_bits,
+                                   const char * default_lang, int default_bits,
                                    int save_if_correct);
 
 struct bc_key_info {
@@ -293,11 +294,11 @@ extern unsigned int get_own_keys (struct bc_key_info ** key);
 extern unsigned int get_other_keys (struct bc_key_info ** key);
 
 /* return the specified key (statically allocated, do not modify), or NULL */
-extern struct bc_key_info * get_own_bc_key (char * ahra);
-extern struct bc_key_info * get_other_bc_key (char * ahra);
+extern struct bc_key_info * get_own_bc_key (const char * ahra);
+extern struct bc_key_info * get_other_bc_key (const char * ahra);
 
 /* returns 1 for a successful parse, 0 otherwise */
-extern int parse_ahra (char * ahra,
+extern int parse_ahra (const char * ahra,
                        char ** phrase, int ** positions, int * num_positions,
                        char ** language, int * matching_bits, char ** reason);
 
