@@ -80,11 +80,11 @@ static int handle_packet (char * message, int msize,
   int h2size = sizeof (struct allnet_app_media_header);
   if (hp->message_type != ALLNET_TYPE_CLEAR)
     return 0;
-  if (msize <= hsize + h2size)  /* nothing */
+  if (msize <= hsize + h2size + KEY_RANDOM_PAD_SIZE)  /* nothing */
     return 0;
   if (memcmp (address, hp->destination, alen) != 0)  /* not for me */
     return 0;
-  int ksize = msize - (hsize + h2size);
+  int ksize = msize - (hsize + h2size) - KEY_RANDOM_PAD_SIZE;
 
   char * amp = message + hsize;
   struct allnet_app_media_header * amhp =
