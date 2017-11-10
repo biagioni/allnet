@@ -9,6 +9,7 @@ libincludes = \
 	lib/packet.h \
 	lib/pipemsg.h \
 	lib/priority.h \
+	lib/routing.h \
 	lib/sha.h \
 	lib/table.h \
 	lib/util.h
@@ -36,7 +37,6 @@ __ALLNET_BINDIR__allnet_SOURCES = astart.c \
 				  listen.c \
 				  aip.c \
 				  adht.c \
-				  routing.c \
 				  acache.c \
 				  hash.c \
 				  record.c \

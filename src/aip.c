@@ -35,7 +35,7 @@
 
 #include "lib/packet.h"
 #include "listen.h"
-#include "routing.h"
+#include "lib/routing.h"
 #include "lib/ai.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"

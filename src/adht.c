@@ -50,7 +50,7 @@
 #include "lib/util.h"
 #include "lib/pipemsg.h"
 #include "lib/priority.h"
-#include "routing.h"
+#include "lib/routing.h"
 
 #ifndef DEBUG_SPEED
 

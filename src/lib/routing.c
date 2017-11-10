@@ -13,12 +13,12 @@
 #include <net/if.h>
 #include <arpa/inet.h>
 
-#include "lib/packet.h"
-#include "lib/mgmt.h"
-#include "lib/util.h"
-#include "lib/ai.h"
-#include "lib/allnet_log.h"
-#include "lib/configfiles.h"
+#include "packet.h"
+#include "mgmt.h"
+#include "util.h"
+#include "ai.h"
+#include "allnet_log.h"
+#include "configfiles.h"
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 

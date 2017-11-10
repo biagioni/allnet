@@ -15,6 +15,7 @@ libincludes = \
 	pipemsg.h \
 	pqueue.h \
 	priority.h \
+	routing.h \
 	sha.h \
 	stream.h \
 	table.h \
@@ -38,6 +39,7 @@ libsrc = \
 	pipemsg.c \
 	pqueue.c \
 	priority.c \
+	routing.c \
 	sha.c \
 	stream.c \
 	table.c \
