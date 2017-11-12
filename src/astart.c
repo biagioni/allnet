@@ -135,9 +135,9 @@ static void * generic_thread (void * arg)
             ta->rpipe, ta->wpipe, ta->extra);
     aip_main (ta->rpipe, ta->wpipe, ta->extra);
   } else if (ta->call_type == CALL_ABC) {
-    printf ("calling abc_main (%d, %d, %s)\n", ta->rpipe, ta->wpipe,
-            ta->ifopts);
-    abc_main (ta->rpipe, ta->wpipe, ta->ifopts);
+    printf ("threaded environment, not calling abc_main (%d, %d, %s)\n",
+            ta->rpipe, ta->wpipe, ta->ifopts);
+    /* abc_main (ta->rpipe, ta->wpipe, ta->ifopts); */
   } else if (ta->call_type == CALL_AD) {
     char buf [1000];
     int off = snprintf (buf, sizeof (buf), "calling ad_main (%d, %d): ",
