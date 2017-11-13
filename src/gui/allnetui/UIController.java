@@ -935,7 +935,7 @@ System.out.println("got secret " + secret + " for " + contactName);
             = (ConversationPanel) myTabbedPane.getTabContent(contactName);
         if (cp != null) {
             if (addedAtEnd) {
-                if (msg.isReceivedMessage()) {
+                if (msg.isReceivedMessage() && (! msg.isBroadcast())) {
                     long lastReceived = cp.getLastReceived();
                     if ((lastReceived >= 0)
                         && (msg.sequence() > lastReceived + 1)) {
@@ -992,7 +992,7 @@ System.out.println("got secret " + secret + " for " + contactName);
         long lastReceived = -1;  // needed to mark missing messages
         for (int i = startIdx; i < msgs.size(); i++) {
             Message savedMsg = msgs.get(i);
-            if (savedMsg.isReceivedMessage()) {
+            if (savedMsg.isReceivedMessage() && (! savedMsg.isBroadcast())) {
                 if ((lastReceived >= 0)
                     && (savedMsg.sequence() > lastReceived + 1)) {
                     cp.addMissing(savedMsg.sequence() - (lastReceived + 1));
