@@ -63,18 +63,9 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         textPane.setComponentPopupMenu(popup);
     }
 
-    private static boolean printedWidth = false;
     private JTextPane makeTextPane(Color color, boolean leftJustified,
         int containerWidth) {
         JTextPane pane = null;
-        // for some reason, the mac returns a container width of 0
-        if (containerWidth <= 20) {
-            if (! printedWidth) {
-                System.out.println ("width " + containerWidth + ", using 435");
-                printedWidth = true;
-            }
-            containerWidth = 453;   // the default
-        }
         int width = containerWidth;
         do {
             pane = makeTextPaneQuick(color, leftJustified, width);
