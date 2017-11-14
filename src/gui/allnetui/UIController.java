@@ -943,7 +943,7 @@ System.out.println("got secret " + secret + " for " + contactName);
                     }
                     cp.setLastReceived(msg.sequence());
                 }
-                cp.addMsg(formatMessage(msg), msg);
+                cp.addMsg(formatMessage(msg), msg, myTabbedPane);
                 cp.validateToBottom();
             }
             else {
@@ -999,7 +999,7 @@ System.out.println("got secret " + secret + " for " + contactName);
                 }
                 lastReceived = savedMsg.sequence();
             }
-            cp.addMsg(formatMessage(savedMsg), savedMsg);
+            cp.addMsg(formatMessage(savedMsg), savedMsg, myTabbedPane);
         }
         cp.setLastReceived(lastReceived);
         if (scrollToBottom) {
@@ -1117,7 +1117,7 @@ System.out.println("got secret " + secret + " for " + contactName);
         ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(msg.to);
         if (cp != null) {
             // add the message to it
-            cp.addMsg(formatMessage(msg), msg);
+            cp.addMsg(formatMessage(msg), msg, myTabbedPane);
             cp.validateToBottom();
             // mark the message as read, even though this is not checked at present
             msg.setRead();

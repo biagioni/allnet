@@ -351,7 +351,7 @@ class ConversationPanel extends JPanel implements ComponentListener {
         addBubble(bubble, true);
     }
 
-    public void addMsg(String text, Message msg) {
+    public void addMsg(String text, Message msg, JComponent container) {
         boolean isReceived = msg.to.equals(Message.SELF);
         // boolean broadcast = msg.isBroadcast();
         boolean acked = msg.acked();
@@ -362,7 +362,7 @@ class ConversationPanel extends JPanel implements ComponentListener {
         // String[] lines = text.split("\n");
         Color bg = getMsgColor(msg, isReceived);
         MessageBubble<Message> bubble
-            = new MessageBubble<>(msg, isReceived, bg, text, messagePanel);
+            = new MessageBubble<>(msg, isReceived, bg, text, container);
         addBubble(bubble, true);
         // update ack tracking
         if (!acked) {
