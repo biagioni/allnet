@@ -27,6 +27,7 @@
 #include "lib/sha.h"
 #include "lib/mapchar.h"
 #include "lib/dcache.h"
+#include "lib/routing.h"
 
 /* #define DEBUG_PRINT */
 #define HAVE_REQUEST_THREAD   /* run a thread to request data */
@@ -140,6 +141,17 @@ bitmap, power_two, selector, nbits, power_two, contacts [icontact], keysets [ike
   }
   if ((ncontacts > 0) && (contacts != NULL))
     free (contacts);
+  if (selector == FILL_LOCAL_ADDRESS) {  /* add my local trace address */
+    unsigned char addr [ADDRESS_SIZE];
+    routing_my_address (addr);
+    /* repeating some of the code above */
+    uint32_t bits = (((uint32_t)readb32u (addr))) >> (32 - power_two);
+    int mask = (1 << (bits % 8));
+    if ((bitmap [bits / 8] & mask) == 0) {
+      bitmap [bits / 8] |= mask;
+      res++;  /* the point of the if is to increment this correctly */
+    }
+  }
   return res;
 }
 
