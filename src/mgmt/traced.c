@@ -177,7 +177,7 @@ static int make_trace_reply (struct allnet_header * inhp, unsigned int insize,
     printf ("to do: encryption of trace replies\n");
     char * key = ((char *) (intrp->trace)) +
                  (sizeof (struct allnet_mgmt_trace_entry) * intrp->num_entries);
-    print_buffer (key, ksize, "key", 15, 1);
+    print_buffer (key, ksize, "traced key", 15, 1);
   }
 #ifdef LOG_PACKETS
   packet_to_string (*result, total, "my reply: ", 1, alog->b, alog->s);
