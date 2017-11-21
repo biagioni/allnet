@@ -92,7 +92,7 @@ static int handle_packet (char * message, int msize,
   if (readb32u (amhp->media) != ALLNET_MEDIA_PUBLIC_KEY)
     return 0;
   char * key = amp + h2size;
-  print_buffer (key, ksize, "key", 10, 1);
+  print_buffer (key, ksize, "subscribe received key", 10, 1);
 
   int correct = verify_bc_key (ahra, key, ksize, "en", 16, 1);
   if (correct)
