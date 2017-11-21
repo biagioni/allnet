@@ -58,7 +58,7 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   memcpy (dp, data, dlen);
   if (allocated)
     free (data);
-  print_buffer (dp, dlen, "key", 10, 1);
+  print_buffer (dp, dlen, "keyd send_key", 12, 1);
   char * r = dp + klen;
   random_bytes (r, KEY_RANDOM_PAD_SIZE);
 
@@ -133,8 +133,9 @@ static void handle_packet (int sock, char * message, int msize)
     log_print (alog);
     if (matching_bits >= hp->dst_nbits) {  /* send the key */
 #ifdef DEBUG_PRINT
-      printf ("sending key %d, kp %p, %zd bytes to %x/%d\n", i, kp, ksize,
-              hp->source [0] & 0xff, hp->src_nbits);
+      printf ("keyd sending key %d (%s), kp %p, %zd bytes to %02x.%02x./%d\n",
+              i, keys [i].identifier, kp, ksize,
+              hp->source [0] & 0xff, hp->source [1] & 0xff, hp->src_nbits);
 #endif /* DEBUG_PRINT */
       send_key (sock, keys + i, kp, (int)ksize,
                 hp->source, hp->src_nbits, hp->hops + 4);
