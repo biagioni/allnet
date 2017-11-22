@@ -8,7 +8,7 @@
 .c    list all contacts, .c n  start sending to contact n\n\
 .q    quit \n\
 .h    print this help message \n\
-.l n  print the last n messages (n defaults to 10)\n\
+.l n  print the last n messages (default n=10, .ll long)\n\
 .t    trace (hop count .t 1, address .t 1 f0)\n\
 .k    key exchanges (type .k for more information) \n\
 "
@@ -313,8 +313,21 @@ static char * most_recent_contact ()
   return result;
 }
 
+static void make_date (char * buffer, size_t size, const char * msg,
+                       uint64_t time)
+{
+  char localtime [ALLNET_TIME_STRING_SIZE];
+  allnet_localtime_string (time, localtime);
+  snprintf (buffer, size, "%s %s", msg, localtime);
+}
+
 static void print_n_messages (const char * peer, const char * arg, int def)
 { 
+  int print_long = 0;
+  if ((arg != NULL) && (strlen (arg) > 0) && (arg [0] == 'l')) {  /* long */
+    print_long = 1;
+    arg++;
+  }
   int max_messages = def;
   if ((arg != NULL) && (strlen (arg) > 0)) {  /* number of messages to print */
     char * ends;
@@ -344,19 +357,60 @@ static void print_n_messages (const char * peer, const char * arg, int def)
   size_t off = 0;
   int i;
   for (i = first_message - 1; i >= last_message; i--) {
+    char print_date [1000];
+    char print_rcvd_ackd [1000];
+    print_date [0] = '\0';          /* off by default */
+    print_rcvd_ackd [0] = '\0';     /* off by default */
+    if (print_long)
+      make_date (print_date, sizeof (print_date), "sent", msgs [i].time);
     if (msgs [i].msg_type == MSG_TYPE_SENT) {
+      if (msgs [i].message_has_been_acked) {
+        snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd), "* ");
+        if (print_long) {
+          char print_buf [sizeof (print_date)];
+          strncpy (print_buf, print_date, sizeof (print_date));
+          /* note: for now (2017/11/22) rcvd_ackd_time should
+             be msgs [i].time (or 0) for any sent message.
+             The code in the "if" should work correctly once
+             ack times are supported, so it may be a good idea
+             to keep it (but remove this comment ;) */
+          if (msgs [i].rcvd_ackd_time > msgs [i].time)
+            snprintf (print_date, sizeof (print_date),
+                      "%s, acked %" PRIu64 " second%s later: ", print_buf,
+                      msgs [i].rcvd_ackd_time - msgs [i].time,
+                      (msgs [i].rcvd_ackd_time > msgs [i].time + 1) ? "s" : "");
+          else
+            snprintf (print_date, sizeof (print_date), "%s: ", print_buf);
+        }
+      } else {   /* not acked, add : to the date */
+        snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd), "%s", print_date);
+        if (print_long)
+          snprintf (print_date, sizeof (print_date), ": ");
+        else
+          print_date [0] = '\0';
+      }
       off += snprintf (string + off, minz (total_size, off),
-                       "s %" PRIu64 " %s %s\n", msgs [i].seq,
-                       (msgs [i].message_has_been_acked ? "*" : " "),
-                       msgs [i].message);
+                       "s %" PRIu64 " %s%s%s\n", msgs [i].seq, print_rcvd_ackd,
+                       print_date, msgs [i].message);
     } else {   /* received */
       if (msgs [i].prev_missing > 0)
         off += snprintf (string + off, minz (total_size, off),
                          "(%" PRIu64 " messages missing)\n",
                          msgs [i].prev_missing);
+      if ((print_long) && (msgs [i].rcvd_ackd_time > msgs [i].time)) {
+        if (msgs [i].rcvd_ackd_time > msgs [i].time + 1)
+          snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd),
+                    ", received %" PRIu64 " seconds later: ",
+                     msgs [i].rcvd_ackd_time - msgs [i].time);
+        else
+          snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd),
+                    ", received 1 second later: ");
+      } else if (print_long) {
+        snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd), ": ");
+      }
       off += snprintf (string + off, minz (total_size, off),
-                       "r %" PRIu64 " %s\n", msgs [i].seq,
-                       msgs [i].message);
+                       "r %" PRIu64 " %s%s%s\n", msgs [i].seq,
+                       print_date, print_rcvd_ackd, msgs [i].message);
     }
   }
   free_all_messages (msgs, num_used);
