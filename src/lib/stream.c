@@ -224,7 +224,7 @@ int main (int argc, char ** argv)
 
   allnet_stream_init (&sender, key, 1, secret, 1, COUNTER_SIZE, HASH_SIZE);
   allnet_stream_init (&receiver, key, 0, secret, 0, COUNTER_SIZE, HASH_SIZE);
-print_buffer (key, sizeof (key), "key", 35, 1);
+print_buffer (key, sizeof (key), "stream unit test key", 35, 1);
 print_buffer (secret, sizeof (secret), "secret", 35, 1);
 
 #define DATA_SIZE	25
