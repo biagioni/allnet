@@ -303,7 +303,7 @@ static int read_symmetric_state (char * fname,
                      &(state->block_offset));
 #ifdef DEBUG_PRINT
   printf ("read state: ");
-  print_buffer (state->key, ALLNET_STREAM_KEY_SIZE, "key", 32, 0);
+  print_buffer (state->key, ALLNET_STREAM_KEY_SIZE, "symmetric key", 32, 0);
   print_buffer (state->secret, ALLNET_STREAM_SECRET_SIZE, ", secret", 64, 0);
   printf (", %d %d %" PRIu64 " %d\n", state->counter_size, state->hash_size,
           state->counter, state->block_offset);
