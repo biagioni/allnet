@@ -85,8 +85,11 @@ static unsigned int used_space (struct allnet_queue * queue)
 {
   unsigned int i;
   unsigned int result = 0;
-  for (i = 0; i < queue->max_packets; i++)
-    result += queue->packets [i].length;
+  int index = queue->first;
+  for (i = 0; i < queue->count; i++) {
+    result += queue->packets [index].length;
+    index = (index + 1) % queue->max_packets;
+  }
   return result;
 }
 
@@ -142,7 +145,7 @@ int allnet_enqueue (struct allnet_queue * queue,
             queue->valid, plen, queue->max_bytes);
   x = x * x;
   if ((! queue->valid) || (plen >= queue->max_bytes))
-    x = 2 / x;
+    x = 2 / x;  /* crash, and hopefully dump core */
   if ((! queue->valid) || (plen >= queue->max_bytes))
     return 0;
   pthread_mutex_lock (&(queue->mutex));
@@ -152,7 +155,7 @@ int allnet_enqueue (struct allnet_queue * queue,
     unsigned char * start = storage + free->start_offset;
     if (free->start_offset + plen <= queue->max_bytes) {
       memcpy (start, packet, plen);
-    } else {
+    } else {   /* copy to the start of the storage */
       int initial = queue->max_bytes - free->start_offset;
       memcpy (start, packet, initial);
       memcpy (storage, packet + initial, plen - initial);
