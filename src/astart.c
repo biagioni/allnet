@@ -176,6 +176,22 @@ void stop_allnet_threads ()
   }
 }
 
+#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+static int multipeer_read_queue_index = 0;
+static int multipeer_write_queue_index = 0;
+static int multipeer_queue_indices_set = 0;
+
+/* called by iOS code to find out which socket to read from.  Waits until
+ * the value is available */
+void multipeer_queue_indices (int * rpipe, int * wpipe) {
+  while (! multipeer_queue_indices_set) {
+    printf ("multipeer_read_socket_value waiting for initialization\n");
+    sleep (1);
+  }
+  *rpipe = multipeer_read_queue_index;
+  *wpipe = multipeer_write_queue_index;
+}
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 #endif /* ALLNET_USE_FORK */
 
@@ -854,6 +870,7 @@ static void debug_print_flags (char * name, int flags)
 }
 #endif /* DEBUG_PRINT */
 
+#ifdef ALLNET_USE_FORK
 static char * interface_extra (struct interface_addr * interface)
 {
   if (interface == NULL)  /* can happen */
@@ -923,6 +940,7 @@ static int default_interfaces (char * * * interfaces_p)
   }
   return result;
 }
+#endif /* ALLNET_USE_FORK */
 
 static void find_path (char * arg, char ** path, char ** program)
 {
@@ -1007,7 +1025,7 @@ int astart_main (int argc, char ** argv)
 #define NUM_INTERFACE_PIPES	2 
   char ** interfaces = NULL;
   int num_interfaces = argc - 1;
-#ifndef ANDROID  /* for now, don't run abc on android */
+#ifdef ALLNET_USE_FORK  /* for now, don't run abc on android and ios */
   if ((argc > 1) && (strncmp (argv [1], "def", 3) == 0))
     num_interfaces = default_interfaces (&interfaces);
   else if (argc == 1)
@@ -1019,10 +1037,15 @@ int astart_main (int argc, char ** argv)
     for (i = 0; i < (argc - 1); i++)
       interfaces [i] = strcpy_malloc (argv [i + 1], "specific interface");
   }
-#else /* ANDROID */
+#else /* ! ALLNET_USE_FORK */
   num_interfaces = 0;
-#endif /* ANDROID */
+#endif /* ! ALLNET_USE_FORK */
   int num_pipes = NUM_FIXED_PIPES + NUM_INTERFACE_PIPES * num_interfaces;
+#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+/* ad needs one extra pair of pipes for the multipeer thread */
+  int multipeer_pipe_offset = num_pipes / 2;
+  num_pipes += 2;
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
   int ad_pipes = num_pipes;
 #ifndef ALLNET_USE_FORK  /* create queues for 4 of the 5 daemons and xchat */
 #define NUM_DAEMON_PIPES    4
@@ -1156,6 +1179,14 @@ int astart_main (int argc, char ** argv)
           alocal_rpipes [6], alocal_wpipes [7]);
   my_call_thread (argv [0], alen, "keyd", keyd_thread, pid_fd, astart_pid,
                   alocal_rpipes [6], alocal_wpipes [7]);
+#ifdef __IPHONE_OS_VERSION_MIN_REQUIRED
+  multipeer_read_queue_index = rpipes [multipeer_pipe_offset];
+  multipeer_write_queue_index = wpipes [multipeer_pipe_offset];
+printf ("multipeer pipes are %d, %d, multipeer pipe offset is %d\n",
+  multipeer_read_queue_index, multipeer_write_queue_index,
+  multipeer_pipe_offset);
+  multipeer_queue_indices_set = 1;
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 #endif /* ALLNET_USE_FORK */
   my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd, astart_pid);
 
