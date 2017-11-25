@@ -18,6 +18,9 @@
  * indicates the sender address(es) I am most interested in receiving from.
  * senders may use these to favor some among otherwise equal-priority packets.
  *
+ * a beacon may also be immediately followed by a data request packet,
+ * with more specific information about what is desired
+ *
  * a beacon carries, in big-endian order, the length of time the receiver
  * is planning to stay awake.  The time is in nanoseconds (10^-9s).
  * A receiver who is listening continuously may use a value of 0 for the time.
