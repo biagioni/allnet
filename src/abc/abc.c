@@ -154,6 +154,10 @@ static const char * iface_type_strings[] = {
 };
 static abc_iface * iface = NULL; /* used interface ptr */
 
+/* send a data request after a beacon, if one has been sent before */
+static char latest_data_request [ALLNET_MTU];
+static int latest_data_request_size = 0;  /* none yet */
+
 static struct allnet_log * alog = NULL;
 
 static void term_handler (int sig) {
@@ -267,6 +271,7 @@ static void send_beacon (int awake_ms)
   memcpy (mbp->receiver_nonce, my_beacon_rnonce, NONCE_SIZE);
   writeb64u (mbp->awake_time,
              ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
+  int success = 1;
   if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT,
               BC_ADDR (iface), iface->sockaddr_size) < size) {
     int e = errno;
@@ -276,6 +281,14 @@ static void send_beacon (int awake_ms)
       perror ("beacon sendto (2nd try)");
       if (errno != e)
         printf ("...different error on 2nd try, first was %d\n", e);
+      success = 0;
+    }
+  }
+  if (success && (latest_data_request_size > 0)) {
+    if (sendto (iface->iface_sockfd, latest_data_request,
+                latest_data_request_size, MSG_DONTWAIT,
+                BC_ADDR (iface), iface->sockaddr_size) < size) {
+      perror ("data request sendto");
     }
   }
 }
@@ -339,7 +352,9 @@ static void unmanaged_send_pending (int new_only)
   static int printed_sendto_error = 0;
   while (queue_iter_next (&message, &nsize, &priority, &backoff)) {
     /* new (unsent) messages have a backoff value of 0 */
-    if ((new_only && backoff) || (!new_only && cycle % (1 << backoff) != 0))
+    if ((new_only && backoff) ||
+        /* messages sent before are sent once every 2^backoff cycles */
+        ((! new_only) && (cycle % (1 << backoff) != 0)))
       continue;
     if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
                 BC_ADDR (iface), iface->sockaddr_size) < nsize) {
@@ -427,7 +442,7 @@ static void send_pending (enum abc_send_type type, int size, char * message)
 }
 
 /** Returns 1 if message is a beacon (not a regular packet), 0 otherwise.
- * Does no work, except identifying packet type, when quiet is set.
+ * When quiet is nonzero, identifies the packet type and does no other work.
  *
  * Sets *send_type to ABC_SEND_TYPE_REPLY, *send_size to the message size, and
  * send_message (which must have size ALLNET_MTU) to the message to send, if
@@ -462,12 +477,14 @@ static int handle_beacon (const char * message, unsigned int msize,
   case ALLNET_MGMT_BEACON:
   {
     /* TODO: only reply if we have something to send */
-    if (beacon_state == BEACON_REPLY_SENT /* && is_before (*beacon_deadline) // is implied */)
+    if (beacon_state == BEACON_REPLY_SENT)
+         /* && is_before (*beacon_deadline)  is implied */
       return 1;
     /* only reply if we have something to send */
     if (queue_total_bytes () == 0)
       return 1;
-    const struct allnet_mgmt_beacon * mbp = (const struct allnet_mgmt_beacon *) beaconp;
+    const struct allnet_mgmt_beacon * mbp =
+        (const struct allnet_mgmt_beacon *) beaconp;
 
     /* compute when to send the reply */
     struct timeval now;
@@ -476,7 +493,7 @@ static int handle_beacon (const char * message, unsigned int msize,
     unsigned long long quiet_end_us = delta_us (quiet_end, &now);
     long long int diff_us = awake_us - quiet_end_us;
     if (diff_us <= 0 && awake_us != 0) {
-      /* reply instantly and violate silence period */
+      /* reply instantly, ignoring silence period */
       diff_us = 0;
       *quiet_end = now;
     } else if (diff_us < 100000 && awake_us != 0) {
@@ -487,8 +504,9 @@ static int handle_beacon (const char * message, unsigned int msize,
       diff_us = 25000 + (random () % 24000);
     }
 
-    if (diff_us)
-      add_us (quiet_end, random () % diff_us);
+    if (diff_us > 0)
+      set_time_random (quiet_end, quiet_end_us, diff_us, quiet_end);
+      /* add_us (quiet_end, random () % diff_us); */
 
     /* create the reply */
     memcpy (other_beacon_rnonce, mbp->receiver_nonce, NONCE_SIZE);
@@ -591,6 +609,22 @@ static void remove_acked (const char * ack)
   }
 }
 
+/* return 1 if it is our own data request message we want to forward */
+static int save_data_request (const char * message, int msize)
+{
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if ((msize >= ALLNET_HEADER_SIZE) &&             /* sanity check */
+      (msize <= sizeof (latest_data_request)) &&   /* sanity check */
+      (hp->hops == 0) &&                           /* locally generated */
+      (hp->message_type == ALLNET_TYPE_DATA_REQ)) {  /* is a data request */
+    hp->max_hops = 1;                              /* do not forward */
+    memcpy (latest_data_request, message, msize);
+    latest_data_request_size = msize;
+    return 1;
+  }
+  return 0;
+}
+
 static void remove_acks (const char * message, const char * end)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -604,6 +638,9 @@ static void remove_acks (const char * message, const char * end)
 
 static void handle_ad_message (const char * message, int msize, int priority)
 {
+  if (save_data_request (message, msize)) {
+    return;   /* don't add to the queue */
+  }
   if (! queue_add (message, msize, priority)) {
 #ifdef LOG_PACKETS
     snprintf (alog->b, alog->s,
