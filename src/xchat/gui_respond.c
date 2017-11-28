@@ -636,6 +636,27 @@ static void gui_get_messages (char * message, int64_t length, int gui_sock)
   gui_send_buffer (gui_sock, reply_header, sizeof (reply_header));
 }
 
+struct send_args_struct {
+  int sock;
+  char * contact;
+  char * message;
+  uint64_t expected_seq;
+};
+
+static void * send_message_thread (void * arg) {
+  struct send_args_struct * a = (struct send_args_struct *) arg;
+  uint64_t result = send_data_message (a->sock, a->contact,
+                                       a->message, strlen (a->message));
+  if (result != a->expected_seq)
+    printf ("error: sent message '%s' to '%s' with sequence %" PRIu64
+            ", expected %" PRIu64 "\n", a->message, a->contact, result,
+            a->expected_seq);
+  free (a->contact);
+  free (a->message);
+  free (a);
+  return NULL;
+}
+
 static void gui_send_message (char * message, int64_t length, int broadcast,
                              int gui_sock, int allnet_sock)
 {
@@ -654,9 +675,17 @@ static void gui_send_message (char * message, int64_t length, int broadcast,
         if (broadcast) {
           printf ("sending broadcast messages not implemented yet\n");
         } else {
-          writeb64 (reply_header + 1, 
-                    send_data_message (allnet_sock, contact,
-                                       to_send, strlen (to_send)));
+          /* sending takes too long, so do it in a separate thread */
+          uint64_t expected = highest_seq_any_key (contact, MSG_TYPE_SENT) + 1;
+          size_t size = sizeof (struct send_args_struct);
+          struct send_args_struct * a = malloc_or_fail (size, "gui_send");
+          a->sock = allnet_sock;
+          a->contact = strcpy_malloc (contact, "gui_send_message contact");
+          a->message = strcpy_malloc (to_send, "gui_send_message message");
+          a->expected_seq = expected;
+          pthread_t t;
+          pthread_create (&t, NULL, send_message_thread, a);
+          writeb64 (reply_header + 1, expected);
         }
       }
     }
