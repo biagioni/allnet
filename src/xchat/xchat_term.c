@@ -343,6 +343,7 @@ static void print_n_messages (const char * peer, const char * arg, int def)
   list_all_messages (peer, &msgs, &num_alloc, &num_used);
   if (num_used <= 0) {
     free_all_messages (msgs, num_used);
+    print_to_output ("");
     return;
   }
   /* indices into the msgs data structure of the first (earliest in time)
