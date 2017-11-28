@@ -1455,6 +1455,8 @@ uint64_t send_data_message (int sock, const char * peer,
     return 0;
   }
 
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock (&mutex);    /* only one send at a time, please */
   int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
   char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
   memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
@@ -1473,6 +1475,7 @@ uint64_t send_data_message (int sock, const char * peer,
   printf ("sent seq %ju:\n", (uintmax_t)seq);
   print_buffer (data_with_cd, dsize, "sending", 64, 1);
 #endif /* DEBUG_PRINT */
+  pthread_mutex_unlock (&mutex);  /* next, please */
   return seq;
 }
 
