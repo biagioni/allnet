@@ -923,6 +923,25 @@ uint64_t highest_seq_value (const char * contact, keyset k, int type_wanted)
   return max_seq;
 }
 
+/* returns the sequence number, or 0 if none are available */
+/* type_wanted must be MSG_TYPE_ANY, MSG_TYPE_RCVD, or MSG_TYPE_SENT,
+ * otherwise returns 0 */
+uint64_t highest_seq_any_key (const char * contact, int type_wanted)
+{
+  uint64_t result = 0;
+  int i;
+  keyset * ks = NULL;
+  int nks = all_keys (contact, &ks);
+  for (i = 0; i < nks; i++) {
+    uint64_t found = highest_seq_value (contact, ks [i], type_wanted);
+    if (found > result)
+      result = found;
+  }
+  if (ks != NULL)
+    free (ks);
+  return result;
+}
+
 /* fix the prev_missing of each received message.  quadratic loop */
 static void set_missing (struct message_store_info * msgs, int num_used,
                          keyset k)

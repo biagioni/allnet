@@ -36,6 +36,11 @@ extern void free_iter (struct msg_iter * iter);
 extern uint64_t highest_seq_value (const char * contact, keyset k,
                                    int type_wanted);
 
+/* returns the sequence number, or 0 if none are available */
+/* type_wanted must be MSG_TYPE_ANY, MSG_TYPE_RCVD, or MSG_TYPE_SENT,
+ * otherwise returns 0 */
+extern uint64_t highest_seq_any_key (const char * contact, int type_wanted);
+
 /* returns the message type, or MSG_TYPE_DONE if none are available */
 /* not used anywhere, I think */
 extern int highest_seq_record (const char * contact, keyset k, int type_wanted,
