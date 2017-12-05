@@ -237,15 +237,28 @@ System.out.println("hex for " + b + "/" + i + " is " + result);
         System.out.println (dlen + " bytes, packet code " + code +
                             ", peer " + peer);
     }
+
+    // invariant: htmlReplacements.length == htmlPatterns.length,
+    // patterns should be replaced in order.  In particular, "&" should
+    // be replaced first, since it appears in the replacements
+    static final String [] htmlPatterns = { "&", "<", ">" };
+    static final String [] htmlReplacements = { "amp", "lt", "gt" };
+
+    static String sanitizeOnePattern (String message,
+                                      String pattern, String replacement) {
+        java.util.regex.Pattern pat = java.util.regex.Pattern.compile(pattern);
+        java.util.regex.Matcher match = pat.matcher(message);
+        String codedReplacement = "&" + replacement + ";";
+        return match.replaceAll(codedReplacement);
+    }
   
     public static String sanitizeForHtml (String message) {
-        java.util.regex.Pattern ltPat = java.util.regex.Pattern.compile ("<");
-        java.util.regex.Matcher ltMat = ltPat.matcher (message);
-        String noLt = ltMat.replaceAll ("&lt;");
-        java.util.regex.Pattern gtPat = java.util.regex.Pattern.compile (">");
-        java.util.regex.Matcher gtMat = ltPat.matcher (noLt);
-        String noGt = gtMat.replaceAll ("&gt;");
-        return noGt;
+        assert (htmlReplacements.length == htmlPatterns.length);
+        for (int i = 0; i < htmlPatterns.length; i++) {
+            message = sanitizeOnePattern(message,
+                                         htmlPatterns[i], htmlReplacements[i]);
+        }
+        return message;
     }
   
 }

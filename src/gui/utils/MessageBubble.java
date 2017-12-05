@@ -3,9 +3,11 @@ package utils;
 import allnetui.SocketUtils;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.Toolkit;
+import java.awt.datatransfer.Clipboard;
+import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.ArrayList;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JMenuItem;
@@ -39,7 +41,11 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
     // needed for when we resize the bubble
     private String text;
     private boolean leftJustified;
+    //
+    // utility for word wrapping and selection correction
+    private WordWrapper ww = new WordWrapper(true);
 
+    
     public MessageBubble(MESSAGE message, boolean leftJustified, Color color,
         String text, JComponent container) {
         super();
@@ -69,11 +75,20 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         int width = containerWidth;
         do {
             pane = makeTextPaneQuick(color, leftJustified, width);
-            width = (9*width)/10;
-        } while (pane.getPreferredSize().width > (2*containerWidth)/3);
-        return(pane);
+            width = (9 * width) / 10;
+        }
+        while (pane.getPreferredSize().width > (2 * containerWidth) / 3);
+        return (pane);
     }
-        
+
+    public void resizeBubble(int width) {
+        remove(textPane);
+        textPane = makeTextPane(textPane.getBackground(),
+            leftJustified, width);
+        textPane.setComponentPopupMenu(popup);
+        add(textPane);
+    }
+
     private JTextPane makeTextPaneQuick(Color color, boolean leftJustified,
         int containerWidth) {
         JTextPane pane = new JTextPane();
@@ -81,7 +96,8 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         pane.setEditable(false);
         pane.setBackground(color);
         // 5 pix per char is really small
-        String[] lines = partitionText(text, containerWidth/5);
+        ww.wordWrapText(text, containerWidth / 5, !leftJustified);
+        String[] wordWrappedLines = ww.getWrappedText();
         String htmlPrefix;
         if (leftJustified) {
             htmlPrefix = "<STYLE type=\"text/css\"> BODY {text-align: left} </STYLE> <BODY>";
@@ -90,13 +106,14 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
             htmlPrefix = "<STYLE type=\"text/css\"> BODY {text-align: right} </STYLE> <BODY>";
         }
         StringBuilder sb = new StringBuilder(htmlPrefix);
-        for (int i = 0; i < lines.length; i++) {
-            sb.append(lines[i]);
-            if (i < lines.length - 1) {
+        for (int i = 0; i < wordWrappedLines.length; i++) {
+            sb.append(nbspMe(wordWrappedLines[i]));
+            if (i < wordWrappedLines.length - 1) {
                 sb.append("<br>");
             }
         }
         sb.append("</BODY>");
+        // use &nbsp; here as <pre> does not seem to work
         pane.setText(sb.toString());
         // without this, panel grows to fill scrollpane
         Dimension size = pane.getPreferredScrollableViewportSize();
@@ -105,89 +122,11 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         return (pane);
     }
 
-    //private int findCharsPerLine(int containerWidth) {
-    //    return (Math.max(10, containerWidth / 10));
-    //}
-    private String[] partitionText(String text, int maxChars) {
-        String[] lines = text.split("\n");
-        ArrayList<String> list = new ArrayList<>();
-        for (String line : lines) {
-            if (line.length() <= maxChars) {
-                list.add(line);
-            }
-            else {
-                list.addAll(splitUpLine(line, maxChars));
-            }
-        }
-        StringBuilder sb = new StringBuilder();
-        for (String line : list) {
-            sb.append(line);
-            sb.append("\n");
-        }
-        String temp = SocketUtils.sanitizeForHtml(sb.toString());
-        return (temp.split("\n"));
+    private String nbspMe(String s) {
+        String r = s.replaceAll(" ", "&nbsp;");
+        return (r);
     }
-
-    // chop a line up into pieces <= max length
-    private ArrayList<String> splitUpLine(String oldLine, int maxChars) {
-        ArrayList<String> lines = new ArrayList<>();
-        String[] darkSpace = oldLine.split("\\s+");
-        int i = 0;
-        String nextWord;
-        StringBuilder sb = new StringBuilder();
-        while (i < darkSpace.length) {
-            // line is full, then extract it
-            if (sb.length() == maxChars) {
-                lines.add(sb.toString());
-                sb.delete(0, sb.length());
-            }
-            nextWord = darkSpace[i];
-            // line is empty and next word fits, then add it and continue
-            if ((sb.length() == 0) && (nextWord.length() <= maxChars)) {
-                sb.append(darkSpace[i]);
-                i++;
-                continue;
-            }
-            // line is not empty and next word fits, then add it and continue
-            else if ((sb.length() > 0)
-                && (sb.length() + 1 + nextWord.length() <= maxChars)) {
-                sb.append(" ");
-                sb.append(nextWord);
-                i++;
-                continue;
-            }
-            // next word fits on a line, but not into current line
-            else if (nextWord.length() <= maxChars) {
-                // save current line
-                if (sb.length() > 0) {
-                    lines.add(sb.toString());
-                    sb.delete(0, sb.length());
-                }
-                sb.append(nextWord);
-                i++;
-                continue;
-            }
-            else {
-                // next word does not fit on a line and must be broken up
-                // save current line
-                if (sb.length() > 0) {
-                    lines.add(sb.toString());
-                    sb.delete(0, sb.length());
-                }
-                lines.add(nextWord.substring(0, maxChars));
-                darkSpace[i] = darkSpace[i].substring(maxChars);
-                if (darkSpace[i].isEmpty()) {
-                    i++;
-                }
-                continue;
-            }
-        }
-        if (sb.length() != 0) {
-            lines.add(sb.toString());
-        }
-        return (lines);
-    }
-
+    
     public void setBubbleBackground(Color bg) {
         super.setBackground(bg);
         textPane.setBackground(bg);
@@ -199,26 +138,25 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
 
     @Override
     public void actionPerformed(ActionEvent e) {
+        String selected, corrected;
+        int startIdx;
         String cmd = e.getActionCommand();
         switch (cmd) {
-            case COPY:
-                this.textPane.copy();
-                break;
             case COPY_ALL:
-                this.textPane.selectAll();
-                this.textPane.copy();
+                corrected = text;
+                break;
+            case COPY:
+                selected = textPane.getSelectedText();
+                // offset of 1 determined experimentally, apparently undocumented
+                startIdx = textPane.getSelectionStart() - 1;
+                corrected = ww.getCorrected(selected, startIdx);
                 break;
             default:
                 throw new RuntimeException("bad menu cmd");
         }
-    }
-
-    public void resizeBubble(int width) {
-        remove(textPane);
-        textPane = makeTextPane(textPane.getBackground(), 
-            leftJustified, width);
-        textPane.setComponentPopupMenu(popup);
-        add(textPane);        
+        StringSelection selection = new StringSelection(corrected);
+        Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+        clipboard.setContents(selection, selection);
     }
 
 }

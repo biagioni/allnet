@@ -35,7 +35,8 @@ JAVASOURCELIST= \
     utils/StatusPanel.java \
     utils/tabbedpane/MyTabbedPane.java \
     utils/tabbedpane/SimpleButton.java \
-    utils/TextValidator.java
+    utils/TextValidator.java \
+    utils/WordWrapper.java
 
 all: $(ALLNETUI_TARGET)
 
