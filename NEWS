@@ -1,3 +1,7 @@
+2017/12/01: release 3.2.4
+  restructured code, fixed bugs, improved GUI, added multipeer for iOS.
+  messages are now delivered more reliably to intermittently-connected systems.
+
 2017/09/19: release 3.2.3
   more usable on all systems, slightly better performance
 
