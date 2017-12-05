@@ -4,11 +4,7 @@ most people will only be interested in the latest date.
 
 other notes for iOS follow.
 
-The main way to submit seems to be:
-compile for "generic iOS device" (under Product/scheme)
-archive (under File) and submit the archive to apple
-log into itunesconnect.apple.com, select "My apps", follow the
-  more-or-less intuitive procedure.
+The main way to submit is described in ../release-steps
 
 2016/06/06: announcement of the development of the software was done to
 cryp@bis.doc.gov and enc@nsa.gov.  The two websites listed are alnt.org
