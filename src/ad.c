@@ -267,7 +267,6 @@ static void main_loop (int npipes, int * read_pipes, int * write_pipes,
         if (read_pipes [i] == from_pipe)
           abc_pipe = i;
       if (abc_pipe) {  /* abc may fail, we should not die */
-printf ("ad closing [%d] %d %d\n", abc_pipe, read_pipes [abc_pipe], write_pipes [abc_pipe]);
         snprintf (alog->b, alog->s, "ad closing [%d] %d %d\n",
                   abc_pipe, read_pipes [abc_pipe], write_pipes [abc_pipe]);
         log_print (alog);
