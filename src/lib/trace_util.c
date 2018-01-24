@@ -628,11 +628,12 @@ void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
 #endif /* DEBUG_PRINT */
   char trace_id [MESSAGE_ID_SIZE];
   unsigned char my_addr [ADDRESS_SIZE];
+  memset (my_addr, 0, sizeof (my_addr));
   int count;
   for (count = 0; (repeat == 0) || (count < repeat); count++) {
 /* printf ("%d/%d\n", count, repeat); */
     random_bytes (trace_id, sizeof (trace_id));
-    random_bytes ((char *) my_addr, sizeof (my_addr));
+    my_addr [0] = random_int (0, 31) * 8;   /* 5 random bits */
     struct timeval tv_start;
     gettimeofday (&tv_start, NULL);
     send_trace (sock, address, abits, trace_id, my_addr, 5, nhops,
