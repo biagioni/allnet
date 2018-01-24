@@ -51,12 +51,12 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
   *rcvd = 0;
   struct timeval receive_time;
   gettimeofday (&receive_time, NULL);
-  int max = (full_payloads ? msize : 40);
+  int max = (full_payloads ? msize : 100);
 
   char * reason = NULL;
   if (! is_valid_message (message, msize, &reason)) {
-    printf ("%s: ", reason);
-    print_buffer (message, msize, "got invalid message", max, 1);
+    printf ("sniffer got invalid message (%s): ", reason);
+    print_buffer (message, msize, "", max, 1);
     return 0;
   }
   struct allnet_header * hp = (struct allnet_header *) message;
