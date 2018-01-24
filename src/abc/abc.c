@@ -610,12 +610,17 @@ static void remove_acked (const char * ack)
 }
 
 /* return 1 if it is our own data request message we want to forward */
+/* also return 1 for any other message we don't want to save in the queue */
 static int save_data_request (const char * message, int msize)
 {
+  char * error = NULL;
+  if (! is_valid_message (message, msize, &error)) {
+/* print for now -- 2018/01/23 */
+    printf ("abc.c got invalid message (%s) from ad\n", error);
+    return 1;
+  }
   struct allnet_header * hp = (struct allnet_header *) message;
-  if ((msize >= ALLNET_HEADER_SIZE) &&             /* sanity check */
-      (msize <= sizeof (latest_data_request)) &&   /* sanity check */
-      (hp->hops == 0) &&                           /* locally generated */
+  if ((hp->hops == 0) &&                           /* locally generated */
       (hp->message_type == ALLNET_TYPE_DATA_REQ)) {  /* is a data request */
     hp->max_hops = 1;                              /* do not forward */
     memcpy (latest_data_request, message, msize);
@@ -729,8 +734,14 @@ static void handle_quiet (struct timeval * quiet_end, pd p,
                                   NULL, NULL, NULL, NULL, NULL, NULL, 1);
         check_priority_mode ();
       } else {
-        printf ("abc.c handle_quiet: invalid message from %d (ad is %d)\n",
-                from_fd, rpipe);
+        if (strcmp (reason, "expired packet") != 0) {
+          printf ("abc.c handle_quiet: invalid message (%s) on %d (ad is %d)\n",
+                  reason, from_fd, rpipe);
+          static int print = 1;
+          if (print)
+            print_packet (message, msize, "abc.c handle_quiet received ", 1);
+          print = 0;
+        }
       }
       free (message);
     } else {
@@ -957,7 +968,7 @@ void abc_main (int rpipe, int wpipe, char * ifopts)
   while (strchr (log_string, '/') != NULL)  /* init_log thinks '/' means dir */
     *(strchr (log_string, '/')) = '_';
   alog = init_log (log_string);
-  queue_init (16 * 1024 * 1024);  /* 16MBi */
+  queue_init (1 * 1024 * 1024);  /* 1MBi */
 
   const char * interface = ifopts;
   const char * iface_type = NULL;
