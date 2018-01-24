@@ -272,10 +272,17 @@ static int abc_wifi_config_iw_connect ()
   if (! if_command ("ifconfig %s up", self.iface, 255,
                     "interface already up", mess))
     return 0;
+/* it is better to leave first, in case it is set incorrectly -- otherwise
+ * sometimes the next command fails but we are not on allnet */
+  char * leave_cmd = "iw dev %s ibss leave";
+  if (! if_command (leave_cmd, self.iface, 67, "", mess)) {
+    /* whether it succeeds or not, we are OK */
+  }
 /* giving a specific BSSID (60:a4:4c:e8:bc:9c) on one trial sped up the
  * time to turn on the interface from over 5s to less than 1/2s, because
  * the driver no longer scans to see if somebody else is already offering
- * this ssid on a different bssid.
+ * this ssid on a different bssid.  This also keeps different allnets
+ * for trying to use different bssids, which prevents communication.
  * This BSSID is the MAC address of an existing Ethernet card,
  * so should not be in use by anyone else in the world. */
   char * cmd = "iw dev %s ibss join allnet 2412 fixed-freq 60:a4:4c:e8:bc:9c";
@@ -286,10 +293,10 @@ static int abc_wifi_config_iw_connect ()
     return 0; */
   self.is_connected = 1;
 
-  /* set power save mode (if available) -- at most once */
+  /* unset power save mode (if available) -- at most once */
   static int set_power_save = 1;
   if (set_power_save) {   /* do this at most once */
-    if_command ("iw dev %s set power_save on", self.iface, 161,
+    if_command ("iw dev %s set power_save off", self.iface, 161,
                 "" /* power saving not supported, no error message */ , NULL);
     set_power_save = 0;
   }
@@ -369,7 +376,6 @@ static int abc_wifi_config_iw_set_enabled (int state)
 {
   if (self.is_enabled == state)
     return 1;
-printf ("setting interface %s to %d\n", self.iface, state);
 
   /* call (sudo) ifconfig $if {up|down} */
   if (state) {
