@@ -87,9 +87,11 @@ static void exec_allnet (const char * arg, const char * config_path)
       printf ("unable to start AllNet daemon %s\n", astart);
       exit (1);   /* only exits the child */
     }
-    char * args [] = { astart, "-d", NULL, "default", NULL };
+    /* put extra spaces in "default" so we can see more of the arguments */
+#define DEFAULT_STRING	"default        "
+    char * args [] = { astart, "-d", NULL, DEFAULT_STRING, NULL };
     if (config_path == NULL) {
-      args [1] = "default";  /* replace "-d" */
+      args [1] = DEFAULT_STRING;  /* replace "-d" */
     } else {                 /* replace the NULL with the path */
       args [2] = strcpy_malloc (config_path, "exec_allnet thread path");
     }
