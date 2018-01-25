@@ -222,42 +222,51 @@ static void acknowledge_bcast (int sock, char * message, unsigned int msize)
   log_print (alog);
 }
 
-/* check for a recent trace with same ID.  If found, or the cache is full,
- * return 1, to say the trace should not be forwarded or replied to.
- * if the cache fills in less than a second, traces are ignored for
- * a second, to avoid forwarding too many traces.  The cache is then
- * made available for recording new traces -- we still look at all the
- * old traces that haven't yet been overwritten.
+/* check for a recent trace with same ID.
+#ifdef LIMIT_RATE_OF_TRACES
+ * if we already handled n traces this s-second period (n = 20, s = 5), or
+#endif
+ * if this trace was received before, return 1 to say the trace should not
+ * be forwarded or replied to.
  * trace_id must have MESSAGE_ID_SIZE bytes
  */
 static int is_in_trace_cache (const unsigned char * trace_id)
 {
+#define TRACE_CACHE_SIZE	(4 * 1024)   /* 4K traces, 64KByte */
+
+#ifdef LIMIT_RATE_OF_TRACES  /* not sure this code works */
+#define TRACE_INTERVAL_SECONDS	5	     /* 5-second intervals */
+#define TRACE_INTERVAL_MAX	20	     /* up to 20 traces every 5s */
+  static unsigned int sent_this_interval = 0;
   static time_t last_received = 0;
-  static time_t first_received = 0;
-  static int next = 0;       /* next place to save messages */
-#define TRACE_CACHE_SIZE	10
-  static char cache [TRACE_CACHE_SIZE] [MESSAGE_ID_SIZE];
-  time_t now = time (NULL);
-  if (next >= TRACE_CACHE_SIZE) {
-    if ((first_received == last_received) && (now <= last_received))
-      return 1;    /* cache is full, ignore trace messages */
-    next = 0;    /* enough time has passed, reset cache */
+  time_t now = time (NULL) / TRACE_INTERVAL_SECONDS;
+  if (now == last_received) {
+    if (sent_this_interval >= TRACE_INTERVAL_MAX)
+      return 1;    /* already worked hard during this interval */
+  } else {         /* new interval, reset the count and the interval */
+    sent_this_interval = 0;
   }
-  /* look through all of the cache, even if next < TRACE_CACHE_SIZE,
-   * to match older traces that might still be in the cache */
+#endif /* LIMIT_RATE_OF_TRACES */
+  static char cache [TRACE_CACHE_SIZE] [MESSAGE_ID_SIZE];
+  /* look through all of the cache to find any matching traces */
   int i;
   for (i = 0; i < TRACE_CACHE_SIZE; i++) {
     if (memcmp (cache [i], trace_id, MESSAGE_ID_SIZE) == 0)
       return 1;   /* already seen, ignore */
   }
-  /* trace not found, add the trace_id to the cache */
-  if (next == 0)
-    first_received = now;
+  /* trace not found, add the trace_id to the cache at the next position */
+  static int next = 0;       /* next place to save messages */
   memcpy (cache [next], trace_id, MESSAGE_ID_SIZE);
-  next++;
-  last_received = now;
-  return 0;  /* respond */
+  next = (next + 1) % TRACE_CACHE_SIZE;
 #undef TRACE_CACHE_SIZE
+
+#ifdef LIMIT_RATE_OF_TRACES
+  sent_this_interval++;   /* increment the number sent in this interval */
+  last_received = now;
+#undef TRACE_INTERVAL_SECONDS
+#undef TRACE_INTERVAL_MAX
+#endif /* LIMIT_RATE_OF_TRACES */
+  return 0;  /* respond */
 }
 
 static void respond_to_trace (int sock, char * message, unsigned int msize,
@@ -267,7 +276,8 @@ static void respond_to_trace (int sock, char * message, unsigned int msize,
 {
   /* ignore any packet other than valid trace requests with at least 1 entry */
   struct allnet_header * hp = (struct allnet_header *) message;
-  if ((hp->message_type != ALLNET_TYPE_MGMT) ||
+  if ((msize < ALLNET_HEADER_SIZE) ||              /* sanity check */
+      (hp->message_type != ALLNET_TYPE_MGMT) ||
       (msize < ALLNET_TRACE_REQ_SIZE (hp->transport, 1, 0)))
     return;
 /* snprintf (alog->b, alog->s, "survived msize %d/%zd\n", msize,
