@@ -93,7 +93,7 @@
 #define MAX_RECEIVE_BUFFER	ALLNET_MTU
 
 #define BASIC_CYCLE_SEC		5	/* 5s in a basic cycle */
-/* a beacon time is 1/100 of a basic cycle */
+/* a beacon time is 1/100 of a basic cycle, i.e. 50ms */
 #define	BEACON_MS		(BASIC_CYCLE_SEC * 1000 / 100)
 /* maximum amount of time to wait for a beacon grant */
 #define BEACON_MAX_COMPLETION_US	250000    /* 0.25s */
@@ -224,7 +224,10 @@ static int receive_until (struct timeval * t, char ** message,
 #endif /* DEBUG_PRINT */
     msize = receive_pipe_message_any (p, timeout_ms, message,
                                       from_fd, priority);
-printf ("receive_pipe_message_any returned %d\n", msize);
+#ifdef DEBUG_PRINT
+    printf ("receive_until: receive_pipe_message_any returned %d from ad\n",
+            msize);
+#endif /* DEBUG_PRINT */
   }
 #ifdef DEBUG_PRINT
   unsigned long long finish = allnet_time_ms ();
@@ -272,9 +275,15 @@ static void send_beacon (int awake_ms)
   writeb64u (mbp->awake_time,
              ((unsigned long long int) awake_ms) * 1000LL * 1000LL);
   int success = 1;
+#ifdef DEBUG_PRINT
+printf ("%lld: send_beacon sending %d-byte beacon\n", allnet_time (), size);
+#endif /* DEBUG_PRINT */
   if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT,
               BC_ADDR (iface), iface->sockaddr_size) < size) {
     int e = errno;
+#ifdef DEBUG_PRINT
+printf ("send_beacon sending %d-byte beacon again, error %d\n", size, e);
+#endif /* DEBUG_PRINT */
     /* retry, first packet is sometimes dropped */
     if (sendto (iface->iface_sockfd, buf, size, MSG_DONTWAIT,
                 BC_ADDR (iface), iface->sockaddr_size) < size) {
@@ -285,6 +294,9 @@ static void send_beacon (int awake_ms)
     }
   }
   if (success && (latest_data_request_size > 0)) {
+#ifdef DEBUG_PRINT
+printf ("send_beacon sending %d-byte data request\n", latest_data_request_size);
+#endif /* DEBUG_PRINT */
     if (sendto (iface->iface_sockfd, latest_data_request,
                 latest_data_request_size, MSG_DONTWAIT,
                 BC_ADDR (iface), iface->sockaddr_size) < size) {
@@ -350,12 +362,19 @@ static void unmanaged_send_pending (int new_only)
   int backoff;
   queue_iter_start ();
   static int printed_sendto_error = 0;
+#ifdef DEBUG_PRINT
+int i = 0;
+#endif /* DEBUG_PRINT */
   while (queue_iter_next (&message, &nsize, &priority, &backoff)) {
     /* new (unsent) messages have a backoff value of 0 */
     if ((new_only && backoff) ||
         /* messages sent before are sent once every 2^backoff cycles */
         ((! new_only) && (cycle % (1 << backoff) != 0)))
       continue;
+#ifdef DEBUG_PRINT
+printf ("unmanaged_send_pending sending %d-byte message %d to %02x\n",
+nsize, i++, message [16] & 0xff);
+#endif /* DEBUG_PRINT */
     if (sendto (iface->iface_sockfd, message, nsize, MSG_DONTWAIT,
                 BC_ADDR (iface), iface->sockaddr_size) < nsize) {
       if ((errno != EAGAIN) && (errno != EWOULDBLOCK)) {
@@ -398,6 +417,9 @@ static void send_pending (enum abc_send_type type, int size, char * message)
   }
   switch (type) {
     case ABC_SEND_TYPE_REPLY:
+#ifdef DEBUG_PRINT
+printf ("send_pending sending %d-byte beacon reply\n", size);
+#endif /* DEBUG_PRINT */
       if (sendto (iface->iface_sockfd, message, size, MSG_DONTWAIT,
                   BC_ADDR (iface), iface->sockaddr_size) < size)
         perror ("abc: sendto (reply)");
@@ -414,10 +436,22 @@ static void send_pending (enum abc_send_type type, int size, char * message)
       int priority;
       int backoff;
       queue_iter_start ();
+#ifdef DEBUG_PRINT
+int i = 0;
+#endif /* DEBUG_PRINT */
       while ((queue_iter_next (&queue_message, &nsize, &priority, &backoff)) &&
              (total_sent + nsize <= size)) {
         if (cycle % (1 << backoff) != 0)
           continue;
+#ifdef DEBUG_PRINT
+printf ("send_pending sending %d-byte message %d to %02x, %d/%d hops, ",
+nsize, i++, queue_message [16] & 0xff,
+queue_message [2] & 0xff, queue_message [3] & 0xff);
+if ((queue_message [1] & 0xff) == ALLNET_TYPE_MGMT)
+printf (" mgmt type %02x\n", queue_message [24] & 0xff);
+else
+printf (" type %02x\n", queue_message [1] & 0xff);
+#endif /* DEBUG_PRINT */
         if (sendto (iface->iface_sockfd, queue_message, nsize, MSG_DONTWAIT,
                     BC_ADDR (iface), iface->sockaddr_size) < nsize) {
           perror ("abc: sendto (queue)");
@@ -826,16 +860,15 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
   }
 }
 
-/* sets bstart to a random time between bstart and (bfinish - beacon_ms),
- * and bfinish to beacon_ms ms later
- * parameters are in ms, computation is in us (sec/1,000,000) */
+/* sets bstart to a random time between start and (finish - BEACON_MS),
+ * and bfinish to BEACON_MS later
+ * computation is in us (sec/1,000,000) */
 static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
                              const struct timeval * start,
-                             const struct timeval * finish,
-                             int beacon_ms)
+                             const struct timeval * finish)
 {
   unsigned long long int interval_us = delta_us (finish, start);
-  unsigned long long int beacon_us = beacon_ms * 1000LL;
+  unsigned long long int beacon_us = BEACON_MS * 1000LL;
   unsigned long long int at_end_us = beacon_us;
   *bstart = *start;
   if (interval_us > at_end_us)
@@ -845,7 +878,7 @@ static void beacon_interval (struct timeval * bstart, struct timeval * bfinish,
 #ifdef DEBUG_PRINT
   printf ("b_int (%ld.%06ld, %ld.%06ld + %d) => %ld.%06ld, %ld.%06ld\n",
           start->tv_sec, start->tv_usec, finish->tv_sec, finish->tv_usec,
-          beacon_ms,
+          BEACON_MS,
           bstart->tv_sec, bstart->tv_usec, bfinish->tv_sec, bfinish->tv_usec);
 #endif /* DEBUG_PRINT */
 }
@@ -891,9 +924,9 @@ static void one_cycle (const char * interface, pd p, int rpipe, int wpipe,
   }
 
   gettimeofday (&start, NULL);
-  finish.tv_sec = compute_next (start.tv_sec, BASIC_CYCLE_SEC, 0);
-  finish.tv_usec = 0;
-  beacon_interval (&beacon_time, &beacon_stop, &start, &finish, BEACON_MS);
+  finish = start;
+  add_us (&finish, ((unsigned long long)BASIC_CYCLE_SEC) * 1000LL * 1000LL);
+  beacon_interval (&beacon_time, &beacon_stop, &start, &finish);
 
   beacon_state = BEACON_NONE;
   clear_nonces (1, 1);   /* start a new cycle */
