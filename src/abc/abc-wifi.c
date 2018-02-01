@@ -184,7 +184,7 @@ static int abc_wifi_init (const char * interface, struct allnet_log * log)
   }
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
-    if ((ifa->ifa_addr != NULL) &&
+    if ((ifa_loop->ifa_addr != NULL) &&
         (ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
         (strcmp (ifa_loop->ifa_name, interface) == 0)) {
       struct timeval start;
