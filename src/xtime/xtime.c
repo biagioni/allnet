@@ -242,8 +242,10 @@ static void announce (time_t interval, int sock,
 
   struct timeval tv;
   gettimeofday (&tv, NULL);
+#ifdef PRINT_OUTGOING_PACKETS
   printf ("sent at %ld.%06ld: ", tv.tv_sec, (long) (tv.tv_usec));
   print_buffer (buffer, blen, "packet", /* 36 */ blen, 1);
+#endif /* PRINT_OUTGOING_PACKETS */
 }
 
 static int init_xtime (char * arg0, pd p)
