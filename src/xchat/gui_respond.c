@@ -521,7 +521,8 @@ printf ("secrets for %s are %s %s\n", contact, s1, s2);
       } else if ((op == 1) && (code == GUI_VARIABLE_READ_TIME)) {
           reply [1] = 1;   /* ok to set read time for subscription */
       } else {
-        printf ("gui_variable: unsupported %d/%d for %s\n", op, code, contact);
+        printf ("gui_variable: unsupported %d/%d for broadcast %s\n",
+                op, code, contact);
       }
     }
     free (contact);
