@@ -237,8 +237,8 @@ static void announce (time_t interval, int sock,
 
   wait_until (announce_time);
 
-  /* send with fairly low priority */
-  send_pipe_message (sock, buffer, blen, ALLNET_PRIORITY_LOCAL_LOW, log);
+  /* send with fairly high priority, since the message is time-sensitive */
+  send_pipe_message (sock, buffer, blen, ALLNET_PRIORITY_LOCAL, log);
 
   struct timeval tv;
   gettimeofday (&tv, NULL);
