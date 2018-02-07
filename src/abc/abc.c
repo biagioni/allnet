@@ -381,7 +381,8 @@ nsize, i++, message [16] & 0xff);
         if (! printed_sendto_error) {
           char error_string [10000];
           snprintf (error_string, sizeof (error_string),
-                    "abc (%s): sendto", iface->iface_name);
+                    "abc (%s): sendto of %d-byte message",
+                    iface->iface_name, nsize);
           perror (error_string);
           printed_sendto_error = 1;
         }
@@ -454,7 +455,10 @@ printf (" type %02x\n", queue_message [1] & 0xff);
 #endif /* DEBUG_PRINT */
         if (sendto (iface->iface_sockfd, queue_message, nsize, MSG_DONTWAIT,
                     BC_ADDR (iface), iface->sockaddr_size) < nsize) {
-          perror ("abc: sendto (queue)");
+          char s [1000];
+          snprintf (s, sizeof (s),
+                    "abc: sendto (queue), %d-byte message", nsize);
+          perror (s);
           continue;
         }
         total_sent += nsize;
