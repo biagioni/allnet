@@ -58,7 +58,9 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
   memcpy (dp, data, dlen);
   if (allocated)
     free (data);
+#ifdef DEBUG_PRINT
   print_buffer (dp, dlen, "keyd send_key", 12, 1);
+#endif /* DEBUG_PRINT */
   char * r = dp + klen;
   random_bytes (r, KEY_RANDOM_PAD_SIZE);
 
