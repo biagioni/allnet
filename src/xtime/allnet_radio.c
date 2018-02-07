@@ -1,8 +1,12 @@
 /* allnet_radio.c: show all incoming broadcast messages to which we subscribe */
+/*    special handling shows how early or late time messages are */
+/*    if run as root and message is from an authenticated sender whose
+ *    name is allnet_time, sets the system time to the received time */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 
 #include "lib/app_util.h"
 #include "lib/packet.h"
@@ -15,6 +19,27 @@
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
+
+/* the sender(s) allowed to set this system's clock */
+#define AUTH_SENDER	"allnet_time@"
+
+/*    if run as root and message is from an authenticated sender whose
+ *    name is allnet_time, sets the system time to the received time */
+static void set_time (unsigned long long int packet_time)
+{
+  struct timeval t;
+  t.tv_sec = packet_time + ALLNET_Y2K_SECONDS_IN_UNIX;
+  t.tv_usec = 0;
+  int res = settimeofday (&t, NULL);  /* fails if we are not root */
+  if (res < 0) {
+    if (errno == EPERM)               /* the result if we are not root */
+      printf ("settimeofday failed (if wish to set time, run as root)\n");
+    else
+      perror ("settimeofday");
+  } else {
+    printf ("set time: success\n");
+  }
+}
 
 static int handle_packet (char * message, int msize, int * rcvd, int debug)
 {
@@ -88,18 +113,19 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
     long long int delta =
        (receive_time.tv_sec - ALLNET_Y2K_SECONDS_IN_UNIX) - packet_time;
     if (delta >= 0)
-      printf ("received after %lld.%06ld seconds\n", delta,
-              (long) (receive_time.tv_usec));
-    else
-      printf ("clock skew detected (%lld.%06ld seconds before)\n",
-              delta, (long) (receive_time.tv_usec));
+      printf ("received %lld.%06d seconds later\n", delta,
+              (int) (receive_time.tv_usec));
+    else  /* delta < 0 */
+      printf ("received %lld.%06d seconds before sent\n", delta + 1,
+              (int) (1000000 - receive_time.tv_usec));
     *rcvd = 1;
+    if (strncmp (from, AUTH_SENDER, strlen (AUTH_SENDER)) == 0)
+      set_time (packet_time);
   } else {
     if (debug)
       printf ("psize %d, strlen %zd\n", psize, strlen (payload));
     printf ("received at %ld.%06ld\n", (long) (receive_time.tv_sec),
             (long) (receive_time.tv_usec));
-    
   }
 
   return 0;  /* continue */
