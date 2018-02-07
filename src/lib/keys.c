@@ -2557,6 +2557,18 @@ static void init_key_info (char * config_dir, char * file,
   key->has_private = expect_private;
 }
 
+static void free_bc_keys (struct bc_key_info * keys, int num_keys)
+{
+  if ((keys != NULL) && (num_keys > 0)) {
+    int i;
+    for (i = 0; i < num_keys; i++) {
+      if (keys [i].identifier != NULL)
+        free (keys [i].identifier);
+    }
+    free (keys);
+  }
+}
+
 static void init_bc_from_files (char * config_dir, struct bc_key_info * keys,
                                 int num_keys, int expect_private)
 {
@@ -2584,25 +2596,18 @@ static void init_bc_key_set (char * dirname, struct bc_key_info ** keys,
                              int * num_keys, int expect_private)
 {
   if (*num_keys < 0) {
-/* printf ("init_bc_key_set 1, debug %p\n", *keyd_debug); */
     *num_keys = 0;    /* initialized */
     char * config_dir;
     if (config_file_name (dirname, "", &config_dir) < 0) {
       printf ("unable to open key directory ~/.allnet/%s\n", dirname);
     } else {
-/* printf ("init_bc_key_set 2, debug %p\n", *keyd_debug); */
       char * slash = strrchr (config_dir, '/');
       if (slash != NULL)
         *slash = '\0';
-/* printf ("init_bc_key_set 3, debug %p\n", *keyd_debug); */
       *num_keys = count_keys (config_dir);
-/* printf ("init_bc_key_set 4, debug %p\n", *keyd_debug); */
-/*    printf ("config_dir is %s, %d keys found\n", config_dir, *num_keys); */
       *keys = malloc_or_fail (sizeof (struct key_info) * (*num_keys),
                               "broadcast keys");
-/* printf ("init_bc_key_set 5, debug %p\n", *keyd_debug); */
       init_bc_from_files (config_dir, *keys, *num_keys, expect_private);
-/* printf ("init_bc_key_set 6, debug %p\n", *keyd_debug); */
       free (config_dir);
     }
   }
@@ -3010,8 +3015,15 @@ unsigned int verify_bc_key (const char * ahra, const char * key, int key_bytes,
     if (config_file_name ("other_bc_keys", ahra, &fname) < 0) {
       printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", ahra);
     } else {
-      if (! allnet_rsa_write_pubkey (fname, rsa))
+      if (! allnet_rsa_write_pubkey (fname, rsa)) {
         printf ("unable to write broadcast key to file %s\n", fname);
+      } else {
+        free_bc_keys (other_bc_keys, num_other_bc_keys);
+        other_bc_keys = NULL;
+        num_other_bc_keys = -1;  /* so init actually reads the keys */
+        init_bc_key_set ("other_bc_keys",
+                         &other_bc_keys, &num_other_bc_keys, 0);
+      }
       free (fname);
     }
   }
@@ -3139,7 +3151,7 @@ int requested_bc_keys (char *** ahras)
     ent = readdir (dir);
   }
   closedir (dir);
-  if (ahras == NULL) {  /* done */
+  if ((count == 0) || (ahras == NULL)) {  /* done */
     free (config_dir);
     return count;
   }

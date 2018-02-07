@@ -518,8 +518,18 @@ printf ("secrets for %s are %s %s\n", contact, s1, s2);
         default:
           printf ("gui_variable: unsupported %d/%d, %s\n", op, code, contact);
         }
-      } else if ((op == 1) && (code == GUI_VARIABLE_READ_TIME)) {
-          reply [1] = 1;   /* ok to set read time for subscription */
+      } else if (op == 1) {
+        switch (code) {
+        case GUI_VARIABLE_VISIBLE:
+        case GUI_VARIABLE_COMPLETE:
+        case GUI_VARIABLE_READ_TIME:
+          /* ok to set complete, visible, or read time for subscription */
+          reply [1] = 1;
+          break;
+        default:
+          printf ("gui_variable: unsupported %d for %d for broadcast %s\n",
+                  op, code, contact);
+        }
       } else {
         printf ("gui_variable: unsupported %d/%d for broadcast %s\n",
                 op, code, contact);

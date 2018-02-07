@@ -169,12 +169,16 @@ class UIController implements ControllerInterface, UIAPI {
                 contactConfigPanel.update();
                 KeyExchangePanel kep = getKeyExchangePanel(contactName);
                 if (coreAPI.isComplete(contactName)) {  // key xchg completed
-                    if (kep != null) {  /* get rid of Key Exchange panel */
-                        System.out.println("kep is not null, "
-                            + "please report to maintainer(s)");
-                        System.out.println("kep is " + kep);
+                    if (kep != null) {
+                        if (isBroadcast) {
+                            kep.setSuccess(contactName);
+                        } else {
+                            System.out.println("kep is not null, "
+                                + "please report to maintainer(s)");
+                            System.out.println("kep is " + kep);
+                        }
                     }
-                 } else {    // incomplete key exchange
+                } else {    // incomplete key exchange
                     if (kep == null) {
                         int hops = coreAPI.incompleteHopCount(contactName);
 System.out.println("got " + hops + " hops for " + contactName);
@@ -808,8 +812,7 @@ System.out.println("got secret " + secret + " for " + contactName);
                     break;
                 case 2:
                     String ahra = newContactPanel.getVariableInput();
-                    System.out.println("new ahra contact " + contact + ", "
-                        + ahra);
+// System.out.println("new ahra contact " + contact + ", ahra '" + ahra + "'");
                     if ((ahra == null) || (ahra.indexOf('@') < 0)) {
                         ahra = contact;
                     }
@@ -836,7 +839,7 @@ System.out.println("got secret " + secret + " for " + contactName);
                             kep.setVariableInput(ahra);
                         }
                         if (coreAPI.initSubscription(ahra)) {
-                            System.out.println("sent ahra subscription");
+                            // System.out.println("sent ahra subscription");
                         }
                         else {
                             System.out.println("unable to send ahra request");

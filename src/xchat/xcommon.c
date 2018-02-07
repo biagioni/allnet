@@ -1760,24 +1760,27 @@ int create_contact_send_key (int sock, const char * contact,
 static int send_key_request (int sock, const char * phrase)
 {
   /* compute the destination address from the phrase */
+  unsigned char source [ADDRESS_SIZE]; /* create a random source address */
+  random_bytes ((char *)source, sizeof (source));
   unsigned char destination [ADDRESS_SIZE];
   char * mapped;
   int mlen = map_string (phrase, &mapped);
   sha512_bytes (mapped, mlen, (char *) destination, 1);
   free (mapped);
 
-  unsigned int dsize = 1;  /* nbits_fingerprint with no key */
+#define EMPTY_FINGERPRINT_SIZE  1  /* nbits_fingerprint plus the fingerprint */
+  unsigned int dsize = EMPTY_FINGERPRINT_SIZE + KEY_RANDOM_PAD_SIZE;
   unsigned int psize = 0;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
-                   NULL, 0, destination, ADDRESS_BITS, NULL, NULL, &psize);
+                   source, ADDRESS_BITS, destination, 8, NULL, NULL, &psize);
   
   if (hp == NULL) {
     printf ("send_key_request: unable to create packet of size %d/%d\n",
             dsize, psize);
     return 0;
   }
-  int hsize = ALLNET_SIZE(hp->transport);
+  unsigned int hsize = ALLNET_SIZE(hp->transport);
   if (psize != hsize + dsize) {
     printf ("send_key_request error: psize %d != %d = %d + %d\n", psize,
             hsize + dsize, hsize, dsize);
@@ -1788,6 +1791,8 @@ static int send_key_request (int sock, const char * phrase)
   struct allnet_key_request * kp =
     (struct allnet_key_request *) (packet + hsize);
   kp->nbits_fingerprint = 0;
+  char * r = ((char *) kp) + EMPTY_FINGERPRINT_SIZE;
+  random_bytes (r, KEY_RANDOM_PAD_SIZE);
 
 #ifdef DEBUG_PRINT
   printf ("sending %d-byte key request\n", psize);
@@ -1810,6 +1815,8 @@ int subscribe_broadcast (int sock, char * ahra)
     printf ("subcribe_broadcast unable to parse '%s': %s\n", ahra, reason);
     return 0;
   }
+  /* record that we are requesting a broadcast key */
+  requesting_bc_key (ahra);
   if (! send_key_request (sock, phrase))
     return 0;
   return 1;
