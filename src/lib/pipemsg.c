@@ -697,6 +697,8 @@ static void add_fd_to_bitset (fd_set * set, int fd, int * max,
 #endif /* DEBUG_PRINT */
 }
 
+/* returns NULL for a wait-forever timeout, or
+ *         tvp, with *tvp updated to the correct timeout */
 static struct timeval * set_timeout (int timeout, struct timeval * tvp,
                                      struct allnet_log * log)
 {
@@ -706,6 +708,16 @@ static struct timeval * set_timeout (int timeout, struct timeval * tvp,
     log_print (log);
 #endif /* DEBUG_PRINT */
     return NULL; /* no timeout to select */
+  }
+  if (timeout < 0) {
+    printf ("set_timeout (%d) error: bad timeout\n", timeout);
+    snprintf (log->b, log->s, "set_timeout (%d) error: bad timeout\n", timeout);
+    log_print (log);
+  }
+  if (timeout > (86400 * 1000)) {  /* one day */
+    printf ("set_timeout (%d): large timeout\n", timeout);
+    snprintf (log->b, log->s, "set_timeout (%d): large timeout\n", timeout);
+    log_print (log);
   }
  /* PIPE_MESSAGE_NO_WAIT would be 0, which works fine in this computation */
   tvp->tv_sec = timeout / 1000;
@@ -843,6 +855,7 @@ static int next_available (pd p, int extra, int timeout)
     /* since we have queues and no pipes, set timeout so we check
      * the queues after a 10ms timeout */
     tvp = set_timeout (10, &tv, p->log);
+  struct timeval orig_tv = tv;
 
   /* call select */
 #ifdef DEBUG_PIPEMSG_SELECT
@@ -872,18 +885,27 @@ static int next_available (pd p, int extra, int timeout)
       q_string = "";
     if (! do_not_print)
       perror ("next_available/select");
-    snprintf (p->log->b, p->log->s, "%s in select (errno %d, extra %d)%s\n",
-              error_string, errno, extra, q_string);
+    int off = snprintf (p->log->b, p->log->s,
+                        "%s in select (errno %d extra %d, mp %d, ",
+                        error_string, errno, extra, max_pipe);
+    off += snprintf (p->log->b + off, p->log->s - off,
+                     "t %ld.%ld/%ld.%ld/%p/%d)%s\n",
+                     tv.tv_sec, tv.tv_usec, orig_tv.tv_sec, orig_tv.tv_usec,
+                     tvp, timeout, q_string);
+    int exiting = 1;                 /* normally exit */
+    if (errno == EBADF) /* usually, FD closed but not (yet) removed from p */
+      exiting = 0;
     static time_t printed_sec = 0;
-    if (printed_sec < time (NULL)) { /* print at most once per second */
-      printed_sec = time (NULL);     /* print at most once per second */
+    if (exiting || (printed_sec < time (NULL))) {
+      /* print EBADF at most once per second */
+      printed_sec = time (NULL);
       log_print (p->log);
       print_pipes (p, "current", max_pipe);
       if (errno == EBADF)
         debug_ebadf (p, extra);
     }
-    if (errno == EBADF) /* usually, FD closed but not (yet) removed from p */
-      return -1;        /* unable to complete */
+    if (! exiting)   /* usually, FD closed but not (yet) removed from p */
+      return -1;     /* unable to complete */
     exit (1);
   }
   if (s == 0)
