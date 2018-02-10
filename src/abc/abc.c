@@ -88,7 +88,6 @@
 #include "lib/pqueue.h"       /* queue_* */
 #include "lib/sha.h"          /* sha512_bytes */
 
-
 /* we don't know how big messages will be on the interface until we get them */
 #define MAX_RECEIVE_BUFFER	ALLNET_MTU
 
@@ -190,12 +189,17 @@ static void check_priority_mode ()
 /* if the interface is off, receives only from ad, otherwise from both ad and
  * the abc interface  */
 static int receive_until (struct timeval * t, char ** message,
-                          pd p, int * from_fd, unsigned int * priority)
+                          pd p, int * from_fd, unsigned int * priority
+, const char * caller)
 {
   struct timeval now;
   gettimeofday (&now, NULL);
   unsigned long long int us_to_wait = delta_us (t, &now);  /* 0 or more */
   int timeout_ms = (int) (us_to_wait / 1000LL);
+if (t == NULL) printf ("receive_until t is null\n");
+if (timeout_ms < 0)
+printf ("%s -> ru: timeout_ms = %d, us_to_wait %llu, t %ld.%06ld, now %ld.%06ld\n",
+caller, timeout_ms, us_to_wait, t->tv_sec, t->tv_usec, now.tv_sec, now.tv_usec);
 
   struct sockaddr_storage recv_addr;
   struct sockaddr * sap = (struct sockaddr *) (&recv_addr);
@@ -252,8 +256,9 @@ static void update_quiet (struct timeval * quiet_end,
   struct timeval new_quiet;
   gettimeofday (&new_quiet, NULL);
   add_us (&new_quiet, quiet_us);
-  if (delta_us (&new_quiet, quiet_end) > 0)
+  if (delta_us (&new_quiet, quiet_end) > 0) {
     *quiet_end = new_quiet;
+  }
 }
 
 static void send_beacon (int awake_ms)
@@ -514,7 +519,6 @@ static int handle_beacon (const char * message, unsigned int msize,
   switch (mp->mgmt_type) {
   case ALLNET_MGMT_BEACON:
   {
-    /* TODO: only reply if we have something to send */
     if (beacon_state == BEACON_REPLY_SENT)
          /* && is_before (*beacon_deadline)  is implied */
       return 1;
@@ -544,7 +548,6 @@ static int handle_beacon (const char * message, unsigned int msize,
 
     if (diff_us > 0)
       set_time_random (quiet_end, quiet_end_us, diff_us, quiet_end);
-      /* add_us (quiet_end, random () % diff_us); */
 
     /* create the reply */
     memcpy (other_beacon_rnonce, mbp->receiver_nonce, NONCE_SIZE);
@@ -759,7 +762,8 @@ static void handle_quiet (struct timeval * quiet_end, pd p,
     char * message;
     int from_fd;
     unsigned int priority;
-    int msize = receive_until (quiet_end, &message, p, &from_fd, &priority);
+    int msize = receive_until (quiet_end, &message, p, &from_fd, &priority
+, "handle_quiet");
     if (msize > 0) {
       char * reason = NULL;
       if (is_valid_message (message, msize, &reason)) {
@@ -796,7 +800,8 @@ static void unmanaged_handle_until (struct timeval * t, pd p,
     char * message;
     int fd;
     unsigned int priority;
-    int msize = receive_until (t, &message, p, &fd, &priority);
+    int msize = receive_until (t, &message, p, &fd, &priority
+, "unmanaged_handle_until");
     if (msize > 0) {
       if (is_valid_message (message, msize, NULL)) {
         if (fd == rpipe) {
@@ -826,7 +831,8 @@ static void handle_until (struct timeval * t, struct timeval * quiet_end,
     struct timeval * deadline = t;
     if ((beacon_deadline != NULL) && (delta_us (t, beacon_deadline) > 0))
       deadline = beacon_deadline;
-    int msize = receive_until (deadline, &message, p, &fd, &priority);
+    int msize = receive_until (deadline, &message, p, &fd, &priority
+, "handle_until");
     enum abc_send_type send_type = ABC_SEND_TYPE_NONE;
     int send_size = 0;
     static char send_message [ALLNET_MTU];
