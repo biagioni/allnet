@@ -1,0 +1,39 @@
+#/bin/sh
+
+cd
+
+time=` date | sed 's/ /_/g' `
+log="allnet-monitor-$time.txt"
+alog="allnet-$time.txt"
+bin="src/allnet/v3/bin"
+
+failed=0
+
+while true; do
+	date >> $log
+	ps auxwww | egrep 'abc|alocal| ad|aip' | fgrep -v grep >> $log
+	$bin/trace -i -t 300 >> $log
+	count=`fgrep sent $log | tail -1 | awk '{print $5}' | tr -d , `
+	if [ "x$count" = "x" -o "$count" -le 1 ] ; then
+		failed=$(($failed+1))
+		echo failed $failed times >> $log
+	else
+		failed=0
+	fi
+	if [ "$failed" -ge 12 ] ; then
+		$bin/astop >> $log
+		sleep 5
+		$bin/astop >> $log
+		sleep 5
+		sudo -n $bin/astop >> $log	# if necessary
+		sleep 5
+		pkill -x allnet
+		# create a new log file
+		time=` date | sed 's/ /_/g' `
+		log="allnet-monitor-$time.txt"
+		alog="allnet-$time.txt"
+		$bin/allnet -v defaulttttt > $alog
+		sleep 20
+		failed=0
+	fi
+done

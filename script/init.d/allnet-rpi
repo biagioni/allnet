@@ -1,0 +1,58 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:          allnet
+# Required-Start:    $network $named $time
+# Required-Stop:     $network $named $time
+# Default-Start:     2 3 4 5
+# Default-Stop:
+# Short-Description: Run allnet daemon
+# Description: automatically start the allnet daemon on all available
+#              interfaces and with super-user privileges
+### END INIT INFO
+
+USER="pi"    # replace as appropriate
+BIN="/home/$USER/src/allnet/v3/bin"
+DATE=`date +%s`
+
+PATH=/bin:/usr/bin:/sbin:/usr/sbin:$BIN
+
+test -x $BIN/allnet || exit 0
+test -x $BIN/astop  || exit 0
+
+case "$1" in
+  start)
+  # chown root:root $BIN/allnet $BIN/astop
+  # chmod u+s $BIN/allnet $BIN/astop
+    # we sleep, otherwise the wireless driver (abc) dies --
+    # tried setting dependencies in /etc/init/allnet.conf instead,
+    # but nothing worked reliably.  So, there's a 10s delay to starting
+    # allnet at boot.  Could also put it in the main C code, but doesn't
+    # seem like a good idea.
+    sleep 10
+    echo $BIN/allnet default
+    su $USER -c "sudo $BIN/allnet defaulttttttttt" > /tmp/allnet-boot-log.$DATE
+    sleep 10
+    su $USER -c "sudo $BIN/allnet-radio" > /tmp/allnet-radio-log.$DATE
+    ;;
+  restart|force-reload|reload)
+    $BIN/astop
+    su $USER -c "$BIN/allnet default"
+    ;;
+  stop)
+    $BIN/astop
+    ;;
+  status)
+    ps auxwww | egrep 'aip |ad |acache|alocal |abc |trace|xtime|keyd' | fgrep -v grep
+    x=`ps auxwww | egrep 'aip |ad |acache|alocal |abc |trace|xtime|keyd' | fgrep -v grep | wc -l`
+    if [ $x -gt 0 ]; then
+	exit 0
+    fi
+    exit 4
+    ;;
+  *)
+    echo "Usage: /etc/init.d/allnet {start|stop|restart|status}"
+    exit 2
+    ;;
+esac
+
+exit 0
