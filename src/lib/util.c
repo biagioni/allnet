@@ -1019,7 +1019,7 @@ void set_time_random (const struct timeval * start, unsigned long long min,
                       unsigned long long max, struct timeval * result)
 {
   *result = *start;
-  if (min <= max)
+  if (min >= max)
     return;
   unsigned long long int us = min + random_mod (max - min);
   add_us (result, us);
