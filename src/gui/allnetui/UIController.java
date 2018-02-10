@@ -346,6 +346,15 @@ System.out.println("got secret " + secret + " for " + contactName);
         result = result + "/" + nbits;
         return result;
     }
+
+    private String formatDigits(int n, int maxDigits) {
+        String result = "" + n;
+        while (result.length() < maxDigits) {
+            result = " " + result;
+        }
+        return result;
+    }
+
     private String formatTime(long time) {
         long ms = time % 1000;
         long s = time / 1000;
@@ -381,11 +390,10 @@ System.out.println("got secret " + secret + " for " + contactName);
         long deltaTimestamp = timestamp - this.traceTime;
         String timestampString = "";
         if ((timestamp > this.traceTime) && (timestamp < receivedTime)) {
-            timestampString = ",   " + formatTime(deltaTimestamp)
-                            + "s timestamp";
+            timestampString = " " + formatTime(deltaTimestamp) + "s timestamp";
         }
-        String traceMessage = " " + addressString + "   "
-                                  + hops + " "
+        String traceMessage = " " + addressString + " "
+                                  + formatDigits(hops, 3) + " hop "
                                   + formatTime(delta) + "s rtt"
                                   + timestampString + "\n";
 
