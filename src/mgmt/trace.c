@@ -1,7 +1,7 @@
 /* trace.c: standalone application to generate and handle AllNet traces */
 /* can be called as daemon (traced) or client (any other name)
  * both the daemon and the client may take as argument:
-   - an address (in hex, with or without separating :,. )
+   - one or more addresses (in hex, with or without separating :,. )
    - optionally, followed by / and the number of bits of the address, in 0..64
    the argument and bits default to 0/0 if not specified
  * for the daemon, the specified address is my address, used to fill in
@@ -99,7 +99,7 @@ static int get_address (const char * address, unsigned char * result, int rsize)
 static void trace_usage (char * pname)
 {
   printf ("usage: %s [-f|-r n] [-m] [-i] [-v] [-t sec] %s\n",
-          pname, "[<my_address_in_hex>[/<number_of_bits> [hops]]]");
+          pname, "[<address_in_hex>[/<number_of_bits>]]*");
   printf ("       -f repeats forever, or -r n repeats n times\n");
   printf ("       -m only reports responses from matching addresses\n");
   printf ("       -i does not report intermediate nodes (a bit like ping)\n");
@@ -154,6 +154,7 @@ int trace_main (int argc, char ** argv)
   }
   log_to_output (verbose);
 
+#if 0
   /* up to two non-option arguments */
   if (argc > optind + 2) {
     printf ("%s: argc %d, optind %d, %d non-options, at most 2 allowed\n",
@@ -161,25 +162,44 @@ int trace_main (int argc, char ** argv)
     trace_usage (argv [0]);
     return 1;
   }
+#else /* 1 */
+  /* allow up to MAX_ADDRS addresses */
+#define MAX_ADDRS	255
+  if (argc > optind + MAX_ADDRS) {
+    printf ("%s: argc %d, optind %d, %d non-options, at most %d allowed\n",
+            argv [0], argc, optind, argc - (optind + 1), MAX_ADDRS);
+    trace_usage (argv [0]);
+    return 1;
+  }
+#endif /* 0 */
 
-  unsigned char address [ADDRESS_SIZE];
-  memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
-  int abits = 0;
-  if (argc > optind) {   /* use the address specified on the command line */
-    abits = get_address (argv [optind], address, sizeof (address));
-    if (abits <= 0) {
+  unsigned char addresses [ADDRESS_SIZE * MAX_ADDRS];
+  memset (addresses, 0, sizeof (addresses));/* set any unused part to zeros */
+  int abits [MAX_ADDRS];
+  memset (abits, 0, sizeof (abits));        /* set any unused part to zero */
+  int num_addrs;
+  for (num_addrs = 0; num_addrs < (argc - optind); num_addrs++) {
+    /* use the address(es) specified on the command line */
+    int b = get_address (argv [optind + num_addrs],
+                         addresses + (num_addrs * ADDRESS_SIZE), ADDRESS_SIZE);
+    if (b <= 0) {
       printf ("argc %d/%d/%s, invalid number of bits, should be > 0\n",
               argc, optind, argv [optind]);
       trace_usage (argv [0]);
       return 1;
     }
+    abits [num_addrs] = b;
+#ifdef DEBUG_PRINT
+    printf ("using address [%d] = %02x/%d\n", num_addrs,
+            addresses [(num_addrs * ADDRESS_SIZE)],
+            abits [num_addrs]);
+#endif /* DEBUG_PRINT */
   }
   alog = init_log ("trace");
   pd p = init_pipe_descriptor (alog);
   int sock = connect_to_local (argv [0], argv [0], NULL, p);
   if (sock < 0)
     return 1;
-/* print_buffer (address, abits, "argument address", 8, 1); */
 
   struct sigaction siga;
   siga.sa_handler = &trace_print_summary;
@@ -192,7 +212,8 @@ int trace_main (int argc, char ** argv)
     if (n > 0)
       nhops = n;
   }
-  do_trace_loop (sock, p, address, abits, repeat, sleep, nhops, match_only,
+  do_trace_loop (sock, p, num_addrs, addresses, abits,
+                 repeat, sleep, nhops, match_only,
                  no_intermediates, 1, 0, STDOUT_FILENO, 0, NULL, alog);
   return 0;
 }

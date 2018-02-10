@@ -7,7 +7,10 @@
 #include "allnet_queue.h"
 
 /* returns the output incrementally on fd_out */
-extern void do_trace_loop (int sock, pd p, unsigned char * address, int abits,
+/* 0, 1, or multiple addresses may be specified in a single array
+ * of size naddrs * ADDRESS_SIZE.  likewise, abits has naddrs int's */
+extern void do_trace_loop (int sock, pd p,
+                           int naddrs, unsigned char * addresses, int * abits,
                            int repeat, int sleep, int nhops, int match_only,
                            int no_intermediates, int wide, int null_term,
                            int fd_out, int reset_counts,
