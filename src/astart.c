@@ -467,9 +467,10 @@ static void stop_all ()
   if (access (fname, F_OK) == 0) {          /* PID file found */
     stop_all_on_signal (SIGINT);
   } else {                                  /* no PID file, just pkill */
-    printf ("%s: cannot stop allnet (no pid file %s), running ",
-            daemon_name, fname);
-    printf ("'pkill -x allnet|ad'\n");
+#if ! (defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__))
+    /* calling pkill does not seem to be supported on windows */
+    printf ("%s: cannot stop allnet (no pid file %s), ", daemon_name, fname);
+    printf ("running 'pkill -x allnet|ad'\n");
     /* send a sigint to all allnet processes */
     /* -x specifies that we only use exact match on process names */
     /* allnet|ad kills processes whether they retain the original name
@@ -478,6 +479,7 @@ static void stop_all ()
     /* execlp should never return */
     perror ("execlp");
     printf ("unable to pkill\n");
+#endif /* _WIN32 || _WIN64 || __CYGWIN__ */
   }
 }
 
