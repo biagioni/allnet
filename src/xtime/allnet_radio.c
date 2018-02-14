@@ -25,16 +25,8 @@
 
 /* if run as root and message is from an authenticated sender whose
  * name is allnet_time, sets the system time to the received time */
-/* to avoid too much instability, we set the time as follows:
- * if the packet time is later than our clock by 60s or less, we do
- * not change the local clock.  So we only set the local clock if
- * the packet time is (1) earlier than our clock, or (b) more than
- * 60s later than our clock. */
 static void set_time (unsigned long long int packet_time)
 {
-  unsigned long long int local_clock = allnet_time ();
-  if ((packet_time >= local_clock) && (packet_time < local_clock + 60))
-    return;     /* 60s window where we don't change our time */
   struct timeval t;
   t.tv_sec = packet_time + ALLNET_Y2K_SECONDS_IN_UNIX;
   t.tv_usec = 0;
@@ -127,7 +119,13 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
       printf ("received %lld.%06d seconds before sent\n", - (delta + 1),
               (int) (1000000 - receive_time.tv_usec));
     *rcvd = 1;
-    if (strncmp (from, AUTH_SENDER, strlen (AUTH_SENDER)) == 0)
+    if ((strncmp (from, AUTH_SENDER, strlen (AUTH_SENDER)) == 0) &&
+/* to avoid too much instability, we set the time as follows:
+ * if the packet time is earlier than our clock by 60s or less, we do
+ * not change the local clock.  So we only set the local clock if
+ * the packet time is (1) later than our clock (delta < 0), or (b)
+ * more than 60s earlier than our clock. */
+        ((delta < 0) || (delta > 60)))
       set_time (packet_time);
   } else {
     if (debug)
