@@ -508,6 +508,15 @@ System.out.println("got secret " + secret + " for " + contactName);
         return contact;
     }
 
+    private String addSpaces(String s) {
+        if (s.length() <= 5)   // base case for recursion
+            return s;
+        String pre = s.substring(0, 5);
+        String post = addSpaces(s.substring(5, s.length()));
+        String result = pre + " &nbsp; " + post;
+        return result;
+    }
+
     private void resendKey(KeyExchangePanel kep) {
         int hops = HOPS_LOCAL;
         switch (kep.getButtonState()) {
@@ -521,13 +530,18 @@ System.out.println("got secret " + secret + " for " + contactName);
                 String variableInput = kep.getVariableInput();
                 if ((variableInput == null) || (variableInput.isEmpty())
                     || (variableInput.length() < min)) {
-                    kep.setText(1, " Resend Key button pressed !!!", "",
-                        " Shared secret:", " " + kep.getSecret());
+                    kep.setText(1, " Resend Key button pressed !!!",
+                        "",
+                        " Shared secret:", " " + addSpaces(kep.getSecret()),
+                        " (spaces are optional)");
                 }
                 else {
                     kep.setText(1, " Resend Key button pressed !!!", "",
-                        " Shared secret:", " " + kep.getSecret(), " or:",
-                        " " + variableInput, " ");
+                        " Shared secret:",
+                        " " + addSpaces(kep.getSecret()),
+                        " or:",
+                        " " + addSpaces(variableInput),
+                        " (spaces are optional)");
                 }
                 if (coreAPI.initKeyExchange(kep.getContactName(),
                     kep.getSecret(),
@@ -725,7 +739,8 @@ System.out.println("got secret " + secret + " for " + contactName);
     private String[] makeMiddlePanel(String secret) {
         return new String[] {
             " Shared secret:",
-            " " + secret.toUpperCase()
+            " " + addSpaces(secret.toUpperCase()),
+            " (spaces are optional)"
         };
     }
 
