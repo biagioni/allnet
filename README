@@ -48,7 +48,7 @@ you can also set specific CFLAGS with, e.g.:
 additional packages you may need to install:
 	GIT and SSL: git libssl-dev
               (libressl may be better than openssl if you can get it)
-	Java: openjdk-7-jre openjdk-7-jdk
+	Java: openjdk-9-jre openjdk-9-jdk
         for Voice-over-Allnet (voa): libgstreamer-plugins-base1.0-dev
               gstreamer1.0-plugins-base gstreamer1.0-plugins-bad
               (these bring in many other dependencies)
