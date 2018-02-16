@@ -1030,8 +1030,11 @@ keyset create_contact (const char * contact, int keybits, int feedback,
   }
 
   allnet_rsa_prvkey my_key = get_spare_key (keybits);
-  if (allnet_rsa_prvkey_is_null (my_key))
+  if (allnet_rsa_prvkey_is_null (my_key)) {
+    printf ("generating new key, please wait...\n");
     my_key = allnet_rsa_generate_key (keybits, NULL, 0);
+    printf (" done generating new key\n");
+  }
   if (allnet_rsa_prvkey_is_null (my_key)) {
     printf ("unable to generate RSA key\n");
     return -1;
