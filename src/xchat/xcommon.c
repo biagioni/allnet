@@ -1692,7 +1692,6 @@ int create_contact_send_key (int sock, const char * contact,
                              unsigned int hops)
 {
   unsigned char addr [ADDRESS_SIZE];
-  unsigned int abits;
   if ((contact == NULL) || (strlen (contact) == 0)) {
     printf ("empty contact, cannot send key\n");
 #ifdef DEBUG_PRINT
@@ -1706,7 +1705,7 @@ int create_contact_send_key (int sock, const char * contact,
     return 0;
   }
   keyset kset;
-  abits = 16;  /* static for now */
+  unsigned int abits = 16;  /* static for now */
   if (num_keysets (contact) < 0) {
     if (abits > ADDRESS_BITS)
       abits = ADDRESS_BITS;
