@@ -461,7 +461,8 @@ static void switch_to_contact (char * new_peer, char ** peer)
       long int index = strtol (new_peer, &endp, 10);
       if ((endp != NULL) && (endp != new_peer) &&
           (index > 0) && (index <= n)) {  /* numeric selector */
-        if (strcasecmp (contacts [index - 1], *peer) != 0) {
+        if ((*peer == NULL) ||            /* there was no prior peer */
+            (strcasecmp (contacts [index - 1], *peer) != 0)) {
           if (*peer != NULL) {
             free (*peer);   /* free earlier peer */
             pto = 0;        /* print in this if */
