@@ -1301,8 +1301,11 @@ static int receive_dgram (int fd, char ** message,
       return -1;
     return 0;   /* EAGAIN or EWOULDBLOCK, no message ready at this time */
   }
-  if ((sa->sa_family != AF_INET) && (sa->sa_family != AF_INET6) &&
-      (sa->sa_family != PF_PACKET)) { /* strange */
+  if ((sa->sa_family != AF_INET) && (sa->sa_family != AF_INET6)
+#ifdef PF_PACKET
+      && (sa->sa_family != PF_PACKET)
+#endif /* PF_PACKET */
+      ) { /* strange */
     snprintf (log->b, log->s, "receive_dgram got %d bytes, family %d\n",
               result, sa->sa_family);
     log_print (log);
