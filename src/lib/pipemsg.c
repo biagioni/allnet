@@ -890,7 +890,8 @@ static int next_available (pd p, int extra, int timeout)
                         error_string, errno, extra, max_pipe);
     off += snprintf (p->log->b + off, p->log->s - off,
                      "t %ld.%ld/%ld.%ld/%p/%d)%s\n",
-                     tv.tv_sec, tv.tv_usec, orig_tv.tv_sec, orig_tv.tv_usec,
+                     tv.tv_sec, (long) tv.tv_usec,
+                     orig_tv.tv_sec, (long) orig_tv.tv_usec,
                      tvp, timeout, q_string);
     int exiting = 1;                 /* normally exit */
     if (errno == EBADF) /* usually, FD closed but not (yet) removed from p */
