@@ -198,8 +198,9 @@ static int receive_until (struct timeval * t, char ** message,
   int timeout_ms = (int) (us_to_wait / 1000LL);
 if (t == NULL) printf ("receive_until t is null\n");
 if (timeout_ms < 0)
-printf ("%s -> ru: timeout_ms = %d, us_to_wait %llu, t %ld.%06ld, now %ld.%06ld\n",
-caller, timeout_ms, us_to_wait, t->tv_sec, t->tv_usec, now.tv_sec, now.tv_usec);
+printf ("%s -> ru: to = %dms, us_to_wait %llu, t %ld.%06ld, now %ld.%06ld\n",
+caller, timeout_ms, us_to_wait, t->tv_sec, (long) t->tv_usec,
+now.tv_sec, (long) now.tv_usec);
 
   struct sockaddr_storage recv_addr;
   struct sockaddr * sap = (struct sockaddr *) (&recv_addr);
