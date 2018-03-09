@@ -269,8 +269,7 @@ void sha512 (const char * input, int bytes, char * result)
   }
   /* padding */
   unsigned int bits = bytes * 8;
-  int input_blocks = ((bytes + 127) / 128) - 1;
-
+  int input_blocks = bytes / SHA512_BLOCK_SIZE;
   char last1 [SHA512_BLOCK_SIZE];  /* next-to-last block, has data from input */
   char last2 [SHA512_BLOCK_SIZE];  /* last block, may not be needed */
   memset (last1, 0, SHA512_BLOCK_SIZE);
@@ -460,7 +459,6 @@ void sha1 (const char * data, int dsize, char * result)
   /* padding */
   unsigned int bits = dsize * 8;
   /* number of full input blocks */
-  /* int input_blocks = ((dsize + SHA1_BLOCK_SIZE - 1) / SHA1_BLOCK_SIZE) - 1;*/
   int input_blocks = dsize / SHA1_BLOCK_SIZE;
 
   char last1 [SHA1_BLOCK_SIZE];  /* next-to-last block, has data from input */
@@ -575,30 +573,7 @@ void sha512hmac (const char * data, int dsize, const char * key, int ksize,
 #ifdef SHA_UNIT_TEST
 
 #include <sys/time.h>
-
-#if 0
-static char * delta_time (struct timeval * start, struct timeval * finish)
-{
-  static char result [100];
-  int delta_us = finish->tv_usec - start->tv_usec;
-  int delta = finish->tv_sec - start->tv_sec;
-  if (delta_us < 0) {
-    if (delta > 0) {
-      delta_us += 1000000;
-      delta -= 1;
-    } else {
-      snprintf (result, sizeof (result), "negative time");
-      return result;
-    }
-  }
-  if (delta < 0) {
-    snprintf (result, sizeof (result), "negative time");
-  } else {
-    snprintf (result, sizeof (result), "%d.%06d", delta, delta_us);
-  }
-  return result;
-}
-#endif /* 0 */
+#include <openssl/sha.h>   /* for comparisons */
 
 static void run_test (char * text, int tlen, char * expected)
 {
@@ -666,6 +641,35 @@ static void sha_given_array (char * array)
   for (i = 0; i < SHA512_SIZE; i++)
     printf ("%02x", (result [i] & 0xff));
   printf ("\n");
+#undef DATA_SIZE
+}
+
+static void compare_to_openssl ()
+{
+  if (SHA512_SIZE != SHA512_DIGEST_LENGTH) {
+    printf ("error: sha 512 size %d, digest length %d\n",
+            (int) SHA512_SIZE, (int) SHA512_DIGEST_LENGTH);
+    exit (1);
+  }
+#define DATA_SIZE	10000
+  unsigned char data [DATA_SIZE];
+  int i;
+  for (i = 0; i < DATA_SIZE; i++)
+    data [i] = i * 41 + 53;   /* pseudo-random sequence */
+  char this_result [SHA512_SIZE];
+  char ssl_result [SHA512_SIZE];
+  for (i = 0; i <= DATA_SIZE; i++) {
+    sha512 (data, i, this_result);
+    SHA512 (data, i, ssl_result);
+    if (memcmp (this_result, ssl_result, SHA512_SIZE) != 0) {
+      printf ("error: for length = %d sha512 gives non-standard result\n", i);
+      for (int j = 0; j < SHA512_SIZE; j++)
+        printf ("%02x/%02x ", this_result [j] & 0xff, ssl_result [j] & 0xff);
+      printf ("\n");
+      exit (1);
+    }
+  }
+  printf ("sha512 gives standard results\n");
 #undef DATA_SIZE
 }
 
@@ -846,6 +850,8 @@ int main (int argc, char ** argv)
   if (sizeof (sha1_t6) != 495)
     printf ("size of sha1_t6 is %zd, should be 495\n", sizeof (sha1_t6));
   run_test_sha1 (sha1_t6, 495, sha1_r6);
+
+  compare_to_openssl ();
 
   return 0;
 }
