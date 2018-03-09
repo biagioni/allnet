@@ -9,7 +9,7 @@
  * its own header */
 
 /* beacons are locally broadcast by wireless receivers to indicate the receiver
- * is ready to receive data.  Becaons should always be sent with hops = 0
+ * is ready to receive data.  Beacons should always be sent with hops = 0
  * and max_hops = 1, so hops and max_hops can be ignored when receiving
  * beacons.
  *
