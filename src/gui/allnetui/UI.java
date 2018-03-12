@@ -85,6 +85,7 @@ class UI extends ApplicationFrame {
             // NOTE: if we set a L&F, then we won't be able to
             // set button colors easily
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+            // UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
             // let individual panels determine border 
             UIManager.put("TabbedPane.contentBorderInsets",
                           new Insets(0, 0, 0, 0));
