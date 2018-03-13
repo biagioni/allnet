@@ -148,7 +148,7 @@ static char * find_java ()
   return NULL;
 }
 
-/* #define HIDE_JAVA_OUTPUT */
+#define HIDE_JAVA_OUTPUT
 #ifdef HIDE_JAVA_OUTPUT
 #define LOG_FILE_NAME	"xchat-java-log.txt"
 #define TMP_DIR_INITIALIZER	"/tmp"
@@ -222,7 +222,7 @@ static pid_t exec_java_ui (const char * arg)
         ** (java:14856): CRITICAL **: murrine_scrollbar_get_stepper: assertion 'GTK_IS_RANGE (widget)' failed
         (java:14856): Gtk-WARNING **: /build/gtk+2.0-KsZKkB/gtk+2.0-2.24.30/gtk/gtkwidget.c:10000: widget class `GtkSpinButton' has no property named `stepper-size'
     to avoid these messages, which don't seem to be signaling anything
-    actually important, we redirect the stdout and stderr to a file in /tmp,
+    actually important, we redirect the stderr messages to a file in /tmp,
     where they are available if desired. */
     char * name = strcat3_malloc (tmp_dir, "/", LOG_FILE_NAME,
                                   "xchat_socket tmp1");
@@ -239,10 +239,10 @@ static pid_t exec_java_ui (const char * arg)
         free (name);
       }
     }
-    if (log_fd >= 0) {
-      setbuf (stdout, NULL);  /* make stdout/stderr unbuffered */
+    if (log_fd >= 0) {   /* not necessary to redirect stdout */
+/*      setbuf (stdout, NULL);  */ /* make stdout/stderr unbuffered */
       setbuf (stderr, NULL);  /* so the file is written */
-      dup2 (log_fd, STDOUT_FILENO);  /* write stdout to the log file */
+/*      dup2 (log_fd, STDOUT_FILENO); */ /* write stdout to the log file */
       dup2 (log_fd, STDERR_FILENO);  /* write stderr to the log file */
       close (log_fd);  /* no longer needed as a separate fd */
     } else {
