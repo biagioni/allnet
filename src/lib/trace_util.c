@@ -359,7 +359,8 @@ static void record_rtt (unsigned long long uus)
 
 static int print_times (struct allnet_mgmt_trace_entry * entry,
                         struct timeval * start, struct timeval * now,
-                        int save_to_intermediate, char * buf, int bsize)
+                        int save_to_intermediate, int print_rtt,
+                        char * buf, int bsize)
 {
   int off = 0;
   if ((start != NULL) && (now != NULL)) {
@@ -386,10 +387,13 @@ static int print_times (struct allnet_mgmt_trace_entry * entry,
       arrivals [num_arrivals].time = *now;
       num_arrivals++;
     }
-    off += snprintf (buf + off, bsize - off,
-                     " %3lld.%06llds rtt", delta / 1000000LL,
-                     delta % 1000000LL);
-
+    if (print_rtt) {
+      off += snprintf (buf + off, bsize - off,
+                       " %3lld.%06llds rtt", delta / 1000000LL,
+                       delta % 1000000LL);
+    } else {
+      off += snprintf (buf + off, bsize - off, "                ");
+    }
     struct timeval timestamp;
     timestamp.tv_sec = (time_t) (readb64u (entry->seconds));
     timestamp.tv_usec = (suseconds_t)fraction;
@@ -478,7 +482,8 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
         int indented_off = off;
         off += print_entry (trp->trace + i, &start, &finish, 0, 1, indent,
                             buf + off, sizeof (buf) - off);
-        off += print_times (trp->trace + i, &start, &finish, 1,
+        int print_rtt = ((! match_only) || (i + 1 == trp->num_entries));
+        off += print_times (trp->trace + i, &start, &finish, 1, print_rtt,
                             buf + off, sizeof (buf) - off);
         if (indented_off == off) {
           off = initial_off;
@@ -496,14 +501,14 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
     off += snprintf (buf + off, sizeof (buf) - off, "to  ");
     off += print_entry (trp->trace + 1, &start, &finish, 0, 1, 0,
                         buf + off, sizeof (buf) - off);
-    off += print_times (trp->trace + 1, &start, &finish, 1,
+    off += print_times (trp->trace + 1, &start, &finish, 1, 1,
                         buf + off, sizeof (buf) - off);
   } else if (trp->num_entries == 1) {
     /* generally only one trace entry, so always print the first */
     off += snprintf (buf + off, sizeof (buf) - off, "local:   ");
     off += print_entry (trp->trace, &start, &finish, 0, 1, 1,
                         buf + off, sizeof (buf) - off);
-    off += print_times (trp->trace, &start, &finish, 1,
+    off += print_times (trp->trace, &start, &finish, 1, 1,
                         buf + off, sizeof (buf) - off);
   } else {
     off += snprintf (buf + off, sizeof (buf) - off,
