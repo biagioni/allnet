@@ -908,17 +908,18 @@ uint64_t highest_seq_value (const char * contact, keyset k, int type_wanted)
     }
   }
   free_iter (iter);
-  /* save the result of all this hard work */
-  if (max_type == MSG_TYPE_SENT) {
+  if (max_seq > 0) {   /* save the result of all this hard work */
+    if (max_type == MSG_TYPE_SENT) {
 #ifdef IMPLEMENTING_SEQ_CACHING
-    cache_seq (k, max_seq, max_time, 1);
+      cache_seq (k, max_seq, max_time, 1);
 #endif /* IMPLEMENTING_SEQ_CACHING */
-    save_int_to_file (contact, k, "last_sent", max_seq);
-  } else if (max_type == MSG_TYPE_RCVD) {
+      save_int_to_file (contact, k, "last_sent", max_seq);
+    } else if (max_type == MSG_TYPE_RCVD) {
 #ifdef IMPLEMENTING_SEQ_CACHING
-    cache_seq (k, max_seq, max_time, 0);
+      cache_seq (k, max_seq, max_time, 0);
 #endif /* IMPLEMENTING_SEQ_CACHING */
-    save_int_to_file (contact, k, "last_received", max_seq);
+      save_int_to_file (contact, k, "last_received", max_seq);
+    }
   }
   return max_seq;
 }
