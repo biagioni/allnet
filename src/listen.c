@@ -47,9 +47,14 @@ static void print_listen_info (struct listen_info * info)
 static int init_listen_socket (int version, int port, int local)
 {
   int isip6 = (version == 6);
+  static int ipv6_supported = 1;   /* default */
+  if (isip6 && (! ipv6_supported))
+    return -1;
   int af = ((isip6) ? AF_INET6 : AF_INET);
   int fd = socket (af, SOCK_STREAM, 0);
   if (fd < 0) {
+    if (isip6 && (errno == EAFNOSUPPORT))
+      ipv6_supported = 0;   /* IPv6 is not supported */
     perror ("listen socket");
     return -1;
   }
