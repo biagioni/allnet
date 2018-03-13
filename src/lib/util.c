@@ -1346,6 +1346,13 @@ int write_file (const char * fname, const char * contents, int len,
                 int print_errors)
 {
   int fd = open (fname, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (fd < 0) {
+    if (print_errors) {
+      perror ("open in write_file");
+      printf ("unable to open %s\n", fname);
+    }
+    return 0;
+  }
   return write_to_fd (fd, contents, len, print_errors, fname);
 }
 
