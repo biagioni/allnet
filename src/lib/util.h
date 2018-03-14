@@ -266,6 +266,10 @@ extern int allnet_htons (int hostshort);
 extern int is_valid_message (const char * packet, unsigned int size,
                              char ** error_desc);
 
+/* returns 1 if the message is expired, 0 otherwise (including if
+ * the message never expires). */
+extern int is_expired_message (const char * packet, unsigned int size);
+
 extern void print_gethostbyname_error (const char * hostname,
                                        struct allnet_log * log);
 

@@ -1614,6 +1614,23 @@ int allnet_htons (int hostshort)
   return readb16 (buffer);
 }
 
+/* returns 1 if the message is expired, 0 otherwise (including if
+ * the message never expires). */
+int is_expired_message (const char * packet, unsigned int size)
+{
+  if (size < (int) ALLNET_HEADER_SIZE)
+    return 0;    /* message too small to have even just a header */
+  struct allnet_header * hp = (struct allnet_header *) packet;
+  if ((hp->transport & ALLNET_TRANSPORT_EXPIRATION) == 0)
+    return 0;    /* message never expires */
+  if (size < (int) ALLNET_SIZE_HEADER (hp))
+    return 0;    /* message too small to have an expiration header */
+  uint64_t exp = readb64 (ALLNET_EXPIRATION (hp, hp->transport, size));
+  if (exp < allnet_time ())
+    return 1;    /* message is expired */
+  return 0;      /* message is not expired */
+}
+
 /* returns 1 if the message is valid, 0 otherwise
  * If returns zero and error_desc is not NULL, it is filled with
  * a description of the error -- do not modify in any way. */
@@ -1621,10 +1638,6 @@ extern int is_valid_message (const char * packet, unsigned int size,
                              char ** error_desc)
 {
   if (size < (int) ALLNET_HEADER_SIZE) {
-/*
-    printf ("received a packet with %d bytes, %zd required\n",
-            size, ALLNET_HEADER_SIZE);
-*/
     if (error_desc != NULL) *error_desc = "packet size less than header size";
     return 0;
   }
