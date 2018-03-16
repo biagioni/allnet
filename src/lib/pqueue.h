@@ -26,10 +26,10 @@
 extern void queue_init (int max_bytes);
 
 /* return the highest priority of any item in the queue */
-extern int queue_max_priority ();
+extern int queue_max_priority (void);
 
 /* return how many bytes are in the queue */
-extern int queue_total_bytes ();
+extern int queue_total_bytes (void);
 
 /**
  * Add new element to priority queue
@@ -46,7 +46,7 @@ extern int queue_add (const char * queue_element, int size, int priority);
  * then repeatedly call queue_iter_next until it returns 0
  * after any successful call to queue_iter_next, may call queue_iter_remove
  */
-extern void queue_iter_start ();
+extern void queue_iter_start (void);
 
 /* Fills in *queue_element with a reference to the next object, *next_size
  * with its length, *priority with its priority, *backoff with the current
@@ -62,12 +62,12 @@ extern int queue_iter_next (char * * queue_element, int * next_size,
  * Must only be called after a successful call to queue_iter_next ().
  * @return 1 if counter has been incremented, 0 if element has been removed.
  */
-extern int queue_iter_inc_backoff ();
+extern int queue_iter_inc_backoff (void);
 
 /**
  * Remove current element from queue and free internal resources.
  * Must be called at most once after a successful call to queue_iter_next ().
  */
-extern void queue_iter_remove ();
+extern void queue_iter_remove (void);
 
 #endif /* ALLNET_PQUEUE_H */

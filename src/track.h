@@ -13,7 +13,7 @@ extern unsigned int track_rate (unsigned char * src, unsigned int sbits,
 
 /* return the rate of the sender that is sending the most at this time */
 /* used by default when we cannot prove who the sender is */
-extern unsigned int largest_rate ();
+extern unsigned int largest_rate (void);
 
 #endif /* TRACK_H */
 

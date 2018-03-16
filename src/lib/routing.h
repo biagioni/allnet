@@ -29,7 +29,7 @@ extern int routing_top_dht_matches (unsigned char * dest, int nbits,
 extern int routing_add_dht (struct addr_info * addr);
 
 /* expires old DHT entries that haven't been refreshed since the last call */
-extern void routing_expire_dht ();
+extern void routing_expire_dht (void);
 
 /* fills in the given array, which must have room for num_entries addr_infos,
  * with data to send.

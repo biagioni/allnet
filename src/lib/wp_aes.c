@@ -344,7 +344,7 @@ static void SubBytes(uint32_t *p)
 static void ShiftRows(uint32_t *s)
 {
   uint32_t a, b, c, d;
-  a = s[0], b = s[1], c = s[2], d = s[3];
+  a = s[0]; b = s[1]; c = s[2]; d = s[3];
   s[0] = (a&0xff000000) | (b&0xff0000) | (c&0xff00) | (d&0xff);
   s[1] = (b&0xff000000) | (c&0xff0000) | (d&0xff00) | (a&0xff);
   s[2] = (c&0xff000000) | (d&0xff0000) | (a&0xff00) | (b&0xff);

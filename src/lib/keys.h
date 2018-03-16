@@ -19,7 +19,7 @@ typedef int keyset;  /* opaque type, do not access directly */
 /*************** operations on contacts ********************/
 
 /* returns 0 or more */
-extern int num_contacts ();
+extern int num_contacts (void);
 
 /* returns the number of contacts, and (if not NULL) has contacts point
  * to a dynamically allocated array of pointers to null-terminated

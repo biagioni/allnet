@@ -119,9 +119,9 @@ extern int matching_bits (const unsigned char * x, int xbits,
  * The 64-bit value returned will be good for 584,000 years worth of
  * microseconds.
  */
-extern unsigned long long int allnet_time ();     /* seconds since Y2K */
-extern unsigned long long int allnet_time_ms ();  /* milliseconds since Y2K */
-extern unsigned long long int allnet_time_us ();  /* microseconds since Y2K */
+extern unsigned long long int allnet_time (void);   /* seconds since Y2K */
+extern unsigned long long int allnet_time_ms (void);/* milliseconds since Y2K */
+extern unsigned long long int allnet_time_us (void);/* microseconds since Y2K */
 
 /* returns the result of calling ctime_r on the given allnet time. */
 /* the result buffer must be at least 30 bytes long */

@@ -21,7 +21,7 @@ extern int connect_to_local (const char * program_name,
 /* since allnet may run on devices with limited power, some things
  * (speculative computation, i.e. stuff that is not needed immediately)
  * may be postponed if we are not plugged in to power */
-extern int speculative_computation_is_ok ();  /* initially yes */
+extern int speculative_computation_is_ok (void);  /* initially yes */
 extern void set_speculative_computation (int ok);
 
 /* retrieve or request a public key.
