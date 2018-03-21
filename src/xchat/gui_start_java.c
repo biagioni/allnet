@@ -148,7 +148,7 @@ static char * find_java ()
   return NULL;
 }
 
-#define HIDE_JAVA_OUTPUT
+/* #define HIDE_JAVA_OUTPUT */
 #ifdef HIDE_JAVA_OUTPUT
 #define LOG_FILE_NAME	"xchat-java-log.txt"
 #define TMP_DIR_INITIALIZER	"/tmp"
