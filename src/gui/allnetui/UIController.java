@@ -1085,7 +1085,8 @@ System.out.println("got secret " + secret + " for " + contactName);
         StringBuilder sb = new StringBuilder(timeText);
         sb.append("\n");
         sb.append(msg.text);
-        return (SocketUtils.sanitizeForHtml(sb.toString()));
+        String html = SocketUtils.sanitizeForHtml(sb.toString());
+        return (SocketUtils.makeFirstLineSmall(html));
     }
 
     // chop a line up into pieces <= max length

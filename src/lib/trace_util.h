@@ -5,6 +5,7 @@
 
 #include "allnet_log.h"
 #include "allnet_queue.h"
+#include "mgmt.h"
 
 /* returns the output incrementally on fd_out */
 /* 0, 1, or multiple addresses may be specified in a single array
@@ -40,5 +41,12 @@ extern int start_trace (int sock,
                         const unsigned char * addr, unsigned int nbits,
                         unsigned int nhops, int record_intermediates,
                         char * trace_id);
+
+/* convert to a string (of size slen) the result of a trace,
+ * eliminating duplicates of past received traces */
+extern void trace_to_string (char * string, size_t slen,
+                             struct allnet_mgmt_trace_reply * trace,
+                             int trace_count,
+                             unsigned long long int trace_start_time);
 
 #endif /* ALLNET_TRACE_UTIL_H */
