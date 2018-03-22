@@ -19,6 +19,10 @@ If you plan to contribute to the code, replace the last line with these 3 lines:
 
 Any available binary releases are on https://alnt.org/
 
+The same source is also at   https://github.com/biagioni/allnet.git
+iOS source is available at   https://github.com/biagioni/allnet-ios.git
+and Android source is at     https://github.com/biagioni/allnet-android.git
+
 ======================== BUILD ==================================
 
 Before building, you may need to install libtool and autoconf.
