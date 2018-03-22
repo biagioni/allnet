@@ -162,12 +162,13 @@ int main (int argc, char ** argv)
       printf ("xchats pipe closed, exiting\n");
       exit (1);
     }
-    int verified, duplicate, broadcast;
-    uint64_t rcvd_seq;
-    char * desc;
-    char * message;
+    int verified = 0, duplicate = -1, broadcast = -2;
+    uint64_t rcvd_seq = 0;
+    char * desc = NULL;
+    char * message = NULL;
     char * peer = NULL;
     struct allnet_ack_info acks;
+    acks.num_acks = 0;
     keyset kset = -1;
     int mlen = handle_packet (sock, packet, found, pri, &peer, &kset,
                               &message, &desc, &verified, &rcvd_seq, NULL,

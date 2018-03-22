@@ -17,11 +17,10 @@ static void gui_callback_message_received (const char * peer,
                                            uint64_t seq, time_t mtime,
                                            int broadcast, int gui_sock)
 {
-  if (broadcast && (desc == NULL))  /* desc may be NULL for broadcasts */
-    desc = "";
 /* format: code, 1-byte broadcast, 8-byte sequence, 8-byte time,
            then null_terminated peer, message, and description */
-  size_t string_alloc = strlen (peer) + strlen (message) + strlen (desc) + 3;
+  size_t string_alloc = strlen (peer) + strlen (message) +
+                        ((desc == NULL) ? 0 : strlen (desc)) + 3;
 #define RECEIVED_MESSAGE_HEADER_SIZE	18
   size_t alloc = RECEIVED_MESSAGE_HEADER_SIZE + string_alloc;
   char * reply = malloc_or_fail (alloc, "gui_callback_message_received");
@@ -34,8 +33,13 @@ static void gui_callback_message_received (const char * peer,
   p += strlen (peer) + 1;
   strcpy (p, message);
   p += strlen (message) + 1;
-  strcpy (p, desc);
-  p += strlen (desc) + 1;
+  if (desc != NULL) {
+    strcpy (p, desc);
+    p += strlen (desc) + 1;
+  } else {       /* only put the terminating null character */
+    *p = '\0';
+    p++;
+  }
   gui_send_buffer (gui_sock, reply, alloc);
   free (reply);
 #undef RECEIVED_MESSAGE_HEADER_SIZE
@@ -127,13 +131,14 @@ void gui_socket_main_loop (int gui_sock, int allnet_sock, pd p)
   keyset old_kset = -1;
   while ((rcvd = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri))
          >= 0) {
-    int verified, duplicate, broadcast;
-    uint64_t seq;
-    char * peer;
-    keyset kset;
-    char * desc;
-    char * message;
+    int verified = 0, duplicate = -1, broadcast = -2;
+    uint64_t seq = 0;
+    char * peer = NULL;
+    keyset kset = 0;
+    char * desc = NULL;
+    char * message = NULL;
     struct allnet_ack_info acks;
+    acks.num_acks = 0;
     struct allnet_mgmt_trace_reply * trace = NULL;
     time_t mtime = 0;
     int mlen = handle_packet (allnet_sock, packet, rcvd, pri,

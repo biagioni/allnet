@@ -93,13 +93,14 @@ static void * receive_thread (void * arg)
       exit (1);
     }
     /* it's good to call handle_packet even if we didn't get a packet */
-    int verified, duplicate, broadcast;
-    uint64_t seq;
-    char * peer;
-    keyset kset;
-    char * desc;
-    char * message;
+    int verified = 0, duplicate = -1, broadcast = -2;
+    uint64_t seq = 0;
+    char * peer = NULL;
+    keyset kset = 0;
+    char * desc = NULL;
+    char * message = NULL;
     struct allnet_ack_info acks;
+    acks.num_acks = 0;
     struct allnet_mgmt_trace_reply * trace = NULL;
     int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset,
                               &message, &desc, &verified, &seq, NULL,
