@@ -126,10 +126,14 @@ static int process_packet (char * packet, int size, int is_local,
 #ifdef PRINT_MESSAGE_VALIDITY
   char * reason = NULL;
   if (! is_valid_message (packet, size, &reason)) {
-    printf ("%s: got invalid %s packet of size %d, priority %d\n",
-            reason, (is_local) ? "local" : "remote", size, *priority);
-    print_buffer (packet, size, NULL, size, 1);
+    if (strcmp (reason, "expired_packet") != 0) {
+      printf ("%s: got invalid %s packet of size %d, priority %d\n",
+              reason, (is_local) ? "local" : "remote", size, *priority);
+      print_buffer (packet, size, NULL, size, 1);
+    }
   }
+  if (reason != NULL)
+    free (reason);
 #endif /* PRINT_MESSAGE_VALIDITY */
   if (! is_valid_message (packet, size, NULL))
     return PROCESS_PACKET_DROP;
