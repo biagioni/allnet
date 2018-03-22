@@ -17,6 +17,8 @@ static void gui_callback_message_received (const char * peer,
                                            uint64_t seq, time_t mtime,
                                            int broadcast, int gui_sock)
 {
+  if (broadcast && (desc == NULL))  /* desc may be NULL for broadcasts */
+    desc = "";
 /* format: code, 1-byte broadcast, 8-byte sequence, 8-byte time,
            then null_terminated peer, message, and description */
   size_t string_alloc = strlen (peer) + strlen (message) + strlen (desc) + 3;
@@ -46,7 +48,7 @@ static void gui_callback_message_acked (const char * peer, uint64_t ack,
   size_t string_alloc = strlen (peer) + 1;
 #define RECEIVED_ACK_HEADER_SIZE			9
   size_t alloc = RECEIVED_ACK_HEADER_SIZE + string_alloc;
-  char * reply = malloc_or_fail (alloc, "gui_callback_message_received");
+  char * reply = malloc_or_fail (alloc, "gui_callback_message_acked");
   reply [0] = GUI_CALLBACK_MESSAGE_ACKED;
   writeb64 (reply + 1, ack);
   strcpy (reply + RECEIVED_ACK_HEADER_SIZE, peer);
@@ -59,7 +61,7 @@ static void gui_callback_created (int code, const char * peer, int gui_sock)
 {
 /* format: code, null_terminated peer */
   size_t alloc = 1 + strlen (peer) + 1;
-  char * reply = malloc_or_fail (alloc, "gui_callback_message_received");
+  char * reply = malloc_or_fail (alloc, "gui_callback_created");
   reply [0] = code;
   strcpy (reply + 1, peer);
   gui_send_buffer (gui_sock, reply, alloc);

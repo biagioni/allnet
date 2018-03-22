@@ -107,7 +107,7 @@ public class CoreConnect extends Thread implements CoreAPI {
         String desc = SocketUtils.bString(value, messageEnd);
         int descEnd = messageEnd + desc.length() + 1;
         assert(descEnd == value.length);
-        String dm = desc + "\n" + message;
+        String dm = ((desc.length() > 0) ? (desc + "\n" + message) : message);
         if (incompletes.contains(peer)) {   // complete the exchange
             setComplete(peer);
             setVisible(peer);
