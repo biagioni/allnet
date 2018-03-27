@@ -258,7 +258,7 @@ System.out.println("hex for " + b + "/" + i + " is " + result);
             message = sanitizeOnePattern(message,
                                          htmlPatterns[i], htmlReplacements[i]);
         }
-        return makeFirstLineSmall (message);
+        return message;
     }
 
     public static String makeFirstLineSmall (String message) {
