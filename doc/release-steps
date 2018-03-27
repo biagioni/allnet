@@ -20,10 +20,11 @@ compile for iOS on xcode
   Product/Scheme/Edit Scheme /  left-menu-Archive
      set build configuration to 'Release' if necessary, then close
   Product/Archive
-     Validate
+     Validate -- (if needed, certificates are at https://developer.apple.com)
      Upload to App Store
   log in to itunes connect
     https://itunesconnect.apple.com/
+      click on the app name
     my apps/Activity --- should have newly uploaded version (may have to wait
       if it is still processing)
     my apps/App Store click "+ Version or Platform", iOS, add the new version
