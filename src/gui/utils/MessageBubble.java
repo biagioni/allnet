@@ -1,6 +1,5 @@
 package utils;
 
-import allnetui.SocketUtils;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Toolkit;
@@ -28,6 +27,12 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
     private static final String COPY = "Copy";
     private static final String COPY_ALL = "Copy All";
 
+    // params for resizing bubbles
+    private static int estimatedCharsPerLine = 0;
+    private static int MAX_RESIZE_TRIES = 12;
+    private static double wTargetHi = 0.72;
+    private static double wTargetLo = 0.62;
+
     // width of the container the last time this MessageBubble was resized
     private int lastContainerWidth;
 
@@ -45,7 +50,6 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
     // utility for word wrapping and selection correction
     private WordWrapper ww = new WordWrapper(true);
 
-    
     public MessageBubble(MESSAGE message, boolean leftJustified, Color color,
         String text, JComponent container) {
         super();
@@ -69,16 +73,8 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         textPane.setComponentPopupMenu(popup);
     }
 
-    private JTextPane makeTextPane(Color color, boolean leftJustified,
-        int containerWidth) {
-        JTextPane pane = null;
-        int width = containerWidth;
-        do {
-            pane = makeTextPaneQuick(color, leftJustified, width);
-            width = (9 * width) / 10;
-        }
-        while (pane.getPreferredSize().width > (2 * containerWidth) / 3);
-        return (pane);
+    public static void setEstimatedCharsPerLine(int estimatedCharsPerLine) {
+        MessageBubble.estimatedCharsPerLine = estimatedCharsPerLine;
     }
 
     public void resizeBubble(int width) {
@@ -89,14 +85,71 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         add(textPane);
     }
 
-    private JTextPane makeTextPaneQuick(Color color, boolean leftJustified,
+    private JTextPane makeTextPane(Color color, boolean leftJustified,
         int containerWidth) {
+        JTextPane pane;
+        int charsPerLine;
+        if (estimatedCharsPerLine > 0) {
+            charsPerLine = estimatedCharsPerLine;
+        }
+        else {
+            // just use an estimated 5 pixels/char avg width, and 
+            // set charsPerLine to fill entire width
+            charsPerLine = containerWidth / 5;
+        }
+        // make a pane using the estimated or default chars per line 
+        pane = makeTextPaneQuick(color, leftJustified, charsPerLine);
+        int width = pane.getPreferredSize().width;
+        // and now we semi-duplicate code, but it's simple and condensing it
+        // would make the different condx impossible to follow </defensiveness>
+        if (width > wTargetHi * containerWidth) {
+            // it's too wide
+            int tries = 0;
+            do {
+                charsPerLine = (9 * charsPerLine) / 10;
+                pane = makeTextPaneQuick(color, leftJustified, charsPerLine);
+                width = pane.getPreferredSize().width;
+                tries++;
+            }
+            while ((tries < MAX_RESIZE_TRIES)
+                && (width > wTargetHi * containerWidth));
+            // System.out.println("hi  " + tries + "  " + charsPerLine);
+            // set the estimated chars per line
+            if ((tries < MAX_RESIZE_TRIES) && (tries > 1)) {
+                estimatedCharsPerLine = charsPerLine;
+            }            
+        }
+        else if ((width > wTargetHi * containerWidth) 
+            && !ww.getWordBreaks().isEmpty()) {
+            // not wide enough, and there were line breaks inserted, so retry
+            int tries = 0;
+            do {
+                charsPerLine = (11 * charsPerLine) / 10;
+                pane = makeTextPaneQuick(color, leftJustified, charsPerLine);
+                width = pane.getPreferredSize().width;
+                tries++;
+            }
+            while ((tries < MAX_RESIZE_TRIES)
+                && (width < wTargetLo * containerWidth)
+                && !ww.getWordBreaks().isEmpty());
+            // System.out.println("lo  " + tries + "  " + charsPerLine);
+            // set the estimated chars per line
+            if ((tries < MAX_RESIZE_TRIES) && (tries > 1)
+                && !ww.getWordBreaks().isEmpty()) {
+                estimatedCharsPerLine = charsPerLine;
+            }            
+        }
+        return (pane);
+    }
+
+    private JTextPane makeTextPaneQuick(Color color, boolean leftJustified,
+        int charsPerLine) {
         JTextPane pane = new JTextPane();
         pane.setContentType("text/html");
         pane.setEditable(false);
         pane.setBackground(color);
         // 5 pix per char is really small
-        ww.wordWrapText(text, containerWidth / 5, !leftJustified);
+        ww.wordWrapText(text, charsPerLine, !leftJustified);
         String[] wordWrappedLines = ww.getWrappedText();
         String htmlPrefix;
         if (leftJustified) {
@@ -126,7 +179,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         String r = s.replaceAll(" ", "&nbsp;");
         return (r);
     }
-    
+
     public void setBubbleBackground(Color bg) {
         super.setBackground(bg);
         textPane.setBackground(bg);

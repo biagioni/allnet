@@ -406,8 +406,9 @@ class ConversationPanel extends JPanel implements ComponentListener {
                 return;
             }
             lastResizingWidth = width;
-            // scrollPane.setViewportView(null);
             messagePanel = makeMessagePanel();
+            // force it to recalc chars per line
+            MessageBubble.setEstimatedCharsPerLine(0);
             for (MessageBubble<Message> b : bubbles) {
                 b.resizeBubble(width);
                 addBubble(b, false);
