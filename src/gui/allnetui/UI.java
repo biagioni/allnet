@@ -107,7 +107,7 @@ class UI extends ApplicationFrame {
                                                        broadcastBackgroundColor,
                                                        ackedBackgroundColor);
                     ContactsPanel contactsPanel =
-                      new ContactsPanel(" contacts<br>panel ", bgndColor,
+                      new ContactsPanel("&nbsp;contacts panel <br>&nbsp;loading contacts...", bgndColor,
                                         otherColor, broadcastContactColor,
                                         contactData);
                     String p = " exchange a key with a new contact<br>&nbsp;";
