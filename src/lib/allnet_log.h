@@ -27,15 +27,15 @@ extern void close_log (struct allnet_log * log);
 
 extern void log_print (struct allnet_log * log); /* log whatever is in b */
 extern void log_print_str (struct allnet_log * log,
-                           char * string);  /* log string and b */
+                           const char * string);  /* log string and b */
 
 /* log desc followed by a description of the packet (packet type, ID, etc) */
 extern void log_packet (struct allnet_log * log,
-                        char * desc, char * packet, int plen);
+                        const char * desc, const char * packet, int plen);
 
 /* log the error number for the given system call, followed by whatever
    is in the buffer */
-extern void log_error (struct allnet_log * log, char * syscall);
+extern void log_error (struct allnet_log * log, const char * syscall);
 
 /* output everything to stdout as well as the log file if on != 0.
  * if on == 0, only output to the log file unless log->log_to_output is 1 */

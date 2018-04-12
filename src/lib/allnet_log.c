@@ -205,7 +205,7 @@ static void log_print_buffer (char * buffer, int blen, int out)
     printf ("%s", buffer);
 }
 
-void log_print_str (struct allnet_log * log, char * string)
+void log_print_str (struct allnet_log * log, const char * string)
 {
   char header [100];
   char buffer [LOG_SIZE + LOG_SIZE];
@@ -269,7 +269,7 @@ static int addrs_to_str (int src_nbits, char * source,
 }
 #endif /* ADDRS_TO_STR_USED */
 
-static char * pck_str (char * packet, int plen)
+static char * pck_str (const char * packet, int plen)
 {
   static char buffer [LOG_SIZE];
   packet_to_string (packet, plen, NULL, 1, buffer, LOG_SIZE);
@@ -277,7 +277,8 @@ static char * pck_str (char * packet, int plen)
 }
 
 /* log desc followed by a description of the packet (packet type, ID, etc) */
-void log_packet (struct allnet_log * log, char * desc, char * packet, int plen)
+void log_packet (struct allnet_log * log, const char * desc,
+                 const char * packet, int plen)
 {
   static char local_buf [LOG_SIZE];
   snprintf (local_buf, sizeof (local_buf), "%s %s",
@@ -287,7 +288,7 @@ void log_packet (struct allnet_log * log, char * desc, char * packet, int plen)
 
 /* log the error number for the given system call, followed by whatever
    is in the buffer */
-void log_error (struct allnet_log * log, char * syscall)
+void log_error (struct allnet_log * log, const char * syscall)
 {
   int saved_errno = errno; 
   char ebuf [1000];
