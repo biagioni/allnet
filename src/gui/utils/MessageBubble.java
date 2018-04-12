@@ -7,12 +7,15 @@ import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
 import javax.swing.BoxLayout;
 import javax.swing.JComponent;
 import javax.swing.JMenuItem;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
 import javax.swing.JTextPane;
+import javax.swing.SwingUtilities;
 
 /**
  * Class to create a "message bubble" as a JTextPane.
@@ -22,7 +25,7 @@ import javax.swing.JTextPane;
  * @author henry
  * @param <MESSAGE>
  */
-public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
+public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, MouseListener {
 
     private static final String COPY = "Copy";
     private static final String COPY_ALL = "Copy All";
@@ -71,6 +74,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         item.addActionListener(this);
         popup.add(item);
         textPane.setComponentPopupMenu(popup);
+        textPane.addMouseListener(this);
     }
 
     public static void setEstimatedCharsPerLine(int estimatedCharsPerLine) {
@@ -82,6 +86,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         textPane = makeTextPane(textPane.getBackground(),
             leftJustified, width);
         textPane.setComponentPopupMenu(popup);
+        textPane.addMouseListener(this);
         add(textPane);
     }
 
@@ -212,4 +217,34 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener {
         clipboard.setContents(selection, selection);
     }
 
+    @Override
+    public void mouseClicked(MouseEvent e) {
+// System.out.println ("mouse clicked, event is " + e);
+        if (SwingUtilities.isMiddleMouseButton(e)) {
+            String selected = textPane.getSelectedText();
+            // offset of 1 determined experimentally, apparently undocumented
+            int startIdx = textPane.getSelectionStart() - 1;
+            String corrected = ww.getCorrected(selected, startIdx);
+// System.out.println ("mouse clicked, event is middle mouse button, selected " + corrected);
+            StringSelection selection = new StringSelection(corrected);
+            Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
+            clipboard.setContents(selection, selection);
+        }
+    }
+
+    @Override
+    public void mousePressed(MouseEvent e) {
+    }
+
+    @Override
+    public void mouseReleased(MouseEvent e) {
+    }
+
+    @Override
+    public void mouseEntered(MouseEvent e) {
+    }
+
+    @Override
+    public void mouseExited(MouseEvent e) {
+    }
 }
