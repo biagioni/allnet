@@ -12,6 +12,8 @@ libincludes = \
 	media.h \
 	mgmt.h \
 	packet.h \
+        pcache.h \
+        pid_cache.h \
 	pipemsg.h \
 	pqueue.h \
 	priority.h \
@@ -36,6 +38,8 @@ libsrc = \
 	keys.c \
 	allnet_log.c \
 	mapchar.c \
+        pcache.c \
+        pid_cache.c \
 	pipemsg.c \
 	pqueue.c \
 	priority.c \
