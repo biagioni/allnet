@@ -1450,6 +1450,7 @@ static int respond_to_request (int fd, unsigned int max_size, char * in_message,
   return sent;
 }
 
+#ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
 /* returns the number of responses sent, or 0 */
 /* if any of the ids in the request are not found, also sends onwards
  * the message (unless it was sent locally and with max_hops == 0), with
@@ -1508,7 +1509,7 @@ static int respond_to_id_request (int fd, unsigned int max_size,
   }
   return nsent;
 }
-
+#endif /* IMPLEMENT_MGMT_ID_REQUEST */
 
 /* save the ack, and delete any matching packets */
 static void ack_packets (int msg_fd, unsigned int msg_size, int ack_fd,
@@ -1716,11 +1717,13 @@ static void main_loop (int rsock, int wsock, pd p)
         else
           snprintf (alog->b, alog->s, "no response to data request packet\n");
       } else if (hp->message_type == ALLNET_TYPE_MGMT) {
+#ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
         if (respond_to_id_request (msg_fd, max_msg_size, message,
                                    uresult, wsock))
           snprintf (alog->b, alog->s, "responded to id request packet\n");
         else
           snprintf (alog->b, alog->s, "no response to id request packet\n");
+#endif /* IMPLEMENT_MGMT_ID_REQUEST */
       } else {   /* not a data request and not a mgmt packet */
         if (hp->message_type == ALLNET_TYPE_ACK) {
           /* erase the message and save the ack */
