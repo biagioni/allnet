@@ -257,8 +257,9 @@ extern void writeb32u (unsigned char * p, unsigned long int value);
 extern void writeb48u (unsigned char * p, unsigned long long int value);
 extern void writeb64u (unsigned char * p, unsigned long long int value);
 
-/* essentially the same as htons, but sometimes easier to find */
+/* essentially the same as hton[sl], but sometimes easier to find */
 extern int allnet_htons (int hostshort);
+extern int allnet_htonl (int hostlong);
 
 /* returns 1 if the message is valid, 0 otherwise.
  * If returns zero and error_desc is not NULL, it is filled with

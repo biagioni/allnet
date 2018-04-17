@@ -1614,6 +1614,14 @@ int allnet_htons (int hostshort)
   return readb16 (buffer);
 }
 
+int allnet_htonl (int hostlong)
+{
+  char buffer [4];
+  uint32_t * p = (uint32_t *) buffer;
+  *p = (hostlong & 0xffffffff);
+  return readb32 (buffer);
+}
+
 /* returns 1 if the message is expired, 0 otherwise (including if
  * the message never expires). */
 int is_expired_message (const char * packet, unsigned int size)
