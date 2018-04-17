@@ -19,6 +19,7 @@ libincludes = \
 	priority.h \
 	routing.h \
 	sha.h \
+	sockets.h \
 	stream.h \
 	table.h \
 	trace_util.h \
@@ -45,6 +46,7 @@ libsrc = \
 	priority.c \
 	routing.c \
 	sha.c \
+	sockets.c \
 	stream.c \
 	table.c \
 	trace_util.c \
