@@ -1,9 +1,9 @@
-/* pid_cache.h */
+/* pid_bloom.h */
 /* keep track of packet IDs in a collection of bloom filters, the oldest
  * of which can be periodically discarded. */
 
-#ifndef PID_CACHE_H
-#define PID_CACHE_H
+#ifndef PID_BLOOM_H
+#define PID_BLOOM_H
 
 #include "packet.h"
 
@@ -31,4 +31,4 @@ extern void pid_save_bloom (void);
 /* discard the oldest bloom filter and create a new empty bloom filter */
 extern void pid_advance_bloom (void);
 
-#endif /* PID_CACHE_H */
+#endif /* PID_BLOOM_H */

@@ -1,9 +1,9 @@
-/* pid_cache.c:
+/* pid_bloom.c:
    save acks and IDs that are removed from the main tables (cf pcache) */
 
 /* command to compile it as a stand-alone program for testing
    of the caches:
-   gcc -Wall -g -o pid_cache_test -DTEST_PID_CACHE src/lib/pid_cache.c src/lib/util.c src/lib/pipemsg.c src/lib/sha.c  src/lib/allnet_queue.c src/lib/allnet_log.c src/lib/ai.c src/lib/configfiles.c -lpthread
+   gcc -Wall -g -o pid_bloom_test -DTEST_PID_CACHE src/lib/pid_bloom.c src/lib/util.c src/lib/pipemsg.c src/lib/sha.c  src/lib/allnet_queue.c src/lib/allnet_log.c src/lib/ai.c src/lib/configfiles.c -lpthread
 */
 
 #include <stdio.h>
@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <assert.h>
 
-#include "pid_cache.h"
+#include "pid_bloom.h"
 #include "util.h"
 #include "configfiles.h"
 
@@ -43,7 +43,9 @@ static void init_bloom ()
                 (int) BLOOM_SIZE, size, fname);
         unlink (fname);
       } else {   /* from_file is NULL, the file does not exist */
+#ifdef DEBUG_PRINT
         printf ("error reading %s: no such file\n", fname);
+#endif /* DEBUG_PRINT */
       }
       if (from_file != NULL) free (from_file);
     }
@@ -120,6 +122,7 @@ void pid_save_bloom ()
     else if (written != write_size)
       printf ("error writing %d bytes to ~/.allnet/acache/bloom, wrote %d\n",
               (int) write_size, (int) written);
+    close (fd);
   } else {
     printf ("error: unable to write ~/.allnet/acache/bloom\n");
   }

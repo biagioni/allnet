@@ -13,7 +13,7 @@ libincludes = \
 	mgmt.h \
 	packet.h \
         pcache.h \
-        pid_cache.h \
+        pid_bloom.h \
 	pipemsg.h \
 	pqueue.h \
 	priority.h \
@@ -40,7 +40,7 @@ libsrc = \
 	allnet_log.c \
 	mapchar.c \
         pcache.c \
-        pid_cache.c \
+        pid_bloom.c \
 	pipemsg.c \
 	pqueue.c \
 	priority.c \
