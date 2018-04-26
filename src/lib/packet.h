@@ -374,6 +374,8 @@ struct allnet_app_media_header {
  * Similarly for the source bits.
  * messages are sent back only if they match ALL the requested constraints.
  * a zero-bit bitmap will match all packets, as will a 0 time "since".
+ * note that _power_two of 0 would normally imply a 1-bit bitmap, which
+ * is not useful.  Therefore, a _power_two of 0 means no bits.
  *
  * mid stands for message id, and can be used to request acks for message
  * IDs known to be missing. 
