@@ -1,5 +1,5 @@
-/* xchat_test.c: useful for testing various features of chats.
-   compile with: gcc -o test -I../ xchat_test.c xcommon.c retransmit.c message.c cutil.c store.c ../lib/.libs/liballnet-3.2.1.a -lcrypto -lpthread
+/* test_xchat.c: useful for testing various features of chats.
+   compile with: gcc -o test -I../ test_xchat.c xcommon.c retransmit.c message.c cutil.c store.c ../lib/.libs/liballnet-3.2.1.a -lcrypto -lpthread
  */
 
 
