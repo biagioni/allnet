@@ -3,6 +3,8 @@
 #ifndef ROUTING_H
 #define ROUTING_H
 
+#include "sockets.h"    /* struct socket_set */
+
 /* limit sizes of dht packets */
 #define ADHT_MAX_PACKET_SIZE	1024
 
@@ -26,10 +28,11 @@ extern int routing_top_dht_matches (unsigned char * dest, int nbits,
 
 /* either adds or refreshes a DHT entry.
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
-extern int routing_add_dht (struct addr_info * addr);
+extern int routing_add_dht (struct addr_info addr);
 
-/* expires old DHT entries that haven't been refreshed since the last call */
-extern void routing_expire_dht (void);
+/* expires old DHT entries that haven't been refreshed since the last call
+ * and removes them from the socket set */
+extern void routing_expire_dht (struct socket_set * s);
 
 /* fills in the given array, which must have room for num_entries addr_infos,
  * with data to send.

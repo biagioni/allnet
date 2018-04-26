@@ -16,6 +16,7 @@
 #include "packet.h"
 #include "mgmt.h"
 #include "util.h"
+#include "sockets.h"
 #include "ai.h"
 #include "allnet_log.h"
 #include "configfiles.h"
@@ -545,20 +546,6 @@ static int addr_closer (unsigned char * dest, int nbits,
   return 0;
 }
 
-#if 0
-/* return true if the destination is no farther from target than from
- * current.  Target and current are assumed to have ADDRESS_BITS */
-/* if nbits is 0, will always return 1 */
-static int addr_not_farther (unsigned char * dest, int nbits,
-                             unsigned char * current, unsigned char * target)
-{
-  if (matching_bits (dest, nbits, current, ADDRESS_BITS) <=
-      matching_bits (dest, nbits, target, ADDRESS_BITS))
-    return 1;
-  return 0;
-}
-#endif /* 0 */
-
 /* fills in an array of sockaddr_storage to the top internet addresses
  * (up to max_matches) for the given AllNet address.
  * returns zero if there are no matches */
@@ -652,29 +639,9 @@ int routing_exact_match (const unsigned char * addr, struct addr_info * result)
   int found = 0;
   pthread_mutex_lock (&mutex);
   init_peers (0);
-#if 0
-  int i;
-  for (i = 0; (i < MAX_PEERS) && (found == 0); i++) {
-    if ((peers [i].ai.nbits != 0) &&
-        (memcmp (addr, peers [i].ai.destination, ADDRESS_SIZE) == 0)) {
-      found = 1;
-      if (result != NULL)
-        *result = peers [i].ai;
-    }
-  }
-  for (i = 0; (i < MAX_PINGS) && (found == 0); i++) {
-    if ((pings [i].ai.nbits != 0) &&
-        (memcmp (addr, pings [i].ai.destination, ADDRESS_SIZE) == 0)) {
-      found = 1;
-      if (result != NULL)
-        *result = pings [i].ai;
-    }
-  }
-#else /* ! 0 */
   found = search_data_structure (peers, MAX_PEERS, addr, result);
   if (! found)
     found = search_data_structure (pings, MAX_PINGS, addr, result);
-#endif /* 0 */
   pthread_mutex_unlock (&mutex);
   exact_match_print ("routing_exact_match", found, addr, result);
   return found;
@@ -733,10 +700,9 @@ static void delete_ping (struct addr_info * addr)
 
 /* either adds or refreshes a DHT entry.
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
-int routing_add_dht (struct addr_info * addrp)
+int routing_add_dht (struct addr_info addr)
 {
   int result = -1;
-  struct addr_info addr = *addrp;
   /* sanity check first */
   if (addr.nbits > ADDRESS_BITS) {
     printf ("routing_add_dht given address with %d > %d bits, not saving\n",
@@ -850,8 +816,29 @@ int routing_add_ping_locked (struct addr_info * addr)
   return result;
 }
 
-/* expires old DHT entries that haven't been refreshed since the last call */
-void routing_expire_dht ()
+static int delete_matching_address (struct socket_address_set * sock,
+                                    struct socket_address_validity * sav,
+                                    void * ref)
+{
+  struct addr_info * aip = (struct addr_info *) ref;
+  struct sockaddr_storage sas;
+  memset (&sas, 0, sizeof (sas));
+  socklen_t alen;
+  if (! ai_to_sockaddr (aip, (struct sockaddr *) &sas, &alen)) {
+    printf ("error converting to sockaddr ai ");
+    print_addr_info (aip);
+    return 1;  /* keep */
+  }
+  if ((alen == sav->alen) &&
+      (memcmp (&sas, &(sav->addr), alen) == 0))
+    return 0;    /* delete */
+  return 1;      /* keep */
+}
+
+#define DEBUG_PRINT
+/* expires old DHT entries that haven't been refreshed since the last call
+ * and removes them from the socket set */
+void routing_expire_dht (struct socket_set * s)
 {
 #ifdef DEBUG_PRINT
   int debug_ping_count = 0;
@@ -880,14 +867,16 @@ void routing_expire_dht ()
   for (i = 0; i < MAX_PEERS; i++) {
     if ((peers [i].ai.nbits > 0) && (! peers [i].refreshed)) {
       struct addr_info copy = peers [i].ai;
+print_buffer ((char *) &(copy.ip.ip), 16, "moving to ping", 16, 1);
+      socket_addr_loop (s, delete_matching_address, &copy);
       peers [i].ai.nbits = 0;
       changed = 1;
       int rapl = routing_add_ping_locked (&copy);
       if (rapl < 0)
-        printf ("rapl result is %d for", rapl);
+        printf ("routing_add_ping_locked result is %d\n", rapl);
 #ifdef DEBUG_PRINT
       else
-        printf ("rapl result is %d for", rapl);
+        printf ("routing_add_ping_locked result is %d for ", rapl);
       print_addr_info (&copy);
       debug_peer_count++;
 #endif /* DEBUG_PRINT */
@@ -906,6 +895,7 @@ void routing_expire_dht ()
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
 }
+#undef DEBUG_PRINT
 
 static struct addr_info * get_nth_peer (int n)
 {
