@@ -1330,7 +1330,7 @@ static int write_to_fd (int fd, const char * contents, int len,
     retval = 0;
   } else if (len > 0) {
     ssize_t n = write (fd, contents, len);
-    if (n < 0) {
+    if (n < len) {
       if (print_errors) {
         perror ("write in write_to_fd");
         printf ("tried to write %d bytes to %s, wrote %zd\n", len, fname, n);
@@ -1338,7 +1338,6 @@ static int write_to_fd (int fd, const char * contents, int len,
       retval = 0;
     }
   }
-  close (fd);
   return retval;
 }
 
@@ -1353,14 +1352,18 @@ int write_file (const char * fname, const char * contents, int len,
     }
     return 0;
   }
-  return write_to_fd (fd, contents, len, print_errors, fname);
+  int result = write_to_fd (fd, contents, len, print_errors, fname);
+  close (fd);
+  return result;
 }
 
 int append_file (const char * fname, const char * contents, int len,
                  int print_errors)
 {
   int fd = open (fname, O_WRONLY | O_CREAT | O_APPEND, 0600);
-  return write_to_fd (fd, contents, len, print_errors, fname);
+  int result = write_to_fd (fd, contents, len, print_errors, fname); 
+  close (fd);
+  return result;
 }
 
 /* low-grade randomness, in case the other calls don't work */
