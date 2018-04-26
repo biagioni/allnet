@@ -20,11 +20,11 @@
 
 #include "app_util.h"
 #include "packet.h"
-#include "pipemsg.h"
 #include "util.h"
 #include "sha.h"
 #include "priority.h"
 #include "crypt_sel.h"
+#include "sockets.h"
 
 #ifdef ALLNET_USE_FORK
 static void find_path (char * arg, char ** path, char ** program)
@@ -146,23 +146,58 @@ static void exec_allnet (char * arg, const char * const_path)
 }
 #endif /* ALLNET_USE_FORK */
 
+static struct socket_set socket_set = { .num_sockets = 0, .sockets = NULL };
+static struct socket_address_set * socket_sas = NULL;
+static struct socket_address_validity * socket_sav = NULL;
+
+/* create an all-zero ack in the given buffer (of size ALLNET_MTU),
+ * returning the size to send */
+static int init_zero_ack (char * buffer)
+{
+  unsigned int msize = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
+  init_packet (buffer, msize, ALLNET_TYPE_ACK, 1, ALLNET_SIGTYPE_NONE,
+               NULL, 0, NULL, 0, NULL, NULL);
+  memset (buffer + ALLNET_HEADER_SIZE, 0, MESSAGE_ID_SIZE);
+  return msize;
+}
+
+void local_send_keepalive ()
+{
+  static char zero_ack [ALLNET_MTU];
+  static int msize = 0;
+  if (msize == 0)
+    msize = init_zero_ack (zero_ack);
+  socket_send_to (zero_ack, msize, ALLNET_PRIORITY_EPSILON, 1,
+                  &socket_set, socket_sas, socket_sav);
+}
+
 static int connect_once (int print_error)
 {
-  int sock = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
-  /* disable Nagle algorithm on sockets to alocal, because it delays
-   * successive sends and, since the communication is local, doesn't
-   * substantially improve performance anyway */
-  int option = 1;  /* disable Nagle algorithm */
-  if (setsockopt (sock, IPPROTO_TCP, TCP_NODELAY,
-                  &option, sizeof (option)) != 0)
-    printf ("unable to set nodelay TCP socket option\n");
-  struct sockaddr_in sin;
-  sin.sin_family = AF_INET;
-  sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
-  sin.sin_port = allnet_htons (ALLNET_LOCAL_PORT);
-  usleep (200 * 1000); /* listen.c now sleeps 100ms to allow IPv6 to go first */
-  if (connect (sock, (struct sockaddr *) &sin, sizeof (sin)) == 0)
-    return sock;
+  int sock = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  struct sockaddr_storage sas;
+  struct sockaddr_in * sin = (struct sockaddr_in *) (&sas);
+  sin->sin_family = AF_INET;
+  sin->sin_addr.s_addr = allnet_htonl (INADDR_LOOPBACK);
+  sin->sin_port = allnet_htons (ALLNET_LOCAL_PORT);
+  socklen_t alen = sizeof (struct sockaddr_in);
+  if (socket_create_connect (&socket_set, 1, sas, alen, ! print_error)) {
+    /* send a keepalive to start the flow of data */
+    socket_sas = socket_set.sockets + 0;
+    struct socket_address_validity new_sav =
+      { .alen = alen, .alive_rcvd = 1, .alive_sent = 1, 
+        .time_limit = 0, .recv_limit = 0, .send_limit = 0,
+        .send_limit_on_recv = 0 };
+    memset (&(new_sav.addr), 0, sizeof (new_sav.addr));
+    memcpy (&(new_sav.addr), sin, alen);
+    socket_sav = socket_address_add (&socket_set, socket_sas, new_sav);
+    if (socket_sav != NULL) {
+      local_send_keepalive ();
+      struct socket_read_result r;
+      r = socket_read (&socket_set, 2000, 1);
+      if (r.success)
+        return socket_sas->sockfd;
+    }
+  }
   if (print_error)
     perror ("connect to alocal");
   close (sock);
@@ -249,30 +284,17 @@ static void seed_rng ()
 }
 #endif /* ANDROID */
 
-#ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */
-/* need to keep reading and emptying the socket buffer, otherwise
- * it will fill and alocal will get an error from sending to us,
- * and so close the socket. */
-static void * receive_ignore (void * arg)
+static void * keepalive_thread (void * arg)
 {
-  int sockp = * (int *) arg;
-  pd p = init_pipe_descriptor (init_log ("app_util.c receive_ignore thread"));
   while (1) {
-    char * message;
-    int priority;
-    int n = receive_pipe_message (p, sockp, &message, &priority);
-    /* ignore the message and recycle the storage */
-    if (n > 0)
-      free (message);
-    if (n < 0)
-      break;
+    local_send_keepalive ();
+    sleep (KEEPALIVE_SECONDS);
   }
-  return NULL;  /* returns if the pipe is closed */
+  return NULL;
 }
-#endif /* CREATE_READ_IGNORE_THREAD */
 
-/* returns a TCP socket used to send messages to the allnet daemon
- * (specifically, alocal) or receive messages from alocal
+/* returns a UDP socket used to send messages to the allnet daemon
+ * or receive messages from the allnet daemon
  * returns -1 in case of failure
  * arg0 is the first argument that main gets -- useful for finding binaries
  * path, if not NULL, tells allnet what path to use for config files
@@ -280,7 +302,7 @@ static void * receive_ignore (void * arg)
  * otherwise, after a while (once the buffer is full) allnet/alocal
  * will close the socket. */
 int connect_to_local (const char * program_name, const char * arg0,
-                      const char * path, pd p)
+                      const char * path, int start_keepalive_thread)
 {
 #ifndef ANDROID
   seed_rng ();
@@ -298,29 +320,47 @@ int connect_to_local (const char * program_name, const char * arg0,
       return -1;
     }
   }
-  /* tell pipe_msg to listen to this socket */
-  add_pipe (p, sock, "app_util/connect_to_local");
-#ifdef CREATE_READ_IGNORE_THREAD   /* including requires apps to -lpthread */
-  if (send_only == 1) {
-    int * arg = malloc_or_fail (sizeof (int), "connect_to_local");
-    *arg = sock;
-    pthread_t receive_thread;
-    if (pthread_create (&receive_thread, NULL, receive_ignore, (void *) arg)) {
-      perror ("connect_to_local pthread_create/receive");
-      return -1;
-    }
+  if (start_keepalive_thread) {
+    pthread_t ignored;
+    pthread_create (&ignored, NULL, keepalive_thread, NULL);
   }
-#endif /* CREATE_READ_IGNORE_THREAD */
-  /* it takes alocal up to 50ms to update the list of sockets it listens on. 
-   * here we wait 60ms so that by the time we return, alocal is listening
-   * on this new socket. */
-  struct timespec sleep;
-  sleep.tv_sec = 0;
-  sleep.tv_nsec = 60 * 1000 * 1000;
-  struct timespec left;
-  while ((nanosleep (&sleep, &left)) != 0)
-    sleep = left;
   return sock;
+}
+
+/* return 1 for success, 0 otherwise */
+int local_send (const char * message, int msize, unsigned int priority)
+{
+  socket_send_to (message, msize, priority, 1,
+                  &socket_set, socket_sas, socket_sav);
+  return 1;
+}
+
+/* return the message size > 0 for success, 0 otherwise. timeout in ms */
+int local_receive (unsigned int timeout,
+                   char ** message, unsigned int * priority)
+{
+  static int keepalive_count = 0;   /* send a keepalive every 5 rcvd messages */
+  if (keepalive_count <= 0) {
+    local_send_keepalive ();
+    keepalive_count = 5;
+  } else {               /* keepalive_count > 0 */
+    keepalive_count--;
+  }
+  *message = NULL;
+  *priority = 0;
+/* printf ("local_receive socket_read (%u)\n", timeout); */
+  struct socket_read_result r = socket_read (&socket_set, timeout, 1);
+  if (r.success > 0) {
+/* printf ("local_receive socket_read (%u) => %d\n", timeout, r.msize); */
+    *message = r.message;
+    *priority = r.priority;
+    return r.msize;
+  }
+  if (r.success < 0) { /* there was an error, probably because allnet exited */
+    printf ("allnetd has exited\n");
+    exit (0);
+  }
+  return 0;
 }
 
 static int ok_for_speculative_computation = 1;

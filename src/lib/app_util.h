@@ -3,20 +3,27 @@
 #ifndef ALLNET_APP_UTIL_H
 #define ALLNET_APP_UTIL_H
 
-#include "pipemsg.h"
+#define KEEPALIVE_SECONDS	10  /* apps should send a keepalive every 10s */
 
-/* returns a TCP socket used to send messages to the allnet daemon
- * (specifically, alocal) or receive messages from alocal
+/* returns a UDP socket used to send messages to the allnet daemon
+ * or receive messages from the allnet daemon
  * returns -1 in case of failure
  * arg0 is the first argument that main gets -- useful for finding binaries
  * path, if not NULL, tells allnet what path to use for config files
- * the application MUST receive messages, even if it ignores them all.
- * otherwise, after a while (once the buffer is full) allnet/alocal
- * will close the socket. */
+ * to receive messages, the application MUST send messages (perhaps empty)
+ * at least once every 10 seconds otherwise, after a while (about 1 minute)
+ * allnet will stop forwarding messages to this socket. */
 extern int connect_to_local (const char * program_name,
                              const char * arg0,
                              const char * path,
-                             pd p);
+                             int start_keepalive_thread);
+
+/* return 1 for success, 0 otherwise */
+extern int local_send (const char * message, int msize, unsigned int priority);
+extern void local_send_keepalive ();
+/* return the message size > 0 for success, 0 otherwise. timeout in ms */
+extern int local_receive (unsigned int timeout,
+                          char ** message, unsigned int * priority);
 
 /* since allnet may run on devices with limited power, some things
  * (speculative computation, i.e. stuff that is not needed immediately)
@@ -24,6 +31,7 @@ extern int connect_to_local (const char * program_name,
 extern int speculative_computation_is_ok (void);  /* initially yes */
 extern void set_speculative_computation (int ok);
 
+#ifdef GET_BCKEY_IS_IMPLEMENTED
 /* retrieve or request a public key.
  *
  * if successful returns the key length and sets *key to point to
@@ -36,6 +44,7 @@ extern void set_speculative_computation (int ok);
  */
 extern unsigned int get_bckey (pd p, char * address, char ** key,
                                int max_time_ms, int max_keys, int max_hops);
+#endif /* GET_BCKEY_IS_IMPLEMENTED */
 
 
 #endif /* ALLNET_APP_UTIL_H */
