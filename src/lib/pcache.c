@@ -19,7 +19,7 @@
 
 /* command to compile it as a stand-alone program that prints the contents
    of the caches:
-   gcc -Wall -g -o bin/allnet-print-caches -DPRINT_CACHE_FILES src/lib/pcache.c src/lib/configfiles.c src/lib/util.c src/lib/allnet_log.c src/lib/sha.c src/lib/ai.c src/lib/pipemsg.c src/lib/allnet_queue.c src/lib/pid_cache.c -lpthread
+   gcc -Wall -g -o bin/allnet-print-caches -DPRINT_CACHE_FILES src/lib/pcache.c src/lib/configfiles.c src/lib/util.c src/lib/allnet_log.c src/lib/sha.c src/lib/ai.c src/lib/pipemsg.c src/lib/allnet_queue.c src/lib/pid_bloom.c -lpthread
 */
 
 #include <stdio.h>
@@ -31,7 +31,7 @@
 #include <sys/mman.h>
 
 #include "pcache.h"
-#include "pid_cache.h"
+#include "pid_bloom.h"
 #include "packet.h"
 #include "util.h"
 #include "sha.h"
@@ -57,7 +57,7 @@
  * only meaning of "slot" for the acks table. */
 #define ACKS_PER_SLOT	64
 
-/* note: when message headers are in storage, they may not be align.
+/* note: when message headers are in storage, they may not be aligned.
  * good practice is to copy the message out into a struct message_header
  * and then access that. */
 struct message_header {
@@ -256,6 +256,18 @@ static void init_sizes ()
 #endif /* DEBUG_PRINT */
 }
 
+static void initialize_acks_from_scratch ()
+{
+  if (num_acks < 100)
+    num_acks = DEFAULT_NUM_ACKS;
+  if ((num_acks % ACKS_PER_SLOT) != 0)
+    num_acks -= (num_acks % ACKS_PER_SLOT);
+  size_t asize = num_acks * sizeof (struct hash_ack_entry);
+  assert (((asize / sizeof (struct hash_ack_entry)) % ACKS_PER_SLOT) == 0);
+  ack_table = malloc_or_fail (asize, "pcache default ack");
+  memset (ack_table, 0, asize);
+}
+
 /* called at the beginning, and in case of any initialization error */
 static void initialize_from_scratch ()
 {
@@ -268,14 +280,7 @@ static void initialize_from_scratch ()
   if (message_table != NULL) free (message_table);
   message_table = malloc_or_fail (message_table_size, "pcache default message");
   memset (message_table, 0, message_table_size);
-  if (num_acks < 100)
-    num_acks = DEFAULT_NUM_ACKS;
-  if ((num_acks % ACKS_PER_SLOT) != 0)
-    num_acks -= (num_acks % ACKS_PER_SLOT);
-  size_t asize = num_acks * sizeof (struct hash_ack_entry);
-  assert (((asize / sizeof (struct hash_ack_entry)) % ACKS_PER_SLOT) == 0);
-  ack_table = malloc_or_fail (asize, "pcache default ack");
-  memset (ack_table, 0, asize);
+  initialize_acks_from_scratch ();
 }
 
 /* read the tokens file.
@@ -386,6 +391,10 @@ printf ("ack table size %d, expecting %d for %d acks\n",
         unlink (fname);   /* delete the file (if it exists) */
         free (p);   /* in case there was something */
       }
+      if (fsize == 0) {    /* acks from scratch, but read other files */
+        initialize_acks_from_scratch ();
+        result = 1;
+      }
     }
     free (fname);
   } else {
@@ -408,12 +417,12 @@ static void initialize_from_file ()
     messages_ok = initialize_messages_from_file ();
   if (tokens_ok && messages_ok)
     acks_ok = initialize_acks_from_file ();
-#ifndef PRINT_CACHE_FILES
-  if (tokens_ok && messages_ok && acks_ok)
+  if (tokens_ok && messages_ok && acks_ok) {
+#ifdef VERBOSE_GC
     print_stats ("after init");
-#endif /* PRINT_CACHE_FILES */
-  if (tokens_ok && messages_ok && acks_ok)
+#endif /* VERBOSE_GC */
     return;   /* finished successfully */
+  }
   printf ("error (%d/%d/%d) reading from files, starting with an empty cache\n",
           tokens_ok, messages_ok, acks_ok);
   initialize_from_scratch ();   /* some error, re-initialize */
@@ -425,20 +434,14 @@ static void initialize_from_file ()
 static int too_soon (unsigned long long int * time_var, int * state,
                      int override)
 {
-char * useless = malloc (1000);
   unsigned long long int now = allnet_time ();
-writeb64 (useless, now);
-if (readb64 (useless) != now)
-printf ("useless is %lld, now %lld\n", readb64 (useless), now);
-free (useless);
-#ifndef DEBUG_CACHE
-  if (override) {
+#ifdef DEBUG_CACHE  /* if testing, always do whatever we're doing */
+  override = 1;
 #endif /* DEBUG_CACHE */
+  if (override) {
     *time_var = now;
     return 0;
-#ifndef DEBUG_CACHE
   }
-#endif /* DEBUG_CACHE */
   /* initially allow frequent saves, slowly transition to MIN_SAVE_SECONDS */
   unsigned long long int wait_time = 1;
   int i;
@@ -721,12 +724,6 @@ printf ("size %d =? %d, num = %d =? %d\n", check_size, total_size, check_num, nu
   assert (check_size == total_size);
   assert (check_num == num_messages);
   hp->num_messages = num_messages;
-char * useless = malloc (1000);
-  unsigned long long int now = allnet_time ();
-writeb64 (useless, now);
-if (readb64 (useless) != now)
-printf ("useless is %lld, now %lld\n", readb64 (useless), now);
-free (useless);
   return total_size;
 }
 
@@ -758,12 +755,6 @@ static void gc_ack_slot (int index, int token_shift)
       shift_token ((char *)&(ack_table [base + i].sent_to_tokens), token_shift,
                    "gc_acks_entry"); 
   }
-char * useless = malloc (1000);
-  unsigned long long int now = allnet_time ();
-writeb64 (useless, now);
-if (readb64 (useless) != now)
-printf ("useless is %lld, now %lld\n", readb64 (useless), now);
-free (useless);
 }
 
 /* does FIFO replacement -- just shifts tokens to the front of the
@@ -795,14 +786,10 @@ print_buffer ((char *)token_list, sizeof (token_list), "after  shift",
 #ifdef DEBUG_PRINT
 printf ("num_external_tokens is now %d\n", num_external_tokens);
 #endif /* DEBUG_PRINT */
-char * useless = malloc (1000);
-  unsigned long long int now = allnet_time ();
-writeb64 (useless, now);
-if (readb64 (useless) != now)
-printf ("useless is %lld, now %lld\n", readb64 (useless), now);
-free (useless);
   return shift;
 }
+
+#define PRINT_GC
 
 /* Garbage collects both the messages and ack tables, guaranteeing
  * that at least half the bytes in each message table entry
@@ -815,18 +802,27 @@ free (useless);
 static int do_gc (int index, int msize,
                   int write_tok, int write_msg, int write_ack)
 {
-static int gc_counter = 1;
-char desc [1000];
-snprintf (desc, sizeof (desc),
-          "before gc (%d, %d, %d)", gc_counter, index, msize);
-print_stats (desc);
+#ifdef PRINT_GC
+  long long int start = allnet_time_us ();
+#endif /* PRINT_GC */
+#ifdef VERBOSE_GC
+  static int gc_counter = 1;
+  char desc [1000];
+  snprintf (desc, sizeof (desc),
+            "before gc (%d, %d, %d)", gc_counter, index, msize);
+  print_stats (desc);
+#endif /* VERBOSE_GC */
   int result = 0;
   int delta_tokens = gc_tokens ();
-printf ("tokens shifted by %d\n", delta_tokens);
+#ifdef VERBOSE_GC
+  printf ("tokens shifted by %d\n", delta_tokens);
+#endif /* VERBOSE_GC */
   int i;
   for (i = 0; i < num_acks; i += ACKS_PER_SLOT)
     gc_ack_slot (i, delta_tokens);
-print_stats ("acks done, messages next");
+#ifdef VERBOSE_GC
+  print_stats ("acks done, messages next");
+#endif /* VERBOSE_GC */
   for (i = 0; i < num_message_table_entries; i++) {
     if (i == index)  /* use msize and set result */
       result = gc_messages_entry (i, msize, delta_tokens);
@@ -834,9 +830,16 @@ print_stats ("acks done, messages next");
       gc_messages_entry (i, 0, delta_tokens);
   }
   reinit_local_token ();
-snprintf (desc, sizeof (desc),
-          "gc (%d, %d, %d) => %d", gc_counter++, index, msize, result);
-print_stats (desc);
+#ifdef VERBOSE_GC
+  snprintf (desc, sizeof (desc),
+            "gc (%d, %d, %d) => %d", gc_counter++, index, msize, result);
+  print_stats (desc);
+#endif /* VERBOSE_GC */
+#ifdef PRINT_GC
+  long long int us = allnet_time_us () - start;
+  printf ("gc took %lld.%06llds, shifted %d tokens\n",
+          us / 1000000, us % 1000000, delta_tokens);
+#endif /* PRINT_GC */
   if (write_tok) write_tokens_file (1);
   if (write_msg) write_messages_file (1);
   if (write_ack) write_acks_file (1);
@@ -1088,18 +1091,276 @@ int pcache_acks_for_token (const char * token, char * acks, int num_acks)
   return result;
 }
 
+/* returns 0 if bits_power_two is 0, and 2^bits_power_two otherwise */
+static int power_two (int bits_power_two)
+{
+  if (bits_power_two == 0)
+    return 0;
+  int result = 1;   /* first compute in bits */
+  while ((bits_power_two-- > 0) && (result < ALLNET_MTU * 8))
+    result += result;
+  return result;
+}
+
+/* return the new size of free_ptr, or 0 for errors */
+/* free_ptr points to n messages followed by the messages array.
+ * the messages array is at the end so we can insert the new message
+ * in front of it and grow the messages array at the end (or wherever). */
+static size_t add_to_result (struct pcache_result * r, size_t size_old,
+                             const char * message, int msize, int priority)
+{
+  size_t size_new = size_old + msize + sizeof (struct pcache_message);
+  char * mem = realloc (r->free_ptr, size_new);
+  if (mem == NULL) {
+    printf ("add_to_result: unable to add, sizes %zd + %d + %zd = %zd\n",
+            size_old, msize, sizeof (struct pcache_message), size_new);
+    return 0;
+  }
+  size_t messages_size_old = sizeof (struct pcache_message) * r->n;
+  size_t messages_size_new = sizeof (struct pcache_message) * (r->n + 1);
+  assert (((messages_size_old == 0) && (size_old == 0)) ||
+          (messages_size_old < size_old));
+  char * src = mem + (size_old - messages_size_old); 
+  assert (messages_size_new < size_new);
+  char * dest = mem + (size_new - messages_size_new);
+  memmove (dest, src, messages_size_old);
+  struct pcache_message * messages_new = (struct pcache_message *) (dest);
+  char * message_dest = src;
+  memcpy (message_dest, message, msize);
+  messages_new [r->n].message = message_dest;
+  messages_new [r->n].msize = msize;
+  messages_new [r->n].priority = priority;
+  int i;
+  char * start = mem;
+  for (i = 0; i < r->n; i++) { /* have the messages point to the new memory */
+    messages_new [i].message = start;
+    start += messages_new [i].msize;
+  }
+  r->messages = messages_new;
+  r->n++;
+  r->free_ptr = mem;
+  return size_new;
+}
+
+static void sort_result (struct pcache_result * r)
+{
+  /* bubble sort -- a simple quadratic sort */
+  int swapped = 1;
+  while (swapped) {
+    swapped = 0;
+    int i;
+    for (i = 0; i + 1 < r->n; i++) {
+      if (r->messages [i].priority < r->messages [i + 1].priority) {
+        struct pcache_message swap = r->messages [i];
+        r->messages [i] = r->messages [i + 1];
+        r->messages [i + 1] = swap;
+        swapped = 1;
+      }
+    }
+  }
+}
+
+struct req_details {
+  struct allnet_data_request req;
+  int dst_bits;
+  const unsigned char * dst_bitmap;
+  int src_bits;
+  const unsigned char * src_bitmap;
+  int mid_bits;
+  const unsigned char * mid_bitmap;
+};
+
+#if 0
+static void print_rd (struct req_details *rd)
+{
+  printf ("%p %p %p %p %p %p %p\n",
+          rd, &(rd->req), rd->req.dst_bitmap, rd->req.mid_bitmap,
+          rd->dst_bitmap, rd->src_bitmap, rd->mid_bitmap);
+  print_buffer ((char *) rd->dst_bitmap, rd->dst_bits, "dst", 32, 1);
+  print_buffer ((char *) rd->src_bitmap, rd->src_bits, "src", 32, 1);
+  print_buffer ((char *) rd->mid_bitmap, rd->mid_bits, "mid", 32, 1);
+}
+#endif /* 0 */
+
+static struct req_details get_details (const struct allnet_data_request *req)
+{
+  struct req_details rd =
+    { .req = *req,
+      .dst_bits = power_two (req->dst_bits_power_two),
+      .src_bits = power_two (req->src_bits_power_two),
+      .mid_bits = power_two (req->mid_bits_power_two) };
+  const unsigned char * ptr = req->dst_bitmap;
+  if (rd.req.dst_bits_power_two == 0) {
+    rd.dst_bitmap = NULL;
+  } else {
+    rd.dst_bitmap = ptr;
+    ptr += (rd.dst_bits + 7) / 8;
+  }
+  if (rd.req.src_bits_power_two == 0) {
+    rd.src_bitmap = NULL;
+  } else {
+    rd.src_bitmap = ptr;
+    ptr += (rd.src_bits + 7) / 8;
+  }
+  if (rd.req.mid_bits_power_two == 0) {
+    rd.mid_bitmap = NULL;
+  } else {
+    rd.mid_bitmap = ptr;
+    ptr += (rd.mid_bits + 7) / 8;
+  }
+#if 0
+print_rd (&rd);
+printf ("allnet data request: since %lld, "
+        "dst 2^%d, src 2^%d, mid 2^%d\n",
+        readb64 ((char *) (req->since)), req->dst_bits_power_two,
+        req->src_bits_power_two, req->mid_bits_power_two);
+printf ("%d/%p, %d/%p, %d/%p:\n", rd.dst_bits, rd.dst_bitmap,
+rd.src_bits, rd.src_bitmap, rd.mid_bits, rd.mid_bitmap);
+print_buffer ((char *)rd.dst_bitmap, rd.dst_bits, "dst", ((rd.dst_bits + 7) / 8), 1);
+print_buffer ((char *)rd.src_bitmap, rd.src_bits, "src", ((rd.src_bits + 7) / 8), 1);
+print_buffer ((char *)rd.mid_bitmap, rd.mid_bits, "mid", ((rd.mid_bits + 7) / 8), 1);
+#endif /* 0 */
+  return rd;
+}
+
+static int matches_req (unsigned int nbits, uint64_t first64,
+                        unsigned int power_two, int bitmap_bits,
+                        const unsigned char * bitmap)
+{
+  if (bitmap == NULL)   /* matches */
+    return 1;
+  if (nbits < 1)        /* always matches */
+    return 1;
+  assert ((nbits < 64) || (power_two <= 16));
+  assert (bitmap_bits < (ALLNET_MTU * 8));
+  uint64_t mask = ((nbits == 0) ? 0 : ((int64_t) (-1)) << (64 - nbits));
+  int index = ((first64 & mask) >> (64 - power_two));
+#if 0
+printf ("first64 %" PRIx64 " mask %" PRIx64 " => index %d/%x, ^2 %d nbits %d\n",
+first64, mask, index, index, power_two, nbits);
+#endif /* 0 */
+  int loops = ((nbits >= power_two) ? 1 : (1 << (power_two - nbits)));
+  int i;
+  for (i = 0; i < loops; i++) {
+    int byte_index = (index + i) / 8;
+    int bit_index  = (index + i) % 8;
+#if 0
+printf ("[%d] %02x bit %d (%x) %s %016" PRIx64 "/%d >> %d = %x, %d loops\n",
+byte_index, bitmap [byte_index], bit_index, (0x80 >> bit_index),
+(((bitmap [byte_index] & (0x80 >> bit_index)) != 0) ? "matches"
+                                                   : "does not match"),
+first64, nbits, (64 - power_two), index, loops);
+printf ("%p: ", bitmap);
+print_buffer ((char *)bitmap, bitmap_bits, NULL, bitmap_bits / 8, 1);
+#endif /* 0 */
+    if (bitmap [byte_index] & (0x80 >> bit_index))
+      return 1;
+  }
+  return 0;
+}
+
+static int matches_mid (const char * mid, int nbits,
+                        int bitmap_bits, const unsigned char * bitmap)
+{
+  if ((mid == NULL) || (bitmap == NULL))   /* matches */
+    return 1;
+  assert (bitmap_bits < (ALLNET_MTU * 8));
+  assert (bitmap_bits == power_two (nbits));
+  uint64_t first64 = readb64 (mid);
+  int index = first64 >> (64 - nbits);
+  int byte_index = index / 8;
+  int bit_index  = index % 8;
+  return ((bitmap [byte_index] & (256 >> bit_index)) != 0);
+}
+
+static int matches_data_request (const struct req_details *rd,
+                                 const char * message, int msize)
+{
+  const struct allnet_header * hp = (const struct allnet_header *) message;
+  return ((matches_req (hp->dst_nbits, readb64 ((char *)hp->destination),
+                        rd->req.dst_bits_power_two, rd->dst_bits,
+                        rd->dst_bitmap)) &&
+          (matches_req (hp->src_nbits, readb64 ((char *)hp->source),
+                        rd->req.dst_bits_power_two, rd->src_bits,
+                        rd->src_bitmap)) &&
+          (matches_mid (ALLNET_MESSAGE_ID (hp, hp->transport, msize),
+                        rd->req.mid_bits_power_two,
+                        rd->mid_bits, rd->mid_bitmap)));
+}
+
 /* if successful, return the messages.
    return a result with n = 0 if there are no messages,
    and n = -1 in case of failure -- in both of these cases, free_ptr is NULL.
    messages are in order of descending priority. */
 struct pcache_result pcache_request (const struct allnet_data_request *req)
 {
+  init_pcache ();
+#ifdef TEST_ADD_TO_RESULT
+  struct pcache_result test_result = {.n=0, .messages=NULL, .free_ptr=NULL};
+  char test [100];
+  size_t x = add_to_result (&test_result, 0, test, 16, 1234);
+  size_t y = add_to_result (&test_result, x, test, 10, 5678);
+  printf ("final size %zd\n", y);
+  sort_result (&test_result);
+  free (test_result.free_ptr);
+#endif /* TEST_ADD_TO_RESULT */
   struct pcache_result result = {  .n = 0, .messages = NULL, .free_ptr = NULL };
-  printf ("not handling allnet data request since %lld, "
-          "dst 2^%d, src 2^%d, mid 2^%d\n",
-          readb64 ((char *) (req->since)), req->dst_bits_power_two,
-          req->src_bits_power_two, req->mid_bits_power_two);
+  size_t result_size = 0;
+  char zero_since [ALLNET_TIME_SIZE];
+  memset (zero_since, 0, sizeof (zero_since));
+  int match_all = ((req->dst_bits_power_two == 0) &&
+                   (req->src_bits_power_two == 0) &&
+                   (req->mid_bits_power_two == 0) &&
+                   (memcmp (zero_since, req->since, sizeof (zero_since)) == 0));
+  struct req_details rd = get_details (req);
+int debug_count = 0;
+  if (message_table != NULL) {
+    int ie;
+    for (ie = 0; ie < num_message_table_entries; ie++) {
+      int offset = 0;
+      int im;
+      for (im = 0; im < message_table [ie].num_messages; im++) {
+debug_count++;
+        struct message_header * mh =
+          (struct message_header *) (message_table [ie].storage + offset);
+        char * msg = message_table [ie].storage + offset + MESSAGE_HEADER_SIZE;
+        if (match_all || matches_data_request (&rd, msg, mh->length))
+          result_size = add_to_result (&result, result_size,
+                                       msg, mh->length, mh->priority);
+        offset += mh->length + MESSAGE_HEADER_SIZE;
+      }
+    }
+  }
+  sort_result (&result);
+/*
+printf ("pcache_request returning %d/%d/%d/%d results\n",
+        result.n, num_message_table_entries, debug_table_entries, debug_count);
+*/
   return result;
+}
+
+/* return 1 if the trace request/reply has been seen before, or otherwise
+ * return 0 and save the ID.  Trace ID should be MESSAGE_ID_SIZE bytes
+ * implementation: add directly to the appropriate bloom filter */
+int pcache_trace_request (const unsigned char * id)
+{
+  init_pcache ();
+  if (pid_is_in_bloom ((const char *) id, PID_TRACE_REQ_FILTER))
+    return 1;
+  pid_add_to_bloom ((const char *) id, PID_TRACE_REQ_FILTER);
+  return 0;
+}
+
+/* for replies, we look at the entire packet, without the header */
+int pcache_trace_reply (const char * msg, int msize)
+{
+  init_pcache ();
+  char id [MESSAGE_ID_SIZE];
+  sha512_bytes (msg, msize, id, sizeof (id));
+  if (pid_is_in_bloom (id, PID_TRACE_REPLY_FILTER))
+    return 1;
+  pid_add_to_bloom (id, PID_TRACE_REPLY_FILTER);
+  return 0;
 }
 
 #ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */

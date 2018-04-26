@@ -93,6 +93,12 @@ extern int pcache_ack_for_token (const char * token, const char * ack);
 extern int pcache_acks_for_token (const char * token,
                                   char * acks, int num_acks);
 
+/* return 1 if the trace request/reply has been seen before, or otherwise
+ * return 0 and save the ID.  Trace ID should be MESSAGE_ID_SIZE bytes */
+extern int pcache_trace_request (const unsigned char * id);
+/* for replies, we look at the entire packet, without the header */
+extern int pcache_trace_reply (const char * msg, int msize);
+
 /* save cached information to disk */
 extern void pcache_write ();
 
