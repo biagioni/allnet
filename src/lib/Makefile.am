@@ -29,6 +29,7 @@ libincludes = \
 	wp_rsa.h
 
 libsrc = \
+        adht.c \
 	ai.c \
 	allnet_queue.c \
 	app_util.c \

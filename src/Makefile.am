@@ -36,13 +36,11 @@ __ALLNET_BINDIR__allnet_SOURCES = astart.c \
 				  alocal.c \
 				  listen.c \
 				  aip.c \
-				  adht.c \
 				  acache.c \
 				  hash.c \
 				  record.c \
 				  social.c \
 				  track.c \
-				  mgmt/traced.c \
 				  mgmt/keyd.c \
 				  ${includes}
 __ALLNET_BINDIR__allnet_LDFLAGS = -lpthread
