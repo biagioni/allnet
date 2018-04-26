@@ -7,6 +7,9 @@
  * time for which it is active.
  */
 
+#ifndef ALLNET_SOCKETS_H
+#define ALLNET_SOCKETS_H
+
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -31,7 +34,9 @@ struct socket_address_validity {
 
 struct socket_address_set {
   int sockfd;
-  int is_local;
+  int is_local;                  /* true if used by local programs */
+  int is_global_v6;              /* true if can send to any IPv6 address */; 
+  int is_global_v4;              /* true if can send to any IPv4 address */; 
   int num_addrs;
   struct socket_address_validity * send_addrs;
 };
@@ -42,30 +47,28 @@ struct socket_set {
 };
 
 /* return 1 if was able to add, and 0 otherwise (e.g. if already in the set) */
-extern int socket_add (struct socket_set * s, int sockfd, int is_local);
+extern int socket_add (struct socket_set * s, int sockfd, int is_local,
+                       int is_global_v6, int is_global_v4);
 /* returns a pointer to the new sav, or NULL in case of errors (e.g.
  * if this address is already in the structure, or if the socket isn't) */
 extern struct socket_address_validity *
   socket_address_add (struct socket_set * s,
                       struct socket_address_set * sock,
-                      struct socket_address_validity addr);
-extern int socket_remove (struct socket_set * s, int sockfd);
-extern int socket_address_remove (struct socket_set * s, int sockfd,
-                                  struct sockaddr_storage addr, socklen_t alen);
-/* send a keepalive to addresses whose sent time + local/remote <= current_time
- * returns the number of messages sent */
-extern int socket_send_keepalives (struct socket_set * s,
-                                   long long int current_time,
-                                   long long int local, long long int remote,
-                                   const char * message, int msize);
-/* remove all socket addresses whose time is less than new_time */
-extern int socket_update_time (struct socket_set * s, long long int new_time);
-/* return 1 if the socket address has been removed due to
- * exceeding send/receive limit, 0 otherwise, -1 for errors */
-extern int socket_dec_send (struct socket_set * s, int sockfd,
-                            struct sockaddr_storage addr, socklen_t alen);
-extern int socket_dec_recv (struct socket_set * s, int sockfd,
-                            struct sockaddr_storage addr, socklen_t alen);
+                      struct socket_address_validity sav);
+
+/* the loop functions should return 1 if the socket/address should be kept,
+ * and 0 if the socket/address should be deleted
+ * ref is a reference to any data structure needed by the function */
+typedef int (* socket_sock_loop_fun) (struct socket_address_set * sock,
+                                      void * ref);
+typedef int (* socket_addr_loop_fun) (struct socket_address_set * sock,
+                                      struct socket_address_validity * sav,
+                                      void * ref);
+/* each of these return the number of records deleted */
+extern int socket_sock_loop (struct socket_set * s,
+                             socket_sock_loop_fun f, void * ref);
+extern int socket_addr_loop (struct socket_set * s,
+                             socket_addr_loop_fun f, void * ref);
 
 /* only messages sent and received on a local socket have a priority */
 struct socket_read_result {
@@ -77,41 +80,63 @@ struct socket_read_result {
   struct sockaddr_storage from;
   socklen_t alen;
   int socket_address_is_new;            /* 1 if address is not in socket set */
-  struct socket_address_validity * sav; /* NULL for new addresses */
+  struct socket_address_validity * sav; /* NULL if socket_address_is_new */
   int recv_limit_reached;               /* if recv_limit reached 1 */
 };
 
+#define SOCKETS_TIMEOUT_FOREVER		-1
 /* if a message has been read by the given timeout (in milliseconds of
  * real time),
  * returns success = 1 and fields should be valid, and
  * updates the socket_address_validity's alive_rcvd to rcvd_time.
  * the pointers point into the socket_set, do not free.
- * if success is 0, the pointers are NULL.
  * special cases of "success": 
- * if the address is not found in the socket set, socket_address_is_new
- * is 1 (otherwise 0) and sav is NULL.
- * recv_limit_reached is 1 if the address is found in the socket set
- * and has recv_limit of 1.  recv_limit is left unchanged if 0 or 1,
- * and decreased by 1 otherwise. */
+ *   if the address is not found in the socket set, socket_address_is_new
+ *   is 1 (otherwise 0) and sav is NULL.
+ *   recv_limit_reached is 1 if the address is found in the socket set
+ *   and has recv_limit of 1.  recv_limit is left unchanged if 0 or 1,
+ *   and decreased by 1 otherwise.
+ * if success is 0, the pointers are NULL and the call timed out.
+ * if success is -1, the sock pointer is either NULL or points to a socket
+ *   that is no longer valid, and the other pointers are NULL */
 extern struct socket_read_result
-  socket_read (struct socket_set * s, unsigned int timeout,
-               long long int rcvd_time);
+  socket_read (struct socket_set * s, int timeout, long long int rcvd_time);
+/* returns 1 if the receive limit was updated, 0 otherwise */
+extern int socket_update_recv_limit (int new_recv_limit, struct socket_set * s,
+                                     struct sockaddr_storage addr,
+                                     socklen_t alen);
+/* remove all socket addresses whose time is less than new_time.
+ * return the number of records deleted */
+extern int socket_update_time (struct socket_set * s, long long int new_time);
 
-/* socket_send may remove any address that has become invalid due to send limit
- * send to all {local,nonlocal} except not to the given address
- * e.g. to send to all local, have local = 1, nonlocal = 0.
- *      to only send to all nonlocal, have local = 0, nonlocal = 1
- * priority is only sent with messsages sent to local sockets */
-extern int socket_send (struct socket_set * s, int local, int nonlocal,
-                        const char * message, int msize, unsigned int priority,
-                        unsigned long long int sent_time,
-                        struct sockaddr_storage except_to, socklen_t alen);
+/* socket_send_{local,remote} remove any address that has become invalid
+ * due to send limit.
+ * return 1 for success, 0 for at least some error */
+extern int socket_send_local (struct socket_set * s, const char * message,
+                              int msize, unsigned int priority,
+                              unsigned long long int sent_time,
+                              struct sockaddr_storage except_to,
+                              socklen_t alen);
+extern int socket_send_out (struct socket_set * s, const char * message,
+                            int msize, unsigned long long int sent_time,
+                            struct sockaddr_storage except_to, socklen_t alen);
 /* send only to the given socket and address */
 extern int socket_send_to (const char * message, int msize,
                            unsigned int priority,
                            unsigned long long int sent_time,
+                           struct socket_set * s,
                            struct socket_address_set * sock,
                            struct socket_address_validity * addr);
+/* send to an address that may not even be in a socket set -- this is how
+ * we can connect to new systems without receiving from them first */
+extern int socket_send_to_ip (int sockfd, const char * message, int msize,
+                              struct sockaddr_storage sas, socklen_t alen);
+/* send a keepalive to addresses whose sent time + local/remote <= current_time
+ * returns the number of messages sent */
+extern int socket_send_keepalives (struct socket_set * s,
+                                   long long int current_time,
+                                   long long int local, long long int remote,
+                                   const char * message, int msize);
 
 /* create a socket and bind it as appropriate for the given address
  * and add it to the given socket set
@@ -126,3 +151,5 @@ extern int socket_create_bind (struct socket_set * s, int is_local,
 extern int socket_create_connect (struct socket_set * s, int is_local,
                                   struct sockaddr_storage addr, socklen_t alen,
                                   int quiet);
+
+#endif /* ALLNET_SOCKETS_H */
