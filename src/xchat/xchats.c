@@ -8,10 +8,10 @@
 #include <time.h>
 
 #include "lib/packet.h"
-#include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
+#include "lib/app_util.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -51,9 +51,7 @@ int main (int argc, char ** argv)
     return 1;
   }
 
-  struct allnet_log * log = init_log ("xchats");
-  pd p = init_pipe_descriptor (log);
-  int sock = xchat_init (argv [0], NULL, p);
+  int sock = xchat_init (argv [0], NULL);
   if (sock < 0)
     return 1;
 
@@ -154,10 +152,9 @@ int main (int argc, char ** argv)
   keyset kcontact_kset = -1;
   while (exchanging_key || (max_wait > 0)) {
     char * packet;
-    int pipe;
     unsigned int pri;
     int actual_wait = ((max_wait > 100) ? 100 : max_wait);
-    int found = receive_pipe_message_any (p, actual_wait, &packet, &pipe, &pri);
+    int found = local_receive (actual_wait, &packet, &pri);
     if (found < 0) {
       printf ("xchats pipe closed, exiting\n");
       exit (1);

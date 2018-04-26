@@ -6,10 +6,11 @@
 #include <time.h>
 
 #include "lib/packet.h"
-#include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
+#include "lib/app_util.h"
+#include "lib/sockets.h"
 #include "chat.h"
 #include "cutil.h"
 #include "retransmit.h"
@@ -18,9 +19,7 @@
 int main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
-  struct allnet_log * log = init_log ("xchatr");
-  pd p = init_pipe_descriptor (log);
-  int sock = xchat_init (argv [0], NULL, p);
+  int sock = xchat_init (argv [0], NULL);
   if (sock < 0)
     return 1;
 
@@ -42,14 +41,13 @@ int main (int argc, char ** argv)
     }
   }
 
-  int timeout = PIPE_MESSAGE_WAIT_FOREVER;
+  int timeout = SOCKETS_TIMEOUT_FOREVER;
   char * old_contact = NULL;
   keyset old_kset = -1;
   while (1) {
     char * packet;
-    int pipe;
     unsigned int pri;
-    int found = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri);
+    int found = local_receive (timeout, &packet, &pri);
     if (found < 0) {
       printf ("xchatr pipe closed, exiting\n");
       exit (1);
@@ -60,7 +58,7 @@ int main (int argc, char ** argv)
         old_contact = NULL;
         old_kset = -1;
       }
-      timeout = PIPE_MESSAGE_WAIT_FOREVER; /* cancel future timeouts */
+      timeout = SOCKETS_TIMEOUT_FOREVER; /* cancel future timeouts */
     } else {    /* found > 0, got a packet */
       int verified = 0, duplicate = -1, broadcast = -2;
       uint64_t seq = 0;

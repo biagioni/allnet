@@ -10,12 +10,12 @@
 #include "lib/packet.h"
 #include "lib/media.h"
 #include "lib/util.h"
-#include "lib/pipemsg.h"
 #include "lib/sha.h"
 #include "lib/priority.h"
 #include "lib/keys.h"
 #include "lib/cipher.h"
 #include "lib/allnet_log.h"
+#include "lib/app_util.h"
 #include "chat.h"
 #include "cutil.h"
 #include "message.h"
@@ -284,8 +284,9 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
   print_packet (message, msize, "sending", 1);
 #endif /* DEBUG_PRINT */
 if ((readb16 (message + hsize + esize + ssize) != 512)) print_buffer (message, msize, "final", msize, 1);
-  int result = 1;
-  if (! send_pipe_message_free (sock, message, msize, priority, log)) {
+  int result = local_send (message, msize, priority);
+  free (message);
+  if (! result) {
     perror ("send_pipe_message_free");
     printf ("unable to send packet to %s, key %d, socket %d\n",
             contact, k, sock);

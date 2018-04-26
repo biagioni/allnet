@@ -21,7 +21,6 @@
 #endif /* WINDOWS_ENVIRONMENT */
 
 #include "lib/util.h"
-#include "lib/pipemsg.h"
 #include "xcommon.h"
 #include "gui_socket.h"
 
@@ -49,7 +48,7 @@ static int create_allnet_sock (const char * program_name,
 {
   struct allnet_log * log = init_log ("xchat_socket");
   *p = init_pipe_descriptor (log);
-  int sock = xchat_init (program_name, path, *p);
+  int sock = xchat_init (program_name, path);
   return sock;
 }
 

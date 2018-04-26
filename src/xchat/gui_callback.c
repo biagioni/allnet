@@ -5,8 +5,8 @@
 #include <string.h>
 
 #include "lib/util.h"
-#include "lib/pipemsg.h"
 #include "lib/keys.h"
+#include "lib/app_util.h"
 #include "gui_socket.h"
 #include "xcommon.h"
 #include "cutil.h"
@@ -124,13 +124,15 @@ void gui_socket_main_loop (int gui_sock, int allnet_sock, pd p)
 {
   int rcvd = 0;
   char * packet;
-  int pipe;
   unsigned int pri;
   int timeout = 100;      /* sleep up to 1/10 second */
   char * old_contact = NULL;
   keyset old_kset = -1;
+  while ((rcvd = local_receive (timeout, &packet, &pri)) >= 0) {
+#if 0
   while ((rcvd = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri))
          >= 0) {
+#endif /* 0 */
     int verified = 0, duplicate = -1, broadcast = -2;
     uint64_t seq = 0;
     char * peer = NULL;

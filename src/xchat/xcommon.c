@@ -19,7 +19,6 @@
 #include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
-#include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/priority.h"
@@ -237,7 +236,13 @@ static int send_data_request (int sock, int priority, char * start)
 #ifdef DEBUG_PRINT
   print_packet (((const char *) hp), size, "sending data request", 1);
 #endif /* DEBUG_PRINT */
-  if (! send_pipe_message_free (sock, (char *) (hp), size, priority, alog)) {
+#if 0
+  int r = send_pipe_message_free (sock, (char *) (hp), size, priority, alog);
+#else
+  int r = local_send ((char *) (hp), size, priority);
+  free (hp);
+#endif /* 0 */
+  if (! r) {
     snprintf (alog->b, alog->s, "unable to request data on %d\n", sock);
     log_print (alog);
     return 0;
@@ -275,13 +280,11 @@ static pthread_t request_thread;
 #endif /* HAVE_REQUEST_THREAD */
 
 /* returns the socket if successful, -1 otherwise */
-int xchat_init (const char * arg0, const char * path, pd p)
+int xchat_init (const char * arg0, const char * path)
 {
   if (alog == NULL)
-    alog = pipemsg_log (p);
-  if (alog == NULL)
     alog = init_log ("xchat/xcommon");
-  int sock = connect_to_local ("xcommon", arg0, path, p);
+  int sock = connect_to_local ("xcommon", arg0, path, 1);
   if (sock < 0)
     return -1;
 #ifdef SO_NOSIGPIPE
@@ -398,8 +401,13 @@ static void send_ack (int sock, struct allnet_header * hp,
   printf ("sending ack to contact %s: ", contact);
   print_packet ((char *) ackp, size, "ack", 1);
 #endif /* DEBUG_PRINT */
+#if 0
   send_pipe_message_free (sock, (char *) ackp, size,
                           ALLNET_PRIORITY_LOCAL, alog);
+#else
+  local_send ((char *) ackp, size, ALLNET_PRIORITY_LOCAL);
+  free (ackp);
+#endif /* 0 */
 /* after sending the ack, see if we can get any outstanding
  * messages from the peer */
   if (send_resend_request)
@@ -919,8 +927,14 @@ static int send_key (int sock, const char * contact, keyset kset,
   random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
 
 /* printf ("sending key of size %d\n", size); */
-  if (! send_pipe_message_free (sock, message, size,
-                                ALLNET_PRIORITY_LOCAL, alog)) {
+#if 0
+  int r = send_pipe_message_free (sock, message, size,
+                                  ALLNET_PRIORITY_LOCAL, alog);
+#else
+  int r = local_send (message, size, ALLNET_PRIORITY_LOCAL);
+  free (message);
+#endif /* 0 */
+  if (! r) {
     printf ("unable to send %d-byte key exchange packet to %s\n",
             size, contact);
     return 0;
@@ -1796,8 +1810,13 @@ static int send_key_request (int sock, const char * phrase)
 #ifdef DEBUG_PRINT
   printf ("sending %d-byte key request\n", psize);
 #endif /* DEBUG_PRINT */
-  if (! send_pipe_message_free (sock, packet, psize,
-                                ALLNET_PRIORITY_LOCAL, alog)) {
+#if 0
+  int res = send_pipe_message_free (sock, packet, psize,
+                                    ALLNET_PRIORITY_LOCAL, alog);
+#else
+  int res = local_send (packet, psize, ALLNET_PRIORITY_LOCAL);
+#endif /* 0 */
+  if (! res) {
     printf ("unable to send key request message\n");
     return 0;
   }

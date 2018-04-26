@@ -34,11 +34,11 @@
 #include <sys/stat.h>
 
 #include "lib/packet.h"
-#include "lib/pipemsg.h"
 #include "lib/util.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
 #include "lib/trace_util.h"
+#include "lib/app_util.h"
 #include "chat.h"
 #include "cutil.h"
 #include "store.h"
@@ -67,7 +67,6 @@ static void print_to_output (const char * string)
 #define PRINT_BUF_SIZE		(ALLNET_MTU + MESSAGE_BUF_SIZE)
 
 struct receive_thread_args {
-  pd p;
   int sock;
   int print_duplicates;
 };
@@ -84,10 +83,8 @@ static void * receive_thread (void * arg)
   keyset old_kset = -1;
   while (1) {
     char * packet;
-    int pipe;
     unsigned int pri;
-    int found = receive_pipe_message_any (a.p, PIPE_MESSAGE_WAIT_FOREVER,
-                                          &packet, &pipe, &pri);
+    int found = local_receive (1000, &packet, &pri);
     if (found < 0) {
       printf ("xt pipe closed, thread exiting\n");
       exit (1);
@@ -478,7 +475,7 @@ static int get_address (const char * address, unsigned char * result, int rsize,
   return bits;
 }
 
-static void run_trace (int sock, pd p, struct allnet_log * log, char * params)
+static void run_trace (int sock, struct allnet_log * log, char * params)
 {
   strip_final_newline (params);
   int hops = 5;
@@ -627,7 +624,7 @@ static char * list_incompletes (const char * contact, int select,
   return result;
 }
 
-static void key_exchange (int sock, pd p, struct allnet_log * log,
+static void key_exchange (int sock, struct allnet_log * log,
                           char * params, char ** peer)
 {
 /*
@@ -770,7 +767,6 @@ int main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
   struct allnet_log * log = init_log ("xt");
-  pd p = init_pipe_descriptor (log);
 
   /* not expecting any trace */
   memset (expecting_trace, 0, sizeof (expecting_trace));
@@ -785,12 +781,11 @@ int main (int argc, char ** argv)
       path = argv [i + 1];
   }
 
-  int sock = xchat_init (argv [0], path, p);
+  int sock = xchat_init (argv [0], path);
   if (sock < 0)
     return 1;
 
   static struct receive_thread_args rta;
-  rta.p = p;
   rta.sock = sock;
   rta.print_duplicates = print_duplicates;
   pthread_t thread;
@@ -855,13 +850,13 @@ int main (int argc, char ** argv)
         print_n_messages (peer, next, 10);
         break;
       case 't':  /* trace */
-        run_trace (sock, p, log, next);
+        run_trace (sock, log, next);
         break;
       case 'd':  /* delete contact, not listed in menu */
         xt_delete_contact (next, &peer);
         break;
       case 'k':  /* exchange a key with a new contact, optional secret */
-        key_exchange (sock, p, log, next, &peer);
+        key_exchange (sock, log, next, &peer);
         break;
       default:   /* send as a message */
         print_to_output ("unknown command\n");;
