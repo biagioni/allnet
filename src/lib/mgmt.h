@@ -132,7 +132,6 @@ struct allnet_mgmt_trace_entry {
   unsigned char address [ADDRESS_SIZE];
 };
 
-
 /* a trace message is designed to have functionality similar to both
  * ping and traceroute in the internet.
  * when originally sent, the message should have one entry, the ID
@@ -170,6 +169,7 @@ struct allnet_mgmt_trace_reply {
 
 /* keepalives have no content, only the header */
 
+#ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
 /* a data request specifies one or more message/packet IDs.  The
  * packets/messages are sent back if cached.  Any unsatisfied request
  * is forwarded onwards. */
@@ -178,6 +178,7 @@ struct allnet_mgmt_id_request {
   unsigned char pad [6];              /* always send as 0s */
   unsigned char ids [MESSAGE_ID_SIZE * 0];  /* really, MESSAGE_ID_SIZE * n */
 };
+#endif /* IMPLEMENT_MGMT_ID_REQUEST */
 
 /* the header that precedes each of the management messages */
 struct allnet_mgmt_header {
@@ -191,7 +192,9 @@ struct allnet_mgmt_header {
 #define ALLNET_MGMT_TRACE_REQ		7	/* request a trace response */
 #define ALLNET_MGMT_TRACE_REPLY		8	/* response to trace req */
 #define ALLNET_MGMT_KEEPALIVE		9	/* to keep connection open */
+#ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
 #define ALLNET_MGMT_ID_REQUEST		10	/* request specific IDs */
+#endif /* IMPLEMENT_MGMT_ID_REQUEST */
   unsigned char mgmt_type;   /* every management packet has this */
   char mpad [7];
 };
