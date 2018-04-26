@@ -9,18 +9,20 @@
 
 #define PID_MESSAGE_FILTER  	0
 #define PID_ACK_FILTER      	1
-#define PID_FILTER_SELECTORS	(PID_ACK_FILTER + 1)
+#define PID_TRACE_REQ_FILTER   	2
+#define PID_TRACE_REPLY_FILTER 	3
+#define PID_FILTER_SELECTORS	(PID_TRACE_REPLY_FILTER + 1)
 
 #define PID_SIZE		MESSAGE_ID_SIZE
 
 /* id should refer to at least 16 bytes, and PID_SIZE should be 16 or more
- * filter_selector should be 1 for acks, 0 for messages
+ * filter_selector should be one of the PID_*_FILTER values
  * return 1 if the id (of size FILTER_BITS/8 * FILTER_DEPTH) is found
  * in one of the filters. */
 extern int pid_is_in_bloom (const char * id, int filter_selector);
 
 /* id should refer to at least 16 bytes, and PID_SIZE should be 16 or more
- * filter_selector should be 1 for acks, 0 for messages
+ * filter_selector should be one of the PID_*_FILTER values
  * adds the ID to the newest bloom filter.
  * recommend calling is_in_bloom with the id before calling add_to_bloom */
 extern void pid_add_to_bloom (const char * id, int filter_selector);
