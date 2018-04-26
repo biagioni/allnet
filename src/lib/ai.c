@@ -101,7 +101,7 @@ int ia_to_string (const struct internet_addr * ia, char * buf, size_t bsize)
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
-int ia_to_sockaddr (struct internet_addr * ia,
+int ia_to_sockaddr (const struct internet_addr * ia,
                     struct sockaddr * sap, socklen_t * salen)
 {
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
@@ -134,7 +134,7 @@ int ia_to_sockaddr (struct internet_addr * ia,
 /* if nbits > 0, dest should point to at least (nbits + 7) / 8 bytes */
 /* port must be in big-endian order (i.e. after applying htons) */
 /* returns 1 for success, 0 for failure */
-int init_addr (int af, unsigned char * addr, int port,
+int init_addr (int af, const unsigned char * addr, int port,
                struct internet_addr * ia)
 {
   unsigned char * iap = ia->ip.s6_addr;
@@ -160,7 +160,7 @@ int init_addr (int af, unsigned char * addr, int port,
   return 1;
 }
 
-int sockaddr_to_ia (struct sockaddr * sap, socklen_t addr_size,
+int sockaddr_to_ia (const struct sockaddr * sap, socklen_t addr_size,
                     struct internet_addr * ia)
 {
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
@@ -171,8 +171,12 @@ int sockaddr_to_ia (struct sockaddr * sap, socklen_t addr_size,
     return 1;
   } else if ((sap->sa_family == AF_INET6) &&
              (addr_size >= (int) (sizeof (struct sockaddr_in6)))) {
-    init_addr (AF_INET6, (unsigned char *) &(sin6->sin6_addr),
-               sin6->sin6_port, ia);
+    if ((readb64 ((char *) sin6->sin6_addr.s6_addr) != 0) || /* regular ipv6 */
+        (readb16 ((char *) sin6->sin6_addr.s6_addr + 8) != 0) ||
+        (readb16 ((char *) sin6->sin6_addr.s6_addr + 10) != 0xffff))
+      init_addr (AF_INET6, sin6->sin6_addr.s6_addr, sin6->sin6_port, ia);
+    else               /* ipv4-in-ipv6 address */
+      init_addr (AF_INET,  sin6->sin6_addr.s6_addr + 12, sin->sin_port, ia);
     return 1;
   } else {
     printf ("error: unable to create address info with family %d, size %d\n",
@@ -184,7 +188,7 @@ int sockaddr_to_ia (struct sockaddr * sap, socklen_t addr_size,
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
-int ai_to_sockaddr (struct addr_info * ai,
+int ai_to_sockaddr (const struct addr_info * ai,
                     struct sockaddr * sap, socklen_t * salen)
 {
   return ia_to_sockaddr (&(ai->ip), sap, salen);
@@ -194,8 +198,8 @@ int ai_to_sockaddr (struct addr_info * ai,
 /* if nbits > 0, dest should point to at least (nbits + 7) / 8 bytes */
 /* port must be in big-endian order (i.e. after applying htons) */
 /* returns 1 for success, 0 for failure */
-int init_ai (int af, unsigned char * addr, int port, int nbits,
-             unsigned char * dest, struct addr_info * ai)
+int init_ai (int af, const unsigned char * addr, int port, int nbits,
+             const unsigned char * dest, struct addr_info * ai)
 {
   memset ((char *) ai, 0, sizeof (struct addr_info));
   ai->nbits = nbits;
@@ -216,7 +220,7 @@ int init_ai (int af, unsigned char * addr, int port, int nbits,
   return 1;
 }
 
-int sockaddr_to_ai (struct sockaddr * sap, socklen_t addr_size,
+int sockaddr_to_ai (const struct sockaddr * sap, socklen_t addr_size,
                     struct addr_info * ai)
 {
   /* init_ai with 0 bits and NULL address simply sets address to all 0s */
@@ -225,7 +229,7 @@ int sockaddr_to_ai (struct sockaddr * sap, socklen_t addr_size,
 }
 
 /* returns 1 if the two addresses are the same, 0 otherwise */
-int same_ai (struct addr_info * a, struct addr_info * b)
+int same_ai (const struct addr_info * a, const struct addr_info * b)
 {
   if ((a == NULL) && (b == NULL))
     return 1;
@@ -250,7 +254,7 @@ int same_ai (struct addr_info * a, struct addr_info * b)
 }
 
 /* returns 1 if the two addresses and ports are the same, 0 otherwise */
-int same_aip (struct addr_info * a, struct addr_info * b)
+int same_aip (const struct addr_info * a, const struct addr_info * b)
 {
   if (same_ai (a, b)) {
     if ((a != NULL) && (b != NULL) && (a->ip.port != b->ip.port))
@@ -294,7 +298,7 @@ void standardize_ip (struct sockaddr * ap, socklen_t asize)
 }
 
 /* is this address a local IP? */
-int is_loopback_ip (struct sockaddr * ap, socklen_t asize)
+int is_loopback_ip (const struct sockaddr * ap, socklen_t asize)
 {
   struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap;
   struct sockaddr_in6 * ap6 = (struct sockaddr_in6 *) ap;
@@ -775,4 +779,71 @@ int interface_addrs (struct interface_addr ** interfaces)
   int result = ioctl_interface_addrs (interfaces);
 #endif /* ANDROID */
   return result;
+}
+
+/* test whether this address is syntactically valid address (e.g.
+ * not all zeros), returning 1 if valid, -1 if it is an ipv4-in-ipv6
+ * address, and 0 otherwise */
+int is_valid_address (const struct internet_addr * ip)
+{
+  if (ip->ip_version == 4) {
+    if ((readb32 ((char *) (ip->ip.s6_addr + 12)) == 0) ||
+        (readb16 ((char *) (ip->ip.s6_addr + 10)) != 0xffff) ||
+        (readb16 ((char *) (ip->ip.s6_addr +  8)) != 0) ||
+        (readb64 ((char *) (ip->ip.s6_addr     )) != 0) ||
+        (      * ((char *) (ip->ip.s6_addr + 12)) == 127)) /* 127.x.y.z */
+      return 0;
+    return 1;
+  } else if (ip->ip_version == 6) {
+    if ((readb64 ((char *) ip->ip.s6_addr) == 0) &&
+        (readb64 ((char *) ip->ip.s6_addr + 8) == 0))  /* all-zeros address */
+      return 0;
+    if (*((char *) ip->ip.s6_addr) == 0xff)            /* multicast */
+      return 0;
+    if ((readb64 ((char *) (ip->ip.s6_addr    )) == 0) &&
+        (readb16 ((char *) (ip->ip.s6_addr + 8)) == 0) &&
+        (readb16 ((char *) (ip->ip.s6_addr + 10)) == 0xffff) &&
+        (readb32 ((char *) (ip->ip.s6_addr + 12)) != 0)) /* ipv4 in ipv6 */
+      return -1;
+    return 1;
+  } else {
+    printf ("is_valid_address: unknown ip version %d\n", ip->ip_version);
+    return 0;
+  }
+  return 1;
+}
+
+/* as well as the obvious comparisons, returns true also for
+ * an IPv4-embedded-in-IPv6 that matches a plain IPv4 address */
+int same_sockaddr (const struct sockaddr_storage * a, socklen_t alen,
+                   const struct sockaddr_storage * b, socklen_t blen)
+{
+  if (alen == blen)
+    return (memcmp (a, b, alen) == 0);   /* easy, quick case */
+  if ((alen == sizeof (struct sockaddr_in)) &&
+      (blen == sizeof (struct sockaddr_in6))) {  /* see if b is an ipv4 */
+    const struct sockaddr_in6 * b6 = (const struct sockaddr_in6 *) b;
+    if ((readb64 (((char *) &(b6->sin6_addr))     ) == 0) &&
+        (readb16 (((char *) &(b6->sin6_addr)) +  8) == 0) &&
+        (readb16 (((char *) &(b6->sin6_addr)) + 10) == 0xffff)) {
+      const struct sockaddr_in * a4 = (const struct sockaddr_in *) a;
+      return ((a4->sin_family == AF_INET) && (b6->sin6_family == AF_INET6) &&
+              (a4->sin_port == b6->sin6_port) &&
+              (0 ==
+               memcmp (&a4->sin_addr, (((char *) &(b6->sin6_addr)) + 12), 4)));
+    }
+  } else if ((alen == sizeof (struct sockaddr_in6)) &&
+             (blen == sizeof (struct sockaddr_in))) { /* see if a is an ipv4 */
+    const struct sockaddr_in6 * a6 = (const struct sockaddr_in6 *) a;
+    if ((readb64 (((char *) &(a6->sin6_addr))     ) == 0) &&
+        (readb16 (((char *) &(a6->sin6_addr)) +  8) == 0) &&
+        (readb16 (((char *) &(a6->sin6_addr)) + 10) == 0xffff)) {
+      const struct sockaddr_in * b4 = (const struct sockaddr_in *) b;
+      return ((b4->sin_family == AF_INET) && (a6->sin6_family == AF_INET6) &&
+              (b4->sin_port == a6->sin6_port) &&
+              (0 ==
+               memcmp (&b4->sin_addr, (((char *) &(a6->sin6_addr)) + 12), 4)));
+    }
+  }
+  return 0;
 }

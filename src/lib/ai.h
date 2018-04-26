@@ -15,10 +15,10 @@ extern int addr_info_to_string (struct addr_info * ai,
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
-extern int ai_to_sockaddr (struct addr_info * ai,
+extern int ai_to_sockaddr (const struct addr_info * ai,
                            struct sockaddr * sap, socklen_t * salen);
 
-extern int sockaddr_to_ai (struct sockaddr * sap, socklen_t addr_size,
+extern int sockaddr_to_ai (const struct sockaddr * sap, socklen_t addr_size,
                            struct addr_info * ai);
 
 /* prints a newline at the end of the internet address */
@@ -30,28 +30,28 @@ extern int ia_to_string (const struct internet_addr * ia,
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
-extern int ia_to_sockaddr (struct internet_addr * ia,
+extern int ia_to_sockaddr (const struct internet_addr * ia,
                            struct sockaddr * sap, socklen_t * salen);
 
-extern int sockaddr_to_ia (struct sockaddr * sap, socklen_t addr_size,
+extern int sockaddr_to_ia (const struct sockaddr * sap, socklen_t addr_size,
                            struct internet_addr * ia);
 
 /* addr must point to 4 bytes if af is AF_INET, 16 bytes for AF_INET6 */
 /* if nbits > 0, dest should point to at least (nbits + 7) / 8 bytes */
 /* returns 1 for success, 0 for failure */
-extern int init_ai (int af, unsigned char * addr, int port, int nbits,
-                    unsigned char * dest, struct addr_info * ai);
+extern int init_ai (int af, const unsigned char * addr, int port, int nbits,
+                    const unsigned char * dest, struct addr_info * ai);
 
 /* returns 1 if the two addresses are the same, 0 otherwise */
-extern int same_ai (struct addr_info * a, struct addr_info * b);
+extern int same_ai (const struct addr_info * a, const struct addr_info * b);
 /* returns 1 if the two addresses and ports are the same, 0 otherwise */
-extern int same_aip (struct addr_info * a, struct addr_info * b);
+extern int same_aip (const struct addr_info * a, const struct addr_info * b);
 
 /* if this is an IPv4-encoded-as-IPv6 address, make it an IPv4 address again */
 extern void standardize_ip (struct sockaddr * ap, socklen_t asize);
 
 /* is this address a local IP? */
-extern int is_loopback_ip (struct sockaddr * ap, socklen_t asize);
+extern int is_loopback_ip (const struct sockaddr * ap, socklen_t asize);
 
 struct interface_addr {
   char * interface_name;
@@ -69,5 +69,15 @@ struct interface_addr {
  * storage with n addresses, may be free'd (as a block -- interface_name
  * and addresses point to within *interfaces) */
 extern int interface_addrs (struct interface_addr ** interfaces);
+
+/* test whether this address is syntactically valid address (e.g.
+ * not all zeros), returning 1 if valid, -1 if it is an ipv4-in-ipv6
+ * address, and 0 otherwise */
+extern int is_valid_address (const struct internet_addr * ip);
+
+/* as well as the obvious comparisons, returns true also for
+ * an IPv4-embedded-in-IPv6 that matches a plain IPv4 address */
+extern int same_sockaddr (const struct sockaddr_storage * a, socklen_t alen,
+                          const struct sockaddr_storage * b, socklen_t blen);
 
 #endif /* ALLNET_AI_H */
