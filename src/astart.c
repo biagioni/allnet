@@ -7,7 +7,8 @@
    - no arguments, which means to not broadcast on local interfaces
  */
 /* in the future this may be automated or from config file */
-/* (since the config file should tell us the bandwidth on each interface) */
+/* (the config file should also tell us the bandwidth available
+ * on each interface) */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,16 +34,15 @@
 #include "lib/configfiles.h"
 #include "lib/allnet_queue.h"
 #include "lib/ai.h"
+#include "lib/pcache.h"
 
-extern void ad_main (int npipes, int * rpipes, int * wpipes);
-extern void alocal_main (int pipe1, int pipe2,
-                         int npipes, int * rpipes, int * wpipes);
-extern void aip_main (int pipe1, int pipe2, char * fname);
+extern void allnet_daemon_main ();
+void ad_main (int npipes, int * rpipes, int * wpipes)
+{
+  printf ("error: dummy ad main called, exiting\n");
+  exit (1);
+}
 extern void abc_main (int pipe1, int pipe2, const char * ifopts);
-extern void adht_main (char * pname);
-extern void acache_main (char * pname);
-extern void acache_save_data (void);
-extern void traced_main (char * pname);
 extern void keyd_main (char * pname);
 extern void keyd_generate (char * pname);
 
@@ -80,19 +80,10 @@ struct thread_arg {
 #define CALL_STRING		1
   void (*string_function) (char *);
   char * string_arg;
-#define CALL_ALOCAL		2
-  int rpipe;
-  int wpipe;
-#define CALL_THREAD     3
+#define CALL_THREAD     	2
   void (*thread_function) (char *, int, int);
-#define CALL_AIP		4
-  char * extra;
-#define CALL_ABC		5
+#define CALL_ABC		3
   char * ifopts;
-#define CALL_AD			6
-  int num_pipes;       /* these three also used for alocal */
-  int * rpipes;
-  int * wpipes;
 };
 
 static struct thread_arg thread_args [100];
@@ -117,15 +108,6 @@ static void * generic_thread (void * arg)
   struct thread_arg * ta = (struct thread_arg *) arg;
   if (ta->call_type == CALL_STRING) {
     ta->string_function (ta->string_arg);
-  } else if (ta->call_type == CALL_ALOCAL) {
-    char buf [1000];
-    int off = snprintf (buf, sizeof (buf), "calling alocal_main (%d, %d): ",
-                        ta->rpipe, ta->wpipe);
-    off += print_n_rw (ta->num_pipes, ta->rpipes, ta->wpipes,
-                       buf + off, sizeof (buf) - off);
-    printf ("%s\n", buf);
-    alocal_main (ta->rpipe, ta->wpipe,
-                 ta->num_pipes, ta->rpipes, ta->wpipes);
   } else if (ta->call_type == CALL_THREAD) {
     printf ("calling thread %s (%d, %d)\n",
             ta->string_arg, ta->rpipe, ta->wpipe);
@@ -424,7 +406,7 @@ static int read_pid (int fd)
 
 static void stop_all_on_signal (int signal)
 {
-  acache_save_data ();
+  pcache_write ();
   if (signal != SIGINT)
     printf ("process ID is %d, program %s, signal %d\n", getpid (),
             debug_process_name, signal);
@@ -586,118 +568,6 @@ static void my_call_thread (char * argv, int alen, char * program,
   }
 }
 #endif /* ALLNET_USE_FORK */
-
-#ifdef ALLNET_USE_FORK
-static int astart_connect_to_local ()
-{
-  int sock = socket (AF_INET, SOCK_STREAM, 0);
-  struct sockaddr_in sin;
-  sin.sin_family = AF_INET;
-  sin.sin_addr.s_addr = inet_addr ("127.0.0.1");
-  sin.sin_port = allnet_htons (ALLNET_LOCAL_PORT);
-  int success = (connect (sock, (struct sockaddr *) &sin, sizeof (sin)) == 0);
-  debug_close (sock, "astart_connect_to_local");
-  return success;
-}
-#endif /* ALLNET_USE_FORK */
-
-static void my_call_alocal (char * argv, int alen, int rpipe, int wpipe,
-                            int fd, pid_t parent,
-                            int num_pipes, int * rpipes, int * wpipes)
-{
-  int i;
-#ifdef ALLNET_USE_FORK
-  char * program = "alocal";
-  pid_t child = fork ();
-  if (child == 0) {
-    debug_process_name = "alocal";
-    replace_command (argv, alen, program);
-    int off = snprintf (alog->b, alog->s, "calling %s (%d %d), %d (%p %p): ",
-                        program, rpipe, wpipe, num_pipes, rpipes, wpipes);
-    for (i = 0; i < num_pipes; i++)
-      off += snprintf (alog->b + off, alog->s - off,
-                       "[%d] r %d w %d, ", i, rpipes [i], wpipes [i]);
-    off += snprintf (alog->b + off, alog->s - off, "\n");
-    log_print (alog);
-    daemon_name = "alocal";
-    alocal_main (rpipe, wpipe, num_pipes, rpipes, wpipes);
-    child_return (program, parent, 1);
-  }
-  /* else parent, close the child pipes */
-  debug_close (rpipe, "my_call_alocal");
-  debug_close (wpipe, "my_call_alocal wpipe");
-  print_pid (fd, child);
-  snprintf (alog->b, alog->s, "parent called %s %d %d, closed %d %d\n",
-            program, rpipe, wpipe, rpipe, wpipe);
-  log_print (alog);
-  do {   /* wait for alocal to start and open its socket */
-    usleep (10 * 1000);
-  } while (! astart_connect_to_local());
-#else /* ! ALLNET_USE_FORK */
-printf ("allocating %d pipes for rcopy and same for wcopy\n", num_pipes);
-  int * rcopy = memcpy_malloc (rpipes, num_pipes * sizeof (int),
-                               "my_call_alocal rpipes");
-  int * wcopy = memcpy_malloc (wpipes, num_pipes * sizeof (int),
-                               "my_call_alocal wpipes");
-  /* copy the read and write pipes */
-  for (i = 0; i < num_pipes; i++) {
-    rcopy [i] = rpipes [2 * i + 1];
-    wcopy [i] = wpipes [2 * i    ];
-  }
-  struct thread_arg * tap = thread_args + (free_thread_arg++);
-  tap->name = "alocal";
-  tap->call_type = CALL_ALOCAL;
-  tap->rpipe = rpipe;
-  tap->wpipe = wpipe;
-  tap->num_pipes = num_pipes;
-  tap->rpipes = rcopy;
-  tap->wpipes = wcopy;
-  for (i = 0; i < num_pipes; i++)
-    printf ("[%d]: rpipe %d (from %d), wpipe %d (from %d)\n", i, rcopy [i],
-            2 * i + 1, wcopy [i], 2 * i);
-  if (pthread_create (&(tap->id), NULL, generic_thread, (void *) tap)) {
-    printf ("pthread_create failed for alocal\n");
-    exit (1);
-  }
-#endif /* ALLNET_USE_FORK */
-
-}
-
-static void my_call_aip (char * argv, int alen, char * program,
-                         int rpipe, int wpipe, char * extra, int fd,
-                         pid_t parent)
-{
-#ifdef ALLNET_USE_FORK
-  pid_t child = fork ();
-  if (child == 0) {
-    debug_process_name = "aip";
-    replace_command (argv, alen, program);
-    snprintf (alog->b, alog->s, "calling %s %d %d %s\n",
-              program, rpipe, wpipe, extra);
-    log_print (alog);
-    daemon_name = "aip";
-    aip_main (rpipe, wpipe, extra);
-    child_return (program, parent, 1);
-  }  /* parent, close the child pipes */
-  debug_close (rpipe, "my_call_aip");
-  debug_close (wpipe, "my_call_aip wpipe");
-  print_pid (fd, child);
-  snprintf (alog->b, alog->s, "parent called %s %d %d %s, closed %d %d\n",
-            program, rpipe, wpipe, extra, rpipe, wpipe);
-  log_print (alog);
-#else /* ! ALLNET_USE_FORK */
-  struct thread_arg * tap = thread_args + (free_thread_arg++);
-  tap->name = "aip";
-  tap->call_type = CALL_AIP;
-  tap->rpipe = rpipe;
-  tap->wpipe = wpipe;
-  tap->extra = extra;
-  if (pthread_create (&(tap->id), NULL, generic_thread, (void *) tap)) {
-    printf ("pthread_create failed for aip\n");
-    exit (1);
-  }
-#endif /* ALLNET_USE_FORK */
-}
 
 static void my_call_abc (int argc, char ** argv, int alen, int alen_arg,
                          char * program,
@@ -885,8 +755,9 @@ static char * interface_extra (struct interface_addr * interface)
       return "ip";
   }
   if ((strncmp (interface->interface_name, "wlan", 4) == 0) ||
-      (strncmp (interface->interface_name, "wlx", 3) == 0) ||
-      (strncmp (interface->interface_name, "wlo", 3) == 0)) {
+      (strncmp (interface->interface_name, "wlo", 3) == 0) ||
+      (strncmp (interface->interface_name, "wlp", 3) == 0) ||
+      (strncmp (interface->interface_name, "wlx", 3) == 0)) {
     if (geteuid () == 0)
       return "wifi";
     else
@@ -1126,57 +997,31 @@ int astart_main (int argc, char ** argv)
     log_print (alog);
   }
 
+#ifndef ALLNET_USE_FORK  /* create queues for 4 of the 5 daemons */
   int alocal_numpipes = 0;
   int * alocal_rpipes = NULL;
   int * alocal_wpipes = NULL;
-#ifndef ALLNET_USE_FORK  /* create queues for 4 of the 5 daemons */
   alocal_numpipes = NUM_DAEMON_PIPES;
   alocal_rpipes = rpipes + ad_pipes;
   alocal_wpipes = wpipes + ad_pipes;
 #endif /* ALLNET_USE_FORK */
 
   /* start ad */
+  allnet_daemon_main ();
+  exit (0);
   my_call_ad (argv [0], alen, ad_pipes, rpipes, wpipes, pid_fd, astart_pid);
   /* my_call_ad closed half the pipes and put them in the front of the arrays */
   num_pipes = num_pipes / 2;
 
   /* start all the other programs */
 #ifdef ALLNET_USE_FORK  /* daemons connect through sockets */
-  /* note: receive pipes for alocal are write pipes for everyone else */
-  /* also note that after my_call_ad, pipes are in [rw]pipes [0,1] */
-  my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd, astart_pid,
-                  alocal_numpipes, alocal_wpipes, alocal_rpipes);
-  my_call_aip (argv [0], alen, "aip", rpipes [1], wpipes [1],
-               AIP_UNIX_SOCKET, pid_fd, astart_pid);
-
   /* ad, alocal, and aip don't need signal handlers -- if any
    * of them goes down, the pipes are closed and everyone else goes down too
    * but if the other daemons go down, they should explicitly shut
    * down all the processes listed in the pid file */
   setup_signal_handler (1);
-  my_call1 (argv [0], alen, "adht", adht_main, pid_fd, astart_pid);
-  my_call1 (argv [0], alen, "acache", acache_main, pid_fd, astart_pid);
-  my_call1 (argv [0], alen, "traced", traced_main, pid_fd, astart_pid);
   my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd, astart_pid);
 #else /* ! ALLNET_USE_FORK -- daemons use queues to communicate */
-  printf ("calling alocal with pipes %d %d\n", rpipes [0], wpipes [0]);
-  my_call_alocal (argv [0], alen, rpipes [0], wpipes [0], pid_fd, astart_pid,
-                  alocal_numpipes, alocal_wpipes, alocal_rpipes);
-  printf ("calling aip with pipes %d %d\n", rpipes [1], wpipes [1]);
-  my_call_aip (argv [0], alen, "aip", rpipes [1], wpipes [1],
-               AIP_UNIX_SOCKET, pid_fd, astart_pid);
-  printf ("calling adht with pipes %d %d\n",
-          alocal_rpipes [0], alocal_wpipes [1]);
-  my_call_thread (argv [0], alen, "adht", adht_thread, pid_fd, astart_pid,
-                  alocal_rpipes [0], alocal_wpipes [1]);
-  printf ("calling acache with pipes %d, %d\n",
-          alocal_rpipes [2], alocal_wpipes [3]);
-  my_call_thread (argv [0], alen, "acache", acache_thread, pid_fd, astart_pid,
-                  alocal_rpipes [2], alocal_wpipes [3]);
-  printf ("calling traced with pipes %d, %d\n",
-          alocal_rpipes [4], alocal_wpipes [5]);
-  my_call_thread (argv [0], alen, "traced", traced_thread, pid_fd, astart_pid,
-                  alocal_rpipes [4], alocal_wpipes [5]);
   printf ("calling keyd with pipes %d, %d\n",
           alocal_rpipes [6], alocal_wpipes [7]);
   my_call_thread (argv [0], alen, "keyd", keyd_thread, pid_fd, astart_pid,
