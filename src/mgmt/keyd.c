@@ -15,7 +15,6 @@
 #include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
-#include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/sha.h"
 #include "lib/allnet_log.h"
@@ -26,7 +25,7 @@
 
 static struct allnet_log * alog = NULL;
 
-static void send_key (int sock, struct bc_key_info * key, char * return_key,
+static void send_key (struct bc_key_info * key, char * return_key,
                       int rksize, unsigned char * address, int abits, int hops)
 {
 #ifdef DEBUG_PRINT
@@ -66,14 +65,14 @@ static void send_key (int sock, struct bc_key_info * key, char * return_key,
 
   /* send with relatively low priority */
   char * message = (char *) hp;
-  send_pipe_message (sock, message, bytes, ALLNET_PRIORITY_DEFAULT, alog);
+  local_send (message, bytes, ALLNET_PRIORITY_DEFAULT);
 }
 
 #ifdef DEBUG_PRINT
 void ** keyd_debug = NULL;
 #endif /* DEBUG_PRINT */
 
-static void handle_packet (int sock, char * message, int msize)
+static void handle_packet (char * message, int msize)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type != ALLNET_TYPE_KEY_REQ)
@@ -139,7 +138,7 @@ static void handle_packet (int sock, char * message, int msize)
               i, keys [i].identifier, kp, ksize,
               hp->source [0] & 0xff, hp->source [1] & 0xff, hp->src_nbits);
 #endif /* DEBUG_PRINT */
-      send_key (sock, keys + i, kp, (int)ksize,
+      send_key (keys + i, kp, (int)ksize,
                 hp->source, hp->src_nbits, hp->hops + 4);
     }
   }
@@ -273,22 +272,17 @@ void keyd_generate (char * pname)
 void keyd_thread (char * pname, int rpipe, int wpipe)
 {
   struct allnet_log * private_log = init_log ("keyd_thread");
-  pd p = init_pipe_descriptor (private_log);
-    printf ("keyd_thread adding pipe %d\n", rpipe);
-  add_pipe (p, rpipe, "keyd_thread");
-    
   while (1) {  /* loop forever */
-    int pipe;
     unsigned int pri;
     char * message;                      /* sleep for up to a minute */
-    int found = receive_pipe_message_any (p, 60 * 1000, &message, &pipe, &pri);
+    int found = local_receive (60 * 1000, &message, &pri);
     if (found < 0) {
       snprintf (private_log->b, private_log->s, "keyd pipe closed, exiting\n");
       log_print (private_log);
       exit (1);
     }
     if ((found > 0) && (is_valid_message (message, found, NULL)))
-      handle_packet (wpipe, message, found);
+      handle_packet (message, found);
     if (found > 0)
       free (message);
   }
@@ -300,23 +294,21 @@ void keyd_thread (char * pname, int rpipe, int wpipe)
 void keyd_main (char * pname)
 {
   alog = init_log ("keyd");
-  pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local (pname, pname, NULL, p);
+  int sock = connect_to_local (pname, pname, NULL, 1);
   if (sock < 0)
     return;
 
   while (1) {  /* loop forever */
-    int pipe;
     unsigned int pri;
     char * message;                      /* sleep for up to a minute */
-    int found = receive_pipe_message_any (p, 60 * 1000, &message, &pipe, &pri);
+    int found = local_receive (60 * 1000, &message, &pri);
     if (found < 0) {
       snprintf (alog->b, alog->s, "keyd pipe closed, exiting\n");
       log_print (alog);
       exit (1);
     }
     if ((found > 0) && (is_valid_message (message, found, NULL)))
-      handle_packet (sock, message, found);
+      handle_packet (message, found);
     if (found > 0)
       free (message);
   }

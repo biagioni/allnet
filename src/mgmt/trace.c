@@ -35,7 +35,6 @@
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/configfiles.h"
-#include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
 #include "lib/dcache.h"
@@ -196,8 +195,7 @@ int trace_main (int argc, char ** argv)
 #endif /* DEBUG_PRINT */
   }
   alog = init_log ("trace");
-  pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local (argv [0], argv [0], NULL, p);
+  int sock = connect_to_local (argv [0], argv [0], NULL, 1);
   if (sock < 0)
     return 1;
 
@@ -212,7 +210,7 @@ int trace_main (int argc, char ** argv)
     if (n > 0)
       nhops = n;
   }
-  do_trace_loop (sock, p, num_addrs, addresses, abits,
+  do_trace_loop (sock, num_addrs, addresses, abits,
                  repeat, sleep, nhops, match_only,
                  no_intermediates, 1, 0, STDOUT_FILENO, 0, NULL, alog);
   return 0;

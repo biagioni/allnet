@@ -8,7 +8,7 @@
 #include "lib/app_util.h"
 #include "lib/packet.h"
 #include "lib/media.h"
-#include "lib/pipemsg.h"
+#include "lib/sockets.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/sha.h"
@@ -53,13 +53,24 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
   gettimeofday (&receive_time, NULL);
   int max = (full_payloads ? msize : 100);
 
+  struct allnet_header * hp = (struct allnet_header *) message;
   char * reason = NULL;
   if (! is_valid_message (message, msize, &reason)) {
-    printf ("sniffer got invalid message (%s): ", reason);
-    print_buffer (message, msize, "", max, 1);
+    int saved_hops = -1;
+    int print_msg = 0;
+    if ((msize > ALLNET_HEADER_SIZE) && (hp->hops > hp->max_hops)) {
+      /* if a packet is valid but has invalid hop count, show anyway */
+      saved_hops = hp->hops;
+      hp->hops = hp->max_hops;
+      print_msg = (! is_valid_message (message, msize, &reason));
+      hp->hops = saved_hops;
+    }
+    if (print_msg) {
+      printf ("sniffer got invalid message (%s): ", reason);
+      print_buffer (message, msize, "", max, 1);
+    }
     return 0;
   }
-  struct allnet_header * hp = (struct allnet_header *) message;
   int type = hp->message_type;
   if ((type <= MAX_PACKET_TYPE) && (! ((1 << type) & types)))
     return 0;  /* do not print this type of packet */
@@ -183,17 +194,15 @@ static int received_before (char * message, unsigned int mlen)
 #undef MESSAGE_STORAGE
 }
 
-static void main_loop (int sock, pd p, int debug,
+static void main_loop (int debug,
                        int max, int verify, int unique, int types, int full,
                        unsigned char * src, unsigned int src_bits,
                        unsigned char * dst, unsigned int dst_bits)
 {
   while (1) {
-    int pipe;
     unsigned int pri;
     char * message;
-    int found = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
-                                          &message, &pipe, &pri);
+    int found = local_receive (SOCKETS_TIMEOUT_FOREVER, &message, &pri);
     if (found <= 0) {
       printf ("packet sniffer pipe closed, exiting\n");
       exit (1);
@@ -313,18 +322,15 @@ int main (int argc, char ** argv)
   if (verbose)
     debug = 1;
   log_to_output (verbose);
-  struct allnet_log * log = init_log ("allnet_sniffer");
 
-  pd p = init_pipe_descriptor (log);
-  int sock = connect_to_local (argv [0], argv [0], NULL, p);
-  if (sock < 0)
+  if (connect_to_local (argv [0], argv [0], NULL, 1) < 0)
     return 1;
 
   int max = 0;
   if (argc > optind)
     max = atoi (argv [optind]);
 
-  main_loop (sock, p, debug, max, verify, unique, types, full_payloads,
+  main_loop (debug, max, verify, unique, types, full_payloads,
              src, src_bits, dst, dst_bits);
   return 0;
 }
