@@ -239,7 +239,7 @@ public class CoreConnect extends Thread implements CoreAPI {
                     return result;
             }
         } catch (java.io.EOFException e) {
-            System.out.println("exception " + e + " reading from socket");
+//          System.out.println("exception " + e + " reading from socket");
             System.exit(1);  // the socket is closed
         } catch (java.lang.Exception e) {
             System.out.println("exception " + e + " reading from socket");
