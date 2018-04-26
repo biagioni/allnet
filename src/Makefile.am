@@ -33,10 +33,7 @@ bin_PROGRAMS = \
 
 __ALLNET_BINDIR__allnet_SOURCES = astart.c \
 				  ad.c \
-				  alocal.c \
 				  listen.c \
-				  aip.c \
-				  acache.c \
 				  hash.c \
 				  record.c \
 				  social.c \
@@ -46,7 +43,7 @@ __ALLNET_BINDIR__allnet_SOURCES = astart.c \
 __ALLNET_BINDIR__allnet_LDFLAGS = -lpthread
 __ALLNET_BINDIR__astop_SOURCES = ${__ALLNET_BINDIR__allnet_SOURCES}
 __ALLNET_BINDIR__astop_LDFLAGS = -lpthread
-__ALLNET_BINDIR__allnet_print_caches_SOURCES = print_caches.c acache.c
+__ALLNET_BINDIR__allnet_print_caches_SOURCES = print_caches.c
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
