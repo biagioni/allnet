@@ -10,7 +10,6 @@
 #include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
-#include "lib/pipemsg.h"
 #include "lib/sha.h"
 #include "lib/priority.h"
 #include "lib/cipher.h"
@@ -54,12 +53,10 @@ static int send_key_request (int sock, char * phrase, char * source, int slen,
   random_bytes (r, KEY_RANDOM_PAD_SIZE);
 
 /* printf ("sending %d-byte key request\n", psize); */
-  if (! send_pipe_message_free (sock, packet, psize,
-                                ALLNET_PRIORITY_LOCAL, alog)) {
+  int ret = (local_send (packet, psize, ALLNET_PRIORITY_LOCAL));
+  if (! ret)
     printf ("unable to send key request message\n");
-    return 0;
-  }
-  return 1;
+  return ret;
 }
 
 static int handle_packet (char * message, int msize,
@@ -102,15 +99,13 @@ static int handle_packet (char * message, int msize,
   return correct;  /* we are done */
 }
 
-static void wait_for_response (int sock, pd p, char * phrase, char * ahra,
+static void wait_for_response (char * phrase, char * ahra,
                                char * address, int alen, int debug)
 {
   while (1) {
-    int pipe;
     unsigned int pri;
     char * message;
-    int found = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
-                                          &message, &pipe, &pri);
+    int found = local_receive (-1, &message, &pri);
     if (found <= 0) {
       printf ("allnet-subscribe pipe closed, exiting\n");
       exit (1);
@@ -168,8 +163,8 @@ int main (int argc, char ** argv)
     usage (argv [0], reason);
 
   struct allnet_log * alog = init_log ("subscribe");
-  pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local (argv [0], argv [0], NULL, p);
+  /* pd p = init_pipe_descriptor (alog); */
+  int sock = connect_to_local (argv [0], argv [0], NULL, 1);
   if (sock < 0)
     return 1;
 
@@ -177,8 +172,7 @@ int main (int argc, char ** argv)
   char source [ADDRESS_SIZE];
   random_bytes (source, sizeof (source));
   if (send_key_request (sock, phrase, source, sizeof (source), alog)) 
-    wait_for_response (sock, p, phrase, argv [1],
-                       source, sizeof (source), debug);
+    wait_for_response (phrase, argv [1], source, sizeof (source), debug);
   return 0;
 }
 
