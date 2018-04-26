@@ -16,36 +16,10 @@
 #include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
-#include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
 #include "lib/allnet_log.h"
-
-struct thread_arg {
-  int sock;
-  pd p;
-};
-
-/* need to keep reading and emptying the socket buffer, otherwise
- * it will fill and alocal will get an error from sending to us,
- * and so close the socket. */
-static void * receive_ignore (void * arg)
-{
-  struct thread_arg * tap = (struct thread_arg *) arg;
-  int sock = tap->sock;
-  pd p = tap->p;
-  while (1) {
-    char * message;
-    unsigned int priority;
-    int n = receive_pipe_message (p, sock, &message, &priority);
-    if (n > 0)    /* ignore the message and recycle the storage */
-      free (message);
-    else          /* some error -- quit */
-      break;
-  }
-  return NULL;
-}
 
 static void wait_until (time_t end_time)
 {
@@ -206,8 +180,7 @@ static int make_announcement (char * buffer, int n,
   return hsize + dsize + ssize;
 }
 
-static void announce (time_t interval, int sock,
-                      int hops, allnet_rsa_prvkey key,
+static void announce (time_t interval, int hops, allnet_rsa_prvkey key,
                       unsigned char * source, int sbits,
                       unsigned char * dest, int dbits,
                       struct allnet_log * log)
@@ -238,7 +211,7 @@ static void announce (time_t interval, int sock,
   wait_until (announce_time);
 
   /* send with fairly high priority, since the message is time-sensitive */
-  send_pipe_message (sock, buffer, blen, ALLNET_PRIORITY_LOCAL, log);
+  local_send (buffer, blen, ALLNET_PRIORITY_LOCAL);
 
   struct timeval tv;
   gettimeofday (&tv, NULL);
@@ -248,9 +221,9 @@ static void announce (time_t interval, int sock,
 #endif /* PRINT_OUTGOING_PACKETS */
 }
 
-static int init_xtime (char * arg0, pd p)
+static int init_xtime (char * arg0)
 {
-  int sock = connect_to_local ("xtime", arg0, NULL, p);
+  int sock = connect_to_local ("xtime", arg0, NULL, 1);
   if (sock < 0)
     exit (1);
   return sock;
@@ -279,18 +252,9 @@ int main (int argc, char ** argv)
   printf ("xtime: got public + private key, address %02x.%02x\n",
           key->address [0] & 0xff, key->address [1] & 0xff);
   
-  pd p = init_pipe_descriptor (log);
-  int sock = init_xtime (argv [0], p);
-  pthread_t receive_thread;
-  static struct thread_arg arg;
-  arg.sock = sock;
-  arg.p = p;
-  if (pthread_create (&receive_thread, NULL, receive_ignore, &arg) != 0) {
-    perror ("xtime pthread_create/receive");
-    return 1;
-  }
+  init_xtime (argv [0]);
 
   while (1)
-    announce (interval, sock, hops, key->prv_key,
+    announce (interval, hops, key->prv_key,
               key->address, ADDRESS_BITS, key->address, ADDRESS_BITS, log);
 }

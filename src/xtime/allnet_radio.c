@@ -11,7 +11,7 @@
 #include "lib/app_util.h"
 #include "lib/packet.h"
 #include "lib/media.h"
-#include "lib/pipemsg.h"
+#include "lib/sockets.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
 #include "lib/sha.h"
@@ -137,14 +137,12 @@ static int handle_packet (char * message, int msize, int * rcvd, int debug)
   return 0;  /* continue */
 }
 
-static void main_loop (int sock, pd p, int debug, int max)
+static void main_loop (int debug, int max)
 {
   while (1) {
-    int pipe;
     unsigned int pri;
     char * message;
-    int found = receive_pipe_message_any (p, PIPE_MESSAGE_WAIT_FOREVER,
-                                          &message, &pipe, &pri);
+    int found = local_receive (SOCKETS_TIMEOUT_FOREVER, &message, &pri);
     if (found <= 0) {
       printf ("allnet-radio pipe closed, exiting\n");
       exit (1);
@@ -181,13 +179,11 @@ static int debug_switch (int * argc, char ** argv)
 /* optional argument: quit after n messages */
 int main (int argc, char ** argv)
 {
-  struct allnet_log * log = init_log ("allnet_radio");
   int verbose = get_option ('v', &argc, argv);
   log_to_output (verbose);
 
-  pd p = init_pipe_descriptor (log);
-  int sock = connect_to_local (argv [0], argv [0], NULL, p);
-  if (sock < 0)
+  /* pd p = init_pipe_descriptor (log); */
+  if (connect_to_local (argv [0], argv [0], NULL, 1) < 0)
     return 1;
 
   int debug = debug_switch (&argc, argv);
@@ -198,7 +194,7 @@ int main (int argc, char ** argv)
   if (argc > 1)
     max = atoi (argv [1]);
 
-  main_loop (sock, p, debug, max);
+  main_loop (debug, max);
   return 0;
 }
 

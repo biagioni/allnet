@@ -17,7 +17,6 @@
 #include "lib/media.h"
 #include "lib/util.h"
 #include "lib/app_util.h"
-#include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
@@ -25,40 +24,15 @@
 
 static struct allnet_log * log = NULL;
 
-static int init_broadcast (char * arg0, pd p)
+static int init_broadcast (char * arg0)
 {
-  int sock = connect_to_local ("cmdline_broadcast", arg0, NULL, p);
+  int sock = connect_to_local ("cmdline_broadcast", arg0, NULL, 1);
   if (sock < 0)
     exit (1);
   return sock;
 }
 
-struct thread_arg {
-  int sock;
-  pd p;
-};
-
-/* need to keep reading and emptying the socket buffer, otherwise
- * it will fill and alocal will get an error from sending to us,
- * and so close the socket. */
-static void * receive_ignore (void * arg)
-{
-  struct thread_arg * tap = (struct thread_arg *) arg;
-  int sock = tap->sock;
-  pd p = tap->p;
-  while (1) {
-    char * message;
-    unsigned int priority;
-    int n = receive_pipe_message (p, sock, &message, &priority);
-    if (n > 0)    /* ignore the message and recycle the storage */
-      free (message);
-    else          /* some error -- quit */
-      break;
-  }
-  return NULL;
-}
-
-static void broadcast (int sock, char * data, int dsize, int hops,
+static void broadcast (char * data, int dsize, int hops,
                        allnet_rsa_prvkey key,
                        unsigned char * source, int sbits,
                        unsigned char * dest, int dbits,
@@ -107,7 +81,7 @@ static void broadcast (int sock, char * data, int dsize, int hops,
 /* printf ("sending %d = %d + %d + %d + %d bytes\n",
 send_size, hsize, h2size, dsize, ssize); */
   /* send with relatively low priority */
-  send_pipe_message (sock, buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW, log);
+  local_send (buffer, send_size, ALLNET_PRIORITY_LOCAL_LOW);
 }
 
 int main (int argc, char ** argv)
@@ -135,25 +109,16 @@ printf ("sending using key %s\n", key->identifier);
 */
   
   log = init_log ("xtime/broadcast");
-  pd p = init_pipe_descriptor (log);
-  int sock = init_broadcast (argv [0], p);
-  pthread_t receive_thread;
-  static struct thread_arg arg;
-  arg.sock = sock;
-  arg.p = p;
-  if (pthread_create (&receive_thread, NULL, receive_ignore, &arg) != 0) {
-    perror ("xtime pthread_create/receive");
-    return 1;
-  }
+  init_broadcast (argv [0]);
 
   char buffer [100000];
   while (fgets (buffer, sizeof (buffer), stdin) == buffer) {
     char * eol = strrchr (buffer, '\n');
     if ((eol != NULL) && (((int) strlen (buffer)) == 1 + (eol - buffer)))
        *eol = '\0';
-    broadcast (sock, buffer, strlen (buffer), hops, key->prv_key,
+    broadcast (buffer, strlen (buffer), hops, key->prv_key,
                key->address, ADDRESS_BITS, key->address, ADDRESS_BITS,
-               pipemsg_log (p));
+               log);
   }
   return 0;
 }
