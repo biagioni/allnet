@@ -64,6 +64,10 @@ extern struct allnet_header *
                  const unsigned char * stream, const unsigned char * ack,
                  unsigned int * size);
 
+/* return a keepalive packet, which is in a static buffer
+ * (do not change or free) and fill in the size to send */
+extern const char * keepalive_packet (unsigned int * size);
+
 /* malloc, initialize, and return an ack message for a received packet.
  * The message_ack bytes are taken from the argument, not from the packet.*/
 /* *size is set to the size to send */

@@ -346,6 +346,9 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
       }
     }
     break;
+  case ALLNET_MGMT_KEEPALIVE:
+    r += snprintf (to + r, minz (itsize, r), "keepalive");
+    break;
   default:
     r += snprintf (to + r, minz (itsize, r),
                    "unknown management type %d", mtype);
@@ -638,6 +641,28 @@ struct allnet_header *
   *size = alloc_size;
   return init_packet (result, alloc_size, message_type, max_hops, sig_algo,
                       source, sbits, dest, dbits, stream, ack);
+}
+
+/* return a keepalive packet, which is in a static buffer
+ * (do not change or free) and fill in the size to send */
+const char * keepalive_packet (unsigned int * size)
+{
+#define KEEPALIVE_SIZE (ALLNET_MGMT_HEADER_SIZE (ALLNET_TRANSPORT_DO_NOT_CACHE))
+  static char result [KEEPALIVE_SIZE];
+  static int msize = 0;
+  if (msize == 0) {
+    struct allnet_header * hp =
+      init_packet (result, sizeof (result),
+                   ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
+                   NULL, 0, NULL, 0, NULL, NULL);
+    hp->transport = ALLNET_TRANSPORT_DO_NOT_CACHE;
+    msize = sizeof (result);
+    char * data = ALLNET_DATA_START (hp, hp->transport, msize);
+    struct allnet_mgmt_header * amh = (struct allnet_mgmt_header *) data;
+    amh->mgmt_type = ALLNET_MGMT_KEEPALIVE;
+  }
+  *size = msize;
+  return result;
 }
 
 /* malloc, initialize, and return an ack message for a received packet.
