@@ -25,12 +25,11 @@
 /* returns the number of buffer characters used */
 static int ip6_to_string (const unsigned char * ip, char * buffer)
 {
-  unsigned short s [8];
-  int i;
-  for (i = 0; i < 8; i ++)
-    s [i] = (ip [2 * i] * 256) + (ip [2 * i + 1]);
+  const char * p = (const char *) ip;
   return snprintf (buffer, 42, "%x:%x:%x:%x:%x:%x:%x:%x",
-                   s [0], s [1], s [2], s [3], s [4], s [5], s [6], s [7]);
+                   readb16 (p), readb16 (p + 2), readb16 (p + 4),
+                   readb16 (p + 6), readb16 (p + 8), readb16 (p + 10),
+                   readb16 (p + 12), readb16 (p + 14));
 }
 
 void print_addr_info (struct addr_info * ai)
@@ -75,10 +74,14 @@ void print_ia (struct internet_addr * ia)
 {
   printf ("v %d, port %d, addr ", ia->ip_version, ntohs (ia->port));
   unsigned char * p = (unsigned char *) (&(ia->ip));
+  char * q = (char *) p;
   if (ia->ip_version == 4)
     printf ("%u.%u.%u.%u\n", p [12], p [13], p [14], p [15]);
   else
-    print_buffer ((char *)p, 16, NULL, 16, 1);
+    printf ("%x:%x:%x:%x:%x:%x:%x:%x\n",
+            readb16 (q), readb16 (q + 2), readb16 (q + 4),
+            readb16 (q + 6), readb16 (q + 8), readb16 (q + 10),
+            readb16 (q + 12), readb16 (q + 14));
 }
 
 /* includes a newline at the end of the address info */
@@ -92,8 +95,12 @@ int ia_to_string (const struct internet_addr * ia, char * buf, size_t bsize)
     offset += snprintf (buf + offset, bsize - offset, "%u.%u.%u.%u\n",
                         p [0], p [1], p [2], p [3]);
   } else {
-    offset += buffer_to_string ((char *) &(ia->ip), 16, NULL, 16, 1,
-                                buf + offset, bsize - offset);
+    char * p = (char *) &(ia->ip);
+    offset += snprintf (buf + offset, bsize - offset,
+                        "%x:%x:%x:%x:%x:%x:%x:%x\n",
+                        readb16 (p), readb16 (p + 2), readb16 (p + 4),
+                        readb16 (p + 6), readb16 (p + 8), readb16 (p + 10),
+                        readb16 (p + 12), readb16 (p + 14));
   }
   return offset;
 }
@@ -798,7 +805,9 @@ int is_valid_address (const struct internet_addr * ip)
     if ((readb64 ((char *) ip->ip.s6_addr) == 0) &&
         (readb64 ((char *) ip->ip.s6_addr + 8) == 0))  /* all-zeros address */
       return 0;
-    if (*((char *) ip->ip.s6_addr) == 0xff)            /* multicast */
+    char first_byte = *((char *) ip->ip.s6_addr);
+    if ((first_byte == 0xff) ||           /* multicast */
+        (first_byte == 0xfc) || (first_byte == 0xfd))  /* unique local addr */
       return 0;
     if ((readb64 ((char *) (ip->ip.s6_addr    )) == 0) &&
         (readb16 ((char *) (ip->ip.s6_addr + 8)) == 0) &&
