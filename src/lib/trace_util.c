@@ -382,7 +382,7 @@ void trace_forward (char * message, int msize,
     if (nmatch >= mbits)  /* exact match, send final response */
       *reply_size = make_trace_reply (hp, msize, trp, 0, trp->num_entries + 1,
                                       my_address, abits, reply);
-    else if (hp->hops > 1) /* not my local sender, send back 2 trace entries */
+    else if (hp->hops > 0) /* not my local sender, send back 2 trace entries */
       *reply_size = make_trace_reply (hp, msize, trp, 1, 2,
                                       my_address, abits, reply);
     else   /* my local sender, send a 1-entry response */
