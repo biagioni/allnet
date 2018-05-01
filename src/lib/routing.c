@@ -63,8 +63,13 @@ static int save_my_own_address = 1;
 
 static struct allnet_log * alog = NULL;
 
+#if defined(__IPHONE_OS_VERSION_MIN_REQUIRED) || defined(ANDROID)
+/* save addresses every 5min (300s), because we may not run very long */
+#define PEER_SAVE_TIME		300
+#else /* not ios and not android */
 /* save addresses every day (86400s) even if there are no new ones */
 #define PEER_SAVE_TIME		86400
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
 void print_dht (int to_log)
 {
@@ -118,9 +123,12 @@ void print_ping_list (int to_log)
   }
 }
 
-static int not_already_listed (struct sockaddr_storage * sap,
-                               struct sockaddr_storage * already, int na)
+/* for addresses that are not valid, say they are not listed */
+static int already_listed (struct sockaddr_storage * sap,
+                           struct sockaddr_storage * already, int na)
 {
+  if ((sap->ss_family != AF_INET) && (sap->ss_family != AF_INET6))
+    return 0;     /* invalid address family, not listed */
   int i;
   struct addr_info compare_ai;
   sockaddr_to_ai ((struct sockaddr *) sap, sizeof (struct sockaddr_storage),
@@ -130,9 +138,9 @@ static int not_already_listed (struct sockaddr_storage * sap,
     sockaddr_to_ai ((struct sockaddr *) (already + i),
                     sizeof (struct sockaddr_storage), &this_ai);
     if (same_ai (&compare_ai, &this_ai))
-      return 0;
+      return 1;   /* already listed */
   }
-  return 1;
+  return 0;       /* not listed */
 }
 
 /* run as a thread since getaddrinfo can be extremely slow (10's of seconds) */
@@ -200,6 +208,10 @@ static void * init_default_dns (void * arg)
   snprintf (alog->b, alog->s, "init_default_dns is complete\n");
   log_print (alog);
   dns_init = 1;  /* done initializing addresses from dns */
+#ifdef DEBUG_PRINT
+  printf ("after init, ");
+  print_dht (0);
+#endif /* DEBUG_PRINT */
   return NULL;
 }
 
@@ -216,18 +228,42 @@ static void start_dns_thread ()
 }
 
 /* returns number of entries added, 0...max */
+/* if an entry has both IPv4 and IPv6, only list the IPv4 -- in 2018,
+ * probably still the safe thing to do.   Later, perhaps, list only
+ * the IPv6.  Listing both would double the traffic for little
+ * obvious benefit */
 static int add_default_routes (struct sockaddr_storage * result,
+                               socklen_t * alen,
                                int off, int max)
 {
   unsigned int i;
   int number = off;
   for (i = 0; (i < NUM_DEFAULTS) && (number >= 0) && (number < max); i++) {
-    if ((ip4_defaults [i].ss_family == AF_INET) &&
-        (not_already_listed (ip4_defaults + i, result, number)))
-      result [number++] = ip4_defaults [i];
-    if ((number < max) && (ip6_defaults [i].ss_family == AF_INET6) &&
-        (not_already_listed (ip6_defaults + i, result, number)))
-      result [number++] = ip6_defaults [i];
+#if 0
+if ((ip4_defaults [i].ss_family == AF_INET) ||
+ (ip6_defaults [i].ss_family == AF_INET6)) {
+printf ("%d (%d->%d/%d): already_listed %d %d for ", i, off, number, max,
+        already_listed (ip4_defaults + i, result, number),
+        already_listed (ip6_defaults + i, result, number));
+print_sockaddr ((struct sockaddr *) (ip4_defaults + i),
+                sizeof (struct sockaddr_storage), 0);
+printf (",  ");
+print_sockaddr ((struct sockaddr *) (ip6_defaults + i),
+                sizeof (struct sockaddr_storage), 0);
+printf ("\n");
+}
+#endif /* 0 */
+    if ((! already_listed (ip4_defaults + i, result, number)) &&
+        (! already_listed (ip6_defaults + i, result, number))) {
+      /* prefer IPv4 for now (2018) by checking it first */
+      if (ip4_defaults [i].ss_family == AF_INET) {
+        if (alen != NULL) alen [number] = sizeof (struct sockaddr_in);
+        result [number++] = ip4_defaults [i];
+      } else if (ip6_defaults [i].ss_family == AF_INET6) {
+        if (alen != NULL) alen [number] = sizeof (struct sockaddr_in6);
+        result [number++] = ip6_defaults [i];
+      }
+    }
   }
   if ((number == off) && (dns_init == 1))
     start_dns_thread (); /* done initializing but no entries found, so repeat */
@@ -535,24 +571,38 @@ void routing_my_address (unsigned char * addr)
 }
 
 /* return true if the destination is closer to target than to
- * current.  Target and current are assumed to have ADDRESS_BITS */
-/* if nbits is 0, will always return 0 */
-static int addr_closer (unsigned char * dest, int nbits,
-                        unsigned char * current, unsigned char * target)
+ * current.  Target and current are assumed to have ADDRESS_BITS
+ * also returns true if the first nbits of dest match the target address
+ * if nbits is 0, will always return 1 */
+static int addr_closer (const unsigned char * dest, int nbits,
+                        const unsigned char * current, unsigned char * target)
 {
-  if (matching_bits (dest, nbits, current, ADDRESS_BITS) <
-      matching_bits (dest, nbits, target, ADDRESS_BITS))
+  if ((matching_bits (dest, nbits, current, ADDRESS_BITS) <
+       matching_bits (dest, nbits, target, ADDRESS_BITS)) ||
+      (matching_bits (dest, nbits, target, ADDRESS_BITS) == nbits))
     return 1;
+  return 0;
+}
+
+static int addr_in_list (const unsigned char * addr,
+                         const char * prev, int prev_count)
+{
+  int i;
+  for (i = 0; i < prev_count; i++)
+    if (memcmp (addr, prev + (i * ADDRESS_SIZE), ADDRESS_SIZE) == 0)
+      return 1;
   return 0;
 }
 
 /* fills in an array of sockaddr_storage to the top internet addresses
  * (up to max_matches) for the given AllNet address.
+ * returns the number of matches
  * returns zero if there are no matches */
 /* the top matches are the ones with the most matching bits, so we start
  * looking from the last row of the array. */
-int routing_top_dht_matches (unsigned char * dest, int nbits,
-                             struct sockaddr_storage * result, int max_matches)
+int routing_top_dht_matches (const unsigned char * dest, int nbits,
+                             struct sockaddr_storage * result, socklen_t * alen,
+                             int max_matches)
 {
 /* print_buffer (dest, nbits, "routing_top_dht_matches:", (nbits + 7) / 8, 1);
 print_dht (0); */
@@ -562,30 +612,48 @@ print_dht (0); */
     nbits = 0;
   if (nbits > ADDRESS_BITS)
     nbits = ADDRESS_BITS;
+  /* peers may have both IPv4 and IPv6 addresses: send to each at most once */
+  char prev_matches [1000 * ADDRESS_SIZE];
+  int prev_count = 0;
+  if (max_matches > 1000) {   /* prevent overflow of our fixed-sized array */
+    printf ("error: max_matches %d > 1000\n", max_matches);
+    max_matches = 1000;
+  }
   pthread_mutex_lock (&mutex);
   init_peers (0);
   int row, col;
-  for (row = ADDRESS_BITS - 1; row >= 0; row--) {
-    for (col = 0; col < PEERS_PER_BIT; col++) {
+  for (row = ADDRESS_BITS - 1; ((peer < max_matches) && (row >= 0)); row--) {
+    for (col = 0; ((peer < max_matches) && (col < PEERS_PER_BIT)); col++) {
       struct addr_info * ai = &(peers [row * PEERS_PER_BIT + col].ai);
+/* the DHT forwarding is to include up to max_matches neighbors from
+ * the routing table, each of them closer than I am to the destination */
       if ((ai->nbits > 0) &&
           (addr_closer (dest, nbits, (unsigned char *) my_address,
-                        ai->destination))) {
-        struct sockaddr * sap = (struct sockaddr *) (& (result [peer]));
-        if (ai_to_sockaddr (ai, sap, NULL))
+                        ai->destination)) &&
+          (! addr_in_list (ai->destination, prev_matches, prev_count))) {
+        struct sockaddr * sap = (struct sockaddr *) (result + peer);
+        if (ai_to_sockaddr (ai, sap, alen + peer)) {
           peer++;   /* a valid translation */
+          memcpy (prev_matches + (prev_count * ADDRESS_SIZE),  /* add to list */
+                  ai->destination, ADDRESS_SIZE);
+          prev_count++;
+        }
       }
     }
   }
   pthread_mutex_unlock (&mutex);
+/* if there is room left, include the "seeds" from the DNS list */
   if (peer < max_matches)
-    peer += add_default_routes (result, peer, max_matches);
+    peer += add_default_routes (result, alen, peer, max_matches);
 #ifdef DEBUG_PRINT
   printf ("routing_top_dht_matches returning %d for ", peer);
   print_buffer ((char *) dest, (nbits + 7) / 8, NULL, ADDRESS_SIZE, 1);
   int i;
   for (i = 0; i < peer; i++) {
-    printf ("%d: ", i);
+    if (alen == NULL)
+      printf ("%d: ", i);
+    else
+      printf ("%d (%d): ", i, alen [i]);
     print_sockaddr ((struct sockaddr *) (&(result [i])),
                     sizeof (struct sockaddr_storage), 0);
     printf ("\n");
@@ -730,15 +798,16 @@ int routing_add_dht (struct addr_info addr)
     result = 1;   /* new, unless found >= 0 */
     if (found >= 0) {
       result = 0; /* not new */
-      limit = found;
+      limit = found;   /* move this address to the front of this bit */
     }
 #ifdef DEBUG_PRINT
     if (result != 0)
       printf ("found %d, limit %d, result %d\n", found, limit, result);
 #endif /* DEBUG_PRINT */
     int i;
-    /* move any addresses in front of this one back one position */
-    /* if found < 0 (limit is PEERS_PER_BIT - 1), drop the last address */
+    /* any addresses in front of this, but at the same bit position,
+       move them back (i.e. to higher index) by one position
+     * if found < 0, limit is PEERS_PER_BIT - 1, drop the last address */
     for (i = limit; i > 0; i--)
       peers [index + i] = peers [index + i - 1]; 
     peers [index].ai = addr;   /* put this one in front */
@@ -757,6 +826,11 @@ int routing_add_dht (struct addr_info addr)
     save_peers ();
     last_saved = allnet_time ();
   }
+#ifdef DEBUG_PRINT
+  printf ("after adding ");
+  print_addr_info (&addr);
+  print_dht (0);
+#endif /* DEBUG_PRINT */
   pthread_mutex_unlock (&mutex);
   return result;
 }
@@ -777,7 +851,7 @@ static int find_ping (struct addr_info * addr)
 /* either adds or refreshes a ping entry.
  * returns 1 for a new entry, 0 for an existing entry, -1 for an entry that
  * is already in the DHT list, and -2 for other errors */
-int routing_add_ping_locked (struct addr_info * addr)
+static int routing_add_ping_locked (struct addr_info * addr)
 {
   int result = -2;
   int i;
@@ -998,6 +1072,9 @@ int init_own_routing_entries (struct addr_info * entry, int max,
   struct addr_info * original = entry;
   int original_max = max;
 #endif /* DEBUG_PRINT */
+  pthread_mutex_lock (&mutex);
+  init_peers (0);
+  pthread_mutex_unlock (&mutex);
   int result = 0;
   if (entry != NULL)
     memset (entry, 0, sizeof (struct addr_info) * max);
@@ -1107,13 +1184,17 @@ int is_own_address (struct addr_info * addr)
  * waits for completion and always returns 1 */
 int routing_init_is_complete (int wait_for_init)
 {
-  while (wait_for_init && (dns_init != 1)) {
-    usleep (10 * 1000);  /* sleep 10ms */
+printf ("routing_init_is_complete (%d)\n", wait_for_init);
+  int after_loop = 0;
+  do {                     /* do at least once */
+    if (after_loop)
+      usleep (10 * 1000);  /* sleep 10ms, but not the first time */
+    after_loop = 1;        /* next time, sleep */
     pthread_mutex_lock (&mutex);
-    /* init_peers may or may not be needed, something to do while waiting */
+    /* init_peers may or may not be needed, good to call if needed */
     init_peers (0);
     pthread_mutex_unlock (&mutex);
-  }
+  } while (wait_for_init && (dns_init != 1));
   if (dns_init == 1)
     return 1;
   return 0;

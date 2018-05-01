@@ -1,4 +1,3 @@
-
 /* adht.c: maintain a Distributed Hash Table of connected nodes
  * every allnet daemon runs a DHT node.
  * nodes that are externally reachable cooperate to build the distributed
@@ -149,7 +148,9 @@ static void * ping_all_pending (void * arg)
   return NULL;
 }
 
-/* at the right time, create a DHT packet to send out my routing table */
+/* at the right time, create a DHT packet to send out my routing table
+ * the socket set is used to send messages to potential DHT peers
+ * returns the packet size */
 int dht_update (struct socket_set * s, char ** message)
 {
   if (alog == NULL)
@@ -158,21 +159,22 @@ int dht_update (struct socket_set * s, char ** message)
   static unsigned long long int next_time = 0;
   static int expire_count = 0;    /* when it reaches 10, expire old entries */
   static unsigned char my_address [ADDRESS_SIZE];
-  if (next_time == 0)             /* initialize */
+  static unsigned char zero_address [ADDRESS_SIZE];
+  if (next_time == 0) {            /* initialize */
     routing_my_address (my_address);
+    memset (zero_address, 0, sizeof (zero_address));
+  }
   unsigned long long int now = allnet_time ();
   if (now < next_time) /* not time to send to my neighbors yet */
     return 0;
-printf ("dht update, %lld - %lld = %lld", next_time, now, now - next_time);
   /* compute the next time to execute */
   next_time = now + ((ADHT_INTERVAL * (90 + (random () % 21))) / 100);
-printf (", next %lld\n", next_time);
   char buffer [ADHT_MAX_PACKET_SIZE];
   memset (buffer, 0, ADHT_MAX_PACKET_SIZE);
   struct allnet_header * hp =  /* create one packet with my address */
     init_packet (buffer, ADHT_MAX_PACKET_SIZE,
                  ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-                 my_address, ADDRESS_BITS, my_address, 0, NULL, NULL);
+                 my_address, ADDRESS_BITS, zero_address, 0, NULL, NULL);
   int hsize = ALLNET_SIZE_HEADER (hp);
   struct allnet_mgmt_header * mp = 
     (struct allnet_mgmt_header *) (buffer + hsize);
@@ -287,15 +289,12 @@ void dht_process (char * message, unsigned int msize,
     if (! is_own_address (&ai)) {
       int validity = is_valid_address (&ai.ip);
       if (validity == 1) {
-print_buffer ((char *) &(ai.ip.ip), 16, "adding rcvd valid", 16, 1);
         routing_add_dht (ai);
       } else if (validity == -1) {  /* IPv4 in IPv6 address */
         ai.ip.ip_version = 4;
-print_buffer ((char *) &(ai.ip.ip), 16, "adding rcvd v4->v6", 16, 1);
         routing_add_dht (ai);
       } else {               /* zero address, use the sender's IP instead */
         sockaddr_to_ia (sap, alen, &(ai.ip));
-print_buffer ((char *) &(ai.ip.ip), 16, "adding sender", 16, 1);
         routing_add_dht (ai);
       }
     }
@@ -312,6 +311,7 @@ print_buffer ((char *) &(ai.ip.ip), 16, "adding sender", 16, 1);
 #endif /* DEBUG_PRINT */
 }
 
+#if 0
 /* add into the socket set the addresses known from the DHT */
 void dht_add_addrs (struct socket_set * s)
 {
@@ -358,3 +358,4 @@ printf ("crashing %d\n", 100 / (((char *) &(sav.addr)) [4]));
     }
   }
 }
+#endif /* 0 */

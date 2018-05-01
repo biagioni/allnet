@@ -36,18 +36,21 @@
 
 #include "sockets.h"
 
-/* #define ADHT_INTERVAL	86400 */ /* 24 * 60 * 60 seconds == 1 day */
-#define ADHT_INTERVAL	1800   /* 30 min -- IPv6 addresses expire every day */
-#define EXPIRATION_MULT	10     /* wait 10 intervals to expire a route */
+#define ADHT_INTERVAL	7200   /* 2 hours -- IPv6 addresses expire every day */
+#define EXPIRATION_MULT	3      /* wait 3 intervals (6 hrs) to expire a route */
 
 /* add information from a newly received DHT packet */
 extern void dht_process (char * message, unsigned int msize,
                          const struct sockaddr * sap, socklen_t alen);
 
-/* at the right time, create a DHT packet to send out my routing table */
+/* at the right time, create a DHT packet to send out my routing table
+ * the socket set is used to send messages to potential DHT peers
+ * returns the packet size */
 extern int dht_update (struct socket_set * s, char ** message);
 
+#if 0
 /* add into the socket set the addresses known from the DHT */
 extern void dht_add_addrs (struct socket_set * s);
+#endif /* 0 */
 
 #endif /* ADHT_H */

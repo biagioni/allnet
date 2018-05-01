@@ -21,10 +21,11 @@ extern int ping_exact_match (const unsigned char * addr,
 
 /* fills in an array of sockaddr_storage to the top internet addresses
  * (up to max_matches) for the given AllNet address.
+ * returns the number of matches
  * returns zero if there are no matches */
-extern int routing_top_dht_matches (unsigned char * dest, int nbits,
+extern int routing_top_dht_matches (const unsigned char * dest, int nbits,
                                     struct sockaddr_storage * result,
-                                    int max_matches);
+                                    socklen_t * alen, int max_matches);
 
 /* either adds or refreshes a DHT entry.
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
