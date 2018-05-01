@@ -150,24 +150,11 @@ static struct socket_set socket_set = { .num_sockets = 0, .sockets = NULL };
 static struct socket_address_set * socket_sas = NULL;
 static struct socket_address_validity * socket_sav = NULL;
 
-/* create an all-zero ack in the given buffer (of size ALLNET_MTU),
- * returning the size to send */
-static int init_zero_ack (char * buffer)
-{
-  unsigned int msize = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
-  init_packet (buffer, msize, ALLNET_TYPE_ACK, 1, ALLNET_SIGTYPE_NONE,
-               NULL, 0, NULL, 0, NULL, NULL);
-  memset (buffer + ALLNET_HEADER_SIZE, 0, MESSAGE_ID_SIZE);
-  return msize;
-}
-
 void local_send_keepalive ()
 {
-  static char zero_ack [ALLNET_MTU];
-  static int msize = 0;
-  if (msize == 0)
-    msize = init_zero_ack (zero_ack);
-  socket_send_to (zero_ack, msize, ALLNET_PRIORITY_EPSILON, 1,
+  unsigned int msize;
+  const char * message = keepalive_packet (&msize);
+  socket_send_to (message, msize, ALLNET_PRIORITY_EPSILON, 1,
                   &socket_set, socket_sas, socket_sav);
 }
 
@@ -180,7 +167,7 @@ static int connect_once (int print_error)
   sin->sin_addr.s_addr = allnet_htonl (INADDR_LOOPBACK);
   sin->sin_port = allnet_htons (ALLNET_LOCAL_PORT);
   socklen_t alen = sizeof (struct sockaddr_in);
-  if (socket_create_connect (&socket_set, 1, sas, alen, ! print_error)) {
+  if (socket_create_connect (&socket_set, 1, sas, alen, ! print_error) >= 0) {
     /* send a keepalive to start the flow of data */
     socket_sas = socket_set.sockets + 0;
     struct socket_address_validity new_sav =
@@ -198,8 +185,10 @@ static int connect_once (int print_error)
         return socket_sas->sockfd;
     }
   }
-  if (print_error)
+  if (print_error && (errno != 0))
     perror ("connect to alocal");
+  else if (print_error)
+    printf ("no response after connecting to allnet\n");
   close (sock);
   return -1;
 }
@@ -307,14 +296,16 @@ int connect_to_local (const char * program_name, const char * arg0,
 #ifndef ANDROID
   seed_rng ();
 #endif /* ANDROID */
-  int sock = connect_once (0);
+  int sock = connect_once (1);
   if (sock < 0) {
     /* printf ("%s(%s) unable to connect to alocal, starting allnet\n",
             program_name, arg0); */
+#if 0
     exec_allnet (strcpy_malloc (arg0, "connect_to_local exec_allnet"),
                  path);
     sleep (1);
     sock = connect_once (1);
+#endif /* 0 */
     if (sock < 0) {
       printf ("unable to start allnet daemon, giving up\n");
       return -1;
