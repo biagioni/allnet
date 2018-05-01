@@ -29,6 +29,8 @@ extern int pcache_message_id (const char * message, int msize, char * id);
 
 /* save this (received) packet */
 extern void pcache_save_packet (const char * message, int msize, int priority);
+/* record this packet ID, without actually saving it */
+extern void pcache_record_packet (const char * message, int msize);
 
 /* return 1 if the ID is in the cache, 0 otherwise
  * ID is MESSAGE_ID_SIZE bytes. */
@@ -80,7 +82,10 @@ extern void
 extern void pcache_save_acks (const char * acks, int num_acks, int max_hops);
 
 /* return 1 if we have the ack, 0 if we do not */
-extern int pcache_ack_found (const char * acks);
+extern int pcache_ack_found (const char * ack);
+
+/* return 1 if we have the ack for this ID, 0 if we do not */
+extern int pcache_id_acked (const char * id);
 
 /* return 1 if the ack has not yet been sent to this token,
  * and mark it as sent to this token.
