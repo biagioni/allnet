@@ -88,7 +88,7 @@ static void exec_allnet (const char * arg, const char * config_path)
       exit (1);   /* only exits the child */
     }
     /* put extra spaces in "default" so we can see more of the arguments */
-#define DEFAULT_STRING	"default        "
+#define DEFAULT_STRING	"default                     "
     char * args [] = { astart, "-d", NULL, DEFAULT_STRING, NULL };
     if (config_path == NULL) {
       args [1] = DEFAULT_STRING;  /* replace "-d" */
@@ -112,7 +112,6 @@ static void exec_allnet (const char * arg, const char * config_path)
     exit (1);
   }
   setpgid (child, 0);  /* put the child process in its own process group */
-  waitpid (child, NULL, 0);
 }
 
 #else /* ALLNET_USE_FORK */
@@ -121,13 +120,7 @@ extern int astart_main (int, char **);
 
 static void * call_allnet_main (void * path)
 {
-  if (path == NULL) {
-    char * args [] = { "allnet", NULL };
-    astart_main (1, args);
-  } else {
-    char * args [] = { "allnet", "-d", path, NULL };
-    astart_main (3, args);
-  }
+  allnet_daemon_main ();
   return NULL;
 }
 
@@ -182,6 +175,7 @@ static int connect_once (int print_error)
       struct socket_read_result r;
       r = socket_read (&socket_set, 2000, 1);
       if (r.success)
+      if (r.success > 0)
         return socket_sas->sockfd;
     }
   }
@@ -296,16 +290,14 @@ int connect_to_local (const char * program_name, const char * arg0,
 #ifndef ANDROID
   seed_rng ();
 #endif /* ANDROID */
-  int sock = connect_once (1);
+  int sock = connect_once (0);
   if (sock < 0) {
-    /* printf ("%s(%s) unable to connect to alocal, starting allnet\n",
-            program_name, arg0); */
-#if 0
+    printf ("%s(%s) unable to connect, starting allnet\n",
+            program_name, arg0);
     exec_allnet (strcpy_malloc (arg0, "connect_to_local exec_allnet"),
                  path);
     sleep (1);
     sock = connect_once (1);
-#endif /* 0 */
     if (sock < 0) {
       printf ("unable to start allnet daemon, giving up\n");
       return -1;
@@ -342,13 +334,16 @@ int local_receive (unsigned int timeout,
 /* printf ("local_receive socket_read (%u)\n", timeout); */
   struct socket_read_result r = socket_read (&socket_set, timeout, 1);
   if (r.success > 0) {
-/* printf ("local_receive socket_read (%u) => %d\n", timeout, r.msize); */
+/* if (r.msize > 2)
+printf ("local_receive socket_read (%u) => %d, type %d\n", timeout, r.msize,
+r.message [1] & 0xff);
+else printf ("local_receive socket_read (%u) => %d\n", timeout, r.msize); */
     *message = r.message;
     *priority = r.priority;
     return r.msize;
   }
   if (r.success < 0) { /* there was an error, probably because allnet exited */
-    printf ("allnetd has exited\n");
+    printf ("the local allnet is no longer responding\n");
     exit (0);
   }
   return 0;
