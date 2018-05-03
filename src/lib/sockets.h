@@ -152,4 +152,6 @@ extern int socket_create_connect (struct socket_set * s, int is_local,
                                   struct sockaddr_storage addr, socklen_t alen,
                                   int quiet);
 
+extern void print_socket_set (struct socket_set * s);
+
 #endif /* ALLNET_SOCKETS_H */

@@ -45,14 +45,16 @@ static void print_sav (struct socket_address_validity * sav)
            sav->send_limit, sav->send_limit_on_recv); 
 }
 
-static void print_socket_set (struct socket_set * s)
+void print_socket_set (struct socket_set * s)
 {
   int si;
   for (si = 0; si < s->num_sockets; si++) {
     struct socket_address_set * sas = &(s->sockets [si]);
-    printf ("socket %d/%d: sockfd %d, %s%d addrs\n",
+    printf ("socket %d/%d: sockfd %d, %s%s%s%d addrs\n",
             si, s->num_sockets, sas->sockfd,
-            ((sas->is_local) ? "local, " : ""), sas->num_addrs);
+            ((sas->is_local) ? "local, " : ""),
+            ((sas->is_global_v6) ? "globalv6, " : ""),
+            ((sas->is_global_v4) ? "globalv4, " : ""), sas->num_addrs);
     int ai;
     for (ai = 0; ai < sas->num_addrs; ai++) {
       struct socket_address_validity * sav = &(sas->send_addrs [ai]);
@@ -159,7 +161,6 @@ static int socket_add_locked (struct socket_set * s, int sockfd, int is_local,
   s->sockets [index].is_global_v4 = is_global_v4;
   s->sockets [index].num_addrs = 0;
   s->sockets [index].send_addrs = NULL;
-printf ("added %ssocket with fd %d, %d total sockets\n", (is_local ? "local " : ""), sockfd, s->num_sockets);
   return 1;
 }
 /* returns a pointer to the new sav, or NULL in case of errors (e.g.
@@ -241,8 +242,12 @@ int socket_update_recv_limit (int new_recv_limit, struct socket_set * s,
     printf ("error: update_recv_limit deleted %d addrs\n", del);
     exit (1);
   }
-  if (! rld.updated)    /* likely error -- report for now */
-    printf ("warning: update_recv_limit did not update any addresses\n");
+  if (! rld.updated) {   /* likely error -- report for now */
+    char st [1000];
+    print_sockaddr_str ((struct sockaddr *) &addr, alen, 0, st, sizeof (st));
+    printf ("warning: update_recv_limit %s did not update any addresses\n", st);
+    print_socket_set (s);
+  }
   return rld.updated;
 }
 
@@ -252,11 +257,13 @@ static int update_time_fun (struct socket_address_set * sock,
 {
   long long int new_time = * ((long long int *) ref);
 check_sav (sav, "update_time_fun");
-char timestring [ALLNET_TIME_STRING_SIZE];
-allnet_localtime_string (allnet_time (), timestring);
-if (! ((sav->time_limit == 0) || (sav->time_limit >= new_time)))
-printf ("%s: update_time_fun deleting record, time_limit %lld <? %lld\n",
-timestring, sav->time_limit, new_time);
+#ifdef DEBUG_PRINT
+  char timestring [ALLNET_TIME_STRING_SIZE];
+  allnet_localtime_string (allnet_time (), timestring);
+  if (! ((sav->time_limit == 0) || (sav->time_limit >= new_time)))
+    printf ("%s: update_time_fun deleting record, time_limit %lld <? %lld\n",
+            timestring, sav->time_limit, new_time);
+#endif /* DEBUG_PRINT */
   return ((sav->time_limit == 0) || (sav->time_limit >= new_time));
 }
 
@@ -270,7 +277,7 @@ int socket_update_time (struct socket_set * s, long long int new_time)
 static void add_fd_to_bitset (fd_set * set, int fd, int * max)
 {
   FD_SET (fd, set);
-  if (fd > *max)
+  if (fd >= *max)
     *max = fd + 1;
 }
 /* returns the max parameter to pass to select */
@@ -402,7 +409,8 @@ struct socket_read_result socket_read (struct socket_set * s,
      * is to avoid a context switch) which however leads to starvation */
     usleep (1);
     if (result < 0) {    /* some error */
-      perror ("select");
+      if (errno != EINTR)   /* it is normal to be killed during select */
+        perror ("select");
       r.success = -1;    /* error */
       return r;
     } /* else: timed out */
