@@ -22,6 +22,7 @@
 #include "allnet_queue.h"
 #include "trace_util.h"
 #include "sha.h"
+#include "routing.h"
 
 static int print_details = 1;
 
@@ -851,13 +852,15 @@ void do_trace_loop (int sock,
   char trace_id [MESSAGE_ID_SIZE];
   unsigned char my_addr [ADDRESS_SIZE];
   unsigned char extra_addr [ADDRESS_SIZE];
+  routing_my_address (my_addr);
+  int addr_high_5bits = my_addr [0] & 0xf8;   /* my 5 high bits */
   memset (my_addr, 0, sizeof (my_addr));
   memset (extra_addr, 0, sizeof (my_addr));
   int count;
   for (count = 0; (repeat == 0) || (count < repeat); count++) {
 /* printf ("%d/%d\n", count, repeat); */
     random_bytes (trace_id, sizeof (trace_id));
-    my_addr [0] = random_int (0, 31) * 8;   /* 5 random bits */
+    my_addr [0] = addr_high_5bits;
     struct timeval tv_start;
     gettimeofday (&tv_start, NULL);
     if (naddrs == 0) {
