@@ -22,7 +22,6 @@
 
 #include "lib/packet.h"
 #include "lib/util.h"
-#include "lib/pipemsg.h"
 #include "lib/keys.h"
 #include "lib/mgmt.h"
 #include "lib/trace_util.h"
