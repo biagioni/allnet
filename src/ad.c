@@ -155,7 +155,7 @@ static void send_out (const char * message, int msize, int max_addrs,
 #if 0
 struct internet_addr ia;
 sockaddr_to_ia ((struct sockaddr *) (addrs + i), alen [i], &ia);
-printf ("sending to sock %d, DHT address %d/%d (%d): ", sockfd, i, num_addrs, alen [i]);
+printf ("sending %d bytes to sock %d, DHT address %d/%d (%d): ", msize, sockfd, i, num_addrs, alen [i]);
 print_ia (&ia);
 #endif /* 0 */
     if (sockfd >= 0)
@@ -194,6 +194,8 @@ extern void check_sav (struct socket_address_validity * sav, const char * desc);
 static struct socket_address_validity *
   add_received_address (struct socket_read_result r)
 {
+  if (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
+    return NULL;
   int limit = virtual_clock + ((r.sock->is_local) ? 6 : 180);
   struct socket_address_validity sav =
     { .alive_rcvd = virtual_clock, .alive_sent = virtual_clock,
@@ -202,35 +204,13 @@ static struct socket_address_validity *
       .recv_limit = RECV_LIMIT_DEFAULT,
       .time_limit = limit, .alen = r.alen };
   memcpy (&(sav.addr), &(r.from), sizeof (r.from));
-check_sav (&sav, "add_received_address 1");
   struct socket_address_validity * result =
     socket_address_add (&sockets, r.sock, sav);
-check_sav (result, "add_received_address 2");
   if (result == NULL)
     printf ("odd: unable to add new address\n");
-check_sav (&sav, "add_received_address 3");
   send_one_keepalive ("add_received_address", r.sock, result);
 check_sav (result, "add_received_address 4");
   return result;
-}
-
-/* return 1 for success, 0 for failure */
-static int send_one_message_to (const char * message, int msize,
-                                unsigned int priority,
-                                struct socket_address_set * sock,
-                                struct socket_address_validity * sav)
-{
-#ifdef LOG_PACKETS
-  snprintf (alog->b, alog->s, "%s %d bytes, prio %d, to pipe %d\n",
-            "send_one_message_to", msize, priority, sock->sockfd);
-#ifdef DEBUG_PRINT
-  printf ("-> %s", alog->b);
-#endif /* DEBUG_PRINT */
-  log_print (alog);
-  log_packet (alog, "message to pipe", message, msize);
-#endif /* LOG_PACKETS */
-  socket_send_to (message, msize, priority, virtual_clock, &sockets, sock, sav);
-  return 1;
 }
 
 /* return the number of messages sent (r.n), or 0 if none */
@@ -240,14 +220,26 @@ static int send_messages_to_one (struct pcache_result r,
 {
   if (r.n <= 0)
     return 0;
-  int count = 0;
+  int result = r.n;
   int i;
-  for (i = 0; i < r.n; i++)
-    count += send_one_message_to (r.messages [i].message,
-                                  r.messages [i].msize,
-                                  r.messages [i].priority, sock, sav);
+  for (i = 0; i < r.n; i++) {
+#ifdef LOG_PACKETS
+    snprintf (alog->b, alog->s, "%s %d bytes, prio %d, to pipe %d\n",
+              "send_one_message_to", r.messages [i].msize,
+              r.messages [i].priority, sock->sockfd);
+#ifdef DEBUG_PRINT
+    printf ("-> %s", alog->b);
+#endif /* DEBUG_PRINT */
+    log_print (alog);
+    log_packet (alog, "message to pipe",
+                r.messages [i].message, r.messages [i].msize);
+#endif /* LOG_PACKETS */
+    socket_send_to (r.messages [i].message, r.messages [i].msize,
+                    r.messages [i].priority, virtual_clock, &sockets,
+                    sock, sav);
+  }
   free (r.free_ptr);
-  return count;
+  return result;
 }
 
 /* compute a forwarding priority for non-local messages */
@@ -364,11 +356,12 @@ static struct message_process process_mgmt (struct socket_read_result *r)
     return all;
 #ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
   case ALLNET_MGMT_ID_REQUEST:
+    assert (0);
     struct allnet_mgmt_id_request * id_req = (struct allnet_mgmt_id_request *)
                   (r->message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
     send_messages_to_one (pcache_id_request (id_req), r->sock, r->sav);
-#endif /* IMPLEMENT_MGMT_ID_REQUEST */
     return all;     /* and forward the request*/
+#endif /* IMPLEMENT_MGMT_ID_REQUEST */
   case ALLNET_MGMT_TRACE_REQ:
     if (pcache_trace_request (in_trace_req->trace_id))  /* seen before */
       return drop;
@@ -386,17 +379,14 @@ static struct message_process process_mgmt (struct socket_read_result *r)
       free (trace_reply);
     }
     if (new_trace_request_size > 0) {
-      struct message_process fwd  = { .process = PROCESS_PACKET_ALL,
-                                      .message = new_trace_request,
-                                      .msize = new_trace_request_size,
-                                      .priority = ALLNET_PRIORITY_TRACE,
-                                      .allocated = 1 };
-      if (fwd.message == NULL) {   /* forward the original request */
-        fwd.message = r->message;
-        fwd.allocated = 0;
-      }
-      pcache_save_packet (fwd.message, fwd.msize, ALLNET_PRIORITY_TRACE);
-      return fwd;
+      all.msize = new_trace_request_size;
+      all.priority = ALLNET_PRIORITY_TRACE;
+      if (new_trace_request != NULL) {  /* rewritten trace request */
+        all.message = new_trace_request;
+        all.allocated = 1;
+      } /* else forward the original request */
+      pcache_save_packet (all.message, all.msize, ALLNET_PRIORITY_TRACE);
+      return all;
     }
     return drop;
   case ALLNET_MGMT_TRACE_REPLY:
@@ -441,7 +431,16 @@ static struct message_process process_message (struct socket_read_result *r)
     if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
       char * data = ALLNET_DATA_START (hp, hp->transport, r->msize);
       struct allnet_data_request * req = (struct allnet_data_request *) data;
-      send_messages_to_one (pcache_request (req), r->sock, r->sav);
+      struct socket_address_validity sav_storage;
+      struct socket_address_validity * sav = r->sav;
+      if (sav == NULL) { /* only addr and alen matter */
+        memset (&(sav_storage), 0, sizeof (sav_storage));
+        memcpy (&(sav_storage.addr), &(r->from), sizeof (sav_storage.addr));
+        sav_storage.alen = r->alen;
+        sav = &(sav_storage);  /* sav must be used before the end of the if */
+      }
+      send_messages_to_one (pcache_request (req), r->sock, sav);
+      sav = NULL;   /* in case it pointed to sav_storage, which goes away */
       /* and then do normal packet processing (forward) this data request */
     }
   }
@@ -489,6 +488,12 @@ void allnet_daemon_loop ()
       socket_update_recv_limit (RECV_LIMIT_DEFAULT, &sockets, r.from, r.alen);
       if (r.sav != NULL)
         send_one_keepalive ("update_recv_limit", r.sock, r.sav);
+#if 0
+print_timestamp ("");
+print_socket_set (&sockets);
+print_dht (0);
+print_ping_list (0);
+#endif /* 0 */
     }
     update_virtual_clock ();
     update_dht ();
@@ -497,6 +502,7 @@ void allnet_daemon_loop ()
 
 void allnet_daemon_main ()
 {
+printf ("starting allnet_daemon_main\n");
   alog = init_log ("ad");
   sockets.num_sockets = 0;
   sockets.sockets = NULL;
