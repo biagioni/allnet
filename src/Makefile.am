@@ -17,7 +17,6 @@ libincludes = \
 includes = \
 	${libincludes} \
 	config.h \
-	listen.h \
 	record.h \
 	social.h \
 	track.h
@@ -33,7 +32,6 @@ bin_PROGRAMS = \
 
 __ALLNET_BINDIR__allnet_SOURCES = astart.c \
 				  ad.c \
-				  listen.c \
 				  hash.c \
 				  record.c \
 				  social.c \
