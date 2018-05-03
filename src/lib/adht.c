@@ -121,7 +121,7 @@ static void * ping_all_pending (void * arg)
   int iter = 0;
   struct addr_info ai;
   while ((iter = routing_ping_iterator (iter, &ai)) >= 0) {
-    sleep (1); /* sleep between messages, to avoid oveflowing the pipe */
+    sleep (1); /* sleep between messages, that's why we are in a thread */
     memcpy (hp->destination, ai.destination, ADDRESS_SIZE);
     hp->dst_nbits = ai.nbits;
     if ((hp->dst_nbits > ADDRESS_BITS) || (hp->dst_nbits > 64)) {
@@ -139,8 +139,7 @@ static void * ping_all_pending (void * arg)
     ia_to_sockaddr (&(ai.ip), (struct sockaddr *) (&sas), &alen);
     if ((ai.ip.ip_version == 4) && (a->sockfd_v4 >= 0))
       socket_send_to_ip (a->sockfd_v4, message, msize, sas, alen);
-    else if (a->sockfd_v6 >= 0)
-      /* it's often possible to send to v4 addresses over v6 sockets, so try */
+    else if (a->sockfd_v6 >= 0)  /* try to send on v6 even for v4 addrs */
       socket_send_to_ip (a->sockfd_v6, message, msize, sas, alen);
   }
   free (message);
@@ -303,59 +302,17 @@ void dht_process (char * message, unsigned int msize,
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
   for (i = 0; i < n_dht; i++) {
-    if (! is_own_address (dhtp->nodes + n_sender + i))
-      routing_add_ping (dhtp->nodes + n_sender + i);
+    struct addr_info * ai = dhtp->nodes + n_sender + i;
+    if (! is_own_address (ai)) {
+      struct sockaddr_storage ping_addr;
+      struct sockaddr * pingp = (struct sockaddr *) (&ping_addr);
+      socklen_t plen = 0;
+      ai_to_sockaddr (ai, pingp, &plen);
+      if (! is_in_routing_table (pingp, plen))
+        routing_add_ping (ai);
+    }
   }
   print_ping_list (1);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
 }
-
-#if 0
-/* add into the socket set the addresses known from the DHT */
-void dht_add_addrs (struct socket_set * s)
-{
-  if (alog == NULL)
-    alog = init_log ("adht");
-  struct socket_address_set * sock_v6 = NULL;
-  struct socket_address_set * sock_v4 = NULL;
-  int i;
-  for (i = 0; i < s->num_sockets; i++) {
-    if ((sock_v6 == NULL) && (s->sockets [i].is_global_v6))
-      sock_v6 = s->sockets + i;
-    if ((sock_v4 == NULL) && (s->sockets [i].is_global_v4))
-      sock_v4 = s->sockets + i;
-  }
-  struct addr_info addresses [256];
-  int found = routing_table (addresses, 256);
-  for (i = 0; i < found; i++) {
-    struct sockaddr_storage sas;
-    socklen_t alen;
-    if (ai_to_sockaddr (addresses + i, (struct sockaddr *) (&sas), &alen)) {
-print_buffer ((char *) &sas, alen, "initial adding from file", alen, 1);
-      struct socket_address_validity sav =
-        { .alen = alen, .alive_rcvd = 0, .alive_sent = 0, .time_limit = 0,
-          .recv_limit = 0, .send_limit = 0, .send_limit_on_recv = 0 };
-      memset (&(sav.addr), 0, sizeof (sav.addr));
-      memcpy (&(sav.addr), &sas, alen);
-      if ((addresses [i].ip.ip_version == 6) && (sock_v6 != NULL))
-        if (socket_address_add (s, sock_v6, sav) == NULL)
-          printf ("error adding IPv6 socket address\n");
-      if (addresses [i].ip.ip_version == 4) {
-        if (sock_v4 != NULL) {
-          if (socket_address_add (s, sock_v4, sav) == NULL)
-            printf ("error adding IPv4 socket address\n");
-        } else {
-          if (socket_address_add (s, sock_v6, sav) == NULL)
-            printf ("error adding IPv4 in IPv6 socket address\n");
-if (((char *) &(sav.addr)) [4] == 0) {  /* illegal IP address */
-print_buffer ((char *) &(sav.addr), sav.alen, "illegal IP in dht_add_addrs",
-              sav.alen, 1);
-printf ("crashing %d\n", 100 / (((char *) &(sav.addr)) [4]));
-}
-        }
-      }
-    }
-  }
-}
-#endif /* 0 */
