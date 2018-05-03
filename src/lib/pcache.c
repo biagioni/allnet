@@ -555,7 +555,9 @@ static void init_pcache ()
 /* save cached information to disk */
 void pcache_write ()
 {
-  init_pcache ();
+printf ("pcache_write called\n");
+  if ((alog == NULL) || (num_message_table_entries <= 0))
+    return;
   write_messages_file (1);
   write_acks_file (1);
   write_tokens_file (1);
@@ -854,11 +856,11 @@ static int do_gc (int index, int msize,
             "gc (%d, %d, %d) => %d", gc_counter++, index, msize, result);
   print_stats (desc);
 #endif /* VERBOSE_GC */
-#ifdef PRINT_GC
   long long int us = allnet_time_us () - start;
   printf ("gc %d/%d/%d took %lld.%06llds, shifted %d tokens\n",
           write_tok, write_msg, write_ack,
           us / 1000000, us % 1000000, delta_tokens);
+#ifdef PRINT_GC
 #endif /* PRINT_GC */
   if (write_tok) write_tokens_file (1);
   if (write_msg) write_messages_file (1);
