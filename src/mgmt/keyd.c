@@ -269,28 +269,6 @@ void keyd_generate (char * pname)
   }
 }
 
-void keyd_thread (char * pname, int rpipe, int wpipe)
-{
-  struct allnet_log * private_log = init_log ("keyd_thread");
-  while (1) {  /* loop forever */
-    unsigned int pri;
-    char * message;                      /* sleep for up to a minute */
-    int found = local_receive (60 * 1000, &message, &pri);
-    if (found < 0) {
-      snprintf (private_log->b, private_log->s, "keyd pipe closed, exiting\n");
-      log_print (private_log);
-      exit (1);
-    }
-    if ((found > 0) && (is_valid_message (message, found, NULL)))
-      handle_packet (message, found);
-    if (found > 0)
-      free (message);
-  }
-  snprintf (private_log->b, private_log->s,
-            "keyd thread infinite loop ended, exiting\n");
-  log_print (private_log);
-}
-
 void keyd_main (char * pname)
 {
   alog = init_log ("keyd");
