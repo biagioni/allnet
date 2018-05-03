@@ -40,6 +40,9 @@ extern void routing_expire_dht (struct socket_set * s);
  * returns the actual number of entries, which may be less than num_entries */
 extern int routing_table (struct addr_info * data, int num_entries);
 
+/* returns 1 if the address is in the routing table, 0 otherwise */
+extern int is_in_routing_table (const struct sockaddr * addr, socklen_t alen);
+
 /* as well as the DHT info, we also keep a list of nodes that we ping from
  * time to time, to see if we can add them to the DHT */
 

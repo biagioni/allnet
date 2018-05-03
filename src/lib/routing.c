@@ -539,13 +539,13 @@ print_dht (0); */
 }
 
 /* always called with lock held */
-static int init_peers (int always)
+static int init_peers (int always_read_from_file)
 {
   if (alog == NULL)
     alog = init_log ("routing");
   static int initialized = 0;
   int result = 1 - initialized;  /* return 1 if this is the first call */
-  if ((! initialized) || (always)) {
+  if ((! initialized) || (always_read_from_file)) {
     load_peers (0);
     unsigned int i;
     for (i = 0; i < NUM_DEFAULTS; i++) {
@@ -985,6 +985,28 @@ static struct addr_info * get_nth_peer (int n)
   return NULL;
 }
 
+/* returns 1 if the address is in the routing table, 0 otherwise */
+int is_in_routing_table (const struct sockaddr * addr, socklen_t alen)
+{
+  int result = 0;
+  pthread_mutex_lock (&mutex);
+  init_peers (0);
+  int i;
+  for (i = 0; i < MAX_PEERS; i++) {
+    if (peers [i].ai.nbits > 0) {
+      struct sockaddr_storage peer;
+      socklen_t plen;
+      ai_to_sockaddr (&(peers [i].ai), (struct sockaddr *) (&peer), &plen);
+      if (same_sockaddr ((struct sockaddr_storage *) addr, alen, &peer, plen)) {
+        result = 1;
+        break;
+      }
+    }
+  }
+  pthread_mutex_unlock (&mutex);
+  return result;
+}
+
 /* fills in the given array, which must have room for num_entries addr_infos,
  * with data to send.
  * returns the actual number of entries, which may be less than num_entries */
@@ -1184,7 +1206,6 @@ int is_own_address (struct addr_info * addr)
  * waits for completion and always returns 1 */
 int routing_init_is_complete (int wait_for_init)
 {
-printf ("routing_init_is_complete (%d)\n", wait_for_init);
   int after_loop = 0;
   do {                     /* do at least once */
     if (after_loop)
