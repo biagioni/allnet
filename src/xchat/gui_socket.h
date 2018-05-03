@@ -53,8 +53,6 @@
 #include <unistd.h>       /* pid_t */
 #include <inttypes.h>     /* int64_t */
 
-#include "lib/pipemsg.h"  /* pd */
-
 /* start java and return the PID of the java process */
 extern pid_t start_java (const char * arg);  /* gui_start_java.c */
 
@@ -63,7 +61,7 @@ extern void * gui_respond_thread (void * arg);  /* gui_response.c */
 
 /* loop to listen on the allnet socket and respond appropriately */
 extern void gui_socket_main_loop (int gui_sock, /* gui_callback.c */
-                                  int allnet_sock, pd p);
+                                  int allnet_sock);
 
 
 /* returns 1 for success or 0 for failure */

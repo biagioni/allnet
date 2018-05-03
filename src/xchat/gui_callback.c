@@ -120,7 +120,7 @@ static int local_is_visible (const char * contact, int broadcast)
   return is_visible (contact);
 }
 
-void gui_socket_main_loop (int gui_sock, int allnet_sock, pd p)
+void gui_socket_main_loop (int gui_sock, int allnet_sock)
 {
   int rcvd = 0;
   char * packet;
