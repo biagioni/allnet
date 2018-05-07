@@ -457,8 +457,11 @@ check_sav (sav, "send_on_socket");
       print_sav (sav);
     }
     free (desc2);
-    ai = ai - ai;   /* divide by 0 to crash */
-    printf ("now crashing: %d\n", 100 / ai);
+    if ((errno != ENETUNREACH) && (errno != EHOSTUNREACH)) {
+    /* no need to die for network or host unreachable */
+      ai = ai - ai;   /* divide by 0 to crash */
+      printf ("now crashing: %d\n", 100 / ai);
+    }
   }
   return 0;
 }
