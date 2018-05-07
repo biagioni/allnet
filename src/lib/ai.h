@@ -70,6 +70,9 @@ struct interface_addr {
  * and addresses point to within *interfaces) */
 extern int interface_addrs (struct interface_addr ** interfaces);
 
+/* same, but only return all the valid broadcast addresses */
+extern int interface_broadcast_addrs (struct sockaddr_storage ** addrs);
+
 /* test whether this address is syntactically valid address (e.g.
  * not all zeros), returning 1 if valid, -1 if it is an ipv4-in-ipv6
  * address, and 0 otherwise */

@@ -788,6 +788,40 @@ int interface_addrs (struct interface_addr ** interfaces)
   return result;
 }
 
+/* same as interface_addrs, but return the valid broadcast addresses */
+int interface_broadcast_addrs (struct sockaddr_storage ** addrs)
+{
+/* we use a fixed-size array because it is simpler if we don't have to
+ * count first, then allocate.  128 should be more than enough */
+#define MAX_BC_ADDRS	128
+  struct sockaddr_storage intermediate [MAX_BC_ADDRS];  /* copy of result */
+  memset (intermediate, 0, sizeof (intermediate));
+  int socket_fd = socket (AF_INET, SOCK_DGRAM, 0);
+  struct ifreq ifr;
+  int interface_index;
+  int result_count = 0;
+  for (interface_index = 0; interface_index < MAX_BC_ADDRS; interface_index++) {
+    ifr.ifr_ifindex = interface_index;
+    int success = (ioctl (socket_fd, SIOCGIFNAME, &ifr) >= 0);
+    if ((success) && (strlen (ifr.ifr_name) > 0)) {
+      success = (ioctl (socket_fd, SIOCGIFFLAGS, &ifr) >= 0);
+      if (success && (ifr.ifr_flags & IFF_BROADCAST)) {
+        if (ioctl (socket_fd, SIOCGIFBRDADDR, &ifr) >= 0) {
+          memcpy (intermediate + result_count, &(ifr.ifr_broadaddr),
+                  sizeof (struct sockaddr));  /* only ipv4, sizeof sockaddr */
+          result_count++;
+        }
+      }
+    }
+  }
+  close (socket_fd);
+  if ((result_count > 0) && (addrs != NULL))
+    *addrs = memcpy_malloc (intermediate,
+                            sizeof (struct sockaddr_storage) * result_count,
+                            "interface_broadcast_addrs");
+  return result_count;
+}
+
 /* test whether this address is syntactically valid address (e.g.
  * not all zeros), returning 1 if valid, -1 if it is an ipv4-in-ipv6
  * address, and 0 otherwise */
