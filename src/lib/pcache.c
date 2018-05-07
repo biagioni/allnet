@@ -43,19 +43,29 @@
 #include <openssl/sha.h>  /* for debugging */
 #endif /* COMPARE_SHA_TO_OPENSSL */
 
-/* by default, allow 1MB of messages, 30,000 acks < 1MB */
-#define DEFAULT_MESSAGE_TABLE_SIZE	1000000
-#define DEFAULT_NUM_ACKS	30016 /* must be a multiple of ACKS_PER_SLOT */
+/* an ack whose ID hashes, e.g. to location 68 may be stored at any index
+ * between 64 and 127 inclusive.  Unlike the messages table, this is the
+ * only meaning of "slot" for the acks table. */
+#define ACKS_PER_SLOT	64
+
+#ifdef ALLNET_RESOURCE_CONSTRAINED     /* use fewer resources */
+/* allow 4MiB of messages, 64Ki acks = 3MiB */
+#define DEFAULT_MESSAGE_TABLE_SIZE	4194304
+/* num_acks must be a multiple of ACKS_PER_SLOT. Each ack takes 48 bytes,
+ * so this is about 3MB = 64K * 48 */
+#define DEFAULT_NUM_ACKS	1024 * ACKS_PER_SLOT
+#else /* ! ALLNET_RESOURCE_CONSTRAINED */ /*  use more disk and memory space */
+/* allow 64MiB of messages, 1Mi acks = 48MiB */
+#define DEFAULT_MESSAGE_TABLE_SIZE	67108864
+/* num_acks must be a multiple of ACKS_PER_SLOT */
+#define DEFAULT_NUM_ACKS	16384 * ACKS_PER_SLOT
+#endif /* ALLNET_RESOURCE_CONSTRAINED */
 
 #define MIN_SAVE_SECONDS		300  /* save at most once every 5min */
                                              /* (except at the beginning) */
 
 #define MAX_TOKENS	64	/* external tokens.  The list of which tokens
                                    we have sent to can be saved in a uint64_t */
-/* an ack that hashes, e.g. to location 68 may be stored at any index
- * between 64 and 127 inclusive.  Unlike the messages table, this is the
- * only meaning of "slot" for the acks table. */
-#define ACKS_PER_SLOT	64
 
 /* note: when message headers are in storage, they may not be aligned.
  * good practice is to copy the message out into a struct message_header
@@ -79,6 +89,7 @@ struct hash_table_entry {
 };
 
 struct hash_ack_entry {       /* indexed by id */
+  char ack [MESSAGE_ID_SIZE]; /* the message ID corresponding to the ack */
   char id  [MESSAGE_ID_SIZE]; /* the message ID corresponding to the ack */
   uint8_t used;
   uint8_t max_hops;
@@ -219,7 +230,9 @@ static void init_sizes ()
       error = "unable to create ~/.allnet/acache/sizes";
       /* not a fatal error, continue */
     } else {
-      char string [] = "1000000\n30016\n";
+      char string [1000];
+      snprintf (string, sizeof (string), "%d\n%d\n",
+                DEFAULT_MESSAGE_TABLE_SIZE, DEFAULT_NUM_ACKS);
       int len = (int)strlen (string);
       if (write (fd, string, len) != len) {
         error = "unable to write ~/.allnet/acache/sizes";
@@ -967,21 +980,6 @@ int pcache_id_found (const char * id)
   return pcache_id_found_delete (id, 0);  /* do not delete */
 }
 
-/* return 1 if we have the ack for this ID, 0 if we do not */
-int pcache_id_acked (const char * id)
-{
-  int index = (readb64 (id) % num_acks);
-  int base = index - (index % ACKS_PER_SLOT);
-  int i;
-  for (i = 0; i < ACKS_PER_SLOT; i++) {
-    if ((ack_table [base + i].used) &&
-        (memcmp (ack_table [base + i].id, id, MESSAGE_ID_SIZE) == 0)) {
-      return 1;
-    }
-  }
-  return 0;
-}
-
 /* return the index of the ack in the ack hash table, or -1 if not found */
 static int find_one_ack (const char * id)
 {
@@ -995,6 +993,18 @@ static int find_one_ack (const char * id)
     }
   }
   return -1;
+}
+
+/* return 1 if we have the ack for this ID, 0 if we do not
+ * if we return 1, fill in the ack */
+int pcache_id_acked (const char * id, char * ack)
+{
+  int index = find_one_ack (id);
+  if (index >= 0) {
+    memcpy (ack, ack_table [index].ack, MESSAGE_ID_SIZE);
+    return 1;
+  }
+  return 0;
 }
 
 /* returns an index if there is one available, otherwise -1 */
@@ -1016,6 +1026,9 @@ static int save_one_ack (const char * ack, int max_hops)
   static int duplicate_count = 0;
   received_count++;
 #endif /* DEBUG_PRINT */
+  /* if it is in the bloom filter, no need to save */
+  if (pid_is_in_bloom (ack, PID_ACK_FILTER))
+    return 0;
   char id [MESSAGE_ID_SIZE];
   sha512_bytes (ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
   int index = find_one_ack (id);
@@ -1068,13 +1081,11 @@ static int save_one_ack (const char * ack, int max_hops)
   printf ("replacing %d+%d/%d @ index %d/%d\n", replace_count, duplicate_count,
           received_count, index, occupied);
 #endif /* DEBUG_PRINT */
-  memcpy (ack_table [index].id, id, MESSAGE_ID_SIZE);
+  memcpy (ack_table [index].ack, ack, MESSAGE_ID_SIZE);
+  memcpy (ack_table [index].id , id , MESSAGE_ID_SIZE);
   ack_table [index].used = 1;
   ack_table [index].max_hops = max_hops;
   ack_table [index].sent_to_tokens = 0;
-  /* we will not keep the ack itself, so record it now in the bloom filter */
-  /* pid_is_in_bloom called by pcache_save_acks */
-  pid_add_to_bloom (ack, PID_ACK_FILTER);
   /* finally, delete the corresponding message if any */
   pcache_id_found_delete (id, 1);  /* delete if found */
   return index;
@@ -1087,8 +1098,7 @@ void pcache_save_acks (const char * acks, int num_acks, int max_hops)
   init_pcache ();
   int i;
   for (i = 0; i < num_acks; i++)
-    if (! pid_is_in_bloom (acks + i, PID_ACK_FILTER))
-      save_one_ack (acks + i * MESSAGE_ID_SIZE, max_hops);
+    save_one_ack (acks + i * MESSAGE_ID_SIZE, max_hops);
   write_acks_file (0);
 }
 
@@ -1129,22 +1139,18 @@ static int token_to_send_to (const char * token, uint64_t bitmap)
 int pcache_ack_for_token (const char * token, const char * ack)
 {
   init_pcache ();
-#if 0
   /* assume that acks in the bloom filter have been sent to all tokens */
-  /*   the assumption is not true, but it helps to get rid of old acks */
-  /* 2018/04/30: we now save acks only to the bloom filter, so now an
-    ack is always in the bloom filter whenever we've seen it, so this
-    would block all acks, hence we exclude it.  Maybe useful in the future? */
+  /*   the assumption is not true, but it helps drop old acks */
   if (pid_is_in_bloom (ack, PID_ACK_FILTER))
     return 0;
-#endif /* 0 */
   char id [MESSAGE_ID_SIZE];
   sha512_bytes (ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
   int index = find_one_ack (id);
   int itoken = token_to_send_to (token, ack_table [index].sent_to_tokens);
   if (itoken == -1)  /* already sent */
     return 0;
-  ack_table [index].sent_to_tokens |= (((uint64_t) 1) << itoken);
+  if (index >= 0)    /* found */
+    ack_table [index].sent_to_tokens |= (((uint64_t) 1) << itoken);
   return 1;
 }
 

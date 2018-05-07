@@ -22,6 +22,7 @@
 #include "lib/pcache.h"
 #include "lib/adht.h"
 #include "lib/trace_util.h"
+#include "lib/abc.h"
 
 #define PROCESS_PACKET_DROP	0
 #define PROCESS_PACKET_LOCAL	1  /* only forward to alocal */
@@ -93,9 +94,13 @@ static void initialize_sockets ()
     printf ("unable to create and bind to IPv4 out socket\n");
   else
     created_out = 1;
-  if ((! created_local) || (! created_out))
+  int created_bc = add_local_broadcast_sockets (&sockets);
+  if ((! created_local) || ((! created_out) && (! created_bc)))
     exit (1);
+#if 0
 printf ("sock_v4 = %d, sock_v6 = %d\n", sock_v4, sock_v6);
+print_socket_set (&sockets);
+#endif /* 0 */
 }
 
 static struct allnet_log * alog = NULL;
@@ -129,7 +134,30 @@ static void update_virtual_clock ()
   }
 }
 
-#include "lib/ai.h"
+/* sends the ack to the address, given that hp has the packet we are acking */
+static void send_ack (const char * ack, const struct allnet_header * hp,
+                      int sockfd, struct sockaddr_storage addr, socklen_t alen)
+{
+  char message [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE];
+  int hops = minz (hp->max_hops, hp->hops) + 2; /* (max_hops - hops) + 2 */
+  /* reverse the source and destination addresses in sending back */
+  init_packet (message, sizeof (message), ALLNET_TYPE_ACK, hops, 
+               ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
+               hp->source, hp->src_nbits, NULL, NULL);
+  memcpy (message + ALLNET_HEADER_SIZE, ack, MESSAGE_ID_SIZE);
+  /* send this ack back to the sender, no need to ack more widely */
+  socket_send_to_ip (sockfd, message, sizeof (message), addr, alen);
+}
+
+static void send_one_keepalive (const char * desc,
+                                struct socket_address_set * sock,
+                                struct socket_address_validity * sav)
+{
+  unsigned int msize;
+  const char * message = keepalive_packet (&msize);
+  socket_send_to (message, msize, ALLNET_PRIORITY_EPSILON, virtual_clock,
+                  &sockets, sock, sav);
+}
 
 /* send to a limited number of DHT addresses and to socket_send_out */
 static void send_out (const char * message, int msize, int max_addrs,
@@ -177,16 +205,6 @@ static void update_dht ()
     send_out (dht_message, msize, ROUTING_DHT_ADDRS_MAX, NULL, 0);
     free (dht_message);
   }
-}
-
-static void send_one_keepalive (const char * desc,
-                                struct socket_address_set * sock,
-                                struct socket_address_validity * sav)
-{
-  unsigned int msize;
-  const char * message = keepalive_packet (&msize);
-  socket_send_to (message, msize, ALLNET_PRIORITY_EPSILON, virtual_clock,
-                  &sockets, sock, sav);
 }
 
 extern void check_sav (struct socket_address_validity * sav, const char * desc);
@@ -425,7 +443,18 @@ static struct message_process process_message (struct socket_read_result *r)
     char id [MESSAGE_ID_SIZE];
     if (! pcache_message_id (r->message, r->msize, id))
       return drop;          /* no message ID, drop the message */
-    seen_before = pcache_id_found (id) || pcache_id_acked (id);
+    char ack [MESSAGE_ID_SIZE];   /* filled in if ack_found */
+    if (pcache_id_acked (id, ack)) {  /* ack this message */
+printf ("message size %d: ", r->msize);
+print_buffer (id, MESSAGE_ID_SIZE, "pcache_id", 8, 1);
+printf ("sending ack to: ");
+print_sockaddr ((struct sockaddr *) &(r->from), r->alen, 0);
+print_buffer (ack, MESSAGE_ID_SIZE, ", pcache_id_ack", 10, 1);
+      send_ack (ack, hp, r->sock->sockfd, r->from, r->alen);
+      seen_before = 1;
+    } else {
+      seen_before = pcache_id_found (id);
+    }
     if ((! r->sock->is_local) && (seen_before))
       return drop;            /* we have seen it before, drop the message */
     if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
