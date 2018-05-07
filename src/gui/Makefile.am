@@ -46,7 +46,7 @@ if PRECOMP_GUI
 endif
 if ENABLE_GUI
 	$(JAVAC) */*.java */*/*.java
-	$(JAR) cfe $(ALLNETUI_TARGET) allnetui.UI allnetui/*.class utils/*.class utils/tabbedpane/*.class utils/tabbedpane/*.png
+	$(JAR) cfe $(ALLNETUI_TARGET) allnetui.UI allnetui/*.class allnetui/*.png utils/*.class utils/tabbedpane/*.class utils/tabbedpane/*.png
 endif
 
 clean-local:

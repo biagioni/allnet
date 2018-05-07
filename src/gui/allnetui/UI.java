@@ -9,6 +9,11 @@ import javax.swing.UnsupportedLookAndFeelException;
 import utils.ApplicationFrame;
 import utils.ControllerInterface;
 import utils.tabbedpane.MyTabbedPane;
+import java.net.URL;
+import javax.swing.ImageIcon;
+import java.awt.Toolkit;
+import java.awt.Image;
+
 
 /**
  *
@@ -141,6 +146,11 @@ class UI extends ApplicationFrame {
                     uiTabs.setListener(controller);
 
                     UI ui = new UI(TITLE, uiTabs, controller, true);
+ 
+                    URL iconUrl = this.getClass().getResource("icon.png");
+                    Image icon = Toolkit.getDefaultToolkit().getImage(iconUrl);
+                    ui.setIconImage(icon);                
+
                     ui.setMyLocation("center");
                     ui.setVisible(true);
 
