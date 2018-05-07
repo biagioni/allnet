@@ -54,6 +54,7 @@
 
 static struct allnet_log * alog = NULL;
 
+#ifndef ALLNET_RESOURCE_CONSTRAINED  /* actively participate in the DHT */
 struct ping_all_args {
   int finished;
   int sockfd_v6;   /* -1 if not valid */
@@ -146,6 +147,7 @@ static void * ping_all_pending (void * arg)
   a->finished = 1;
   return NULL;
 }
+#endif /* ALLNET_RESOURCE_CONSTRAINED -- actively participate in the DHT */
 
 /* at the right time, create a DHT packet to send out my routing table
  * the socket set is used to send messages to potential DHT peers
@@ -154,7 +156,10 @@ int dht_update (struct socket_set * s, char ** message)
 {
   if (alog == NULL)
     alog = init_log ("adht");
-  *message = 0;
+  *message = NULL;
+#ifdef ALLNET_RESOURCE_CONSTRAINED  /* do not actively participate in the DHT */
+  return 0;
+#else /* ! ALLNET_RESOURCE_CONSTRAINED -- actively participate in the DHT */
   static unsigned long long int next_time = 0;
   static int expire_count = 0;    /* when it reaches 10, expire old entries */
   static unsigned char my_address [ADDRESS_SIZE];
@@ -229,6 +234,7 @@ int dht_update (struct socket_set * s, char ** message)
     expire_count = 0;
   }
   return send_size;
+#endif /* ALLNET_RESOURCE_CONSTRAINED */
 }
 
 /* add information from a newly received DHT packet */
