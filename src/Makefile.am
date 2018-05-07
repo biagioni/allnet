@@ -1,4 +1,4 @@
-SUBDIRS = lib abc ahra mgmt voa xchat gui xtime
+SUBDIRS = lib ahra mgmt voa xchat gui xtime
 AUTOMAKE_OPTIONS = subdir-objects
 
 libincludes = \
@@ -23,8 +23,7 @@ includes = \
 
 adlink = social.c record.c track.c
 
-LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la \
-        $(ALLNET_ABCDIR)/liballnet-abc-$(ALLNET_API_VERSION).la
+LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/allnet \
 	$(ALLNET_BINDIR)/astop \
