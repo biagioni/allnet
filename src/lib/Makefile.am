@@ -1,4 +1,5 @@
 libincludes = \
+	abc.h \
 	ai.h \
 	allnet_queue.h \
 	app_util.h \
@@ -29,6 +30,7 @@ libincludes = \
 	wp_rsa.h
 
 libsrc = \
+        abc.c \
         adht.c \
 	ai.c \
 	allnet_queue.c \
