@@ -308,6 +308,7 @@ extern int binary_log (unsigned long long int value);
  * in iOS, we only have one process */
 #define exit(n)        pthread_exit(NULL)
 #define ALLNET_USE_THREADS
+#define ALLNET_RESOURCE_CONSTRAINED	/* use fewer resources */
 #else  /* ! __IPHONE_OS_VERSION_MIN_REQUIRED || ANDROID */
 /* we use fork except on systems that don't support it */
 #define ALLNET_USE_FORK
