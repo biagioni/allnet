@@ -807,9 +807,13 @@ int interface_broadcast_addrs (struct sockaddr_storage ** addrs)
       success = (ioctl (socket_fd, SIOCGIFFLAGS, &ifr) >= 0);
       if (success && (ifr.ifr_flags & IFF_BROADCAST)) {
         if (ioctl (socket_fd, SIOCGIFBRDADDR, &ifr) >= 0) {
-          memcpy (intermediate + result_count, &(ifr.ifr_broadaddr),
-                  sizeof (struct sockaddr));  /* only ipv4, sizeof sockaddr */
-          result_count++;
+          struct sockaddr * sap = (struct sockaddr *) &(ifr.ifr_broadaddr);
+          uint32_t ip = htonl (((struct sockaddr_in *) sap)->sin_addr.s_addr);
+          if ((ip != 0) && ((ip >> 24) != 0x7f)) {
+            memcpy (intermediate + result_count, &(ifr.ifr_broadaddr),
+                    sizeof (struct sockaddr));  /* only ipv4, sizeof sockaddr */
+            result_count++;
+          }
         }
       }
     }
