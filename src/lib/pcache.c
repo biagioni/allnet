@@ -778,6 +778,8 @@ static void gc_ack_slot (int index, int token_shift)
   while (used_count > ACKS_PER_SLOT / 2) {
     int sel = random_int (0, ACKS_PER_SLOT - 1);  /* delete this entry */
     if (ack_table [base + sel].used) {            /* if it's in use */
+      if (! pid_is_in_bloom (ack_table [base + sel].ack, PID_ACK_FILTER))
+        pid_add_to_bloom (ack_table [base + sel].ack, PID_ACK_FILTER);
       if (! pid_is_in_bloom (ack_table [base + sel].id , PID_MESSAGE_FILTER))
         pid_add_to_bloom (ack_table [base + sel].id , PID_MESSAGE_FILTER);
       ack_table [base + sel].used = 0;
