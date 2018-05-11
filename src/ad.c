@@ -49,6 +49,15 @@ static struct socket_set sockets;
 static int sock_v4 = -1;    /* used to send packets to specific addresses */
 static int sock_v6 = -1;    /* used to send packets to specific addresses */
 
+/* set the v4 flag for the given socket */
+static int set_ipv4 (struct socket_address_set * sock, void * ref)
+{
+  int sockfd = * ((int *) ref);
+  if (sock->sockfd == sockfd)
+    sock->is_global_v4 = 1;
+  return 1;  /* don't delete */
+}
+
 static void initialize_sockets ()
 {
   int created_local = 0;
@@ -68,15 +77,16 @@ static void initialize_sockets ()
   sin->sin_family = AF_INET;
   sin->sin_addr.s_addr = htonl (INADDR_LOOPBACK);
   sin->sin_port = htons (ALLNET_LOCAL_PORT);
-  if (! socket_create_bind (&sockets, 1, sasv6, alen6, 0))
+  int local_v6 = socket_create_bind (&sockets, 1, sasv6, alen6, 0);
+  if (local_v6 < 0)
     printf ("unable to create and bind to IPv6 local socket\n");
   else
     created_local = 1;
   /* now IPv4 */
-  if ((! socket_create_bind (&sockets, 1, sasv4, alen4, created_local)) &&
+  if ((socket_create_bind (&sockets, 1, sasv4, alen4, created_local) < 0) &&
       (! created_local))
     printf ("unable to create and bind to IPv4 local socket\n");
-  else
+  else                     /* created ipv4 socket, record this */
     created_local = 1;
   /* now the outside port */
   memcpy (&(sin6->sin6_addr), &(in6addr_any), sizeof (sin6->sin6_addr));
@@ -92,23 +102,21 @@ static void initialize_sockets ()
   sock_v4 = socket_create_bind (&sockets, 0, sasv4, alen4, created_out);
   if ((sock_v4 < 0) && (! created_out))
     printf ("unable to create and bind to IPv4 out socket\n");
-  else
+  else if (created_out) {  /* ipv6 socket is valid, use it for ipv4 */
+    socket_sock_loop (&sockets, set_ipv4, &sock_v6);
+    sock_v4 = sock_v6;
+  } else                   /* created ipv4 socket, record this */
     created_out = 1;
   int created_bc = add_local_broadcast_sockets (&sockets);
   if ((! created_local) || ((! created_out) && (! created_bc)))
     exit (1);
-#if 0
-printf ("sock_v4 = %d, sock_v6 = %d\n", sock_v4, sock_v6);
-print_socket_set (&sockets);
-#endif /* 0 */
 }
 
 static struct allnet_log * alog = NULL;
 static struct social_info * social_net = NULL;
 static unsigned char my_address [ADDRESS_SIZE];
 
-/* the virtual clock is updated about every 10s.  It should
- * have a minimum value greater than the longest time interval */
+/* the virtual clock is updated about every 10s. */
 #define VIRTUAL_CLOCK_SECONDS		10
 #define SEND_KEEPALIVES_LOCAL		1   /* send keepalive every 10sec */
 #define SEND_KEEPALIVES_REMOTE		60  /* send keepalive every 10min */
@@ -136,17 +144,23 @@ static void update_virtual_clock ()
 
 /* sends the ack to the address, given that hp has the packet we are acking */
 static void send_ack (const char * ack, const struct allnet_header * hp,
-                      int sockfd, struct sockaddr_storage addr, socklen_t alen)
+                      int sockfd, struct sockaddr_storage addr, socklen_t alen,
+                      int is_local)
 {
-  char message [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE];
+  char message [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE + 2];
+  int msize = sizeof (message);
+  if (! is_local)
+    msize -= 2;
   int hops = minz (hp->max_hops, hp->hops) + 2; /* (max_hops - hops) + 2 */
   /* reverse the source and destination addresses in sending back */
-  init_packet (message, sizeof (message), ALLNET_TYPE_ACK, hops, 
-               ALLNET_SIGTYPE_NONE, hp->destination, hp->dst_nbits,
+  init_packet (message, msize, ALLNET_TYPE_ACK, hops, ALLNET_SIGTYPE_NONE,
+               hp->destination, hp->dst_nbits,
                hp->source, hp->src_nbits, NULL, NULL);
   memcpy (message + ALLNET_HEADER_SIZE, ack, MESSAGE_ID_SIZE);
+  if (is_local)
+    writeb16 (message + (sizeof (message) - 2), ALLNET_PRIORITY_LOCAL);
   /* send this ack back to the sender, no need to ack more widely */
-  socket_send_to_ip (sockfd, message, sizeof (message), addr, alen);
+  socket_send_to_ip (sockfd, message, msize, addr, alen, "ad.c/send_ack");
 }
 
 static void send_one_keepalive (const char * desc,
@@ -174,24 +188,24 @@ static void send_out (const char * message, int msize, int max_addrs,
   memset (addrs, 0, sizeof (addrs));
   int num_addrs = routing_top_dht_matches (hp->destination, hp->dst_nbits,
                                            addrs, alen, max_addrs);
+  int dht_send_error = 0;
   int i;
   for (i = 0; i < num_addrs; i++) {
     int sockfd = sock_v4;
-    if ((sockfd < 0) ||
-        (((struct sockaddr *) (addrs + i))->sa_family == AF_INET))
+    if ((sockfd < 0) ||  /* if sock_v4 is not valid, use sock_v6 */
+        (((struct sockaddr *) (addrs + i))->sa_family == AF_INET6))
       sockfd = sock_v6;
-#if 0
-struct internet_addr ia;
-sockaddr_to_ia ((struct sockaddr *) (addrs + i), alen [i], &ia);
-printf ("sending %d bytes to sock %d, DHT address %d/%d (%d): ", msize, sockfd, i, num_addrs, alen [i]);
-print_ia (&ia);
-#endif /* 0 */
-    if (sockfd >= 0)
-      socket_send_to_ip (sockfd, message, msize, addrs [i], alen [i]);
+    if (sockfd >= 0) {
+      if (! socket_send_to_ip (sockfd, message, msize, addrs [i], alen [i],
+                               "ad.c/send_out"))
+        dht_send_error = 1;
+    }
   }
   static struct sockaddr_storage empty;  /* used if except is null */
   socket_send_out (&sockets, message, msize, virtual_clock,
                    ((except == NULL) ? empty : *except), elen);
+  if (dht_send_error)
+    routing_expire_dht (&sockets);
 }
 
 static void update_dht ()
@@ -200,6 +214,7 @@ static void update_dht ()
   unsigned int msize = dht_update (&sockets, &dht_message);
   if ((msize > 0) && (dht_message != 0)) {
     struct sockaddr_storage sas;
+    memset (&sas, 0, sizeof (sas));
     socket_send_local (&sockets, dht_message, msize, ALLNET_PRIORITY_LOCAL_LOW,
                        virtual_clock, sas, 0);
     send_out (dht_message, msize, ROUTING_DHT_ADDRS_MAX, NULL, 0);
@@ -445,12 +460,7 @@ static struct message_process process_message (struct socket_read_result *r)
       return drop;          /* no message ID, drop the message */
     char ack [MESSAGE_ID_SIZE];   /* filled in if ack_found */
     if (pcache_id_acked (id, ack)) {  /* ack this message */
-printf ("message size %d: ", r->msize);
-print_buffer (id, MESSAGE_ID_SIZE, "pcache_id", 8, 1);
-printf ("sending ack to: ");
-print_sockaddr ((struct sockaddr *) &(r->from), r->alen, 0);
-print_buffer (ack, MESSAGE_ID_SIZE, ", pcache_id_ack", 10, 1);
-      send_ack (ack, hp, r->sock->sockfd, r->from, r->alen);
+      send_ack (ack, hp, r->sock->sockfd, r->from, r->alen, r->sock->is_local);
       seen_before = 1;
     } else {
       seen_before = pcache_id_found (id);
@@ -517,12 +527,6 @@ void allnet_daemon_loop ()
       socket_update_recv_limit (RECV_LIMIT_DEFAULT, &sockets, r.from, r.alen);
       if (r.sav != NULL)
         send_one_keepalive ("update_recv_limit", r.sock, r.sav);
-#if 0
-print_timestamp ("");
-print_socket_set (&sockets);
-print_dht (0);
-print_ping_list (0);
-#endif /* 0 */
     }
     update_virtual_clock ();
     update_dht ();
