@@ -801,8 +801,12 @@ int interface_broadcast_addrs (struct sockaddr_storage ** addrs)
   int interface_index;
   int result_count = 0;
   for (interface_index = 0; interface_index < MAX_BC_ADDRS; interface_index++) {
+#ifndef __APPLE__
     ifr.ifr_ifindex = interface_index;
     int success = (ioctl (socket_fd, SIOCGIFNAME, &ifr) >= 0);
+#else
+    int success = (if_indextoname (interface_index, ifr.ifr_name) != NULL);
+#endif /* __APPLE__ */
     if ((success) && (strlen (ifr.ifr_name) > 0)) {
       success = (ioctl (socket_fd, SIOCGIFFLAGS, &ifr) >= 0);
       if (success && (ifr.ifr_flags & IFF_BROADCAST)) {
@@ -843,7 +847,7 @@ int is_valid_address (const struct internet_addr * ip)
     if ((readb64 ((char *) ip->ip.s6_addr) == 0) &&
         (readb64 ((char *) ip->ip.s6_addr + 8) == 0))  /* all-zeros address */
       return 0;
-    char first_byte = *((char *) ip->ip.s6_addr);
+    int first_byte = (*((char *) ip->ip.s6_addr)) & 0xff;
     if ((first_byte == 0xff) ||           /* multicast */
         (first_byte == 0xfc) || (first_byte == 0xfd))  /* unique local addr */
       return 0;
