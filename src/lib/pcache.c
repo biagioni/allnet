@@ -408,7 +408,7 @@ static int initialize_acks_from_file ()
       for (i = 0; i < num_acks; i++) {
         if (ack_table [i].used) {
           int index = (readb64 (ack_table [i].id) % num_acks);
-          if ((i % ACKS_PER_SLOT) != (index % ACKS_PER_SLOT)) {
+          if ((i / ACKS_PER_SLOT) != (index / ACKS_PER_SLOT)) {
 printf ("verifying ~/.allnet/acache/acks file, no match at entry %d %d/%d, ",
 i, index, ACKS_PER_SLOT);
 print_buffer (ack_table [i].id , MESSAGE_ID_SIZE, "id", 16, 1);
