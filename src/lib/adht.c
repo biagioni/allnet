@@ -139,9 +139,11 @@ static void * ping_all_pending (void * arg)
     socklen_t alen = 0;
     ia_to_sockaddr (&(ai.ip), (struct sockaddr *) (&sas), &alen);
     if ((ai.ip.ip_version == 4) && (a->sockfd_v4 >= 0))
-      socket_send_to_ip (a->sockfd_v4, message, msize, sas, alen);
+      socket_send_to_ip (a->sockfd_v4, message, msize, sas, alen,
+                         "adht.c/ping_all_pending v4");
     else if (a->sockfd_v6 >= 0)  /* try to send on v6 even for v4 addrs */
-      socket_send_to_ip (a->sockfd_v6, message, msize, sas, alen);
+      socket_send_to_ip (a->sockfd_v6, message, msize, sas, alen,
+                         "adht.c/ping_all_pending v6");
   }
   free (message);
   a->finished = 1;
