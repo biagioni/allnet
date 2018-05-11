@@ -80,7 +80,6 @@ int pid_is_in_bloom (const char * id, int filter_selector)
     int filter_depth;
     for (filter_depth = 0; filter_depth < FILTER_DEPTH; filter_depth++) {
       uint16_t pos = readb16 ((char *) id + filter_depth * 2);
-      assert (pos < FILTER_WIDTH);
       uint16_t index = pos / 8;
       uint16_t offset = pos % 8;
       int byte =
@@ -115,7 +114,6 @@ void pid_add_to_bloom (const char * id, int filter_selector)
   int filter_depth;
   for (filter_depth = 0; filter_depth < FILTER_DEPTH; filter_depth++) {
     uint16_t pos = readb16 ((char *) id + filter_depth * 2);
-    assert (pos < FILTER_WIDTH);
     uint16_t index = pos / 8;
     uint16_t offset = pos % 8;
     bloom_filter [filter_selector] [0] [filter_depth] [index] |= (1 << offset);

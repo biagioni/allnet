@@ -1724,6 +1724,7 @@ pipemsg_debug_last_received (buffer);
     printf ("received ack message, but size %d(%d) mod %d == %d != 0\n",
             payload_size, size, MESSAGE_ID_SIZE,
             payload_size % MESSAGE_ID_SIZE);
+    print_buffer (packet, size, NULL, 100, 1);
     if (error_desc != NULL) *error_desc = "ack size not multiple of 16";
     return 0;
   }
