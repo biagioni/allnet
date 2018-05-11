@@ -130,7 +130,8 @@ extern int socket_send_to (const char * message, int msize,
 /* send to an address that may not even be in a socket set -- this is how
  * we can connect to new systems without receiving from them first */
 extern int socket_send_to_ip (int sockfd, const char * message, int msize,
-                              struct sockaddr_storage sas, socklen_t alen);
+                              struct sockaddr_storage sas, socklen_t alen,
+                              const char * debug);
 /* send a keepalive to addresses whose sent time + local/remote <= current_time
  * returns the number of messages sent */
 extern int socket_send_keepalives (struct socket_set * s,
@@ -145,13 +146,7 @@ extern int socket_create_bind (struct socket_set * s, int is_local,
                                struct sockaddr_storage addr, socklen_t alen,
                                int quiet);
 
-/* create a socket and connect it as appropriate for the given address
- * and add it to the given socket set
- * return the sockfd for success, -1 otherwise */
-extern int socket_create_connect (struct socket_set * s, int is_local,
-                                  struct sockaddr_storage addr, socklen_t alen,
-                                  int quiet);
-
+/* for debugging */
 extern void print_socket_set (struct socket_set * s);
 
 #endif /* ALLNET_SOCKETS_H */
