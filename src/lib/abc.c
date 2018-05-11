@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <arpa/inet.h>   /* inet_pton */
 
 #include "abc.h"
@@ -82,8 +83,13 @@ static void add_v6 (struct socket_set * sockets)
   inet_pton (AF_INET6, ALLNET_IPV6_MCAST, &mcast);
   struct ipv6_mreq mreq = { .ipv6mr_multiaddr = mcast,
                             .ipv6mr_interface = 0 };
-  if (setsockopt (s, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq, sizeof(mreq)))
+  if (setsockopt (s, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq, sizeof(mreq))) {
+    if (errno == ENODEV) { /* cannot join the group, do not add the socket */
+      printf ("disabling ipv6 multicast on local networks\n");
+      return;
+    }
     perror ("add_local_broadcast_sockets v6 setosockopt multicast receive");
+  }
   if (! socket_add (sockets, s, 0, 0, 0)) {
     printf ("add_local_broadcast_sockets unable to add v6 socket %d\n", s);
     return;
@@ -113,10 +119,12 @@ int add_local_broadcast_sockets (struct socket_set * sockets)
   int num_bc = interface_broadcast_addrs (&bc_addrs);
   int i;
   for (i = 0; i < num_bc; i++) {
+#ifdef DEBUG_PRINT
     printf ("interface %d has broadcast address ", i);
     socklen_t alen = sizeof (struct sockaddr_in);
     print_sockaddr ((struct sockaddr *) (bc_addrs + i), alen, 0);
     printf ("\n");
+#endif /* DEBUG_PRINT */
     add_v4 (sockets, bc_addrs + i);
   }
   if ((num_bc > 0) && (bc_addrs != NULL))
