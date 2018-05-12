@@ -85,6 +85,7 @@ if test "x$enable_openssl" = "xyes"; then
   ssl_requires="$pkg_req_openssl"
   AC_SUBST(ssl_requires)
   CFLAGS+=" -DHAVE_OPENSSL"
+  AC_CHECK_LIB(crypto, RSA_set0_key, [CFLAGS+=" -DHAVE_OPENSSL_ONE_ONE"], [], [])
 # else
 #   pkg_req_gnutls="gnutls >= 2.2.0"
 #   pkg_req_libtasn1="libtasn1 >= 1.1"
@@ -95,6 +96,7 @@ if test "x$enable_openssl" = "xyes"; then
 #   ssl_requires="$pkg_req_gnutls $pkg_req_libtasn1"
 #   AC_SUBST(ssl_requires)
 fi
+
 
 AC_ARG_ENABLE(network-manager,
   AC_HELP_STRING([--disable-network-manager],
