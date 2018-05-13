@@ -23,6 +23,7 @@
 #include "lib/adht.h"
 #include "lib/trace_util.h"
 #include "lib/abc.h"
+#include "lib/ai.h"
 
 #define PROCESS_PACKET_DROP	0
 #define PROCESS_PACKET_LOCAL	1  /* only forward to alocal */
@@ -184,19 +185,24 @@ static void send_out (const char * message, int msize, int max_addrs,
     return;
   assert (max_addrs <= ADDRS_MAX);
   struct sockaddr_storage addrs [ADDRS_MAX];
-  socklen_t alen [ADDRS_MAX];
+  socklen_t alens [ADDRS_MAX];
   memset (addrs, 0, sizeof (addrs));
   int num_addrs = routing_top_dht_matches (hp->destination, hp->dst_nbits,
-                                           addrs, alen, max_addrs);
+                                           addrs, alens, max_addrs);
   int dht_send_error = 0;
   int i;
   for (i = 0; i < num_addrs; i++) {
+    struct sockaddr_storage dest = addrs [i];
+    socklen_t alen = alens [i];
     int sockfd = sock_v4;
-    if ((sockfd < 0) ||  /* if sock_v4 is not valid, use sock_v6 */
-        (((struct sockaddr *) (addrs + i))->sa_family == AF_INET6))
+    if (dest.ss_family == AF_INET6) {
       sockfd = sock_v6;
+    } else if (sockfd < 0) {  /* if sock_v4 is not valid, use sock_v6 */
+      sockfd = sock_v6;
+      ai_embed_v4_in_v6 (&dest, &alen);  /* needed on apple systems */
+    }
     if (sockfd >= 0) {
-      if (! socket_send_to_ip (sockfd, message, msize, addrs [i], alen [i],
+      if (! socket_send_to_ip (sockfd, message, msize, dest, alen,
                                "ad.c/send_out"))
         dht_send_error = 1;
     }

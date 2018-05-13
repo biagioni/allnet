@@ -16,7 +16,7 @@ extern int addr_info_to_string (struct addr_info * ai,
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
 extern int ai_to_sockaddr (const struct addr_info * ai,
-                           struct sockaddr * sap, socklen_t * salen);
+                           struct sockaddr_storage * sap, socklen_t * salen);
 
 extern int sockaddr_to_ai (const struct sockaddr * sap, socklen_t addr_size,
                            struct addr_info * ai);
@@ -27,11 +27,16 @@ extern void print_ia (struct internet_addr * ia);
 extern int ia_to_string (const struct internet_addr * ia,
                          char * buf, size_t bsize);
 
-/* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
 extern int ia_to_sockaddr (const struct internet_addr * ia,
-                           struct sockaddr * sap, socklen_t * salen);
+                           struct sockaddr_storage * sap, socklen_t * salen);
+
+/* returns 1 for success, 0 for failure */
+/* takes sas as input, and returns the result (if any) in sas and alen
+ * ai_embed_v4_in_v6 is needed since apple OSX and perhaps other systems
+ * don't support sending to IPv4 addresses on IPv6 sockets */
+extern int ai_embed_v4_in_v6 (struct sockaddr_storage * sas, socklen_t * alen);
 
 extern int sockaddr_to_ia (const struct sockaddr * sap, socklen_t addr_size,
                            struct internet_addr * ia);

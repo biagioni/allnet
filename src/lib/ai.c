@@ -105,11 +105,10 @@ int ia_to_string (const struct internet_addr * ia, char * buf, size_t bsize)
   return offset;
 }
 
-/* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
 int ia_to_sockaddr (const struct internet_addr * ia,
-                    struct sockaddr * sap, socklen_t * salen)
+                    struct sockaddr_storage * sap, socklen_t * salen)
 {
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
@@ -134,6 +133,30 @@ int ia_to_sockaddr (const struct internet_addr * ia,
     printf ("coding error: addr_info has version %d\n", ia->ip_version);
     return 0;
   }
+  return 1;
+}
+
+/* returns 1 for success, 0 for failure */
+/* takes sas as input, and returns the result (if any) in sas and alen
+ * ai_embed_v4_in_v6 is needed since apple OSX and perhaps other systems
+ * don't support sending to IPv4 addresses on IPv6 sockets */
+int ai_embed_v4_in_v6 (struct sockaddr_storage * sas, socklen_t * alen)
+{
+  struct sockaddr * sa = (struct sockaddr *) sas;
+  if (sa->sa_family != AF_INET)
+    return 0;   /* nothing to do */
+  struct sockaddr_in * source = (struct sockaddr_in *) sas;
+  struct sockaddr_storage temp;
+  memset (&temp, 0, sizeof (temp));
+  struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) (&temp);
+  sin6->sin6_family = AF_INET6;
+  sin6->sin6_port = source->sin_port;
+  /* ipv4-in-v6 address has 10 bytes of 0, 2 bytes of ff, then the ipv4 */
+  char * p = (char *) (&(sin6->sin6_addr));
+  p [10] = p [11] = 0xff;
+  memcpy (p + 12, &source->sin_addr, 4);
+  memcpy (sas, &temp, sizeof (*sas));
+  *alen = sizeof (struct sockaddr_in6);
   return 1;
 }
 
@@ -196,7 +219,7 @@ int sockaddr_to_ia (const struct sockaddr * sap, socklen_t addr_size,
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
 int ai_to_sockaddr (const struct addr_info * ai,
-                    struct sockaddr * sap, socklen_t * salen)
+                    struct sockaddr_storage * sap, socklen_t * salen)
 {
   return ia_to_sockaddr (&(ai->ip), sap, salen);
 }

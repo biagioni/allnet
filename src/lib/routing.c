@@ -631,8 +631,7 @@ print_dht (0); */
           (addr_closer (dest, nbits, (unsigned char *) my_address,
                         ai->destination)) &&
           (! addr_in_list (ai->destination, prev_matches, prev_count))) {
-        struct sockaddr * sap = (struct sockaddr *) (result + peer);
-        if (ai_to_sockaddr (ai, sap, alen + peer)) {
+        if (ai_to_sockaddr (ai, result + peer, alen + peer)) {
           peer++;   /* a valid translation */
           memcpy (prev_matches + (prev_count * ADDRESS_SIZE),  /* add to list */
                   ai->destination, ADDRESS_SIZE);
@@ -898,7 +897,7 @@ static int delete_matching_address (struct socket_address_set * sock,
   struct sockaddr_storage sas;
   memset (&sas, 0, sizeof (sas));
   socklen_t alen;
-  if (! ai_to_sockaddr (aip, (struct sockaddr *) &sas, &alen)) {
+  if (! ai_to_sockaddr (aip, &sas, &alen)) {
     printf ("error converting to sockaddr ai ");
     print_addr_info (aip);
     return 1;  /* keep */
@@ -996,7 +995,7 @@ int is_in_routing_table (const struct sockaddr * addr, socklen_t alen)
     if (peers [i].ai.nbits > 0) {
       struct sockaddr_storage peer;
       socklen_t plen;
-      ai_to_sockaddr (&(peers [i].ai), (struct sockaddr *) (&peer), &plen);
+      ai_to_sockaddr (&(peers [i].ai), &peer, &plen);
       if (same_sockaddr ((struct sockaddr_storage *) addr, alen, &peer, plen)) {
         result = 1;
         break;

@@ -137,13 +137,16 @@ static void * ping_all_pending (void * arg)
     struct sockaddr_storage sas;
     memset (&sas, 0, sizeof (sas));
     socklen_t alen = 0;
-    ia_to_sockaddr (&(ai.ip), (struct sockaddr *) (&sas), &alen);
-    if ((ai.ip.ip_version == 4) && (a->sockfd_v4 >= 0))
-      socket_send_to_ip (a->sockfd_v4, message, msize, sas, alen,
-                         "adht.c/ping_all_pending v4");
-    else if (a->sockfd_v6 >= 0)  /* try to send on v6 even for v4 addrs */
-      socket_send_to_ip (a->sockfd_v6, message, msize, sas, alen,
-                         "adht.c/ping_all_pending v6");
+    ia_to_sockaddr (&(ai.ip), &sas, &alen);
+    int sockfd = a->sockfd_v4;
+    if ((ai.ip.ip_version == 6) || (a->sockfd_v4 < 0)) {
+      sockfd = a->sockfd_v6;
+      if (ai.ip.ip_version == 4)  /* sockfd_v4 is < 0, send on v6 socket */
+        ai_embed_v4_in_v6 (&sas, &alen);
+    }
+    if (sockfd >= 0)
+      socket_send_to_ip (sockfd, message, msize, sas, alen,
+                         "adht.c/ping_all_pending");
   }
   free (message);
   a->finished = 1;
@@ -315,7 +318,7 @@ void dht_process (char * message, unsigned int msize,
       struct sockaddr_storage ping_addr;
       struct sockaddr * pingp = (struct sockaddr *) (&ping_addr);
       socklen_t plen = 0;
-      ai_to_sockaddr (ai, pingp, &plen);
+      ai_to_sockaddr (ai, &ping_addr, &plen);
       if (! is_in_routing_table (pingp, plen))
         routing_add_ping (ai);
     }
