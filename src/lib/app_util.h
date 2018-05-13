@@ -16,6 +16,7 @@
 extern int connect_to_local (const char * program_name,
                              const char * arg0,
                              const char * path,
+                             int start_allnet_if_needed,
                              int start_keepalive_thread);
 
 /* return 1 for success, 0 otherwise */

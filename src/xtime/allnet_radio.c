@@ -183,7 +183,7 @@ int main (int argc, char ** argv)
   log_to_output (verbose);
 
   /* pd p = init_pipe_descriptor (log); */
-  if (connect_to_local (argv [0], argv [0], NULL, 1) < 0)
+  if (connect_to_local (argv [0], argv [0], NULL, 1, 1) < 0)
     return 1;
 
   int debug = debug_switch (&argc, argv);

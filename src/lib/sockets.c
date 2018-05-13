@@ -419,8 +419,7 @@ struct socket_read_result socket_read (struct socket_set * s,
   return r;
 }
 
-/* any of these may be null, si and ai set to -1 if they are not known.
- * is_sendto is 1 for sendto, 0 for send */
+/* any of these may be null, si and ai set to -1 if they are not known. */
 static void send_error (const char * message, int msize, int flags, int res,
                         const struct sockaddr_storage sas, socklen_t alen,
                         const char * desc, struct socket_set * s,

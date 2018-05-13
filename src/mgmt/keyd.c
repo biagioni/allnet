@@ -272,7 +272,7 @@ void keyd_generate (char * pname)
 void keyd_main (char * pname)
 {
   alog = init_log ("keyd");
-  int sock = connect_to_local (pname, pname, NULL, 1);
+  int sock = connect_to_local (pname, pname, NULL, 0, 1);
   if (sock < 0)
     return;
 

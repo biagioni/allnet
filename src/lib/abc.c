@@ -33,7 +33,7 @@ static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
   setsockopt (s, SOL_SOCKET, SO_BROADCAST, &bc, sizeof(bc));
   int hops = 1;  /* set outgoing ttl to 1 */
   if (setsockopt (s, IPPROTO_IP, IP_TTL, &hops, sizeof(hops)))
-    perror ("add_local_broadcast_sockets v4 setosockopt hops");
+    perror ("add_local_broadcast_sockets v4 setsockopt hops");
   if (! socket_add (sockets, s, 0, 0, 0)) {
     printf ("add_local_broadcast_sockets unable to add socket %d\n", s);
     return;
@@ -76,7 +76,7 @@ static void add_v6 (struct socket_set * sockets)
   }
   int mhops = 1;   /* set outgoing max hops to 1 */
   if (setsockopt (s, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &mhops, sizeof(mhops)))
-    perror ("add_local_broadcast_sockets v6 setosockopt multicast hops");
+    perror ("add_local_broadcast_sockets v6 setsockopt multicast hops");
   /* tell the OS that we are interested in multicast packets */
   struct in6_addr mcast;
   memset (&mcast, 0, sizeof (mcast));
@@ -88,7 +88,7 @@ static void add_v6 (struct socket_set * sockets)
       printf ("disabling ipv6 multicast on local networks\n");
       return;
     }
-    perror ("add_local_broadcast_sockets v6 setosockopt multicast receive");
+    perror ("add_local_broadcast_sockets v6 setsockopt multicast receive");
   }
   if (! socket_add (sockets, s, 0, 0, 0)) {
     printf ("add_local_broadcast_sockets unable to add v6 socket %d\n", s);

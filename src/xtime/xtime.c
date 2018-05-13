@@ -223,7 +223,7 @@ static void announce (time_t interval, int hops, allnet_rsa_prvkey key,
 
 static int init_xtime (char * arg0)
 {
-  int sock = connect_to_local ("xtime", arg0, NULL, 1);
+  int sock = connect_to_local ("xtime", arg0, NULL, 0, 1);
   if (sock < 0)
     exit (1);
   return sock;

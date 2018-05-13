@@ -304,24 +304,26 @@ static void * keepalive_thread (void * arg)
  * otherwise, after a while (once the buffer is full) allnet/alocal
  * will close the socket. */
 int connect_to_local (const char * program_name, const char * arg0,
-                      const char * path, int start_keepalive_thread)
+                      const char * path, int start_allnet_if_needed,
+                      int start_keepalive_thread)
 {
 #ifndef ANDROID
   seed_rng ();
 #endif /* ANDROID */
-  int sock = connect_once (0);
-  if (sock < 0) {
+  int sock = connect_once (! start_allnet_if_needed);
+  if ((sock < 0) && start_allnet_if_needed) {
     printf ("%s(%s) unable to connect, starting allnet\n",
             program_name, arg0);
     exec_allnet (strcpy_malloc (arg0, "connect_to_local exec_allnet"),
                  path);
     sleep (1);
     sock = connect_once (1);
-    if (sock < 0) {
+    if (sock < 0)
       printf ("unable to start allnet daemon, giving up\n");
-      return -1;
-    }
-  }  /* success! */
+  }
+  if (sock < 0)
+    return -1;
+  /* else, success! */
   if (start_keepalive_thread) {
     pthread_t ignored;
     pthread_create (&ignored, NULL, keepalive_thread, NULL);

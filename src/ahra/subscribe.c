@@ -164,7 +164,7 @@ int main (int argc, char ** argv)
 
   struct allnet_log * alog = init_log ("subscribe");
   /* pd p = init_pipe_descriptor (alog); */
-  int sock = connect_to_local (argv [0], argv [0], NULL, 1);
+  int sock = connect_to_local (argv [0], argv [0], NULL, 1, 1);
   if (sock < 0)
     return 1;
 
