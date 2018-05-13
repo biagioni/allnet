@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <arpa/inet.h>   /* inet_pton */
@@ -72,6 +73,7 @@ static void add_v6 (struct socket_set * sockets)
   socklen_t alen = sizeof (sin);
   if (bind (s, (struct sockaddr *) (&sin), alen) != 0) {
     perror ("add_local_broadcast_sockets v6 bind");
+    close (s);
     return;
   }
   int mhops = 1;   /* set outgoing max hops to 1 */
@@ -84,14 +86,18 @@ static void add_v6 (struct socket_set * sockets)
   struct ipv6_mreq mreq = { .ipv6mr_multiaddr = mcast,
                             .ipv6mr_interface = 0 };
   if (setsockopt (s, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq, sizeof(mreq))) {
-    if (errno == ENODEV) { /* cannot join the group, do not add the socket */
+    if ((errno == ENODEV) ||
+        (errno == EADDRNOTAVAIL)) {
+      /* cannot join the group, do not add the socket */
       printf ("disabling ipv6 multicast on local networks\n");
+      close (s);
       return;
     }
     perror ("add_local_broadcast_sockets v6 setsockopt multicast receive");
   }
   if (! socket_add (sockets, s, 0, 0, 0)) {
     printf ("add_local_broadcast_sockets unable to add v6 socket %d\n", s);
+    close (s);
     return;
   }
   struct socket_address_validity sav =
