@@ -541,7 +541,6 @@ void allnet_daemon_loop ()
 
 void allnet_daemon_main ()
 {
-printf ("starting allnet_daemon_main\n");
   alog = init_log ("ad");
   sockets.num_sockets = 0;
   sockets.sockets = NULL;
