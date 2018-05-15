@@ -106,6 +106,6 @@ extern int pcache_trace_request (const unsigned char * id);
 extern int pcache_trace_reply (const char * msg, int msize);
 
 /* save cached information to disk */
-extern void pcache_write ();
+extern void pcache_write (void);
 
 #endif /* PACKET_CACHE_H */

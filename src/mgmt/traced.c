@@ -466,7 +466,7 @@ void traced_main (char * pname)
   if (alog == NULL)
     alog = init_log ("traced_main");
   pd p = init_pipe_descriptor (alog);
-  int sock = connect_to_local (pname, pname, NULL, p);
+  int sock = connect_to_local (pname, pname, NULL, p, 0);
   if (sock < 0)
     return;
 

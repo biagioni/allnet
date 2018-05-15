@@ -21,7 +21,7 @@ extern int connect_to_local (const char * program_name,
 
 /* return 1 for success, 0 otherwise */
 extern int local_send (const char * message, int msize, unsigned int priority);
-extern void local_send_keepalive ();
+extern void local_send_keepalive (int send_even_if_recently_sent);
 /* return the message size > 0 for success, 0 otherwise. timeout in ms */
 extern int local_receive (unsigned int timeout,
                           char ** message, unsigned int * priority);

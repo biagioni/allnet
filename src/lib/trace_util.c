@@ -818,7 +818,7 @@ static void wait_for_responses (int sock, char * trace_id, int sec,
                      rememberedh, nh, positionh, alog);
       free (message);
     }
-    local_send_keepalive ();
+    local_send_keepalive (0);
     time_spent = allnet_time_ms () - start;
   }
 #ifdef DEBUG_PRINT
