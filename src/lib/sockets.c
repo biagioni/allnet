@@ -427,7 +427,7 @@ static void send_error (const char * message, int msize, int flags, int res,
                         int si, int ai)
 {
   int e = errno;  /* save the value of errno */
-  const char * es = sys_errlist [e];
+  const char * es = strerror (e);
   printf ("%s sendto: %d (%s)\n", desc, e, es);
   char desc_addr [1000] = "";
   print_sockaddr_str ((struct sockaddr *) (&sas), alen, 0,
