@@ -80,9 +80,9 @@ static void exec_allnet (const char * arg, const char * config_path)
     char * pname;
     char * arg_copy = strcpy_malloc (arg, "exec_allnet");
     find_path (arg_copy, &path, &pname);
-    char * astart = make_program_path (path, "allnet", arg);
+    char * astart = make_program_path (path, "allnetd", arg);
     if ((astart == NULL) || (access (astart, X_OK) != 0)) {
-      perror ("access, unable to find allnet executable");
+      perror ("access, unable to find allnetd executable");
       printf ("unable to start AllNet daemon %s\n", astart);
       exit (1);   /* only exits the child */
     }
