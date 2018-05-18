@@ -7,6 +7,7 @@
 
 #include "lib/app_util.h"
 #include "lib/packet.h"
+#include "lib/mgmt.h"
 #include "lib/media.h"
 #include "lib/sockets.h"
 #include "lib/util.h"
@@ -44,7 +45,8 @@ static char * hms (char * time_string)
 }
 
 static int handle_packet (char * message, unsigned int msize, int * rcvd,
-                          int debug, int verify, int types, int full_payloads,
+                          int debug, int verify, int types, int subtypes,
+                          int full_payloads,
                           unsigned char * src, unsigned int src_bits,
                           unsigned char * dst, unsigned int dst_bits)
 {
@@ -72,8 +74,16 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
     return 0;
   }
   int type = hp->message_type;
-  if ((type <= MAX_PACKET_TYPE) && (! ((1 << type) & types)))
+  if ((type >= 0) && (type <= MAX_PACKET_TYPE) && (! ((1 << type) & types)))
     return 0;  /* do not print this type of packet */
+  if ((type == ALLNET_TYPE_MGMT) && (subtypes != ~0) &&
+      (msize >= ALLNET_MGMT_HEADER_SIZE (hp->transport))) {
+    struct allnet_mgmt_header * ah = (struct allnet_mgmt_header *)
+      (ALLNET_DATA_START (hp, hp->transport, msize));
+    int subtype = ah->mgmt_type;
+    if ((subtype >= 0) && (subtype <= 32) && (! ((1 << subtype) & subtypes)))
+      return 0;
+  }
   if (((src_bits > 0) &&
        (matching_bits (src, src_bits, hp->source, hp->src_nbits) < src_bits)) ||
       ((dst_bits > 0) &&
@@ -194,8 +204,8 @@ static int received_before (char * message, unsigned int mlen)
 #undef MESSAGE_STORAGE
 }
 
-static void main_loop (int debug,
-                       int max, int verify, int unique, int types, int full,
+static void main_loop (int debug, int max, int verify, int unique,
+                       int types, int subtypes, int full,
                        unsigned char * src, unsigned int src_bits,
                        unsigned char * dst, unsigned int dst_bits)
 {
@@ -209,8 +219,8 @@ static void main_loop (int debug,
     }  /* found > 0 */
     if ((! unique) || (! received_before (message, found))) {
       int received = 0;
-      if (handle_packet (message, found, &received, debug, verify, types, full,
-                         src, src_bits, dst, dst_bits))
+      if (handle_packet (message, found, &received, debug, verify,
+                         types, subtypes, full, src, src_bits, dst, dst_bits))
         return;
       if ((max > 0) && (received)) {
         max--;
@@ -270,7 +280,9 @@ int main (int argc, char ** argv)
   int unique = 0;
   int full_payloads = 0;
   int types = ALL_PACKET_TYPES;
-  int type;
+  int type = -1;
+  int subtype = -1;  /* for mgmt packets can specify subtype */
+  int subtypes = ~0; /* all subtypes */
   int opt;
   unsigned long long int addr_int = 0;
   unsigned char dst [ADDRESS_SIZE];
@@ -300,12 +312,26 @@ int main (int argc, char ** argv)
       writeb64u (dst, addr_int);
       break;
     case 't': /* packet type */
-      type = atoi (optarg);
+      subtype = -1;   /* needs to be reset on each loop */
+      if ((strncmp (optarg, "7.", 2) == 0) &&
+          (strlen (optarg) > 2)) {
+        type = 7;
+        subtype = atoi (optarg + 2);
+        int mask = 1 << subtype;
+        if (subtypes == ~0)
+          subtypes = mask;
+        else if (subtypes & mask)  /* already set, clear */
+          subtypes &= ~mask;
+        else
+          subtypes |= mask;
+      } else {
+        type = atoi (optarg);
+      }
       if ((type != 0) && (type <= MAX_PACKET_TYPE)) {  /* valid parameter */
         int mask = 1 << type;
         if (types == ALL_PACKET_TYPES)  /* never set before */
           types = mask;
-        else if (types & mask)  /* already set, clear */
+        else if ((types & mask) && (subtype == -1))  /* already set, clear */
           types &= ~mask;
         else
           types |= mask;
@@ -330,7 +356,7 @@ int main (int argc, char ** argv)
   if (argc > optind)
     max = atoi (argv [optind]);
 
-  main_loop (debug, max, verify, unique, types, full_payloads,
+  main_loop (debug, max, verify, unique, types, subtypes, full_payloads,
              src, src_bits, dst, dst_bits);
   return 0;
 }

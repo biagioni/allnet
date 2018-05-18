@@ -97,8 +97,8 @@ static void handle_packet (char * message, int msize)
   if (((msize - (kp - message)) != 513) ||
       (*kp != KEY_RSA4096_E65537)) {
     snprintf (alog->b, alog->s,
-              "msize %d - (%p - %p = %zd) =? 513, *kp %d\n",
-              msize, kp, message, kp - message, *kp);
+              "msize %d - (%p - %p = %d) =? 513, *kp %d\n",
+              msize, kp, message, (int)(kp - message), *kp);
     log_print (alog);
     kp = NULL;
     ksize = 0;

@@ -208,9 +208,9 @@ static void debug_public_key_size (const char * text, int tsize,
       snprintf (buffer, sizeof (buffer),
                 "notice: public key has %d-byte signature, %d bytes given",
                 rsa_size, ssize);
-    pipemsg_debug_last_received (buffer);
   }
 #ifdef DEBUG_PRINT
+  printf ("%s\n", buffer);
 #endif /* DEBUG_PRINT */
 }
 

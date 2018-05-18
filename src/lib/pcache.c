@@ -120,7 +120,7 @@ static void debug_crash (const char * message)
 {
   if ((message != NULL) && (strlen (message) > 0))
     printf ("error %s, now crashing\n", message);
-  int x = strlen (message) - strlen (message);
+  int x = (int) (message - message);
   /* division by zero usually generates a core dump, where supported */
   printf ("crashing %d\n", 1 / x);  /* divide by zero, never printed */
 }
@@ -196,9 +196,9 @@ static void print_stats (const char * desc)
           max_acks, (int) ACKS_PER_SLOT, max_acks_index);
 }
 
-static void print_ack_table_entry (int index)
+static void print_ack_table_entry (int aindex)
 {
-  int base = index - (index % ACKS_PER_SLOT);
+  int base = aindex - (aindex % ACKS_PER_SLOT);
   int i;
   for (i = 0; i < ACKS_PER_SLOT; i++) {
     if (ack_table [base + i].used) {
@@ -258,7 +258,7 @@ static void init_sizes ()
         num_acks -= (num_acks % ACKS_PER_SLOT);
     } else {
       error = "unable to read ~/.allnet/acache/sizes";
-      error_n = n;
+      error_n = (int)n;
     }
   }
   close (fd);
@@ -316,7 +316,7 @@ static int initialize_tokens_from_file ()
     if (fsize == sizeof (struct tokens_file)) {  /* read the file */
       struct tokens_file * t;
       if (read_file_malloc (fname, (char **)(&t), 1)) {
-        num_external_tokens = t->num_tokens;
+        num_external_tokens = (int)t->num_tokens;
         if ((num_external_tokens > MAX_TOKENS) ||  /* sanity check */
             (num_external_tokens <= 0)) {
           printf ("error, read %d tokens, setting to %d\n",
@@ -407,10 +407,10 @@ static int initialize_acks_from_file ()
       int i;
       for (i = 0; i < num_acks; i++) {
         if (ack_table [i].used) {
-          int index = (readb64 (ack_table [i].id) % num_acks);
-          if ((i / ACKS_PER_SLOT) != (index / ACKS_PER_SLOT)) {
+          int aindex = (readb64 (ack_table [i].id) % num_acks);
+          if ((i / ACKS_PER_SLOT) != (aindex / ACKS_PER_SLOT)) {
 printf ("verifying ~/.allnet/acache/acks file, no match at entry %d %d/%d, ",
-i, index, ACKS_PER_SLOT);
+i, aindex, ACKS_PER_SLOT);
 print_buffer (ack_table [i].id , MESSAGE_ID_SIZE, "id", 16, 1);
             result = 0;
             break;
@@ -501,7 +501,7 @@ static void write_messages_file (int override)
   char * fname;
   if (config_file_name ("acache", "messages", &fname)) {
     size_t msize = num_message_table_entries * sizeof (struct hash_table_entry);
-    if (0 == write_file (fname, (char *)message_table, msize, 1))
+    if (0 == write_file (fname, (char *)message_table, (int)msize, 1))
       printf ("unable to write messages file %s of size %zd\n", fname, msize);
     free (fname);
   } else {
@@ -518,7 +518,7 @@ static void write_acks_file (int override)
   char * fname;
   if (config_file_name ("acache", "acks", &fname)) {
     size_t asize = num_acks * sizeof (struct hash_ack_entry);
-    if (0 == write_file (fname, (char *)ack_table, asize, 1))
+    if (0 == write_file (fname, (char *)ack_table, (int)asize, 1))
       printf ("unable to write ack file %s of size %zd\n", fname, asize);
     free (fname);
   } else {
@@ -545,7 +545,7 @@ static void write_tokens_file (int override)
     memcpy (t.local_token, local_token, PCACHE_TOKEN_SIZE);
     memcpy (t.tokens, token_list, sizeof (token_list));
     size_t asize = sizeof (t);
-    if (0 == write_file (fname, (char *)(&t), asize, 1))
+    if (0 == write_file (fname, (char *)(&t), (int)asize, 1))
       printf ("unable to write tokens file %s of size %zd\n", fname, asize);
     free (fname);
   } else {
@@ -602,7 +602,7 @@ int pcache_message_id (const char * message, int msize, char * result_id)
     return 1;
   }
   /* compute a message ID by hashing together the contents of the message */
-  sha512_bytes (message + hsize, msize - hsize, result_id, MESSAGE_ID_SIZE);
+  sha512_bytes (message + hsize, (int)(msize - hsize), result_id, MESSAGE_ID_SIZE);
 #ifdef COMPARE_SHA_TO_OPENSSL
   unsigned char copy [SHA512_DIGEST_LENGTH];
   SHA512((unsigned char *) (message + hsize), msize - hsize, copy);
@@ -664,12 +664,12 @@ tokens_shifted = tokens_shifted | (1 << token_shift);
 /* free up messages by priority (for same priority, free up earlier messages)
  * until at least half of the space + msize is available.
  * if msize >= half the space, removes all existing messages in the entry. */
-static int gc_messages_entry (int index, int msize, int token_shift)
+static int gc_messages_entry (int eindex, int msize, int token_shift)
 {
 #ifdef DEBUG_PRINT
-  printf ("gc_messages_entry (%d, %d)\n", index, msize);
+  printf ("gc_messages_entry (%d, %d)\n", eindex, msize);
 #endif /* DEBUG_PRINT */
-  struct hash_table_entry * hp = message_table + index;
+  struct hash_table_entry * hp = message_table + eindex;
   if (hp->num_messages <= 0)                   /* no messages, we are done */
     return 0;
   int wanted_space = MESSAGE_STORAGE_SIZE / 2 + msize + MESSAGE_HEADER_SIZE;
@@ -715,18 +715,20 @@ int total_size = -33;  /* for debugging */
   }
   while (total_size + wanted_space > MESSAGE_STORAGE_SIZE) {
   /* repeatedly delete the lowest-priority message until we have enough space */
-    int index = -1;
+    int lpindex = -1;  /* index of lowest-priority message */
     for (i = 0; i < hp->num_messages; i++)
       if ((msgs [i].keep) &&
-          ((index < 0) || (msgs [i].mh.priority < msgs [index].mh.priority)))
-        index = i;
-    if ((index < 0) || (! msgs [index].keep)) {  /* all messages have expired */
-      hp->num_messages = 0;                      /* delete all messages */
+          ((lpindex < 0) ||
+           (msgs [i].mh.priority < msgs [lpindex].mh.priority)))
+        lpindex = i;
+    if ((lpindex < 0) || (! msgs [lpindex].keep)) {
+      /* all messages have expired, delete them all */
+      hp->num_messages = 0;
       return 0;
     }
-    DEBUG_GC (((index < 0) || (! msgs [index].keep)), 4, 1); 
-    msgs [index].keep = 0;    /* mark this message for deletion */
-    total_size -= msgs [index].mh.length + MESSAGE_HEADER_SIZE;
+    DEBUG_GC (((lpindex < 0) || (! msgs [lpindex].keep)), 4, 1);
+    msgs [lpindex].keep = 0;    /* mark this message for deletion */
+    total_size -= msgs [lpindex].mh.length + MESSAGE_HEADER_SIZE;
     num_messages--;
     DEBUG_GC ((num_messages < 0), 5, 1); 
   }
@@ -763,12 +765,12 @@ printf ("size %d =? %d, num = %d =? %d\n", check_size, total_size, check_num, nu
 
 /* free up acks at random, until at least half of the acks in
  * the slot are free */
-static void gc_ack_slot (int index, int token_shift)
+static void gc_ack_slot (int aindex, int token_shift)
 {
 #ifdef DEBUG_PRINT
-  printf ("gc_ack_slot (%d)\n", index);
+  printf ("gc_ack_slot (%d)\n", aindex);
 #endif /* DEBUG_PRINT */
-  int base = index - (index % ACKS_PER_SLOT);
+  int base = aindex - (aindex % ACKS_PER_SLOT);
   int i = 0;
   int used_count = 0;
   for (i = 0; i < ACKS_PER_SLOT; i++) {
@@ -776,7 +778,7 @@ static void gc_ack_slot (int index, int token_shift)
       used_count++;
   }
   while (used_count > ACKS_PER_SLOT / 2) {
-    int sel = random_int (0, ACKS_PER_SLOT - 1);  /* delete this entry */
+    int sel = (int)random_int (0, ACKS_PER_SLOT - 1);  /* delete this entry */
     if (ack_table [base + sel].used) {            /* if it's in use */
       if (! pid_is_in_bloom (ack_table [base + sel].ack, PID_ACK_FILTER))
         pid_add_to_bloom (ack_table [base + sel].ack, PID_ACK_FILTER);
@@ -830,12 +832,12 @@ printf ("num_external_tokens is now %d\n", num_external_tokens);
 /* Garbage collects both the messages and ack tables, guaranteeing
  * that at least half the bytes in each message table entry
  * and half the entries in each ack table slot are free. 
- * If index is in the range 0..num_message_table_entries,
+ * If eindex is in the range 0..num_message_table_entries,
  * also guarantees that the message table entry at that slot has
  * at least msize free bytes, and returns the offset for that entry.
  * otherwise returns 0.
  * Also updates the token. */
-static int do_gc (int index, int msize,
+static int do_gc (int eindex, int msize,
                   int write_tok, int write_msg, int write_ack)
 {
 #ifdef PRINT_GC
@@ -845,7 +847,7 @@ static int do_gc (int index, int msize,
   static int gc_counter = 1;
   char desc [1000];
   snprintf (desc, sizeof (desc),
-            "before gc (%d, %d, %d)", gc_counter, index, msize);
+            "before gc (%d, %d, %d)", gc_counter, eindex, msize);
   print_stats (desc);
 #endif /* VERBOSE_GC */
   int result = 0;
@@ -860,7 +862,7 @@ static int do_gc (int index, int msize,
   print_stats ("acks done, messages next");
 #endif /* VERBOSE_GC */
   for (i = 0; i < num_message_table_entries; i++) {
-    if (i == index)  /* use msize and set result */
+    if (i == eindex)  /* use msize and set result */
       result = gc_messages_entry (i, msize, delta_tokens);
     else
       gc_messages_entry (i, 0, delta_tokens);
@@ -868,7 +870,7 @@ static int do_gc (int index, int msize,
   reinit_local_token ();
 #ifdef VERBOSE_GC
   snprintf (desc, sizeof (desc),
-            "gc (%d, %d, %d) => %d", gc_counter++, index, msize, result);
+            "gc (%d, %d, %d) => %d", gc_counter++, eindex, msize, result);
   print_stats (desc);
 #endif /* VERBOSE_GC */
   long long int us = allnet_time_us () - start;
@@ -896,8 +898,8 @@ void pcache_save_packet (const char * message, int msize, int priority)
   }
   if (pcache_id_found (id))   /* already here, nothing to do */
     return;
-  int index = (readb64 (id) % num_message_table_entries);
-  struct hash_table_entry * hp = message_table + index;
+  int eindex = (readb64 (id) % num_message_table_entries);
+  struct hash_table_entry * hp = message_table + eindex;
   int i;
   int offset = 0;
   for (i = 0; i < hp->num_messages; i++) {
@@ -907,7 +909,7 @@ void pcache_save_packet (const char * message, int msize, int priority)
   }
   int did_gc = 0;
   if (offset + MESSAGE_HEADER_SIZE + msize > MESSAGE_STORAGE_SIZE) {
-    offset = do_gc (index, msize, 1, 0, 1);
+    offset = do_gc (eindex, msize, 1, 0, 1);
     did_gc = 1;
   }
   if (offset + MESSAGE_HEADER_SIZE + msize <= MESSAGE_STORAGE_SIZE) {
@@ -920,7 +922,7 @@ void pcache_save_packet (const char * message, int msize, int priority)
     memcpy (hp->storage + offset + MESSAGE_HEADER_SIZE, message, msize);
     hp->num_messages = hp->num_messages + 1; 
   } else {
-    printf ("gc error, @ %d offset %d + %d + %d > %d\n", index, offset,
+    printf ("gc error, @ %d offset %d + %d + %d > %d\n", eindex, offset,
             (int) MESSAGE_HEADER_SIZE, msize, (int) MESSAGE_STORAGE_SIZE);
     exit (1);
   }
@@ -955,8 +957,8 @@ static void delete_message_entry (struct hash_table_entry * hp,
  * if found and delete is 1, deletes it */
 static int pcache_id_found_delete (const char * id, int delete)
 {
-  int index = (readb64 (id) % num_message_table_entries);
-  struct hash_table_entry * hp = message_table + index;
+  int eindex = (readb64 (id) % num_message_table_entries);
+  struct hash_table_entry * hp = message_table + eindex;
   int i;
   int offset = 0;
   for (i = 0; i < hp->num_messages; i++) {
@@ -985,8 +987,8 @@ int pcache_id_found (const char * id)
 /* return the index of the ack in the ack hash table, or -1 if not found */
 static int find_one_ack (const char * id)
 {
-  int index = (readb64 (id) % num_acks);
-  int base = index - (index % ACKS_PER_SLOT);
+  int aindex = (readb64 (id) % num_acks);
+  int base = aindex - (aindex % ACKS_PER_SLOT);
   int i;
   for (i = 0; i < ACKS_PER_SLOT; i++) {
     if ((ack_table [base + i].used) &&
@@ -1001,18 +1003,18 @@ static int find_one_ack (const char * id)
  * if we return 1, fill in the ack */
 int pcache_id_acked (const char * id, char * ack)
 {
-  int index = find_one_ack (id);
-  if (index >= 0) {
-    memcpy (ack, ack_table [index].ack, MESSAGE_ID_SIZE);
+  int aindex = find_one_ack (id);
+  if (aindex >= 0) {
+    memcpy (ack, ack_table [aindex].ack, MESSAGE_ID_SIZE);
     return 1;
   }
   return 0;
 }
 
 /* returns an index if there is one available, otherwise -1 */
-static int find_free_ack_in_slot (int index)
+static int find_free_ack_in_slot (int aindex)
 {
-  int base = index - (index % ACKS_PER_SLOT);
+  int base = aindex - (aindex % ACKS_PER_SLOT);
   int i;
   for (i = 0; i < ACKS_PER_SLOT; i++)
     if (! ack_table [base + i].used)    /* found a free entry */
@@ -1033,73 +1035,73 @@ static int save_one_ack (const char * ack, int max_hops)
     return 0;
   char id [MESSAGE_ID_SIZE];
   sha512_bytes (ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
-  int index = find_one_ack (id);
-  if (index >= 0) {  /* found */
-    if (ack_table [index].max_hops < max_hops)
-      ack_table [index].max_hops = max_hops;
+  int aindex = find_one_ack (id);
+  if (aindex >= 0) {  /* found */
+    if (ack_table [aindex].max_hops < max_hops)
+      ack_table [aindex].max_hops = max_hops;
 #ifdef DEBUG_PRINT
     duplicate_count++;
 #endif /* DEBUG_PRINT */
-    return index;
+    return aindex;
   }
   /* else, no existing entry, look for a free entry */
   int did_gc = 0;                     /* save file more aggressively if gc'd */
-  index = (readb64 (id) % num_acks); /* index used if possible */
-  if (ack_table [index].used) {       /* find another position in slot */
-    int found = find_free_ack_in_slot (index);
+  aindex = (readb64 (id) % num_acks); /* index used if possible */
+  if (ack_table [aindex].used) {      /* find another position in slot */
+    int found = find_free_ack_in_slot (aindex);
     if (found < 0) {                  /* no free slot, must gc */
       do_gc (-1, 0, 1, 1, 0);
       did_gc = 1;
-      if (ack_table [index].used) {   /* find another position in slot */
-        found = find_free_ack_in_slot (index);  /* should always have space */
+      if (ack_table [aindex].used) {   /* find another position in slot */
+        found = find_free_ack_in_slot (aindex);  /* should always have space */
         if (found < 0) {              /* no free slot, error in gc */
-          printf ("error 5: no space after gc in slot %d\n", index);
+          printf ("error 5: no space after gc in slot %d\n", aindex);
           print_stats ("error 6: no room for ack after gc");
-          print_ack_table_entry (index);
+          print_ack_table_entry (aindex);
           debug_crash ("no room for ack after gc");
         }
       } else {
-        found = index;
+        found = aindex;
       }
     }
     assert (found >= 0);
-    index = found;
+    aindex = found;
   }
-  /* now index refers to the entry we will use.  It is in the
+  /* now aindex refers to the entry we will use.  It is in the
    * same slot as the original index, but may be a different entry */
-  if (ack_table [index].used) {
-    printf ("error 7: ack_table [%d] is used (%d)\n", index, did_gc);
+  if (ack_table [aindex].used) {
+    printf ("error 7: ack_table [%d] is used (%d)\n", aindex, did_gc);
     print_stats ("error 8: ack index after gc is still in use");
-    print_ack_table_entry (index);
+    print_ack_table_entry (aindex);
     debug_crash ("invalid index, ack entry still in use after gc");
   }
 #ifdef DEBUG_PRINT
   static int replace_count = 0;
-  if (ack_table [index].used) replace_count++;
+  if (ack_table [aindex].used) replace_count++;
   int occupied = 0;
   for (i = 0; i < num_acks; i++)
     if (ack_table [i].used)
       occupied++;
   printf ("replacing %d+%d/%d @ index %d/%d\n", replace_count, duplicate_count,
-          received_count, index, occupied);
+          received_count, aindex, occupied);
 #endif /* DEBUG_PRINT */
-  memcpy (ack_table [index].ack, ack, MESSAGE_ID_SIZE);
-  memcpy (ack_table [index].id , id , MESSAGE_ID_SIZE);
-  ack_table [index].used = 1;
-  ack_table [index].max_hops = max_hops;
-  ack_table [index].sent_to_tokens = 0;
+  memcpy (ack_table [aindex].ack, ack, MESSAGE_ID_SIZE);
+  memcpy (ack_table [aindex].id , id , MESSAGE_ID_SIZE);
+  ack_table [aindex].used = 1;
+  ack_table [aindex].max_hops = max_hops;
+  ack_table [aindex].sent_to_tokens = 0;
   /* finally, delete the corresponding message if any */
   pcache_id_found_delete (id, 1);  /* delete if found */
-  return index;
+  return aindex;
 }
 
 /* each ack has size MESSAGE_ID_SIZE */
 /* record all these acks and delete (stop caching) corresponding messages */
-void pcache_save_acks (const char * acks, int num_acks, int max_hops)
+void pcache_save_acks (const char * acks, int num, int max_hops)
 {
   init_pcache ();
   int i;
-  for (i = 0; i < num_acks; i++)
+  for (i = 0; i < num; i++)
     save_one_ack (acks + i * MESSAGE_ID_SIZE, max_hops);
   write_acks_file (0);
 }
@@ -1147,26 +1149,26 @@ int pcache_ack_for_token (const char * token, const char * ack)
     return 0;
   char id [MESSAGE_ID_SIZE];
   sha512_bytes (ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
-  int index = find_one_ack (id);
-  int itoken = token_to_send_to (token, ack_table [index].sent_to_tokens);
+  int aindex = find_one_ack (id);
+  int itoken = token_to_send_to (token, ack_table [aindex].sent_to_tokens);
   if (itoken == -1)  /* already sent */
     return 0;
-  if (index >= 0)    /* found */
-    ack_table [index].sent_to_tokens |= (((uint64_t) 1) << itoken);
+  if (aindex >= 0)    /* found */
+    ack_table [aindex].sent_to_tokens |= (((uint64_t) 1) << itoken);
   return 1;
 }
 
 /* call pcache_ack_for_token repeatedly for all these acks,
  * moving the new ones to the front of the array and returning the
  * number that are new (0 for none, -1 for errors) */
-int pcache_acks_for_token (const char * token, char * acks, int num_acks)
+int pcache_acks_for_token (const char * token, char * acks, int num)
 {
   init_pcache ();
   const char * ack = acks;
   char * offset = acks;
   int result = 0;
   int i;
-  for (i = 0; i < num_acks; i++) {
+  for (i = 0; i < num; i++) {
     if (pcache_ack_for_token (token, ack)) {  /* good one, keep it */
       if (offset != ack)
         memcpy (offset, ack, MESSAGE_ID_SIZE);
@@ -1321,22 +1323,22 @@ static int matches_req (unsigned int nbits, uint64_t first64,
   assert ((nbits < 64) || (power_two <= 16));
   assert (bitmap_bits < (ALLNET_MTU * 8));
   uint64_t mask = ((nbits == 0) ? 0 : ((int64_t) (-1)) << (64 - nbits));
-  int index = ((first64 & mask) >> (64 - power_two));
+  int bindex = (int)((first64 & mask) >> (64 - power_two));
 #if 0
 printf ("first64 %" PRIx64 " mask %" PRIx64 " => index %d/%x, ^2 %d nbits %d\n",
-first64, mask, index, index, power_two, nbits);
+first64, mask, bindex, bindex, power_two, nbits);
 #endif /* 0 */
   int loops = ((nbits >= power_two) ? 1 : (1 << (power_two - nbits)));
   int i;
   for (i = 0; i < loops; i++) {
-    int byte_index = (index + i) / 8;
-    int bit_index  = (index + i) % 8;
+    int byte_index = (bindex + i) / 8;
+    int bit_index  = (bindex + i) % 8;
 #if 0
 printf ("[%d] %02x bit %d (%x) %s %016" PRIx64 "/%d >> %d = %x, %d loops\n",
 byte_index, bitmap [byte_index], bit_index, (0x80 >> bit_index),
 (((bitmap [byte_index] & (0x80 >> bit_index)) != 0) ? "matches"
                                                    : "does not match"),
-first64, nbits, (64 - power_two), index, loops);
+first64, nbits, (64 - power_two), bindex, loops);
 printf ("%p: ", bitmap);
 print_buffer ((char *)bitmap, bitmap_bits, NULL, bitmap_bits / 8, 1);
 #endif /* 0 */
@@ -1354,9 +1356,9 @@ static int matches_mid (const char * mid, int nbits,
   assert (bitmap_bits < (ALLNET_MTU * 8));
   assert (bitmap_bits == power_two (nbits));
   uint64_t first64 = readb64 (mid);
-  int index = first64 >> (64 - nbits);
-  int byte_index = index / 8;
-  int bit_index  = index % 8;
+  int bindex = (int)(first64 >> (64 - nbits));
+  int byte_index = bindex / 8;
+  int bit_index  = bindex % 8;
   return ((bitmap [byte_index] & (256 >> bit_index)) != 0);
 }
 
@@ -1477,17 +1479,17 @@ int pcache_ack_found (const char * acks);
 
 #ifdef PRINT_CACHE_FILES
 
-static void print_message_table_entry (int index)
+static void print_message_table_entry (int eindex)
 {
   int offset = 0;
   int i;
-  for (i = 0; i < message_table [index].num_messages; i++) {
+  for (i = 0; i < message_table [eindex].num_messages; i++) {
     struct message_header mh;
-    memcpy (&mh, message_table [index].storage + offset, MESSAGE_HEADER_SIZE);
+    memcpy (&mh, message_table [eindex].storage + offset, MESSAGE_HEADER_SIZE);
     char desc [1000];
     snprintf (desc, sizeof (desc), "message %d: offset %d, token %" PRIx64 "",
               i, offset, mh.sent_to_tokens);
-    print_buffer (message_table [index].storage + offset + MESSAGE_HEADER_SIZE,
+    print_buffer (message_table [eindex].storage + offset + MESSAGE_HEADER_SIZE,
                   mh.length, desc, 26, 1);
     offset += mh.length + MESSAGE_HEADER_SIZE;
   }
@@ -1500,22 +1502,23 @@ int main (int argc, char ** argv)
     int i;
     for (i = 1; i < argc; i++) {
       if (strcasecmp (argv [i], "all") == 0) {
-        int index;
-        for (index = 0; index < num_message_table_entries; index++) {
-          printf ("message table entry %d:\n", index);
-          print_message_table_entry (index);
+        int eindex;
+        for (eindex = 0; eindex < num_message_table_entries; eindex++) {
+          printf ("message table entry %d:\n", eindex);
+          print_message_table_entry (eindex);
         }
-        for (index = 0; index < num_acks; index += ACKS_PER_SLOT) {
-          printf ("ack table slot beginning with %d:\n", index);
-          print_ack_table_entry (index);
+        int aindex;
+        for (aindex = 0; aindex < num_acks; aindex += ACKS_PER_SLOT) {
+          printf ("ack table slot beginning with %d:\n", aindex);
+          print_ack_table_entry (aindex);
         }
         break;   /* don't bother with any other arguments */
       }
-      int index = atoi (argv [i]);
-      if ((index >= 0) && (index < num_message_table_entries))
-        print_message_table_entry (index);
-      if ((index >= 0) && (index < num_acks))
-        print_ack_table_entry (index);
+      int eaindex = atoi (argv [i]);
+      if ((eaindex >= 0) && (eaindex < num_message_table_entries))
+        print_message_table_entry (eaindex);
+      if ((eaindex >= 0) && (eaindex < num_acks))
+        print_ack_table_entry (eaindex);
     }
   }
   print_stats ("saved cache");

@@ -105,7 +105,7 @@ static void initialize_sockets ()
     printf ("unable to create and bind to IPv4 out socket\n");
   else if (created_out) {  /* ipv6 socket is valid, use it for ipv4 */
     socket_sock_loop (&sockets, set_ipv4, &sock_v6);
-    sock_v4 = sock_v6;
+    /* sock_v4 = sock_v6; */
   } else                   /* created ipv4 socket, record this */
     created_out = 1;
   int created_bc = add_local_broadcast_sockets (&sockets);
@@ -235,7 +235,7 @@ static struct socket_address_validity *
 {
   if (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
     return NULL;
-  int limit = virtual_clock + ((r.sock->is_local) ? 6 : 180);
+  long long int limit = virtual_clock + ((r.sock->is_local) ? 6 : 180);
   struct socket_address_validity sav =
     { .alive_rcvd = virtual_clock, .alive_sent = virtual_clock,
       .send_limit = SEND_LIMIT_DEFAULT,
@@ -328,7 +328,7 @@ static int process_acks (struct allnet_header * hp, int size)
   pcache_current_token (local_token);
   char * acks = ALLNET_DATA_START (hp, hp->transport, size);
   char * message = (char *) hp;  /* header size computation must be in bytes */
-  int num_acks = minz (size, (acks - message)) / MESSAGE_ID_SIZE;
+  int num_acks = minz (size, (int)(acks - message)) / MESSAGE_ID_SIZE;
   int hops_remaining = minz (hp->max_hops, hp->hops + 1);
   pcache_save_acks (acks, num_acks, hops_remaining);
   int new_acks = pcache_acks_for_token (local_token, acks, num_acks);
@@ -373,7 +373,7 @@ static struct message_process process_mgmt (struct socket_read_result *r)
   struct allnet_mgmt_header * ahm =
     (struct allnet_mgmt_header *) (r->message + hs);
   char * mgmt_payload = ((char *) ahm) + sizeof (struct allnet_mgmt_header);
-  int hdr_size = mgmt_payload - r->message;
+  int hdr_size = (int)(mgmt_payload - r->message);
   int mgmt_payload_size = (r->msize > hdr_size ? r->msize - hdr_size : 0);
   char * new_trace_request = NULL;  /* needed inside the switch statement */
   int new_trace_request_size = 0;

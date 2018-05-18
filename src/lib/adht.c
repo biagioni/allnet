@@ -68,7 +68,7 @@ static int assign_sockfds (struct socket_address_set * sock, void * ref)
   struct ping_all_args * a = (struct ping_all_args *) ref;
   if ((a->sockfd_v6 == -1) && (sock->is_global_v6))
     a->sockfd_v6 = sock->sockfd;
-  if ((a->sockfd_v4 == -1) && (sock->is_global_v4))
+  if ((a->sockfd_v4 == -1) && (sock->is_global_v4) && (! sock->is_global_v6))
     a->sockfd_v4 = sock->sockfd;
   return 1;
 }

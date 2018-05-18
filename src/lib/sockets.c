@@ -323,7 +323,7 @@ static struct socket_read_result
   record_message (struct socket_set * s, long long int rcvd_time,
                   struct socket_address_set * sock,
                   struct sockaddr_storage sas, socklen_t alen,
-                  const char * buffer, ssize_t rcvd)
+                  const char * buffer, int rcvd)
 {
   int is_local = sock->is_local;
   int delta = (is_local ? 2 : 0);    /* local packets have priority also */
@@ -367,8 +367,8 @@ static struct socket_read_result
                                MSG_DONTWAIT, sap, &alen);
       /* all packets must have a min header, local packets also have priority */
       int min = ALLNET_HEADER_SIZE + ((sock->is_local) ? 2 : 0);
-      if (rcvd >= (ssize_t) min)
-        return record_message (s, rcvd_time, sock, sas, alen, buffer, rcvd);
+      if ((rcvd >= (ssize_t) min) && (rcvd <= sizeof (buffer)))
+        return record_message (s, rcvd_time, sock, sas, alen, buffer, (int)rcvd);
       if (errno == ECONNREFUSED) {  /* connected socket was closed by peer */
         result.success = -1;    /* error on this socket */
         result.sock = sock;
@@ -477,7 +477,7 @@ check_sav (sav, "send_on_socket");
   char desc2 [1000];
   snprintf (desc2, sizeof (desc2), "%s send_on_socket", desc);
   /* some error, so the rest of this function is for debugging */
-  send_error (message, msize, flags, result,
+  send_error (message, msize, flags, (int)result,
               sav->addr, sav->alen, desc2, s, sockfd, sav, si, ai);
   return 0;
 }
@@ -613,7 +613,7 @@ int socket_send_to_ip (int sockfd, const char * message, int msize,
     return 1;
   char desc [1000];
   snprintf (desc, sizeof (desc), "%s socket_send_to_ip", debug);
-  send_error (message, msize, flags, result, sas, alen,
+  send_error (message, msize, flags, (int)result, sas, alen,
               desc, NULL, sockfd, NULL, -1, -1);
   return 0;
 }

@@ -115,17 +115,24 @@ static void exec_allnet (const char * arg, const char * config_path)
 
 #else /* ALLNET_USE_FORK */
 
+#if 0
 extern int astart_main (int, char **);
 
 static void * call_allnet_main (void * path)
 {
-  allnet_daemon_main ();
+  char * args [] = { "allnet", "-v", "default", NULL};
+  astart_main (3, args);
   return NULL;
 }
+#endif /* 0 */
 
 static void exec_allnet (char * arg, const char * const_path)
 /* iOS/android version, threads instead of fork */
 {
+printf ("calling exec_allnet in app_util.c, "
+        "probably the wrong thing to do, ignoring\n");
+return;
+#if 0
   pthread_t thread;
   char * path = NULL;
   if (const_path != NULL)
@@ -135,6 +142,7 @@ static void exec_allnet (char * arg, const char * const_path)
     printf ("ios exec_allnet unable to create thread for allnet main\n");
     exit (1);  /* no point continuing */
   }
+#endif /* 0 */
 }
 #endif /* ALLNET_USE_FORK */
 
@@ -146,7 +154,7 @@ static void send_with_priority (const char * message, int msize, unsigned int p)
   char * copy = malloc_or_fail (msize + 2, "app_util.c send_with_priority");
   memcpy (copy, message, msize);
   writeb16 (copy + msize, p);
-  int s = send (internal_sockfd, copy, msize + 2, 0);
+  ssize_t s = send (internal_sockfd, copy, msize + 2, 0);
   if (s < 0)
     perror ("send_with_priority send");
   free (copy);
@@ -181,7 +189,7 @@ static int connect_once (int print_error)
       error_desc = NULL;  /* timeout */
       long long int start = allnet_time ();
       int flags = MSG_DONTWAIT;
-      while (allnet_time () < start + 2) {
+      while (allnet_time () < start + 20) {
         /* send a keepalive to start the flow of data */
         local_send_keepalive (1);
         /* now read a response (hopefully) */
@@ -356,10 +364,10 @@ int local_receive (unsigned int timeout,
   int flags = MSG_DONTWAIT;
   while (1) {
     ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
-    if (r > 2) {
+    if ((r > 2) && (r <= ALLNET_MTU + 2)) {
       *message = memcpy_malloc (buffer, r - 2, "local_receive");
       *priority = readb16 (buffer + (r - 2));
-      return r - 2;
+      return (int)(r - 2);
     }
     if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
       perror ("local_receive recv");
