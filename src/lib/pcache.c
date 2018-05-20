@@ -120,9 +120,9 @@ static void debug_crash (const char * message)
 {
   if ((message != NULL) && (strlen (message) > 0))
     printf ("error %s, now crashing\n", message);
-  int x = (int) (message - message);
-  /* division by zero usually generates a core dump, where supported */
-  printf ("crashing %d\n", 1 / x);  /* divide by zero, never printed */
+  char * p = NULL;
+  /* null pointer dereferencing generates a core dump, where supported */
+  printf ("crashing %d\n", *p);  /* divide by zero, never printed */
 }
 
 static int bytes_used_for_entry (struct hash_table_entry * entry)
