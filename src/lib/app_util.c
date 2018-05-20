@@ -151,6 +151,12 @@ static long long int last_sent = 0;
 
 static void send_with_priority (const char * message, int msize, unsigned int p)
 {
+  if (internal_sockfd < 0) {
+    printf ("send_with_priority: unininitialzed socket %d, ls %lld\n",
+            internal_sockfd, last_sent);
+    char * pq = NULL;
+    printf ("crashing %d\n", *pq);
+  }
   char * copy = malloc_or_fail (msize + 2, "app_util.c send_with_priority");
   memcpy (copy, message, msize);
   writeb16 (copy + msize, p);
@@ -166,6 +172,13 @@ void local_send_keepalive (int override)
   long long int now = allnet_time ();
   if ((! override) && (last_sent + (KEEPALIVE_SECONDS / 2) > now))
     return;  /* do nothing */
+#if 0
+struct sockaddr_storage sas; socklen_t alen = sizeof (sas);
+getsockname(internal_sockfd, (struct sockaddr *)(&sas), &alen);
+int port = htons (sas.ss_family == AF_INET ? ((struct sockaddr_in *) (&sas))->sin_port
+                  : ((struct sockaddr_in6 *) (&sas))->sin6_port);
+printf ("local_send_keepalive from port %04x\n", port);
+#endif /* 0 */
   last_sent = now;
   unsigned int msize;
   const char * message = keepalive_packet (&msize);
@@ -355,7 +368,7 @@ int local_receive (unsigned int timeout,
   *priority = 0;
   static int keepalive_count = 0;   /* send a keepalive every 5 rcvd messages */
   if (keepalive_count <= 0) {
-    local_send_keepalive (0);
+    local_send_keepalive (1);
     keepalive_count = 5;
   } else {               /* keepalive_count > 0 */
     keepalive_count--;
