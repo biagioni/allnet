@@ -315,7 +315,7 @@ static void stop_all ()
 #if ! (defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__))
     /* calling pkill does not seem to be supported on windows */
     printf ("%s: cannot stop allnet (no pid file %s), ", process_name, fname);
-    printf ("running 'pkill -x allnetd|abc'\n");
+    printf ("running 'pkill -x allnetd|abc|allnet-kgen|allnet-keyd'\n");
     /* send a sigint to all allnet processes */
     /* -x specifies that we only use exact match on process names */
     /* allnet|abc kills processes whether they retain the original name
@@ -641,13 +641,14 @@ int astart_main (int argc, char ** argv)
   }
 
   /* start the dependent processes, keyd and keygen */
-  my_call1 (argv [0], alen, "keyd", keyd_main, pid_fd, astart_pid, 0);
-  my_call1 (argv [0], alen, "keygen", keyd_generate, pid_fd, astart_pid, 0);
+  my_call1 (argv [0], alen, "allnet-keyd", keyd_main, pid_fd, astart_pid, 0);
+  my_call1 (argv [0], alen, "allnet-kgen",
+            keyd_generate, pid_fd, astart_pid, 0);
 
   /* start allnet */
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
   setup_signal_handler (1);
-  print_pid (pid_fd, getpid ());
+  /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
 #endif /* ALLNET_USE_FORK */
   my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1);
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
