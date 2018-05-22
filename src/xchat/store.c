@@ -1402,13 +1402,15 @@ static int64_t file_storage_size (const char * fname)
 
 /* returns a system time that can be compared,
  * or 0 in case of non-files (e.g. directories) or errors */
-static uint64_t file_mod_time (const char * fname)
+static uint64_t file_mod_time (const char * fname, int print_errors)
 {
   struct stat st;
   int result = stat (fname, &st);
   if (result != 0) {
-    perror ("file_mod_time stat");
-    printf ("store.c file_mod_time unable to stat '%s'\n", fname);
+    if (print_errors) {
+      perror ("file_mod_time stat");
+      printf ("store.c file_mod_time unable to stat '%s'\n", fname);
+    }
     return 0;
   }
   if (! S_ISREG (st.st_mode)) {
@@ -1493,7 +1495,7 @@ static char * oldest_nonempty_file (const char * contact)
         char * fname = strcat3_malloc (xchat_dir, "/", de->d_name,
                                        "oldest_nonemtpy_file");
         
-        uint64_t ftime = file_mod_time (fname);
+        uint64_t ftime = file_mod_time (fname, 1);
         if ((ftime != 0) && ((oldest_time == 0) || (oldest_time > ftime))) {
           oldest_time = ftime;
           if (oldest_fname != NULL)  /* malloc'd, must be free'd */
@@ -1611,12 +1613,12 @@ int xchat_file_write (const char * contact, keyset k,
 /* because nano/microsecond resolution is not supported on older systems,
  * for simplicity just return the seconds multiplied by 1,000,000 */
 long long int xchat_file_time (const char * contact, keyset k,
-                               const char * fname)
+                               const char * fname, int print_errors)
 {
   char * path = get_xchat_path (k, fname);  /* must be free'd */
   if (path == NULL)
     return 0;
-  uint64_t file_time = file_mod_time (path);
+  uint64_t file_time = file_mod_time (path, print_errors);
   free (path);
   if (file_time > ALLNET_Y2K_SECONDS_IN_UNIX)
     return (file_time - ALLNET_Y2K_SECONDS_IN_UNIX) * 1000LL * 1000LL;

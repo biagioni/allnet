@@ -621,7 +621,7 @@ static void gui_get_messages (char * message, int64_t length, int gui_sock)
     unsigned long long int latest = 0;
     for (ik = 0; ik < nk; ik++) {
       unsigned long long int time =
-        xchat_file_time (contact, k [ik], "last_read") / ALLNET_US_PER_S;
+        xchat_file_time (contact, k [ik], "last_read", 0) / ALLNET_US_PER_S;
       if (time > latest)
         latest = time;
     }

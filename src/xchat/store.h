@@ -134,7 +134,7 @@ extern int xchat_file_write (const char * contact, keyset k,
 /* useful to find out when the file was last written
  * time returned is allnet microseconds (see lib/util.h), or 0 for errors */
 extern long long int xchat_file_time (const char * contact, keyset k,
-                                      const char * fname);
+                                      const char * fname, int print_errors);
 /* return 1 if the file was deleted, 0 otherwise */
 extern int xchat_file_delete (const char * contact, keyset k,
                               const char * fname);
