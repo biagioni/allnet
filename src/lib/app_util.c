@@ -148,22 +148,29 @@ return;
 
 static int internal_sockfd = -1;
 static long long int last_sent = 0;
+static int internal_print_send_errors = 1;
 
-static void send_with_priority (const char * message, int msize, unsigned int p)
+static int send_with_priority (const char * message, int msize, unsigned int p)
 {
   if (internal_sockfd < 0) {
     printf ("send_with_priority: unininitialzed socket %d, ls %lld\n",
             internal_sockfd, last_sent);
     char * pq = NULL;
     printf ("crashing %d\n", *pq);
+    return 0;
   }
   char * copy = malloc_or_fail (msize + 2, "app_util.c send_with_priority");
   memcpy (copy, message, msize);
   writeb16 (copy + msize, p);
   ssize_t s = send (internal_sockfd, copy, msize + 2, 0);
-  if (s < 0)
+  if ((s < 0) && (internal_print_send_errors)) {
+int e = errno;
     perror ("send_with_priority send");
+printf ("send (%d, %p, %d, 0): result %zd, errno %d\n",
+internal_sockfd, copy, msize + 2, s, e);
+  }
   free (copy);
+  return (s == (msize + 2));
 }
 
 /* send a keepalive unless we have sent messages in the last 5s */
@@ -328,6 +335,7 @@ int connect_to_local (const char * program_name, const char * arg0,
                       const char * path, int start_allnet_if_needed,
                       int start_keepalive_thread)
 {
+  internal_print_send_errors = 0;
 #ifndef ANDROID
   seed_rng ();
 #endif /* ANDROID */
@@ -342,6 +350,7 @@ int connect_to_local (const char * program_name, const char * arg0,
     if (sock < 0)
       printf ("unable to start allnet daemon, giving up\n");
   }
+  internal_print_send_errors = 1;
   if (sock < 0)
     return -1;
   /* else, success! */
@@ -355,9 +364,11 @@ int connect_to_local (const char * program_name, const char * arg0,
 /* return 1 for success, 0 otherwise */
 int local_send (const char * message, int msize, unsigned int priority)
 {
-  send_with_priority (message, msize, priority);
-  last_sent = allnet_time ();
-  return 1;
+  if (send_with_priority (message, msize, priority)) {
+    last_sent = allnet_time ();
+    return 1;
+  }
+  return 0;
 }
 
 /* return the message size > 0 for success, 0 otherwise. timeout in ms */
