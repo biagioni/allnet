@@ -27,7 +27,8 @@ static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
   sin.sin_addr.s_addr = INADDR_ANY;
   socklen_t alen = sizeof (sin);
   if (bind (s, (struct sockaddr *) (&sin), alen) != 0) {
-    perror ("add_local_broadcast_sockets v4 bind");
+    if (errno != EADDRINUSE)
+      perror ("add_local_broadcast_sockets v4 bind");
     return;
   }
   int bc = 1;     /* enable broadcasts */
@@ -89,7 +90,9 @@ static void add_v6 (struct socket_set * sockets)
     if ((errno == ENODEV) ||
         (errno == EADDRNOTAVAIL)) {
       /* cannot join the group, do not add the socket */
+#ifdef DEBUG_PRINT
       printf ("disabling ipv6 multicast on local networks\n");
+#endif /* DEBUG_PRINT */
       close (s);
       return;
     }
