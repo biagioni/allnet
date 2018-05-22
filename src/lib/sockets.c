@@ -18,6 +18,14 @@
 
 static pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+/* if we keep receiving, we should not remove sockets due to exceeding
+ * the send limit, as we may simply not have been receiving from this
+ * socket because the other socket(s) were favored.  E.g. on some systems
+ * it seems that the socket with the most queued packets is favored.
+ * If we get a burst of packets from outside, they all get forwarded,
+ * and the replies from the local sockets are not read until later. */
+static int received_on_most_recent_select = 0;
+
 static void lock (const char * caller)
 {
   pthread_mutex_lock (&global_mutex);
@@ -32,7 +40,8 @@ static void debug_crash ()
 {
   int i = 3;
   i = i - i;  /* 0 */
-  printf ("now crashing: %d\n", 100 / i);
+    char * p = NULL;
+  printf ("now crashing: %d\n", *p);
 }
 
 static void print_sav (struct socket_address_validity * sav)
@@ -305,6 +314,7 @@ static void update_read (struct sockaddr_storage sas, socklen_t alen,
     struct socket_address_validity * sav = sock->send_addrs + i;
 check_sav (sav, "update_read");
     if (same_sockaddr (&sas, alen, &(sav->addr), sav->alen)) {  /* found! */
+/* printf ("update_read %d found: ", sock->sockfd); print_sav(sav); */
       *savp = sav;
       *is_new = 0;
       sav->alive_rcvd = rcvd_time;
@@ -316,6 +326,12 @@ check_sav (sav, "update_read");
       break;
     }
   }
+if (*is_new) {
+printf ("update_read %d did not find among %d ", sock->sockfd, sock->num_addrs);
+print_buffer ((char *)&sas, alen, NULL, 16, 1);
+for (i = 0; i < sock->num_addrs; i++)
+print_buffer ((char *)&sock->send_addrs [i].addr, sock->send_addrs [i].alen,
+NULL, 16, 1); }
 }
 
 /* called with the mutex locked, unlocks it before returning */
@@ -355,6 +371,7 @@ static struct socket_read_result
                long long int rcvd_time,
                struct socket_read_result result)  /* result init'd by caller */
 {
+  received_on_most_recent_select = 1;
   int i;
   for (i = 0; i < s->num_sockets; i++) {
     struct socket_address_set * sock = s->sockets + i;
@@ -402,6 +419,7 @@ struct socket_read_result socket_read (struct socket_set * s,
     int result = select (max_pipe, &receiving, NULL, NULL, &tv);
     if (result > 0)      /* found something, get_message unlocks global_mutex */
       return get_message (s, &receiving, rcvd_time, r);
+    received_on_most_recent_select = 0;
     unlock ("socket_read");
     /* sleep a little while so others have a chance to acquire the lock.
      * otherwise, linux will not grant the lock to others until it
@@ -447,10 +465,10 @@ static void send_error (const char * message, int msize, int flags, int res,
   if (sav != NULL)
     print_sav (sav);
   /* no need to die for network or host unreachable or unavailable addrs */
-  if ((errno != ENETUNREACH) && (errno != EHOSTUNREACH) &&
-      (errno != EADDRNOTAVAIL)) {
-    ai = ai - ai;   /* divide by 0 to crash */
-    printf ("now crashing: %d\n", 100 / ai);
+  if ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
+      (e != EADDRNOTAVAIL)) {
+    char * q = NULL;
+    printf ("now crashing: %d\n", *q);
   }
 }
 
@@ -506,7 +524,13 @@ check_sav (sav, "socket_send_fun");
       sav->alive_sent = ssd->sent_time;
       if (sav->send_limit > 0) {
         sav->send_limit--;
-        if (sav->send_limit == 0)
+if (sav->send_limit == 0) {
+printf ("socket_send_fun (%d) reached 0 send limit, %sremoving: ",
+sock->sockfd, (received_on_most_recent_select ? "NOT " : ""));
+print_sav(sav);
+}
+        if ((sav->send_limit == 0) && /* reached send limit */ 
+            (! received_on_most_recent_select)) /* nothing pending */
           return 0;   /* send limit expired, delete the address */
       }
     } else {
