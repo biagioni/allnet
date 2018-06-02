@@ -435,14 +435,16 @@ static void send_trace (int sock, const unsigned char * address, int abits,
   memcpy (trp->trace_id, trace_id, MESSAGE_ID_SIZE);
   init_trace_entry (trp->trace, 0, my_address, my_abits, 1);
 
-  snprintf (alog->b, alog->s, "sending trace of size %d\n", total_size);
-  log_print (alog);
-  if (! local_send (buffer, total_size, ALLNET_PRIORITY_TRACE))
+  if (! local_send (buffer, total_size, ALLNET_PRIORITY_TRACE)) {
     snprintf (alog->b, alog->s,
               "unable to send trace message of %d bytes\n", total_size);
-  else
+    log_print (alog);
+#ifdef DEBUG_PRINT
+  } else {
     snprintf (alog->b, alog->s, "sent %d-byte trace message\n", total_size);
-  log_print (alog);
+    log_print (alog);
+#endif /* DEBUG_PRINT */
+  }
 }
 
 /* in case of overflow, returns ULLONG_MAX */
