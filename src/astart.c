@@ -37,7 +37,9 @@
 #include "lib/pcache.h"
 
 extern void allnet_daemon_main (void);
+#ifdef ALLNET_USE_FORK  /* start a keyd process */
 extern void keyd_main (char * pname);
+#endif /* ALLNET_USE_FORK */
 extern void keyd_generate (char * pname);
 
 static struct allnet_log * alog = NULL;
@@ -172,6 +174,8 @@ static void make_root_other (int verbose)
 #ifdef ALLNET_USE_FORK
 static void print_pid (int fd, int pid)
 {
+char * p = NULL;
+if ((pid <= 0) || (pid > 0xffff)) printf ("crashing: %d\n", *p);
   static int original_fd = -1; /* for debugging */
   char buffer [100];  /* plenty of bytes, easier than being exact */
   int len = snprintf (buffer, sizeof (buffer), "%d\n", pid);
@@ -621,8 +625,10 @@ int astart_main (int argc, char ** argv)
     exit (1);
   }
   free (fname);
+/*
   for (i = 0; i < num_interfaces; i++)
     print_pid (pid_fd, abc_pids [i]);
+*/
 #endif /* ALLNET_USE_FORK */
   if (num_interfaces > 0)
     free (abc_pids);
@@ -641,7 +647,9 @@ int astart_main (int argc, char ** argv)
   }
 
   /* start the dependent processes, keyd and keygen */
+#ifdef ALLNET_USE_FORK /* keyd only works as a separate process */
   my_call1 (argv [0], alen, "allnet-keyd", keyd_main, pid_fd, astart_pid, 0);
+#endif /* ALLNET_USE_FORK */
   my_call1 (argv [0], alen, "allnet-kgen",
             keyd_generate, pid_fd, astart_pid, 0);
 
