@@ -12,7 +12,9 @@
  * path, if not NULL, tells allnet what path to use for config files
  * to receive messages, the application MUST send messages (perhaps empty)
  * at least once every 10 seconds otherwise, after a while (about 1 minute)
- * allnet will stop forwarding messages to this socket. */
+ * allnet will stop forwarding messages to this socket.
+ * NOTICE: this can only be called ONCE in any given process, so if there is
+ * no fork, there still should only be one call to this function. */
 extern int connect_to_local (const char * program_name,
                              const char * arg0,
                              const char * path,
