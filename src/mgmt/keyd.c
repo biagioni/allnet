@@ -25,18 +25,19 @@
 
 static struct allnet_log * alog = NULL;
 
-static void send_key (struct bc_key_info * key, char * return_key,
-                      int rksize, unsigned char * address, int abits, int hops)
+static void keyd_send_key (struct bc_key_info * key, const char * return_key,
+                           int rksize, unsigned char * address, int abits,
+                           int hops)
 {
 #ifdef DEBUG_PRINT
-  printf ("send_key ((%p, %d), %p)\n", key->pub_key,
+  printf ("keyd_send_key ((%p, %d), %p)\n", key->pub_key,
           allnet_rsa_pubkey_size (key->pub_key), return_key);
 #endif /* DEBUG_PRINT */
   int dlen = allnet_rsa_pubkey_size (key->pub_key) + 1;
-  char * data = malloc_or_fail (dlen, "keyd send_key");
+  char * data = malloc_or_fail (dlen, "keyd_send_key");
   int klen = allnet_pubkey_to_raw (key->pub_key, data, dlen);
   if ((klen > dlen) || (klen == 0)) {
-    snprintf (alog->b, alog->s, "error in send_key: %d, %d\n", klen, dlen);
+    snprintf (alog->b, alog->s, "error in keyd_send_key: %d, %d\n", klen, dlen);
     log_print (alog);
     return;
   }
@@ -58,7 +59,7 @@ static void send_key (struct bc_key_info * key, char * return_key,
   if (allocated)
     free (data);
 #ifdef DEBUG_PRINT
-  print_buffer (dp, dlen, "keyd send_key", 12, 1);
+  print_buffer (dp, dlen, "keyd_send_key", 12, 1);
 #endif /* DEBUG_PRINT */
   char * r = dp + klen;
   random_bytes (r, KEY_RANDOM_PAD_SIZE);
@@ -72,7 +73,10 @@ static void send_key (struct bc_key_info * key, char * return_key,
 void ** keyd_debug = NULL;
 #endif /* DEBUG_PRINT */
 
-static void handle_packet (char * message, int msize)
+#ifdef ALLNET_USE_FORK  /* do not allow external calls to this function */
+static
+#endif /* ALLNET_USE_FORK */
+ void keyd_handle_packet (const char * message, int msize)
 {
   struct allnet_header * hp = (struct allnet_header *) message;
   if (hp->message_type != ALLNET_TYPE_KEY_REQ)
@@ -82,7 +86,7 @@ static void handle_packet (char * message, int msize)
 #endif /* DEBUG_PRINT */
   packet_to_string (message, msize, "key request", 1, alog->b, alog->s);
   log_print (alog);
-  char * kp = message + ALLNET_SIZE (hp->transport);
+  const char * kp = message + ALLNET_SIZE (hp->transport);
 #ifdef DEBUG_PRINT
   keyd_debug = ((void **) (&kp));
 #endif /* DEBUG_PRINT */
@@ -138,8 +142,8 @@ static void handle_packet (char * message, int msize)
               i, keys [i].identifier, kp, ksize,
               hp->source [0] & 0xff, hp->source [1] & 0xff, hp->src_nbits);
 #endif /* DEBUG_PRINT */
-      send_key (keys + i, kp, (int)ksize,
-                hp->source, hp->src_nbits, hp->hops + 4);
+      keyd_send_key (keys + i, kp, (int)ksize,
+                     hp->source, hp->src_nbits, hp->hops + 4);
     }
   }
 }
@@ -208,11 +212,13 @@ void keyd_generate (char * pname)
 {
   if (alog == NULL)
     alog = init_log ("keyd_generate");
+#ifdef ALLNET_USE_FORK
   if (setpriority (PRIO_PROCESS, 0, 15) != 0) {
     snprintf (alog->b, alog->s,
               "keyd unable to lower process priority, continuing anyway\n");
     log_print (alog);
   }
+#endif /* ALLNET_USE_FORK */
   /* sleep 10 min, or 100 * the time to generate a key, whichever is longer */
   time_t sleep_time = 60 * 10;  /* 10 minutes, in seconds */
   int existing_spares = create_spare_key (-1, NULL, 0);
@@ -269,13 +275,13 @@ void keyd_generate (char * pname)
   }
 }
 
+#ifdef ALLNET_USE_FORK  /* this is a new process, do everything */
 void keyd_main (char * pname)
 {
   alog = init_log ("keyd");
   int sock = connect_to_local (pname, pname, NULL, 0, 1);
   if (sock < 0)
     return;
-
   while (1) {  /* loop forever */
     unsigned int pri;
     char * message;                      /* sleep for up to a minute */
@@ -286,13 +292,14 @@ void keyd_main (char * pname)
       exit (1);
     }
     if ((found > 0) && (is_valid_message (message, found, NULL)))
-      handle_packet (message, found);
+      keyd_handle_packet (message, found);
     if (found > 0)
       free (message);
   }
   snprintf (alog->b, alog->s, "keyd infinite loop ended, exiting\n");
   log_print (alog);
 }
+#endif /* ALLNET_USE_FORK */
 
 #ifdef DAEMON_MAIN_FUNCTION
 int main (int argc, char ** argv)
