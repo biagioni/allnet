@@ -121,6 +121,7 @@ static struct sockaddr * sap = (struct sockaddr *) (&sas);
 static struct sockaddr_in * sinp = (struct sockaddr_in *) (&sas);
 static const socklen_t alen = sizeof (struct sockaddr_in);
 static long long int last_sent = 0;
+static long long int last_rcvd = 0;
 static int internal_print_send_errors = 1;
 
 static int send_with_priority (const char * message, int msize, unsigned int p)
@@ -192,8 +193,10 @@ printf ("connect_once received %d, errno %d, s %d, count %d\n",
 printf ("refused %d, reset %d, notconn %d, badf %d, notsock %d\n",
 ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK);
 }
-      if (r > 2)  /* received an initial packet, which we will discard */
+      if (r > 2) { /* received an initial packet, which we will discard */
+        last_rcvd = allnet_time ();
         return internal_sockfd;  /* success! */
+      }
       if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
         error_desc = "connect_once recv";
         char * pq = NULL;
@@ -205,7 +208,8 @@ ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK);
   }
   if (print_error && (errno != 0) && (error_desc != NULL))
     { printf ("error %d/%d,%d,%d,%d,%d, s %d count %d\n", errno,
-              ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK, internal_sockfd, debug_recv_count);
+              ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK,
+              internal_sockfd, debug_recv_count);
       perror (error_desc); }
   else if (print_error)  /* timed out */
     printf ("no response after connecting to allnet\n");
@@ -377,11 +381,12 @@ int local_receive (unsigned int timeout,
   }
   char buffer [ALLNET_MTU + 2];
   int flags = MSG_DONTWAIT;
-  while (1) {
+  while (allnet_time () < last_rcvd + 10 * KEEPALIVE_SECONDS) {
     ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
     if ((r > 2) && (r <= ALLNET_MTU + 2)) {
       *message = memcpy_malloc (buffer, r - 2, "local_receive");
       *priority = readb16 (buffer + (r - 2));
+      last_rcvd = allnet_time ();
       return (int)(r - 2);
     }
     if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
