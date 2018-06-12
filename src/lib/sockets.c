@@ -36,7 +36,7 @@ static void debug_crash ()
   printf ("now crashing: %d\n", *p);
 }
 
-static void print_sav (struct socket_address_validity * sav)
+void print_sav (struct socket_address_validity * sav)
 {
    int limit = (sav->alen == 16 ? 8 : 24);
    print_buffer ((char *) (&sav->addr), sav->alen, NULL, limit, 0);
@@ -45,6 +45,38 @@ static void print_sav (struct socket_address_validity * sav)
            sav->time_limit, sav->recv_limit, 
            sav->send_limit, sav->send_limit_on_recv); 
 }
+
+#ifdef DEBUG_SOCKETS
+struct socket_set * debug_copy_socket_set (const struct socket_set * s)
+{
+  int si;
+  int na = 0;
+  for (si = 0; si < s->num_sockets; si++) {
+    na += s->sockets [si].num_addrs;
+  }
+  char * p = malloc (sizeof (struct socket_set) +
+                     s->num_sockets * sizeof (struct socket_address_set) +
+                     na * sizeof (struct socket_address_validity));
+  struct socket_set * res = (struct socket_set *) p;
+  struct socket_address_set * sasp = (struct socket_address_set *)
+    (p + sizeof (struct socket_set));
+  struct socket_address_validity * savp = (struct socket_address_validity *)
+    (p + sizeof (struct socket_set) +
+     s->num_sockets * sizeof (struct socket_address_set));
+  *res = *s;
+  res->sockets = sasp;
+  for (si = 0; si < s->num_sockets; si++) {
+    res->sockets [si] = s->sockets [si];
+    res->sockets [si].send_addrs = savp;
+    savp += s->sockets [si].num_addrs;
+    int ai;
+    for (ai = 0; ai < res->sockets [si].num_addrs; ai++) {
+      res->sockets [si].send_addrs [ai] = s->sockets [si].send_addrs [ai];
+    }
+  }
+  return res;
+}
+#endif /* DEBUG_SOCKETS */
 
 void print_socket_set (struct socket_set * s)
 {
@@ -235,6 +267,9 @@ static int update_recv_limit_fun (struct socket_address_set * sock,
 int socket_update_recv_limit (int new_recv_limit, struct socket_set * s,
                               struct sockaddr_storage addr, socklen_t alen)
 {
+#ifdef DEBUG_SOCKETS
+struct socket_set * debug_copy = debug_copy_socket_set (s);
+#endif /* DEBUG_SOCKETS */
   struct recv_limit_data rld =
     { .updated = 0, .new_recv_limit = new_recv_limit, .alen = alen };
   memcpy (&(rld.addr), &addr, sizeof (addr));
@@ -248,7 +283,14 @@ int socket_update_recv_limit (int new_recv_limit, struct socket_set * s,
     print_sockaddr_str ((struct sockaddr *) &addr, alen, 0, st, sizeof (st));
     printf ("warning: update_recv_limit %s did not update any addresses\n", st);
     print_socket_set (s);
+#ifdef DEBUG_SOCKETS
+    printf ("  was:\n");
+    print_socket_set (debug_copy);
+#endif /* DEBUG_SOCKETS */
   }
+#ifdef DEBUG_SOCKETS
+  if (debug_copy != NULL) free (debug_copy);
+#endif /* DEBUG_SOCKETS */
   return rld.updated;
 }
 
@@ -573,6 +615,13 @@ check_sav (sav, "socket_dec_send_limit");
   if ((same_sockaddr (&(dsld->addr), dsld->alen, &(sav->addr), sav->alen)) &&
       (sav->send_limit > 0)) {
     sav->send_limit--;
+#ifdef DEBUG_SOCKETS
+    if (sav->send_limit == 0) {
+      printf ("socket_dec_send_limit (%d) reached 0 send limit, removing: ",
+      sock->sockfd);
+      print_sav(sav);
+    }
+#endif /* DEBUG_SOCKETS */
     return (sav->send_limit != 0);
   }
   return 1;  /* keep the record: no match, or no limit */
