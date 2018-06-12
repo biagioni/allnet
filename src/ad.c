@@ -117,6 +117,9 @@ static struct allnet_log * alog = NULL;
 static struct social_info * social_net = NULL;
 static unsigned char my_address [ADDRESS_SIZE];
 
+/* send at most 10 packets for every external data request */
+#define SEND_EXTERNAL_MAX	10
+
 /* the virtual clock is updated about every 10s. */
 #define VIRTUAL_CLOCK_SECONDS		10
 #define SEND_KEEPALIVES_LOCAL		1   /* send keepalive every 10sec */
@@ -259,6 +262,8 @@ static int send_messages_to_one (struct pcache_result r,
 {
   if (r.n <= 0)
     return 0;
+  if ((! sock->is_local) && (r.n > SEND_EXTERNAL_MAX))
+    r.n = SEND_EXTERNAL_MAX;
   int result = r.n;
   int i;
   for (i = 0; i < r.n; i++) {
@@ -273,9 +278,17 @@ static int send_messages_to_one (struct pcache_result r,
     log_packet (alog, "message to pipe",
                 r.messages [i].message, r.messages [i].msize);
 #endif /* LOG_PACKETS */
-    socket_send_to (r.messages [i].message, r.messages [i].msize,
-                    r.messages [i].priority, virtual_clock, &sockets,
-                    sock, sav);
+    const char * message = r.messages [i].message;
+    int msize = r.messages [i].msize;
+    char message_with_priority [ALLNET_MTU + 2];
+    if (sock->is_local) {
+      memcpy (message_with_priority, message, msize);
+      writeb16 (message_with_priority + msize, r.messages [i].priority);
+      message = message_with_priority;
+      msize += 2;
+    }
+    socket_send_to_ip (sock->sockfd, message, msize, sav->addr, sav->alen,
+                       "ad.c/send_messages_to_one");
   }
   free (r.free_ptr);
   return result;
@@ -478,9 +491,10 @@ static struct message_process process_message (struct socket_read_result *r)
       struct allnet_data_request * req = (struct allnet_data_request *) data;
       struct socket_address_validity sav_storage;
       struct socket_address_validity * sav = r->sav;
-      if (sav == NULL) { /* only addr and alen matter */
+      if ((sav == NULL) && (r->alen <= sizeof (r->from))) {
+        /* only need to set addr and alen from r->from and r->alen */
         memset (&(sav_storage), 0, sizeof (sav_storage));
-        memcpy (&(sav_storage.addr), &(r->from), sizeof (sav_storage.addr));
+        memcpy (&(sav_storage.addr), &(r->from), r->alen);
         sav_storage.alen = r->alen;
         sav = &(sav_storage);  /* sav must be used before the end of the if */
       }
