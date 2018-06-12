@@ -370,6 +370,7 @@ static void setup_signal_handler (int set)
 static void child_return (char * executable, pid_t parent, int stop_allnet)
 {
   snprintf (alog->b, alog->s, "%s completed\n", executable);
+  printf ("%s", alog->b);
   log_print (alog);
   if (stop_allnet) {
     /* kill the parent first, to avoid starting new processes */
@@ -404,7 +405,7 @@ static void my_call1 (char * argv, int alen, char * program,
       sleep (2);   /* start the allnet daemon first, then run */
     process_name = program;
     run_function (argv);
-    child_return (program, parent, 1);
+    child_return (program, parent, 0);
 #else /* ! ALLNET_USE_FORK */
     struct thread_arg * tap = thread_args + (free_thread_arg++);
     tap->name = strcpy_malloc (program, "astart my_call1");
