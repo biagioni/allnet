@@ -550,10 +550,13 @@ check_sav (sav, "socket_send_fun");
       sav->alive_sent = ssd->sent_time;
       if (sav->send_limit > 0) {
         sav->send_limit--;
-if (sav->send_limit == 0) {
-printf ("socket_send_fun (%d) reached 0 send limit, removing: ", sock->sockfd);
-print_sav(sav);
-}
+#ifdef DEBUG_SOCKETS
+        if (sav->send_limit == 0) {
+          printf ("socket_send_fun (%d) reached 0 send limit, removing: ",
+                  sock->sockfd);
+          print_sav(sav);
+        }
+#endif /* DEBUG_SOCKETS */
         if (sav->send_limit == 0)  /* reached send limit */
           return 0;   /* send limit expired, delete the address */
       }
