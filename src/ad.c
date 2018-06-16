@@ -221,7 +221,7 @@ static void update_dht ()
 {
   char * dht_message = NULL;
   unsigned int msize = dht_update (&sockets, &dht_message);
-  if ((msize > 0) && (dht_message != 0)) {
+  if ((msize > 0) && (dht_message != NULL)) {
     struct sockaddr_storage sas;
     memset (&sas, 0, sizeof (sas));
     socket_send_local (&sockets, dht_message, msize, ALLNET_PRIORITY_LOCAL_LOW,
