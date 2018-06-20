@@ -28,6 +28,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <pthread.h>  /* to be able to write files asynchronously */
 #include <sys/mman.h>
 
 #include "pcache.h"
@@ -463,7 +464,6 @@ static void initialize_from_file ()
   initialize_from_scratch ();   /* some error, re-initialize */
 }
 
-#define DEBUG_CACHE
 /* return 1 if too soon, else update *time_var and state and return 0 */
 /* if override is true, always update *time_var (not state) and return 0 */
 static int too_soon (unsigned long long int * time_var, int * state,
@@ -492,6 +492,38 @@ static int too_soon (unsigned long long int * time_var, int * state,
   return 0;
 }
 
+struct async_file_info {
+  char * fname;     /* thread frees it when done */
+  char * contents;  /* thread frees this when done */
+  int csize;
+};
+
+static void * write_file_async_thread (void * arg)
+{
+  static pthread_mutex_t file_writing = PTHREAD_MUTEX_INITIALIZER;
+  struct async_file_info * a = (struct async_file_info *) arg;
+  pthread_mutex_lock (&file_writing);  /* serialize the writing */
+  if (0 == write_file (a->fname, a->contents, a->csize, 1))
+    printf ("unable to write file %s of size %d\n", a->fname, a->csize);
+  free (a->fname);
+  free (a->contents);
+  free (arg);
+  pthread_mutex_unlock (&file_writing);
+  return NULL;
+}
+
+/* copies content, then after sending, frees fname */
+static void write_file_async (char * fname, const char * contents, int csize)
+{
+  struct async_file_info * arg =
+    malloc_or_fail (sizeof (struct async_file_info), "write_file_async arg");
+  arg->fname = fname;
+  arg->contents = memcpy_malloc (contents, csize, "write_file_async contents");
+  arg->csize = csize;
+  pthread_t t;
+  pthread_create (&t, NULL, &write_file_async_thread, (void *) arg);
+}
+
 static void write_messages_file (int override)
 {
   static unsigned long long int last_saved = 0;
@@ -501,9 +533,7 @@ static void write_messages_file (int override)
   char * fname;
   if (config_file_name ("acache", "messages", &fname)) {
     size_t msize = num_message_table_entries * sizeof (struct hash_table_entry);
-    if (0 == write_file (fname, (char *)message_table, (int)msize, 1))
-      printf ("unable to write messages file %s of size %zd\n", fname, msize);
-    free (fname);
+    write_file_async (fname, (char *)message_table, (int)msize);
   } else {
     printf ("unable to save messages file\n");
   }
@@ -518,9 +548,7 @@ static void write_acks_file (int override)
   char * fname;
   if (config_file_name ("acache", "acks", &fname)) {
     size_t asize = num_acks * sizeof (struct hash_ack_entry);
-    if (0 == write_file (fname, (char *)ack_table, (int)asize, 1))
-      printf ("unable to write ack file %s of size %zd\n", fname, asize);
-    free (fname);
+    write_file_async (fname, (char *)ack_table, (int)asize);
   } else {
     printf ("unable to save acks file\n");
   }
@@ -545,9 +573,7 @@ static void write_tokens_file (int override)
     memcpy (t.local_token, local_token, PCACHE_TOKEN_SIZE);
     memcpy (t.tokens, token_list, sizeof (token_list));
     size_t asize = sizeof (t);
-    if (0 == write_file (fname, (char *)(&t), (int)asize, 1))
-      printf ("unable to write tokens file %s of size %zd\n", fname, asize);
-    free (fname);
+    write_file_async (fname, (char *)(&t), (int)asize);
   } else {
     printf ("unable to save tokens file\n");
   }
