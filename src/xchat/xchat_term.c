@@ -4,7 +4,7 @@
 
 #define XCHAT_TERM_HELP_MESSAGE	\
 "<typing> send message to current contact (no . at start)\n\
-.m    multiline message ending with .m, no .m in text\n\
+   end line with .= or .- to continue typing on next line\n\
 .c    list all contacts, .c n  start sending to contact n\n\
 .q    quit \n\
 .h    print this help message \n\
@@ -799,29 +799,28 @@ int main (int argc, char ** argv)
     print_to_output (NULL);
   }
 
-  char * term_string = NULL;  /* string terminating the message, if any */
   char message [MESSAGE_BUF_SIZE];
   char * saved_message = NULL;
   while (fgets (message, sizeof (message), stdin) != NULL) {
-    if (strlen (message) <= 0)              /* ignore */
+    size_t len = strlen (message);
+    if (len <= 0)              /* ignore */
       continue;
     /* strlen (message) > 0 */
-    if (term_string != NULL) {
-      char * termination = strstr (message, term_string);
-      if (termination != NULL) /* end of message */
-        *termination = '\0';   /* exclude termination from message */
-      append_to_message (message, &saved_message);
-      if (termination != NULL) {
+    if (message [0] != '.') {        /* not a command */
+      if ((len > 3) && ((strncmp (".=", message + len - 3, 2) == 0) ||
+                        (strncmp (".-", message + len - 3, 2) == 0))) {
+        /* message continues on the next line */
+        message [len - 3] = '\0';  /* get rid of .= or .- and the newline */
+        append_to_message (message, &saved_message);
+      } else if (saved_message != NULL) {   /* append new input, then send */
+        append_to_message (message, &saved_message);
         send_message (sock, peer, saved_message);
         free (saved_message);
         saved_message = NULL;
-        term_string = NULL;
+      } else {   /* a one-line message to send */
+        strip_final_newline (message);
+        send_message (sock, peer, message);
       }
-      continue;    /* complete or not, start reading the next line */
-    }
-    if (message [0] != '.') {   /* a one-line message to send */
-      strip_final_newline (message);
-      send_message (sock, peer, message);
       continue;
     }
     /* message begins with '.'.  Strip leading blanks, if any */
@@ -832,10 +831,6 @@ int main (int argc, char ** argv)
     while (*next == ' ')
       next++;
     switch (tolower (*ptr)) {
-      case 'm':  /* new multiline message */
-        term_string = ".m";
-        append_to_message (next, &saved_message);
-        break;
       case 'c':  /* new contact to send to */
         switch_to_contact (next, &peer);
         break;
