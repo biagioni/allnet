@@ -381,7 +381,9 @@ int local_receive (unsigned int timeout,
   }
   char buffer [ALLNET_MTU + 2];
   int flags = MSG_DONTWAIT;
+  unsigned long long int loop_count = 0;
   while (allnet_time () < last_rcvd + 10 * KEEPALIVE_SECONDS) {
+    loop_count++;
     ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
     if ((r > 2) && (r <= ALLNET_MTU + 2)) {
       *message = memcpy_malloc (buffer, r - 2, "local_receive");
@@ -398,6 +400,10 @@ int local_receive (unsigned int timeout,
     if (timeout <= 1)
       return 0;
     timeout--;
+  }
+  if (loop_count == 0) {
+    printf ("no response from the local allnet\n");
+    exit (0);
   }
   return 0;
 }
