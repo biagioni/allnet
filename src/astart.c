@@ -109,6 +109,8 @@ void stop_allnet_threads ()
 
 #endif /* ALLNET_USE_FORK */
 
+#define ROOT_USER_ID	0
+#if 0
 /* if astart is called as root, abc should run as root, and everything
  * else should be run as the calling user, if any, and otherwise,
  * user "allnet" (if it exists) or user "nobody" otherwise */
@@ -121,7 +123,6 @@ void stop_allnet_threads ()
    http://www.cs.berkeley.edu/~daw/papers/setuid-usenix02.pdf
  * however, we only use setuid if we are root, which should be widely portable.
  */
-#define ROOT_USER_ID	0
 static void make_root_other (int verbose)
 {
 #ifdef ALLNET_USE_FORK   /* on iOS or android, no point in doing any of this */
@@ -170,6 +171,7 @@ static void make_root_other (int verbose)
   if (verbose) printf ("set uids to %d %d\n", getuid (), geteuid ());
 #endif /* ALLNET_USE_FORK */
 }
+#endif /* 0 */
 
 #ifdef ALLNET_USE_FORK
 static void print_pid (int fd, int pid)
@@ -613,7 +615,9 @@ int astart_main (int argc, char ** argv)
                  rpipe, wpipe, ppipe1, ppipe2,
                  interface, abc_pids + i, astart_pid);
   } */
+#if 0
   make_root_other (0); /* if we were root, become the caller or allnet/nobody */
+#endif /* 0 */
 
   int pid_fd = 0;
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
