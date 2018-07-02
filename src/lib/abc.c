@@ -36,7 +36,7 @@ static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
   int hops = 1;  /* set outgoing ttl to 1 */
   if (setsockopt (s, IPPROTO_IP, IP_TTL, &hops, sizeof(hops)))
     perror ("add_local_broadcast_sockets v4 setsockopt hops");
-  if (! socket_add (sockets, s, 0, 0, 0)) {
+  if (! socket_add (sockets, s, 0, 0, 0, 1)) {
     printf ("add_local_broadcast_sockets unable to add socket %d\n", s);
     return;
   }
@@ -73,7 +73,10 @@ static void add_v6 (struct socket_set * sockets)
   sin.sin6_addr = in6addr_any;
   socklen_t alen = sizeof (sin);
   if (bind (s, (struct sockaddr *) (&sin), alen) != 0) {
-    perror ("add_local_broadcast_sockets v6 bind");
+    static int printed = 0;
+    if (! printed)
+      perror ("add_local_broadcast_sockets v6 bind");
+    printed = 1;
     close (s);
     return;
   }
@@ -98,7 +101,7 @@ static void add_v6 (struct socket_set * sockets)
     }
     perror ("add_local_broadcast_sockets v6 setsockopt multicast receive");
   }
-  if (! socket_add (sockets, s, 0, 0, 0)) {
+  if (! socket_add (sockets, s, 0, 0, 0, 1)) {
     printf ("add_local_broadcast_sockets unable to add v6 socket %d\n", s);
     close (s);
     return;
@@ -122,8 +125,36 @@ static void add_v6 (struct socket_set * sockets)
   }
 }
 
+static void add_adhoc (struct socket_set * sockets)
+{
+#ifdef ONLY_ROOT
+  if (geteuid () != ROOT_USER_ID)
+    return;   /* not root, cannot open ad-hoc sockets */
+#endif /* ONLY_ROOT */
+  int s = socket (AF_PACKET, SOCK_DGRAM, allnet_htons (ALLNET_WIFI_PROTOCOL));
+  if (s < 0) {
+    if ((geteuid () == 0) || (errno != EPERM)) {
+      perror ("add_adhoc socket");
+      printf ("unable to open ad-hoc socket, probably need to be root\n");
+    }
+    return;
+  }
+  close (s);
+}
+
+/* return 0 if this is a broadcast socket */
+static int delete_bc (struct socket_address_set * sock, void * ref)
+{
+  if (sock->is_broadcast)
+    return 0;  /* delete */
+  return 1;    /* keep */
+}
+
 int add_local_broadcast_sockets (struct socket_set * sockets)
 {
+  /* start by deleting any previously added broadcast sockets */
+  socket_sock_loop (sockets, &delete_bc, NULL);
+  /* now add all broadcast addresses as appropriate */
   struct sockaddr_storage * bc_addrs = NULL;
   int num_bc = interface_broadcast_addrs (&bc_addrs);
   int i;
@@ -139,5 +170,6 @@ int add_local_broadcast_sockets (struct socket_set * sockets)
   if ((num_bc > 0) && (bc_addrs != NULL))
     free (bc_addrs);
   add_v6 (sockets);
+  add_adhoc (sockets);
   return (num_bc > 0);
 }
