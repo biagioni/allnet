@@ -83,11 +83,12 @@ void print_socket_set (struct socket_set * s)
   int si;
   for (si = 0; si < s->num_sockets; si++) {
     struct socket_address_set * sas = &(s->sockets [si]);
-    printf ("socket %d/%d: sockfd %d, %s%s%s%d addrs\n",
+    printf ("socket %d/%d: sockfd %d, %s%s%s%s%d addrs\n",
             si, s->num_sockets, sas->sockfd,
             ((sas->is_local) ? "local, " : ""),
             ((sas->is_global_v6) ? "globalv6, " : ""),
-            ((sas->is_global_v4) ? "globalv4, " : ""), sas->num_addrs);
+            ((sas->is_global_v4) ? "globalv4, " : ""),
+            ((sas->is_broadcast) ? "bc, " : ""), sas->num_addrs);  
     int ai;
     for (ai = 0; ai < sas->num_addrs; ai++) {
       struct socket_address_validity * sav = &(sas->send_addrs [ai]);
@@ -124,7 +125,7 @@ static int socket_sock_loop_locked (struct socket_set * s,
   for (si = 0; si < s->num_sockets; si++) {
     struct socket_address_set * sas = &(s->sockets [si]);
     if (! f (sas, ref)) {  /* delete this element */
-printf ("socket_sock_loop deleting socket %d\n", sas->sockfd);
+      close (sas->sockfd);
       count++;
       /* compress the array to replace the deleted element */
       int sim;
@@ -178,7 +179,7 @@ int socket_addr_loop (struct socket_set * s, socket_addr_loop_fun f, void * ref)
 
 /* return 1 if was able to add, and 0 otherwise (e.g. if already in the set) */
 static int socket_add_locked (struct socket_set * s, int sockfd, int is_local,
-                              int is_global_v6, int is_global_v4)
+                              int is_global_v6, int is_global_v4, int is_bc)
 {
   int si;
   for (si = 0; si < s->num_sockets; si++)
@@ -192,6 +193,7 @@ static int socket_add_locked (struct socket_set * s, int sockfd, int is_local,
   s->sockets [index].is_local = is_local;
   s->sockets [index].is_global_v6 = is_global_v6;
   s->sockets [index].is_global_v4 = is_global_v4;
+  s->sockets [index].is_broadcast = is_bc;
   s->sockets [index].num_addrs = 0;
   s->sockets [index].send_addrs = NULL;
   return 1;
@@ -221,11 +223,11 @@ static struct socket_address_validity *
 
 /* return 1 if was able to add, and 0 otherwise (e.g. if already in the set) */
 int socket_add (struct socket_set * s, int socket, int is_local,
-                int is_global_v6, int is_global_v4)
+                int is_global_v6, int is_global_v4, int is_bc)
 {
   lock ("socket_add");
   int result = socket_add_locked (s, socket, is_local,
-                                  is_global_v6, is_global_v4);
+                                  is_global_v6, is_global_v4, is_bc);
   unlock ("socket_add");
   return result;
 }
@@ -733,7 +735,7 @@ int socket_create_bind (struct socket_set * s, int is_local,
     if (! quiet) perror ("socket_create_bind: bind");
     return -1;
   }
-  if (socket_add (s, sockfd, is_local, is_global_v6, is_global_v4))
+  if (socket_add (s, sockfd, is_local, is_global_v6, is_global_v4, 0))
     return sockfd;
   if (! quiet) printf ("unable to add %d socket %d\n", sap->sa_family, sockfd);
   return -1;

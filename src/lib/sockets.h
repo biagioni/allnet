@@ -37,6 +37,7 @@ struct socket_address_set {
   int is_local;                  /* true if used by local programs */
   int is_global_v6;              /* true if can send to any IPv6 address */; 
   int is_global_v4;              /* true if can send to any IPv4 address */; 
+  int is_broadcast;              /* true if added to support broadcasts */; 
   int num_addrs;
   struct socket_address_validity * send_addrs;
 };
@@ -48,7 +49,7 @@ struct socket_set {
 
 /* return 1 if was able to add, and 0 otherwise (e.g. if already in the set) */
 extern int socket_add (struct socket_set * s, int sockfd, int is_local,
-                       int is_global_v6, int is_global_v4);
+                       int is_global_v6, int is_global_v4, int is_bc);
 /* returns a pointer to the new sav, or NULL in case of errors (e.g.
  * if this address is already in the structure, or if the socket isn't) */
 extern struct socket_address_validity *
