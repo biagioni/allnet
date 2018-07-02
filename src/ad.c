@@ -131,6 +131,7 @@ static unsigned char my_address [ADDRESS_SIZE];
 static long long int virtual_clock = 1;
 
 /* update the virtual clock about every 10 seconds */
+/* and do other periodic tasks */
 static void update_virtual_clock ()
 {
   static long long int last_update = 0;
@@ -143,6 +144,7 @@ static void update_virtual_clock ()
     socket_send_keepalives (&sockets, virtual_clock, SEND_KEEPALIVES_LOCAL,
                             SEND_KEEPALIVES_REMOTE, message, msize);
     socket_update_time (&sockets, virtual_clock);
+    add_local_broadcast_sockets (&sockets);
   }
 }
 
