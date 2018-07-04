@@ -27,6 +27,47 @@ static char bloom_filter [PID_FILTER_SELECTORS] [NUM_FILTERS]
                          [FILTER_DEPTH] [FILTER_WIDTH / 8];
 #define BLOOM_SIZE	(sizeof (bloom_filter))
 
+/* internal data structure to keep track of the number of bits in
+ * each filter, and advance the filter if the load factor gets too high */
+static int filter_load [PID_FILTER_SELECTORS];
+#define MAX_FILTER_LOAD	(FILTER_WIDTH / 4)
+
+/* if the filter load is reasonable, initialize filter_load.
+ * Otherwise, the bloom filter and filter_load are re-initialized to 0. */
+static void init_filter_load ()
+{
+  int excessive = 0;
+  int sel; 
+  for (sel = 0; sel < PID_FILTER_SELECTORS; sel++) {
+    int total = 0;  /* max bits set at any depth on filter 0 for this sel */
+    int dep;
+    for (dep = 0; dep < FILTER_DEPTH; dep++) {
+      int depth_total = 0;  /* max bits set at this depth */
+      int pos;
+      for (pos = 0; pos < FILTER_WIDTH / 8; pos++) {
+        int byte = bloom_filter [sel] [0] [dep] [pos];
+        int bits_set = ((byte >> 7) & 1) + ((byte >> 6) & 1) +
+                       ((byte >> 5) & 1) + ((byte >> 4) & 1) +
+                       ((byte >> 3) & 1) + ((byte >> 2) & 1) +
+                       ((byte >> 1) & 1) + ((byte     ) & 1);
+        depth_total += bits_set;
+      }
+      if (depth_total > total)
+        total = depth_total;
+    }
+    filter_load [sel] = total;  /* total bits set for this selector */
+    if (total >= MAX_FILTER_LOAD) {   /* record and print */
+       excessive = 1;
+       printf ("bloom filter %d has a load of %d, max %d\n",
+               sel, total, MAX_FILTER_LOAD);
+    }
+  }
+  if (excessive) {  /* reset bloom_filter and filter_load */
+    memset (bloom_filter, 0, sizeof (bloom_filter));
+    memset (filter_load, 0, sizeof (filter_load));
+  }
+}
+
 /* if do_init is true, initialize if necessary, otherwise just return status */
 static int bloom_init (int do_init)
 {
@@ -35,12 +76,14 @@ static int bloom_init (int do_init)
     return initialized;
   if (! initialized) {
     memset (bloom_filter, 0, BLOOM_SIZE);  /* default of all zeroes */
+    memset (filter_load, 0, sizeof (filter_load));  /* set it later */
     char * fname = NULL;
     if (config_file_name ("acache", "bloom", &fname) >= 0) {
       char * from_file = NULL;
       int size = read_file_malloc (fname, &from_file, 0);
       if ((from_file != NULL) && (size == BLOOM_SIZE)) {
         memcpy (bloom_filter, from_file, BLOOM_SIZE);
+        init_filter_load ();
       } else if (from_file != NULL) {   /* size is wrong */
         printf ("error: expected %d bytes, got %d, deleting %s\n",
                 (int) BLOOM_SIZE, size, fname);
@@ -116,7 +159,18 @@ void pid_add_to_bloom (const char * id, int filter_selector)
     uint16_t pos = readb16 ((char *) id + filter_depth * 2);
     uint16_t index = pos / 8;
     uint16_t offset = pos % 8;
-    bloom_filter [filter_selector] [0] [filter_depth] [index] |= (1 << offset);
+    int old_value = bloom_filter [filter_selector] [0] [filter_depth] [index];
+    int new_value = old_value | (1 << offset);
+    bloom_filter [filter_selector] [0] [filter_depth] [index] = new_value;
+    if (old_value != new_value) {  /* added a bit */
+      filter_load [filter_selector] += 1;
+      if (filter_load [filter_selector] > MAX_FILTER_LOAD) {
+printf ("advancing and saving bloom filter %d with load %d, life is good\n",
+        filter_selector, filter_load [filter_selector]);
+        pid_advance_bloom ();
+        pid_save_bloom ();
+      }
+    }
   }
 }
 
@@ -154,6 +208,7 @@ bloom_filter, ((char *) bloom_filter) + sizeof (bloom_filter)); */
       memcpy (&(bloom_filter [sel] [index + 1]), &(bloom_filter [sel] [index]),
               sizeof (bloom_filter [sel] [index]));
     memset (&(bloom_filter [sel] [0]), 0, sizeof (bloom_filter [sel] [0]));
+    filter_load [sel] = 0;
   }
 }
 
