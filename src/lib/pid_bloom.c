@@ -154,6 +154,7 @@ void pid_add_to_bloom (const char * id, int filter_selector)
   assert(BLOOM_SIZE == (PID_FILTER_SELECTORS *
                         NUM_FILTERS * FILTER_DEPTH * FILTER_WIDTH / 8));
   bloom_init (1);
+  int increment_filter_load = 0;
   int filter_depth;
   for (filter_depth = 0; filter_depth < FILTER_DEPTH; filter_depth++) {
     uint16_t pos = readb16 ((char *) id + filter_depth * 2);
@@ -162,14 +163,22 @@ void pid_add_to_bloom (const char * id, int filter_selector)
     int old_value = bloom_filter [filter_selector] [0] [filter_depth] [index];
     int new_value = old_value | (1 << offset);
     bloom_filter [filter_selector] [0] [filter_depth] [index] = new_value;
-    if (old_value != new_value) {  /* added a bit */
-      filter_load [filter_selector] += 1;
-      if (filter_load [filter_selector] > MAX_FILTER_LOAD) {
+    if (old_value != new_value)
+      increment_filter_load = 1;
+  }
+/* we increment the filter load if any bit has been set.
+ * this is not accurate -- we might not have set a bit at
+ * the depth that has the maximum filter load.
+ * although inaccurate, it is a safe thing to do since
+ * it means the filter load is an overestimate, and we may
+ * save too soon but not too late. */
+  if (increment_filter_load) {
+    filter_load [filter_selector] += 1;
+    if (filter_load [filter_selector] > MAX_FILTER_LOAD) {
 printf ("advancing and saving bloom filter %d with load %d, life is good\n",
-        filter_selector, filter_load [filter_selector]);
-        pid_advance_bloom ();
-        pid_save_bloom ();
-      }
+      filter_selector, filter_load [filter_selector]);
+      pid_advance_bloom ();
+      pid_save_bloom ();
     }
   }
 }
