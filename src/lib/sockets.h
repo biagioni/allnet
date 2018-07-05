@@ -53,8 +53,7 @@ extern int socket_add (struct socket_set * s, int sockfd, int is_local,
 /* returns a pointer to the new sav, or NULL in case of errors (e.g.
  * if this address is already in the structure, or if the socket isn't) */
 extern struct socket_address_validity *
-  socket_address_add (struct socket_set * s,
-                      struct socket_address_set * sock,
+  socket_address_add (struct socket_set * s, int sockfd,
                       struct socket_address_validity sav);
 
 /* the loop functions should return 1 if the socket/address should be kept,

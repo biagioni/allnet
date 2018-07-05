@@ -12,6 +12,12 @@
 #include "sockets.h"
 #include "ai.h"
 
+#ifdef ALLNET_NETPACKET_SUPPORT
+#include <ifaddrs.h>
+#include <net/if.h>      /* IFF_ values */
+#include <linux/if_packet.h>
+#endif /* ALLNET_NETPACKET_SUPPORT */
+
 static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
 {
   int s = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -47,15 +53,8 @@ static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
   memcpy (&(sav.addr), a, sizeof (struct sockaddr_in));
   ((struct sockaddr_in *) (&sav.addr))->sin_port =
     htons (ALLNET_IPV4_BROADCAST_PORT);
-  int i;
-  for (i = 0; i < sockets->num_sockets; i++) {
-    if (sockets->sockets [i].sockfd == s) {
-      if (socket_address_add (sockets, sockets->sockets + i, sav) == NULL) {
-        printf ("add_local_broadcast_sockets error adding socket address\n");
-        return;
-      }
-    }
-  }
+  if (socket_address_add (sockets, s, sav) == NULL)
+    printf ("add_local_broadcast_sockets error adding socket address\n");
 }
 
 static void add_v6 (struct socket_set * sockets)
@@ -114,23 +113,30 @@ static void add_v6 (struct socket_set * sockets)
   sinp->sin6_family = AF_INET6;
   sinp->sin6_addr = mcast;
   sinp->sin6_port = htons (ALLNET_IPV6_BROADCAST_PORT);
-  int i;
-  for (i = 0; i < sockets->num_sockets; i++) {
-    if (sockets->sockets [i].sockfd == s) {
-      if (socket_address_add (sockets, sockets->sockets + i, sav) == NULL) {
-        printf ("add_local_broadcast_sockets error adding v6 socket address\n");
-        return;
-      }
-    }
-  }
+  if (socket_address_add (sockets, s, sav) == NULL)
+    printf ("add_local_broadcast_sockets error adding v6 socket address\n");
 }
+
+#ifdef ALLNET_NETPACKET_SUPPORT
+
+/*
+sudo rfkill unblock wifi
+sudo ifconfig wlan2 up
+sudo iw dev wlan2 ibss join allnet 2412 fixed-freq
+
+esb@laptop:~/src/allnet/v3$ sudo iw dev wlan2 info
+
+Interface wlan2
+	ifindex 2
+	wdev 0x1
+	addr 5c:f9:38:8f:ec:08
+	ssid allnet
+	type IBSS
+	wiphy 0
+*/
 
 static void add_adhoc (struct socket_set * sockets)
 {
-#ifdef ONLY_ROOT
-  if (geteuid () != ROOT_USER_ID)
-    return;   /* not root, cannot open ad-hoc sockets */
-#endif /* ONLY_ROOT */
   int s = socket (AF_PACKET, SOCK_DGRAM, allnet_htons (ALLNET_WIFI_PROTOCOL));
   if (s < 0) {
     if ((geteuid () == 0) || (errno != EPERM)) {
@@ -139,8 +145,51 @@ static void add_adhoc (struct socket_set * sockets)
     }
     return;
   }
-  close (s);
+  if (! socket_add (sockets, s, 0, 0, 0, 1)) {
+    printf ("add_adhoc unable to add socket %d\n", s);
+    close (s);
+    return;
+  }
+  struct ifaddrs * ifa = NULL;
+  if ((getifaddrs (&ifa) != 0) || (ifa == NULL)) {
+    perror ("abc: getifaddrs");
+    return;
+  }
+  struct ifaddrs * ifa_loop = ifa;
+  while (ifa_loop != NULL) {
+    if ((ifa_loop->ifa_addr != NULL) &&
+        (ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
+        ((ifa_loop->ifa_flags & IFF_LOOPBACK) == 0)) {
+static int printed = 0;
+if (++printed < 10) { printf ("found interface %s, packet %x, bc %x ",
+ifa_loop->ifa_name, AF_PACKET, ifa_loop->ifa_flags & IFF_BROADCAST);
+print_buffer ((char *) (ifa->ifa_broadaddr), sizeof (struct sockaddr_ll),
+              "bcast address", 20, 1); }
+      struct sockaddr_ll * ifsll = 
+        (struct sockaddr_ll *) (((ifa_loop->ifa_flags & IFF_BROADCAST) != 0) ?
+                                (ifa->ifa_broadaddr) : (ifa->ifa_dstaddr));
+      /* add a send address */
+      struct socket_address_validity sav;
+      memset (&sav, 0, sizeof (sav));  /* set all fields to 0 */
+      sav.alen = sizeof (struct sockaddr_ll);
+      struct sockaddr_ll * sll = (struct sockaddr_ll *) &(sav.addr);
+      /* Setting 5 fields as specified by man 7 packet */
+      sll->sll_family = AF_PACKET;
+      sll->sll_protocol = allnet_htons (ALLNET_WIFI_PROTOCOL);
+      sll->sll_ifindex = ifsll->sll_ifindex;
+      sll->sll_halen = ifsll->sll_halen;
+      if (sll->sll_halen <= sizeof (sll->sll_addr))
+        memset (sll->sll_addr, 0xff, sll->sll_halen);
+      if (socket_address_add (sockets, s, sav) == NULL)
+        printf ("add_local_broacast_sockets error adding adhoc address\n");
+    }
+    ifa_loop = ifa_loop->ifa_next;
+  }
+  freeifaddrs (ifa);
+printf ("addresses are:\n");
+print_socket_set (sockets);
 }
+#endif /* ALLNET_NETPACKET_SUPPORT */
 
 /* return 0 if this is a broadcast socket */
 static int delete_bc (struct socket_address_set * sock, void * ref)

@@ -16,6 +16,10 @@
 #include "priority.h"
 #include "ai.h"   /* same_sockaddr */
 
+#ifdef ALLNET_NETPACKET_SUPPORT
+#include <linux/if_packet.h>
+#endif /* ALLNET_NETPACKET_SUPPORT */
+
 static pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static void lock (const char * caller)
@@ -101,7 +105,8 @@ void print_socket_set (struct socket_set * s)
 void check_sav (struct socket_address_validity * sav, const char * desc)
 {
   if ((sav->alen > sizeof (sav->addr)) ||
-      (sav->alen < sizeof (struct sockaddr_in))) {
+      (sav->alen < sizeof (struct sockaddr_in)) ||
+      (sav->alen == 18)) {
     printf ("%s: illegal alen ", desc);
     print_sav (sav);
     debug_crash ();
@@ -201,10 +206,22 @@ static int socket_add_locked (struct socket_set * s, int sockfd, int is_local,
 /* returns a pointer to the new sav, or NULL in case of errors (e.g.
  * if this address is already in the structure, or if the socket isn't) */
 static struct socket_address_validity *
-  socket_address_add_locked (struct socket_set * s,
-                             struct socket_address_set * sock,
+  socket_address_add_locked (struct socket_set * s, int sockfd,
                              struct socket_address_validity addr)
 {
+  struct socket_address_set * sock = NULL;
+  int si;
+  for (si = 0; si < s->num_sockets; si++) {
+    if (s->sockets [si].sockfd == sockfd) {
+      sock = s->sockets + si;
+      break;
+    }
+  }
+  if (sock == NULL) {  /* not found */
+    printf ("unable to add sav to socket %d, sockets are:\n", sockfd);
+    print_socket_set (s);
+    return NULL;
+  }
   int ai;
   for (ai = 0; ai < sock->num_addrs; ai++) {
     struct socket_address_validity * sav = &(sock->send_addrs [ai]);
@@ -234,14 +251,13 @@ int socket_add (struct socket_set * s, int socket, int is_local,
 /* returns a pointer to the new sav, or NULL in case of errors (e.g.
  * if this address is already in the structure, or if the socket isn't) */
 struct socket_address_validity *
-  socket_address_add (struct socket_set * s,
-                      struct socket_address_set * sock,
+  socket_address_add (struct socket_set * s, int sockfd,
                       struct socket_address_validity addr)
 {
   lock ("socket_address_add");
 check_sav (&addr, "socket_address_add return value");
   struct socket_address_validity * result =
-    socket_address_add_locked (s, sock, addr);
+    socket_address_add_locked (s, sockfd, addr);
   unlock ("socket_address_add");
   return result;
 }
@@ -380,6 +396,15 @@ static struct socket_read_result
   int is_new = 0;
   int recv_limit_reached = 0;
   struct socket_address_validity * sav = NULL;
+#ifdef ALLNET_NETPACKET_SUPPORT
+/* received packets on AF_PACKET have a size that reflects actual
+ * bytes of hardware address but can't be used for sending */
+  if ((sas.ss_family == AF_PACKET) && (alen < sizeof (struct sockaddr_ll))) {
+    char * ptr = (char *) (&sas);   /* clear the last few bytes */
+    memset (ptr + alen, 0, sizeof (struct sockaddr_ll) - alen);
+    alen = sizeof (struct sockaddr_ll);
+  }
+#endif /* ALLNET_NETPACKET_SUPPORT */
   update_read (sas, alen, sock, rcvd_time, &sav, &is_new, &recv_limit_reached);
 if (! is_new) check_sav (sav, "update_read result");
   struct socket_read_result r =

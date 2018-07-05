@@ -249,7 +249,7 @@ static struct socket_address_validity *
       .time_limit = limit, .alen = r.alen };
   memcpy (&(sav.addr), &(r.from), sizeof (r.from));
   struct socket_address_validity * result =
-    socket_address_add (&sockets, r.sock, sav);
+    socket_address_add (&sockets, r.sock->sockfd, sav);
   if (result == NULL)
     printf ("odd: unable to add new address\n");
   send_one_keepalive ("add_received_address", r.sock, result);
