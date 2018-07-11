@@ -298,7 +298,7 @@ struct socket_set * debug_copy = debug_copy_socket_set (s);
   }
   if (! rld.updated) {   /* likely error -- report for now */
     char st [1000];
-    print_sockaddr_str ((struct sockaddr *) &addr, alen, 0, st, sizeof (st));
+    print_sockaddr_str ((struct sockaddr *) &addr, alen, st, sizeof (st));
     printf ("warning: update_recv_limit %s did not update any addresses\n", st);
     print_socket_set (s);
 #ifdef DEBUG_SOCKETS
@@ -501,7 +501,7 @@ static void send_error (const char * message, int msize, int flags, int res,
   const char * es = strerror (e);
   printf ("%s sendto: %d (%s)\n", desc, e, es);
   char desc_addr [1000] = "";
-  print_sockaddr_str ((struct sockaddr *) (&sas), alen, 0,
+  print_sockaddr_str ((struct sockaddr *) (&sas), alen,
                       desc_addr, sizeof (desc_addr));
   void * p = NULL;
   int alen2 = 0;
