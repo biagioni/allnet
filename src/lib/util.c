@@ -687,17 +687,12 @@ struct allnet_header *
 }
 
 int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
-                        int tcp, char * s, unsigned int len)
+                        char * s, unsigned int len)
 {
   if (len <= 0)
     return 0;
-  char * proto = "";
-  if (tcp == 1)
-    proto = "/tcp";
-  else if (tcp == 0)
-    proto = "/udp";
   if (sap == NULL)
-    return snprintf (s, len, "(null %s)", proto);
+    return snprintf (s, len, "(null sockaddr)");
   const struct sockaddr_in  * sin  = (const struct sockaddr_in  *) sap;
   const struct sockaddr_in6 * sin6 = (const struct sockaddr_in6 *) sap;
   const struct sockaddr_un  * sun  = (const struct sockaddr_un  *) sap;
@@ -710,8 +705,8 @@ int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
   int i;
   switch (sap->sa_family) {
   case AF_INET:
-    n += snprintf (s + n, minz (len, n), "ip4%s %s %d/%x",
-                   proto, inet_ntoa (sin->sin_addr),
+    n += snprintf (s + n, minz (len, n), "ip4%s %d/%x",
+                   inet_ntoa (sin->sin_addr),
                    ntohs (sin->sin_port), ntohs (sin->sin_port));
     if ((addr_size != 0) && (addr_size < (int) (sizeof (struct sockaddr_in))))
       n += snprintf (s + n, minz (len, n), " (size %d rather than %zd)",
@@ -719,23 +714,32 @@ int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
     break;
   case AF_INET6:
     /* inet_ntop (AF_INET6, sap, str, sizeof (str)); */
-    n += snprintf (s + n, minz (len, n), "ip6%s ", proto);
+    n += snprintf (s + n, minz (len, n), "ip6 ");
     for (i = 0; i + 1 < (int) (sizeof (sin6->sin6_addr)); i++)
       if ((sin6->sin6_addr.s6_addr [i] & 0xff) == 0)
         num_initial_zeros++;
       else
         break;
-    if ((num_initial_zeros & 0x1) > 0)  /* make it even */
-      num_initial_zeros--;
-    if (num_initial_zeros > 0)
-      n += snprintf (s + n, minz (len, n), "::");
-    for (i = num_initial_zeros; i < (int) (sizeof (sin6->sin6_addr)); i += 2) {
-      int two_byte = ((sin6->sin6_addr.s6_addr [i] & 0xff) << 8) |
-                      (sin6->sin6_addr.s6_addr [i + 1] & 0xff);
-      n += snprintf (s + n, minz (len, n), "%x", two_byte);
-      if (i + 2 < (int) (sizeof (sin6->sin6_addr)))
-        /* need the "if" because the last one is not followed by : */
-        n += snprintf (s + n, minz (len, n), ":");
+    if ((num_initial_zeros == 10) &&
+        ((sin6->sin6_addr.s6_addr [10] & 0xff) == 0xff) &&
+        ((sin6->sin6_addr.s6_addr [11] & 0xff) == 0xff)) { /* ipv4 in v6 */
+      const unsigned char * p = &(sin6->sin6_addr.s6_addr [12]);
+      n += snprintf (s + n, minz (len, n), "::ffff:%u.%u.%u.%u",
+                     p [0], p [1], p [2], p [3]);
+    } else {
+      if ((num_initial_zeros & 0x1) > 0)  /* make it even */
+        num_initial_zeros--;
+      if (num_initial_zeros > 0)
+        n += snprintf (s + n, minz (len, n), "::");
+      for (i = num_initial_zeros; i < (int) (sizeof (sin6->sin6_addr));
+           i += 2) {
+        int two_byte = ((sin6->sin6_addr.s6_addr [i] & 0xff) << 8) |
+                        (sin6->sin6_addr.s6_addr [i + 1] & 0xff);
+        n += snprintf (s + n, minz (len, n), "%x", two_byte);
+        if (i + 2 < (int) (sizeof (sin6->sin6_addr)))
+          /* need the "if" because the last one is not followed by : */
+          n += snprintf (s + n, minz (len, n), ":");
+      }
     }
     n += snprintf (s + n, minz (len, n), " %d/%x",
                    ntohs (sin6->sin6_port), ntohs (sin6->sin6_port));
@@ -744,7 +748,7 @@ int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
                      addr_size, sizeof (struct sockaddr_in6));
     break;
   case AF_UNIX:
-    n += snprintf (s + n, minz (len, n), "unix%s %s", proto, sun->sun_path);
+    n += snprintf (s + n, minz (len, n), "unix %s", sun->sun_path);
     if ((addr_size != 0) && (addr_size < (int) (sizeof (struct sockaddr_un))))
       n += snprintf (s + n, minz (len, n), " (size %d rather than %zd)",
                      addr_size, sizeof (struct sockaddr_un));
@@ -752,8 +756,8 @@ int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
 #ifdef ALLNET_NETPACKET_SUPPORT
   case AF_PACKET:
     n += snprintf (s + n, minz (len, n),
-                   "packet protocol%s 0x%x if %d ha %d pkt %d address (%d)",
-                   proto, sll->sll_protocol, sll->sll_ifindex, sll->sll_hatype,
+                   "packet protocol 0x%x if %d ha %d pkt %d address (%d)",
+                   sll->sll_protocol, sll->sll_ifindex, sll->sll_hatype,
                    sll->sll_pkttype, sll->sll_halen);
     for (i = 0; i < sll->sll_halen; i++)
       n += snprintf (s + n, minz (len, n), " %02x", sll->sll_addr [i] & 0xff);
@@ -763,19 +767,18 @@ int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
     break;
 #endif /* ALLNET_NETPACKET_SUPPORT */
   default:
-    n += snprintf (s + n, minz (len, n), "unknown address family %d%s",
-                   sap->sa_family, proto);
+    n += snprintf (s + n, minz (len, n), "unknown address family %d",
+                   sap->sa_family);
     break;
   }
   return n;
 }
 
 /* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
-void print_sockaddr (const struct sockaddr * sap, socklen_t addr_size,
-                     int tcp)
+void print_sockaddr (const struct sockaddr * sap, socklen_t addr_size)
 {
   char buffer [1000];
-  print_sockaddr_str (sap, addr_size, tcp, buffer, sizeof (buffer));
+  print_sockaddr_str (sap, addr_size, buffer, sizeof (buffer));
   printf ("%s", buffer);
 }
 

@@ -83,11 +83,9 @@ extern void print_bitstring (const unsigned char * x, int xoff, int nbits,
                              int print_eol);
 
 /* print an arbitrary socket address */
-/* tcp should be 1 for TCP, 0 for UDP, -1 for neither */
-extern void print_sockaddr (const struct sockaddr * sap, socklen_t addr_size,
-                            int tcp);
+extern void print_sockaddr (const struct sockaddr * sap, socklen_t addr_size);
 extern int print_sockaddr_str (const struct sockaddr * sap,
-                               socklen_t addr_size, int tcp,
+                               socklen_t addr_size,
                                char * string, unsigned int string_size);
 
 /* print a message with the current time */
