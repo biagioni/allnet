@@ -134,7 +134,7 @@ static int socket_sock_loop_locked (struct socket_set * s,
       count++;
       /* compress the array to replace the deleted element */
       int sim;
-      for (sim = si; sim + 1 < sas->num_addrs; sim++)
+      for (sim = si; sim + 1 < s->num_sockets; sim++)
         s->sockets [sim] = s->sockets [sim + 1];
       s->num_sockets--;
       si--;   /* so the loop does the next element, which is now at si */
@@ -545,11 +545,13 @@ check_sav (sav, "send_on_socket");
     sav->alive_sent = sent_time;
     return 1;
   }
-  char desc2 [1000];
-  snprintf (desc2, sizeof (desc2), "%s send_on_socket", desc);
-  /* some error, so the rest of this function is for debugging */
-  send_error (message, msize, flags, (int)result,
-              sav->addr, sav->alen, desc2, s, sockfd, sav, si, ai);
+  if (errno != EADDRNOTAVAIL) {
+    char desc2 [1000];
+    snprintf (desc2, sizeof (desc2), "%s send_on_socket", desc);
+    /* some error, so the rest of this function is for debugging */
+    send_error (message, msize, flags, (int)result,
+                sav->addr, sav->alen, desc2, s, sockfd, sav, si, ai);
+  }
   return 0;
 }
 
@@ -589,7 +591,9 @@ check_sav (sav, "socket_send_fun");
       }
     } else {
       ssd->error = 1;
+#ifdef DEBUG_SOCKETS
       printf ("socket_send_fun (%d) had an error, removing\n", sock->sockfd);
+#endif /* DEBUG_SOCKETS */
       return 0;   /* some error, delete the address */
     }
   }
@@ -674,7 +678,7 @@ check_sav (addr, "socket_send_to");
   int result = send_on_socket (message, msize, sent_time, sock->sockfd, addr,
                                "socket_send_to", NULL, -1, -1);
   if (allocated != NULL)
-    free (allocated);
+    free (allocated); 
   struct dec_send_limit_data dsld = { .alen = addr->alen };
   memcpy (&(dsld.addr), &(addr->addr), sizeof (addr->addr));
   socket_addr_loop_locked (s, socket_dec_send_limit, &dsld);
@@ -696,10 +700,12 @@ int socket_send_to_ip (int sockfd, const char * message, int msize,
                            (struct sockaddr *) (&sas), alen);
   if (result == msize)
     return 1;
-  char desc [1000];
-  snprintf (desc, sizeof (desc), "%s socket_send_to_ip", debug);
-  send_error (message, msize, flags, (int)result, sas, alen,
-              desc, NULL, sockfd, NULL, -1, -1);
+  if (errno != ENETUNREACH) {
+    char desc [1000];
+    snprintf (desc, sizeof (desc), "%s socket_send_to_ip", debug);
+    send_error (message, msize, flags, (int)result, sas, alen,
+                desc, NULL, sockfd, NULL, -1, -1);
+  }
   return 0;
 }
 
