@@ -939,7 +939,6 @@ void routing_expire_dht (struct socket_set * s)
   for (i = 0; i < MAX_PEERS; i++) {
     if ((peers [i].ai.nbits > 0) && (! peers [i].refreshed)) {
       struct addr_info copy = peers [i].ai;
-print_buffer ((char *) &(copy.ip.ip), 16, "moving to ping", 16, 1);
       socket_addr_loop (s, delete_matching_address, &copy);
       peers [i].ai.nbits = 0;
       changed = 1;
