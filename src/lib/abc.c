@@ -1,10 +1,13 @@
 /* abc.c: broadcast messages on local interfaces */
+/* wireless interfaces are placed in ad-hoc mode if they are up,
+ * but there is no IP address assigned to them */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/wait.h>    /* waitpid */
 #include <arpa/inet.h>   /* inet_pton */
 
 #include "abc.h"
@@ -72,10 +75,9 @@ static void add_v6 (struct socket_set * sockets)
   sin.sin6_addr = in6addr_any;
   socklen_t alen = sizeof (sin);
   if (bind (s, (struct sockaddr *) (&sin), alen) != 0) {
-    static int printed = 0;
-    if (! printed)
-      perror ("add_local_broadcast_sockets v6 bind");
-    printed = 1;
+#ifdef DEBUG_PRINT  /* a normal error when the v4 socket shares with v6 */
+    perror ("add_local_broadcast_sockets v6 bind");
+#endif /* DEBUG_PRINT */
     close (s);
     return;
   }
@@ -119,21 +121,228 @@ static void add_v6 (struct socket_set * sockets)
 
 #ifdef ALLNET_NETPACKET_SUPPORT
 
+static int has_ip_address (const char * name, const struct ifaddrs * ifa)
+{
+  const struct ifaddrs * ifa_loop = ifa;
+  while (ifa_loop != NULL) {
+    if ((strcmp (name, ifa_loop->ifa_name) == 0) &&
+        ((ifa_loop->ifa_addr->sa_family == AF_INET) ||
+         (ifa_loop->ifa_addr->sa_family == AF_INET6)))
+      return 1;
+    ifa_loop = ifa_loop->ifa_next;
+  }
+  return 0;
+}
+
+static void broadcast_addr (const char * ifname, const struct ifaddrs * ifa,
+                            struct socket_address_validity * sav)
+{ 
+  /* initialize all fields to 0 */
+  memset (sav, 0, sizeof (struct socket_address_validity));
+  const struct sockaddr_ll * ifsll = 
+    (const struct sockaddr_ll *) (((ifa->ifa_flags & IFF_BROADCAST) != 0) ?
+                                  (ifa->ifa_broadaddr) : (ifa->ifa_dstaddr));
+  /* set the send address */
+  sav->alen = sizeof (struct sockaddr_ll);
+  struct sockaddr_ll * sll = (struct sockaddr_ll *) &(sav->addr);
+  /* Setting 5 fields as specified by man 7 packet */
+  sll->sll_family = AF_PACKET;
+  sll->sll_protocol = allnet_htons (ALLNET_WIFI_PROTOCOL);
+  sll->sll_ifindex = ifsll->sll_ifindex;
+  sll->sll_halen = ifsll->sll_halen;
+  memcpy (sll->sll_addr, ifsll->sll_addr, sizeof (sll->sll_addr));
+}
+
+/* similar to system(3), but suppresses output 
+ * modifies 'command' by replacing blanks with null characters
+ * returns -1 in case of error, and otherwise the exit status of the command */
+static int my_system (char * command)
+{
+  pid_t pid = fork ();
+  if (pid < 0) {
+    perror ("fork");
+    printf ("error forking command '%s'\n", command);
+    return -1;
+  }
+  if (pid == 0) {   /* child, actually execute the command */
+    int num_args = 1;
+#define MAX_ARGS	1000
+    char * argv [MAX_ARGS];
+    char * p = command;
+    int found_blank = 0;
+    argv [0] = command;
+    while ((*p != '\0') && (num_args + 1 < MAX_ARGS)) {
+      if (found_blank) {
+        if (*p != ' ') {
+          argv [num_args] = p;
+          num_args++;
+          found_blank = 0;
+        }
+      } else if (*p == ' ') {
+        found_blank = 1;
+        *p = '\0';
+      }
+      p++;
+    }
+    if (num_args + 1 >= MAX_ARGS)
+      printf ("error: reading beyond argv %d\n", num_args);
+    else
+      argv [num_args] = NULL;
+    argv [MAX_ARGS - 1] = NULL;
+#undef MAX_ARGS
+#ifdef DEBUG_PRINT
+    printf ("executing ");
+    char ** debug_p = argv;
+    while (*debug_p != NULL) {
+      printf ("%s ", *debug_p);
+      debug_p++;
+    }
+    printf ("\n");
+    dup2 (1, 2);   /* make stderr be a copy of stdout */
+#else /* DEBUG_PRINT */
+    close (0);  /* close stdin */
+    close (1);  /* close stdout */
+    close (2);  /* close stderr */
+#endif /* DEBUG_PRINT */
+    execvp (argv [0], argv);
+    perror ("execvp");
+    exit (1);
+  }
+  /* parent */
+  int status;
+  do {
+    waitpid (pid, &status, 0);
+  } while (! WIFEXITED (status));
+  return (WEXITSTATUS (status));
+}
+
+/**
+ * Execute an iw command
+ * @param basic_command Command with %s where interface is to be replaced
+ * @param interface wireless interface (e.g. wlan0)
+ * @param wireless_status alternate expected return status. If matched this
+ *           function returns 2.
+ * @param fail_wireless Error message when wireless_status is encountered
+ *           (may be NULL)
+ * @param fail_other Error message for unexpected errors or NULL.
+ * @return 1 if successful (command returned 0), 2 if command status matches
+ *           wireless_status, 0 otherwise */
+static int if_command (const char * basic_command, const char * interface,
+                       int wireless_status, const char * fail_wireless,
+                       const char * fail_other)
+{
+  static int printed_success = 0;
+  char command [1000];
+  int ilen = 0;
+  if (interface != NULL)
+    ilen = (int)strlen (interface);
+  if (strlen (basic_command) + ilen + 1 >= sizeof (command)) {
+    printf ("abc-iw: command %d+interface %d + 1 >= %d\n",
+            (int) (strlen (basic_command)), ilen, (int) (sizeof (command)));
+    printf (basic_command, interface);
+    return 0;
+  }
+  if (interface != NULL)
+    snprintf (command, sizeof (command), basic_command, interface);
+  else
+    snprintf (command, sizeof (command), "%s", basic_command);
+  int sys_result = my_system (command);
+  int max_print_success = 0;
+#ifdef DEBUG_PRINT
+  max_print_success = 4;
+#endif /* DEBUG_PRINT */
+  if ((sys_result == 0) && (printed_success++ < max_print_success))
+    printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
+  if (sys_result != 0) {
+    if (sys_result != -1)
+      printf ("if_command: program exit status for %s was %d, status %d\n",
+              command, sys_result, wireless_status);
+    if (sys_result != wireless_status) {
+      if (fail_other != NULL)
+        printf ("if_command: call to '%s' failed %d, %s\n",
+                command, sys_result, fail_other);
+      else
+        printf ("if_command: call to '%s' failed %d\n", command, sys_result);
+    } else {  /* sys_result == wireless_status */
+      if (fail_wireless == NULL) {
+        printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
+      } else if (strlen (fail_wireless) > 0) {
+        printf ("%s: %s\n", interface, fail_wireless);
+      }
+      return 2;
+    }
+    return 0;
+  }
+  return 1;
+}
+
 /*
-sudo rfkill unblock wifi
-sudo ifconfig wlan2 up
-sudo iw dev wlan2 ibss join allnet 2412 fixed-freq
+sudo rfkill unblock wifi   -- should not be needed, but sometimes helpful
+sudo iw dev wlan2 set type ibss
+  -- 'sudo ifconfig wlan2 up' is not needed, since the interface is already up
+sudo iw dev wlan2 ibss join 60:a4:4c:e8:bc:9c 2412 fixed-freq
+  as SSID we use the MAC address of an existing Etherent card,
+  which should not be in use by anyone else in the world
+   see also https://wireless.wiki.kernel.org/en/users/documentation/iw/vif
 
-esb@laptop:~/src/allnet/v3$ sudo iw dev wlan2 info
-
+esb@laptop:~/src/allnet/v3$ iw dev wlan2 info
 Interface wlan2
 	ifindex 2
 	wdev 0x1
 	addr 5c:f9:38:8f:ec:08
-	ssid allnet
+	ssid 60:a4:4c:e8:bc:9c
 	type IBSS
 	wiphy 0
 */
+
+/* if this is a wireless interface and not already connected, start it */
+static void start_wireless (const char * name, const struct ifaddrs * ifa)
+{
+  /* 2018/07/11: as far as I know, the wireless interfaces begin with w:
+   * wlan, wlx, wlo, and likely more */
+  if (name [0] != 'w')
+    return;
+  if (has_ip_address (name, ifa))
+    return;
+#ifdef DEBUG_PRINT
+  printf ("(re)starting wireless for interface %s\n", name);
+#endif /* DEBUG_PRINT */
+  static char * mess = "unknown error";
+  if (! if_command ("rfkill unblock wifi", NULL, 1, "", mess))
+    printf ("rfkill failed\n");
+  int iwret = if_command ("iw dev %s set type ibss", name, 240, "", mess);
+  if (iwret == 2) { /* this happens if iface is up and in managed mode */
+printf ("bringing the interface down, then back up\n");
+    /* so we bring the interface down and back up */
+    if (! if_command ("ifconfig %s down", name, 0, NULL,
+                      "unable to turn off interface"))
+      return;
+    if (! if_command ("iw dev %s set type ibss", name, 0, NULL, mess))
+      return;
+    if (! if_command ("ifconfig %s up", name, 255,
+                      "interface already up", mess))
+      return;
+  }
+/* it is better to leave first, in case it is set incorrectly -- otherwise
+ * sometimes the next command fails but we are not on allnet */
+  char * leave_cmd = "iw dev %s ibss leave";
+  if (! if_command (leave_cmd, name, 67, "", mess)) {
+    /* whether it succeeds or not, we are OK */
+  }
+#if 0
+/* giving a specific BSSID (60:a4:4c:e8:bc:9c) on one trial sped up the
+ * time to turn on the interface from over 5s to less than 1/2s, because
+ * the driver no longer scans to see if somebody else is already offering
+ * this ssid on a different bssid.  This also keeps different allnets
+ * from trying to use different bssids, which prevents communication.
+ * This BSSID is the MAC address of an existing Ethernet card,
+ * so should not be in use by anyone else in the world. */
+  char * cmd = "iw dev %s ibss join allnet 2412 fixed-freq 60:a4:4c:e8:bc:9c";
+#endif /* 0 */
+  char * cmd = "iw dev %s ibss join allnet 2412 fixed-freq";
+  if (! if_command (cmd, name, 142, "interface already on allnet", mess))
+    return;
+}
 
 static void add_adhoc (struct socket_set * sockets)
 {
@@ -157,37 +366,21 @@ static void add_adhoc (struct socket_set * sockets)
   }
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
+/* only consider networks that are up, not loopback, and have a
+ * hardware address */
     if ((ifa_loop->ifa_addr != NULL) &&
         (ifa_loop->ifa_addr->sa_family == AF_PACKET) &&
-        ((ifa_loop->ifa_flags & IFF_LOOPBACK) == 0)) {
-static int printed = 0;
-if (++printed < 10) { printf ("found interface %s, packet %x, bc %x ",
-ifa_loop->ifa_name, AF_PACKET, ifa_loop->ifa_flags & IFF_BROADCAST);
-print_buffer ((char *) (ifa->ifa_broadaddr), sizeof (struct sockaddr_ll),
-              "bcast address", 20, 1); }
-      struct sockaddr_ll * ifsll = 
-        (struct sockaddr_ll *) (((ifa_loop->ifa_flags & IFF_BROADCAST) != 0) ?
-                                (ifa->ifa_broadaddr) : (ifa->ifa_dstaddr));
-      /* add a send address */
+        ((ifa_loop->ifa_flags & IFF_LOOPBACK) == 0) &&
+        ((ifa_loop->ifa_flags & IFF_UP) == IFF_UP)) {
+      start_wireless (ifa_loop->ifa_name, ifa);
       struct socket_address_validity sav;
-      memset (&sav, 0, sizeof (sav));  /* set all fields to 0 */
-      sav.alen = sizeof (struct sockaddr_ll);
-      struct sockaddr_ll * sll = (struct sockaddr_ll *) &(sav.addr);
-      /* Setting 5 fields as specified by man 7 packet */
-      sll->sll_family = AF_PACKET;
-      sll->sll_protocol = allnet_htons (ALLNET_WIFI_PROTOCOL);
-      sll->sll_ifindex = ifsll->sll_ifindex;
-      sll->sll_halen = ifsll->sll_halen;
-      if (sll->sll_halen <= sizeof (sll->sll_addr))
-        memset (sll->sll_addr, 0xff, sll->sll_halen);
+      broadcast_addr (ifa_loop->ifa_name, ifa_loop, &sav);
       if (socket_address_add (sockets, s, sav) == NULL)
         printf ("add_local_broacast_sockets error adding adhoc address\n");
     }
     ifa_loop = ifa_loop->ifa_next;
   }
   freeifaddrs (ifa);
-printf ("addresses are:\n");
-print_socket_set (sockets);
 }
 #endif /* ALLNET_NETPACKET_SUPPORT */
 
