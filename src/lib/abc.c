@@ -382,6 +382,7 @@ static void add_adhoc (struct socket_set * sockets)
   }
   freeifaddrs (ifa);
 }
+#define ADHOC_AVAILABLE
 #endif /* ALLNET_NETPACKET_SUPPORT */
 
 /* return 0 if this is a broadcast socket */
@@ -412,6 +413,8 @@ int add_local_broadcast_sockets (struct socket_set * sockets)
   if ((num_bc > 0) && (bc_addrs != NULL))
     free (bc_addrs);
   add_v6 (sockets);
+#ifdef ADHOC_AVAILABLE
   add_adhoc (sockets);
+#endif /* ADHOC_AVAILABLE */
   return (num_bc > 0);
 }
