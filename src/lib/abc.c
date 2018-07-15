@@ -15,6 +15,11 @@
 #include "sockets.h"
 #include "ai.h"
 
+#ifdef TEST_ABC_ADHOC
+#define DEBUG_PRINT
+#endif /* TEST_ABC_ADHOC */
+
+
 #ifdef ALLNET_NETPACKET_SUPPORT
 #include <ifaddrs.h>
 #include <net/if.h>      /* IFF_ values */
@@ -366,6 +371,12 @@ static void add_adhoc (struct socket_set * sockets)
   }
   struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
+#ifdef DEBUG_PRINT
+    printf ("ifa %s addr %p (%d), %x/%x,%x\n", ifa_loop->ifa_name,
+            ifa_loop->ifa_addr, 
+            ((ifa_loop->ifa_addr == NULL) ? 0 : ifa_loop->ifa_addr->sa_family),
+            ifa_loop->ifa_flags, IFF_LOOPBACK, IFF_UP);
+#endif DEBUG_PRINT
 /* only consider networks that are up, not loopback, and have a
  * hardware address */
     if ((ifa_loop->ifa_addr != NULL) &&
@@ -382,7 +393,6 @@ static void add_adhoc (struct socket_set * sockets)
   }
   freeifaddrs (ifa);
 }
-#define ADHOC_AVAILABLE
 #endif /* ALLNET_NETPACKET_SUPPORT */
 
 /* return 0 if this is a broadcast socket */
@@ -405,7 +415,7 @@ int add_local_broadcast_sockets (struct socket_set * sockets)
 #ifdef DEBUG_PRINT
     printf ("interface %d has broadcast address ", i);
     socklen_t alen = sizeof (struct sockaddr_in);
-    print_sockaddr ((struct sockaddr *) (bc_addrs + i), alen, 0);
+    print_sockaddr ((struct sockaddr *) (bc_addrs + i), alen);
     printf ("\n");
 #endif /* DEBUG_PRINT */
     add_v4 (sockets, bc_addrs + i);
@@ -413,8 +423,31 @@ int add_local_broadcast_sockets (struct socket_set * sockets)
   if ((num_bc > 0) && (bc_addrs != NULL))
     free (bc_addrs);
   add_v6 (sockets);
-#ifdef ADHOC_AVAILABLE
   add_adhoc (sockets);
-#endif /* ADHOC_AVAILABLE */
   return (num_bc > 0);
 }
+
+#ifdef TEST_ABC_ADHOC
+/* compile with: gcc -o test_adhoc -DTEST_ABC_ADHOC abc.c sockets.c util.c ai.c sha.c allnet_log.c */
+int main (int argc, char ** argv)
+{
+  struct socket_set sockets = { .num_sockets = 0, .sockets = NULL };
+  add_adhoc (&sockets);
+  print_socket_set (&sockets);
+  int timeout = 1000;   /* initial timeout is 1s */
+  while (1) {
+    struct socket_read_result res = socket_read (&sockets, timeout, 1);
+    if (res.success) {
+      printf ("read a packet of size %d\n", res.msize);
+    } else {
+      printf ("timeout %3lld (%d)\n", allnet_time () % 1000, timeout / 1000);
+      if (timeout < 3600 * 1000)
+        timeout += timeout;   /* subsequent timeouts double each time */
+      char message [24] = { 0x03, 0x07, 0x00, 0x01, };
+      struct sockaddr_storage sas;
+      if (! socket_send_out (&sockets, message, sizeof (message), 1, sas, 0))
+        print_buffer (message, sizeof (message), "unable to send", 10000, 1);
+    }
+  }
+}
+#endif /* TEST_ABC_ADHOC */
