@@ -376,7 +376,7 @@ static void add_adhoc (struct socket_set * sockets)
             ifa_loop->ifa_addr, 
             ((ifa_loop->ifa_addr == NULL) ? 0 : ifa_loop->ifa_addr->sa_family),
             ifa_loop->ifa_flags, IFF_LOOPBACK, IFF_UP);
-#endif DEBUG_PRINT
+#endif /* DEBUG_PRINT */
 /* only consider networks that are up, not loopback, and have a
  * hardware address */
     if ((ifa_loop->ifa_addr != NULL) &&
