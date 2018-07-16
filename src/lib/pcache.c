@@ -496,6 +496,7 @@ struct async_file_info {
   char * fname;     /* thread frees it when done */
   char * contents;  /* thread frees this when done */
   int csize;
+  int * completed;  /* if not NULL, set to one when the write is complete */
 };
 
 static void * write_file_async_thread (void * arg)
@@ -505,6 +506,8 @@ static void * write_file_async_thread (void * arg)
   pthread_mutex_lock (&file_writing);  /* serialize the writing */
   if (0 == write_file (a->fname, a->contents, a->csize, 1))
     printf ("unable to write file %s of size %d\n", a->fname, a->csize);
+  if (a->completed != NULL)
+    *(a->completed) = 1;
   free (a->fname);
   free (a->contents);
   free (arg);
@@ -512,19 +515,23 @@ static void * write_file_async_thread (void * arg)
   return NULL;
 }
 
-/* copies content, then after sending, frees fname */
-static void write_file_async (char * fname, const char * contents, int csize)
+/* copies content, then after sending, frees fname
+ * completed may be NULL, or point to an int that is set to 1 once the
+ * write operation has completed */
+static void write_file_async (char * fname, const char * contents, int csize,
+                              int * completed)
 {
   struct async_file_info * arg =
     malloc_or_fail (sizeof (struct async_file_info), "write_file_async arg");
   arg->fname = fname;
   arg->contents = memcpy_malloc (contents, csize, "write_file_async contents");
   arg->csize = csize;
+  arg->completed = completed;
   pthread_t t;
   pthread_create (&t, NULL, &write_file_async_thread, (void *) arg);
 }
 
-static void write_messages_file (int override)
+static void write_messages_file (int override, int * completed)
 {
   static unsigned long long int last_saved = 0;
   static int state = 0;
@@ -533,13 +540,13 @@ static void write_messages_file (int override)
   char * fname;
   if (config_file_name ("acache", "messages", &fname)) {
     size_t msize = num_message_table_entries * sizeof (struct hash_table_entry);
-    write_file_async (fname, (char *)message_table, (int)msize);
+    write_file_async (fname, (char *)message_table, (int)msize, completed);
   } else {
     printf ("unable to save messages file\n");
   }
 }
 
-static void write_acks_file (int override)
+static void write_acks_file (int override, int * completed)
 {
   static unsigned long long int last_saved = 0;
   static int state = 0;
@@ -548,19 +555,19 @@ static void write_acks_file (int override)
   char * fname;
   if (config_file_name ("acache", "acks", &fname)) {
     size_t asize = num_acks * sizeof (struct hash_ack_entry);
-    write_file_async (fname, (char *)ack_table, (int)asize);
+    write_file_async (fname, (char *)ack_table, (int)asize, completed);
   } else {
     printf ("unable to save acks file\n");
   }
 }
 
-static void write_tokens_file (int override)
+static void write_tokens_file (int override, int * completed)
 {
   static unsigned long long int last_saved = 0;
   static int state = 0;
   if (too_soon (&last_saved, &state, override))
     return;
-  char * fname;
+  char * fname = NULL;
   if (config_file_name ("acache", "tokens", &fname)) {
     if (num_external_tokens > MAX_TOKENS) {  /* sanity check */
       printf ("error, %d tokens, reducing to %d\n",
@@ -573,7 +580,7 @@ static void write_tokens_file (int override)
     memcpy (t.local_token, local_token, PCACHE_TOKEN_SIZE);
     memcpy (t.tokens, token_list, sizeof (token_list));
     size_t asize = sizeof (t);
-    write_file_async (fname, (char *)(&t), (int)asize);
+    write_file_async (fname, (char *)(&t), (int)asize, completed);
   } else {
     printf ("unable to save tokens file\n");
   }
@@ -597,10 +604,22 @@ void pcache_write ()
 printf ("pcache_write called\n");
   if ((alog == NULL) || (num_message_table_entries <= 0))
     return;
-  write_messages_file (1);
-  write_acks_file (1);
-  write_tokens_file (1);
+  int c1 = 0;
+  write_messages_file (1, &c1);
+  int c2 = 0;
+  write_acks_file (1, &c2);
+  int c3 = 0;
+  write_tokens_file (1, &c3);
   pid_save_bloom ();
+  while ((! c1) || (! c2) || (! c3)) {
+    /* sleep for a little while (100ms == 100M ns), then check again.
+     * cannot use sleep(3), since pcache_write may be called from
+     * a signal handler, in which case the call to sleep terminates
+     * the process */
+    struct timespec tv = { .tv_sec = 0, .tv_nsec = 100 * 1000 * 1000 };
+    nanosleep (&tv, NULL);  /* sleep 100ms */
+  }
+printf ("pcache_write completed\n");
 }
 
 /* fills in the first PCACHE_TOKEN_SIZE bytes of token with the current token */
@@ -905,9 +924,9 @@ static int do_gc (int eindex, int msize,
           us / 1000000, us % 1000000, delta_tokens);
 #ifdef PRINT_GC
 #endif /* PRINT_GC */
-  if (write_tok) write_tokens_file (1);
-  if (write_msg) write_messages_file (1);
-  if (write_ack) write_acks_file (1);
+  if (write_tok) write_tokens_file (1, NULL);
+  if (write_msg) write_messages_file (1, NULL);
+  if (write_ack) write_acks_file (1, NULL);
   pid_advance_bloom ();
   pid_save_bloom ();
   return result;
@@ -952,7 +971,7 @@ void pcache_save_packet (const char * message, int msize, int priority)
             (int) MESSAGE_HEADER_SIZE, msize, (int) MESSAGE_STORAGE_SIZE);
     exit (1);
   }
-  write_messages_file (did_gc);
+  write_messages_file (did_gc, NULL);
 }
 
 /* record this packet ID, without actually saving it */
@@ -1129,7 +1148,7 @@ void pcache_save_acks (const char * acks, int num, int max_hops)
   int i;
   for (i = 0; i < num; i++)
     save_one_ack (acks + i * MESSAGE_ID_SIZE, max_hops);
-  write_acks_file (0);
+  write_acks_file (0, NULL);
 }
 
 /* return -1 if already sent.
@@ -1159,7 +1178,7 @@ static int token_to_send_to (const char * token, uint64_t bitmap)
   memcpy (token_list [num_external_tokens], token, MESSAGE_ID_SIZE);
   int result = num_external_tokens;
   num_external_tokens++;
-  write_tokens_file (did_gc);
+  write_tokens_file (did_gc, NULL);
   return result;
 }
 
