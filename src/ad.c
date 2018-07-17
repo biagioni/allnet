@@ -512,7 +512,7 @@ static struct message_process process_message (struct socket_read_result *r)
         { .process = PROCESS_PACKET_ALL, .message = r->message,
           .msize = r->msize, .priority = r->priority, .allocated = 0 };
   if (save_message && (! seen_before)) {
-    if ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) != 0)
+    if ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0)
       pcache_save_packet (r->message, r->msize, r->priority);
     else
       pcache_record_packet (r->message, r->msize);
