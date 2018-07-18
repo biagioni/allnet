@@ -423,7 +423,9 @@ int add_local_broadcast_sockets (struct socket_set * sockets)
   if ((num_bc > 0) && (bc_addrs != NULL))
     free (bc_addrs);
   add_v6 (sockets);
+#ifdef ALLNET_NETPACKET_SUPPORT
   add_adhoc (sockets);
+#endif /* ALLNET_NETPACKET_SUPPORT */
   return (num_bc > 0);
 }
 
