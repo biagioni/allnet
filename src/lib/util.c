@@ -380,8 +380,6 @@ static int bitmap_to_string (char * to, unsigned int tsize,
     if (bitmap [index] & mask) {
       off += snprintf (to + off, minz (tsize, off), "%s%x",
                        ((found) ? ", " : ""), i);
-printf ("for i %d, e %d, bitmap [%d] = %02x & %02x is %02x\n",
-i, exponent, index, bitmap [index] & 0xff, mask, bitmap [index] & mask);
       found = 1;
     }
   }
