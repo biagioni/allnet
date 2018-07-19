@@ -332,8 +332,10 @@ int connect_to_local (const char * program_name, const char * arg0,
 #ifdef ALLNET_USE_FORK
   int sock = connect_once (! start_allnet_if_needed);
   if ((sock < 0) && start_allnet_if_needed) {
-    printf ("%s(%s) unable to connect, starting allnet\n",
-            program_name, arg0);
+    printf ("%s", program_name);
+    if (strcmp (program_name, arg0) != 0)
+      printf ("(%s)", arg0);
+    printf (" unable to connect, starting allnet\n");
     exec_allnet (strcpy_malloc (arg0, "connect_to_local exec_allnet"),
                  path);
     sleep (1);
