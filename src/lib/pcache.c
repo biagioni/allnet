@@ -20,6 +20,9 @@
 /* command to compile it as a stand-alone program that prints the contents
    of the caches:
    gcc -Wall -g -o bin/allnet-print-caches -DPRINT_CACHE_FILES src/lib/pcache.c src/lib/configfiles.c src/lib/util.c src/lib/allnet_log.c src/lib/sha.c src/lib/ai.c src/lib/pipemsg.c src/lib/allnet_queue.c src/lib/pid_bloom.c -lpthread
+
+   command to compile it as a stand-alone program to test pcache_request:
+   gcc -Wall -g -o bin/allnet-test-caches -DTEST_CACHE_FILES src/lib/pcache.c src/lib/configfiles.c src/lib/util.c src/lib/allnet_log.c src/lib/sha.c src/lib/ai.c src/lib/pipemsg.c src/lib/allnet_queue.c src/lib/pid_bloom.c -lpthread
 */
 
 #include <stdio.h>
@@ -730,7 +733,11 @@ static int gc_messages_entry (int eindex, int msize, int token_shift)
 /* cannot have more than this many messages in an entry */
 #define MAX_MESSAGE_INFO	(MESSAGE_STORAGE_SIZE / MESSAGE_HEADER_SIZE)
   struct message_info msgs [MAX_MESSAGE_INFO];
-  assert (hp->num_messages <= MAX_MESSAGE_INFO);
+  if (hp->num_messages > MAX_MESSAGE_INFO) {
+    printf ("error: num_messages %d > max %d\n",
+            hp->num_messages, (int)MAX_MESSAGE_INFO);
+    return 0;
+  }
 #undef MAX_MESSAGE_INFO
 int num_messages = -27;  /* for debugging */
   int i = 0;
@@ -1304,17 +1311,31 @@ struct req_details {
   const unsigned char * mid_bitmap;
 };
 
-#if 0
-static void print_rd (struct req_details *rd)
+#ifdef TEST_CACHE_FILES
+static void print_rd (const struct req_details *rd)
 {
-  printf ("%p %p %p %p %p %p %p\n",
-          rd, &(rd->req), rd->req.dst_bitmap, rd->req.mid_bitmap,
+  printf ("rd %p, req %p: dst %p src %p mid %p, rd dst %p src %p mid %p\n",
+          rd, &(rd->req), rd->req.dst_bitmap, rd->req.src_bitmap,
+          rd->req.mid_bitmap,
           rd->dst_bitmap, rd->src_bitmap, rd->mid_bitmap);
   print_buffer ((char *) rd->dst_bitmap, rd->dst_bits, "dst", 32, 1);
   print_buffer ((char *) rd->src_bitmap, rd->src_bits, "src", 32, 1);
   print_buffer ((char *) rd->mid_bitmap, rd->mid_bits, "mid", 32, 1);
 }
-#endif /* 0 */
+
+static void print_pr (const struct pcache_result * res)
+{
+  printf ("result %p (free %p) has %d messages %p\n",
+          res, res->free_ptr, res->n, res->messages);
+  int i;
+  for (i = 0; i < res->n; i++) {
+    struct pcache_message * pm = &(res->messages [i]);
+    printf ("[%d]: pri %8x, ", i, pm->priority);
+    print_buffer (pm->message, pm->msize, NULL, 10, 0);
+    printf (" %02x %02x..\n", pm->message [16] & 0xff, pm->message [17] & 0xff);
+  }
+}
+#endif /* TEST_CACHE_FILES */
 
 static struct req_details get_details (const struct allnet_data_request *req)
 {
@@ -1342,84 +1363,127 @@ static struct req_details get_details (const struct allnet_data_request *req)
     rd.mid_bitmap = ptr;
     ptr += (rd.mid_bits + 7) / 8;
   }
-#if 0
-print_rd (&rd);
-printf ("allnet data request: since %lld, "
-        "dst 2^%d, src 2^%d, mid 2^%d\n",
-        readb64 ((char *) (req->since)), req->dst_bits_power_two,
-        req->src_bits_power_two, req->mid_bits_power_two);
-printf ("%d/%p, %d/%p, %d/%p:\n", rd.dst_bits, rd.dst_bitmap,
-rd.src_bits, rd.src_bitmap, rd.mid_bits, rd.mid_bitmap);
-print_buffer ((char *)rd.dst_bitmap, rd.dst_bits, "dst", ((rd.dst_bits + 7) / 8), 1);
-print_buffer ((char *)rd.src_bitmap, rd.src_bits, "src", ((rd.src_bits + 7) / 8), 1);
-print_buffer ((char *)rd.mid_bitmap, rd.mid_bits, "mid", ((rd.mid_bits + 7) / 8), 1);
-#endif /* 0 */
+#ifdef TEST_CACHE_FILES
+  print_rd (&rd);
+  printf ("allnet data request: since %lld, "
+          "dst 2^%d, src 2^%d, mid 2^%d\n",
+          readb64 ((char *) (req->since)), req->dst_bits_power_two,
+          req->src_bits_power_two, req->mid_bits_power_two);
+  printf ("%d/%p, %d/%p, %d/%p:\n", rd.dst_bits, rd.dst_bitmap,
+          rd.src_bits, rd.src_bitmap, rd.mid_bits, rd.mid_bitmap);
+  print_buffer ((char *)rd.dst_bitmap, rd.dst_bits, "dst",
+                ((rd.dst_bits + 7) / 8), 1);
+  print_buffer ((char *)rd.src_bitmap, rd.src_bits, "src",
+                ((rd.src_bits + 7) / 8), 1);
+  print_buffer ((char *)rd.mid_bitmap, rd.mid_bits, "mid",
+                ((rd.mid_bits + 7) / 8), 1);
+#endif /* TEST_CACHE_FILES */
   return rd;
 }
 
-static int matches_req (unsigned int nbits, uint64_t first64,
+static int matches_req (unsigned int nbits, const char * address,
                         unsigned int power_two, int bitmap_bits,
-                        const unsigned char * bitmap)
+                        const unsigned char * bitmap, int debug)
 {
-  if (bitmap == NULL)   /* matches */
+if (debug) printf ("entering match_request %04x, p2 %d, nb %d\n",
+readb16 (address), power_two, nbits);
+  if ((bitmap == NULL) || (power_two <= 0))   /* matches */
     return 1;
   if (nbits < 1)        /* always matches */
     return 1;
-  assert ((nbits < 64) || (power_two <= 16));
-  assert (bitmap_bits < (ALLNET_MTU * 8));
-  uint64_t mask = ((nbits == 0) ? 0 : ((int64_t) (-1)) << (64 - nbits));
-  int bindex = (int)((first64 & mask) >> (64 - power_two));
-#if 0
-printf ("first64 %" PRIx64 " mask %" PRIx64 " => index %d/%x, ^2 %d nbits %d\n",
-first64, mask, bindex, bindex, power_two, nbits);
-#endif /* 0 */
+  if ((nbits > 64) || (power_two > 16) ||
+      (bitmap_bits >= (ALLNET_MTU * 8))) {
+    static int first_time = 1;
+    if (first_time)
+      printf ("matches_req error: %d bits, power_two %d, %d-bitmap, mtu %d\n",
+              nbits, power_two, bitmap_bits, (int)ALLNET_MTU);
+    first_time = 0;
+    return 0;   /* no match */
+  }
+  int first16 = readb16 (address);
   int loops = ((nbits >= power_two) ? 1 : (1 << (power_two - nbits)));
+  if (nbits < 16)   /* clear the low-order bits of the address */
+    first16 = (first16 & (~ ((1 << (16 - nbits)) - 1)));
+if (debug) printf ("matches_req: %d nbits, %d loops\n", nbits, loops);
   int i;
   for (i = 0; i < loops; i++) {
-    int byte_index = (bindex + i) / 8;
-    int bit_index  = (bindex + i) % 8;
-#if 0
-printf ("[%d] %02x bit %d (%x) %s %016" PRIx64 "/%d >> %d = %x, %d loops\n",
-byte_index, bitmap [byte_index], bit_index, (0x80 >> bit_index),
-(((bitmap [byte_index] & (0x80 >> bit_index)) != 0) ? "matches"
-                                                   : "does not match"),
-first64, nbits, (64 - power_two), bindex, loops);
-printf ("%p: ", bitmap);
-print_buffer ((char *)bitmap, bitmap_bits, NULL, bitmap_bits / 8, 1);
-#endif /* 0 */
-    if (bitmap [byte_index] & (0x80 >> bit_index))
+    int byte_index = allnet_bitmap_byte_index (power_two, first16 + i);
+    int byte_mask  = allnet_bitmap_byte_mask  (power_two, first16 + i);
+    if ((byte_index < 0) || (byte_mask < 0)) { /* something wrong */
+      static int first_time = 1;
+      if (first_time)
+        printf ("matches_req2 error: %d bits of %04x (%04x) give %d %d\n",
+                power_two, first16 + i, first16, byte_index, byte_mask);
+      first_time = 0;
+      return 0;   /* no match */
+    }
+    if (debug) {
+      printf ("first16 %d/%d mask % index %d/%x byte %02x, ^2 %d nbits %d: ",
+              first16 + i, first16, byte_mask, byte_index, byte_index,
+              bitmap [byte_index], power_two, nbits);
+      if (bitmap [byte_index] & byte_mask)
+        printf ("matches\n");
+      else
+        printf ("no match\n");
+      printf ("  %p: ", bitmap);
+      print_buffer ((char *)bitmap, bitmap_bits, NULL, bitmap_bits / 8, 1);
+    }
+    if (debug)
+      printf ("matching bitmap [%d] = %02x with %02x\n",
+              byte_index, bitmap [byte_index], byte_mask);
+    if (bitmap [byte_index] & byte_mask)
       return 1;
+    if (debug)
+      printf ("bitmap [%d] = %02x does not contain %02x\n",
+              byte_index, bitmap [byte_index], byte_mask);
   }
   return 0;
 }
 
 static int matches_mid (const char * mid, int nbits,
-                        int bitmap_bits, const unsigned char * bitmap)
+                        const unsigned char * bitmap)
 {
   if ((mid == NULL) || (bitmap == NULL))   /* matches */
     return 1;
-  assert (bitmap_bits < (ALLNET_MTU * 8));
-  assert (bitmap_bits == power_two (nbits));
-  uint64_t first64 = readb64 (mid);
-  int bindex = (int)(first64 >> (64 - nbits));
-  int byte_index = bindex / 8;
-  int bit_index  = bindex % 8;
-  return ((bitmap [byte_index] & (256 >> bit_index)) != 0);
+  int first16 = readb16 (mid);
+  int byte_index = allnet_bitmap_byte_index (nbits, first16);
+  int byte_mask  = allnet_bitmap_byte_mask  (nbits, first16);
+  if ((byte_index < 0) || (byte_mask < 0)) { /* something wrong */
+    static int first_time = 1;
+    if (first_time)
+      printf ("matches_mid error: %d bits of %04x give %d %d\n",
+              nbits, first16, byte_index, byte_mask);
+    first_time = 0;
+    return 0;   /* no match */
+  }
+  return ((bitmap [byte_index] & byte_mask) != 0);
 }
 
 static int matches_data_request (const struct req_details *rd,
                                  const char * message, int msize)
 {
   const struct allnet_header * hp = (const struct allnet_header *) message;
-  return ((matches_req (hp->dst_nbits, readb64 ((char *)hp->destination),
+  int debug = 0;
+#ifdef DEBUG_PRINT
+  debug = (message [1] == 1);  /* only debug data messages */
+#endif /* DEBUG_PRINT */
+  int r1 = matches_req (hp->dst_nbits, ((char *)hp->destination),
                         rd->req.dst_bits_power_two, rd->dst_bits,
-                        rd->dst_bitmap)) &&
-          (matches_req (hp->src_nbits, readb64 ((char *)hp->source),
-                        rd->req.dst_bits_power_two, rd->src_bits,
-                        rd->src_bitmap)) &&
-          (matches_mid (ALLNET_MESSAGE_ID (hp, hp->transport, msize),
+                        rd->dst_bitmap, debug);
+  int r2 = matches_req (hp->src_nbits, ((char *)hp->source),
+                        rd->req.src_bits_power_two, rd->src_bits,
+                        rd->src_bitmap, debug);
+  int r3 = matches_mid (ALLNET_MESSAGE_ID (hp, hp->transport, msize),
                         rd->req.mid_bits_power_two,
-                        rd->mid_bits, rd->mid_bitmap)));
+                        rd->mid_bitmap);
+#ifdef DEBUG_PRINT
+  if (debug) {
+    printf ("%d && %d && %d: ", r1, r2, r3);
+    print_buffer (message, msize, NULL, 12, 0);
+    printf (" %02x %02x ...\n", message [16] & 0xff, message [17] & 0xff); }
+  }
+#endif /* DEBUG_PRINT */
+  return (r1 && r2 && r3);
 }
 
 /* if successful, return the messages.
@@ -1429,15 +1493,6 @@ static int matches_data_request (const struct req_details *rd,
 struct pcache_result pcache_request (const struct allnet_data_request *req)
 {
   init_pcache ();
-#ifdef TEST_ADD_TO_RESULT
-  struct pcache_result test_result = {.n=0, .messages=NULL, .free_ptr=NULL};
-  char test [100];
-  size_t x = add_to_result (&test_result, 0, test, 16, 1234);
-  size_t y = add_to_result (&test_result, x, test, 10, 5678);
-  printf ("final size %zd\n", y);
-  sort_result (&test_result);
-  free (test_result.free_ptr);
-#endif /* TEST_ADD_TO_RESULT */
   struct pcache_result result = {  .n = 0, .messages = NULL, .free_ptr = NULL };
   size_t result_size = 0;
   char zero_since [ALLNET_TIME_SIZE];
@@ -1447,6 +1502,9 @@ struct pcache_result pcache_request (const struct allnet_data_request *req)
                    (req->mid_bits_power_two == 0) &&
                    (memcmp (zero_since, req->since, sizeof (zero_since)) == 0));
   struct req_details rd = get_details (req);
+#ifdef TEST_CACHE_FILES
+  print_rd (&rd);
+#endif /* TEST_CACHE_FILES */
 int debug_count = 0;
   if (message_table != NULL) {
     int ie;
@@ -1466,10 +1524,6 @@ debug_count++;
     }
   }
   sort_result (&result);
-/*
-printf ("pcache_request returning %d/%d/%d/%d results\n",
-        result.n, num_message_table_entries, debug_table_entries, debug_count);
-*/
   return result;
 }
 
@@ -1535,7 +1589,7 @@ static void print_message_table_entry (int eindex)
     snprintf (desc, sizeof (desc), "message %d: offset %d, token %" PRIx64 "",
               i, offset, mh.sent_to_tokens);
     print_buffer (message_table [eindex].storage + offset + MESSAGE_HEADER_SIZE,
-                  mh.length, desc, 26, 1);
+                  mh.length, desc, 36, 1);
     offset += mh.length + MESSAGE_HEADER_SIZE;
   }
 }
@@ -1569,3 +1623,92 @@ int main (int argc, char ** argv)
   print_stats ("saved cache");
 }
 #endif /* PRINT_CACHE_FILES */
+
+#ifdef TEST_CACHE_FILES
+
+int main (int argc, char ** argv)
+{
+  init_pcache ();
+  if (argc <= 1) {  /* simple test, request everything */
+    struct allnet_data_request req; /* null request, should return everything */
+    memset (&req, 0, sizeof (struct allnet_data_request));
+    struct pcache_result res = pcache_request (&req);
+    print_pr (&res);
+    return 0;
+  }
+/* code adapted from xcommon.c */
+#define BITMAP_BITS_LOG 8  /* 11 or less to keep packet size below 1K */
+#define BITMAP_BITS     (1 << BITMAP_BITS_LOG)
+#define BITMAP_BYTES    (BITMAP_BITS / 8)
+  /* adr is an allnet_data_request */
+  /* adr_size has room for each of the bitmaps */
+  unsigned int adr_size =
+    sizeof (struct allnet_data_request) + BITMAP_BYTES * 3;
+  struct allnet_data_request * adr = malloc_or_fail (adr_size,
+                                                     "test_cache_files");
+  memset (adr, 0, sizeof (adr_size));
+  adr->dst_bits_power_two = BITMAP_BITS_LOG;
+  adr->src_bits_power_two = BITMAP_BITS_LOG;
+  adr->mid_bits_power_two = BITMAP_BITS_LOG;
+  random_bytes ((char *) (adr->padding), sizeof (adr->padding));
+  unsigned char * dst = adr->dst_bitmap;
+  unsigned char * src = dst + BITMAP_BYTES;
+  unsigned char * mid = src + BITMAP_BYTES;
+/* end code adapted from xcommon.c */
+  int dcount;
+  int scount;
+  int mcount;
+  int i;
+  for (i = 1; i < argc; i++) {
+    char * ep;
+    int pos = strtol (&(argv [i] [1]), &ep, 16);
+    if ((*ep != '\0') || (pos < 0) || (pos >= 256)) {
+      printf ("unknown argument %s, %s\n", argv [i],
+              "args should have a number 0 ... ff following d, s, or m");
+      return 1;
+    }
+    if (argv [i] [0] == 'd')
+      dcount++;
+    else if (argv [i] [0] == 's')
+      scount++;
+    else if (argv [i] [0] == 'm')
+      mcount++;
+    else {
+      printf ("unknown argument %s, args should begin with d, s, or m",
+              argv [i]);
+      return 1;
+    }
+  }
+  if (dcount == 0) {
+    adr->dst_bits_power_two = 0;
+    mid = src;
+    src = dst;
+    dst = NULL;  /* crash if we try to access dst */
+  }
+  if (scount == 0) {
+    adr->src_bits_power_two = 0;
+    mid = src;
+    src = NULL;  /* crash if we try to access src */
+  }
+  if (mcount == 0) {
+    adr->mid_bits_power_two = 0;
+    mid = NULL;  /* crash if we try to access mid */
+  }
+  for (i = 1; i < argc; i++) {
+    char * ep;
+    int pos = strtol (&(argv [i] [1]), &ep, 16);
+    int byte_index = allnet_bitmap_byte_index (16, pos);
+    int byte_mask  = allnet_bitmap_byte_mask  (16, pos);
+    if (argv [i] [0] == 'd')
+      dst [byte_index] |= byte_mask;
+    else if (argv [i] [0] == 's')
+      src [byte_index] |= byte_mask;
+    else if (argv [i] [0] == 'm')
+      mid [byte_index] |= byte_mask;
+    else
+      printf ("coding error on argument [%d] %s\n", i, argv [i]);
+  }
+  struct pcache_result res = pcache_request (adr);
+  print_pr (&res);
+}
+#endif /* TEST_CACHE_FILES */
