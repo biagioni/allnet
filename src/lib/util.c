@@ -363,22 +363,26 @@ static int bitmap_to_string (char * to, unsigned int tsize,
   if (exponent <= 0)
     return off;
   off += snprintf (to + off, minz (tsize, off), ": ");
-  int num_bits = p2 (exponent);
+  int num_bits = p2 (exponent);  /* already checked exponent > 0 */
   int num_bytes = (num_bits + 7) / 8;
   unsigned char * bitmap = *my_bitmap;
   *my_bitmap = bitmap + num_bytes;  /* return value */
-  int i, b;
-  int found = 0;
-  for (i = 0; i < num_bytes; i++) {
-    unsigned char byte = bitmap [i];
-    if (byte != 0) {
-      for (b = 0; b < 8; b++) {
-        if ((byte >> b) & 1) {
-          off += snprintf (to + off, minz (tsize, off), "%s%x",
-                           ((found) ? ", " : ""), i * 8 + b);
-          found = 1;
-        }
-      }
+  int found = 0;  /* did we find anything? */
+  int i;
+  for (i = 0; i < num_bits; i++) {
+    int sixteen = i;  /* the index/mask functions always require 16 bits */
+    if (exponent < 16)
+      sixteen = sixteen << (16 - exponent);
+    else if (exponent > 16)
+      sixteen = sixteen << (exponent - 16);
+    int index = allnet_bitmap_byte_index (exponent, sixteen);
+    int mask = allnet_bitmap_byte_mask (exponent, sixteen);
+    if (bitmap [index] & mask) {
+      off += snprintf (to + off, minz (tsize, off), "%s%x",
+                       ((found) ? ", " : ""), i);
+printf ("for i %d, e %d, bitmap [%d] = %02x & %02x is %02x\n",
+i, exponent, index, bitmap [index] & 0xff, mask, bitmap [index] & mask);
+      found = 1;
     }
   }
   if (! found)
