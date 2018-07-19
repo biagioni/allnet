@@ -93,10 +93,14 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
               free (message); /* we only use the ack, not the message */
               char mid [MESSAGE_ID_SIZE];  /* message id, hash of the ack */
               sha512_bytes (ack, MESSAGE_ID_SIZE, mid, MESSAGE_ID_SIZE);
-              uint32_t bits = (((uint32_t)readb32 (mid))) >> (32 - power_two);
-              int mask = (1 << (bits % 8));
-              if ((bitmap [bits / 8] & mask) == 0) {
-                bitmap [bits / 8] |= mask;
+              int bits = (int)readb16 (mid);
+              int index = allnet_bitmap_byte_index (power_two, bits);
+              int mask = allnet_bitmap_byte_mask (power_two, bits);
+              if ((index < 0) || (mask < 0)) {
+                printf ("fill_bits error: index %d, mask %d, p2 %d, bits %d\n",
+                        index, mask, power_two, bits);
+              } else if ((bitmap [index] & mask) == 0) {
+                bitmap [index] |= mask;
                 res++; /* the point of the if is to increment this correctly */
               }
             }
@@ -113,15 +117,22 @@ static int fill_bits (unsigned char * bitmap, int power_two, int selector)
         else
           nbits = get_remote (keysets [ikeyset], addr);
         if (nbits > 0) {
-          uint32_t bits = (((uint32_t)readb32u (addr))) >> (32 - power_two);
-          if (nbits < power_two) {  /* to do: add a random factor */
-printf ("fill_bits (%p, %d, %d) found nbits %d < %d for (%s, %d)\n",
-bitmap, power_two, selector, nbits, power_two, contacts [icontact], keysets [ikeyset]);
+          int bits = (int)readb16 ((char *)addr);
+          if (nbits < power_two) {  /* add a random factor */
+            int r = (int) (random_int (0, (1 << (power_two - nbits)) - 1));
+printf ("fill_bits (%p, %d, %d) found nbits %d < %d, bits %04x, xoring %04x for (%s, %d)\n",
+bitmap, power_two, selector, nbits, power_two, bits, r,
+contacts [icontact], keysets [ikeyset]);
+            bits ^= r;
           }
-          int mask = (1 << (bits % 8));
-          if ((bitmap [bits / 8] & mask) == 0) {
-            bitmap [bits / 8] |= mask;
-            res++;  /* the point of the if is to increment this correctly */
+          int index = allnet_bitmap_byte_index (power_two, bits);
+          int mask = allnet_bitmap_byte_mask (power_two, bits);
+          if ((index < 0) || (mask < 0)) {
+            printf ("fill_bits2 error: index %d, mask %d, p2 %d, bits %d\n",
+                    index, mask, power_two, bits);
+          } else if ((bitmap [index] & mask) == 0) {
+              bitmap [index] |= mask;
+              res++;  /* the point of the if is to increment this correctly */
           }
         } else if (nbits == 0) {  /* no address, ignore */
           static int first_time = 1;
@@ -144,10 +155,14 @@ bitmap, power_two, selector, nbits, power_two, contacts [icontact], keysets [ike
     unsigned char addr [ADDRESS_SIZE];
     routing_my_address (addr);
     /* repeating some of the code above */
-    uint32_t bits = (((uint32_t)readb32u (addr))) >> (32 - power_two);
-    int mask = (1 << (bits % 8));
-    if ((bitmap [bits / 8] & mask) == 0) {
-      bitmap [bits / 8] |= mask;
+    int bits = readb16 ((char *) addr);
+    int index = allnet_bitmap_byte_index (power_two, bits);
+    int mask = allnet_bitmap_byte_mask (power_two, bits);
+    if ((index < 0) || (mask < 0)) {
+      printf ("fill_bits3 error: index %d, mask %d, p2 %d, bits %d\n",
+              index, mask, power_two, bits);
+    } else if ((bitmap [index] & mask) == 0) {
+      bitmap [index] |= mask;
       res++;  /* the point of the if is to increment this correctly */
     }
   }
@@ -260,7 +275,7 @@ static void * request_cached_data (void * arg)
   while (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW, NULL) != 0) {
     /* loop forever, unless the socket is closed */
     sleep (sleep_time);
-    if (sleep_time >= SLEEP_MAX_THRESHOLD)
+    if (sleep_time >= SLEEP_MAX_THRESHOLD)  /* sleep 4-5min */
       sleep_time = (int)random_int (SLEEP_MAX_THRESHOLD, SLEEP_MAX);
     else  /* increase sleep time by 1.2 plus 5 seconds */
       sleep_time = (int)random_int (sleep_time + SLEEP_INCREASE_MIN,
@@ -327,13 +342,6 @@ static unsigned char id_hashes [3] [ID_HASH_COUNT] [MESSAGE_ID_SIZE];
 static int idhash_index (const unsigned char * id)
 {
   uint32_t index = ((uint32_t) readb32u (id)) >> (32 - ID_HASH_COUNT_BITS);
-#if 0
-  static int first = 10;
-  if ((first > 0) || (index >= ID_HASH_COUNT)) {
-printf ("%lx >> %d = %x (*4 = %x)\n", readb32u (id), (32 - ID_HASH_COUNT_BITS), index, index * 4);
-    first--;
-  }
-#endif /* 0 */
   return (int)index;
 }
 
@@ -1654,7 +1662,7 @@ eagerly ? "eager" : "not eager"); */
   static unsigned long long int sleep_time = SLEEP_INITIAL_MIN;
 /* printf ("request_and_resend (sock %d, peer %s) => %d, ",
         sock, contact, result);
-printf ("last %llu + sleep %llu = %llu <=> %llu\n",
+   printf ("last %llu + sleep %llu = %llu <=> %llu\n",
         last_data_request, sleep_time, last_data_request + sleep_time, now); */
   if (last_data_request + sleep_time <= now) {
     char start [ALLNET_TIME_SIZE];
