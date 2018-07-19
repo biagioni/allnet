@@ -371,7 +371,11 @@ struct allnet_app_media_header {
  * the bitmap, when set to one, specifies that destinations matching
  * that prefix are of interest.  if x = destination_bits_power_two > 0,
  * the bitmap has 2^x bits, and floor((2^x + 7) / 8) bytes.
- * Similarly for the source bits.
+ * The bits within a byte are 1 << (7 - bit number), so that for example
+ * 0xe6 has bits 0, 1, 2, 5, and 6 set, whereas bits 3, 4, and 7 are not set,
+ * though in general it is easiest to use the allnet_bitmap_byte_*
+ * functions from util.h/c
+ * Similarly for the source bitmap and the message ID bitmap.
  * messages are sent back only if they match ALL the requested constraints.
  * a zero-bit bitmap will match all packets, as will a 0 time "since".
  * note that _power_two of 0 would normally imply a 1-bit bitmap, which
