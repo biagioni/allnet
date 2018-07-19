@@ -113,6 +113,16 @@ extern int bitstring_matches (const unsigned char * x, int xoff,
 extern int matching_bits (const unsigned char * x, int xbits,
                           const unsigned char * y, int ybits);
 
+/* functions used to modify and read data request bitmaps
+ * power_two is the size of the bitmap, in bits.
+ * first_sixteen holds the first sixteen bits of the address or ID.
+ * these functions return a byte index, 0 <= index < 2^power_two,
+ * or a mask equal to 1 << offset, where 0 <= offset < 8,
+ * as long as: 0 < power_two <= 16, and 0 <= first_sixteen < 2^16,
+ * (if these constraints are not respected, these functions return -1) */
+extern int allnet_bitmap_byte_index (int power_two, int first_sixteen);
+extern int allnet_bitmap_byte_mask (int power_two, int first_sixteen);
+
 /* AllNet time begins January 1st, 2000.  This may be different from
  * the time bases (epochs) on other systems, including specifically
  * Unix (Jan 1st, 1970) and Windows (Jan 1st, 1980).  I believe somebody
@@ -299,23 +309,16 @@ extern int minz (int from, int subtract);
  */
 extern int binary_log (unsigned long long int value);
 
-#ifndef __APPLE__
-#ifndef __CYGWIN__
-#ifndef _WIN32
-#ifndef _WIN64
-#ifndef __OpenBSD__
+#ifdef linux
+#ifndef ANDROID  /* android is linux, but doesn't have getifaddrs (yet) */
 #define ALLNET_NETPACKET_SUPPORT
-#endif /* __OpenBSD__ */
-#endif /* _WIN64 */
-#endif /* _WIN32 */
-#endif /* __CYGWIN__ */
-#endif /* __APPLE__ */
+#endif /* ANDROID */
+#endif /* linux */
 
-/* 2017/09/20: android seems to support fork, so only use threads for iOS */
 #if defined(__IPHONE_OS_VERSION_MIN_REQUIRED) || defined(ANDROID)
 #include <pthread.h>
-/* in case of error on iOS, don't kill the process, only the thread (since
- * in iOS, we only have one process */
+/* in case of error on iOS/android, don't kill the process, only
+ * the thread, since in these systems we only have one process */
 #define exit(n)        pthread_exit(NULL)
 #define ALLNET_USE_THREADS
 #define ALLNET_RESOURCE_CONSTRAINED	/* use fewer resources */
@@ -323,8 +326,5 @@ extern int binary_log (unsigned long long int value);
 /* we use fork except on systems that don't support it */
 #define ALLNET_USE_FORK
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
-
-/* defined in pipemsg.c, but used in files that don't #include pipemsg.h */
-extern void pipemsg_debug_last_received (const char * message);
 
 #endif /* ALLNET_UTIL_H */
