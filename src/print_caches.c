@@ -2,13 +2,9 @@
 
 #include <stdio.h>
 
-int main (int argc, char ** argv)
-{
-  printf ("print_caches not implemented\n");
-#if 0
-  extern void print_caches (int print_msgs, int print_acks);
+/* normally we do not #include a .c file.  However, we simply want
+ * compile pcache.c with -DPRINT_CACHE_FILES, and this does the trick */
 
-  print_caches (5, 1);
-#endif /* 0 */
-  return 0;
-}
+#define PRINT_CACHE_FILES
+
+#include "lib/pcache.c"
