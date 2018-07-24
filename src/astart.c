@@ -297,10 +297,8 @@ static void stop_all_on_signal (int signal)
       printf ("%d killing %d\n", getpid (), pids [i]);
 #endif /* DEBUG_PRINT */
       kill (pids [i], SIGINT);
+      waitpid (pids [i], NULL, 0);
     }
-    sleep (1);   /* now kill any processes that haven't died yet */
-    for (i = count - 1; i >= 0; i--)
-      kill (pids [i], SIGKILL);
   }
   exit (0);      /* finally, suicide */
 }
@@ -324,9 +322,8 @@ static void stop_all ()
     printf ("running 'pkill -x allnetd|abc|allnet-kgen|allnet-keyd'\n");
     /* send a sigint to all allnet processes */
     /* -x specifies that we only use exact match on process names */
-    /* allnet|abc kills processes whether they retain the original name
-     * or use the new name */
-    execlp ("pkill", "pkill", "-x", "allnetd|abc", ((char *)NULL));
+    execlp ("pkill", "pkill", "-x", "allnetd|allnet-keyd|allnet-kgen",
+            ((char *)NULL));
     /* execlp should never return */
     perror ("execlp");
     printf ("unable to pkill\n");
