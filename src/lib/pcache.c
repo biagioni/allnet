@@ -108,14 +108,14 @@ static unsigned int num_message_table_entries =
     (DEFAULT_MESSAGE_TABLE_SIZE / sizeof (struct hash_table_entry));
 static unsigned int num_acks = DEFAULT_NUM_ACKS;
 
-static char local_token [PCACHE_TOKEN_SIZE];
-static char token_list [MAX_TOKENS] [PCACHE_TOKEN_SIZE];
+static char local_token [ALLNET_TOKEN_SIZE];
+static char token_list [MAX_TOKENS] [ALLNET_TOKEN_SIZE];
 static int num_external_tokens = 0;
 
 struct tokens_file {  /* format saved on file */
   uint64_t num_tokens;
-  char local_token [PCACHE_TOKEN_SIZE];
-  char tokens [MAX_TOKENS] [PCACHE_TOKEN_SIZE];
+  char local_token [ALLNET_TOKEN_SIZE];
+  char tokens [MAX_TOKENS] [ALLNET_TOKEN_SIZE];
 };
 
 static struct allnet_log * alog = NULL;
@@ -218,7 +218,7 @@ static void print_ack_table_entry (int aindex)
 
 static void reinit_local_token ()
 {
-  random_bytes (local_token, PCACHE_TOKEN_SIZE);
+  random_bytes (local_token, ALLNET_TOKEN_SIZE);
 }
 
 /* either read or create ~/.allnet/acache/sizes */
@@ -327,7 +327,7 @@ static int initialize_tokens_from_file ()
                   num_external_tokens, MAX_TOKENS);
           num_external_tokens = MAX_TOKENS;
         }
-        memcpy (local_token, t->local_token, PCACHE_TOKEN_SIZE);
+        memcpy (local_token, t->local_token, ALLNET_TOKEN_SIZE);
         memcpy ((char *) token_list, (char *) t->tokens, sizeof (token_list));
         free (t);
         result = 1;   /* everything is OK */
@@ -589,7 +589,7 @@ static void write_tokens_file (int override, int in_background)
     struct tokens_file t;
     memset (&t, 0, sizeof (t));
     t.num_tokens = num_external_tokens;
-    memcpy (t.local_token, local_token, PCACHE_TOKEN_SIZE);
+    memcpy (t.local_token, local_token, ALLNET_TOKEN_SIZE);
     memcpy (t.tokens, token_list, sizeof (token_list));
     size_t asize = sizeof (t);
     write_file_async (fname, (char *)(&t), (int)asize, in_background);
@@ -613,21 +613,21 @@ static void init_pcache ()
 /* save cached information to disk */
 void pcache_write ()
 {
-/* printf ("pcache_write called\n"); */
+printf ("pcache_write called\n");
   if ((alog == NULL) || (num_message_table_entries <= 0))
     return;
   write_messages_file (1, WRITE_FILE_WAIT);
   write_acks_file (1, WRITE_FILE_WAIT);
   write_tokens_file (1, WRITE_FILE_WAIT);
   pid_save_bloom ();
-/* printf ("pcache_write completed\n"); */
+printf ("pcache_write completed\n");
 }
 
-/* fills in the first PCACHE_TOKEN_SIZE bytes of token with the current token */
+/* fills in the first ALLNET_TOKEN_SIZE bytes of token with the current token */
 void pcache_current_token (char * result_token)
 {
   init_pcache ();
-  memcpy (result_token, local_token, PCACHE_TOKEN_SIZE);
+  memcpy (result_token, local_token, ALLNET_TOKEN_SIZE);
 }
 
 /* return 1 for success, 0 for failure.
@@ -853,10 +853,10 @@ static int gc_tokens ()
     return 0;
   int goal = ((3 * MAX_TOKENS) / 4);         /* keep 3/4 of existing tokens */
   int shift = (num_external_tokens - goal);  /* how many to shift */
-  int shift_bytes = shift * PCACHE_TOKEN_SIZE;
+  int shift_bytes = shift * ALLNET_TOKEN_SIZE;
   char * from = ((char *) token_list) + shift_bytes;
   int length = num_external_tokens - shift;
-  int length_bytes = length * PCACHE_TOKEN_SIZE;
+  int length_bytes = length * ALLNET_TOKEN_SIZE;
 printf ("shifting %d tokens by %d: %d, %d, %d\n", num_external_tokens, shift,
 shift_bytes, length, length_bytes);
 #ifdef DEBUG_PRINT
@@ -1568,11 +1568,11 @@ struct pcache_result pcache_id_request (struct allnet_mgmt_id_request * req)
 #endif /* IMPLEMENT_MGMT_ID_REQUEST */
 
 #if 0  /* not (yet) implemented */
-/* similar to pcache_request. Tokens are PCACHE_TOKEN_SIZE bytes long. */
+/* similar to pcache_request. Tokens are ALLNET_TOKEN_SIZE bytes long. */
 struct pcache_result pcache_token_request (const char * token);
 
 /* mark that this message need never again be sent to this token */
-void pcache_mark_token_sent (const char * token,  /* PCACHE_TOKEN_SIZE bytes */
+void pcache_mark_token_sent (const char * token,  /* ALLNET_TOKEN_SIZE bytes */
                              const char * message, int msize);
 
 /* return 1 if we have the ack, 0 if we do not */

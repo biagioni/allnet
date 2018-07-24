@@ -18,9 +18,7 @@
 #include "packet.h"
 #include "mgmt.h"
 
-#define PCACHE_TOKEN_SIZE	16		/* 16 bytes, MESSAGE_ID_SIZE */
-
-/* fills in the first PCACHE_TOKEN_SIZE bytes of token with the current token */
+/* fills in the first ALLNET_TOKEN_SIZE bytes of token with the current token */
 extern void pcache_current_token (char * token);
 
 /* return 1 for success, 0 for failure.
@@ -67,12 +65,12 @@ extern struct pcache_result
   pcache_id_request (struct allnet_mgmt_id_request * req);
 #endif /* IMPLEMENT_MGMT_ID_REQUEST */
 
-/* similar to pcache_request. Tokens are PCACHE_TOKEN_SIZE bytes long. */
+/* similar to pcache_request. Tokens are ALLNET_TOKEN_SIZE bytes long. */
 extern struct pcache_result pcache_token_request (const char * token);
 
 /* mark that this message need never again be sent to this token */
 extern void
-  pcache_mark_token_sent (const char * token,  /* PCACHE_TOKEN_SIZE bytes */
+  pcache_mark_token_sent (const char * token,  /* ALLNET_TOKEN_SIZE bytes */
                           const char * message, int msize);
 
 /* acks */

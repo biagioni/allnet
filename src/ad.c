@@ -339,7 +339,7 @@ static unsigned int message_priority (char * message, struct allnet_header * hp,
  * be less than the original size */
 static int process_acks (struct allnet_header * hp, int size)
 {
-  char local_token [PCACHE_TOKEN_SIZE];
+  char local_token [ALLNET_TOKEN_SIZE];
   pcache_current_token (local_token);
   char * acks = ALLNET_DATA_START (hp, hp->transport, size);
   char * message = (char *) hp;  /* header size computation must be in bytes */

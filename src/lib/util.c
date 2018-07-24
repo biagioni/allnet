@@ -1742,18 +1742,22 @@ printf ("time to crash %d\n", 1000 / ah->version);
     return 0;
   }
 /* check the validity of the packet, as defined in packet.h */
-  if (((ah->message_type == ALLNET_TYPE_ACK) ||
-       (ah->message_type == ALLNET_TYPE_DATA_REQ)) &&
-      (ah->transport != 0)) {
+  if ((ah->message_type == ALLNET_TYPE_ACK) && (ah->transport != 0)) {
     char buffer [10000];
     snprintf (buffer, sizeof (buffer),
-              "received message type %d, transport 0x%x != 0",
-              ah->message_type, ah->transport);
+              "received ack, transport 0x%x != 0", ah->transport);
 /* printf ("%s", buffer); */
-    if (error_desc != NULL) *error_desc = "ack or req with nonzero transport";
+    if (error_desc != NULL) *error_desc = "req with nonzero transport";
     return 0;
   }
-  if (ah->message_type == ALLNET_TYPE_DATA_REQ) {  /* check the sizes */
+  if (ah->message_type == ALLNET_TYPE_DATA_REQ) {
+/* do not enforce for now -- still experimental  2018/07/25
+    if ((ah->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0) {
+      if (error_desc != NULL) *error_desc = "req fails to specify do-not-cache";
+      return 0;
+    }
+ */
+    /* check the sizes */
     const struct allnet_data_request * rp = (const struct allnet_data_request *)
       ALLNET_DATA_START (ah, ah->transport, size);
     int wanted = sizeof (struct allnet_data_request);

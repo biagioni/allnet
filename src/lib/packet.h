@@ -84,7 +84,7 @@ struct allnet_header {
 };
 
 /* a message is invalid under the following circumstances:
- * non-zero transport for ALLNET_TYPE_ACK or ALLNET_TYPE_DATA_REQ
+ * non-zero transport for ALLNET_TYPE_ACK
  * payload for ALLNET_TYPE_ACK not a multiple (> 0) of MESSAGE_ID_SIZE payload
  * ALLNET_TRANSPORT_ACK_REQ bit set, but payload less than MESSAGE_ID_SIZE
  * ALLNET_TRANSPORT_LARGE bit set without ALLNET_TRANSPORT_ACK_REQ bit
@@ -393,7 +393,9 @@ struct allnet_app_media_header {
  * packet with a 0-bit destination address will match any data request,
  * and a data request with a 0-bit source address will match any packet.
  */
+#define ALLNET_TOKEN_SIZE	MESSAGE_ID_SIZE		/* 16 bytes */
 struct allnet_data_request {
+  unsigned char token [ALLNET_TOKEN_SIZE];
   unsigned char since [ALLNET_TIME_SIZE];
   unsigned char dst_bits_power_two;  /* bitmap has 2^this bits */
   unsigned char src_bits_power_two;  /* bitmap has 2^this bits */
