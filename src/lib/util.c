@@ -520,10 +520,14 @@ void packet_to_string (const char * buffer, unsigned int bsize,
     } else if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
       struct allnet_data_request * adrp =
         (struct allnet_data_request *) (buffer + (ALLNET_SIZE (hp->transport)));
+      char token_string [200];
+      buffer_to_string ((char *) adrp->token, sizeof (adrp->token), "token",
+                        100, 0, token_string, sizeof (token_string));
       char time_string [100];
       allnet_time_string (readb64u (adrp->since), time_string);
       off += snprintf (to + off, minz (itsize, off),
-                       ", requesting since %s, ", time_string);
+                       ", %s, requesting since %s, ",
+                       token_string, time_string);
       off += snprintf (to + off, minz (itsize, off), "dst/src/mid bitmaps");
       unsigned char * bitmap = adrp->dst_bitmap;
       off += bitmap_to_string (to + off, minz (itsize, off),
@@ -1761,6 +1765,11 @@ printf ("time to crash %d\n", 1000 / ah->version);
     const struct allnet_data_request * rp = (const struct allnet_data_request *)
       ALLNET_DATA_START (ah, ah->transport, size);
     int wanted = sizeof (struct allnet_data_request);
+    if (wanted > size) {
+      if (error_desc != NULL) *error_desc = "data request too small";
+printf ("got data request of size %d, min %d\n", size, wanted);
+      return 0;
+    }
 /* add 6 (rather than 7) so that if power_two is 0, we add 0 bytes
  * for that bitmap */
     wanted += (p2 (rp->dst_bits_power_two) + 6) / 8;
@@ -1768,9 +1777,11 @@ printf ("time to crash %d\n", 1000 / ah->version);
     wanted += (p2 (rp->mid_bits_power_two) + 6) / 8;
     if (wanted > size) {
       if (error_desc != NULL) *error_desc = "data request too small";
+/*
 printf ("got data request of size %d, expected %d (%d, %d, %d)\n",
 size, wanted, rp->dst_bits_power_two, rp->src_bits_power_two,
 rp->mid_bits_power_two);
+*/
       return 0;
     }
   }
