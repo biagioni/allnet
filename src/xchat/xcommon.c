@@ -47,6 +47,8 @@ static struct allnet_log * alog = NULL;
 #define SLEEP_MAX_THRESHOLD	240  /* seconds -- 4min */
 #define SLEEP_MAX		300  /* seconds -- 5min */
 
+static char global_token [ALLNET_TOKEN_SIZE];
+
 /* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
  * and power_two must be less than 32.
  * selector should be FILL_LOCAL/REMOTE_ADDRESS or FILL_ACK
@@ -214,9 +216,11 @@ static int send_data_request (int sock, int priority, char * start)
   struct allnet_header * hp =
     create_packet (adr_size, ALLNET_TYPE_DATA_REQ, hops, ALLNET_SIGTYPE_NONE,
                    NULL, 0, NULL, 0, NULL, NULL, &size);
+  hp->transport = ALLNET_TRANSPORT_DO_NOT_CACHE;
   struct allnet_data_request * adr =
     (struct allnet_data_request *)
        (ALLNET_DATA_START (hp, hp->transport, size));
+  memcpy (adr->token, global_token, sizeof (adr->token));
   memset (adr->since, 0, sizeof (adr->since));
   if (start != NULL)
     memcpy (adr->since, start, ALLNET_TIME_SIZE);
@@ -307,6 +311,7 @@ int xchat_init (const char * arg0, const char * path)
   if (setsockopt (sock, SOL_SOCKET, SO_NOSIGPIPE, &option, sizeof (int)) != 0)
     perror ("xchat_init setsockopt nosigpipe");
 #endif /* SO_NOSIGPIPE */
+  random_bytes (global_token, sizeof (global_token));
 #ifdef HAVE_REQUEST_THREAD
   int * arg = malloc_or_fail (sizeof (int), "xchat_init");
   *arg = sock;
