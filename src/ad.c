@@ -259,6 +259,7 @@ check_sav (result, "add_received_address 4");
 
 /* return the number of messages sent (r.n), or 0 if none */
 static int send_messages_to_one (struct pcache_result r,
+                                 const unsigned char * token,
                                  struct socket_address_set * sock,
                                  struct socket_address_validity * sav)
 {
@@ -289,6 +290,8 @@ static int send_messages_to_one (struct pcache_result r,
       message = message_with_priority;
       msize += 2;
     }
+    if (token != NULL)
+      pcache_mark_token_sent ((const char * ) token, message, msize);
     socket_send_to_ip (sock->sockfd, message, msize, sav->addr, sav->alen,
                        "ad.c/send_messages_to_one");
   }
@@ -413,7 +416,7 @@ static struct message_process process_mgmt (struct socket_read_result *r)
     assert (0);
     struct allnet_mgmt_id_request * id_req = (struct allnet_mgmt_id_request *)
                   (r->message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-    send_messages_to_one (pcache_id_request (id_req), r->sock, r->sav);
+    send_messages_to_one (pcache_id_request (id_req), NULL, r->sock, r->sav);
     return all;     /* and forward the request*/
 #endif /* IMPLEMENT_MGMT_ID_REQUEST */
   case ALLNET_MGMT_TRACE_REQ:
@@ -500,7 +503,9 @@ static struct message_process process_message (struct socket_read_result *r)
         sav_storage.alen = r->alen;
         sav = &(sav_storage);  /* sav must be used before the end of the if */
       }
-      send_messages_to_one (pcache_request (req), r->sock, sav);
+      send_messages_to_one (pcache_request (req), req->token, r->sock, sav);
+      /* replace the token in the message with our own token */
+      pcache_current_token ((char *) (req->token));
       sav = NULL;   /* in case it pointed to sav_storage, which goes away */
       /* and then do normal packet processing (forward) this data request */
     }

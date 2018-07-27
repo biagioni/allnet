@@ -1004,8 +1004,10 @@ static void delete_message_entry (struct hash_table_entry * hp,
 
 /* return 1 if the ID is in the cache, 0 otherwise
  * ID is MESSAGE_ID_SIZE bytes.
- * if found and delete is 1, deletes it */
-static int pcache_id_found_delete (const char * id, int delete)
+ * if found and delete is 1, deletes it
+ * if found and mhp is not NULL, points mhp to the message header */
+static int pcache_id_found_delete (const char * id, int delete,
+                                   char ** mhp)
 {
   int eindex = (readb64 (id) % num_message_table_entries);
   struct hash_table_entry * hp = message_table + eindex;
@@ -1017,6 +1019,8 @@ static int pcache_id_found_delete (const char * id, int delete)
     if (memcmp (id, mh.id, MESSAGE_ID_SIZE) == 0) {  /* found */
       if (delete)
         delete_message_entry (hp, &mh, offset);
+      if (mhp != NULL)
+        *mhp = hp->storage + offset;
       return 1;   /* found */
     }
     offset += MESSAGE_HEADER_SIZE + mh.length;
@@ -1031,7 +1035,7 @@ int pcache_id_found (const char * id)
   init_pcache ();
   if (pid_is_in_bloom (id, PID_MESSAGE_FILTER))
     return 1;
-  return pcache_id_found_delete (id, 0);  /* do not delete */
+  return pcache_id_found_delete (id, 0, NULL);  /* do not delete */
 }
 
 /* return the index of the ack in the ack hash table, or -1 if not found */
@@ -1141,7 +1145,7 @@ static int save_one_ack (const char * ack, int max_hops)
   ack_table [aindex].max_hops = max_hops;
   ack_table [aindex].sent_to_tokens = 0;
   /* finally, delete the corresponding message if any */
-  pcache_id_found_delete (id, 1);  /* delete if found */
+  pcache_id_found_delete (id, 1, NULL);  /* delete if found */
   return aindex;
 }
 
@@ -1171,8 +1175,14 @@ static int token_to_send_to (const char * token, uint64_t bitmap)
   }  /* token not found, add it to the list */
   int did_gc = 0;
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* gc the tokens */
+    static int last_gc = 0;
+    if (last_gc + 36000 > allnet_time ()) { /* gc'd in the last hour */
+      /* printf ("too many tokens causing too many gcs, ignoring\n"); */
+      return -1;  /* pretend it was already sent */
+    }
     do_gc (-1, 0, 0, 1, 1);
     did_gc = 1;
+    last_gc = allnet_time ();
   }
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* error in GC tokeni*/
     printf ("error 9: no space after gc in tokens table, %d/%d\n",
@@ -1505,6 +1515,7 @@ struct pcache_result pcache_request (const struct allnet_data_request *req)
 #endif /* TEST_CACHE_FILES */
 int debug_count = 0;
 int exp_count = 0;
+int token_count = 0;
   if (message_table != NULL) {
     int ie;
     for (ie = 0; ie < num_message_table_entries; ie++) {
@@ -1512,21 +1523,29 @@ int exp_count = 0;
       int im;
       for (im = 0; im < message_table [ie].num_messages; im++) {
 debug_count++;
-        struct message_header * mh =
-          (struct message_header *) (message_table [ie].storage + offset);
-        char * msg = message_table [ie].storage + offset + MESSAGE_HEADER_SIZE;
-        if (match_all || matches_data_request (&rd, msg, mh->length)) {
-          if (is_expired_message (msg, mh->length))
+        char * p = message_table [ie].storage + offset;
+        struct message_header mh;
+        memcpy (&mh, p, sizeof (mh));
+        char * msg = p + MESSAGE_HEADER_SIZE;
+        char token [sizeof (rd.req.token)];
+        memcpy (token, rd.req.token, sizeof (token));
+        if (match_all || matches_data_request (&rd, msg, mh.length)) {
+          if (is_expired_message (msg, mh.length))
             exp_count++;
+          else if ((! memget (token, 0, sizeof (token))) &&
+                   (token_to_send_to (token, mh.sent_to_tokens) == -1))
+            /* token is not zero, and the corresponding bit is set */
+            token_count++;
           else
             result_size = add_to_result (&result, result_size,
-                                         msg, mh->length, mh->priority);
+                                         msg, mh.length, mh.priority);
         }
-        offset += mh->length + MESSAGE_HEADER_SIZE;
+        offset += mh.length + MESSAGE_HEADER_SIZE;
       }
     }
   }
-/* printf ("pcache.c: %d results, %d expired\n", result.n, exp_count); */
+/* printf ("pcache.c: %d results, %d expired, %d token\n",
+result.n, exp_count, token_count); */
   sort_result (&result);
   return result;
 }
@@ -1567,13 +1586,31 @@ struct pcache_result pcache_id_request (struct allnet_mgmt_id_request * req)
 }
 #endif /* IMPLEMENT_MGMT_ID_REQUEST */
 
-#if 0  /* not (yet) implemented */
-/* similar to pcache_request. Tokens are ALLNET_TOKEN_SIZE bytes long. */
-struct pcache_result pcache_token_request (const char * token);
-
 /* mark that this message need never again be sent to this token */
 void pcache_mark_token_sent (const char * token,  /* ALLNET_TOKEN_SIZE bytes */
-                             const char * message, int msize);
+                             const char * message, int msize)
+{
+  init_pcache ();
+  if ((token == NULL) || (message == NULL) || (msize < ALLNET_HEADER_SIZE))
+    return;
+  char id [MESSAGE_ID_SIZE];
+  if (! pcache_message_id (message, msize, id)) {
+    print_buffer (message, msize, "no message ID for packet: ", msize, 1);
+    return;
+  }
+  int token_index = token_to_send_to (token, 0);
+  if (token_index >= 0) {
+    char * hp = NULL;              /* 0: do not delete! -- hp points to mh */
+    if ((pcache_id_found_delete (id, 0, &hp)) && (hp != NULL)) {
+      struct message_header mh;
+      memcpy (&mh, hp, sizeof (mh));
+      mh.sent_to_tokens |= (((uint64_t) 1) << token_index);
+      memcpy (hp, &mh, sizeof (mh));
+    }
+  }
+}
+
+#if 0  /* not (yet) implemented */
 
 /* return 1 if we have the ack, 0 if we do not */
 int pcache_ack_found (const char * acks);
@@ -1659,9 +1696,10 @@ int main (int argc, char ** argv)
   unsigned char * src = dst + BITMAP_BYTES;
   unsigned char * mid = src + BITMAP_BYTES;
 /* end code adapted from xcommon.c */
-  int dcount;
-  int scount;
-  int mcount;
+  int dcount = 0;
+  int scount = 0;
+  int mcount = 0;
+  int tcount = 0;
   int i;
   for (i = 1; i < argc; i++) {
     char * ep;
@@ -1677,6 +1715,8 @@ int main (int argc, char ** argv)
       scount++;
     else if (argv [i] [0] == 'm')
       mcount++;
+    else if (argv [i] [0] == 't')
+      tcount++;
     else {
       printf ("unknown argument %s, args should begin with d, s, or m",
               argv [i]);
@@ -1698,6 +1738,7 @@ int main (int argc, char ** argv)
     adr->mid_bits_power_two = 0;
     mid = NULL;  /* crash if we try to access mid */
   }
+  int tokenpos = 0;
   for (i = 1; i < argc; i++) {
     char * ep;
     int pos = strtol (&(argv [i] [1]), &ep, 16);
@@ -1709,6 +1750,8 @@ int main (int argc, char ** argv)
       src [byte_index] |= byte_mask;
     else if (argv [i] [0] == 'm')
       mid [byte_index] |= byte_mask;
+    else if (argv [i] [0] == 't')  /* token */
+      adr->token [tokenpos++] = pos;
     else
       printf ("coding error on argument [%d] %s\n", i, argv [i]);
   }
