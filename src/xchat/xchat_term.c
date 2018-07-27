@@ -835,7 +835,7 @@ int main (int argc, char ** argv)
         switch_to_contact (next, &peer);
         break;
       case 'q':  /* quit */
-        print_to_output ("quit command, exiting\n");
+        printf ("quit command, exiting\n");
         exit (0);
         break;   /* not needed, but good form */
       case 'h':  /* show help message */
