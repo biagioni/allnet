@@ -65,9 +65,6 @@ extern struct pcache_result
   pcache_id_request (struct allnet_mgmt_id_request * req);
 #endif /* IMPLEMENT_MGMT_ID_REQUEST */
 
-/* similar to pcache_request. Tokens are ALLNET_TOKEN_SIZE bytes long. */
-extern struct pcache_result pcache_token_request (const char * token);
-
 /* mark that this message need never again be sent to this token */
 extern void
   pcache_mark_token_sent (const char * token,  /* ALLNET_TOKEN_SIZE bytes */
