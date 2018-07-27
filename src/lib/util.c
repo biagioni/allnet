@@ -1240,6 +1240,17 @@ void * memcat_malloc (const void * bytes1, size_t bsize1,
   return result;
 }
 
+/* returns true if all the bytes of memory are set to value (or bsize is 0) */
+int memget (void * bytes, int value, size_t bsize)
+{
+  char * p = bytes;
+  int i;
+  for (i = 0; i < bsize; i++)
+    if (p [i] != value)
+      return 0;
+  return 1;
+}
+
 /* returns -1 in case of errors, usually if the file doesn't exist */
 long long int file_size (const char * file_name)
 {
@@ -1768,6 +1779,18 @@ printf ("time to crash %d\n", 1000 / ah->version);
     if (wanted > size) {
       if (error_desc != NULL) *error_desc = "data request too small";
 printf ("got data request of size %d, min %d\n", size, wanted);
+      return 0;
+    }
+    if (rp->dst_bits_power_two > 16) {  /* size doesn't fit in an ALLNET_MTU */
+      if (error_desc != NULL) *error_desc = "data request dst > 16";
+      return 0;
+    }
+    if (rp->src_bits_power_two > 16) {  /* size doesn't fit in an ALLNET_MTU */
+      if (error_desc != NULL) *error_desc = "data request src > 16";
+      return 0;
+    }
+    if (rp->mid_bits_power_two > 16) {  /* size doesn't fit in an ALLNET_MTU */
+      if (error_desc != NULL) *error_desc = "data request mid > 16";
       return 0;
     }
 /* add 6 (rather than 7) so that if power_two is 0, we add 0 bytes

@@ -202,6 +202,8 @@ extern void * memcpy_malloc (const void * bytes, size_t bsize,
 extern void * memcat_malloc (const void * bytes1, size_t bsize1,
                              const void * bytes2, size_t bsize2,
                              const char * desc);
+/* returns true if all the bytes of memory are set to value (or bsize is 0) */
+extern int memget (void * bytes, int value, size_t bsize);
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
