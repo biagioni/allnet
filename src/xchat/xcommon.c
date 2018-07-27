@@ -1770,12 +1770,14 @@ int create_contact_send_key (int sock, const char * contact,
   if (send_key (sock, contact, kset, secret1, addr, abits, hops)) {
     char time_string [100];
     allnet_time_string (allnet_time (), time_string);
+#ifdef DEBUG_PRINT
     printf ("%s: sent key to contact %s, %d hops, %s",
             time_string, contact, hops, secret1);
     if ((secret2 != NULL) && (strlen (secret2) > 0) &&
         (send_key (sock, contact, kset, secret2, addr, abits, hops)))
       printf ("+%s", secret2);
     printf ("\n");
+#endif /* DEBUG_PRINT */
     return 1;
   }
   printf ("send_key failed for create_contact_send_key\n");
