@@ -319,7 +319,7 @@ static void stop_all ()
 #if ! (defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__))
     /* calling pkill does not seem to be supported on windows */
     printf ("%s: cannot stop allnet (no pid file %s), ", process_name, fname);
-    printf ("running 'pkill -x allnetd|abc|allnet-kgen|allnet-keyd'\n");
+    printf ("running 'pkill -x allnetd|allnet-keyd|allnet-kgen'\n");
     /* send a sigint to all allnet processes */
     /* -x specifies that we only use exact match on process names */
     execlp ("pkill", "pkill", "-x", "allnetd|allnet-keyd|allnet-kgen",
