@@ -167,7 +167,18 @@ struct allnet_mgmt_trace_reply {
   struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
 };
 
-/* keepalives have no content, only the header */
+/* keepalives have either no no content (only the header), or
+ * a sender authenticator, which we should send back to
+ * authenticate ourselves (meaning that we didn't send from a
+ * spoofed IP address), or
+ * a sender authenticator and a receiver authenticator
+ * if we previously sent a sender authenticator to this peer, the receiver
+ * authenticator should now have a copy of that earlier sender authenticator */
+#define KEEPALIVE_AUTHENTICATION_SIZE	8
+struct allnet_keepalive_optional {
+  char sender [KEEPALIVE_AUTHENTICATION_SIZE];
+  char receiver [KEEPALIVE_AUTHENTICATION_SIZE];
+};
 
 #ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
 /* a data request specifies one or more message/packet IDs.  The
