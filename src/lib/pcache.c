@@ -1176,10 +1176,14 @@ static int token_to_send_to (const char * token, uint64_t bitmap)
   int did_gc = 0;
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* gc the tokens */
     static int last_gc = 0;
+    static int printed = 0;
     if (last_gc + 36000 > allnet_time ()) { /* gc'd in the last hour */
-      /* printf ("too many tokens causing too many gcs, ignoring\n"); */
+      if (! printed)
+        printf ("too many tokens causing too many gcs, ignoring\n");
+      printed = 1;
       return -1;  /* pretend it was already sent */
     }
+    printed = 0;  /* print again in the next minute */
     do_gc (-1, 0, 0, 1, 1);
     did_gc = 1;
     last_gc = allnet_time ();
