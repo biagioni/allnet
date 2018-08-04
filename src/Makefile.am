@@ -41,6 +41,7 @@ __ALLNET_BINDIR__allnetd_LDFLAGS = -lpthread
 __ALLNET_BINDIR__astop_SOURCES = ${__ALLNET_BINDIR__allnetd_SOURCES}
 __ALLNET_BINDIR__astop_LDFLAGS = -lpthread
 __ALLNET_BINDIR__allnet_print_caches_SOURCES = print_caches.c
+__ALLNET_BINDIR__allnet_print_caches_LDFLAGS = -lpthread
 
 install-exec-hook: 
 	cd $(DESTDIR)$(bindir) && \
