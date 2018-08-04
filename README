@@ -16,6 +16,7 @@ If you plan to contribute to the code, replace the last line with these 3 lines:
 	git init
 	git remote add origin git://git.code.sf.net/p/allnet/code
 	git pull origin master
+        git branch --set-upstream-to=origin/master master
 
 Any available binary releases are on https://alnt.org/
 
