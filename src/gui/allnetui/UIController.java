@@ -1077,7 +1077,7 @@ System.out.println("got secret " + secret + " for " + contactName);
         panel.setTopLabelText(line1, line2);
     }
 
-    // add a line at top for the date/time, clear out html tags
+    // add a line at top for the date/time
     private String formatMessage(Message msg) {
         Date date = new Date();
         date.setTime(msg.sentTime);
@@ -1085,9 +1085,7 @@ System.out.println("got secret " + secret + " for " + contactName);
         StringBuilder sb = new StringBuilder(timeText);
         sb.append("\n");
         sb.append(msg.text);
-        String html = SocketUtils.sanitizeForHtml(sb.toString());
-        // return (SocketUtils.makeFirstLineSmall(html));
-        return (html);
+        return (sb.toString());
     }
 
     // chop a line up into pieces <= max length

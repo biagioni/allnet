@@ -238,29 +238,6 @@ System.out.println("hex for " + b + "/" + i + " is " + result);
                             ", peer " + peer);
     }
 
-    // invariant: htmlReplacements.length == htmlPatterns.length,
-    // patterns should be replaced in order.  In particular, "&" should
-    // be replaced first, since it appears in the replacements
-    static final String [] htmlPatterns = { "&", "<", ">" };
-    static final String [] htmlReplacements = { "amp", "lt", "gt" };
-
-    static String sanitizeOnePattern (String message,
-                                      String pattern, String replacement) {
-        java.util.regex.Pattern pat = java.util.regex.Pattern.compile(pattern);
-        java.util.regex.Matcher match = pat.matcher(message);
-        String codedReplacement = "&" + replacement + ";";
-        return match.replaceAll(codedReplacement);
-    }
-
-    public static String sanitizeForHtml (String message) {
-        assert (htmlReplacements.length == htmlPatterns.length);
-        for (int i = 0; i < htmlPatterns.length; i++) {
-            message = sanitizeOnePattern(message,
-                                         htmlPatterns[i], htmlReplacements[i]);
-        }
-        return message;
-    }
-
     public static String makeFirstLineSmall (String message) {
         String eol = System.getProperty("line.separator");
         String[] lines = message.split(eol);

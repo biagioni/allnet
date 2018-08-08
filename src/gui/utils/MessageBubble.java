@@ -47,7 +47,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
     private MESSAGE message;
     //
     // needed for when we resize the bubble
-    private String text;
+    private String text, sanitizedText;
     private boolean leftJustified;
     //
     // utility for word wrapping and selection correction
@@ -59,6 +59,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
         this.message = message;
         this.leftJustified = leftJustified;
         this.text = text;
+        sanitizedText = sanitizeForHtml(text);
         setBackground(color);
         lastContainerWidth = container.getWidth();
         // int charsPerLine = findCharsPerLine(lastContainerWidth);
@@ -76,6 +77,30 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
         textPane.setComponentPopupMenu(popup);
         textPane.addMouseListener(this);
     }
+        
+    // invariant: htmlReplacements.length == htmlPatterns.length,
+    // patterns should be replaced in order.  In particular, "&" should
+    // be replaced first, since it appears in the replacements
+    private static final String [] htmlPatterns = { "&", "<", ">" };
+    private static final String [] htmlReplacements = { "amp", "lt", "gt" };
+
+    private String sanitizeOnePattern (String message,
+                                      String pattern, String replacement) {
+        java.util.regex.Pattern pat = java.util.regex.Pattern.compile(pattern);
+        java.util.regex.Matcher match = pat.matcher(message);
+        String codedReplacement = "&" + replacement + ";";
+        return match.replaceAll(codedReplacement);
+    }
+
+    private String sanitizeForHtml (String message) {
+        assert (htmlReplacements.length == htmlPatterns.length);
+        for (int i = 0; i < htmlPatterns.length; i++) {
+            message = sanitizeOnePattern(message,
+                                         htmlPatterns[i], htmlReplacements[i]);
+        }
+        return message;
+    }
+    
 
     public static void setEstimatedCharsPerLine(int estimatedCharsPerLine) {
         MessageBubble.estimatedCharsPerLine = estimatedCharsPerLine;
@@ -165,7 +190,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
         }
         StringBuilder sb = new StringBuilder(htmlPrefix);
         for (int i = 0; i < wordWrappedLines.length; i++) {
-            sb.append(nbspMe(wordWrappedLines[i]));
+            sb.append(nbspMe(sanitizeForHtml(wordWrappedLines[i])));
             if (i < wordWrappedLines.length - 1) {
                 sb.append("<br>");
             }
