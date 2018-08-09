@@ -299,9 +299,10 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
 
   unsigned int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
   unsigned int total = 0;
+  int outgoing_hops = ((inhp->hops <= 1) ? 1 : (inhp->hops + 2));
   struct allnet_header * hp =
     create_packet (size_needed - ALLNET_SIZE (0), ALLNET_TYPE_MGMT,
-                   inhp->hops + 4, ALLNET_SIGTYPE_NONE, my_address, abits,
+                   outgoing_hops, ALLNET_SIGTYPE_NONE, my_address, abits,
                    inhp->source, inhp->src_nbits, NULL, NULL, &total);
   if ((hp == NULL) || (total != size_needed)) {
     printf ("hp is %p, total is %u, size_needed %d\n", hp, total, size_needed);
