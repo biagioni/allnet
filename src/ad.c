@@ -111,6 +111,8 @@ static void initialize_sockets ()
   int created_bc = add_local_broadcast_sockets (&sockets);
   if ((! created_local) || ((! created_out) && (! created_bc)))
     exit (1);
+  random_bytes (sockets.random_secret, sizeof (sockets.random_secret)); 
+  sockets.counter = 1;
 }
 
 static struct allnet_log * alog = NULL;
@@ -124,8 +126,8 @@ static unsigned char my_address [ADDRESS_SIZE];
 #define VIRTUAL_CLOCK_SECONDS		10
 #define SEND_KEEPALIVES_LOCAL		1   /* send keepalive every 10sec */
 #define SEND_KEEPALIVES_REMOTE		60  /* send keepalive every 10min */
-#define RECV_LIMIT_DEFAULT		5   /* send keepalive every 5 packets */
-#define SEND_LIMIT_DEFAULT		10  /* send <= 10 packets before recv */
+#define RECV_LIMIT_DEFAULT		20  /* send keepalive every 20 packets*/
+#define SEND_LIMIT_DEFAULT		99  /* send <= 99 packets before rcv */
 
 /* the virtual clock is updated about every 10s. It should never be zero. */
 static long long int virtual_clock = 1;
@@ -139,13 +141,60 @@ static void update_virtual_clock ()
   if (last_update + 10 < now) {
     virtual_clock++;
     last_update = now;
-    unsigned int msize;
-    const char * message = keepalive_packet (&msize);
     socket_send_keepalives (&sockets, virtual_clock, SEND_KEEPALIVES_LOCAL,
-                            SEND_KEEPALIVES_REMOTE, message, msize);
+                            SEND_KEEPALIVES_REMOTE);
     socket_update_time (&sockets, virtual_clock);
     add_local_broadcast_sockets (&sockets);
   }
+}
+
+/* keep this information for addresses in the routing table, which we
+ * don't add to the sockets structure */
+struct allnet_keepalive_entry {
+  struct sockaddr_storage addr;
+  socklen_t alen;
+  char keepalive_auth [KEEPALIVE_AUTHENTICATION_SIZE];
+};
+struct allnet_keepalive_entry routing_keepalives [ADDRS_MAX];
+int num_routing_keepalives = 0;
+
+/* return -1 if not found, otherwise the index of the keepalive */
+static int routing_keepalive_index (struct sockaddr_storage addr,
+                                    socklen_t alen)
+{
+  int i;
+  for (i = 0; i < num_routing_keepalives; i++)
+    if (same_sockaddr (&(routing_keepalives [i].addr),
+                       routing_keepalives [i].alen, &addr, alen))
+      return i;
+  return -1;
+}
+
+/* returns 1 if this is a new keepalive or for a new address */
+static int add_routing_keepalive (struct sockaddr_storage addr, socklen_t alen,
+                                  char * keepalive_auth)
+{
+  int index = routing_keepalive_index (addr, alen);
+  if ((index == -1) || (index >= num_routing_keepalives)) {
+    if (num_routing_keepalives < ADDRS_MAX)
+      index = num_routing_keepalives++;       /* add at the end, increment */
+    else
+      index = random_int (0, ADDRS_MAX - 1);  /* replace a random entry */
+  }
+  if ((index == -1) || (index >= ADDRS_MAX)) {
+    printf ("error in add_routing_keepalive, -1 < %d < %d\n", index, ADDRS_MAX);
+exit (1);
+  }
+  if ((same_sockaddr (&(routing_keepalives [index].addr),
+                      routing_keepalives [index].alen, &addr, alen)) &&
+      (memcmp (routing_keepalives [index].keepalive_auth, keepalive_auth, 
+               KEEPALIVE_AUTHENTICATION_SIZE) == 0))
+    return 0;   /* we already have it, no need to resend the keepalive */
+  memcpy (routing_keepalives [index].keepalive_auth, keepalive_auth, 
+          KEEPALIVE_AUTHENTICATION_SIZE);
+  routing_keepalives [index].addr = addr;
+  routing_keepalives [index].alen = alen;
+  return 1;
 }
 
 /* sends the ack to the address, given that hp has the packet we are acking */
@@ -169,14 +218,74 @@ static void send_ack (const char * ack, const struct allnet_header * hp,
   socket_send_to_ip (sockfd, message, msize, addr, alen, "ad.c/send_ack");
 }
 
+static void send_routing_keepalive (int sockfd, struct sockaddr_storage addr,
+                                    socklen_t alen)
+{
+  unsigned int msize = 0;
+  int index = routing_keepalive_index (addr, alen);
+  char * receiver_auth = ((index < 0) ? NULL :
+                          routing_keepalives [index].keepalive_auth);
+  char * message = keepalive_malloc (addr, sockets.random_secret,
+                                     sizeof (sockets.random_secret),
+                                     sockets.counter, receiver_auth, &msize);
+  if (! socket_send_to_ip (sockfd, message, msize, addr, alen, "sending probe"))
+    print_buffer ((char *)&(addr), alen, "error sending probe keepalive to",
+                  100, 1);
+  free (message);
+}
+
 static void send_one_keepalive (const char * desc,
                                 struct socket_address_set * sock,
-                                struct socket_address_validity * sav)
+                                struct socket_address_validity * sav,
+                                const char * secret, int slen, uint64_t counter)
 {
   unsigned int msize;
   const char * message = keepalive_packet (&msize);
+  char * auth_msg = NULL;
+  unsigned int auth_size;
+  if (sock->is_global_v4 || sock->is_global_v6) {
+    auth_msg = keepalive_malloc (sav->addr, secret, slen, counter,
+                                 sav->keepalive_auth, &auth_size);
+    message = auth_msg;
+    msize = auth_size;
+  }
+/*
+if (auth_msg != NULL) {
+print_buffer (message, msize, "sending larger keepalive", 100, 0);
+print_buffer ((char *)&(sav->addr), sav->alen, ", to", 24, 1);
+}
+*/
   socket_send_to (message, msize, ALLNET_PRIORITY_EPSILON, virtual_clock,
                   &sockets, sock, sav);
+  if (auth_msg != NULL)
+    free (auth_msg);
+}
+
+/* if this is a keepalive with only a sender authentication, send back
+ * a keepalive with my authentication as well as the sender's authentication */
+static void send_auth_response (int sockfd, struct sockaddr_storage addr,
+                                socklen_t alen, const char * secret, int slen,
+                                uint64_t counter,
+                                const char * message, int msize)
+{
+  int hsize = ALLNET_MGMT_HEADER_SIZE (ALLNET_TRANSPORT_DO_NOT_CACHE);
+  int wanted_size = hsize + KEEPALIVE_AUTHENTICATION_SIZE;
+  if (msize != wanted_size)
+    return;
+  const struct allnet_header * hp = (const struct allnet_header *) message;
+  const struct allnet_mgmt_header * mhp =
+    (const struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
+  if ((hp->hops > 1) || (hp->message_type != ALLNET_TYPE_MGMT) ||
+      (mhp->mgmt_type != ALLNET_MGMT_KEEPALIVE))
+    return;
+/* print_buffer (message, msize, "responding to authentication", msize, 1); */
+  unsigned int rsize = 0;
+  char * response = keepalive_malloc (addr, secret, slen, counter,
+                                      message + hsize, &rsize);
+/* print_buffer (response, rsize, "sending auth response", 100, 1); */
+  socket_send_to_ip (sockfd, response, rsize, addr, alen,
+                     "ad.c/send_auth_response");
+  free (response);
 }
 
 /* send to a limited number of DHT addresses and to socket_send_out */
@@ -196,6 +305,14 @@ static void send_out (const char * message, int msize, int max_addrs,
                                            addrs, alens, max_addrs);
   int dht_send_error = 0;
   int i;
+#define SEND_KEEPALIVES_EVERY	(SEND_LIMIT_DEFAULT / 5)   /* 19 */
+  static int sent_count = SEND_KEEPALIVES_EVERY;
+  int send_keepalives = 0;
+  /* send a keepalive whenever sent_count >= 19 */
+  if (sent_count++ >= SEND_KEEPALIVES_EVERY) {
+    sent_count = 0;
+    send_keepalives = 1;
+  }
   for (i = 0; i < num_addrs; i++) {
     struct sockaddr_storage dest = addrs [i];
     socklen_t alen = alens [i];
@@ -207,11 +324,16 @@ static void send_out (const char * message, int msize, int max_addrs,
       ai_embed_v4_in_v6 (&dest, &alen);  /* needed on apple systems */
     }
     if (sockfd >= 0) {
+      if (send_keepalives)
+        send_routing_keepalive (sockfd, dest, alen);
       if (! socket_send_to_ip (sockfd, message, msize, dest, alen,
                                "ad.c/send_out"))
         dht_send_error = 1;
     }
   }
+  if (send_keepalives)
+    socket_send_keepalives (&sockets, virtual_clock, SEND_KEEPALIVES_LOCAL,
+                            SEND_KEEPALIVES_REMOTE);
   static struct sockaddr_storage empty;  /* used if except is null */
   socket_send_out (&sockets, message, msize, virtual_clock,
                    ((except == NULL) ? empty : *except), elen);
@@ -233,13 +355,10 @@ static void update_dht ()
   }
 }
 
-extern void check_sav (struct socket_address_validity * sav, const char * desc);
-
 static struct socket_address_validity *
   add_received_address (struct socket_read_result r)
 {
-  if (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
-    return NULL;
+  int send_keepalive = 0;
   long long int limit = virtual_clock + ((r.sock->is_local) ? 6 : 180);
   struct socket_address_validity sav =
     { .alive_rcvd = virtual_clock, .alive_sent = virtual_clock,
@@ -247,13 +366,34 @@ static struct socket_address_validity *
       .send_limit_on_recv = SEND_LIMIT_DEFAULT,
       .recv_limit = RECV_LIMIT_DEFAULT,
       .time_limit = limit, .alen = r.alen };
+  memset (&(sav.keepalive_auth), 0, sizeof (sav.keepalive_auth));
+  /* send a keepalive if: (a) this is a new keepalive, or (b) this is a
+   * new (non-routing) address */
+  const struct allnet_header * hp = (const struct allnet_header *) r.message;
+  int hsize = ALLNET_MGMT_HEADER_SIZE (hp->transport);
+  if ((r.msize >= hsize + KEEPALIVE_AUTHENTICATION_SIZE) &&
+      (is_auth_keepalive (r.from, sockets.random_secret,
+                         sizeof (sockets.random_secret), sockets.counter,
+                         r.message, r.msize))) {
+    memcpy (&(sav.keepalive_auth), r.message + hsize,  /* sender auth */
+            sizeof (sav.keepalive_auth));
+    if ((is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) &&
+        (add_routing_keepalive (r.from, r.alen, sav.keepalive_auth)))
+      send_keepalive = 1;
+  }
   memcpy (&(sav.addr), &(r.from), sizeof (r.from));
-  struct socket_address_validity * result =
-    socket_address_add (&sockets, r.sock->sockfd, sav);
-  if (result == NULL)
-    printf ("odd: unable to add new address\n");
-  send_one_keepalive ("add_received_address", r.sock, result);
-check_sav (result, "add_received_address 4");
+  struct socket_address_validity * result = NULL;
+  if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) {
+    result = socket_address_add (&sockets, r.sock->sockfd, sav);
+    if (result == NULL)
+      printf ("odd: unable to add new address\n");
+    send_keepalive = 1;
+  }
+  if (send_keepalive)
+    send_one_keepalive ("add_received_address", r.sock,
+                        ((result != NULL) ? result : &sav),
+                        sockets.random_secret, sizeof (sockets.random_secret),
+                        sockets.counter);
   return result;
 }
 
@@ -532,6 +672,18 @@ void allnet_daemon_loop ()
     if ((r.message == NULL) || (r.msize <= 0) ||
         (! is_valid_message (r.message, r.msize, NULL)))
       continue;   /* no valid message, no action needed, restart the loop */
+    if ((r.socket_address_is_new) &&
+        ((r.sock->is_global_v4) || (r.sock->is_global_v6)) &&
+        (! is_auth_keepalive (r.from, sockets.random_secret,
+                              sizeof (sockets.random_secret),
+                              sockets.counter, r.message, r.msize))) {
+      /* respond with a challenge, see if they get back to us */
+      send_auth_response (r.sock->sockfd, r.from, r.alen, sockets.random_secret,
+                          sizeof (sockets.random_secret),
+                          sockets.counter, r.message, r.msize);
+      if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
+        continue;   /* not authenticated, do not process this packet */
+    }
     if ((r.socket_address_is_new) || (r.sav == NULL))
       r.sav = add_received_address (r);
     else if ((r.sav != NULL) && (r.sav->time_limit != 0))
@@ -550,10 +702,12 @@ void allnet_daemon_loop ()
     if ((m.allocated) && (m.message != NULL))
       free (m.message);
     free (r.message);  /* was allocated by socket_read */
-    if (r.recv_limit_reached) {
+    if (r.recv_limit_reached) {  /* time to send a keepalive */
       socket_update_recv_limit (RECV_LIMIT_DEFAULT, &sockets, r.from, r.alen);
       if (r.sav != NULL)
-        send_one_keepalive ("update_recv_limit", r.sock, r.sav);
+        send_one_keepalive ("update_recv_limit", r.sock, r.sav,
+                            sockets.random_secret,
+                            sizeof (sockets.random_secret), sockets.counter);
     }
     update_virtual_clock ();
     update_dht ();
@@ -568,5 +722,6 @@ void allnet_daemon_main ()
   social_net = init_social (30000, 5, alog);
   routing_my_address (my_address);
   initialize_sockets ();
+  update_virtual_clock ();  /* 2018/08/03: not sure if this is useful */
   allnet_daemon_loop ();
 }

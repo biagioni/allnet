@@ -13,6 +13,8 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 
+#include "mgmt.h"
+
 /* since UDP doesn't tell us when peers have gone away, we send each peer
  * a message and require each active peer to send us a message every n
  * seconds, and we assume they are dead after n * m seconds.
@@ -30,6 +32,7 @@ struct socket_address_validity {
   int recv_limit;                /* num packets can recv, 0 if no recv limit */
   int send_limit;                /* num packets can send, 0 if no send limit */
   int send_limit_on_recv;        /* new send limit on recv, 0 to disable */
+  char keepalive_auth [KEEPALIVE_AUTHENTICATION_SIZE];  /* send with keepalives */
 };
 
 struct socket_address_set {
@@ -45,6 +48,9 @@ struct socket_address_set {
 struct socket_set {
   int num_sockets;
   struct socket_address_set * sockets;
+  /* needed to send authentication in keepalives */
+  char random_secret [KEEPALIVE_AUTHENTICATION_SIZE];
+  uint64_t counter;
 };
 
 /* return 1 if was able to add, and 0 otherwise (e.g. if already in the set) */
@@ -133,11 +139,13 @@ extern int socket_send_to_ip (int sockfd, const char * message, int msize,
                               struct sockaddr_storage sas, socklen_t alen,
                               const char * debug);
 /* send a keepalive to addresses whose sent time + local/remote <= current_time
- * returns the number of messages sent */
+ * returns the number of messages sent
+ * if the keepalive is being sent through the internet,
+ * sender and receiver authentications
+ * are copied into each keepalive before it is sent */ 
 extern int socket_send_keepalives (struct socket_set * s,
                                    long long int current_time,
-                                   long long int local, long long int remote,
-                                   const char * message, int msize);
+                                   long long int local, long long int remote);
 
 /* create a socket and bind it as appropriate for the given address
  * and add it to the given socket set

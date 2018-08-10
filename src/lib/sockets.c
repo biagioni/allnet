@@ -44,10 +44,15 @@ void print_sav (struct socket_address_validity * sav)
 {
    int limit = (sav->alen == 16 ? 8 : 24);
    print_buffer ((char *) (&sav->addr), sav->alen, NULL, limit, 0);
-   printf (", %lld/%lld, %lld, %d, %d/%d\n",
+   printf (", alive %lld/%lld, time %lld, rl %d, sl %d/%d",
            sav->alive_rcvd, sav->alive_sent,
            sav->time_limit, sav->recv_limit, 
            sav->send_limit, sav->send_limit_on_recv); 
+   int ks = KEEPALIVE_AUTHENTICATION_SIZE;
+   if (memget (sav->keepalive_auth, 0, ks))
+     printf ("\n");
+   else
+     print_buffer (sav->keepalive_auth, ks, ", ka", 8, 1);
 }
 
 #ifdef DEBUG_SOCKETS
@@ -355,6 +360,7 @@ static int make_fdset (struct socket_set * s, fd_set * set)
 static void update_read (struct sockaddr_storage sas, socklen_t alen,
                          struct socket_address_set * sock,
                          long long int rcvd_time,
+                         const char * message, int msize, int auth,
                          struct socket_address_validity ** savp,
                          int * is_new, int * recv_limit_reached)
 {
@@ -370,10 +376,10 @@ check_sav (sav, "update_read");
       *savp = sav;
       *is_new = 0;
       sav->alive_rcvd = rcvd_time;
-      *recv_limit_reached = (sav->recv_limit == 1);
-      if (sav->recv_limit > 1)
+      if (sav->recv_limit >= 1)
         sav->recv_limit--;
-      if (sav->send_limit_on_recv != 0)
+      *recv_limit_reached = (sav->recv_limit == 0);
+      if ((sav->send_limit_on_recv != 0) && auth)
         sav->send_limit = sav->send_limit_on_recv;
       break;
     }
@@ -385,7 +391,7 @@ static struct socket_read_result
   record_message (struct socket_set * s, long long int rcvd_time,
                   struct socket_address_set * sock,
                   struct sockaddr_storage sas, socklen_t alen,
-                  const char * buffer, int rcvd)
+                  const char * buffer, int rcvd, int auth)
 {
   int is_local = sock->is_local;
   int delta = (is_local ? 2 : 0);    /* local packets have priority also */
@@ -405,7 +411,8 @@ static struct socket_read_result
     alen = sizeof (struct sockaddr_ll);
   }
 #endif /* ALLNET_NETPACKET_SUPPORT */
-  update_read (sas, alen, sock, rcvd_time, &sav, &is_new, &recv_limit_reached);
+  update_read (sas, alen, sock, rcvd_time, message, msize, auth,
+               &sav, &is_new, &recv_limit_reached);
 if (! is_new) check_sav (sav, "update_read result");
   struct socket_read_result r =
     { .success = 1, .message = message, .msize = msize,
@@ -438,8 +445,14 @@ static struct socket_read_result
                                MSG_DONTWAIT, sap, &alen);
       /* all packets must have a min header, local packets also have priority */
       int min = ALLNET_HEADER_SIZE + ((sock->is_local) ? 2 : 0);
-      if ((rcvd >= (ssize_t) min) && (rcvd <= sizeof (buffer)))
-        return record_message (s, rcvd_time, sock, sas, alen, buffer, (int)rcvd);
+      if ((rcvd >= (ssize_t) min) && (rcvd <= sizeof (buffer))) {
+        int auth = ((sock->is_global_v4 || sock->is_global_v6) ?
+                    is_auth_keepalive (sas, s->random_secret, 
+                                       sizeof (s->random_secret), s->counter,
+                                       buffer, (int)rcvd) : 1);
+        return record_message (s, rcvd_time, sock, sas, alen,
+                               buffer, (int)rcvd, auth);
+      }
       if (errno == ECONNREFUSED) {  /* connected socket was closed by peer */
         result.success = -1;    /* error on this socket */
         result.sock = sock;
@@ -469,7 +482,7 @@ struct socket_read_result socket_read (struct socket_set * s,
     fd_set receiving;
     int max_pipe = make_fdset (s, &receiving);
     /* always select for 1ms, since we are holding the lock */
-    struct timeval tv = { .tv_sec = 0, .tv_usec = 1000 };
+    struct timeval tv = { .tv_sec = 0, .tv_usec = 10000 };
     int result = select (max_pipe, &receiving, NULL, NULL, &tv);
     if (result > 0)      /* found something, get_message unlocks global_mutex */
       return get_message (s, &receiving, rcvd_time, r);
@@ -545,7 +558,8 @@ check_sav (sav, "send_on_socket");
     sav->alive_sent = sent_time;
     return 1;
   }
-  if (errno != EADDRNOTAVAIL) {
+  if ((errno != EADDRNOTAVAIL) && (errno != ENETUNREACH) &&
+      (errno != EHOSTUNREACH) && (errno != EHOSTDOWN)) {
     char desc2 [1000];
     snprintf (desc2, sizeof (desc2), "%s send_on_socket", desc);
     /* some error, so the rest of this function is for debugging */
@@ -709,13 +723,17 @@ int socket_send_to_ip (int sockfd, const char * message, int msize,
   return 0;
 }
 
-/* send a keepalive to addresses whose sent time + local/remote <= current_time 
- * returns the number of messages sent */
+/* send a keepalive to addresses whose sent time + local/remote <= current_time
+ * returns the number of messages sent
+ * if the keepalive is being sent through the internet,
+ * sender and receiver authentications
+ * are copied into each keepalive before it is sent */ 
 int socket_send_keepalives (struct socket_set * s, long long int current_time,
-                            long long int local, long long int remote,
-                            const char * message, int msize)
+                            long long int local, long long int remote)
 {
   int count = 0;
+  unsigned int msize;
+  const char * message = keepalive_packet (&msize); /* small, w/o auth */
   char * message_with_priority = NULL;
   if (local)
     message_with_priority =
@@ -734,12 +752,26 @@ int socket_send_keepalives (struct socket_set * s, long long int current_time,
     for (ai = 0; ai < sas->num_addrs; ai++) {
       struct socket_address_validity * sav = &(sas->send_addrs [ai]);
 check_sav (sav, "socket_send_keepalives");
-      long long int delta = ((sas->is_local) ? local : remote);
-      if (sav->alive_sent + delta <= current_time) {
-        if (send_on_socket (msg, size, current_time, sas->sockfd, sav,
-                            "socket_send_keepalives", s, si, ai))
-          count++;
+/*    long long int delta = ((sas->is_local) ? local : remote);
+      if (sav->alive_sent + delta >= current_time) {
+*/
+      char * auth_msg = NULL;
+      if (sas->is_global_v4 || sas->is_global_v6) {
+        unsigned int asize;
+        auth_msg = keepalive_malloc (sav->addr, s->random_secret,
+                                     sizeof (s->random_secret), s->counter,
+                                     sav->keepalive_auth, &asize);
+        msg = auth_msg;
+        size = asize;
       }
+      if (send_on_socket (msg, size, current_time, sas->sockfd, sav,
+                          "socket_send_keepalives", s, si, ai))
+        count++;
+      if (auth_msg != NULL)
+        free (auth_msg);
+/*
+      }
+*/
     }
   }
   if (message_with_priority != NULL)

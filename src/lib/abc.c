@@ -57,6 +57,7 @@ static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
   struct socket_address_validity sav =
     {  .alen = alen, .alive_rcvd = 0, .alive_sent = 0, .time_limit = 0,
        .recv_limit = 0, .send_limit = 0, .send_limit_on_recv = 0 };
+  memset (&(sav.keepalive_auth), 0, sizeof (sav.keepalive_auth));
   memset (&(sav.addr), 0, sizeof (sav.addr));
   memcpy (&(sav.addr), a, sizeof (struct sockaddr_in));
   ((struct sockaddr_in *) (&sav.addr))->sin_port =
@@ -115,6 +116,7 @@ static void add_v6 (struct socket_set * sockets)
   struct socket_address_validity sav =
     {  .alen = alen, .alive_rcvd = 0, .alive_sent = 0, .time_limit = 0,
        .recv_limit = 0, .send_limit = 0, .send_limit_on_recv = 0 };
+  memset (&(sav.keepalive_auth), 0, sizeof (sav.keepalive_auth));
   memset (&(sav.addr), 0, sizeof (sav.addr));
   struct sockaddr_in6 * sinp = (struct sockaddr_in6 *) (&sav.addr);
   sinp->sin6_family = AF_INET6;

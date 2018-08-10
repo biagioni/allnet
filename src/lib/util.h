@@ -12,7 +12,7 @@
  * desc is printed first unless it is null
  * a newline is printed after if print_eol
  */
-extern void print_buffer (const char * buffer, unsigned int count,
+extern void print_buffer (const void * buffer, unsigned int count,
                           const char * desc,
                           unsigned int max, int print_eol);
 /* same as print_buffer, but prints to the given string */
@@ -67,6 +67,17 @@ extern struct allnet_header *
 /* return a keepalive packet, which is in a static buffer
  * (do not change or free) and fill in the size to send */
 extern const char * keepalive_packet (unsigned int * size);
+
+/* return a larger and malloc'd keepalive packet, computing the
+ * sender authentication and filling in the receiver authentication
+ * (must be of size KEEPALIVE_AUTHENTICATION_SIZE), or
+ * if receiver_auth is NULL or all zeros, the packet is shorter
+ * also stores into size the size to send */
+extern char * keepalive_malloc (struct sockaddr_storage addr,
+                                const char * secret, int slen,
+                                long long int counter,
+                                const char * receiver_auth,
+                                unsigned int * size);
 
 /* malloc, initialize, and return an ack message for a received packet.
  * The message_ack bytes are taken from the argument, not from the packet.*/
@@ -203,7 +214,7 @@ extern void * memcat_malloc (const void * bytes1, size_t bsize1,
                              const void * bytes2, size_t bsize2,
                              const char * desc);
 /* returns true if all the bytes of memory are set to value (or bsize is 0) */
-extern int memget (void * bytes, int value, size_t bsize);
+extern int memget (const void * bytes, int value, size_t bsize);
 
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
@@ -284,6 +295,17 @@ extern int is_valid_message (const char * packet, unsigned int size,
 /* returns 1 if the message is expired, 0 otherwise (including if
  * the message never expires). */
 extern int is_expired_message (const char * packet, unsigned int size);
+
+/* computes the sender authentication into the given buffer */
+extern void compute_sender_auth (struct sockaddr_storage addr,
+                                 const char * secret, int slen,
+                                 long long int counter,
+                                 char * result, int rlen);
+/* returns whether this keepalive has the right authentication */
+extern int is_auth_keepalive (struct sockaddr_storage addr,
+                              const char * secret, int slen,
+                              long long int counter,
+                              const char * message, int msize);
 
 extern void print_gethostbyname_error (const char * hostname,
                                        struct allnet_log * log);

@@ -33,9 +33,10 @@
  * desc is printed first unless it is null
  * a newline is printed after if print_eol
  */
-void print_buffer (const char * buffer, unsigned int count, const char * desc,
+void print_buffer (const void * vb, unsigned int count, const char * desc,
                    unsigned int max, int print_eol)
 {
+  const char * buffer = (const char *) vb;
   unsigned int i;
   if (desc != NULL)
     printf ("%s (%d bytes):", desc, count);
@@ -342,6 +343,15 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
     break;
   case ALLNET_MGMT_KEEPALIVE:
     r += snprintf (to + r, minz (itsize, r), "keepalive");
+    struct allnet_header * allnet_hp = (struct allnet_header *) hp;
+    int hsize = ALLNET_MGMT_HEADER_SIZE (allnet_hp->transport);
+    if (itsize >= hsize + KEEPALIVE_AUTHENTICATION_SIZE)
+      r += buffer_to_string (hp + hsize, KEEPALIVE_AUTHENTICATION_SIZE,
+                             ", sender auth", 20, 0, to + r, minz (itsize, r));
+    if (itsize >= hsize + 2 * KEEPALIVE_AUTHENTICATION_SIZE)
+      r += buffer_to_string (hp + hsize + KEEPALIVE_AUTHENTICATION_SIZE,
+                             KEEPALIVE_AUTHENTICATION_SIZE, ", receiver auth",
+                             20, 0, to + r, minz (itsize, r));
     break;
   default:
     r += snprintf (to + r, minz (itsize, r),
@@ -656,6 +666,35 @@ const char * keepalive_packet (unsigned int * size)
     amh->mgmt_type = ALLNET_MGMT_KEEPALIVE;
   }
   *size = msize;
+  return result;
+}
+
+/* return a larger and malloc'd keepalive packet, computing the
+ * sender authentication and filling in the receiver authentication
+ * (must be of size KEEPALIVE_AUTHENTICATION_SIZE), or
+ * if receiver_auth is NULL or all zeros, the packet is shorter
+ * also stores into size the size to send */
+char * keepalive_malloc (struct sockaddr_storage addr,
+                         const char * secret, int slen, long long int counter,
+                         const char * receiver_auth, unsigned int * size)
+{
+  unsigned int hsize = 0;
+  const char * header = keepalive_packet (&hsize);  /* header is from above */
+  int rsize = hsize + KEEPALIVE_AUTHENTICATION_SIZE;
+  int larger = 0;
+  if ((receiver_auth != NULL) &&
+      (! (memget (receiver_auth, 0, KEEPALIVE_AUTHENTICATION_SIZE))))
+    larger = 1;
+  if (larger)
+    rsize += KEEPALIVE_AUTHENTICATION_SIZE;
+  char * result = malloc_or_fail (rsize, "keepalive_malloc");
+  memcpy (result, header, hsize);
+  compute_sender_auth (addr, secret, slen, counter,
+                       result + hsize, KEEPALIVE_AUTHENTICATION_SIZE);
+  if (larger)
+    memcpy (result + hsize + KEEPALIVE_AUTHENTICATION_SIZE,
+            receiver_auth, KEEPALIVE_AUTHENTICATION_SIZE);
+  *size = rsize;
   return result;
 }
 
@@ -1241,12 +1280,13 @@ void * memcat_malloc (const void * bytes1, size_t bsize1,
 }
 
 /* returns true if all the bytes of memory are set to value (or bsize is 0) */
-int memget (void * bytes, int value, size_t bsize)
+int memget (const void * bytes, int value, size_t bsize)
 {
-  char * p = bytes;
+  value = value & 0xff; /* otherwise an unsigned value of 255 becomes -1 */
+  const char * p = bytes;
   int i;
   for (i = 0; i < bsize; i++)
-    if (p [i] != value)
+    if ((p [i] & 0xff) != value)
       return 0;
   return 1;
 }
@@ -1861,6 +1901,68 @@ rp->mid_bits_power_two);
     }
   }
   return 1;
+}
+
+/* computes the sender authentication into the given buffer */
+void compute_sender_auth (struct sockaddr_storage addr,
+                          const char * secret, int slen,
+                          long long int counter,
+                          char * to, int tsize)
+{
+  if (tsize <= 0)
+    return;
+  memset (to, 0, tsize);
+  char buffer [sizeof (counter) + sizeof (struct sockaddr_storage)];
+  writeb64 (buffer, counter);
+  int off = sizeof (counter);
+  struct sockaddr * sap = (struct sockaddr *) (&addr);
+  if (sap->sa_family == AF_INET) {
+    struct sockaddr_in * sin = (struct sockaddr_in *) (&addr);
+    memcpy (buffer + off, &(sin->sin_addr), 4);
+    off += 4;
+    memcpy (buffer + off, &(sin->sin_port), 2);
+    off += 2;
+  } else if (sap->sa_family == AF_INET6) {
+    struct sockaddr_in6 * sin = (struct sockaddr_in6 *) (&addr);
+    if (memget (sin->sin6_addr.s6_addr, 0, 10) &&
+        memget (sin->sin6_addr.s6_addr + 10, 0xff, 2)) {  /* ipv4 in ipv6 */
+      memcpy (buffer + off, (sin->sin6_addr.s6_addr + 12), 4);
+      off += 4;
+    } else {   /* regular ipv6 */
+      memcpy (buffer + off, sin->sin6_addr.s6_addr, 16);
+      off += 16;
+    }
+    memcpy (buffer + off, &(sin->sin6_port), 2);
+    off += 2;
+  } else
+    return;   /* not an IP address */
+  char result [SHA512_SIZE];
+  sha512hmac (buffer, off, secret, KEEPALIVE_AUTHENTICATION_SIZE, result);
+  int csize = tsize;   /* copy size, for memcpy */
+  if (csize > sizeof (result))
+    csize = sizeof (result);
+  memcpy (to, result, csize);
+}
+
+/* returns whether this keepalive has the right authentication */
+int is_auth_keepalive (struct sockaddr_storage addr,
+                       const char * secret, int slen,
+                       long long int counter,
+                       const char * message, int msize)
+{
+  if (msize < ALLNET_HEADER_SIZE)
+    return 0;   /* not a valid packet */
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if (hp->hops > 1)
+    return 0;   /* only accept single-hop keepalives */
+  int hsize = ALLNET_MGMT_HEADER_SIZE (hp->transport);
+  if (msize != (hsize + 2 * KEEPALIVE_AUTHENTICATION_SIZE))
+    return 0;   /* not a valid authentication packet */
+  char verification [KEEPALIVE_AUTHENTICATION_SIZE];
+  compute_sender_auth (addr, secret, slen, counter,
+                       verification, sizeof (verification));
+  return (memcmp (message + hsize + KEEPALIVE_AUTHENTICATION_SIZE,
+                  verification, KEEPALIVE_AUTHENTICATION_SIZE) == 0);
 }
 
 void print_gethostbyname_error (const char * hostname, struct allnet_log * log)
