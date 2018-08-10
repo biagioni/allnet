@@ -469,7 +469,6 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
               reply [1] = hops;
             } else {  /* code == GUI_VARIABLE_SECRET */
               if ((s1 != NULL) || (s2 != NULL)) {
-printf ("secrets for %s are %s %s\n", contact, s1, s2);
                 char * secret = s1;
                 if (s2 != NULL)
                   secret = s2;

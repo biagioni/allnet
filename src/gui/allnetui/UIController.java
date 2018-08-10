@@ -181,7 +181,6 @@ class UIController implements ControllerInterface, UIAPI {
                 } else {    // incomplete key exchange
                     if (kep == null) {
                         int hops = coreAPI.incompleteHopCount(contactName);
-System.out.println("got " + hops + " hops for " + contactName);
                         if (hops > 0) {   // valid exchange file
                             int button = 1;   // multi-hop exchange
                             if (hops == 1) {
@@ -189,7 +188,6 @@ System.out.println("got " + hops + " hops for " + contactName);
                             }
                             String secret
                                 = coreAPI.incompleteSecret(contactName);
-System.out.println("got secret " + secret + " for " + contactName);
                             // now put up a key exchange panel
                             String[] middlePanelMsg = makeMiddlePanel(secret);
                             String[] bottomPanelMsg = new String[]{
