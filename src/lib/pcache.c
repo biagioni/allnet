@@ -613,7 +613,6 @@ static void init_pcache ()
 /* save cached information to disk */
 void pcache_write ()
 {
-printf ("pcache_write called\n");
   if ((alog == NULL) || (num_message_table_entries <= 0))
     return;
   write_messages_file (1, WRITE_FILE_WAIT);
