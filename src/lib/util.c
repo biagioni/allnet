@@ -344,12 +344,12 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
   case ALLNET_MGMT_KEEPALIVE:
     r += snprintf (to + r, minz (itsize, r), "keepalive");
     struct allnet_header * allnet_hp = (struct allnet_header *) hp;
-    int hsize = ALLNET_MGMT_HEADER_SIZE (allnet_hp->transport);
-    if (itsize >= hsize + KEEPALIVE_AUTHENTICATION_SIZE)
-      r += buffer_to_string (hp + hsize, KEEPALIVE_AUTHENTICATION_SIZE,
+    int ka_hsize = ALLNET_MGMT_HEADER_SIZE (allnet_hp->transport);
+    if (itsize >= ka_hsize + KEEPALIVE_AUTHENTICATION_SIZE)
+      r += buffer_to_string (hp + ka_hsize, KEEPALIVE_AUTHENTICATION_SIZE,
                              ", sender auth", 20, 0, to + r, minz (itsize, r));
-    if (itsize >= hsize + 2 * KEEPALIVE_AUTHENTICATION_SIZE)
-      r += buffer_to_string (hp + hsize + KEEPALIVE_AUTHENTICATION_SIZE,
+    if (itsize >= ka_hsize + 2 * KEEPALIVE_AUTHENTICATION_SIZE)
+      r += buffer_to_string (hp + ka_hsize + KEEPALIVE_AUTHENTICATION_SIZE,
                              KEEPALIVE_AUTHENTICATION_SIZE, ", receiver auth",
                              20, 0, to + r, minz (itsize, r));
     break;
