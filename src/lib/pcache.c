@@ -1174,9 +1174,9 @@ static int token_to_send_to (const char * token, uint64_t bitmap)
   }  /* token not found, add it to the list */
   int did_gc = 0;
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* gc the tokens */
-    static int last_gc = 0;
+    static long long int last_gc = 0;
     static int printed = 0;
-    if (last_gc + 36000 > allnet_time ()) { /* gc'd in the last hour */
+    if (last_gc + 3600 > allnet_time ()) { /* gc'd in the last hour */
       if (! printed)
         printf ("too many tokens causing too many gcs, ignoring\n");
       printed = 1;
@@ -1254,62 +1254,86 @@ static int power_two (int bits_power_two)
   return result;
 }
 
-/* return the new size of free_ptr, or 0 for errors */
-/* free_ptr points to n messages followed by the messages array.
+/* return the new size of free_ptr, or 0 for errors
+ * free_ptr points to n messages.  The messages array is also resized.
  * the messages array is at the end so we can insert the new message
  * in front of it and grow the messages array at the end (or wherever). */
 static size_t add_to_result (struct pcache_result * r, size_t size_old,
                              const char * message, int msize, int priority)
 {
-  size_t size_new = size_old + msize + sizeof (struct pcache_message);
+  size_t messages_size_new = (r->n + 1) * sizeof (struct pcache_message);
+  struct pcache_message * new_messages =
+    realloc (r->messages, messages_size_new);
+  size_t size_new = size_old + msize;
+  char * orig = r->free_ptr;
   char * mem = realloc (r->free_ptr, size_new);
-  if (mem == NULL) {
-    printf ("add_to_result: unable to add, sizes %zd + %d + %zd = %zd\n",
-            size_old, msize, sizeof (struct pcache_message), size_new);
+  if ((mem == NULL) || (new_messages == NULL)) {
+    printf ("add_to_result: unable to add, sizes %zd + %d + %zd = %zd, %p %p\n",
+            size_old, msize, sizeof (struct pcache_message), size_new,
+            mem, new_messages);
     return 0;
   }
-  size_t messages_size_old = sizeof (struct pcache_message) * r->n;
-  size_t messages_size_new = sizeof (struct pcache_message) * (r->n + 1);
-  assert (((messages_size_old == 0) && (size_old == 0)) ||
-          (messages_size_old < size_old));
-  char * src = mem + (size_old - messages_size_old); 
-  assert (messages_size_new < size_new);
-  char * dest = mem + (size_new - messages_size_new);
-  memmove (dest, src, messages_size_old);
-  struct pcache_message * messages_new = (struct pcache_message *) (dest);
-  char * message_dest = src;
-  memcpy (message_dest, message, msize);
-  messages_new [r->n].message = message_dest;
-  messages_new [r->n].msize = msize;
-  messages_new [r->n].priority = priority;
+  size_t move_size = 0;
+  char * current = mem + size_old;
   int i;
-  char * start = mem;
-  for (i = 0; i < r->n; i++) { /* have the messages point to the new memory */
-    messages_new [i].message = start;
-    start += messages_new [i].msize;
+  /* this loop continues as long as messages have priority < this priority
+   * messages [i - 1].message points to the old storage, which may
+   * not be the same as after realloc, so it has to be adjusted.
+   * also, we will be shifting these messages out of the way to make room
+   * for the msize of this message, so adjust the message pointer by msize.
+   * finally, we shift messages up by one to make room for the new message */
+  for (i = r->n; (i > 0) && (new_messages [i - 1].priority < priority); i--) {
+    size_t offset = new_messages [i - 1].message - orig;
+    new_messages [i] = new_messages [i - 1];
+    current = mem + offset;
+    new_messages [i].message = current + msize; /* will go there in memmove */
+    move_size += new_messages [i].msize;
   }
-  r->messages = messages_new;
+  /* now move the messages themselves to make room for the new message */
+  if (move_size > 0)
+    memmove (current + msize, current, move_size);
+  /* now insert the message */
+  memcpy (current, message, msize);
+  new_messages [i].message = current;
+  new_messages [i].msize = msize;
+  new_messages [i].priority = priority;
+  /* this loop points the remaining message pointers to the new storage */
+  while (i > 0) {
+    i--;  /* now i >= 0 */
+    current -= new_messages [i].msize;
+    new_messages [i].message = current;  /* update the pointer */
+  }
+  r->messages = new_messages;
   r->n++;
   r->free_ptr = mem;
+#ifdef DEBUG_PRINT
+  char * error = NULL; for (int x = 0; x < r->n; x++)
+  if ((! is_valid_message (r->messages [x].message, r->messages [x].msize,
+                           &error)) &&
+      (strcmp (error, "hops > max_hops") != 0)) {
+    printf ("message %d, error %s ", x, error);
+    print_buffer (r->messages [x].message, r->messages [x].msize, NULL, 100, 1);
+  }
+#endif /* DEBUG_PRINT */
   return size_new;
 }
 
-static void sort_result (struct pcache_result * r)
+/* like add_to_result, but only adds if it can replace a lower-priority
+ * element in the array */
+static size_t cond_add_to_result (struct pcache_result * r, size_t size_old,
+                                  const char * message, int msize, int priority)
 {
-  /* bubble sort -- a simple quadratic sort */
-  int swapped = 1;
-  while (swapped) {
-    swapped = 0;
-    int i;
-    for (i = 0; i + 1 < r->n; i++) {
-      if (r->messages [i].priority < r->messages [i + 1].priority) {
-        struct pcache_message swap = r->messages [i];
-        r->messages [i] = r->messages [i + 1];
-        r->messages [i + 1] = swap;
-        swapped = 1;
-      }
-    }
+  if (r->n <= 0) {
+    printf ("cond_add_to_result: unable to add, r->n = %d <= 0\n", r->n);
+    return 0;
   }
+  if (r->messages [r->n - 1].priority >= priority)  /* drop this message */
+    return size_old;
+  /* will add.  Do it the easy way -- remove the last one, and add this one */
+  size_old -= r->messages [r->n - 1].msize;
+  r->n = r->n - 1;
+  size_t result = add_to_result (r, size_old, message, msize, priority);
+  return result;
 }
 
 struct req_details {
@@ -1500,8 +1524,10 @@ static int matches_data_request (const struct req_details *rd,
 /* if successful, return the messages.
    return a result with n = 0 if there are no messages,
    and n = -1 in case of failure -- in both of these cases, free_ptr is NULL.
-   messages are in order of descending priority. */
-struct pcache_result pcache_request (const struct allnet_data_request *req)
+   messages are in order of descending priority.
+   If max > 0, at most max messages will be returned.  */
+struct pcache_result pcache_request (const struct allnet_data_request *req,
+                                     int max)
 {
   init_pcache ();
   struct pcache_result result = {  .n = 0, .messages = NULL, .free_ptr = NULL };
@@ -1539,6 +1565,9 @@ debug_count++;
                    (token_to_send_to (token, mh.sent_to_tokens) == -1))
             /* token is not zero, and the corresponding bit is set */
             token_count++;
+          else if ((max > 0) && (result.n >= max))
+            result_size = cond_add_to_result (&result, result_size,
+                                              msg, mh.length, mh.priority);
           else
             result_size = add_to_result (&result, result_size,
                                          msg, mh.length, mh.priority);
@@ -1549,7 +1578,8 @@ debug_count++;
   }
 /* printf ("pcache.c: %d results, %d expired, %d token\n",
 result.n, exp_count, token_count); */
-  sort_result (&result);
+  if ((max > 0) && (result.n > max))
+    result.n = max;
   return result;
 }
 

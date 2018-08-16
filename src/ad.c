@@ -179,7 +179,7 @@ static int add_routing_keepalive (struct sockaddr_storage addr, socklen_t alen,
     if (num_routing_keepalives < ADDRS_MAX)
       index = num_routing_keepalives++;       /* add at the end, increment */
     else
-      index = random_int (0, ADDRS_MAX - 1);  /* replace a random entry */
+      index = (int) random_int (0, ADDRS_MAX - 1); /* replace a random entry */
   }
   if ((index == -1) || (index >= ADDRS_MAX)) {
     printf ("error in add_routing_keepalive, -1 < %d < %d\n", index, ADDRS_MAX);
@@ -435,6 +435,7 @@ static int send_messages_to_one (struct pcache_result r,
     socket_send_to_ip (sock->sockfd, message, msize, sav->addr, sav->alen,
                        "ad.c/send_messages_to_one");
   }
+  free (r.messages);
   free (r.free_ptr);
   return result;
 }
@@ -636,14 +637,16 @@ static struct message_process process_message (struct socket_read_result *r)
       struct allnet_data_request * req = (struct allnet_data_request *) data;
       struct socket_address_validity sav_storage;
       struct socket_address_validity * sav = r->sav;
-      if ((sav == NULL) && (r->alen <= sizeof (r->from))) {
+      if ((sav == NULL) && (r->alen <= sizeof (sav_storage.addr))) {
         /* only need to set addr and alen from r->from and r->alen */
         memset (&(sav_storage), 0, sizeof (sav_storage));
         memcpy (&(sav_storage.addr), &(r->from), r->alen);
         sav_storage.alen = r->alen;
         sav = &(sav_storage);  /* sav must be used before the end of the if */
       }
-      send_messages_to_one (pcache_request (req), req->token, r->sock, sav);
+      int max_messages = ((r->sock->is_local) ? 0 : SEND_EXTERNAL_MAX);
+      send_messages_to_one (pcache_request (req, max_messages),
+                            req->token, r->sock, sav);
       /* replace the token in the message with our own token */
       pcache_current_token ((char *) (req->token));
       sav = NULL;   /* in case it pointed to sav_storage, which goes away */

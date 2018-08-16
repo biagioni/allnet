@@ -46,17 +46,17 @@ struct pcache_result {
   int n;           /* number of messages, may be zero (-1 for errors) */
   struct pcache_message * messages;
 /* calling free (free_ptr) is enough to free all the memory allocated
- * for this pcache_result, including all the messages.   All the memory
- * must be freed at once or not at all. */
+ * for all the messages.  Caller must first free (messages) */
   void * free_ptr;
 };
 
 /* if successful, return the messages.
    return a result with n = 0 if there are no messages,
    and n = -1 in case of failure -- in both of these cases, free_ptr is NULL.
-   messages are in order of descending priority. */
+   messages are in order of descending priority.
+   If max > 0, at most max messages will be returned.  */
 extern struct pcache_result
-  pcache_request (const struct allnet_data_request *req);
+  pcache_request (const struct allnet_data_request *req, int max);
 
 #ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
 /* similar to pcache_request.
