@@ -523,10 +523,16 @@ void packet_to_string (const char * buffer, unsigned int bsize,
         off += snprintf (to + off, minz (itsize, off), " = %u acks + %u bytes",
                          num_acks, dsize - num_acks * MESSAGE_ID_SIZE);
       unsigned int i;
-      for (i = 0; i < num_acks; i++)
-        off += buffer_to_string (buffer + ALLNET_SIZE (hp->transport) +
-                                 i * MESSAGE_ID_SIZE, MESSAGE_ID_SIZE,
+      for (i = 0; i < num_acks; i++) {
+        const char * ackp = buffer + ALLNET_SIZE (hp->transport) +
+                            i * MESSAGE_ID_SIZE;
+        off += buffer_to_string (ackp, MESSAGE_ID_SIZE,
                                  ", ", 5, 0, to + off, minz (itsize, off));
+        char hash [MESSAGE_ID_SIZE];
+        sha512_bytes (ackp, MESSAGE_ID_SIZE, hash, sizeof (hash));
+        off += buffer_to_string (hash, MESSAGE_ID_SIZE,
+                                 " -> ", 5, 0, to + off, minz (itsize, off));
+      }
     } else if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
       struct allnet_data_request * adrp =
         (struct allnet_data_request *) (buffer + (ALLNET_SIZE (hp->transport)));
