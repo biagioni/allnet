@@ -684,8 +684,10 @@ void allnet_daemon_loop ()
       send_auth_response (r.sock->sockfd, r.from, r.alen, sockets.random_secret,
                           sizeof (sockets.random_secret),
                           sockets.counter, r.message, r.msize);
+#ifdef STRICT_AUTHENTICATION
       if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
         continue;   /* not authenticated, do not process this packet */
+#endif /* STRICT_AUTHENTICATION */
     }
     if ((r.socket_address_is_new) || (r.sav == NULL))
       r.sav = add_received_address (r);
