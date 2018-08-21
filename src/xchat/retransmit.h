@@ -7,7 +7,7 @@
 #include "lib/keys.h"
 
 /* sends a chat_control message to request retransmission.
- * returns 1 for success, 0 in case of error. */ 
+ * returns 1 for success, 0 in case of error or if there is nothing to send */
 extern int send_retransmit_request (const char * contact, keyset k, int sock,
                                     int hops, int priority,
                                     const char * expiration);
