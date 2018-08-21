@@ -460,13 +460,16 @@ void do_request_and_resend (int sock)
         (current_keyset >= num_keysets)) {
       if (keysets != NULL)
         free (keysets);
+      keysets = NULL;
       num_keysets = all_keys (contacts [current_contact], &keysets);
       current_keyset = 0;
     }
     if ((num_keysets <= 0) || (keysets == NULL) ||
-        (current_keyset >= num_keysets)) {
+        (current_keyset >= num_keysets) ||
+        (is_group (contacts [current_contact]))) {
       if (keysets != NULL)
         free (keysets);
+      keysets = NULL;
       current_contact++;
       continue;    /* loop around to the next contact, if any */
     }
@@ -849,9 +852,6 @@ else {
   send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
   /* contact may be reachable, try to resend anything missing */
   request_and_resend (sock, *contact, *kset, 1);
-  /* request_and_resend is more general than what we had before 2017/04/29,
-  resend_unacked (*contact, *kset, sock, hops + 2,
-                  ALLNET_PRIORITY_LOCAL_LOW, 10); */
   free (text);
   return msize;
 }
@@ -909,6 +909,21 @@ static int send_key (int sock, const char * contact, keyset kset,
                      const char * secret, unsigned char * address, int abits,
                      int max_hops)
 {
+  static char most_recent_contact [100] = "";
+  static char most_recent_secret [100] = "";
+  static long long int most_recent_send = 0;
+  if ((most_recent_send + 60 >= allnet_time ()) && /* sent in the last minute */
+      (strcmp (most_recent_contact, contact) == 0) &&
+      (strcmp (most_recent_secret, secret) == 0)) {
+#ifdef DEBUG_PRINT
+    printf ("skipping send key %s to %s, %lld + 60 >= %lld\n",
+            secret, contact, most_recent_send, allnet_time ());
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
+  most_recent_send = allnet_time ();
+  snprintf (most_recent_contact, sizeof (most_recent_contact), "%s", contact);
+  snprintf (most_recent_secret, sizeof (most_recent_secret), "%s", secret);
   allnet_rsa_pubkey k;
   int ksize = get_my_pubkey (kset, &k);
   if (ksize <= 0) {
@@ -939,13 +954,8 @@ static int send_key (int sock, const char * contact, keyset kset,
   random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
 
 /* printf ("sending key of size %d\n", size); */
-#if 0
-  int r = send_pipe_message_free (sock, message, size,
-                                  ALLNET_PRIORITY_LOCAL, alog);
-#else
   int r = local_send (message, size, ALLNET_PRIORITY_LOCAL);
   free (message);
-#endif /* 0 */
   if (! r) {
     printf ("unable to send %d-byte key exchange packet to %s\n",
             size, contact);
@@ -1149,7 +1159,10 @@ static void resend_peer_key (const char * contact, keyset k,
                              int max_hops, int sock)
 {
   if (! send_key (sock, contact, k, secret, addr, abits, max_hops))
-    printf ("send_key failed for key %d\n", k);
+#ifdef DEBUG_PRINT
+    printf ("send_key failed for key %d\n", k)
+#endif /* DEBUG_PRINT */
+    ;
 }
 
 /* if successful, returns -1, otherwise 0 */
@@ -1632,8 +1645,11 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
 {
   static unsigned long long int last_call = 0;
   unsigned long long int now = allnet_time ();
-/* printf ("request_and_resend: last %llu, now %llu, %s\n", last_call, now,
-eagerly ? "eager" : "not eager"); */
+/* printf ("request_and_resend (%s): last %llu, now %llu, %s\n", contact,
+last_call, now, eagerly ? "eager" : "not eager"); */
+int debug1 = 0;
+int debug2 = 0;
+int debug3 = 0;
   if (last_call >= now)
     return -1; /* only allow one call per second, even if eagerly */
   if ((last_call + 1 >= now) && (! eagerly))
@@ -1660,6 +1676,7 @@ eagerly ? "eager" : "not eager"); */
                                  hops, ALLNET_PRIORITY_LOCAL_LOW, expiration)) {
       last_retransmit = now;   /* sent something, update time */
       result = 1;    /* transmission successful */
+debug1++;
     }
   }
   /* send a data request, again at a very limited rate */
@@ -1681,6 +1698,7 @@ eagerly ? "eager" : "not eager"); */
         sleep_time = random_int (sleep_time,
                                  (sleep_time * SLEEP_INCREASE_NUMERATOR) /
                                  SLEEP_INCREASE_DENOMINATOR);
+debug2++;
     }
   }
   /* resend any unacked messages, but less than once every hour (or eagerly) */
@@ -1694,6 +1712,7 @@ eagerly ? "eager" : "not eager"); */
       last_resend = now;
       if (result != 1)
         result = 2;
+debug3++;
     }
   }
   /* resend pending keys, not more (and usually less) than once per minute */
@@ -1703,6 +1722,10 @@ eagerly ? "eager" : "not eager"); */
     resend_pending_keys (sock, now);
     last_key_resend = now;
   }
+/* if (strcmp (contact, "arb2018") == 0)
+printf ("request_and_resend (%s): last %llu, now %llu, %s: %d, %d, %d => %d\n",
+contact, last_call, now, eagerly ? "eager" : "not eager", debug1, debug2,
+debug3, result); */
   return result;
 }
 
