@@ -48,9 +48,4 @@ extern void dht_process (char * message, unsigned int msize,
  * returns the packet size */
 extern int dht_update (struct socket_set * s, char ** message);
 
-#if 0
-/* add into the socket set the addresses known from the DHT */
-extern void dht_add_addrs (struct socket_set * s);
-#endif /* 0 */
-
 #endif /* ADHT_H */
