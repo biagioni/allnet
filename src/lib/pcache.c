@@ -298,7 +298,7 @@ static void initialize_acks_from_scratch ()
 static void initialize_from_scratch ()
 {
   num_external_tokens = 0;
-  memset (local_token, 0, sizeof (local_token));
+  random_bytes (local_token, sizeof (local_token));
   memset (token_list, 0, sizeof (token_list));
   message_table_size = DEFAULT_MESSAGE_TABLE_SIZE;
   num_message_table_entries =
@@ -316,24 +316,34 @@ static int initialize_tokens_from_file ()
   int result = 0;
   char * fname = NULL;
   if (config_file_name ("acache", "tokens", &fname)) {
-    long long int fsize = file_size (fname);
-    if (fsize == sizeof (struct tokens_file)) {  /* read the file */
-      struct tokens_file * t;
-      if (read_file_malloc (fname, (char **)(&t), 1)) {
-        num_external_tokens = (int)t->num_tokens;
-        if ((num_external_tokens > MAX_TOKENS) ||  /* sanity check */
-            (num_external_tokens <= 0)) {
-          printf ("error, read %d tokens, setting to %d\n",
-                  num_external_tokens, MAX_TOKENS);
-          num_external_tokens = MAX_TOKENS;
+    struct tokens_file * t = NULL;
+    long long int fsize = read_file_malloc (fname, (char **)(&t), 1);
+    if (fsize == sizeof (struct tokens_file)) {  /* the file may be valid */
+      result = 1;   /* success, unless we find something wrong below */
+      num_external_tokens = (int)t->num_tokens;
+      memcpy (local_token, t->local_token, ALLNET_TOKEN_SIZE);
+      memcpy ((char *) token_list, (char *) t->tokens, sizeof (token_list));
+      if ((num_external_tokens > MAX_TOKENS) ||  /* sanity check */
+          (num_external_tokens < 0)) {
+        result = 0;   /* something wrong with the number of tokens */
+        printf ("error in %s, read %d tokens\n", fname, num_external_tokens);
+      } else if (memget (local_token, 0, sizeof (local_token))) {
+        result = 0;   /* something wrong with the local token */
+        printf ("error in %s, local token is 0\n", fname);
+      } else {
+        int i;
+        for (i = 0; i < num_external_tokens; i++) {
+          if (memget (token_list [i], 0, ALLNET_TOKEN_SIZE)) {
+            result = 0;       /* zero tokens are usually a sign of errors */
+            printf ("error in file %s, token %d is zero\n", fname, i);
+          }
         }
-        memcpy (local_token, t->local_token, ALLNET_TOKEN_SIZE);
-        memcpy ((char *) token_list, (char *) t->tokens, sizeof (token_list));
-        free (t);
-        result = 1;   /* everything is OK */
       }
+      if (result == 0)
+        num_external_tokens = 0;
     }
-    free (fname);
+    if (t != NULL) free (t);
+    if (fname != NULL) free (fname);
   }
   return result;
 }
@@ -856,12 +866,14 @@ static int gc_tokens ()
   char * from = ((char *) token_list) + shift_bytes;
   int length = num_external_tokens - shift;
   int length_bytes = length * ALLNET_TOKEN_SIZE;
+#ifdef DEBUG_FOR_DEVELOPER
 printf ("shifting %d tokens by %d: %d, %d, %d\n", num_external_tokens, shift,
 shift_bytes, length, length_bytes);
 #ifdef DEBUG_PRINT
 print_buffer ((char *)token_list, sizeof (token_list), "before shift",
               sizeof (token_list), 1);
 #endif /* DEBUG_PRINT */
+#endif /* DEBUG_FOR_DEVELOPER */
   memmove (token_list, from, length_bytes);
   memset (((char *) token_list) + length_bytes, 0, /* clear the rest */
           sizeof (token_list) - length_bytes);
@@ -876,7 +888,9 @@ printf ("num_external_tokens is now %d\n", num_external_tokens);
   return shift;
 }
 
+#ifdef DEBUG_FOR_DEVELOPERS
 #define PRINT_GC
+#endif /* DEBUG_FOR_DEVELOPERS */
 
 /* Garbage collects both the messages and ack tables, guaranteeing
  * that at least half the bytes in each message table entry
@@ -922,11 +936,11 @@ static int do_gc (int eindex, int msize,
             "gc (%d, %d, %d) => %d", gc_counter++, eindex, msize, result);
   print_stats (desc);
 #endif /* VERBOSE_GC */
+#ifdef PRINT_GC
   long long int us = allnet_time_us () - start;
   printf ("gc %d/%d/%d took %lld.%06llds, shifted %d tokens\n",
           write_tok, write_msg, write_ack,
           us / 1000000, us % 1000000, delta_tokens);
-#ifdef PRINT_GC
 #endif /* PRINT_GC */
   if (write_tok) write_tokens_file (1, WRITE_FILE_ASYNC);
   if (write_msg) write_messages_file (1, WRITE_FILE_ASYNC);
@@ -1161,7 +1175,8 @@ void pcache_save_acks (const char * acks, int num, int max_hops)
 
 /* return -1 if already sent.
  * otherwise, return the index of the token in the token table */
-static int token_to_send_to (const char * token, uint64_t bitmap)
+static int token_to_send_to (const char * token, uint64_t bitmap,
+                             const char * debug)
 {
   int i;
   for (i = 0; i < num_external_tokens; i++) {
@@ -1176,16 +1191,35 @@ static int token_to_send_to (const char * token, uint64_t bitmap)
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* gc the tokens */
     static long long int last_gc = 0;
     static int printed = 0;
-    if (last_gc + 3600 > allnet_time ()) { /* gc'd in the last hour */
+    if (last_gc + 60 > allnet_time ()) { /* gc'd in the last minute */
       if (! printed)
-        printf ("too many tokens causing too many gcs, ignoring\n");
+#ifdef DEBUG_FOR_DEVELOPER
+        printf ("too many tokens causing too many gcs, ignoring\n")
+#endif /* DEBUG_FOR_DEVELOPER */
+        ;
       printed = 1;
       return -1;  /* pretend it was already sent */
     }
     printed = 0;  /* print again in the next minute */
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("%s: ", debug);
+print_buffer (token, MESSAGE_ID_SIZE, "new token", 8, 1);
+for (i = 0; i < num_external_tokens; i++) {
+printf ("%d: ", i);
+print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
+}
+#endif /* DEBUG_FOR_DEVELOPER */
     do_gc (-1, 0, 0, 1, 1);
     did_gc = 1;
     last_gc = allnet_time ();
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("%s after gc\n", debug);
+for (i = 0; i < num_external_tokens; i++) {
+printf ("%d: ", i);
+print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
+}
+exit (1);
+#endif /* DEBUG_FOR_DEVELOPER */
   }
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* error in GC tokeni*/
     printf ("error 9: no space after gc in tokens table, %d/%d\n",
@@ -1213,7 +1247,7 @@ int pcache_ack_for_token (const char * token, const char * ack)
   char id [MESSAGE_ID_SIZE];
   sha512_bytes (ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
   int aindex = find_one_ack (id);
-  int itoken = token_to_send_to (token, ack_table [aindex].sent_to_tokens);
+  int itoken = token_to_send_to (token, ack_table [aindex].sent_to_tokens, "1");
   if (itoken == -1)  /* already sent */
     return 0;
   if (aindex >= 0)    /* found */
@@ -1558,11 +1592,18 @@ debug_count++;
         char * msg = p + MESSAGE_HEADER_SIZE;
         char token [sizeof (rd.req.token)];
         memcpy (token, rd.req.token, sizeof (token));
+#ifdef DEBUG_PRINT
+static char debug_copy [sizeof (token)];
+if (memcmp (token, debug_copy, sizeof (token)) != 0) {
+print_buffer (token, sizeof (token), "pcache_request token", 4, 0);
+print_buffer (req->token, sizeof (token), " =? ", 4, 1);
+memcpy (debug_copy, token, sizeof (token)); }
+#endif /* DEBUG_PRINT */
         if (match_all || matches_data_request (&rd, msg, mh.length)) {
           if (is_expired_message (msg, mh.length))
             exp_count++;
           else if ((! memget (token, 0, sizeof (token))) &&
-                   (token_to_send_to (token, mh.sent_to_tokens) == -1))
+                   (token_to_send_to (token, mh.sent_to_tokens, "pcache_request") == -1))
             /* token is not zero, and the corresponding bit is set */
             token_count++;
           else if ((max > 0) && (result.n >= max))
@@ -1631,7 +1672,7 @@ void pcache_mark_token_sent (const char * token,  /* ALLNET_TOKEN_SIZE bytes */
     print_buffer (message, msize, "no message ID for packet: ", msize, 1);
     return;
   }
-  int token_index = token_to_send_to (token, 0);
+  int token_index = token_to_send_to (token, 0, "3");
   if (token_index >= 0) {
     char * hp = NULL;              /* 0: do not delete! -- hp points to mh */
     if ((pcache_id_found_delete (id, 0, &hp)) && (hp != NULL)) {
