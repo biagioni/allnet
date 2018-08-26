@@ -343,13 +343,11 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
     break;
   case ALLNET_MGMT_KEEPALIVE:
     r += snprintf (to + r, minz (itsize, r), "keepalive");
-    struct allnet_header * allnet_hp = (struct allnet_header *) hp;
-    int ka_hsize = ALLNET_MGMT_HEADER_SIZE (allnet_hp->transport);
-    if (itsize >= ka_hsize + KEEPALIVE_AUTHENTICATION_SIZE)
-      r += buffer_to_string (hp + ka_hsize, KEEPALIVE_AUTHENTICATION_SIZE,
+    if (hsize >= KEEPALIVE_AUTHENTICATION_SIZE)
+      r += buffer_to_string (hp, KEEPALIVE_AUTHENTICATION_SIZE,
                              ", sender auth", 20, 0, to + r, minz (itsize, r));
-    if (itsize >= ka_hsize + 2 * KEEPALIVE_AUTHENTICATION_SIZE)
-      r += buffer_to_string (hp + ka_hsize + KEEPALIVE_AUTHENTICATION_SIZE,
+    if (hsize >= 2 * KEEPALIVE_AUTHENTICATION_SIZE)
+      r += buffer_to_string (hp + KEEPALIVE_AUTHENTICATION_SIZE,
                              KEEPALIVE_AUTHENTICATION_SIZE, ", receiver auth",
                              20, 0, to + r, minz (itsize, r));
     break;
@@ -486,16 +484,15 @@ void packet_to_string (const char * buffer, unsigned int bsize,
       off += snprintf (to + off, minz (itsize, off), " do-not-cache");
   }
   if (hp->message_type == ALLNET_TYPE_MGMT) {
-    if (bsize < (ALLNET_MGMT_HEADER_SIZE(t))) {
-      off += snprintf (to + off, minz (itsize, off), " mgmt size %d, need %zd", 
-                       bsize, ALLNET_MGMT_HEADER_SIZE(t));
+    int data_offset = ALLNET_MGMT_HEADER_SIZE (t);
+    if (bsize <= data_offset) {
+      off += snprintf (to + off, minz (itsize, off), " mgmt size %d, need %d", 
+                       bsize, data_offset);
     } else {
       struct allnet_mgmt_header * mp =
         (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE(t));
-      const char * next = buffer + ALLNET_MGMT_HEADER_SIZE(t);
-      unsigned int nsize = 0;
-      if (bsize > (ALLNET_MGMT_HEADER_SIZE(t)))
-        nsize = bsize - ALLNET_MGMT_HEADER_SIZE(t);
+      const char * next = buffer + data_offset;
+      unsigned int nsize = minz (bsize, data_offset);
       off += mgmt_to_string (mp->mgmt_type, next, nsize,
                              to + off, minz (itsize, off));
     }
