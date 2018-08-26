@@ -35,6 +35,7 @@
 #include "lib/allnet_queue.h"
 #include "lib/ai.h"
 #include "lib/pcache.h"
+#include "lib/routing.h"
 
 extern void allnet_daemon_main (void);
 #ifdef ALLNET_USE_FORK  /* start a keyd process */
@@ -306,6 +307,7 @@ static void stop_all_on_signal (int signal)
 /* save whatever state needs saving, then stop everything */
 static void save_state (int signal)
 {
+  routing_save_peers ();
   pcache_write ();
   exit (0);
 }

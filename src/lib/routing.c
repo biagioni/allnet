@@ -538,13 +538,17 @@ print_dht (0); */
     }
 }
 
-/* always called with lock held */
-static int init_peers (int always_read_from_file)
+/* always called with lock held
+ * returns 1 if initialized by this call (or if check_only, if not yet
+ * initialized), 0 after it is initialized */
+static int init_peers (int check_only, int always_read_from_file)
 {
   if (alog == NULL)
     alog = init_log ("routing");
   static int initialized = 0;
   int result = 1 - initialized;  /* return 1 if this is the first call */
+  if (check_only)
+    return result;
   if ((! initialized) || (always_read_from_file)) {
     load_peers (0);
     unsigned int i;
@@ -565,7 +569,7 @@ static int init_peers (int always_read_from_file)
 void routing_my_address (unsigned char * addr)
 {
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   memcpy (addr, my_address, ADDRESS_SIZE);
   pthread_mutex_unlock (&mutex);
 }
@@ -620,7 +624,7 @@ print_dht (0); */
     max_matches = 1000;
   }
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   int row, col;
   for (row = ADDRESS_BITS - 1; ((peer < max_matches) && (row >= 0)); row--) {
     for (col = 0; ((peer < max_matches) && (col < PEERS_PER_BIT)); col++) {
@@ -705,7 +709,7 @@ int routing_exact_match (const unsigned char * addr, struct addr_info * result)
 {
   int found = 0;
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   found = search_data_structure (peers, MAX_PEERS, addr, result);
   if (! found)
     found = search_data_structure (pings, MAX_PINGS, addr, result);
@@ -717,7 +721,7 @@ int routing_exact_match (const unsigned char * addr, struct addr_info * result)
 int ping_exact_match (const unsigned char * addr, struct addr_info * result)
 {
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   int found = search_data_structure (pings, MAX_PINGS, addr, result);
   pthread_mutex_unlock (&mutex);
   exact_match_print ("ping_exact_match", found, addr, result);
@@ -778,7 +782,7 @@ int routing_add_dht (struct addr_info addr)
     return -1;
   }
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   if ((addr.nbits == ADDRESS_BITS) &&
       (addr.type == ALLNET_ADDR_INFO_TYPE_DHT)) {
     int bit_pos = matching_bits (addr.destination, ADDRESS_BITS,
@@ -920,7 +924,7 @@ void routing_expire_dht (struct socket_set * s)
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   int changed = 0;
   int i;
   /* delete pings that haven't been refreshed */
@@ -986,7 +990,7 @@ int is_in_routing_table (const struct sockaddr * addr, socklen_t alen)
 {
   int result = 0;
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   int i;
   for (i = 0; i < MAX_PEERS; i++) {
     if (peers [i].ai.nbits > 0) {
@@ -1010,7 +1014,7 @@ int routing_table (struct addr_info * data, int num_entries)
 {
   int result = 0;
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   if (num_entries > 0) {
     int num_peers = 0;
     int i, index;
@@ -1048,7 +1052,7 @@ int routing_table (struct addr_info * data, int num_entries)
 int routing_add_ping (struct addr_info * addr)
 {
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   int result = routing_add_ping_locked (addr);
   if (result >= 0)
     save_peers ();
@@ -1064,7 +1068,7 @@ int routing_ping_iterator (int iter, struct addr_info * ai)
   if ((iter < 0) || (iter >= MAX_PINGS))
     return -1;
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   while ((iter < MAX_PINGS) && (pings [iter].ai.nbits == 0))
     iter++;
   if ((iter < MAX_PINGS) && (ai != NULL))
@@ -1091,7 +1095,7 @@ int init_own_routing_entries (struct addr_info * entry, int max,
   int original_max = max;
 #endif /* DEBUG_PRINT */
   pthread_mutex_lock (&mutex);
-  init_peers (0);
+  init_peers (0, 0);
   pthread_mutex_unlock (&mutex);
   int result = 0;
   if (entry != NULL)
@@ -1209,7 +1213,7 @@ int routing_init_is_complete (int wait_for_init)
     after_loop = 1;        /* next time, sleep */
     pthread_mutex_lock (&mutex);
     /* init_peers may or may not be needed, good to call if needed */
-    init_peers (0);
+    init_peers (0, 0);
     pthread_mutex_unlock (&mutex);
   } while (wait_for_init && (dns_init != 1));
   if (dns_init == 1)
@@ -1217,3 +1221,11 @@ int routing_init_is_complete (int wait_for_init)
   return 0;
 }
 
+/* save the peers file before shutting down */
+void routing_save_peers ()
+{
+  pthread_mutex_lock (&mutex);
+  if (! init_peers (1, 0))
+    save_peers ();
+  pthread_mutex_unlock (&mutex);
+}
