@@ -1218,7 +1218,6 @@ for (i = 0; i < num_external_tokens; i++) {
 printf ("%d: ", i);
 print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
 }
-exit (1);
 #endif /* DEBUG_FOR_DEVELOPER */
   }
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* error in GC tokeni*/
