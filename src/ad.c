@@ -414,8 +414,10 @@ static int send_message_to_one (const char * message, int msize, int priority,
 #ifdef LOG_PACKETS
   snprintf (alog->b, alog->s, "%s (%d bytes, prio %d, to pipe %d)\n",
             "send_one_message_to", msize, priority, sock->sockfd);
+#ifdef DEBUG_FOR_DEVELOPER
   printf ("-> %s", alog->b);
   print_buffer (&addr, alen, " to", alen, 1);
+#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
   log_print (alog);
