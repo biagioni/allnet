@@ -621,13 +621,15 @@ int socket_send_local (struct socket_set * s, const char * message, int msize,
                        unsigned int priority, unsigned long long int sent_time,
                        struct sockaddr_storage except_to, socklen_t alen)
 {
+  char * msg_alloc = add_priority (message, msize, priority);
   struct socket_send_data ssd =
-    { .message = add_priority (message, msize, priority), .msize = msize + 2,
+    { .message = msg_alloc, .msize = msize + 2,
       .sent_time = sent_time, .alen = alen, .local_not_remote = 1, .error = 0 };
   memset (&(ssd.except_to), 0, sizeof (ssd.except_to));
   if ((alen > 0) && (alen < sizeof (except_to)))
     memcpy (&(ssd.except_to), &(except_to), alen);
   socket_addr_loop (s, socket_send_fun, &ssd);
+  free (msg_alloc);
   if (ssd.error)
     return 0;
   return 1;
