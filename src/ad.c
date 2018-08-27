@@ -697,11 +697,16 @@ void allnet_daemon_loop ()
   while (1) {
     struct socket_read_result r = socket_read (&sockets, 10, virtual_clock);
     if ((r.message == NULL) || (r.msize < ALLNET_HEADER_SIZE) ||
-        (! is_valid_message (r.message, r.msize, NULL)))
+        (! is_valid_message (r.message, r.msize, NULL))) {
+      if (r.message != NULL)
+        free (r.message);
       continue;   /* no valid message, no action needed, restart the loop */
+    }
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("received %d bytes\n", r.msize);
-if (r.socket_address_is_new)
+if (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
+print_buffer (&(r.from), r.alen, "routing address", r.alen, 0);
+else if (r.socket_address_is_new)
 print_buffer (&(r.from), r.alen, "new address", r.alen, 0);
 else
 print_buffer (&(r.from), r.alen, "existing address", r.alen, 0);
@@ -721,8 +726,10 @@ print_socket_set (&sockets);
 #define STRICT_AUTHENTICATION
 #endif /* DEBUG_FOR_DEVELOPER */
 #ifdef STRICT_AUTHENTICATION
-      if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
+      if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) {
+        free (r.message);
         continue;   /* not authenticated, do not process this packet */
+      }
 #endif /* STRICT_AUTHENTICATION */
     }
     if ((r.socket_address_is_new) || (r.sav == NULL))
