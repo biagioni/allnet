@@ -1100,7 +1100,7 @@ int init_own_routing_entries (struct addr_info * entry, int max,
   int result = 0;
   if (entry != NULL)
     memset (entry, 0, sizeof (struct addr_info) * max);
-  struct interface_addr * int_addrs;
+  struct interface_addr * int_addrs = NULL;
   int num_interfaces = interface_addrs (&int_addrs);
   if (num_interfaces <= 0) {
     printf ("unable to obtain own IP addresses, ignoring\n");
@@ -1182,6 +1182,8 @@ int init_own_routing_entries (struct addr_info * entry, int max,
     print_addr_info (original + i);
   }
 #endif /* DEBUG_PRINT */
+  if (int_addrs != NULL)
+    free (int_addrs);
   return result;
 }
 
