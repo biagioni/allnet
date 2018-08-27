@@ -804,6 +804,8 @@ int interface_addrs (struct interface_addr ** interfaces)
       (! same_interfaces (*interfaces, other_interfaces))) {
     exit (1);   /* it's an error */
   }
+  if (other_interfaces != NULL)
+    free (other_interfaces);
 #endif /* CHECK_INTERFACE_ADDRS */
 #else /* ANDROID */
   int result = ioctl_interface_addrs (interfaces);
