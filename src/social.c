@@ -183,10 +183,10 @@ static int is_my_contact (char * message, int msize,
         return 1;
       }
     }
-    if ((nk > 0) && (keysets != NULL))
+    if (keysets != NULL)
       free (keysets);
   }
-  if ((nc > 0) && (contacts != NULL))
+  if (contacts != NULL)
     free (contacts);
 
   struct bc_key_info * bc;
