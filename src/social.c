@@ -71,14 +71,8 @@ struct social_info {
 struct social_info * init_social (int max_bytes, int max_check,
                                   struct allnet_log * log)
 {
-  struct social_info * result = malloc (sizeof (struct social_info));
-  if (result == NULL) {
-    perror ("init_social(0) malloc");
-    snprintf (log->b, log->s, "unable to allocate %zd bytes for social\n",
-              sizeof (struct social_info));
-    log_print (log);
-    exit (1);
-  }
+  struct social_info * result = malloc_or_fail (sizeof (struct social_info),
+                                                "init_social");
   result->max_bytes = max_bytes;
   result->max_check = max_check;
   result->log = log;
@@ -180,6 +174,7 @@ static int is_my_contact (char * message, int msize,
         snprintf (log->b, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
         log_print (log);
         free (keysets);
+        free (contacts);
         return 1;
       }
     }
