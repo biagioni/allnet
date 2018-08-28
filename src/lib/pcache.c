@@ -689,11 +689,13 @@ static void shift_token (char * tokenp, int token_shift, const char * debug)
     printf ("error 1: %s token shift %d\n", debug, token_shift);
   /* now shift the tokens */
   uint64_t mask = ~(((uint64_t) -1) << (64 - token_shift));
+#ifdef DEBUG_FOR_DEVELOPER
 static uint64_t tokens_shifted = 0;
 if (! (tokens_shifted & (1 << token_shift))) {
 printf ("%s, shift %d, mask %016" PRIx64 "\n", debug, token_shift, mask);
 tokens_shifted = tokens_shifted | (1 << token_shift);
 }
+#endif /* DEBUG_FOR_DEVELOPER */
   uint64_t tokens = readb64 (tokenp);
   tokens = ((tokens >> token_shift) & mask);
   writeb64 (tokenp, tokens);
