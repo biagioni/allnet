@@ -14,12 +14,10 @@
 #include "mgmt.h"
 #include "configfiles.h"
 #include "util.h"
-#include "pipemsg.h"
 #include "priority.h"
 #include "dcache.h"
 #include "app_util.h"
 #include "allnet_log.h"
-#include "allnet_queue.h"
 #include "trace_util.h"
 #include "sha.h"
 #include "routing.h"
@@ -79,23 +77,16 @@ static int get_address (const char * address, unsigned char * result, int rsize)
   return bits;
 }
 
-/* if queue is not null, writes to the queue.  Otherwise writes to the fd */
-static int write_string_to (const char * string, int null_term, int fd,
-                            struct allnet_queue * queue)
+/* writes to the fd */
+static int write_string_to (const char * string, int null_term, int fd)
 {
   size_t len = strlen (string);
 /* printf ("writing string '%s' of length %zd\n", string, len); */
   if (len == 0)
     return 0;
-  int result = 0;
   if (null_term)
     len++;
-  if (queue != NULL) {
-    if (allnet_enqueue (queue, (const unsigned char *)string, (int)len, 1))
-      result = (int)len;
-  } else {
-    result = (int) write (fd, string, len);
-  }
+  int result = (int) write (fd, string, len);
   return result;
 }
 
@@ -508,8 +499,7 @@ static int64_t max_rtt = -1;
 static int64_t sum_rtt = 0;  /* sum_rtt / received_count is the mean rtt */
 
 /* print summaries.  Also, signal handler in case we are stopped */
-static void print_summary_file (int signal, int null_term, int fd_out,
-                                struct allnet_queue * queue)
+static void print_summary_file (int signal, int null_term, int fd_out)
 {
   if (sent_count > 0) {
     char * ps = "packets";
@@ -535,7 +525,7 @@ static void print_summary_file (int signal, int null_term, int fd_out,
       off += snprintf (buf + off, sizeof (buf) - off,
                        "sent %d %s, received 0\n", sent_count, ps);
     }
-    write_string_to (buf, null_term, fd_out, queue);
+    write_string_to (buf, null_term, fd_out);
   } /* else nothing sent, print nothing */
   if ((signal == SIGHUP) || (signal == SIGINT) || (signal == SIGKILL)) {
     /* printf ("exiting on signal %d\n", signal); */
@@ -546,7 +536,7 @@ static void print_summary_file (int signal, int null_term, int fd_out,
 /* print to stdout the summary line for a trace */
 void trace_print_summary (int signal)
 {
-  print_summary_file (signal, 0, STDOUT_FILENO, NULL);
+  print_summary_file (signal, 0, STDOUT_FILENO);
 }
 
 
@@ -648,7 +638,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                                 struct timeval start, struct timeval finish,
                                 int seq, int match_only, int no_intermediates,
                                 int null_term,
-                                int fd_out, struct allnet_queue * queue)
+                                int fd_out)
 {
   unsigned long long us = delta_us (&finish, &start);
   /* put the unix times into allnet format */
@@ -656,7 +646,7 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
   finish.tv_sec -= ALLNET_Y2K_SECONDS_IN_UNIX;
   if (trp->encrypted) {
     write_string_to ("to do: implement decrypting encrypted trace result\n",
-                     null_term, fd_out, queue);
+                     null_term, fd_out);
     return;
   }
   char buf [10000] = "";
@@ -719,14 +709,13 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
                      "intermediate response with %d entries\n",
                      trp->num_entries);
   }
-  write_string_to (buf, null_term, fd_out, queue);
+  write_string_to (buf, null_term, fd_out);
 }
 
 static void handle_packet (char * message, int msize, char * seeking,
                            struct timeval start, int seq,
                            int match_only, int no_intermediates,
                            int null_term, int fd_out,
-                           struct allnet_queue * queue,
                            char * rememberedh, int nh, int * positionh,
                            struct allnet_log * alog)
 {
@@ -783,13 +772,13 @@ static void handle_packet (char * message, int msize, char * seeking,
   snprintf (alog->b, alog->s, "matching trace response of size %d\n", msize);
   log_print (alog);
   print_trace_result (trp, start, now, seq, match_only,
-                      no_intermediates, null_term, fd_out, queue);
+                      no_intermediates, null_term, fd_out);
 }
 
 static void wait_for_responses (int sock, char * trace_id, int sec,
                                 int seq, int match_only, int no_intermediates,
                                 int null_term,
-                                int fd_out, struct allnet_queue * queue,
+                                int fd_out,
                                 char * rememberedh, int nh, int * positionh,
                                 struct timeval tv_start,
                                 struct allnet_log * alog)
@@ -805,19 +794,9 @@ static void wait_for_responses (int sock, char * trace_id, int sec,
     if (computed_ms > INT_MAX) computed_ms = INT_MAX;
     int ms = (int) computed_ms;
     int found = local_receive (ms, &message, &pri);
-#if 0
-    int pipe;
-    int found = receive_pipe_message_any (p, ms, &message, &pipe, &pri);
-    if (found < 0) {
-#ifdef DEBUG_PRINT
-      printf ("trace pipe closed, exiting\n");  
-#endif /* DEBUG_PRINT */
-      exit (1);
-    }
-#endif /* 0 */
     if (found > 0) {
       handle_packet (message, found, trace_id, tv_start, seq, match_only,
-                     no_intermediates, null_term, fd_out, queue,
+                     no_intermediates, null_term, fd_out,
                      rememberedh, nh, positionh, alog);
       free (message);
     }
@@ -834,7 +813,7 @@ void do_trace_loop (int sock,
                     int repeat, int sleep, int nhops, int match_only,
                     int no_intermediates, int wide, int null_term,
                     int fd_out, int reset_counts,
-                    struct allnet_queue * queue, struct allnet_log * alog)
+                    struct allnet_log * alog)
 {
   if (reset_counts) {
     sent_count = 0;
@@ -881,11 +860,11 @@ void do_trace_loop (int sock,
     }
     wait_for_responses (sock, trace_id, sleep, count,
                         match_only, no_intermediates, null_term,
-                        fd_out, queue, remembered_hashes,
+                        fd_out, remembered_hashes,
                         NUM_REMEMBERED_HASHES, &remembered_position,
                         tv_start, alog);
   }
-  print_summary_file (0, null_term, fd_out, queue);
+  print_summary_file (0, null_term, fd_out);
   print_details = 1;
 }
 
@@ -916,7 +895,7 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
   int abits_array [1];
   abits_array [0] = abits;
   do_trace_loop (sock, 1, address, abits_array, 1, sleep, nhops, match_only,
-                 no_intermediates, wide, 0, fd, 0, NULL, alog);
+                 no_intermediates, wide, 0, fd, 0, alog);
   close (fd);
   char * result;
   size_t success = read_file_malloc (fname, &result, 0);
@@ -925,32 +904,6 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
   unlink (fname);
   free (fname);
   return result;
-}
-
-void trace_pipe (int pipe, struct allnet_queue * queue,
-                 int sleep, const char * dest, int nhops, int no_intermediates,
-                 int match_only, int wide)
-{
-  unsigned char address [ADDRESS_SIZE];
-  memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
-  int abits = 0;
-  if ((dest != NULL) && (strlen (dest) > 0)) {
-    abits = get_address (dest, address, sizeof (address));
-    if (abits <= 0)
-      printf ("illegal destination %s\n", dest);
-  }
-
-  struct allnet_log * alog = init_log ("trace_string");
-  int sock = connect_to_local ("trace_pipe", "trace_pipe", NULL, 0, 1);
-  if (sock < 0) {
-    printf ("unable to connect to allnet\n");
-    return;
-  }
-
-  int abits_array [1];
-  abits_array [0] = abits;
-  do_trace_loop (sock, 1, address, abits_array, 1, sleep, nhops, match_only,
-                 no_intermediates, wide, 1, pipe, 0, queue, alog);
 }
 
 /* just start a trace, returning 1 for success, 0 failure

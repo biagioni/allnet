@@ -4,7 +4,6 @@
 #define ALLNET_TRACE_UTIL_H
 
 #include "allnet_log.h"
-#include "allnet_queue.h"
 #include "mgmt.h"
 #include "pcache.h"   /* struct pcache_result */
 
@@ -33,18 +32,12 @@ extern void do_trace_loop (int sock,
                            int repeat, int sleep, int nhops, int match_only,
                            int no_intermediates, int wide, int null_term,
                            int fd_out, int reset_counts,
-                           struct allnet_queue * queue,
                            struct allnet_log * alog);
 
 /* returns a (malloc'd) string representation of the trace result */
 extern char * trace_string (const char * tmp_dir, int sleep,
                             const char * dest, int nhops,
                             int no_intermediates, int match_only, int wide);
-
-/* either queue is not null, or pipe is a valid file descriptor */
-void trace_pipe (int pipe, struct allnet_queue * queue,
-                 int sleep, const char * dest, int nhops, int no_intermediates,
-                 int match_only, int wide);
 
 /* just start a trace, returning 1 for success, 0 failure
  * trace_id must have MESSAGE_ID_SIZE or be NULL */

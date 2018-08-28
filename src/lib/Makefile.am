@@ -1,7 +1,6 @@
 libincludes = \
 	abc.h \
 	ai.h \
-	allnet_queue.h \
 	app_util.h \
 	cipher.h \
 	configfiles.h \
@@ -15,8 +14,6 @@ libincludes = \
 	packet.h \
         pcache.h \
         pid_bloom.h \
-	pipemsg.h \
-	pqueue.h \
 	priority.h \
 	routing.h \
 	sha.h \
@@ -33,7 +30,6 @@ libsrc = \
         abc.c \
         adht.c \
 	ai.c \
-	allnet_queue.c \
 	app_util.c \
 	cipher.c \
 	configfiles.c \
@@ -44,8 +40,6 @@ libsrc = \
 	mapchar.c \
         pcache.c \
         pid_bloom.c \
-	pipemsg.c \
-	pqueue.c \
 	priority.c \
 	routing.c \
 	sha.c \

@@ -31,7 +31,6 @@ bin_PROGRAMS = \
 
 __ALLNET_BINDIR__allnetd_SOURCES = astart.c \
 				   ad.c \
-				   hash.c \
 				   record.c \
 				   social.c \
 				   track.c \

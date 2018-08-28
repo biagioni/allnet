@@ -32,7 +32,6 @@
 #include "lib/allnet_log.h"
 #include "lib/packet.h"
 #include "lib/configfiles.h"
-#include "lib/allnet_queue.h"
 #include "lib/ai.h"
 #include "lib/pcache.h"
 #include "lib/routing.h"

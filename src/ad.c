@@ -14,7 +14,6 @@
 #include "track.h"
 #include "record.h"
 #include "lib/sockets.h"
-#include "lib/pipemsg.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
 #include "lib/util.h"

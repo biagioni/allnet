@@ -212,7 +212,7 @@ int trace_main (int argc, char ** argv)
   }
   do_trace_loop (sock, num_addrs, addresses, abits,
                  repeat, sleep, nhops, match_only,
-                 no_intermediates, 1, 0, STDOUT_FILENO, 0, NULL, alog);
+                 no_intermediates, 1, 0, STDOUT_FILENO, 0, alog);
   return 0;
 }
 
