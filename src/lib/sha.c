@@ -525,18 +525,26 @@ void sha1_bytes (const char * data, int dsize, char * result, int rsize)
   }
 }
 
+/* returns the new buffer, setting allocated to true if we've
+ * done a malloc and caller should free the result.  The hope is
+ * that, in most cases, no allocation will be needed */
 static char * malloc_concat (const char * s1, int s1len,
-                             const char * s2, int s2len)
+                             const char * s2, int s2len,
+                             char * buffer, int bsize, int * allocated)
 {
-  char * result = malloc (s1len + s2len);
-  if (result == NULL) {
+  int size = s1len + s2len;
+  int allocate = (size > bsize);
+  if (allocate)
+    buffer = malloc (s1len + s2len);
+  if (allocate && (buffer == NULL)) {
     printf ("malloc_concat: unable to allocate %d + %d = %d bytes\n",
             s1len, s2len, s1len + s2len);
     exit (1);
   }
-  memcpy (result, s1, s1len);
-  memcpy (result + s1len, s2, s2len);
-  return result;
+  memcpy (buffer, s1, s1len);
+  memcpy (buffer + s1len, s2, s2len);
+  *allocated = allocate;
+  return buffer;
 }
 
 /* the result array must have size SHA512_SIZE */
@@ -560,14 +568,19 @@ void sha512hmac (const char * data, int dsize, const char * key, int ksize,
     opad [i] = 0x5c ^ key_copy [i];
   }
 
-  char * data1 = malloc_concat (ipad, SHA512_BLOCK_SIZE, data, dsize);
   char hash1 [SHA512_SIZE];
+  char buffer [20000];  /* for things smaller than this, no need to allocate */
+  int allocated = 0;
+  char * data1 = malloc_concat (ipad, SHA512_BLOCK_SIZE, data, dsize,
+                                buffer, sizeof (buffer), &allocated);
   sha512 (data1, SHA512_BLOCK_SIZE + dsize, hash1);
-  free (data1);
-
-  char * data2 = malloc_concat (opad, SHA512_BLOCK_SIZE, hash1, SHA512_SIZE);
+  if (allocated)
+    free (data1);
+  char * data2 = malloc_concat (opad, SHA512_BLOCK_SIZE, hash1, SHA512_SIZE,
+                                buffer, sizeof (buffer), &allocated);
   sha512 (data2, SHA512_BLOCK_SIZE + SHA512_SIZE, result);
-  free (data2);
+  if (allocated)
+    free (data2);
 }
 
 #ifdef SHA_UNIT_TEST
