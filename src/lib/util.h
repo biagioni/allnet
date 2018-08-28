@@ -68,16 +68,16 @@ extern struct allnet_header *
  * (do not change or free) and fill in the size to send */
 extern const char * keepalive_packet (unsigned int * size);
 
-/* return a larger and malloc'd keepalive packet, computing the
+/* return a larger keepalive packet in the given buffer, computing the
  * sender authentication and filling in the receiver authentication
  * (must be of size KEEPALIVE_AUTHENTICATION_SIZE), or
  * if receiver_auth is NULL or all zeros, the packet is shorter
- * also stores into size the size to send */
-extern char * keepalive_malloc (struct sockaddr_storage addr,
-                                const char * secret, int slen,
-                                long long int counter,
-                                const char * receiver_auth,
-                                unsigned int * size);
+ * returns the size to send, always <= bsize (0 for errors) */
+extern int keepalive_auth (char * buffer, int bsize,
+                           struct sockaddr_storage addr,
+                           const char * secret, int slen,
+                           long long int counter,
+                           const char * receiver_auth);
 
 /* malloc, initialize, and return an ack message for a received packet.
  * The message_ack bytes are taken from the argument, not from the packet.*/

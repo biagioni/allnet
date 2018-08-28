@@ -220,17 +220,17 @@ static void send_ack (const char * ack, const struct allnet_header * hp,
 static void send_routing_keepalive (int sockfd, struct sockaddr_storage addr,
                                     socklen_t alen)
 {
-  unsigned int msize = 0;
   int index = routing_keepalive_index (addr, alen);
   char * receiver_auth = ((index < 0) ? NULL :
                           routing_keepalives [index].keepalive_auth);
-  char * message = keepalive_malloc (addr, sockets.random_secret,
-                                     sizeof (sockets.random_secret),
-                                     sockets.counter, receiver_auth, &msize);
+  char message [ALLNET_MTU];
+  int msize = keepalive_auth (message, sizeof (message),
+                              addr, sockets.random_secret,
+                              sizeof (sockets.random_secret),
+                              sockets.counter, receiver_auth);
   if (! socket_send_to_ip (sockfd, message, msize, addr, alen, "sending probe"))
     print_buffer ((char *)&(addr), alen, "error sending probe keepalive to",
                   100, 1);
-  free (message);
 }
 
 static void send_one_keepalive (const char * desc,
@@ -240,24 +240,19 @@ static void send_one_keepalive (const char * desc,
 {
   unsigned int msize;
   const char * message = keepalive_packet (&msize);
-  char * auth_msg = NULL;
-  unsigned int auth_size;
+  char auth_msg [ALLNET_MTU];
   if (sock->is_global_v4 || sock->is_global_v6) {
-    auth_msg = keepalive_malloc (sav->addr, secret, slen, counter,
-                                 sav->keepalive_auth, &auth_size);
+    msize = keepalive_auth (auth_msg, sizeof (auth_msg),
+                            sav->addr, secret, slen, counter,
+                            sav->keepalive_auth);
     message = auth_msg;
-    msize = auth_size;
+#ifdef DEBUG_PRINT
+    print_buffer (message, msize, "sending larger keepalive", 100, 0);
+    print_buffer ((char *)&(sav->addr), sav->alen, ", to", 24, 1);
+#endif /* DEBUG_PRINT */
   }
-/*
-if (auth_msg != NULL) {
-print_buffer (message, msize, "sending larger keepalive", 100, 0);
-print_buffer ((char *)&(sav->addr), sav->alen, ", to", 24, 1);
-}
-*/
   socket_send_to (message, msize, ALLNET_PRIORITY_EPSILON, virtual_clock,
                   &sockets, sock, sav);
-  if (auth_msg != NULL)
-    free (auth_msg);
 }
 
 /* if this is a keepalive with only a sender authentication, send back
@@ -278,13 +273,13 @@ static void send_auth_response (int sockfd, struct sockaddr_storage addr,
       (mhp->mgmt_type != ALLNET_MGMT_KEEPALIVE))
     return;
 /* print_buffer (message, msize, "responding to authentication", msize, 1); */
-  unsigned int rsize = 0;
-  char * response = keepalive_malloc (addr, secret, slen, counter,
-                                      message + hsize, &rsize);
+  char response [ALLNET_MTU];
+  unsigned int rsize = keepalive_auth (response, sizeof (response),
+                                       addr, secret, slen, counter,
+                                       message + hsize);
 /* print_buffer (response, rsize, "sending auth response", 100, 1); */
   socket_send_to_ip (sockfd, response, rsize, addr, alen,
                      "ad.c/send_auth_response");
-  free (response);
 }
 
 /* send to a limited number of DHT addresses and to socket_send_out */

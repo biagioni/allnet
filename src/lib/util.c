@@ -485,7 +485,7 @@ void packet_to_string (const char * buffer, unsigned int bsize,
   }
   if (hp->message_type == ALLNET_TYPE_MGMT) {
     int data_offset = ALLNET_MGMT_HEADER_SIZE (t);
-    if (bsize <= data_offset) {
+    if (bsize < data_offset) {
       off += snprintf (to + off, minz (itsize, off), " mgmt size %d, need %d", 
                        bsize, data_offset);
     } else {
@@ -672,14 +672,16 @@ const char * keepalive_packet (unsigned int * size)
   return result;
 }
 
-/* return a larger and malloc'd keepalive packet, computing the
+/* return a larger keepalive packet in the given buffer, computing the
  * sender authentication and filling in the receiver authentication
  * (must be of size KEEPALIVE_AUTHENTICATION_SIZE), or
  * if receiver_auth is NULL or all zeros, the packet is shorter
- * also stores into size the size to send */
-char * keepalive_malloc (struct sockaddr_storage addr,
-                         const char * secret, int slen, long long int counter,
-                         const char * receiver_auth, unsigned int * size)
+ * returns the size to send, always <= bsize (0 for errors) */
+int keepalive_auth (char * buffer, int bsize,
+                    struct sockaddr_storage addr,
+                    const char * secret, int slen,
+                    long long int counter,
+                    const char * receiver_auth)
 {
   unsigned int hsize = 0;
   const char * header = keepalive_packet (&hsize);  /* header is from above */
@@ -690,15 +692,17 @@ char * keepalive_malloc (struct sockaddr_storage addr,
     larger = 1;
   if (larger)
     rsize += KEEPALIVE_AUTHENTICATION_SIZE;
-  char * result = malloc_or_fail (rsize, "keepalive_malloc");
-  memcpy (result, header, hsize);
+  if (rsize > bsize) {
+printf ("likely error: keepalive size %d, buffer size %d\n", rsize, bsize);
+    return 0;
+  }
+  memcpy (buffer, header, hsize);
   compute_sender_auth (addr, secret, slen, counter,
-                       result + hsize, KEEPALIVE_AUTHENTICATION_SIZE);
+                       buffer + hsize, KEEPALIVE_AUTHENTICATION_SIZE);
   if (larger)
-    memcpy (result + hsize + KEEPALIVE_AUTHENTICATION_SIZE,
+    memcpy (buffer + hsize + KEEPALIVE_AUTHENTICATION_SIZE,
             receiver_auth, KEEPALIVE_AUTHENTICATION_SIZE);
-  *size = rsize;
-  return result;
+  return rsize;
 }
 
 /* malloc, initialize, and return an ack message for a received packet.
