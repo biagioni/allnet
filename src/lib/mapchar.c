@@ -10,6 +10,7 @@
 #include <ctype.h>
 
 #include "mapchar.h"
+#include "util.h"
 
 /*
 #define		MAPCHAR_IGNORE_CHAR	16
@@ -218,11 +219,7 @@ int map_string (const char * string, char ** result)
     printf ("mapchar.c map_string: no bytes (%d) to map\n", bytes);
     return 0;
   }
-  *result = malloc (bytes);
-  if (*result == NULL) {
-    printf ("mapchar.c map_string: unable to malloc %d bytes\n", bytes);
-    return 0;
-  }
+  *result = malloc_or_fail (bytes, "map_string");
   char * r = *result;
   p = string;
   int index = 0;
@@ -304,11 +301,7 @@ char * aaddr_encode_value (int value, const char * lang)
   int post = value % 128;
   int length = string_length (default_pre [pre]) +
                string_length (default_post [post]) + 2;
-  char * result = malloc (length);
-  if (result == NULL) {
-    printf ("unable to allocate %d bytes for aaddr_encode_value\n", length);
-    return result;
-  }
+  char * result = malloc_or_fail (length, "aaddr_encode_value");
   snprintf (result, length, "%s_%s", default_pre [pre], default_post [post]); 
   return result;
 } 
