@@ -762,22 +762,23 @@ int was_received (const char * contact, keyset k, uint64_t wanted)
 {
   int cached = is_in_cache (contact, k, wanted, 0);
   if (cached >= 0)   /* cache is authoritative */
-    return cached;
+    return 1;
   /* rebuild the cache */
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)
     return 0;
   int type;
   uint64_t seq;
+  int found = 0;
   while ((type = prev_message (iter, &seq, NULL, NULL, NULL, NULL,
                                NULL, NULL)) != MSG_TYPE_DONE) {
-    if (type == MSG_TYPE_RCVD)
+    if (type == MSG_TYPE_RCVD) {
+      found = found || (seq == wanted);
       is_in_cache (contact, k, seq, 1);  /* add to cache */
+    }
   }
   free_iter (iter);
-  if (is_in_cache (contact, k, wanted, 0) > 0)
-    return 1;
-  return 0;
+  return found;
 }
 
 static char * message_id_cache = NULL;
