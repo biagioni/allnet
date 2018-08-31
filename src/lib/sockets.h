@@ -79,7 +79,7 @@ extern int socket_addr_loop (struct socket_set * s,
 /* only messages sent and received on a local socket have a priority */
 struct socket_read_result {
   int success;                   /* other fields only valid if this is 1 */
-  char * message;
+  char * message;                /* points to the buffer passed as parameter */
   int msize;
   unsigned int priority;         /* valid for local messages, otherwise 1 */
   struct socket_address_set * sock;
@@ -95,7 +95,8 @@ struct socket_read_result {
  * real time),
  * returns success = 1 and fields should be valid, and
  * updates the socket_address_validity's alive_rcvd to rcvd_time.
- * the pointers point into the socket_set, do not free.
+ * the pointers point into the socket_set or buffer, do not free.
+ * the buffer must have size at least ALLNET_MTU + 2 (the + 2 is important!)
  * special cases of "success": 
  *   if the address is not found in the socket set, socket_address_is_new
  *   is 1 (otherwise 0) and sav is NULL.
@@ -105,8 +106,10 @@ struct socket_read_result {
  * if success is 0, the pointers are NULL and the call timed out.
  * if success is -1, the sock pointer is either NULL or points to a socket
  *   that is no longer valid, and the other pointers are NULL */
-extern struct socket_read_result
-  socket_read (struct socket_set * s, int timeout, long long int rcvd_time);
+#define SOCKET_READ_MIN_BUFFER	(ALLNET_MTU + 2)
+extern struct socket_read_result socket_read (struct socket_set * s,
+                                              char * buffer, int timeout,
+                                              long long int rcvd_time);
 /* returns 1 if the receive limit was updated, 0 otherwise */
 extern int socket_update_recv_limit (int new_recv_limit, struct socket_set * s,
                                      struct sockaddr_storage addr,

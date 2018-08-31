@@ -365,8 +365,7 @@ static int make_fdset (struct socket_set * s, fd_set * set)
 
 static void update_read (struct sockaddr_storage sas, socklen_t alen,
                          struct socket_address_set * sock,
-                         long long int rcvd_time,
-                         const char * message, int msize, int auth,
+                         long long int rcvd_time, int auth,
                          struct socket_address_validity ** savp,
                          int * is_new, int * recv_limit_reached)
 {
@@ -397,23 +396,12 @@ static struct socket_read_result
   record_message (struct socket_set * s, long long int rcvd_time,
                   struct socket_address_set * sock,
                   struct sockaddr_storage sas, socklen_t alen,
-                  const char * buffer, int rcvd, int auth)
+                  char * buffer, int rcvd, int auth)
 {
   int is_local = sock->is_local;
   int delta = (is_local ? 2 : 0);    /* local packets have priority also */
   assert (rcvd >= ((ssize_t) (ALLNET_HEADER_SIZE + delta)));
   int msize = rcvd - delta;
-  char * message = memcpy_malloc (buffer, msize, "sockets/record_message");
-#ifdef DEBUG_FOR_DEVELOPER
-static int debug_mallocd = 0;
-static int debug_malloc_printed = 1;
-debug_mallocd += msize;
-if (debug_malloc_printed < debug_mallocd / 10) {
-printf ("%lld: allocated %d total bytes for messages (most recently %d)\n",
-allnet_time (), debug_mallocd, msize);
-debug_malloc_printed = debug_mallocd;
-}
-#endif /* DEBUG_FOR_DEVELOPER */
   int priority = (is_local ? readb16 (buffer + msize) : 1);
   int is_new = 0;
   int recv_limit_reached = 0;
@@ -427,11 +415,11 @@ debug_malloc_printed = debug_mallocd;
     alen = sizeof (struct sockaddr_ll);
   }
 #endif /* ALLNET_NETPACKET_SUPPORT */
-  update_read (sas, alen, sock, rcvd_time, message, msize, auth,
+  update_read (sas, alen, sock, rcvd_time, auth,
                &sav, &is_new, &recv_limit_reached);
 if (! is_new) check_sav (sav, "update_read result");
   struct socket_read_result r =
-    { .success = 1, .message = message, .msize = msize,
+    { .success = 1, .message = buffer, .msize = msize,
       .priority = priority, .sock = sock, .alen = alen,
       .socket_address_is_new = is_new, .sav = sav,
       .recv_limit_reached = recv_limit_reached };
@@ -445,7 +433,7 @@ if (! is_new) check_sav (r.sav, "record_message result");
 /* returns the max parameter to pass to select */
 /* called with the mutex locked, unlocks it before returning */
 static struct socket_read_result
-  get_message (struct socket_set * s, fd_set * set,
+  get_message (struct socket_set * s, char * buffer, fd_set * set,
                long long int rcvd_time,
                struct socket_read_result result)  /* result init'd by caller */
 {
@@ -456,12 +444,11 @@ static struct socket_read_result
       struct sockaddr_storage sas;
       struct sockaddr * sap = (struct sockaddr *) (&sas);
       socklen_t alen = sizeof (sas);
-      char buffer [ALLNET_MTU + 2];  /* + 2 needed for local sockets */
-      ssize_t rcvd = recvfrom (sock->sockfd, buffer, sizeof (buffer),
+      ssize_t rcvd = recvfrom (sock->sockfd, buffer, SOCKET_READ_MIN_BUFFER,
                                MSG_DONTWAIT, sap, &alen);
       /* all packets must have a min header, local packets also have priority */
       int min = ALLNET_HEADER_SIZE + ((sock->is_local) ? 2 : 0);
-      if ((rcvd >= (ssize_t) min) && (rcvd <= sizeof (buffer))) {
+      if ((rcvd >= (ssize_t) min) && (rcvd <= SOCKET_READ_MIN_BUFFER)) {
         int auth = ((sock->is_global_v4 || sock->is_global_v6) ?
                     is_auth_keepalive (sas, s->random_secret, 
                                        sizeof (s->random_secret), s->counter,
@@ -483,8 +470,9 @@ static struct socket_read_result
   return result;
 }
 
+/* the buffer must have length at least SOCKET_READ_MIN_BUFFER = ALLNET_MTU+2 */
 struct socket_read_result socket_read (struct socket_set * s,
-                                       int timeout,
+                                       char * buffer, int timeout,
                                        long long int rcvd_time)
 {
   struct socket_read_result r = { .success = 0, .message = NULL, .msize = 0,
@@ -501,7 +489,7 @@ struct socket_read_result socket_read (struct socket_set * s,
     struct timeval tv = { .tv_sec = 0, .tv_usec = 10000 };
     int result = select (max_pipe, &receiving, NULL, NULL, &tv);
     if (result > 0)      /* found something, get_message unlocks global_mutex */
-      return get_message (s, &receiving, rcvd_time, r);
+      return get_message (s, buffer, &receiving, rcvd_time, r);
     unlock ("socket_read");
     /* sleep a little while so others have a chance to acquire the lock.
      * otherwise, linux will not grant the lock to others until it

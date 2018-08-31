@@ -689,13 +689,12 @@ print_packet (r->message, r->msize, "received data request", 1);
 void allnet_daemon_loop ()
 {
   while (1) {
-    struct socket_read_result r = socket_read (&sockets, 10, virtual_clock);
+    char message [SOCKET_READ_MIN_BUFFER];
+    struct socket_read_result r = socket_read (&sockets, message,
+                                               10, virtual_clock);
     if ((r.message == NULL) || (r.msize < ALLNET_HEADER_SIZE) ||
-        (! is_valid_message (r.message, r.msize, NULL))) {
-      if (r.message != NULL)
-        free (r.message);
+        (! is_valid_message (r.message, r.msize, NULL)))
       continue;   /* no valid message, no action needed, restart the loop */
-    }
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("received %d bytes\n", r.msize);
 if (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
@@ -720,10 +719,8 @@ print_socket_set (&sockets);
 #define STRICT_AUTHENTICATION
 #endif /* DEBUG_FOR_DEVELOPER */
 #ifdef STRICT_AUTHENTICATION
-      if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) {
-        free (r.message);
+      if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
         continue;   /* not authenticated, do not process this packet */
-      }
 #endif /* STRICT_AUTHENTICATION */
     }
     if ((r.socket_address_is_new) || (r.sav == NULL))
@@ -743,7 +740,6 @@ print_socket_set (&sockets);
       send_out (m.message, m.msize, ROUTING_ADDRS_MAX, &(r.from), r.alen);
     if ((m.allocated) && (m.message != NULL))
       free (m.message);
-    free (r.message);  /* was allocated by socket_read */
     if (r.recv_limit_reached) {  /* time to send a keepalive */
       socket_update_recv_limit (RECV_LIMIT_DEFAULT, &sockets, r.from, r.alen);
       if (r.sav != NULL)
