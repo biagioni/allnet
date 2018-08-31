@@ -1342,10 +1342,10 @@ static size_t add_to_result (struct pcache_result * r, size_t size_old,
 {
   size_t messages_size_new = (r->n + 1) * sizeof (struct pcache_message);
   struct pcache_message * new_messages =
-    pcache_realloc (r->messages, messages_size_new);
+    pcache_realloc (r->messages, (int) messages_size_new);
   size_t size_new = size_old + msize;
   char * orig = r->free_ptr;
-  char * mem = pcache_realloc (r->free_ptr, size_new);
+  char * mem = pcache_realloc (r->free_ptr, (int) size_new);
   if ((mem == NULL) || (new_messages == NULL)) {
     printf ("add_to_result: unable to add, sizes %zd + %d + %zd = %zd, %p %p\n",
             size_old, msize, sizeof (struct pcache_message), size_new,
