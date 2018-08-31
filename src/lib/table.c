@@ -93,7 +93,7 @@ static int init_table_size (struct table * table, int num_entries,
   if (num_entries == 0)
     return 0;
 
-  char * new_space = malloc (needed);
+  char * new_space = malloc_or_fail (needed, "init_table_size");
   if (new_space == NULL) {
     printf ("unable to allocate %d bytes for table storage\n", needed);
     return 0;
