@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <string.h>
+#include <assert.h>
 #include <sys/types.h>
 
 #include "sha.h"
@@ -576,11 +577,10 @@ void sha512hmac (const char * data, int dsize, const char * key, int ksize,
   sha512 (data1, SHA512_BLOCK_SIZE + dsize, hash1);
   if (allocated)
     free (data1);
-  char * data2 = malloc_concat (opad, SHA512_BLOCK_SIZE, hash1, SHA512_SIZE,
-                                buffer, sizeof (buffer), &allocated);
-  sha512 (data2, SHA512_BLOCK_SIZE + SHA512_SIZE, result);
-  if (allocated)
-    free (data2);
+  assert (sizeof (buffer) >= SHA512_BLOCK_SIZE + SHA512_SIZE);
+  memcpy (buffer, opad, SHA512_BLOCK_SIZE);
+  memcpy (buffer + SHA512_BLOCK_SIZE, hash1, SHA512_SIZE);
+  sha512 (buffer, SHA512_BLOCK_SIZE + SHA512_SIZE, result);
 }
 
 #ifdef SHA_UNIT_TEST
