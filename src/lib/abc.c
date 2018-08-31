@@ -407,6 +407,9 @@ static int delete_bc (struct socket_address_set * sock, void * ref)
 
 int add_local_broadcast_sockets (struct socket_set * sockets)
 {
+#ifdef DEBUG_FOR_DEVELOPER
+  return 1;   /* 2018/08/27: trying to debug long-distance connections */
+#endif /* DEBUG_FOR_DEVELOPER */
   /* start by deleting any previously added broadcast sockets */
   socket_sock_loop (sockets, &delete_bc, NULL);
   /* now add all broadcast addresses as appropriate */
