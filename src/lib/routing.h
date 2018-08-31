@@ -73,6 +73,6 @@ extern int is_own_address (struct addr_info * addr);
 extern int routing_init_is_complete (int wait_for_init);
 
 /* save the peers file before shutting down */
-extern void routing_save_peers ();
+extern void routing_save_peers (void);
 
 #endif /* ROUTING_H */
