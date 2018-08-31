@@ -32,7 +32,12 @@ int create_dir (const char * path)
     closedir (d);
     return 1;
   }
-
+  if (errno != ENOENT) {
+    int saved_errno = errno;
+    perror ("opendir");
+    printf ("unable to open %s, error %d\n", path, saved_errno);
+    return 0;
+  }
   /* path does not exist, attempt to create it */
   if (mkdir (path, 0700) == 0) /* created */
     return 1;
