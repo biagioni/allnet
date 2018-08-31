@@ -225,6 +225,7 @@ static void start_dns_thread ()
   pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED);
   pthread_t thread;
   pthread_create (&thread, &attr, init_default_dns, (void *) (&dns_init));
+  pthread_detach (thread);
 }
 
 /* returns number of entries added, 0...max */

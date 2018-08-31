@@ -561,10 +561,8 @@ static void write_file_async (char * fname, const char * contents, int csize,
     memcpy (arg->contents, contents, csize);
     arg->csize = csize;
     pthread_t t;
-    pthread_attr_t attr;
-    pthread_attr_init (&attr);
-    pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED);
-    pthread_create (&t, &attr, &write_file_async_thread, (void *) arg);
+    pthread_create (&t, NULL, &write_file_async_thread, (void *) arg);
+    pthread_detach (t);
   } else { /* already writing, don't write this time */
 #ifdef DEBUG_FOR_DEVELOPER
     printf ("note: unable to save %s, operation already in progress\n", fname);

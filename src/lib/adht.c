@@ -230,9 +230,10 @@ int dht_update (struct socket_set * s, char ** message)
   static struct ping_all_args ping_arg = { .finished = 1, .nbits = 0,
                                            .sockfd_v6 = -1, .sockfd_v4 = -1 };
   if (ping_arg.finished) {
-    ping_arg = make_ping_args (s,  my_address, ADDRESS_BITS);
+    ping_arg = make_ping_args (s, my_address, ADDRESS_BITS);
     pthread_t ping_thread;
     pthread_create (&ping_thread, NULL, ping_all_pending, &ping_arg);
+    pthread_detach (ping_thread);
   }
   if (expire_count++ >= EXPIRATION_MULT) {
     routing_expire_dht (s);

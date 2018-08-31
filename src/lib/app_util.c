@@ -353,6 +353,7 @@ int connect_to_local (const char * program_name, const char * arg0,
   if (first_call && start_keepalive_thread) {
     pthread_t ignored;
     pthread_create (&ignored, NULL, keepalive_thread, NULL);
+    pthread_detach (ignored);
   }
   first_call = 0;
   return sock;

@@ -696,6 +696,7 @@ static void gui_send_message (char * message, int64_t length, int broadcast,
           a->expected_seq = expected;
           pthread_t t;
           pthread_create (&t, NULL, send_message_thread, a);
+          pthread_detach (t);
           writeb64 (reply_header + 1, expected);
         }
       }

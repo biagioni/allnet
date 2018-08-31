@@ -317,6 +317,7 @@ int xchat_init (const char * arg0, const char * path)
   *arg = sock;
   /* request_cached_data loops forever, so do it in a separate thread */
   pthread_create (&request_thread, NULL, request_cached_data, (void *)(arg));
+  pthread_detach (request_thread);
 #endif /* HAVE_REQUEST_THREAD */
   return sock;
 }

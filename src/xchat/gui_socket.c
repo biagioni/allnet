@@ -132,6 +132,7 @@ int main (int argc, char ** argv)
   ((int *) args) [1] = allnet_sock;
   pthread_t t;
   pthread_create (&t, NULL, gui_respond_thread, args);
+  pthread_detach (t);
 
   gui_socket_main_loop (gui_sock, allnet_sock);  /* run until exit */
 

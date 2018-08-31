@@ -790,6 +790,7 @@ int main (int argc, char ** argv)
   rta.print_duplicates = print_duplicates;
   pthread_t thread;
   pthread_create (&thread, NULL, receive_thread, &rta);
+  pthread_detach (thread);
 
   char * peer = most_recent_contact ();
   if (peer != NULL) {

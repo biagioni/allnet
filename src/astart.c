@@ -416,6 +416,7 @@ static void my_call1 (char * argv, int alen, char * program,
       printf ("pthread_create failed for %s\n", program);
       exit (1);
     }
+    pthread_detach (tap->id);
 #endif /* ALLNET_USE_FORK */
   }
   /* parent, not much to do */
