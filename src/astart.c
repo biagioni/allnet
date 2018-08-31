@@ -289,6 +289,7 @@ static void stop_all_on_signal (int signal)
     }
     debug_close (fd, "stop_all_on_signal");
     /* deleting the pid file keeps others from doing what we are doing */
+    close (fd);
     unlink (fname);
     /* now stop all the other processes */
     int i;
