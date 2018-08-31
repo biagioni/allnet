@@ -37,8 +37,9 @@ int create_dir (const char * path)
   if (mkdir (path, 0700) == 0) /* created */
     return 1;
   if (errno != ENOENT) { /* some other error, give up */
+    int saved_errno = errno;
     perror ("1-mkdir");
-    printf ("unable to create %s\n", path);
+    printf ("unable to create %s, error %d\n", path, saved_errno);
     return 0;
   }
 
