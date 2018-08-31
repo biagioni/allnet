@@ -59,35 +59,26 @@ int create_dir (const char * path)
   return 0;
 }
 
-/* returns the number of characters in the full path name of the given file. */
-/* (including the null character at the end) */
-/* if name is not NULL, also malloc's the string and copies the path into it */
-/* returns -1 if the allocation fails or there is some other problem */
-/* if it allocates the name, also checks to make sure the directory exists,
- * and if not, creates it if possible.  Does not create the file. */
-int config_file_name (const char * program, const char * file, char ** name)
+static char * global_root = NULL;
+static void init_global_root ()
 {
-  if (name != NULL)
-    *name = NULL;  /* in case we return error, make sure it is initialized */
-  char * root = ROOT;
-  int free_root = 0;    /* in case root points to allocated memory */
-  size_t root_length = strlen (root);
+  static int initialized = 0;
+  if ((initialized) && (global_root != NULL))
+    return;
+  initialized = 1;
+  global_root = ROOT;
   /* if the iOS root exists, use that */
   DIR * d = opendir (IOS_ROOT);
   if (d != NULL) {  /* exists, use this */
     closedir (d);
-    root = IOS_ROOT;
-    root_length = strlen (root);
+    global_root = IOS_ROOT;
   } else if (global_home_directory != NULL) {  /* use global_home_directory */
-    root = strcat_malloc (global_home_directory, HOME_EXT,
-                          "config_file_name global home directory");
-    root_length = strlen (root);
-    free_root = 1;
+    global_root = strcat_malloc (global_home_directory, HOME_EXT,
+                                 "config_file_name global home directory");
   } else {
     char * allnet_config_env = getenv ("ALLNET_CONFIG");
     if (allnet_config_env != NULL) {
-      root = allnet_config_env;
-      root_length = strlen (root);
+      global_root = allnet_config_env;
     } else {
       char * home_env = getenv (HOME_ENV);
       if ((home_env != NULL) && (strcmp (home_env, "/nonexistent") == 0))
@@ -101,51 +92,47 @@ int config_file_name (const char * program, const char * file, char ** name)
         }
       }
       if (home_env == NULL) {
-        static int printed = 0;
-        if (! printed)
-          printf ("no home environment (%s), running without configs\n",
-                  home_env);
-        printed = 1;
-        return -1;
+        printf ("no home environment (%s), running without configs\n",
+                home_env);
+        global_root = NULL;
+        return;
       }
       /* printf ("no ALLNET_CONFIG, home is %s\n", home_env); */
       size_t size = strlen (home_env) + strlen (HOME_EXT) + 1;
-      if (name != NULL) {
-        char * home = malloc (size);
-        if (home == NULL) {
-          printf ("unable to allocate %zd bytes for home\n", size);
-          return -1;
-        }
-        snprintf (home, size, "%s%s", home_env, HOME_EXT);
-        root = home;
-        free_root = 1;
-        root_length = strlen (root);
-      } else {   /* do not allocate, just record the length */
-        root_length = size;
-      }
+      global_root = malloc_or_fail (size, "configfiles.c init_global_root");
+      snprintf (global_root, size, "%s%s", home_env, HOME_EXT);
     }
   }
-  /* printf ("root is %s of length %d (free %d)\n",
-          root, root_length, free_root); */
+/* printf ("root is %s of length %d\n", global_root, (int) strlen (global_root)); */
+}
 
-  int total_length = (int)(root_length + strlen ("/") + strlen (program) +
-                           strlen ("/") + strlen (file) + 1);
-  if (name == NULL) {
-    if (free_root) free (root);
+/* returns the number of characters in the full path name of the given file. */
+/* (including the null character at the end) */
+/* if name is not NULL, also malloc's the string and copies the path into it */
+/* returns -1 if the allocation fails or there is some other problem */
+/* if it allocates the name, also checks to make sure the directory exists,
+ * and if not, creates it if possible.  Does not create the file. */
+int config_file_name (const char * program, const char * file, char ** name)
+{
+  if (name != NULL)
+    *name = NULL;  /* in case we return error, make sure it is initialized */
+  init_global_root ();
+  if (global_root == NULL)
+    return -1;  /* no config files */
+  int total_length = (int)(strlen (global_root) + strlen ("/") +
+                           strlen (program) + strlen ("/") + strlen (file) + 1);
+  if (name == NULL)   /* finished */
     return total_length;
-  }
   *name = malloc (total_length);
   if (*name == NULL) {
     printf ("unable to allocate %d bytes for config_file_name\n", total_length);
-    if (free_root) free (root);
     return -1;
   }
   /* check for the existence of the directory, or create it */
-  snprintf (*name, total_length, "%s/%s", root, program);
+  snprintf (*name, total_length, "%s/%s", global_root, program);
   create_dir (*name);
-  snprintf (*name, total_length, "%s/%s/%s", root, program, file);
+  snprintf (*name, total_length, "%s/%s/%s", global_root, program, file);
 /* printf ("file path for %s %s is %s\n", program, file, *name); */
-  if (free_root) free (root);
   return total_length;
 }
 
