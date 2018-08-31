@@ -1505,6 +1505,7 @@ static char * oldest_nonempty_file (const char * contact)
           free (fname);
         }
       }
+      closedir (dir);
     }
     free (xchat_dir);
   }
