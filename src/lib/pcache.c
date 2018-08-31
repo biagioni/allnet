@@ -505,23 +505,34 @@ static int too_soon (unsigned long long int * time_var, int * state,
   return 0;
 }
 
-struct async_file_info {
-  char * fname;     /* thread frees it when done */
-  char * contents;  /* thread frees this when done */
-  int csize;
+struct async_file_buffer {
+  pthread_mutex_t busy;
+  char fname [PATH_MAX];
+  char * contents;
+  int csize;    /* how many bytes of contents are meaningful */
+  int alloc;    /* how many bytes contents points to, alloc >= csize */
 };
 
+/* 0 is for the messages file, 1 for the acks file, 2 for the tokens file */
+#define FILE_BUFFER_MESSAGES	0
+#define FILE_BUFFER_ACKS	1
+#define FILE_BUFFER_TOKENS	2
+#define FILE_BUFFER_MAX		FILE_BUFFER_TOKENS
+struct async_file_buffer async_file_buffers [FILE_BUFFER_MAX + 1] =
+ { { .busy = PTHREAD_MUTEX_INITIALIZER, .fname = "",
+     .contents = NULL, .csize = 0, .alloc = 0 },
+   { .busy = PTHREAD_MUTEX_INITIALIZER, .fname = "",
+     .contents = NULL, .csize = 0, .alloc = 0 },
+   { .busy = PTHREAD_MUTEX_INITIALIZER, .fname = "",
+     .contents = NULL, .csize = 0, .alloc = 0 } };
+
+/* called with the lock already held, unlocks */
 static void * write_file_async_thread (void * arg)
 {
-  static pthread_mutex_t file_writing = PTHREAD_MUTEX_INITIALIZER;
-  struct async_file_info * a = (struct async_file_info *) arg;
-  pthread_mutex_lock (&file_writing);  /* serialize the writing */
+  struct async_file_buffer * a = (struct async_file_buffer *) arg;
   if (0 == write_file (a->fname, a->contents, a->csize, 1))
     printf ("unable to write file %s of size %d\n", a->fname, a->csize);
-  free (a->fname);
-  free (a->contents);
-  free (arg);
-  pthread_mutex_unlock (&file_writing);
+  pthread_mutex_unlock (&a->busy);
   return NULL;
 }
 
@@ -530,24 +541,35 @@ static void * write_file_async_thread (void * arg)
 
 /* if in_background is non-zero, copies the content and
  * starts a thread to write the file.
- * otherwise, writes the file before returning.
- * either way, frees fname */
+ * otherwise, writes the file before returning */
 static void write_file_async (char * fname, const char * contents, int csize,
-                              int in_background)
+                              int file_buffer, int in_background)
 {
-  if (! in_background) {
+  if ((! in_background) ||
+      (file_buffer < 0) || (file_buffer > FILE_BUFFER_MAX)) {
     if (0 == write_file (fname, contents, csize, 1))
       printf ("unable to save file %s of size %d\n", fname, csize);
-    free (fname);
     return;
   }
-  struct async_file_info * arg =
-    malloc_or_fail (sizeof (struct async_file_info), "write_file_async arg");
-  arg->fname = fname;
-  arg->contents = memcpy_malloc (contents, csize, "write_file_async contents");
-  arg->csize = csize;
-  pthread_t t;
-  pthread_create (&t, NULL, &write_file_async_thread, (void *) arg);
+  struct async_file_buffer * arg = async_file_buffers + file_buffer;
+  if (pthread_mutex_trylock (&(arg->busy)) == 0) {  /* available */
+    snprintf (arg->fname, sizeof (arg->fname), "%s", fname);
+    if (arg->alloc < csize) {
+      arg->contents = realloc (arg->contents, csize);
+      arg->alloc = csize;
+    }
+    memcpy (arg->contents, contents, csize);
+    arg->csize = csize;
+    pthread_t t;
+    pthread_attr_t attr;
+    pthread_attr_init (&attr);
+    pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED);
+    pthread_create (&t, &attr, &write_file_async_thread, (void *) arg);
+  } else { /* already writing, don't write this time */
+#ifdef DEBUG_FOR_DEVELOPER
+    printf ("note: unable to save %s, operation already in progress\n", fname);
+#endif /* DEBUG_FOR_DEVELOPER */
+  }
 }
 
 /* if in_background is non-zero, starts a thread to write the file.
@@ -562,7 +584,9 @@ static void write_messages_file (int override, int in_background)
   char * fname;
   if (config_file_name ("acache", "messages", &fname)) {
     size_t msize = num_message_table_entries * sizeof (struct hash_table_entry);
-    write_file_async (fname, (char *)message_table, (int)msize, in_background);
+    write_file_async (fname, (char *)message_table, (int)msize,
+                      FILE_BUFFER_MESSAGES, in_background);
+    free (fname);
   } else {
     printf ("unable to save messages file\n");
   }
@@ -577,7 +601,9 @@ static void write_acks_file (int override, int in_background)
   char * fname;
   if (config_file_name ("acache", "acks", &fname)) {
     size_t asize = num_acks * sizeof (struct hash_ack_entry);
-    write_file_async (fname, (char *)ack_table, (int)asize, in_background);
+    write_file_async (fname, (char *)ack_table, (int) asize,
+                      FILE_BUFFER_ACKS, in_background);
+    free (fname);
   } else {
     printf ("unable to save acks file\n");
   }
@@ -601,8 +627,10 @@ static void write_tokens_file (int override, int in_background)
     t.num_tokens = num_external_tokens;
     memcpy (t.local_token, local_token, ALLNET_TOKEN_SIZE);
     memcpy (t.tokens, token_list, sizeof (token_list));
-    size_t asize = sizeof (t);
-    write_file_async (fname, (char *)(&t), (int)asize, in_background);
+    size_t tsize = sizeof (t);
+    write_file_async (fname, (char *)(&t), (int)tsize,
+                      FILE_BUFFER_TOKENS, in_background);
+    free (fname);
   } else {
     printf ("unable to save tokens file\n");
   }
@@ -1289,6 +1317,24 @@ static int power_two (int bits_power_two)
   return result;
 }
 
+/* to reallocate less frequently, have a minimum size which is
+ * sufficient to hold at least 10 maximum-sized packets, and never
+ * realloc below that */
+static void * pcache_realloc (void * ptr, int new_size)
+{
+#define LOCAL_MINIMUM	(11 * ALLNET_MTU)   /* never allocate less */
+  if (new_size <= LOCAL_MINIMUM) {
+    if (ptr == NULL)
+      return malloc_or_fail (LOCAL_MINIMUM, "pcache_realloc 1");
+    return ptr;  /* already allocated, no need to realloc */
+  }
+  /* now new_size > LOCAL_MINIMUM */
+  if (ptr == NULL)
+    return malloc_or_fail (new_size, "pcache_realloc 2");
+  return realloc (ptr, new_size);
+#undef LOCAL_MINIMUM
+}
+
 /* return the new size of free_ptr, or 0 for errors
  * free_ptr points to n messages.  The messages array is also resized.
  * the messages array is at the end so we can insert the new message
@@ -1298,10 +1344,10 @@ static size_t add_to_result (struct pcache_result * r, size_t size_old,
 {
   size_t messages_size_new = (r->n + 1) * sizeof (struct pcache_message);
   struct pcache_message * new_messages =
-    realloc (r->messages, messages_size_new);
+    pcache_realloc (r->messages, messages_size_new);
   size_t size_new = size_old + msize;
   char * orig = r->free_ptr;
-  char * mem = realloc (r->free_ptr, size_new);
+  char * mem = pcache_realloc (r->free_ptr, size_new);
   if ((mem == NULL) || (new_messages == NULL)) {
     printf ("add_to_result: unable to add, sizes %zd + %d + %zd = %zd, %p %p\n",
             size_old, msize, sizeof (struct pcache_message), size_new,
