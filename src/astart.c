@@ -396,36 +396,34 @@ static void my_call1 (char * argv, int alen, char * program,
                       void (*run_function) (char *), int fd, pid_t parent,
                       int start_immediately)
 {
+#ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
+    close (fd);   /* not used in the child */
     replace_command (argv, alen, program);
     snprintf (alog->b, alog->s, "calling %s\n", program);
     log_print (alog);
-#ifdef ALLNET_USE_FORK
     if (! start_immediately)
       sleep (2);   /* start the allnet daemon first, then run */
     process_name = program;
     run_function (argv);
     child_return (program, parent, 0);
-#else /* ! ALLNET_USE_FORK */
-    struct thread_arg * tap = thread_args + (free_thread_arg++);
-    tap->name = strcpy_malloc (program, "astart my_call1");
-    tap->string_function = run_function;
-    tap->string_arg = strcpy_malloc (argv, "astart my_call1 string");
-    tap->start_immediately = start_immediately;
-    if (pthread_create (&(tap->id), NULL, generic_thread, (void *) tap)) {
-      printf ("pthread_create failed for %s\n", program);
-      exit (1);
-    }
-    pthread_detach (tap->id);
-#endif /* ALLNET_USE_FORK */
-  }
-  /* parent, not much to do */
-#ifdef ALLNET_USE_FORK
+  } /* parent, not much to do */
   print_pid (fd, child);
-#endif /* ALLNET_USE_FORK */
+#else /* ! ALLNET_USE_FORK */
+  struct thread_arg * tap = thread_args + (free_thread_arg++);
+  tap->name = strcpy_malloc (program, "astart my_call1");
+  tap->string_function = run_function;
+  tap->string_arg = strcpy_malloc (argv, "astart my_call1 string");
+  tap->start_immediately = start_immediately;
+  if (pthread_create (&(tap->id), NULL, generic_thread, (void *) tap)) {
+    printf ("pthread_create failed for %s\n", program);
+    exit (1);
+  }
+  pthread_detach (tap->id);
   snprintf (alog->b, alog->s, "parent called %s\n", program);
   log_print (alog);
+#endif /* ALLNET_USE_FORK */
 }
 
 #ifdef ALLNET_USE_FORK
