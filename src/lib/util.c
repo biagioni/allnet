@@ -757,7 +757,7 @@ int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
   int i;
   switch (sap->sa_family) {
   case AF_INET:
-    n += snprintf (s + n, minz (len, n), "ip4%s %d/%x",
+    n += snprintf (s + n, minz (len, n), "ip4 %s %d/%x",
                    inet_ntoa (sin->sin_addr),
                    ntohs (sin->sin_port), ntohs (sin->sin_port));
     if ((addr_size != 0) && (addr_size < (int) (sizeof (struct sockaddr_in))))
