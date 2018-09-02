@@ -26,13 +26,17 @@
 #include <linux/if_packet.h>
 #endif /* ALLNET_NETPACKET_SUPPORT */
 
-static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
+static void add_v4 (struct socket_set * sockets,
+                    struct sockaddr_storage * bc_addrs, int num_bc)
 {
   int s = socket (PF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (s < 0) {
     perror ("add_local_broadcast_sockets v4 socket");
     return;
   }
+#ifdef DEBUG_PRINT
+  printf ("add_v4 created socket %d, %d broadcast addresses\n", s, num_bc);
+#endif /* DEBUG_PRINT */
   /* first bind the socket to the local port */
   struct sockaddr_in sin;
   memset (&sin, 0, sizeof (sin));
@@ -40,9 +44,13 @@ static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
   sin.sin_port = htons (ALLNET_IPV4_BROADCAST_PORT);
   sin.sin_addr.s_addr = INADDR_ANY;
   socklen_t alen = sizeof (sin);
+#ifdef DEBUG_PRINT
+  print_buffer (&sin, 16, "bind address", 16, 1);
+#endif /* DEBUG_PRINT */
   if (bind (s, (struct sockaddr *) (&sin), alen) != 0) {
     if (errno != EADDRINUSE)
       perror ("add_local_broadcast_sockets v4 bind");
+    close (s);
     return;
   }
   int bc = 1;     /* enable broadcasts */
@@ -54,16 +62,25 @@ static void add_v4 (struct socket_set * sockets, struct sockaddr_storage * a)
     printf ("add_local_broadcast_sockets unable to add socket %d\n", s);
     return;
   }
-  struct socket_address_validity sav =
-    {  .alen = alen, .alive_rcvd = 0, .alive_sent = 0, .time_limit = 0,
-       .recv_limit = 0, .send_limit = 0, .send_limit_on_recv = 0 };
-  memset (&(sav.keepalive_auth), 0, sizeof (sav.keepalive_auth));
-  memset (&(sav.addr), 0, sizeof (sav.addr));
-  memcpy (&(sav.addr), a, sizeof (struct sockaddr_in));
-  ((struct sockaddr_in *) (&sav.addr))->sin_port =
-    htons (ALLNET_IPV4_BROADCAST_PORT);
-  if (socket_address_add (sockets, s, sav) == NULL)
-    printf ("add_local_broadcast_sockets error adding socket address\n");
+  int i;
+  for (i = 0; i < num_bc; i++) {
+    struct socket_address_validity sav =
+      {  .alen = alen, .alive_rcvd = 0, .alive_sent = 0, .time_limit = 0,
+         .recv_limit = 0, .send_limit = 0, .send_limit_on_recv = 0 };
+    memset (&(sav.keepalive_auth), 0, sizeof (sav.keepalive_auth));
+    memset (&(sav.addr), 0, sizeof (sav.addr));
+    memcpy (&(sav.addr), bc_addrs + i, sizeof (struct sockaddr_in));
+    ((struct sockaddr_in *) (&sav.addr))->sin_port =
+      htons (ALLNET_IPV4_BROADCAST_PORT);
+#ifdef DEBUG_PRINT
+    printf ("interface %d has broadcast address ", i);
+    socklen_t alen = sizeof (struct sockaddr_in);
+    print_sockaddr ((struct sockaddr *) (bc_addrs + i), alen);
+    printf ("\n");
+#endif /* DEBUG_PRINT */
+    if (socket_address_add (sockets, s, sav) == NULL)
+      printf ("add_local_broadcast_sockets error adding socket address\n");
+  }
 }
 
 static void add_v6 (struct socket_set * sockets)
@@ -73,6 +90,9 @@ static void add_v6 (struct socket_set * sockets)
     perror ("add_local_broadcast_sockets v6 socket");
     return;
   }
+#ifdef DEBUG_PRINT
+  printf ("add_v6 created socket %d\n", s);
+#endif /* DEBUG_PRINT */
   /* first bind the socket to the local port */
   struct sockaddr_in6 sin;
   memset (&sin, 0, sizeof (sin));
@@ -319,7 +339,7 @@ static void start_wireless (const char * name, const struct ifaddrs * ifa)
     printf ("rfkill failed\n");
   int iwret = if_command ("iw dev %s set type ibss", name, 240, "", mess);
   if (iwret == 2) { /* this happens if iface is up and in managed mode */
-printf ("bringing the interface down, then back up\n");
+    printf ("bringing the interface %s down, then back up\n", name);
     /* so we bring the interface down and back up */
     if (! if_command ("ifconfig %s down", name, 0, NULL,
                       "unable to turn off interface"))
@@ -361,6 +381,9 @@ static void add_adhoc (struct socket_set * sockets)
     }
     return;
   }
+#ifdef DEBUG_PRINT
+  printf ("add_adhoc created socket %d\n", s);
+#endif /* DEBUG_PRINT */
   if (! socket_add (sockets, s, 0, 0, 0, 1)) {
     printf ("add_adhoc unable to add socket %d\n", s);
     close (s);
@@ -369,6 +392,7 @@ static void add_adhoc (struct socket_set * sockets)
   struct ifaddrs * ifa = NULL;
   if ((getifaddrs (&ifa) != 0) || (ifa == NULL)) {
     perror ("abc: getifaddrs");
+    close (s);
     return;
   }
   struct ifaddrs * ifa_loop = ifa;
@@ -400,6 +424,10 @@ static void add_adhoc (struct socket_set * sockets)
 /* return 0 if this is a broadcast socket */
 static int delete_bc (struct socket_address_set * sock, void * ref)
 {
+#ifdef DEBUG_PRINT
+  if (sock->is_broadcast)
+    printf ("delete_bc deleting socket %d\n", sock->sockfd);
+#endif /* DEBUG_PRINT */
   if (sock->is_broadcast)
     return 0;  /* delete */
   return 1;    /* keep */
@@ -407,25 +435,17 @@ static int delete_bc (struct socket_address_set * sock, void * ref)
 
 int add_local_broadcast_sockets (struct socket_set * sockets)
 {
-#ifdef DEBUG_FOR_DEVELOPER
-  return 1;   /* 2018/08/27: trying to debug long-distance connections */
-#endif /* DEBUG_FOR_DEVELOPER */
+#ifdef DEBUG_PRINT
+  print_socket_set (sockets);
+#endif /* DEBUG_PRINT */
   /* start by deleting any previously added broadcast sockets */
   socket_sock_loop (sockets, &delete_bc, NULL);
   /* now add all broadcast addresses as appropriate */
   struct sockaddr_storage * bc_addrs = NULL;
   int num_bc = interface_broadcast_addrs (&bc_addrs);
-  int i;
-  for (i = 0; i < num_bc; i++) {
-#ifdef DEBUG_PRINT
-    printf ("interface %d has broadcast address ", i);
-    socklen_t alen = sizeof (struct sockaddr_in);
-    print_sockaddr ((struct sockaddr *) (bc_addrs + i), alen);
-    printf ("\n");
-#endif /* DEBUG_PRINT */
-    add_v4 (sockets, bc_addrs + i);
-  }
-  if ((num_bc > 0) && (bc_addrs != NULL))
+  if (num_bc > 0)
+    add_v4 (sockets, bc_addrs, num_bc);
+  if (bc_addrs != NULL)
     free (bc_addrs);
   add_v6 (sockets);
 #ifdef ALLNET_NETPACKET_SUPPORT
