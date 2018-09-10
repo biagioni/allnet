@@ -34,8 +34,8 @@ compile for iOS on xcode
       (wait for review to complete)
 
 compile for arm:
-  sudo apt install gcc-arm-linux-gnueabi
-  sudo apt install git autoconf libtool autotools-dev pkg-config
+  sudo apt install gcc-arm-linux-gnueabi libc6-dev-i386
+  sudo apt install autoconf libtool autotools-dev pkg-config libssl-dev
 
   ./autogen.sh
   ./configure --disable-shared --host=arm-linux-gnueabi --disable-gui --disable-network-manager CFLAGS="-I/usr/local/include"
