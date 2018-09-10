@@ -410,8 +410,9 @@ void packet_to_string (const char * buffer, unsigned int bsize,
   char * reason = NULL;
   if (! is_valid_message (buffer, bsize, &reason)) {
     off += snprintf (to + off, minz (itsize, off),
-                     "invalid message (%s) of size %d%s",
-                     reason, bsize, (print_eol) ? "\n" : "");
+                     "invalid message (%s, hops %d/%d) of size %d%s",
+                     reason, buffer [2], buffer [3], bsize,
+                     (print_eol) ? "\n" : "");
     if (off < itsize)
       off += buffer_to_string (buffer, bsize, NULL, 100, 0,
                                to + off, minz (itsize, off));;
