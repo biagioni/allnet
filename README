@@ -29,6 +29,8 @@ and Android source is at     https://github.com/biagioni/allnet-android.git
 Before building, you may need to install libtool and autoconf.
 On debian/ubuntu and similar systems this requires:
   sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev pkg-config
+You may also need to install git and either libssl-dev, or libssl<version>-dev
+(libressl may be better than openssl if you can get it).
 On other systems, use the native package manager to install these packages.
 On Windows under cygwin, you will need at least automake and pkg-config.
 
@@ -51,9 +53,8 @@ you can also set specific CFLAGS with, e.g.:
 -Wuninitialized -Winit-self -Wshadow -Wstrict-overflow)
 
 additional packages you may need to install:
-	GIT and SSL: git libssl-dev
-              (libressl may be better than openssl if you can get it)
-	Java: openjdk-9-jre openjdk-9-jdk
+	Java: openjdk-<version>-jre openjdk-<version>-jdk  -- current
+              version (September 2018) is 11, but 7, 8 and 9 may also work.
         for Voice-over-Allnet (voa): libgstreamer-plugins-base1.0-dev
               gstreamer1.0-plugins-base gstreamer1.0-plugins-bad
               (these bring in many other dependencies)
