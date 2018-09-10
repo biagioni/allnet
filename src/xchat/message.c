@@ -1,7 +1,7 @@
 /* message.c: use store.c to provide non-volatile storage of chat messages */
 
 /* messages are stored in each contact's directory under a day file, e.g.
- * ~/.allnet/xchat/20130101174522/20140302
+ * ~/.allnet/xchat/20130101174522/20140302.txt
  * group messages are stored in that group's directory (not yet implemented).
  *
  * each contact may have multiple keys, and thus multiple directories.
