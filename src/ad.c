@@ -660,12 +660,30 @@ static struct message_process process_message (struct socket_read_result *r)
       socklen_t salen = ((r->sav != NULL) ? r->sav->alen : r->alen);
       int max_messages = ((r->sock->is_local) ? 0 : SEND_EXTERNAL_MAX);
 #ifdef DEBUG_FOR_DEVELOPER
-print_packet (r->message, r->msize, "received data request", 1);
-#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
+print_packet (r->message, r->msize, "received data request", 1);
 #endif /* DEBUG_PRINT */
-      send_messages_to_one (pcache_request (req, max_messages),
-                            req->token, r->sock, saddr, salen);
+#endif /* DEBUG_FOR_DEVELOPER */
+      /* pcache_request is slow, make sure it takes less than 1% of the time */
+      static long long int no_response_until = 0;
+      long long int request_start = allnet_time_us ();
+      if ((r->sock->is_local) || (request_start > no_response_until)) {
+        send_messages_to_one (pcache_request (req, max_messages),
+                              req->token, r->sock, saddr, salen);
+        long long int request_end = allnet_time_us ();
+        long long int delta = (request_end > request_start) ?
+                              (request_end - request_start) : 1;
+        if (! r->sock->is_local)
+          no_response_until = request_end + 100 * delta;
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("pcache_request took %lld.%06llds for %d max messages",
+        delta / 1000000, delta % 1000000, max_messages);
+if (no_response_until > request_end)
+printf (", waiting %lld.%04llds", (no_response_until - request_end) / 1000000,
+        (no_response_until - request_end) % 1000000);
+printf ("\n");
+#endif /* DEBUG_FOR_DEVELOPER */
+      }
       /* replace the token in the message with our own token */
       pcache_current_token ((char *) (req->token));
       /* and then do normal packet processing (forward) this data request */
@@ -696,6 +714,7 @@ void allnet_daemon_loop ()
         (! is_valid_message (r.message, r.msize, NULL)))
       continue;   /* no valid message, no action needed, restart the loop */
 #ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_PRINT
 printf ("received %d bytes\n", r.msize);
 if (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
 print_buffer (&(r.from), r.alen, "routing address", r.alen, 0);
@@ -705,6 +724,7 @@ else
 print_buffer (&(r.from), r.alen, "existing address", r.alen, 0);
 print_packet (r.message, r.msize, ", packet", 1);
 print_socket_set (&sockets);
+#endif /* DEBUG_PRINT */
 #endif /* DEBUG_FOR_DEVELOPER */
     if ((r.socket_address_is_new) &&
         ((r.sock->is_global_v4) || (r.sock->is_global_v6)) &&
