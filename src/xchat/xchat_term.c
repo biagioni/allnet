@@ -112,7 +112,7 @@ static void * receive_thread (void * arg)
         dup_mess = "duplicate ";
       char * bc_mess = "";
       if (broadcast) {
-        bc_mess = "broacast ";
+        bc_mess = "broadcast ";
         dup_mess = "";
         desc = "";
       }

@@ -79,7 +79,7 @@ int main (int argc, char ** argv)
           dup_mess = "duplicate ";
         char * bc_mess = "";
         if (broadcast) {
-          bc_mess = "broacast ";
+          bc_mess = "broadcast ";
           dup_mess = "";
           desc = "";
         }

@@ -413,7 +413,7 @@ static void add_adhoc (struct socket_set * sockets)
       struct socket_address_validity sav;
       broadcast_addr (ifa_loop->ifa_name, ifa_loop, &sav);
       if (socket_address_add (sockets, s, sav) == NULL)
-        printf ("add_local_broacast_sockets error adding adhoc address\n");
+        printf ("add_local_broadcast_sockets error adding adhoc address\n");
     }
     ifa_loop = ifa_loop->ifa_next;
   }
