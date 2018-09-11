@@ -107,6 +107,7 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
       int tsize = decrypt_verify (hp->sig_algo, data, dsize, &contact, &k,
                                   &text, NULL, 0, NULL, 0, 0);
       if (tsize > 0) {
+        printf ("from contact %s, key %d", contact, k);
         print_buffer (text, tsize, " decrypted:", 100, 0);
         if (tsize > 40) {
           int len = tsize - 40;
