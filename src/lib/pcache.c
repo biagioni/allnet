@@ -1605,9 +1605,11 @@ static int matches_data_request (const struct req_details *rd,
    and n = -1 in case of failure -- in both of these cases, free_ptr is NULL.
    messages are in order of descending priority.
    If max > 0, at most max messages will be returned.  */
+/* this code is sometimes slow -- make sure we run for no more than 0.1s */
 struct pcache_result pcache_request (const struct allnet_data_request *req,
                                      int max)
 {
+  long long int start_time = allnet_time_ms ();
   init_pcache ();
   struct pcache_result result = {  .n = 0, .messages = NULL, .free_ptr = NULL };
   size_t result_size = 0;
@@ -1627,9 +1629,13 @@ int token_count = 0;
   if (message_table != NULL) {
     int ie;
     for (ie = 0; ie < num_message_table_entries; ie++) {
+      if (allnet_time_ms () > start_time + 100)
+        break;
       int offset = 0;
       int im;
       for (im = 0; im < message_table [ie].num_messages; im++) {
+        if (allnet_time_ms () > start_time + 100)
+          break;
 debug_count++;
         char * p = message_table [ie].storage + offset;
         struct message_header mh;
