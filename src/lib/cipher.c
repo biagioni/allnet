@@ -245,7 +245,6 @@ int allnet_verify (const char * text, int tsize, const char * sig, int ssize,
   
   return verifies;
 }
-#undef DEBUG_PRINT
 
 /* returns the size of the signature and mallocs the signature into result */
 int allnet_sign (const char * text, int tsize, allnet_rsa_prvkey key,
@@ -308,7 +307,6 @@ static char ** randomize_contacts (char ** original, int n, int max)
   return result;
 }
 
-/* #define DEBUG_PRINT */
 
 /* returns the data size > 0, and malloc's and fills in the contact, if able
  * to decrypt and verify the packet.
