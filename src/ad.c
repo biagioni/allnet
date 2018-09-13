@@ -680,7 +680,7 @@ printf ("pcache_request took %lld.%06llds for %d max messages",
         delta / 1000000, delta % 1000000, max_messages);
 if (no_response_until > request_end)
 printf (", waiting %lld.%04llds", (no_response_until - request_end) / 1000000,
-        (no_response_until - request_end) % 1000000);
+        ((no_response_until - request_end) % 1000000) / 100);
 printf ("\n");
 #endif /* DEBUG_FOR_DEVELOPER */
       }
