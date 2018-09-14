@@ -36,7 +36,7 @@ extern int pcache_id_found (const char * id);
 
 /* a structure to record data about an individual message */
 struct pcache_message {
-  char * message;
+  char * message;   /* points into the buffer supplied to pcache_request */
   int msize;
   int priority;
 };
@@ -44,19 +44,18 @@ struct pcache_message {
 /* a structure to record the result of a call to request cached messages. */
 struct pcache_result {
   int n;           /* number of messages, may be zero (-1 for errors) */
-  struct pcache_message * messages;
-/* calling free (free_ptr) is enough to free all the memory allocated
- * for all the messages.  Caller must first free (messages) */
-  void * free_ptr;
+  struct pcache_message * messages;   /* points into the buffer */
 };
 
 /* if successful, return the messages.
    return a result with n = 0 if there are no messages,
    and n = -1 in case of failure -- in both of these cases, free_ptr is NULL.
    messages are in order of descending priority.
-   If max > 0, at most max messages will be returned.  */
+   If max > 0, at most max messages will be returned.
+   The memory used by pcache_result is allocated in the given buffer */
 extern struct pcache_result
-  pcache_request (const struct allnet_data_request *req, int max);
+  pcache_request (const struct allnet_data_request *req, int max,
+                  char * buffer, int bsize);
 
 #ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
 /* similar to pcache_request.

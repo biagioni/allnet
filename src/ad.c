@@ -446,8 +446,6 @@ static int send_messages_to_one (struct pcache_result r,
     result += send_message_to_one (r.messages [i].message, r.messages [i].msize,
                                    r.messages [i].priority, token,
                                    sock, addr, alen);
-  free (r.messages);
-  free (r.free_ptr);
   return result;
 }
 #undef LOG_PACKETS
@@ -664,26 +662,11 @@ static struct message_process process_message (struct socket_read_result *r)
 print_packet (r->message, r->msize, "received data request", 1);
 #endif /* DEBUG_PRINT */
 #endif /* DEBUG_FOR_DEVELOPER */
-      /* pcache_request is slow, make sure it takes less than 1% of the time */
-      static long long int no_response_until = 0;
-      long long int request_start = allnet_time_us ();
-      if ((r->sock->is_local) || (request_start > no_response_until)) {
-        send_messages_to_one (pcache_request (req, max_messages),
-                              req->token, r->sock, saddr, salen);
-        long long int request_end = allnet_time_us ();
-        long long int delta = (request_end > request_start) ?
-                              (request_end - request_start) : 1;
-        if (! r->sock->is_local)
-          no_response_until = request_end + 100 * delta;
-#ifdef DEBUG_FOR_DEVELOPER
-printf ("pcache_request took %lld.%06llds for %d max messages",
-        delta / 1000000, delta % 1000000, max_messages);
-if (no_response_until > request_end)
-printf (", waiting %lld.%04llds", (no_response_until - request_end) / 1000000,
-        ((no_response_until - request_end) % 1000000) / 100);
-printf ("\n");
-#endif /* DEBUG_FOR_DEVELOPER */
-      }
+      char request_buffer [500000];
+      struct pcache_result cached_messages =
+        pcache_request (req, max_messages,
+                        request_buffer, sizeof (request_buffer));
+      send_messages_to_one (cached_messages, req->token, r->sock, saddr, salen);
       /* replace the token in the message with our own token */
       pcache_current_token ((char *) (req->token));
       /* and then do normal packet processing (forward) this data request */

@@ -70,6 +70,10 @@
 
 #define MAX_TOKENS	64	/* external tokens.  The list of which tokens
                                    we have sent to can be saved in a uint64_t */
+/* optimization: if we've returned zero for this token before, and no
+ * new packets have been added, we can return zero again */
+static uint64_t zero_returned_for_token = 0;
+static uint64_t one64 = 1;
 
 /* note: when message headers are in storage, they may not be aligned.
  * good practice is to copy the header out into a struct message_header
@@ -931,6 +935,7 @@ printf ("num_external_tokens is now %d\n", num_external_tokens);
 static int do_gc (int eindex, int msize,
                   int write_tok, int write_msg, int write_ack)
 {
+  zero_returned_for_token = 0;  /* force a search on the next pcache_request */
 #ifdef PRINT_GC
   long long int start = allnet_time_us ();
 #endif /* PRINT_GC */
@@ -989,6 +994,7 @@ void pcache_save_packet (const char * message, int msize, int priority)
   }
   if (pcache_id_found (id))   /* already here, nothing to do */
     return;
+  zero_returned_for_token = 0;  /* force a search on the next pcache_request */
   int eindex = (readb64 (id) % num_message_table_entries);
   struct hash_table_entry * hp = message_table + eindex;
   int i;
@@ -1201,20 +1207,30 @@ void pcache_save_acks (const char * acks, int num, int max_hops)
   write_acks_file (0, WRITE_FILE_ASYNC);
 }
 
+/* returns -1 if the token is not found, or the token index (0..63) otherwise */
+static int token_find_index (const char * token)
+{
+  int i;
+  for (i = 0; i < num_external_tokens; i++) {
+    if (memcmp (token_list [i], token, MESSAGE_ID_SIZE) == 0) /* found */
+      return i;
+  }
+  return -1; /* token not found */
+}
+
 /* return -1 if already sent.
  * otherwise, return the index of the token in the token table */
 static int token_to_send_to (const char * token, uint64_t bitmap,
                              const char * debug)
 {
-  int i;
-  for (i = 0; i < num_external_tokens; i++) {
-    if (memcmp (token_list [i], token, MESSAGE_ID_SIZE) == 0) { /* found */
-      if ((bitmap & (((uint64_t) 1) << i)) != 0)
-        return -1;    /* already sent */
-      else
-        return i;     /* token index */
-    }
-  }  /* token not found, add it to the list */
+  int index = token_find_index (token);
+  if (index >= 0) {  /* found */
+    if ((bitmap & (one64 << index)) != 0)  /* bit set, already sent */
+      return -1;    /* already sent */
+    else
+      return index; /* token index */
+  }
+  /* token not found, add it to the list */
   int did_gc = 0;
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* gc the tokens */
     static long long int last_gc = 0;
@@ -1232,7 +1248,7 @@ static int token_to_send_to (const char * token, uint64_t bitmap,
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("%s: ", debug);
 print_buffer (token, MESSAGE_ID_SIZE, "new token", 8, 1);
-for (i = 0; i < num_external_tokens; i++) {
+for (int i = 0; i < num_external_tokens; i++) {
 printf ("%d: ", i);
 print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
 }
@@ -1242,7 +1258,7 @@ print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
     last_gc = allnet_time ();
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("%s after gc\n", debug);
-for (i = 0; i < num_external_tokens; i++) {
+for (int i = 0; i < num_external_tokens; i++) {
 printf ("%d: ", i);
 print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
 }
@@ -1278,7 +1294,7 @@ int pcache_ack_for_token (const char * token, const char * ack)
   if (itoken == -1)  /* already sent */
     return 0;
   if (aindex >= 0)    /* found */
-    ack_table [aindex].sent_to_tokens |= (((uint64_t) 1) << itoken);
+    ack_table [aindex].sent_to_tokens |= (one64 << itoken);
   return 1;
 }
 
@@ -1315,104 +1331,32 @@ static int power_two (int bits_power_two)
   return result;
 }
 
-/* to reallocate less frequently, have a minimum size which is
- * sufficient to hold at least 10 maximum-sized packets, and never
- * realloc below that */
-static void * pcache_realloc (void * ptr, int new_size)
+/* return the new value of last_message, or NULL if the buffer is full,
+ * the buffer is full if r->messages + ((r->n + 1) * sizeof (pcache_message)) >
+                         last_message - msize
+ * assumes that r->messages is at the front of the buffer and last_message
+ * at the back */
+static char * add_to_result (struct pcache_result * r, const char * message,
+                             int msize, int priority, char * last_message)
 {
-#define LOCAL_MINIMUM	(11 * ALLNET_MTU)   /* never allocate less */
-  if (new_size <= LOCAL_MINIMUM) {
-    if (ptr == NULL)
-      return malloc_or_fail (LOCAL_MINIMUM, "pcache_realloc 1");
-    return ptr;  /* already allocated, no need to realloc */
-  }
-  /* now new_size > LOCAL_MINIMUM */
-  if (ptr == NULL)
-    return malloc_or_fail (new_size, "pcache_realloc 2");
-  return realloc (ptr, new_size);
-#undef LOCAL_MINIMUM
-}
-
-/* return the new size of free_ptr, or 0 for errors
- * free_ptr points to n messages.  The messages array is also resized.
- * the messages array is at the end so we can insert the new message
- * in front of it and grow the messages array at the end (or wherever). */
-static size_t add_to_result (struct pcache_result * r, size_t size_old,
-                             const char * message, int msize, int priority)
-{
-  size_t messages_size_new = (r->n + 1) * sizeof (struct pcache_message);
-  struct pcache_message * new_messages =
-    pcache_realloc (r->messages, (int) messages_size_new);
-  size_t size_new = size_old + msize;
-  char * orig = r->free_ptr;
-  char * mem = pcache_realloc (r->free_ptr, (int) size_new);
-  if ((mem == NULL) || (new_messages == NULL)) {
-    printf ("add_to_result: unable to add, sizes %zd + %d + %zd = %zd, %p %p\n",
-            size_old, msize, sizeof (struct pcache_message), size_new,
-            mem, new_messages);
-    return 0;
-  }
-  size_t move_size = 0;
-  char * current = mem + size_old;
-  int i;
-  /* this loop continues as long as messages have priority < this priority
-   * messages [i - 1].message points to the old storage, which may
-   * not be the same as after realloc, so it has to be adjusted.
-   * also, we will be shifting these messages out of the way to make room
-   * for the msize of this message, so adjust the message pointer by msize.
-   * finally, we shift messages up by one to make room for the new message */
-  for (i = r->n; (i > 0) && (new_messages [i - 1].priority < priority); i--) {
-    size_t offset = new_messages [i - 1].message - orig;
-    new_messages [i] = new_messages [i - 1];
-    current = mem + offset;
-    new_messages [i].message = current + msize; /* will go there in memmove */
-    move_size += new_messages [i].msize;
-  }
-  /* now move the messages themselves to make room for the new message */
-  if (move_size > 0)
-    memmove (current + msize, current, move_size);
-  /* now insert the message */
-  memcpy (current, message, msize);
-  new_messages [i].message = current;
-  new_messages [i].msize = msize;
-  new_messages [i].priority = priority;
-  /* this loop points the remaining message pointers to the new storage */
-  while (i > 0) {
-    i--;  /* now i >= 0 */
-    current -= new_messages [i].msize;
-    new_messages [i].message = current;  /* update the pointer */
-  }
-  r->messages = new_messages;
-  r->n++;
-  r->free_ptr = mem;
+  struct pcache_message * new_message_entry = r->messages + (r->n);
+  char * new_message = last_message - msize;
+  if (((char *) r->messages) + (r->n + 1) * sizeof (struct pcache_message) >
+      (last_message - msize)) {
 #ifdef DEBUG_PRINT
-  char * error = NULL; for (int x = 0; x < r->n; x++)
-  if ((! is_valid_message (r->messages [x].message, r->messages [x].msize,
-                           &error)) &&
-      (strcmp (error, "hops > max_hops") != 0)) {
-    printf ("message %d, error %s ", x, error);
-    print_buffer (r->messages [x].message, r->messages [x].msize, NULL, 100, 1);
-  }
+  printf ("add_to_result: messages %p..%p, last_message %p, delta %ld, msize %d, quitting with %d messages\n", r->messages, (((char *) r->messages) + (r->n + 1) * sizeof (struct pcache_message)), last_message, last_message - (((char *) r->messages) + (r->n + 1) * sizeof (struct pcache_message)), msize, r->n);
 #endif /* DEBUG_PRINT */
-  return size_new;
-}
-
-/* like add_to_result, but only adds if it can replace a lower-priority
- * element in the array */
-static size_t cond_add_to_result (struct pcache_result * r, size_t size_old,
-                                  const char * message, int msize, int priority)
-{
-  if (r->n <= 0) {
-    printf ("cond_add_to_result: unable to add, r->n = %d <= 0\n", r->n);
-    return 0;
+    return NULL;
   }
-  if (r->messages [r->n - 1].priority >= priority)  /* drop this message */
-    return size_old;
-  /* will add.  Do it the easy way -- remove the last one, and add this one */
-  size_old -= r->messages [r->n - 1].msize;
-  r->n = r->n - 1;
-  size_t result = add_to_result (r, size_old, message, msize, priority);
-  return result;
+  r->n = r->n + 1;
+#ifdef DEBUG_PRINT
+  printf ("add_to_result: messages %p..%p, last_message %p, delta %ld, msize %d, continuing with %d messages\n", r->messages, (((char *) r->messages) + r->n * sizeof (struct pcache_message)), last_message, last_message - (((char *) r->messages) + r->n * sizeof (struct pcache_message)), msize, r->n);
+#endif /* DEBUG_PRINT */
+  *new_message_entry =
+    (struct pcache_message) { .message = new_message,
+                              .msize = msize, .priority = priority };
+  memcpy (new_message, message, msize);
+  return new_message;
 }
 
 struct req_details {
@@ -1604,74 +1548,81 @@ static int matches_data_request (const struct req_details *rd,
    return a result with n = 0 if there are no messages,
    and n = -1 in case of failure -- in both of these cases, free_ptr is NULL.
    messages are in order of descending priority.
-   If max > 0, at most max messages will be returned.  */
-/* this code is sometimes slow -- make sure we run for no more than 0.1s */
+   If max > 0, at most max messages will be returned.
+   The memory used by pcache_result is allocated in the given buffer */
 struct pcache_result pcache_request (const struct allnet_data_request *req,
-                                     int max)
+                                     int max, char * buffer, int bsize)
 {
-  long long int start_time = allnet_time_ms ();
+#ifdef DEBUG_PRINT
+  long long int start_time = allnet_time_us ();
+#endif /* DEBUG_PRINT */
   init_pcache ();
-  struct pcache_result result = {  .n = 0, .messages = NULL, .free_ptr = NULL };
-  size_t result_size = 0;
-  char zero_since [ALLNET_TIME_SIZE];
-  memset (zero_since, 0, sizeof (zero_since));
+  struct pcache_result result = {.n = 0,
+                                 .messages = (struct pcache_message *) buffer };
+  char * last_message = buffer + bsize;
   int match_all = ((req->dst_bits_power_two == 0) &&
                    (req->src_bits_power_two == 0) &&
                    (req->mid_bits_power_two == 0) &&
-                   (memcmp (zero_since, req->since, sizeof (zero_since)) == 0));
+                   (memget (req->since, 0, sizeof (req->since))));
   struct req_details rd = get_details (req);
 #ifdef TEST_CACHE_FILES
   print_rd (&rd);
 #endif /* TEST_CACHE_FILES */
+  char token [sizeof (rd.req.token)];
+  memcpy (token, rd.req.token, sizeof (token));
+  int token_index = token_find_index (token);
+  if ((token_index >= 0) &&
+      (zero_returned_for_token & (one64 << token_index))) {
+#ifdef DEBUG_PRINT
+    printf ("pcache.c: already returned a zero, not searching\n");
+#endif /* DEBUG_PRINT */
+    return result;
+  }
 int debug_count = 0;
 int exp_count = 0;
 int token_count = 0;
+int max_count = 0;
   if (message_table != NULL) {
     int ie;
-    for (ie = 0; ie < num_message_table_entries; ie++) {
-      if (allnet_time_ms () > start_time + 100)
-        break;
+    for (ie = 0; (last_message != NULL) &&
+                 (ie < num_message_table_entries); ie++) {
       int offset = 0;
       int im;
-      for (im = 0; im < message_table [ie].num_messages; im++) {
-        if (allnet_time_ms () > start_time + 100)
-          break;
+      for (im = 0; (last_message != NULL) &&
+                   (im < message_table [ie].num_messages); im++) {
 debug_count++;
         char * p = message_table [ie].storage + offset;
         struct message_header mh;
         memcpy (&mh, p, sizeof (mh));
         char * msg = p + MESSAGE_HEADER_SIZE;
-        char token [sizeof (rd.req.token)];
-        memcpy (token, rd.req.token, sizeof (token));
-#ifdef DEBUG_PRINT
-static char debug_copy [sizeof (token)];
-if (memcmp (token, debug_copy, sizeof (token)) != 0) {
-print_buffer (token, sizeof (token), "pcache_request token", 4, 0);
-print_buffer (req->token, sizeof (token), " =? ", 4, 1);
-memcpy (debug_copy, token, sizeof (token)); }
-#endif /* DEBUG_PRINT */
         if (match_all || matches_data_request (&rd, msg, mh.length)) {
           if (is_expired_message (msg, mh.length))
             exp_count++;
-          else if ((! memget (token, 0, sizeof (token))) &&
-                   (token_to_send_to (token, mh.sent_to_tokens, "pcache_request") == -1))
-            /* token is not zero, and the corresponding bit is set */
+          else if ((token_index >= 0) &&
+                   (! memget (token, 0, sizeof (token))) &&
+                   ((mh.sent_to_tokens & (one64 << token_index)) != 0))
+            /* token != 0, the bit is set, so this message already returned */
             token_count++;
           else if ((max > 0) && (result.n >= max))
-            result_size = cond_add_to_result (&result, result_size,
-                                              msg, mh.length, mh.priority);
+            max_count++;
           else
-            result_size = add_to_result (&result, result_size,
-                                         msg, mh.length, mh.priority);
+            last_message = add_to_result (&result, msg, mh.length, mh.priority,
+                                          last_message);
         }
         offset += mh.length + MESSAGE_HEADER_SIZE;
       }
     }
   }
-/* printf ("pcache.c: %d results, %d expired, %d token\n",
-result.n, exp_count, token_count); */
   if ((max > 0) && (result.n > max))
     result.n = max;
+  if ((result.n == 0) && (token_index >= 0))
+    /* remember that we got a zero result for this token */
+    zero_returned_for_token |= (one64 << token_index);
+#ifdef DEBUG_PRINT
+  long long int delta = allnet_time_us () - start_time;
+  printf ("pcache.c: %d results, %d expired, %d token, %d max, %lld.%06lld s\n",
+result.n, exp_count, token_count, max_count, delta / 1000000, delta % 1000000);
+#endif /* DEBUG_PRINT */
   return result;
 }
 
@@ -1729,7 +1680,7 @@ void pcache_mark_token_sent (const char * token,  /* ALLNET_TOKEN_SIZE bytes */
     if ((pcache_id_found_delete (id, 0, &hp)) && (hp != NULL)) {
       struct message_header mh;
       memcpy (&mh, hp, sizeof (mh));
-      mh.sent_to_tokens |= (((uint64_t) 1) << token_index);
+      mh.sent_to_tokens |= (one64 << token_index);
       memcpy (hp, &mh, sizeof (mh));
     }
   }
