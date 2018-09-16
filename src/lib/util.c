@@ -707,35 +707,48 @@ printf ("likely error: keepalive size %d, buffer size %d\n", rsize, bsize);
 }
 
 /* malloc, initialize, and return an ack message for a received packet.
- * The message_ack bytes are taken from the argument, not from the packet.*/
-/* *size is set to the size to send */
-/* if from is NULL, the source address is taken from packet->destination */
+ * The message_ack bytes are taken from the argument, not from the packet.
+ * *size is set to the size to send
+ * if from is NULL, the source address is taken from packet->destination,
+ * and then nbits is the minimum of the nbits parameter and the destination
+ * bits from the packet -- use ADDRESS_BITS to use all the bits in packet */
 struct allnet_header *
   create_ack (struct allnet_header * packet, const unsigned char * ack,
               const unsigned char * from, unsigned int nbits,
               unsigned int * size)
 {
   *size = 0;   /* in case of early return */
-  unsigned int alloc_size = ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE;
-  char * result = malloc_or_fail (alloc_size, "util.c create_ack");
+  unsigned int alloc_size = ALLNET_ACK_MIN_SIZE;
+  char * buffer = malloc_or_fail (alloc_size, "util.c create_ack");
+  return init_ack (packet, ack, from, nbits, buffer, size);
+}
+
+/* the same, without malloc.  buffer must have ALLNET_ACK_MIN_SIZE bytes,
+ * and the return value points directly to buffer */
+struct allnet_header *
+  init_ack (struct allnet_header * packet, const unsigned char * ack,
+            const unsigned char * from, unsigned int nbits,
+            char * buffer, unsigned int * size)
+{
+  *size = 0;   /* in case of early return */
   if (from == NULL) {
     from = packet->destination;
     if (nbits > packet->dst_nbits)
       nbits = packet->dst_nbits;
   }
   struct allnet_header * hp =
-    init_packet (result, alloc_size, ALLNET_TYPE_ACK, packet->hops + 3,
+    init_packet (buffer, ALLNET_ACK_MIN_SIZE, ALLNET_TYPE_ACK, packet->hops + 3,
                  ALLNET_SIGTYPE_NONE, from, nbits,
                  packet->source, packet->src_nbits, NULL, NULL);
-  char * ackp = ALLNET_DATA_START(hp, hp->transport, alloc_size);
-  if (alloc_size - (ackp - result) != MESSAGE_ID_SIZE) {
-    printf ("coding error in create_ack!!!! %d %p %p %d %d\n",
-            alloc_size, ackp, result, (int) (alloc_size - (ackp - result)),
-            MESSAGE_ID_SIZE);
+  char * ackp = ALLNET_DATA_START(hp, hp->transport, ALLNET_ACK_MIN_SIZE);
+  if (ALLNET_ACK_MIN_SIZE - (ackp - buffer) != MESSAGE_ID_SIZE) {
+    printf ("coding error in init_ack!!!! %d %p %p %d %d\n",
+            (int) ALLNET_ACK_MIN_SIZE, ackp, buffer,
+            (int) (ALLNET_ACK_MIN_SIZE - (ackp - buffer)), MESSAGE_ID_SIZE);
     return NULL;
   }
   memcpy (ackp, ack, MESSAGE_ID_SIZE);
-  *size = alloc_size;
+  *size = ALLNET_ACK_MIN_SIZE;
   return hp;
 }
 

@@ -80,13 +80,23 @@ extern int keepalive_auth (char * buffer, int bsize,
                            const char * receiver_auth);
 
 /* malloc, initialize, and return an ack message for a received packet.
- * The message_ack bytes are taken from the argument, not from the packet.*/
-/* *size is set to the size to send */
-/* if from is NULL, the source address is taken from packet->destination */
+ * The message_ack bytes are taken from the argument, not from the packet.
+ * *size is set to the size to send
+ * if from is NULL, the source address is taken from packet->destination,
+ * and then nbits is the minimum of the nbits parameter and the destination
+ * bits from the packet -- use ADDRESS_BITS to use all the bits in packet */
 extern struct allnet_header *
   create_ack (struct allnet_header * packet, const unsigned char * ack,
               const unsigned char * from, unsigned int nbits,
               unsigned int * size);
+
+#define	ALLNET_ACK_MIN_SIZE	(ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE)
+/* the same, without malloc.  buffer must have ALLNET_ACK_MIN_SIZE bytes,
+ * and the return value points directly to buffer */
+extern struct allnet_header *
+  init_ack (struct allnet_header * packet, const unsigned char * ack,
+            const unsigned char * from, unsigned int nbits,
+            char * buffer, unsigned int * size);
 
 /* print a string of bits as 1s and 0s, in groups of 4.  xoff is the
  * offset (in bits) within x, nbits the number of bits to print */
