@@ -43,7 +43,7 @@
 #define TIMESTAMP_SIZE	8
 
 struct chat_descriptor {
-  unsigned char message_ack   [MESSAGE_ID_SIZE];
+  unsigned char message_ack   [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
   struct allnet_app_media_header app_media;
   unsigned char counter       [   COUNTER_SIZE];
   unsigned char timestamp     [ TIMESTAMP_SIZE];
@@ -60,7 +60,7 @@ struct chat_descriptor {
 #define COUNTER_FLAG	0xffffffffffffffffLL
 
 struct chat_control {
-  unsigned char message_ack [MESSAGE_ID_SIZE];
+  unsigned char message_ack [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
   struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
   unsigned char type;
@@ -82,7 +82,7 @@ struct chat_control {
    100, 101, 102, 103, 104, and 105 (implied by last_received)
  */
 struct chat_control_request {
-  unsigned char message_ack [MESSAGE_ID_SIZE];
+  unsigned char message_ack [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
   /* app should be XCHAT_ALLNET_APP_ID, media should be ALLNET_MEDIA_DATA */
   struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
