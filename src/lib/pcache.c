@@ -719,13 +719,13 @@ static void shift_token (char * tokenp, int token_shift, const char * debug)
     printf ("error 1: %s token shift %d\n", debug, token_shift);
   /* now shift the tokens */
   uint64_t mask = ~(((uint64_t) -1) << (64 - token_shift));
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 static uint64_t tokens_shifted = 0;
 if (! (tokens_shifted & (1 << token_shift))) {
 printf ("%s, shift %d, mask %016" PRIx64 "\n", debug, token_shift, mask);
 tokens_shifted = tokens_shifted | (1 << token_shift);
 }
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
   uint64_t tokens = readb64 (tokenp);
   tokens = ((tokens >> token_shift) & mask);
   writeb64 (tokenp, tokens);
@@ -1245,24 +1245,24 @@ static int token_to_send_to (const char * token, uint64_t bitmap,
       return -1;  /* pretend it was already sent */
     }
     printed = 0;  /* print again in the next minute */
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 printf ("%s: ", debug);
 print_buffer (token, MESSAGE_ID_SIZE, "new token", 8, 1);
 for (int i = 0; i < num_external_tokens; i++) {
 printf ("%d: ", i);
 print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
 }
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
     do_gc (-1, 0, 0, 1, 1);
     did_gc = 1;
     last_gc = allnet_time ();
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 printf ("%s after gc\n", debug);
 for (int i = 0; i < num_external_tokens; i++) {
 printf ("%d: ", i);
 print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
 }
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
   }
   if (num_external_tokens + 1 > MAX_TOKENS) {   /* error in GC tokeni*/
     printf ("error 9: no space after gc in tokens table, %d/%d\n",
