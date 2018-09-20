@@ -208,8 +208,6 @@ static uint64_t get_prev (uint64_t last,
         uint64_t candidate = last - 1;
         if (finish < candidate)
           candidate = finish;
-if ((result == MAXLL) || (result < candidate))
-printf ("get_prev found sequence %ld in range\n", candidate);
         if ((result == MAXLL) || (result < candidate))
           result = candidate;
       }
@@ -217,8 +215,6 @@ printf ("get_prev found sequence %ld in range\n", candidate);
   }
   for (i = 0; i < num_singles; i++) {
     uint64_t n = readb64u (singles + i * COUNTER_SIZE);
-if ((n < last) && ((result == MAXLL) || (result < n)))
-printf ("get_prev found sequence %ld in singles\n", n);
     if ((n < last) && ((result == MAXLL) || (result < n)))
       result = n;
   }
