@@ -267,20 +267,24 @@ static uint64_t max_seq (const char * contact, keyset k, int wanted)
   return highest_seq_value (contact, k, wanted);
 }
 
-#define MAX_MISSING	50
-/* returns a new (malloc'd) array, or NULL in case of error
- * the new array has (singles + 2 * ranges) * COUNTER_SIZE bytes.
+#define MAX_MISSING	10
+/* returns the size of the missing structure in the result array,
+ * 0 in case of no missing or in case of error
+ * the result is (singles + 2 * ranges) * COUNTER_SIZE.
  * the first *singles sequence numbers are individual sequence numbers
  * that we never received.
  * the next *ranges * 2 sequence numbers are pairs a, b such that we have
  * not received any of the sequence numbers a <= seq <= b */
-char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
+int get_missing (const char * contact, keyset k, int * singles, int * ranges,
+                 char * result, int rsize)
 {
   uint64_t last = max_seq (contact, k, MSG_TYPE_RCVD);
   *singles = 0;
   *ranges = 0;
   if (last < 1)
-    return NULL;
+    return 0;
+  if (rsize < MAX_MISSING * 3 * COUNTER_SIZE)
+    return 0;
 /* the current implementation is relatively simple, returning up to
  * MAX_MISSING singles and as many ranges. */
   char singles_values [MAX_MISSING] [COUNTER_SIZE];
@@ -291,6 +295,9 @@ char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
   uint64_t i;
   for (i = last - 1; i > 0; i--) {
     if (! was_received (contact, k, i)) {
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("contact %s, sequence %ld was not received\n", contact, i);
+#endif /* DEBUG_FOR_DEVELOPER */
       if ((ranges_used > 0) &&
           (i + 1 == readb64 (&(ranges_first [ranges_used - 1] [0])))) {
         /* i extends the latest range */
@@ -315,12 +322,14 @@ char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
     }
   }
   if ((singles_used == 0) && (ranges_used == 0))
-    return NULL;
+    return 0;
+  if (singles_used > MAX_MISSING)
+    singles_used = MAX_MISSING;
+  if (ranges_used > MAX_MISSING)
+    ranges_used = MAX_MISSING;
+  int size = (singles_used + 2 * ranges_used) * COUNTER_SIZE;
   *singles = singles_used;
   *ranges = ranges_used;
-  char * result =
-    malloc_or_fail ((singles_used + 2 * ranges_used) * COUNTER_SIZE,
-                    "get_missing");
   memcpy (result, singles_values, singles_used * COUNTER_SIZE);
   char * p = result + singles_used * COUNTER_SIZE;
   for (i = 0; i < ranges_used; i++) {
@@ -328,40 +337,8 @@ char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
     memcpy (p + COUNTER_SIZE, ranges_last [i], COUNTER_SIZE);
     p += 2 * COUNTER_SIZE;
   }
-  return result;
+  return size;
 }
-
-#ifdef GET_MISSING_SINGLES_ONLY
-/* old implementation, only returns singles */
-char * get_missing (const char * contact, keyset k, int * singles, int * ranges)
-{
-  uint64_t last = max_seq (contact, k, MSG_TYPE_RCVD);
-  *singles = 0;
-  *ranges = 0;
-  if (last < 1)
-    return NULL;
-/* the current implementation is quite simple and only returns singles */
-  char * result = malloc_or_fail (MAX_MISSING * COUNTER_SIZE, "get_missing");
-  int missing = 0;
-  uint64_t i;
-  for (i = last - 1; i > 0; i--) {
-    if (! was_received (contact, k, i)) {
-      writeb64 (result + (missing * COUNTER_SIZE), i);
-      missing++;
-      if (missing >= MAX_MISSING) {
-        *singles = missing;
-        return result;
-      }
-    }
-  }
-  if (missing == 0) {
-    free (result);
-    return NULL;
-  }
-  *singles = missing;
-  return result;
-}
-#endif /* GET_MISSING_SINGLES_ONLY */
 
 struct unacked_cache_record {
   keyset k;
@@ -760,9 +737,11 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
 /* returns 1 if this sequence number has been received, 0 otherwise */
 int was_received (const char * contact, keyset k, uint64_t wanted)
 {
+#ifndef DEBUG_FOR_DEVELOPER
   int cached = is_in_cache (contact, k, wanted, 0);
   if (cached >= 0)   /* cache is authoritative */
     return 1;
+#endif /* DEBUG_FOR_DEVELOPER */
   /* rebuild the cache */
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)

@@ -280,6 +280,9 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
     print_packet (message, msize, "sending packet with expiration", 1);
 #endif /* DEBUG_PRINT */
 
+#ifdef DEBUG_FOR_DEVELOPER
+print_packet (message, msize, "sending", 1);
+#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
   print_packet (message, msize, "sending", 1);
 #endif /* DEBUG_PRINT */

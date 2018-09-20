@@ -23,25 +23,26 @@
  *    (COUNTER_SIZE) bytes * (singles + 2 * ranges);
  * or NULL for failure
  */
-static char * gather_missing_info (const char * contact, keyset k,
-                                   int * singles, int * ranges,
-                                   uint64_t * rcvd_sequence)
+static int gather_missing_info (const char * contact, keyset k,
+                                int * singles, int * ranges,
+                                uint64_t * rcvd_sequence,
+                                char * result, int rsize)
 {
   *rcvd_sequence = get_last_received (contact, k);
   if (*rcvd_sequence <= 0) {
 #ifdef DEBUG_PRINT
     printf ("never received for contact %s\n", contact);
 #endif /* DEBUG_PRINT */
-    return NULL;
+    return 0;
   }
-  char * missing = get_missing (contact, k, singles, ranges);
-  if ((missing == NULL) || ((*singles == 0) && (*ranges == 0))) {
-#ifdef DEBUG_PRINT
+  int size = get_missing (contact, k, singles, ranges, result, rsize);
+  if ((size <= 0) || ((*singles == 0) && (*ranges == 0))) {
+#ifdef DEBUG_FOR_DEVELOPER
     printf ("no messages missing from contact %s\n", contact);
+#endif /* DEBUG_FOR_DEVELOPER */
+#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
-    if (missing != NULL)
-      free (missing);
-    return NULL;
+    return 0;
   }
 #ifdef DEBUG_PRINT
   int d;
@@ -54,27 +55,28 @@ static char * gather_missing_info (const char * contact, keyset k,
             readb64 (missing + ((2 * d     + *singles) * COUNTER_SIZE)),
             readb64 (missing + ((2 * d + 1 + *singles) * COUNTER_SIZE)));
 #endif /* DEBUG_PRINT */
-  return missing;
+  return size;
 }
 
-/* allocates and fills in in the chat control request header, except for
- * the message_ack */
+/* allocates and fills in in the chat control request header, except
+ * for the message ack */
 /* returns the request (*rsize bytes) for success, NULL for failure */
 /* if num_singles == 0 == num_ranges, missing may be NULL */
-static char * create_chat_control_request (const char * contact, char * missing,
-                                           int num_singles, int num_ranges,
-                                           uint64_t rcvd_sequence,
-                                           int * rsize)
+static void create_chat_control_request (const char * contact, char * missing,
+                                         int num_singles, int num_ranges,
+                                         uint64_t rcvd_sequence,
+                                         char * request, int * rsize)
 {
+  int request_size = *rsize;
+  memset (request, 0, request_size);
   *rsize = 0;
   /* compute number of counters in request */
   int counters_size = (num_singles + 2 * num_ranges) * COUNTER_SIZE;
   int size = sizeof (struct chat_control_request) + counters_size;
-  char * request = malloc_or_fail (size, "retransmit_request");
-  if (request == NULL)
-    return NULL;
-
-  memset (request, 0, size);
+  if (size > request_size) {
+    printf ("error: chat ctrl request size %d > max %d\n", size, request_size);
+    return;
+  }
   struct chat_control_request * ccrp = (struct chat_control_request *) request;
   writeb32u (ccrp->app_media.app, XCHAT_ALLNET_APP_ID);
   writeb32u (ccrp->app_media.media, ALLNET_MEDIA_DATA);
@@ -125,7 +127,6 @@ static char * create_chat_control_request (const char * contact, char * missing,
   }
 #endif /* DEBUG_PRINT */
   *rsize = size;
-  return request;
 }
 
 /* sends a chat_control message to request retransmission.
@@ -136,25 +137,21 @@ int send_retransmit_request (const char * contact, keyset k, int sock,
   int num_singles;
   int num_ranges;
   uint64_t rcvd_sequence;
-  char * missing = gather_missing_info (contact, k, &num_singles, &num_ranges,
-                                        &rcvd_sequence);
-  if ((missing == NULL) &&
-      ((rcvd_sequence == 0) || (random_int (1, 100) <= 95)))
-    return 0;
+  char missing [ALLNET_MTU];
+  int msize = gather_missing_info (contact, k, &num_singles, &num_ranges,
+                                   &rcvd_sequence, missing, sizeof (missing));
   /* either we know we are missing some messages (num_singles > 0 and/or
    * num_ranges > 0) or, with 5% chance, we request anyway, in case
    * messages have been sent that are after the last one we've received */
-
-  int size = 0;
-  char * request =
-    create_chat_control_request (contact, missing, num_singles, num_ranges,
-                                 rcvd_sequence, &size);
-  free (missing);
-  if (request == NULL)
+  if (((msize == 0) || (rcvd_sequence == 0)) && ((random_int (1, 100)) <= 95))
     return 0;
+
+  char request [ALLNET_MTU];
+  int size = sizeof (request);
+  create_chat_control_request (contact, missing, num_singles, num_ranges,
+                               rcvd_sequence, request, &size);
   int result = send_to_key (request, size, contact, k, sock,
-                            hops, priority, expiration, 1, 0);
-  free (request);
+                            hops, priority, expiration, 0, 0);
   return result;
 }
 
@@ -211,6 +208,8 @@ static uint64_t get_prev (uint64_t last,
         uint64_t candidate = last - 1;
         if (finish < candidate)
           candidate = finish;
+if ((result == MAXLL) || (result < candidate))
+printf ("get_prev found sequence %ld in range\n", candidate);
         if ((result == MAXLL) || (result < candidate))
           result = candidate;
       }
@@ -218,6 +217,8 @@ static uint64_t get_prev (uint64_t last,
   }
   for (i = 0; i < num_singles; i++) {
     uint64_t n = readb64u (singles + i * COUNTER_SIZE);
+if ((n < last) && ((result == MAXLL) || (result < n)))
+printf ("get_prev found sequence %ld in singles\n", n);
     if ((n < last) && ((result == MAXLL) || (result < n)))
       result = n;
   }
@@ -229,8 +230,8 @@ static uint64_t get_prev (uint64_t last,
   return result;
 }
 
-#define LIMIT_RETRANSMIT_RATE  /* 2017/03/10: still experimenting, for now
-                                  keep it enabled */
+#define LIMIT_RETRANSMIT_RATE_OFF  /* 2017/03/10: still experimenting, for now
+                                  keep it enabled -- 2018/09/19 turn it off */
 #ifdef LIMIT_RETRANSMIT_RATE
 /* the allnet xchat protocol has two mechanisms for retransmitting:
  * - pull: a receiver that knows it is lacking some message will
@@ -354,6 +355,9 @@ static void resend_message (uint64_t seq, const char * contact,
           contact, (uintmax_t)seq, (uintmax_t)time, (uintmax_t)time);
   print_buffer ((char *) cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
 #endif /* DEBUG_PRINT */
+#ifdef DEBUG_FOR_DEVELOPER
+print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "resend_packet", 16, 1);
+#endif /* DEBUG_FOR_DEVELOPER */
   resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
                  hops, priority);
 #ifdef DEBUG_PRINT
@@ -410,6 +414,9 @@ static void resend_messages (const char * retransmit_message, int mlen,
     return;
   }
   counter--;   /* the last counter sent, which is one less than get_counter */
+#ifdef DEBUG_FOR_DEVELOPER
+#define DEBUG_PRINT
+#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
   printf ("rcvd rexmit request for %s, %d singles, %d ranges, last %lld\n",
           contact, hp->num_singles, hp->num_ranges,
@@ -427,6 +434,9 @@ static void resend_messages (const char * retransmit_message, int mlen,
                   "        to", 15, 1);
   }
 #endif /* DEBUG_PRINT */
+#ifdef DEBUG_FOR_DEVELOPER
+#undef DEBUG_PRINT
+#endif /* DEBUG_FOR_DEVELOPER */
 
   unsigned int send_count = 0;
   /* priority decreases gradually from 5/8, which is less than for
@@ -436,6 +446,9 @@ static void resend_messages (const char * retransmit_message, int mlen,
   /* and with slightly higher priority */
   uint64_t last = readb64u (hp->last_received);
   while ((counter > last) && (send_count < max)) {
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("resending last messages, sequence %ld\n", counter);
+#endif /* DEBUG_FOR_DEVELOPER */
     resend_message (counter, contact, k, sock, hops, priority);
     counter--;
     send_count++;
@@ -451,6 +464,9 @@ static void resend_messages (const char * retransmit_message, int mlen,
       break;
     if (send_count++ >= max)
       break;
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("resending messages, sequence %ld\n", prev);
+#endif /* DEBUG_FOR_DEVELOPER */
     resend_message (prev, contact, k, sock, hops, priority);
     last = prev;
     priority -= ALLNET_PRIORITY_EPSILON;

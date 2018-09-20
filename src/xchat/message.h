@@ -63,14 +63,15 @@ extern void save_incoming (const char * contact, keyset k,
 extern uint64_t ack_received (const char * message_ack,
                               char ** contact, keyset * kset, int * new_ack);
 
-/* returns a new (malloc'd) array, or NULL in case of error */
-/* the new array has (singles + 2 * ranges) * COUNTER_SIZE bytes. */
-/* the first *singles sequence numbers are individual sequence numbers
+/* returns the size of the missing structure in the result array,
+ * 0 in case of no missing or in case of error
+ * the result is (singles + 2 * ranges) * COUNTER_SIZE.
+ * the first *singles sequence numbers are individual sequence numbers
  * that we never received.
  * the next *ranges * 2 sequence numbers are pairs a, b such that we have
  * not received any of the sequence numbers a <= seq <= b */
-extern char * get_missing (const char * contact, keyset k,
-                           int * singles, int * ranges);
+extern int get_missing (const char * contact, keyset k,
+                        int * singles, int * ranges, char * result, int rsize);
 
 /* returns a new (malloc'd) array, or NULL in case of error */
 /* the new array has (singles + 2 * ranges) * COUNTER_SIZE bytes. */
