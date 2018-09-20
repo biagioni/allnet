@@ -318,7 +318,6 @@ static int read_token ()
   writeb64 (global_token, token_high);     /* big-endian */
   writeb64 (global_token + 8, token_low);
   free (content);
-print_buffer (global_token, sizeof (global_token), "read token", 16, 1);
   return 1;
 }
 
@@ -334,7 +333,6 @@ static void save_token ()
   if (write (fd, buffer, strlen (buffer)) != strlen (buffer))
     perror ("save_token write");
   close (fd);
-print_buffer (global_token, sizeof (global_token), "saved token", 16, 1);
 }
 
 /* returns the socket if successful, -1 otherwise */
