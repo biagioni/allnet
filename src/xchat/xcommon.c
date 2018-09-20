@@ -27,6 +27,7 @@
 #include "lib/mapchar.h"
 #include "lib/dcache.h"
 #include "lib/routing.h"
+#include "lib/configfiles.h"
 
 /* #define DEBUG_PRINT */
 #define HAVE_REQUEST_THREAD   /* run a thread to request data */
@@ -298,6 +299,44 @@ static pthread_t request_thread;
 
 #endif /* HAVE_REQUEST_THREAD */
 
+static int read_token ()
+{
+  assert (ALLNET_TOKEN_SIZE == 16);/* this code only works for 16-byte tokens */
+  int fd = open_read_config ("xchat", "token", 1);
+  if (fd < 0)
+    return 0;  /* failed */
+  char * content = NULL;
+  if ((read_fd_malloc (fd, &content, 1, 1, NULL) < 0) || (content == NULL))
+    return 0;  /* failed */
+  long long int token_high, token_low;
+  int found = sscanf (content, "%llx %llx", &token_high, &token_low);
+  if (found != 2) {
+    printf ("only found %d token parts (expected 2) in '%s'\n",
+            found, content);
+    return 0;  /* failed */
+  }
+  writeb64 (global_token, token_high);     /* big-endian */
+  writeb64 (global_token + 8, token_low);
+  free (content);
+print_buffer (global_token, sizeof (global_token), "read token", 16, 1);
+  return 1;
+}
+
+static void save_token ()
+{
+  assert (ALLNET_TOKEN_SIZE == 16);/* this code only works for 16-byte tokens */
+  int fd = open_write_config ("xchat", "token", 1);
+  if (fd < 0)
+    return;  /* failed */
+  char buffer [100];
+  snprintf (buffer, sizeof (buffer), "%llx %llx",
+            readb64 (global_token), readb64 (global_token + 8));
+  if (write (fd, buffer, strlen (buffer)) != strlen (buffer))
+    perror ("save_token write");
+  close (fd);
+print_buffer (global_token, sizeof (global_token), "saved token", 16, 1);
+}
+
 /* returns the socket if successful, -1 otherwise */
 int xchat_init (const char * arg0, const char * path)
 {
@@ -311,7 +350,10 @@ int xchat_init (const char * arg0, const char * path)
   if (setsockopt (sock, SOL_SOCKET, SO_NOSIGPIPE, &option, sizeof (int)) != 0)
     perror ("xchat_init setsockopt nosigpipe");
 #endif /* SO_NOSIGPIPE */
-  random_bytes (global_token, sizeof (global_token));
+  if (! read_token ()) {
+    random_bytes (global_token, sizeof (global_token));
+    save_token ();
+  }
 #ifdef HAVE_REQUEST_THREAD
   int * arg = malloc_or_fail (sizeof (int), "xchat_init");
   *arg = sock;
@@ -401,8 +443,9 @@ static void send_ack (int sock, struct allnet_header * hp,
   /* make sure the ack is in the hash */
   idhash_check_and_add (ACK_ID_HASH_INDEX, message_ack);
   unsigned int size;
+  char buffer [ALLNET_ACK_MIN_SIZE];
   struct allnet_header * ackp =
-    create_ack (hp, message_ack, NULL, ADDRESS_BITS, &size);
+    init_ack (hp, message_ack, NULL, ADDRESS_BITS, buffer, &size);
   if (ackp == NULL)
     return;
 #ifdef TRACK_RECENTLY_SENT_ACKS   /* no longer seems useful */
@@ -415,13 +458,7 @@ static void send_ack (int sock, struct allnet_header * hp,
   printf ("sending ack to contact %s: ", contact);
   print_packet ((char *) ackp, size, "ack", 1);
 #endif /* DEBUG_PRINT */
-#if 0
-  send_pipe_message_free (sock, (char *) ackp, size,
-                          ALLNET_PRIORITY_LOCAL, alog);
-#else
   local_send ((char *) ackp, size, ALLNET_PRIORITY_LOCAL);
-  free (ackp);
-#endif /* 0 */
 /* after sending the ack, see if we can get any outstanding
  * messages from the peer */
   if (send_resend_request)
@@ -697,6 +734,9 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
     print_buffer (message_id, MESSAGE_ID_SIZE, ", message id",
                   MESSAGE_ID_SIZE, 1);
 #endif /* DEBUG_PRINT */
+#ifdef DEBUG_FOR_DEVELOPER
+    printf ("sending quick ack for cached message\n");
+#endif /* DEBUG_FOR_DEVELOPER */
     send_ack (sock, hp, (unsigned char *)message_ack, 0, "unknown", 0);
     return 0;
   }
@@ -714,6 +754,12 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
                               (char *) (hp->source), hp->src_nbits,
                               (char *) (hp->destination), hp->dst_nbits,
                               max_contacts);
+  if (tsize == 0) {
+#ifdef DEBUG_PRINT
+    printf ("unable to decrypt packet, dropping\n");
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
 #ifdef DEBUG_PRINT
 if (tsize > 0) {
   printf ("decrypt_verify %lluus, result %d, transport 0x%x, ",
@@ -764,9 +810,15 @@ else {
 #ifdef DEBUG_PRINT
     printf ("contact not known\n");
 #endif /* DEBUG_PRINT */
+#ifdef DEBUG_FOR_DEVELOPER
+    printf ("contact not known, discarding packet\n");
+#endif /* DEBUG_FOR_DEVELOPER */
     if (text != NULL) free (text);
     return 0;
   }
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("got %d-byte packet from contact %s\n", tsize, *contact);
+#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
   printf ("got %d-byte packet from contact %s\n", tsize, *contact);
 #endif /* DEBUG_PRINT */
@@ -783,6 +835,9 @@ else {
 
   unsigned long int app = readb32u (cdp->app_media.app);
   if (app != XCHAT_ALLNET_APP_ID) {
+#ifdef DEBUG_FOR_DEVELOPER
+    printf ("handle_data ignoring unknown app %08lx\n", app);
+#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
     printf ("handle_data ignoring unknown app %08lx\n", app);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
@@ -792,16 +847,29 @@ else {
   }
   unsigned long int media = readb32u (cdp->app_media.media);
   uint64_t seq = readb64u (cdp->counter);
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("got chat message with sequence %lx\n", seq);
+#endif /* DEBUG_FOR_DEVELOPER */
   if (seq == COUNTER_FLAG) {
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("got chat control message from %s\n", *contact);
+#endif /* DEBUG_FOR_DEVELOPER */
     if (media == ALLNET_MEDIA_DATA) {
+#ifdef DEBUG_FOR_DEVELOPER
+      printf ("got chat control message from %s, responding\n", *contact);
+#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
-      printf ("chat control message, responding\n");
 #endif /* DEBUG_PRINT */
       do_chat_control (*contact, *kset, text, tsize, sock, hops + 4);
-      send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
+      if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL)) {
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("acking control packet with media %lx\n", media);
+#endif /* DEBUG_FOR_DEVELOPER */
+        send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
 #ifdef DEBUG_PRINT
       printf ("chat control message response complete\n");
 #endif /* DEBUG_PRINT */
+      }
     } else {
 #ifdef DEBUG_PRINT
       printf ("chat control media type %08lx, only %08x valid, ignoring\n",
@@ -811,6 +879,9 @@ else {
     }
     if (*contact != NULL) { free (*contact); *contact = NULL; }
     if (text != NULL) free (text);
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("control packet, not saving, media %lx\n", media);
+#endif /* DEBUG_FOR_DEVELOPER */
     return 0;
   }
 
@@ -822,6 +893,9 @@ else {
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
 #endif /* DEBUG_PRINT */
     if (text != NULL) free (text);
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("unknown media %lx, not saving\n", media);
+#endif /* DEBUG_FOR_DEVELOPER */
     return 0;
   }
 
@@ -830,10 +904,17 @@ else {
 
   *broadcast = 0;
   *duplicate = 0;
-  if (was_received (*contact, *kset, seq))
+  if (was_received (*contact, *kset, seq)) {
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("duplicate seq %" PRId64 ", not saving for %s\n", seq, *contact);
+#endif /* DEBUG_FOR_DEVELOPER */
     *duplicate = 1;
-  else
+  } else {
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("saving seq %" PRId64 " for %s\n", seq, *contact);
+#endif /* DEBUG_FOR_DEVELOPER */
     save_incoming (*contact, *kset, cdp, cleartext, msize);
+  }
 
   if (media == ALLNET_MEDIA_PUBLIC_KEY) {
     cleartext = "received a key for an additional device";
@@ -850,7 +931,12 @@ else {
   memcpy (*message, cleartext, msize);
   (*message) [msize] = '\0';   /* null-terminate the message */
 
-  send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL)) {
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("sending regular ack\n");
+#endif /* DEBUG_FOR_DEVELOPER */
+    send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
+  }
   /* contact may be reachable, try to resend anything missing */
   request_and_resend (sock, *contact, *kset, 1);
   free (text);
@@ -1651,8 +1737,10 @@ last_call, now, eagerly ? "eager" : "not eager"); */
 int debug1 = 0;
 int debug2 = 0;
 int debug3 = 0;
+#ifndef DEBUG_FOR_DEVELOPER
   if (last_call >= now)
     return -1; /* only allow one call per second, even if eagerly */
+#endif /* DEBUG_FOR_DEVELOPER */
   if ((last_call + 1 >= now) && (! eagerly))
     return -1; /* if not eagerly, only allow one call per two seconds */
   last_call = now;
@@ -1675,6 +1763,9 @@ int debug3 = 0;
     result = 0;      /* unable to send to this contact */
     if (send_retransmit_request (contact, kset, sock,
                                  hops, ALLNET_PRIORITY_LOCAL_LOW, expiration)) {
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("sent retransmit request for %s\n", contact);
+#endif /* DEBUG_FOR_DEVELOPER */
       last_retransmit = now;   /* sent something, update time */
       result = 1;    /* transmission successful */
 debug1++;
