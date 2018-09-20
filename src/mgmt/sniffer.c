@@ -98,7 +98,10 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
   print_packet (message, msize, "received: ", 1);
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
   int dsize = msize - (data - message);
-  print_buffer (data, dsize, "   payload:", max, 1);
+  print_buffer (data, dsize, "   payload:", max, 0);
+  if (dsize > max)  /* print the signature size */
+    printf (" %02x %02x", data [dsize - 2], data [dsize - 1]);
+  printf ("\n");
   if (verify) {
     if (hp->message_type == ALLNET_TYPE_DATA) {
       char * contact;
