@@ -203,14 +203,15 @@ static void send_ack (const char * ack, const struct allnet_header * hp,
 {
   char message [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE + 2];
   int msize = sizeof (message);
+  int expected_allnet_size = msize - 2;  /* the size without priority */
   if (! is_local)
     msize -= 2;
-  int hops = minz (hp->max_hops, hp->hops) + 2; /* (max_hops - hops) + 2 */
-  /* reverse the source and destination addresses in sending back */
-  init_packet (message, msize, ALLNET_TYPE_ACK, hops, ALLNET_SIGTYPE_NONE,
-               hp->destination, hp->dst_nbits,
-               hp->source, hp->src_nbits, NULL, NULL);
-  memcpy (message + ALLNET_HEADER_SIZE, ack, MESSAGE_ID_SIZE);
+  unsigned int size = 0;
+  init_ack (hp, (const unsigned char *) ack, NULL, ADDRESS_BITS,
+            message, &size);
+  if (size != expected_allnet_size)
+    printf ("send_ack: %d != actual size %d, l %d\n",
+            expected_allnet_size, size, is_local);
   if (is_local)
     writeb16 (message + (sizeof (message) - 2), ALLNET_PRIORITY_LOCAL);
   /* send this ack back to the sender, no need to ack more widely */
@@ -302,11 +303,11 @@ static void send_out (const char * message, int msize, int max_addrs,
                                            addrs, alens, max_addrs);
   int dht_send_error = 0;
   int i;
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 printf ("ad.c/send_out got %d routing addresses\n", num_addrs);
 for (i = 0; i < num_addrs; i++)
 print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
 #define SEND_KEEPALIVES_EVERY	(SEND_LIMIT_DEFAULT / 5)   /* 19 */
   static int sent_count = SEND_KEEPALIVES_EVERY;
   int send_keepalives = 0;
@@ -408,12 +409,10 @@ static int send_message_to_one (const char * message, int msize, int priority,
 #ifdef LOG_PACKETS
   snprintf (alog->b, alog->s, "%s (%d bytes, prio %d, to pipe %d)\n",
             "send_one_message_to", msize, priority, sock->sockfd);
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
   printf ("-> %s", alog->b);
   print_buffer (&addr, alen, " to", alen, 1);
-#endif /* DEBUG_FOR_DEVELOPER */
-#ifdef DEBUG_PRINT
-#endif /* DEBUG_PRINT */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
   log_print (alog);
   log_packet (alog, "message to pipe", message, msize);
 #endif /* LOG_PACKETS */
@@ -650,6 +649,9 @@ static struct message_process process_message (struct socket_read_result *r)
     }
     if ((! r->sock->is_local) && (seen_before))
       return drop;            /* we have seen it before, drop the message */
+#ifdef DEBUG_FOR_DEVELOPER
+if (seen_before) printf ("forwarding local packet again\n");
+#endif /* DEBUG_FOR_DEVELOPER */
     if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
       char * data = ALLNET_DATA_START (hp, hp->transport, r->msize);
       struct allnet_data_request * req = (struct allnet_data_request *) data;
@@ -697,6 +699,7 @@ void allnet_daemon_loop ()
         (! is_valid_message (r.message, r.msize, NULL)))
       continue;   /* no valid message, no action needed, restart the loop */
 #ifdef DEBUG_FOR_DEVELOPER
+if (r.msize == 1066) print_packet (r.message, r.msize, "ad loop received", 1);
 #ifdef DEBUG_PRINT
 printf ("received %d bytes\n", r.msize);
 if (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
