@@ -726,7 +726,7 @@ struct allnet_header *
 /* the same, without malloc.  buffer must have ALLNET_ACK_MIN_SIZE bytes,
  * and the return value points directly to buffer */
 struct allnet_header *
-  init_ack (struct allnet_header * packet, const unsigned char * ack,
+  init_ack (const struct allnet_header * packet, const unsigned char * ack,
             const unsigned char * from, unsigned int nbits,
             char * buffer, unsigned int * size)
 {
