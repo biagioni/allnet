@@ -44,7 +44,7 @@ extern char * trace_string (const char * tmp_dir, int sleep,
 extern int start_trace (int sock,
                         const unsigned char * addr, unsigned int nbits,
                         unsigned int nhops, int record_intermediates,
-                        char * trace_id);
+                        char * trace_id, int expiration_seconds);
 
 /* convert to a string (of size slen) the result of a trace,
  * eliminating duplicates of past received traces */

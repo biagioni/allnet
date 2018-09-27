@@ -764,7 +764,7 @@ static void gui_trace (char * message, int64_t length,
     unsigned char addr [ADDRESS_SIZE];
     memcpy (addr, message + 3, ADDRESS_SIZE);
     if (! start_trace (allnet_sock, addr, nbits, nhops, inter,
-                       reply_header + 1))
+                       reply_header + 1, 1000))
       memset (reply_header + 1, 0, sizeof (reply_header) - 1);
   }
   gui_send_buffer (gui_sock, reply_header, sizeof (reply_header));

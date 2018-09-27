@@ -287,10 +287,14 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
     printf ("error: trace reply num_entries %d < 1 \n", num_entries);
     return 0;
   }
-
-  unsigned int size_needed = ALLNET_TRACE_REPLY_SIZE (0, num_entries);
+  int transport = 0;
+  if (inhp->transport & ALLNET_TRANSPORT_EXPIRATION)
+    transport |= ALLNET_TRANSPORT_EXPIRATION;
+  unsigned int size_needed = ALLNET_TRACE_REPLY_SIZE (transport, num_entries);
   unsigned int total = 0;
   int outgoing_hops = ((inhp->hops <= 1) ? 1 : (inhp->hops + 2));
+  /* use 0 as the transport in ALLNET_SIZE because that's what
+   * create_packet assumes, even if the packet will expire */
   struct allnet_header * hp =
     create_packet (size_needed - ALLNET_SIZE (0), ALLNET_TYPE_MGMT,
                    outgoing_hops, ALLNET_SIGTYPE_NONE, my_address, abits,
@@ -300,6 +304,14 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
     return 0;
   }
   *result = (char *) hp;
+  if (inhp->transport & ALLNET_TRANSPORT_EXPIRATION) {
+    /* the trace reply should expire at the same time as the trace request */
+    hp->transport |= ALLNET_TRANSPORT_EXPIRATION;
+    char * to = ALLNET_EXPIRATION (hp, hp->transport, total);
+    char * from = ALLNET_EXPIRATION (inhp, inhp->transport, insize);
+    if ((to != NULL) && (from != NULL))
+      memcpy (to, from, ALLNET_TIME_SIZE);
+  }
 
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *)(ALLNET_DATA_START(hp, hp->transport, total));
@@ -352,6 +364,10 @@ void trace_forward (char * message, int msize,
       (hp->message_type != ALLNET_TYPE_MGMT) ||
       (msize < ALLNET_TRACE_REQ_SIZE (hp->transport, 1, 0)))
     return;
+  if (hp->transport & ALLNET_TRANSPORT_EXPIRATION) {
+    if (readb64 (ALLNET_EXPIRATION (hp, hp->transport, msize)) < allnet_time ())
+      return;   /* expired */
+  }
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   if (mp->mgmt_type != ALLNET_MGMT_TRACE_REQ)
@@ -394,9 +410,13 @@ void trace_forward (char * message, int msize,
 static void send_trace (int sock, const unsigned char * address, int abits,
                         char * trace_id, unsigned char * my_address,
                         int my_abits, int max_hops, int record_intermediates,
-                        struct allnet_log * alog)
+                        int expiration_sec, struct allnet_log * alog)
 {
-  unsigned int total_size = ALLNET_TRACE_REQ_SIZE (0, 1, 0);
+  int transport = ALLNET_TRANSPORT_EXPIRATION;
+  if (expiration_sec <= 0)
+    transport = 0;
+  unsigned int total_size = ALLNET_TRACE_REQ_SIZE (transport, 1, 0);
+  /* data_size assumes transport = 0, which is what create_packet assumes */
   unsigned int data_size = minz (total_size, ALLNET_SIZE (0));
   unsigned int allocated = 0;
   struct allnet_header * hp =
@@ -404,13 +424,20 @@ static void send_trace (int sock, const unsigned char * address, int abits,
                    my_address, my_abits, address, abits, NULL, NULL,
                    &allocated);
   if (allocated != total_size) {
-    printf ("error in send_trace: %d %d %d\n", allocated,
-            total_size, data_size);
-    if (hp != NULL)
-      free (hp);
+    printf ("error in send_trace: %d %d %d, %d %d %d %d %d\n", allocated,
+            total_size, data_size,
+            (int)ALLNET_TRACE_REQ_SIZE(transport, 1, 0),
+            (int)ALLNET_MGMT_HEADER_SIZE(transport),
+            (int)ALLNET_SIZE(transport),
+            (int)sizeof (struct allnet_mgmt_trace_req),
+            (int)sizeof (struct allnet_mgmt_trace_entry));
     return;
   }
-
+  if (expiration_sec > 0) {
+    hp->transport |= ALLNET_TRANSPORT_EXPIRATION;
+    writeb64 (ALLNET_EXPIRATION (hp, hp->transport, total_size),
+              allnet_time () + expiration_sec);
+  }
   char * buffer = (char *) hp;
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (hp->transport));
@@ -847,14 +874,15 @@ void do_trace_loop (int sock,
     gettimeofday (&tv_start, NULL);
     if (naddrs == 0) {
       send_trace (sock, extra_addr, 0, trace_id, my_addr, 5, nhops,
-                  ! no_intermediates, alog);
+                  ! no_intermediates, sleep * 10, alog);
       sent_count++;
     } else {
       int dest;
       for (dest = 0; dest < naddrs; dest++) {
         trace_id [MESSAGE_ID_SIZE - 1] = dest;
         send_trace (sock, addresses + (dest * ADDRESS_SIZE), abits [dest],
-                    trace_id, my_addr, 5, nhops, ! no_intermediates, alog);
+                    trace_id, my_addr, 5, nhops, ! no_intermediates,
+                    sleep * 10, alog);
         sent_count++;
       }
     }
@@ -910,14 +938,14 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
  * trace_id must have MESSAGE_ID_SIZE or be NULL */
 int start_trace (int sock, const unsigned char * addr, unsigned int abits,
                  unsigned int nhops, int record_intermediates,
-                 char * trace_id)
+                 char * trace_id, int expiration_seconds)
 {
   random_bytes (trace_id, MESSAGE_ID_SIZE);
   unsigned char my_addr [ADDRESS_SIZE];
   random_bytes ((char *) my_addr, sizeof (my_addr));
   struct allnet_log * alog = init_log ("start_trace");
   send_trace (sock, addr, abits, trace_id, my_addr, 5, nhops,
-              record_intermediates, alog);
+              record_intermediates, expiration_seconds, alog);
   return 1;
 }
 

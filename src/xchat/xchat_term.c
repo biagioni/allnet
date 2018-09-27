@@ -519,7 +519,8 @@ static void run_trace (int sock, struct allnet_log * log, char * params)
 #endif /* DEBUG_PRINT */
   trace_count++;
   trace_start_time = allnet_time_ms ();
-  if (! start_trace (sock, address, abits, hops, 0, expecting_trace))
+  if (! start_trace (sock, address, abits, hops, 0, expecting_trace,
+                     sleep_sec * 100))
     printf ("unable to start trace\n");
   sleep (sleep_sec);
   print_to_output (NULL);
