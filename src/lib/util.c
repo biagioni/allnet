@@ -693,8 +693,9 @@ int keepalive_auth (char * buffer, int bsize,
     larger = 1;
   if (larger)
     rsize += KEEPALIVE_AUTHENTICATION_SIZE;
-  if (rsize > bsize) {
-printf ("likely error: keepalive size %d, buffer size %d\n", rsize, bsize);
+  if ((rsize > bsize) || ((rsize != 40) && (rsize != 48)) || (hsize != 32)) {
+printf ("likely error: keepalive size %d, buffer size %d, hsize %d, large %d\n",
+rsize, bsize, hsize, larger);
     return 0;
   }
   memcpy (buffer, header, hsize);
