@@ -899,9 +899,9 @@ static int gc_tokens ()
   int length = num_external_tokens - shift;
   int length_bytes = length * ALLNET_TOKEN_SIZE;
 #ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_PRINT
 printf ("shifting %d tokens by %d: %d, %d, %d\n", num_external_tokens, shift,
 shift_bytes, length, length_bytes);
-#ifdef DEBUG_PRINT
 print_buffer ((char *)token_list, sizeof (token_list), "before shift",
               sizeof (token_list), 1);
 #endif /* DEBUG_PRINT */
