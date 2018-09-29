@@ -15,6 +15,7 @@
 #include "xcommon.h"
 #include "message.h"
 #include "cutil.h"
+#include "store.h"
 #include "retransmit.h"
 #include "lib/media.h"
 #include "lib/util.h"
@@ -850,13 +851,18 @@ printf ("got chat message with sequence %lx\n", seq);
 #endif /* DEBUG_FOR_DEVELOPER */
   if (seq == COUNTER_FLAG) {
 #ifdef DEBUG_FOR_DEVELOPER
-printf ("got chat control message from %s\n", *contact);
+struct chat_control_request * ccrp = (struct chat_control_request *) cdp;
+if (media == ALLNET_MEDIA_DATA)
+printf ("got chat control message %s, %d singles, %d ranges, last %lld/%ld\n",
+*contact, ccrp->num_singles, ccrp->num_ranges,
+readb64u (ccrp->last_received), get_counter (*contact) - 1);
+else
+printf ("got chat control message %s, but media %ld != %d\n",
+*contact, media, ALLNET_MEDIA_DATA);
 #endif /* DEBUG_FOR_DEVELOPER */
     if (media == ALLNET_MEDIA_DATA) {
-#ifdef DEBUG_FOR_DEVELOPER
-      printf ("got chat control message from %s, responding\n", *contact);
-#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
+      printf ("got chat control message from %s, responding\n", *contact);
 #endif /* DEBUG_PRINT */
       do_chat_control (*contact, *kset, text, tsize, sock, hops + 4);
       if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL)) {
@@ -1762,7 +1768,7 @@ int debug3 = 0;
     if (send_retransmit_request (contact, kset, sock,
                                  hops, ALLNET_PRIORITY_LOCAL_LOW, expiration)) {
 #ifdef DEBUG_FOR_DEVELOPER
-printf ("sent retransmit request for %s\n", contact);
+printf ("sent req for %s\n", contact);
 #endif /* DEBUG_FOR_DEVELOPER */
       last_retransmit = now;   /* sent something, update time */
       result = 1;    /* transmission successful */
@@ -1793,17 +1799,79 @@ debug2++;
   }
   /* resend any unacked messages, but less than once every hour (or eagerly) */
   static unsigned long long int last_resend = 0;
-  if (eagerly || (last_resend + 3600 <= now)) {
+  if (eagerly || (last_resend + 60 <= now)) {
+    const char * ru_contact = contact;  /* don't change the parameters */
+    keyset ru_kset = kset;              /* ru is for Resend Unacked */
+    int count = 1;
+    char ** contacts = NULL;
+    int send_to_all = (last_resend == 0);    /* first time, send to all */
+    if (send_to_all)
+      count = all_individual_contacts (&contacts);
+    int ic;
+    for (ic = 0; ic < count; ic++) {
+      if ((send_to_all) && (contacts != NULL))
+        ru_contact = contacts [ic];
+      keyset * kp = NULL;
+      int nk = 1;
+      if (send_to_all)
+        nk = all_keys (ru_contact, &kp);
+      int ik;
+      for (ik = 0; ik < nk; ik++) {
+        if ((send_to_all) && (kp != NULL))
+          ru_kset = kp [ik];
+        uint64_t sent_time;
+        uint64_t rcvd_time;
+        int msg_type_s = most_recent_record (ru_contact, ru_kset, MSG_TYPE_SENT,
+                                             NULL, &sent_time, NULL, NULL,
+                                             NULL, NULL, NULL);
+        int msg_type_r = most_recent_record (ru_contact, ru_kset, MSG_TYPE_RCVD,
+                                             NULL, NULL, NULL, &rcvd_time,
+                                             NULL, NULL, NULL);
+        if ((msg_type_s == MSG_TYPE_DONE) && (msg_type_r == MSG_TYPE_DONE))
+          continue;   /* next key, next contact, or done */
+        if (msg_type_s == MSG_TYPE_DONE) 
+          sent_time = rcvd_time;
+        else if (msg_type_r == MSG_TYPE_DONE) 
+          rcvd_time = sent_time;
+        long long int delta = ((sent_time > rcvd_time) ?
+                               allnet_time () - sent_time :
+                               allnet_time () - rcvd_time);
+        /* heuristic: the longer it's been since we've communicated with
+         * this contact, the less likely we should be to resend any unacked.
+         * we'd like to send with 10% probability if the contact hasn't been
+         * heard from in 10 days, 1% for 100 days, .1% for 1000 days, etc
+         * we represent 100% as 10^6, 10% as 10^5, etc.  If the time has
+         * been less than a day (86400 seconds), we always send */
+	long long int prob_millionths = 1000000;
+        unsigned long long int this_random = 0;  /* always send */
+        if (delta > 86400) {  /* more than 1 day, send with probability */
+	  prob_millionths = 86400000000LL / delta + 1;
+          this_random = random_int (0, 1000000);
+        }
+#ifdef DEBUG_FOR_DEVELOPER
+printf ("%s (%d/%d), key %d (%d/%d), last was %llds ago (%lldd), p %lld/%llu\n",
+ru_contact, ic, count, ru_kset, ik, nk, delta, delta / 86400,
+prob_millionths, this_random);
+#endif /* DEBUG_FOR_DEVELOPER */
+        if (prob_millionths > this_random) {
 #ifdef DEBUG_PRINT
-    printf ("resending unacked\n");
+          printf ("resending unacked to contact %s\n", ru_contact);
 #endif /* DEBUG_PRINT */
-    if (resend_unacked (contact, kset, sock, hops,
-                        ALLNET_PRIORITY_LOCAL_LOW, 10) > 0) {
-      last_resend = now;
-      if (result != 1)
-        result = 2;
+          if (resend_unacked (ru_contact, ru_kset, sock, hops,
+                              ALLNET_PRIORITY_LOCAL_LOW, 10) > 0) {
+printf ("resent unacked to contact %s\n", ru_contact);
+            last_resend = now;
+            if (result != 1)
+              result = 2;
 debug3++;
+          }
+        }
+        if (kp != NULL)
+          free (kp);
+      }
     }
+    if (contacts != NULL)
+      free (contacts);
   }
   /* resend pending keys, not more (and usually less) than once per minute */
   /* ignore eagerly, since it doesn't apply to incomplete key exchanges */
