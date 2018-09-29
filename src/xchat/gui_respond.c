@@ -48,7 +48,8 @@ static int receive_bytes (int sock, char *buffer, int64_t length)
   while (length > 0) {
     /* get one byte at a time -- for now, inefficient implementation */
     if (read (sock, buffer, 1) != 1) {
-      if (errno != ENOENT) { /* ENOENT when the socket is closed */
+      if ((errno != ENOENT) &&      /* ENOENT when the socket is closed */
+          (errno != ECONNRESET)) {  /* or ECONNRESET */
         perror ("gui_respond.c receive_bytes");
         printf ("errno %d on connection %d\n", errno, sock);
       }
