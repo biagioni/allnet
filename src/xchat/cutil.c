@@ -135,7 +135,7 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
   static struct allnet_log * log = NULL;
   if (log == NULL) /* initialize */
     log = init_log ("cutil send_to_one");
-/* printf ("sending to contact %s, keyset %d\n", contact, k); */
+/* printf ("cutil send_to_one sending to contact %s, keyset %d\n", contact, k); */
   unsigned int sksize = has_symmetric_key (contact, NULL, 0);
   struct allnet_stream_encryption_state sym_state;
   int has_sym_state = 0;
@@ -277,14 +277,12 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
 
 #ifdef DEBUG_PRINT
   if (expiration != NULL)
-    print_packet (message, msize, "sending packet with expiration", 1);
+    print_packet (message, msize,
+                  "cutil send_to_one sending packet with expiration", 1);
 #endif /* DEBUG_PRINT */
 
-#ifdef DEBUG_FOR_DEVELOPER
-print_packet (message, msize, "sending", 1);
-#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
-  print_packet (message, msize, "sending", 1);
+  print_packet (message, msize, "cutil send_to_one sending", 1);
 #endif /* DEBUG_PRINT */
 if ((readb16 (message + hsize + esize + ssize) != 512)) print_buffer (message, msize, "final", msize, 1);
   int result = local_send (message, msize, priority);
