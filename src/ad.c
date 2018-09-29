@@ -265,7 +265,7 @@ static void send_auth_response (int sockfd, struct sockaddr_storage addr,
 {
   int hsize = ALLNET_MGMT_HEADER_SIZE (ALLNET_TRANSPORT_DO_NOT_CACHE);
   int wanted_size = hsize + KEEPALIVE_AUTHENTICATION_SIZE;
-  if (msize != wanted_size)
+  if (msize != wanted_size)  /* only look at packets with the right size */
     return;
   const struct allnet_header * hp = (const struct allnet_header *) message;
   const struct allnet_mgmt_header * mhp =
@@ -273,12 +273,10 @@ static void send_auth_response (int sockfd, struct sockaddr_storage addr,
   if ((hp->hops > 1) || (hp->message_type != ALLNET_TYPE_MGMT) ||
       (mhp->mgmt_type != ALLNET_MGMT_KEEPALIVE))
     return;
-/* print_buffer (message, msize, "responding to authentication", msize, 1); */
   char response [ALLNET_MTU];
   unsigned int rsize = keepalive_auth (response, sizeof (response),
                                        addr, secret, slen, counter,
                                        message + hsize);
-/* print_buffer (response, rsize, "sending auth response", 100, 1); */
   socket_send_to_ip (sockfd, response, rsize, addr, alen,
                      "ad.c/send_auth_response");
 }
@@ -649,9 +647,6 @@ static struct message_process process_message (struct socket_read_result *r)
     }
     if ((! r->sock->is_local) && (seen_before))
       return drop;            /* we have seen it before, drop the message */
-#ifdef DEBUG_FOR_DEVELOPER
-if (seen_before) printf ("forwarding local packet again\n");
-#endif /* DEBUG_FOR_DEVELOPER */
     if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
       char * data = ALLNET_DATA_START (hp, hp->transport, r->msize);
       struct allnet_data_request * req = (struct allnet_data_request *) data;
@@ -699,7 +694,6 @@ void allnet_daemon_loop ()
         (! is_valid_message (r.message, r.msize, NULL)))
       continue;   /* no valid message, no action needed, restart the loop */
 #ifdef DEBUG_FOR_DEVELOPER
-if (r.msize == 1066) print_packet (r.message, r.msize, "ad loop received", 1);
 #ifdef DEBUG_PRINT
 printf ("received %d bytes\n", r.msize);
 if (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
