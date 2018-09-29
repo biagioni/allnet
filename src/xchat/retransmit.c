@@ -37,10 +37,8 @@ static int gather_missing_info (const char * contact, keyset k,
   }
   int size = get_missing (contact, k, singles, ranges, result, rsize);
   if ((size <= 0) || ((*singles == 0) && (*ranges == 0))) {
-#ifdef DEBUG_FOR_DEVELOPER
-    printf ("no messages missing from contact %s\n", contact);
-#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
+    printf ("no messages missing from contact %s\n", contact);
 #endif /* DEBUG_PRINT */
     return 0;
   }
@@ -145,6 +143,9 @@ int send_retransmit_request (const char * contact, keyset k, int sock,
    * messages have been sent that are after the last one we've received */
   if (((msize == 0) || (rcvd_sequence == 0)) && ((random_int (1, 100)) <= 95))
     return 0;
+#ifdef DEBUG_FOR_DEVELOPER
+  if ((msize == 0) || (rcvd_sequence == 0)) printf ("95%%: ");
+#endif /* DEBUG_FOR_DEVELOPER */
 
   char request [ALLNET_MTU];
   int size = sizeof (request);
@@ -352,7 +353,8 @@ static void resend_message (uint64_t seq, const char * contact,
   print_buffer ((char *) cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_FOR_DEVELOPER
-print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "resend_packet", 16, 1);
+printf ("contact %s, seq %lld, ", contact, readb64u (cdp->counter));
+print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "resend_packet", 4, 1);
 #endif /* DEBUG_FOR_DEVELOPER */
   resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
                  hops, priority);
@@ -414,21 +416,18 @@ static void resend_messages (const char * retransmit_message, int mlen,
 #define DEBUG_PRINT
 #endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
-  printf ("rcvd rexmit request for %s, %d singles, %d ranges, last %lld\n",
+  printf ("rcvd rexmit request for %s, %d singles, %d ranges, last %lld/%lld, ",
           contact, hp->num_singles, hp->num_ranges,
-          readb64u (hp->last_received));
+          readb64u (hp->last_received), (long long int) counter);
   char * ptr = (char *)(hp->counters);
   int i;
   for (i = 0; i < hp->num_singles; i++)
-    print_buffer (ptr + i * COUNTER_SIZE, COUNTER_SIZE,
-                  "single retransmit", 15, 1);
+    printf ("%lld, ", readb64 (ptr + i * COUNTER_SIZE));
   ptr = (char *)(hp->counters + (hp->num_singles * COUNTER_SIZE));
-  for (i = 0; i < hp->num_ranges; i++) {
-    print_buffer (ptr + i * COUNTER_SIZE * 2,                COUNTER_SIZE,
-                  "range from", 15, 1);
-    print_buffer (ptr + i * COUNTER_SIZE * 2 + COUNTER_SIZE, COUNTER_SIZE,
-                  "        to", 15, 1);
-  }
+  for (i = 0; i < hp->num_ranges; i++)
+    printf ("%lld...%lld, ", readb64 (ptr + i * COUNTER_SIZE * 2),
+            readb64 (ptr + i * COUNTER_SIZE * 2 + COUNTER_SIZE));
+  printf ("\n");
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_FOR_DEVELOPER
 #undef DEBUG_PRINT
@@ -443,7 +442,8 @@ static void resend_messages (const char * retransmit_message, int mlen,
   uint64_t last = readb64u (hp->last_received);
   while ((counter > last) && (send_count < max)) {
 #ifdef DEBUG_FOR_DEVELOPER
-printf ("resending last messages, sequence %ld\n", counter);
+printf ("resending last messages, sequence %ld, send_count %d/%d\n", counter,
+send_count, max);
 #endif /* DEBUG_FOR_DEVELOPER */
     resend_message (counter, contact, k, sock, hops, priority);
     counter--;

@@ -293,10 +293,13 @@ int get_missing (const char * contact, keyset k, int * singles, int * ranges,
   char ranges_last [MAX_MISSING] [COUNTER_SIZE];
   unsigned int ranges_used = 0;
   uint64_t i;
+#ifdef DEBUG_FOR_DEVELOPER
+  int missing_count = 0;
+#endif /* DEBUG_FOR_DEVELOPER */
   for (i = last - 1; i > 0; i--) {
     if (! was_received (contact, k, i)) {
 #ifdef DEBUG_FOR_DEVELOPER
-printf ("contact %s, sequence %ld was not received\n", contact, i);
+missing_count++;
 #endif /* DEBUG_FOR_DEVELOPER */
       if ((ranges_used > 0) &&
           (i + 1 == readb64 (&(ranges_first [ranges_used - 1] [0])))) {
@@ -321,6 +324,11 @@ printf ("contact %s, sequence %ld was not received\n", contact, i);
       }
     }
   }
+#ifdef DEBUG_FOR_DEVELOPER
+if (missing_count > 0)
+printf ("%s missing %d msgs, %d singles + %d ranges: ",
+contact, missing_count, singles_used, ranges_used);
+#endif /* DEBUG_FOR_DEVELOPER */
   if ((singles_used == 0) && (ranges_used == 0))
     return 0;
   if (singles_used > MAX_MISSING)
@@ -872,4 +880,3 @@ int message_id_is_in_saved_cache (const char * message_id, char * message_ack)
   fill_message_id_cache ();
   return (is_in_message_id_cache (message_id, message_ack));
 }
-
