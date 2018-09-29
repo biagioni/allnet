@@ -51,6 +51,8 @@ struct msg_iter {
                            * returned the corresponding ack */
 };
 
+/* note, messages in the message cache are in reverse order, i.e. the
+ * most recent first and the oldest last */
 struct message_cache_record {
   char * contact;  /* dynamically allocated, but never freed */
   struct message_store_info * msgs;
@@ -158,7 +160,7 @@ struct msg_iter * start_iter (const char * contact, keyset k)
   if (index >= 0) {
     result->is_in_memory = 1;
     result->message_cache_index = index;
-    result->last_message_index = message_cache [index].num_used;
+    result->last_message_index = -1;
     result->ack_returned = 0;
     /* set the other values to reasonable defaults */
     result->dirname = NULL;
@@ -520,24 +522,12 @@ static int prev_message_in_memory
   int pos = iter->last_message_index;
   if ((index < 0) || (index >= message_cache_count)) /* invalid iterator */
     return MSG_TYPE_DONE;
-  if (pos < 0)                      /* iterator completed */
+  if (pos >= message_cache [index].num_used)    /* iterator completed */
     return MSG_TYPE_DONE;
   struct message_store_info * msgs = message_cache [index].msgs;
   /* pos is the last message that was returned, and may refer to
    * an invalid message if no messages were returned yet. 
    * if iter->ack_returned, pos refers to the message to be returned now */
-#ifdef DEBUG_PRINT
-  if (strcmp (iter->contact, "edo-on-celine") == 0) {
-    int i = ((iter->ack_returned) ? pos : (pos - 1));
-    printf ("iter has k %d, i %d, m %d (%d), ret %d, index %d, ",
-            iter->k, iter->message_cache_index, iter->last_message_index, pos,
-            iter->ack_returned, i);
-    if (i >= 0)
-      printf ("'%s' (%zd), seq %ju ", msgs [i].message, msgs [i].msize,
-              (uintmax_t) msgs [i].seq);
-    print_buffer (msgs [i].ack, MESSAGE_ID_SIZE, "ack", 6, 1);
-  }
-#endif /* DEBUG_PRINT */
   if (iter->ack_returned) {  /* msg_type should be MSG_TYPE_SENT */
     set_result (seq, msgs [pos].seq, time, msgs [pos].time,
                 tz_min, msgs [pos].tz_min, rcvd_time, msgs [pos].rcvd_ackd_time,
@@ -548,15 +538,15 @@ static int prev_message_in_memory
     return MSG_TYPE_SENT;
   }
   /* find the preceding message with this keyset */
-  while (--pos >= 0) {
+  while (++pos < message_cache [index].num_used) {
     if (msgs [pos].keyset == iter->k) {
       break;
     }
   }
   iter->last_message_index = pos;
-  if (pos < 0)                      /* iterator completed */
+  if (pos >= message_cache [index].num_used)  /* iterator completed */
     return MSG_TYPE_DONE;
-  /* pos >= 0, msgs [pos].keyset == iter->k -- we will return this message */
+  /* pos < num_used, msgs [pos].keyset == iter->k -- return this message */
   if ((msgs [pos].msg_type == MSG_TYPE_SENT) &&
       (msgs [pos].message_has_been_acked)) {  /* return the ack */
     set_result (seq, 0, time, 0, tz_min, 0, rcvd_time, 0,
@@ -1215,6 +1205,8 @@ int add_message (struct message_store_info ** msgs, int * num_alloc,
   if (*num_used < 0)
     *num_used = 0;
   if ((*msgs == NULL) || (*num_used >= *num_alloc)) {
+  /* allocate sufficient space.  We allocate up to 10x as much space as
+   * we need, so that the reallocations are infrequent */
     int count = *num_alloc;
     if (count <= 0)
       count = 100;
@@ -1232,7 +1224,7 @@ int add_message (struct message_store_info ** msgs, int * num_alloc,
   }
   int index = *num_used;
   struct message_store_info * p = (*msgs) + index;
-  while (index > position) {
+  while (index > position) {   /* make room for the new message */
     index--;
     p--;
     *(p + 1) = *p;
@@ -1307,7 +1299,7 @@ static void add_all_messages (struct message_store_info ** msgs,
           inserted = 1;
         }
       }
-      if (! inserted) {
+      if (! inserted) {                /* add at end */
         add_message (msgs, num_alloc, num_used, 0, k,
                      next, seq, 0, time, tz_min, rcvd_time, 0, ack,
                      message, msize);
