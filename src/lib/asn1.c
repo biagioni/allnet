@@ -231,6 +231,7 @@ static int wp_rsa_read (const char * data, int dsize,
                         int * nbits, wp_rsa_key_pair * key)
 {
 const char * debug_data = data;
+int debug_dsize = dsize;
   memset (key, 0, sizeof (wp_rsa_key_pair));  /* set all unused keys to 0 */
   int num_elements;
   int length = asn1_read_seq (data, dsize, &num_elements, -1, NULL);
