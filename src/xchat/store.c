@@ -214,7 +214,7 @@ static int end_ndigits (char * path, unsigned int ndigits, char * ext)
     }
   }
 /* printf ("end_ndigits (%s, %d) => 1\n", path, ndigits); */
-  if (strlen (name) == ndigits)
+  if ((strlen (name) == ndigits) || (ext == NULL))
     return 1;
 /*  strlen (name) == ndigits + elen, from a previous if */
   return (strcmp (name + ndigits, ext) == 0);

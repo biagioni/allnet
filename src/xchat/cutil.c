@@ -506,7 +506,7 @@ char * chat_descriptor_to_string (struct chat_descriptor * cdp,
   unsigned long long int counter = readb64 ((char *) (cdp->counter));
   char * time_string = chat_time_to_string (cdp->timestamp, 1);
   written = snprintf (p, size, "sequence %lld, time %s", counter, time_string);
-  p += written; size -= written;
+  /* use if you want to write more: p += written; size -= written; */
 
   return result;
 }

@@ -462,7 +462,8 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
     assigned_interfaces++;
     /* copy the name */
     current->interface_name = strings;  /* point to available buffer space */
-    strcpy (current->interface_name, next->ifa_name);
+    strncpy (current->interface_name, next->ifa_name, str_length);
+    str_length -= strlen (current->interface_name) + 1;
     strings += strlen (current->interface_name) + 1;
     /* set the variables */
     current->is_loopback = ((next->ifa_flags & IFF_LOOPBACK) != 0);
@@ -473,7 +474,8 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
     loop = next;
     current->addresses = addrs;
     while (loop != NULL) {
-      if (strcmp (current->interface_name, loop->ifa_name) == 0) {
+      if ((loop->ifa_name != NULL) &&
+          (strcmp (current->interface_name, loop->ifa_name) == 0)) {
         if (loop->ifa_addr != NULL) {
           if ((loop->ifa_addr->sa_family == AF_INET) ||
               (loop->ifa_addr->sa_family == AF_INET6)) {

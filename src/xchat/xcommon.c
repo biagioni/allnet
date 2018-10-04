@@ -1866,9 +1866,9 @@ printf ("resent unacked to contact %s\n", ru_contact);
 debug3++;
           }
         }
-        if (kp != NULL)
-          free (kp);
       }
+      if (kp != NULL)
+        free (kp);
     }
     if (contacts != NULL)
       free (contacts);

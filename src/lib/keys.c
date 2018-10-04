@@ -629,10 +629,14 @@ static char ** malloc_copy_array_of_strings (char ** array, int count)
     size += sizeof (char *) + strlen (array [i]) + 1;
   char * mem = malloc_or_fail (size, "malloc_copy_array_of_strings");
   char ** result = (char **) mem;
+  size = minz (size, count * sizeof (char *));
   mem += count * sizeof (char *);  /* copy the strings after the pointers */
   for (i = 0; i < count; i++) {
-    strcpy (mem, array [i]);
+/* printf ("size %zd, contact %s copied to %p (- %p = %zd, count %d)\n",
+size, array [i], mem, result, (mem - ((char *) result)), count); */
+    strncpy (mem, array [i], size);
     result [i] = mem;
+    size = minz (size, strlen (result [i]) + 1);
     mem += strlen (result [i]) + 1;
   }
   return result;
@@ -1117,7 +1121,7 @@ int rename_contact (const char * old, const char * new)
       if (write_file (name_file_name, new, (int)newlen, 1)) {
         char * p = realloc (kip [key].contact_name, newlen + 1);
         if (p != NULL) {
-          strcpy (p, new);
+          strncpy (p, new, newlen + 1);
           kip [key].contact_name = p;
           cpx [key] = p;
           renamed = 1;
@@ -1598,10 +1602,12 @@ int member_of_groups (const char * contact, char *** groups)
     size += strlen (kip [keys [i]].contact_name) + 1 + sizeof (char *);
   char * memory = malloc_or_fail (size, "member_of_group");
   char ** names = (char **) memory;
+  size = minz (size, (count * sizeof (char *)));
   memory += (count * sizeof (char *));
   for (i = 0; i < count; i++) {
-    strcpy (memory, kip [keys [i]].contact_name);
+    strncpy (memory, kip [keys [i]].contact_name, size);
     names [i] = memory;
+    size = minz (size, strlen (memory) + 1);
     memory += strlen (memory) + 1;
   }
   *groups = names;
@@ -1696,20 +1702,23 @@ static int merge_no_duplicates (char ** a, int acount, char ** b, int bcount,
   char ** res = (char **) memory;
   *result = res;
   char * strings = memory + (count * sizeof (char *));
+  int available = minz (needed, (count * sizeof (char *)));
   count = 0;
   for (i = 0; i < acount; i++) {
     if (! string_in_array (res, count, a [i])) {
-      strcpy (strings, a [i]);
+      strncpy (strings, a [i], available);
       res [count] = strings;
+      available = minz (available, (strlen (res [count]) + 1));
       strings += (strlen (res [count]) + 1);
       count++;
     }
   }
   for (i = 0; i < bcount; i++) {
     if (! string_in_array (res, count, b [i])) {
-      strcpy (strings, b [i]);
+      strncpy (strings, b [i], available);
       res [count] = strings;
       strings += (strlen (res [count]) + 1);
+      available = minz (available, (strlen (res [count]) + 1));
       count++;
     }
   }
@@ -1775,13 +1784,15 @@ static int add_to_array (char *** array, int count, const char * value)
   }
   char * mem = malloc_or_fail (size, "add_to_array");
   char ** res = (char **) mem;
+  size = minz (size, (count + 1) * sizeof (char *));
   mem += (count + 1) * sizeof (char *);
   for (i = 0; i < count; i++) {
-    strcpy (mem, strings [i]);
+    strncpy (mem, strings [i], size);
     res [i] = mem;
+    size = minz (size, strlen (strings [i]) + 1);
     mem += strlen (strings [i]) + 1;
   }
-  strcpy (mem, value);
+  strncpy (mem, value, size);
   res [count] = mem;
   *array = res;
   return count + 1;
@@ -3167,12 +3178,14 @@ int requested_bc_keys (char *** ahras)
   char * ahra_storage = malloc_or_fail (size, "requested_bc_keys");
   *ahras = (char **) ahra_storage;
   char * string_storage = ahra_storage + sizeof (char *) * count;
+  size = minz (size, sizeof (char *) * count);
   ent = readdir (dir);
   int new_count = 0;
   while ((ent != NULL) && (new_count < count)) {
     if (parse_ahra (ent->d_name, NULL, NULL, NULL, NULL, NULL, NULL)) {
-      strcpy (string_storage, ent->d_name);
+      strncpy (string_storage, ent->d_name, size);
       (*ahras) [new_count] = string_storage;
+      size = minz (size, strlen ((*ahras) [new_count]) + 1);
       string_storage += strlen ((*ahras) [new_count]) + 1;
       new_count++;
     }

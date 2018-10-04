@@ -579,8 +579,9 @@ int astart_main (int argc, char ** argv)
   do_root_init ();
 
   char ** interfaces = NULL;
-  int num_interfaces = argc - 1;
+  int num_interfaces = 0;
 #ifdef ALLNET_USE_FORK  /* for now, don't run abc on android and ios */
+  num_interfaces = argc - 1;
   if ((argc > 1) && (strncmp (argv [1], "def", 3) == 0))
     num_interfaces = default_interfaces (&interfaces);
   else if (argc == 1)
@@ -592,8 +593,6 @@ int astart_main (int argc, char ** argv)
     for (i = 0; i < (argc - 1); i++)
       interfaces [i] = strcpy_malloc (argv [i + 1], "specific interface");
   }
-#else /* ! ALLNET_USE_FORK */
-  num_interfaces = 0;
 #endif /* ! ALLNET_USE_FORK */
   pid_t * abc_pids = NULL;
   if (num_interfaces > 0)

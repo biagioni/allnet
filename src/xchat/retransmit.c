@@ -132,8 +132,8 @@ static void create_chat_control_request (const char * contact, char * missing,
 int send_retransmit_request (const char * contact, keyset k, int sock,
                              int hops, int priority, const char * expiration)
 {
-  int num_singles;
-  int num_ranges;
+  int num_singles = 0;
+  int num_ranges = 0;
   uint64_t rcvd_sequence;
   char missing [ALLNET_MTU];
   int msize = gather_missing_info (contact, k, &num_singles, &num_ranges,

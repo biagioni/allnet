@@ -77,10 +77,6 @@ int allnet_encrypt (const char * text, int tsize,
      * to the message.  Encrypt the first max_rsa bytes (of the AES, nonce,
      * and text) using RSA, and the remainder using AES in counter mode,
      * with the nonce being the initial value of the counter. */
-    rsa_encrypt_size = max_rsa;
-    /* the AES key and nonce and the first max_rsa bytes of the text go into
-     * the first rsa_encrypt_size of the result.  The rest gets 1:1 encrypted
-     * using AES */
     int input_size = tsize + AES256_SIZE + AES_BLOCK_SIZE;
     new_text = malloc_or_fail (input_size, "encrypt final plaintext");
     aes = new_text;
@@ -89,6 +85,9 @@ int allnet_encrypt (const char * text, int tsize,
     memcpy (new_text + (AES256_SIZE + AES_BLOCK_SIZE), text, tsize);
     text = (const char *) new_text;
     tsize = input_size;
+    /* the AES key and nonce and the first max_rsa bytes of the text go into
+     * the first rsa_encrypt_size of the result.  The rest gets 1:1 encrypted
+     * using AES */
     rsa_encrypt_size = max_rsa;
     result_size = tsize + (rsa_size - max_rsa);
 #ifdef DEBUG_PRINT

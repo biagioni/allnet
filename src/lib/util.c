@@ -1515,8 +1515,14 @@ static void computed_random_bytes (char * buffer, size_t bsize)
     initialized = 1;
   }
   size_t i;
+#ifdef __APPLE__
+#define RANDOM	arc4random
+#else /* __APPLE__ */
+#define RANDOM	random
+#endif /* __APPLE__ */
   for (i = 0; i < bsize; i++)
-    buffer [i] = random () % 256;
+    buffer [i] = RANDOM () % 256;
+#undef RANDOM
 }
 
 /* returns 1 if succeeds, 0 otherwise */

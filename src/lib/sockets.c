@@ -34,9 +34,7 @@ static void unlock (const char * caller)
 
 static void debug_crash ()
 {
-  int i = 3;
-  i = i - i;  /* 0 */
-    char * p = NULL;
+  char * p = NULL;
   printf ("now crashing: %d\n", *p);
 }
 

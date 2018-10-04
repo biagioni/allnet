@@ -86,8 +86,8 @@ void print_dht (int to_log)
     if (peers [i].ai.nbits != 0)
       npeers++;
   int n = snprintf (alog->b, alog->s, "%d peers: ", npeers);
-  n += buffer_to_string (my_address, ADDRESS_SIZE, "my address is",
-                         ADDRESS_SIZE, 1, alog->b + n, alog->s - n);
+  buffer_to_string (my_address, ADDRESS_SIZE, "my address is",
+                    ADDRESS_SIZE, 1, alog->b + n, alog->s - n);
   if (to_log) log_print (alog); else printf ("%s", alog->b);
   for (i = 0; i < MAX_PEERS; i++) {
     if (peers [i].ai.nbits != 0) {

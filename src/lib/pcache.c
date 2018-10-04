@@ -418,7 +418,7 @@ static int initialize_acks_from_file ()
     char * p = NULL;
     int fsize = ((file_size (fname) == asize) ? read_file_malloc (fname, &p, 1)
                                               : 0);
-    if (fsize == asize) {    /* all is well */
+    if ((fsize == asize) && (p != NULL)) {    /* all is well */
       assert (((asize / sizeof (struct hash_ack_entry)) % ACKS_PER_SLOT) == 0);
       ack_table = (struct hash_ack_entry *)p;   /* point to memory */
       result = 1;
