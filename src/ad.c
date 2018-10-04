@@ -49,6 +49,12 @@ static struct socket_set sockets;
 static int sock_v4 = -1;    /* used to send packets to specific addresses */
 static int sock_v6 = -1;    /* used to send packets to specific addresses */
 
+#define THROTTLE_SENDING    /* 2018/10/03: try this */
+#ifdef THROTTLE_SENDING
+/* throttle the number of messages sent by only sending high priority ones */
+static int priority_threshold = ALLNET_PRIORITY_EPSILON;
+#endif /* THROTTLE_SENDING */
+
 /* set the v4 flag for the given socket */
 static int set_ipv4 (struct socket_address_set * sock, void * ref)
 {
@@ -281,11 +287,66 @@ static void send_auth_response (int sockfd, struct sockaddr_storage addr,
                      "ad.c/send_auth_response");
 }
 
+#ifdef THROTTLE_SENDING
+static int new_priority_threshold (int old_priority_threshold,
+                                   long long int send_start,
+                                   long long int bytes_sent)
+{
+  int new_threshold = old_priority_threshold;  /* default */
+  static long long int measurement_start = 0;
+  static long long int measurement_time = 0;
+  static long long int measurement_bytes = 0;
+  long long int now = allnet_time_us ();
+  long long int delta = now - send_start;
+  measurement_time += delta;
+  measurement_bytes += bytes_sent;
+  long long int now_s = now / 1000000;
+  long long int delta_s = now_s - measurement_start;
+  /* throttle if we are averaging more than 8KB/second, or 
+   * if our send time is more than 1% -- since the measurement_time is
+   * in microseconds, the percentage is multiplied by 10,000, i.e. tenK */
+  const long long int max_rate = 8000;  /* 8KB/s -- later, configurable */
+  const long long int max_percent_tenK = 10000;  /* 1% for now */
+  if (now_s > measurement_start + 60) {   /* new minute, compute */
+printf ("measured: %lld / %lld = %lldB/s, t%% %lld / %lld = %lld: thresh %08x",
+        measurement_bytes, delta_s, measurement_bytes / delta_s,
+        measurement_time, delta_s, measurement_time / delta_s,
+        old_priority_threshold);
+    if ((measurement_bytes / delta_s > max_rate) ||
+        (measurement_time / delta_s > max_percent_tenK)) {
+      new_threshold += (ALLNET_PRIORITY_MAX - old_priority_threshold) / 8;
+printf (" -> %08x (slower)\n", new_threshold);
+    } else if ((new_threshold > ALLNET_PRIORITY_EPSILON) &&
+               (measurement_bytes / delta_s < (max_rate / 8)) &&
+               (measurement_time / delta_s < (max_percent_tenK / 8))) {
+      int delta = ALLNET_PRIORITY_ONE_EIGHT / 8;
+      new_threshold = (new_threshold > delta) ? (new_threshold - delta) :
+                      ALLNET_PRIORITY_EPSILON;
+printf (" -> %08x (faster)\n", new_threshold);
+    } else {
+printf ("\n");
+    }
+    measurement_start = now_s;
+    measurement_time = 0;
+    measurement_bytes = 0;
+  }
+  return new_threshold;
+}
+#endif /* THROTTLE_SENDING */
+
 /* send to a limited number of DHT addresses and to socket_send_out */
 static void send_out (const char * message, int msize, int max_addrs,
                       const struct sockaddr_storage * except, /* may be NULL */
-                      socklen_t elen)  /* should be 0 if except is NULL */
+                      socklen_t elen,  /* should be 0 if except is NULL */
+                      int priority)
 {
+#ifdef THROTTLE_SENDING
+  static int skipped = 0;
+  if ((priority < priority_threshold) && (skipped++ % 100 != 99))
+    return;
+  long long int send_start = allnet_time_us ();
+  long long int bytes_sent = 0;
+#endif /* THROTTLE_SENDING */
   const struct allnet_header * hp = (const struct allnet_header *) message;
   /* only forward out if max_hops is reasonable and hops < max_hops */
   if ((hp->max_hops <= 0) || (hp->hops >= 255) || (hp->hops >= hp->max_hops))
@@ -325,21 +386,40 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
       ai_embed_v4_in_v6 (&dest, &alen);  /* needed on apple systems */
     }
     if (sockfd >= 0) {
-      if (send_keepalives)
+      if (send_keepalives) {
         send_routing_keepalive (sockfd, dest, alen);
+#ifdef THROTTLE_SENDING
+        bytes_sent += 48;
+#endif /* THROTTLE_SENDING */
+      }
       if (! socket_send_to_ip (sockfd, message, msize, dest, alen,
-                               "ad.c/send_out"))
+                               "ad.c/send_out")) {
         dht_send_error = 1;
+#ifdef THROTTLE_SENDING
+        bytes_sent += msize;
+#endif /* THROTTLE_SENDING */
+      }
     }
   }
+#ifdef THROTTLE_SENDING
+  int num_sockets = 0;
+#endif /* THROTTLE_SENDING */
   if (send_keepalives)
-    socket_send_keepalives (&sockets, virtual_clock, SEND_KEEPALIVES_LOCAL,
-                            SEND_KEEPALIVES_REMOTE);
+#ifdef THROTTLE_SENDING
+    num_sockets =
+#endif /* THROTTLE_SENDING */
+      socket_send_keepalives (&sockets, virtual_clock, SEND_KEEPALIVES_LOCAL,
+                              SEND_KEEPALIVES_REMOTE);
   static struct sockaddr_storage empty;  /* used if except is null */
   socket_send_out (&sockets, message, msize, virtual_clock,
                    ((except == NULL) ? empty : *except), elen);
   if (dht_send_error)
     routing_expire_dht (&sockets);
+#ifdef THROTTLE_SENDING
+  bytes_sent += (msize + 48) * num_sockets;
+  priority_threshold =
+    new_priority_threshold (priority_threshold, send_start, bytes_sent);
+#endif /* THROTTLE_SENDING */
 }
 
 static void update_dht ()
@@ -351,7 +431,8 @@ static void update_dht ()
     memset (&sas, 0, sizeof (sas));
     socket_send_local (&sockets, dht_message, msize, ALLNET_PRIORITY_LOCAL_LOW,
                        virtual_clock, sas, 0);
-    send_out (dht_message, msize, ROUTING_DHT_ADDRS_MAX, NULL, 0);
+    send_out (dht_message, msize, ROUTING_DHT_ADDRS_MAX, NULL, 0,
+              ALLNET_PRIORITY_LOCAL_LOW);
     free (dht_message);
   }
 }
@@ -398,12 +479,18 @@ static struct socket_address_validity *
   return result;
 }
 
-#define LOG_PACKETS
 static int send_message_to_one (const char * message, int msize, int priority,
                                 const unsigned char * token,
                                 struct socket_address_set * sock,
                                 struct sockaddr_storage addr, socklen_t alen)
 {
+#ifdef THROTTLE_SENDING
+  static int skipped = 0;
+  if ((priority < priority_threshold) && (skipped++ % 10 != 9))
+    return 0;
+  long long int send_start = allnet_time_us ();
+  long long int bytes_sent = 0;
+#endif /* THROTTLE_SENDING */
 #ifdef LOG_PACKETS
   snprintf (alog->b, alog->s, "%s (%d bytes, prio %d, to pipe %d)\n",
             "send_one_message_to", msize, priority, sock->sockfd);
@@ -423,8 +510,16 @@ static int send_message_to_one (const char * message, int msize, int priority,
   }
   if (token != NULL)
     pcache_mark_token_sent ((const char * ) token, message, msize);
-  return socket_send_to_ip (sock->sockfd, message, msize, addr, alen,
-                            "ad.c/send_message_to_one");
+  int result = socket_send_to_ip (sock->sockfd, message, msize, addr, alen,
+                                  "ad.c/send_message_to_one");
+#ifdef THROTTLE_SENDING
+  if (! sock->is_local) {
+    bytes_sent += msize;
+    priority_threshold =
+      new_priority_threshold (priority_threshold, send_start, bytes_sent);
+  }
+#endif /* THROTTLE_SENDING */
+  return result;
 }
 
 /* return the number of messages sent (r.n), or 0 if none */
@@ -586,7 +681,8 @@ static struct message_process process_mgmt (struct socket_read_result *r)
                                ALLNET_PRIORITY_TRACE, NULL, r->sock,
                                r->from, r->alen);
         else
-          send_out (trace_reply, trace_reply_size, ROUTING_ADDRS_MAX, NULL, 0);
+          send_out (trace_reply, trace_reply_size, ROUTING_ADDRS_MAX,
+                    NULL, 0, ALLNET_PRIORITY_TRACE);
       }
       pcache_save_packet (trace_reply, trace_reply_size, ALLNET_PRIORITY_TRACE);
       free (trace_reply);
@@ -737,7 +833,8 @@ print_socket_set (&sockets);
       socket_send_local (&sockets, m.message, m.msize, m.priority,
                          virtual_clock, r.from, r.alen);
     if (m.process & PROCESS_PACKET_OUT)
-      send_out (m.message, m.msize, ROUTING_ADDRS_MAX, &(r.from), r.alen);
+      send_out (m.message, m.msize, ROUTING_ADDRS_MAX,
+                &(r.from), r.alen, m.priority);
     if ((m.allocated) && (m.message != NULL))
       free (m.message);
     if (r.recv_limit_reached) {  /* time to send a keepalive */
