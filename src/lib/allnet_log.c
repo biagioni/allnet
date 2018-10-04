@@ -152,7 +152,7 @@ struct allnet_log * init_log (const char * name)
   size_t count = sizeof (struct allnet_log) + strlen (name) + 1;
   struct allnet_log * result = malloc_or_fail (count, "init_log");
   result->debug_info = ((char *) result) + sizeof (struct allnet_log);
-  strcpy (result->debug_info, name);
+  strncpy (result->debug_info, name, count - sizeof (struct allnet_log));
   result->b [0] = '\0';  /* clear the buffer */
   result->s = LOG_SIZE;
   result->log_to_output = 0;

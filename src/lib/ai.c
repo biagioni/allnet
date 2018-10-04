@@ -413,7 +413,8 @@ int getifaddrs_interface_addrs (struct interface_addr ** interfaces)
     int j;
     int found = 0;
     for (j = 0; j < assigned_interfaces; j++) {
-      if (strcmp (next->ifa_name, ((*interfaces) [j].interface_name)) == 0)
+      if ((next->ifa_name != NULL) &&
+          (strcmp (next->ifa_name, ((*interfaces) [j].interface_name)) == 0))
         found = 1;
     }
     if (found) {

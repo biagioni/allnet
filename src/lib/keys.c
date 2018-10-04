@@ -1817,6 +1817,11 @@ int group_contacts (const char * group, char *** members)
   while (i < ngroups) {  /* add the members of each subgroup, at most once */
     char ** local_members = NULL;
     int local_count = group_membership (subgroups [i], &local_members);
+    if (local_members == NULL) { /* should never happen */
+      printf ("error in group_contacts: local_members [%d/%d/%s] is null, %d\n",
+              i, ngroups, subgroups [i], local_count);
+      continue;
+    }
     /* add each member to subgroups or all_members, unless already there */
     int j;
     for (j = 0; j < local_count; j++) {

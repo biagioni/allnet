@@ -281,10 +281,12 @@ static char ** deep_copy (char ** original, int n)
     needed += strlen (original [i]) + 1 + sizeof (char *);
   char ** result = malloc_or_fail (needed, "cipher.c deep_copy");
   char * strings = (char *) (&(result [n]));
+  int str_size = needed - (strings - (char *) result);
   for (i = 0; i < n; i++) {
     result [i] = strings;
-    strcpy (result [i], original [i]);
+    strncpy (result [i], original [i], str_size);
     strings += strlen (original [i]) + 1;
+    str_size = minz (str_size, strlen (original [i]) + 1);
   }
   return result;
 }

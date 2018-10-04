@@ -12,19 +12,12 @@
 #include "wp_rsa.h"
 #include "wp_arith.h"
 
-static const char * debug_data = NULL;
-
 static int read_byte (const char * data, int dsize, int * read_error)
 {
   if (dsize <= 0) {
     *read_error = 1;
     return 0;
   }
-/*
-if (debug_data != NULL)
-printf ("returning data [%ld] %02x\n", data - debug_data, data [0] & 0xff);
-else printf ("returning data %02x\n", data [0] & 0xff);
-*/
   return data [0] & 0xff;
 }
 
@@ -66,7 +59,6 @@ static int read_length (const char * data, int dsize, int * length)
 int asn1_read_seq (const char * data, int dsize, int * num_elements,
                    int specific_element, int * specific_pos)
 {
-debug_data = data;
   if (num_elements != NULL)
     *num_elements = 0;
   int read_error = 0;
@@ -238,8 +230,7 @@ static int read_key (const char * data, int dsize, int nbits,
 static int wp_rsa_read (const char * data, int dsize,
                         int * nbits, wp_rsa_key_pair * key)
 {
-debug_data = data;
-int debug_dsize = dsize;
+const char * debug_data = data;
   memset (key, 0, sizeof (wp_rsa_key_pair));  /* set all unused keys to 0 */
   int num_elements;
   int length = asn1_read_seq (data, dsize, &num_elements, -1, NULL);
