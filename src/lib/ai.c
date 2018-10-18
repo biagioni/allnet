@@ -54,11 +54,20 @@ int addr_info_to_string (struct addr_info * ai, char * buf, size_t bsize)
   int offset = 0;
   offset += snprintf (buf, bsize, "(%d) ", ai->nbits);
   offset += buffer_to_string ((char *) (ai->destination), (ai->nbits + 7) / 8,
-                              NULL, ADDRESS_SIZE, 0,
-                              buf + offset, bsize - offset);
+                              NULL,
+#ifdef LOG_STATE
+                              2,
+#else /* LOG_STATE */
+                              ADDRESS_SIZE,
+#endif /* LOG_STATE */
+                              0, buf + offset, bsize - offset);
+#ifdef LOG_STATE
+  offset += snprintf (buf + offset, bsize - offset, " addr ");
+#else /* LOG_STATE */
   offset += snprintf (buf + offset, bsize - offset,
                       ", v %d, port %d, addr ", ai->ip.ip_version,
                       ntohs (ai->ip.port));
+#endif /* LOG_STATE */
   unsigned char * ap = (unsigned char *) &(ai->ip.ip);
   if (ai->ip.ip_version == 4)
     offset += snprintf (buf + offset, bsize - offset,
