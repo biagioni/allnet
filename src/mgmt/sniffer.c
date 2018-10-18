@@ -67,7 +67,7 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
       print_msg = (! is_valid_message (message, msize, &reason));
       hp->hops = saved_hops;
     }
-    if (print_msg) {
+    if (print_msg && (verify < 2)) {
       printf ("sniffer got invalid message (%s): ", reason);
       print_buffer (message, msize, "", max, 1);
     }
@@ -92,16 +92,20 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
     return 0;  /* does not match the source or destination address */
   }
   *rcvd = 1;
-  char time_string [ALLNET_TIME_STRING_SIZE];
-  allnet_localtime_string (allnet_time (), time_string);
-  printf ("%s ", hms (time_string));
-  print_packet (message, msize, "received: ", 1);
+  if (verify < 2) {
+    char time_string [ALLNET_TIME_STRING_SIZE];
+    allnet_localtime_string (allnet_time (), time_string);
+    printf ("%s ", hms (time_string));
+    print_packet (message, msize, "received: ", 1);
+  }
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
   int dsize = msize - (data - message);
-  print_buffer (data, dsize, "   payload:", max, 0);
-  if (dsize > max)  /* print the signature size */
-    printf (" %02x %02x", data [dsize - 2], data [dsize - 1]);
-  printf ("\n");
+  if (verify < 2) {
+    print_buffer (data, dsize, "   payload:", max, 0);
+    if (dsize > max)  /* print the signature size */
+      printf (" %02x %02x", data [dsize - 2], data [dsize - 1]);
+    printf ("\n");
+  }
   if (verify) {
     if (hp->message_type == ALLNET_TYPE_DATA) {
       char * contact;
@@ -257,10 +261,11 @@ static int debug_switch (int * argc, char ** argv)
 
 static void usage (const char * command)
 {
-  printf ("usage: %s [-v] [-d] [-y] [-u] [-f] [-t type]* "
+  printf ("usage: %s [-v] [-d] [-y [-y]] [-u] [-f] [-t type]* "
           " [-a destination address] [-s source] [number-of-messages]\n",
           command);
-  printf ("       -v: verbose, -d: debug, -y: verify sig, -u: unique only");
+  printf ("       -v: verbose, -d: debug, -y: verify, -y -y: verified only");
+  printf ("       -u: unique only");
   printf ("       -f: print full message payloads, not abbreviated");
   printf ("       -t n: only show messages of type n -- may be repeated\n");
   printf ("       -a x, -s x: only show messages with source/dest x\n");
@@ -300,7 +305,7 @@ int main (int argc, char ** argv)
     switch (opt) {
     case 'd': debug = 1; break;
     case 'v': verbose = 1; break;
-    case 'y': verify = 1; break;
+    case 'y': verify += 1; break;
     case 'u': unique = 1; break;
     case 'f': full_payloads = 1; break;
     case 's': /* source address */
