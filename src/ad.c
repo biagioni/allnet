@@ -35,6 +35,7 @@ struct message_process {
   int msize;
   int priority;
   int allocated;  /* whether the message needs to be freed */
+  char * debug_reason;     /* which code decided the packet disposition */
 };
 
 /* limit the number of addresses from the routing table to which we send */
@@ -153,6 +154,39 @@ static void update_virtual_clock ()
   }
 }
 
+static void update_sender_keepalive (const char * message, int msize,
+                                     struct socket_address_validity * sav)
+{
+  if ((sav == NULL) ||   /* nothing to update */
+      (msize < ALLNET_HEADER_SIZE + KEEPALIVE_AUTHENTICATION_SIZE))
+    return;              /* or not a keepalive with sender authentication */
+  struct allnet_header * hp = (struct allnet_header *) message;
+  struct allnet_mgmt_header * mhp =
+    (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
+  int mhsize = ALLNET_MGMT_HEADER_SIZE (hp->transport);
+  if ((msize < mhsize + KEEPALIVE_AUTHENTICATION_SIZE) ||
+      (msize > mhsize + 2 * KEEPALIVE_AUTHENTICATION_SIZE) ||
+      (hp->message_type != ALLNET_TYPE_MGMT) ||
+      (mhp->mgmt_type != ALLNET_MGMT_KEEPALIVE))
+    return;   /* not a keepalive with sender authentication */
+#ifdef LOG_PACKETS
+if (memcmp (sav->keepalive_auth, message + mhsize,
+            KEEPALIVE_AUTHENTICATION_SIZE) != 0) {
+print_buffer (message + mhsize, KEEPALIVE_AUTHENTICATION_SIZE,
+              "new sender secret", 8, 0);
+print_buffer (sav->keepalive_auth, KEEPALIVE_AUTHENTICATION_SIZE,
+              ", old", 8, 0);
+printf (" for ");
+print_sockaddr ((struct sockaddr *) (&(sav->addr)), sav->alen);
+printf ("\n");
+  }
+#endif /* LOG_PACKETS */
+  /* save the received sender keepalive secret, even if it is the same
+   * memcpy should be cheaper than memcmp */
+  memcpy (sav->keepalive_auth, message + mhsize,
+          KEEPALIVE_AUTHENTICATION_SIZE);
+}
+
 /* keep this information for addresses in the routing table, which we
  * don't add to the sockets structure */
 struct allnet_keepalive_entry {
@@ -180,14 +214,14 @@ static int add_routing_keepalive (struct sockaddr_storage addr, socklen_t alen,
                                   char * keepalive_auth)
 {
   int index = routing_keepalive_index (addr, alen);
-  if ((index == -1) || (index >= num_routing_keepalives)) {
+  if ((index < 0) || (index >= num_routing_keepalives)) {
     if (num_routing_keepalives < ADDRS_MAX)
       index = num_routing_keepalives++;       /* add at the end, increment */
     else
       index = (int) random_int (0, ADDRS_MAX - 1); /* replace a random entry */
   }
-  if ((index == -1) || (index >= ADDRS_MAX)) {
-    printf ("error in add_routing_keepalive, -1 < %d < %d\n", index, ADDRS_MAX);
+  if ((index < 0) || (index >= ADDRS_MAX)) {
+    printf ("error in add_routing_keepalive, 0 < %d < %d\n", index, ADDRS_MAX);
 exit (1);
   }
   if ((same_sockaddr (&(routing_keepalives [index].addr),
@@ -308,23 +342,31 @@ static int new_priority_threshold (int old_priority_threshold,
   const long long int max_rate = 8000;  /* 8KB/s -- later, configurable */
   const long long int max_percent_tenK = 10000;  /* 1% for now */
   if (now_s > measurement_start + 60) {   /* new minute, compute */
+#ifdef DEBUG_FOR_DEVELOPER
 printf ("measured: %lld / %lld = %lldB/s, t%% %lld / %lld = %lld: thresh %08x",
         measurement_bytes, delta_s, measurement_bytes / delta_s,
         measurement_time, delta_s, measurement_time / delta_s,
         old_priority_threshold);
+#endif /* DEBUG_FOR_DEVELOPER */
     if ((measurement_bytes / delta_s > max_rate) ||
         (measurement_time / delta_s > max_percent_tenK)) {
       new_threshold += (ALLNET_PRIORITY_MAX - old_priority_threshold) / 8;
+#ifdef DEBUG_FOR_DEVELOPER
 printf (" -> %08x (slower)\n", new_threshold);
+#endif /* DEBUG_FOR_DEVELOPER */
     } else if ((new_threshold > ALLNET_PRIORITY_EPSILON) &&
                (measurement_bytes / delta_s < (max_rate / 8)) &&
                (measurement_time / delta_s < (max_percent_tenK / 8))) {
-      int delta = ALLNET_PRIORITY_ONE_EIGHT / 8;
+      int delta = ALLNET_PRIORITY_ONE_EIGHT / 4;
       new_threshold = (new_threshold > delta) ? (new_threshold - delta) :
                       ALLNET_PRIORITY_EPSILON;
+#ifdef DEBUG_FOR_DEVELOPER
 printf (" -> %08x (faster)\n", new_threshold);
+#endif /* DEBUG_FOR_DEVELOPER */
     } else {
+#ifdef DEBUG_FOR_DEVELOPER
 printf ("\n");
+#endif /* DEBUG_FOR_DEVELOPER */
     }
     measurement_start = now_s;
     measurement_time = 0;
@@ -342,7 +384,7 @@ static void send_out (const char * message, int msize, int max_addrs,
 {
 #ifdef THROTTLE_SENDING
   static int skipped = 0;
-  if ((priority < priority_threshold) && (skipped++ % 100 != 99))
+  if ((priority < priority_threshold) && (skipped++ % 10 != 9))
     return;
   long long int send_start = allnet_time_us ();
   long long int bytes_sent = 0;
@@ -540,7 +582,6 @@ static int send_messages_to_one (struct pcache_result r,
                                    sock, addr, alen);
   return result;
 }
-#undef LOG_PACKETS
 
 /* compute a forwarding priority for non-local messages */
 static unsigned int message_priority (char * message, struct allnet_header * hp,
@@ -623,12 +664,15 @@ static struct message_process process_mgmt (struct socket_read_result *r)
     r->priority = ALLNET_PRIORITY_DEFAULT_LOW;
   struct message_process drop = { .process = PROCESS_PACKET_DROP,
                                   .message = r->message, .msize = r->msize,
-                                  .priority = r->priority, .allocated = 0 };
+                                  .priority = r->priority, .allocated = 0,
+                                  .debug_reason = "process_mgmt generic drop" };
   struct message_process all  = { .process = PROCESS_PACKET_ALL,
                                   .message = r->message, .msize = r->msize,
-                                  .priority = r->priority, .allocated = 0 };
+                                  .priority = r->priority, .allocated = 0,
+                                  .debug_reason = "process_mgmt generic all" };
   struct allnet_header * hp = (struct allnet_header *) r->message;
   int hs = ALLNET_AFTER_HEADER (hp->transport, r->msize);
+  drop.debug_reason = "process_mgmt too small for mgmt header";
   if (r->msize < hs + sizeof (struct allnet_mgmt_header))
     return drop;   /* illegal management message */
   struct allnet_mgmt_header * ahm =
@@ -644,15 +688,24 @@ static struct message_process process_mgmt (struct socket_read_result *r)
     (struct allnet_mgmt_trace_req *) mgmt_payload;
   switch (ahm->mgmt_type) {
   case ALLNET_MGMT_BEACON:
+    drop.debug_reason = "beacon";
   case ALLNET_MGMT_BEACON_REPLY:
+    if (ahm->mgmt_type == ALLNET_MGMT_BEACON_REPLY)
+      drop.debug_reason = "beacon_reply";
   case ALLNET_MGMT_BEACON_GRANT:
+    if (ahm->mgmt_type == ALLNET_MGMT_BEACON_GRANT)
+      drop.debug_reason = "beacon_grant";
   case ALLNET_MGMT_KEEPALIVE:
+    if (ahm->mgmt_type == ALLNET_MGMT_KEEPALIVE)
+      drop.debug_reason = "keepalive";
     return drop;   /* do not forward beacons or keepalives */
   case ALLNET_MGMT_DHT:
     dht_process (r->message, r->msize, (struct sockaddr *) &(r->from), r->alen);
+    all.debug_reason = "dht";
     return all;
   case ALLNET_MGMT_PEER_REQUEST:
   case ALLNET_MGMT_PEERS:
+    all.debug_reason = "peers or peer request";
     return all;
 #ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
   case ALLNET_MGMT_ID_REQUEST:
@@ -661,9 +714,11 @@ static struct message_process process_mgmt (struct socket_read_result *r)
                   (r->message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
     send_messages_to_one (pcache_id_request (id_req), NULL, r->sock,
                           r->from, r->alen);
+    all.debug_reason = "id request";
     return all;     /* and forward the request*/
 #endif /* IMPLEMENT_MGMT_ID_REQUEST */
   case ALLNET_MGMT_TRACE_REQ:
+    drop.debug_reason = "trace request seen before";
     if (pcache_trace_request (in_trace_req->trace_id))  /* seen before */
       return drop;
     trace_forward (r->message, r->msize, my_address, 16,
@@ -695,21 +750,28 @@ static struct message_process process_mgmt (struct socket_read_result *r)
         all.allocated = 1;
       } /* else forward the original request */
       pcache_save_packet (all.message, all.msize, ALLNET_PRIORITY_TRACE);
+      all.debug_reason = "trace request forward";
       return all;
     }
+    drop.debug_reason = "trace request do not forward";
     return drop;
   case ALLNET_MGMT_TRACE_REPLY:
+    drop.debug_reason = "trace_reply do not forward";
+    if (mgmt_payload_size <= 0)
+      drop.debug_reason = "trace_reply payload too small";
     if ((mgmt_payload_size <= 0) ||
         (pcache_trace_reply (mgmt_payload, mgmt_payload_size)))
       return drop;  /* invalid, or seen before */
     all.priority = ALLNET_PRIORITY_TRACE;
     pcache_save_packet (r->message, r->msize, ALLNET_PRIORITY_TRACE);
+    all.debug_reason = "trace_reply";
     return all;
   default:
     snprintf (alog->b, alog->s, "unknown management message type %d\n",
               ahm->mgmt_type);
     log_print (alog);   /* forward unknown management messages */
     all.priority = ALLNET_PRIORITY_TRACE;
+    all.debug_reason = "unknown management packet";
     return all;
   }
 }
@@ -721,17 +783,20 @@ static struct message_process process_message (struct socket_read_result *r)
 {
   struct message_process drop =
         { .process = PROCESS_PACKET_DROP,
-          .message = NULL, .msize = 0, .priority = r->priority, .allocated = 0};
+          .message = NULL, .msize = 0, .priority = r->priority, .allocated = 0,
+          .debug_reason = "process_message generic drop" };
   struct allnet_header * hp = (struct allnet_header *) r->message;
   int seen_before = 0;
   int save_message = 1;
   if (hp->message_type == ALLNET_TYPE_ACK) {
     r->msize = process_acks (hp, r->msize);
+    drop.debug_reason = "message size 0 or less";
     if (r->msize <= 0)
       return drop;                   /* no new acks, drop the message */
     save_message = 0;                /* already saved the new acks */
   } else {
     char id [MESSAGE_ID_SIZE];
+    drop.debug_reason = "message does not have an ID";
     if (! pcache_message_id (r->message, r->msize, id))
       return drop;          /* no message ID, drop the message */
     char ack [MESSAGE_ID_SIZE];   /* filled in if ack_found */
@@ -741,6 +806,7 @@ static struct message_process process_message (struct socket_read_result *r)
     } else {
       seen_before = pcache_id_found (id);
     }
+    drop.debug_reason = "nonlocal message seen before";
     if ((! r->sock->is_local) && (seen_before))
       return drop;            /* we have seen it before, drop the message */
     if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
@@ -768,9 +834,14 @@ print_packet (r->message, r->msize, "received data request", 1);
   if (! r->sock->is_local)
     r->priority = message_priority (r->message, hp, r->msize);
   /* below here the message should be valid, forward it */
+#define DEBUG_MESSAGE_FORMAT "process_message success, save %d, seen %d      "
+  static char debug_message [] = DEBUG_MESSAGE_FORMAT;
+  snprintf (debug_message, sizeof (debug_message), DEBUG_MESSAGE_FORMAT,
+            save_message, seen_before);
   struct message_process result =
         { .process = PROCESS_PACKET_ALL, .message = r->message,
-          .msize = r->msize, .priority = r->priority, .allocated = 0 };
+          .msize = r->msize, .priority = r->priority, .allocated = 0,
+          .debug_reason = debug_message };
   if (save_message && (! seen_before)) {
     if ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0)
       pcache_save_packet (r->message, r->msize, r->priority);
@@ -786,9 +857,36 @@ void allnet_daemon_loop ()
     char message [SOCKET_READ_MIN_BUFFER];
     struct socket_read_result r = socket_read (&sockets, message,
                                                10, virtual_clock);
-    if ((r.message == NULL) || (r.msize < ALLNET_HEADER_SIZE) ||
-        (! is_valid_message (r.message, r.msize, NULL)))
+#ifdef LOG_PACKETS
+if ((r.success) && (r.message != NULL) &&
+/* print all but the local keepalives */
+    ((r.msize != 32) || (! r.sock->is_local))) {
+char * debug_print = "ad.c got";
+if (r.sock->is_local) debug_print = "ad.c got local";
+if ((r.msize > ALLNET_HEADER_SIZE) &&
+    (r.msize > ALLNET_MGMT_HEADER_SIZE (r.message [7])) &&
+    (r.message [1] == ALLNET_TYPE_MGMT))
+  printf ("mgmt %d ", r.message [ALLNET_SIZE (r.message [7])]);
+print_buffer (r.message, r.msize, debug_print, 4, 0);
+printf (", t %02x, from ", r.message [7] & 0xff);
+print_sockaddr ((struct sockaddr *)(&(r.from)), r.alen);
+printf ("\n");
+if (r.msize == 48) {
+  if (is_auth_keepalive (r.from, sockets.random_secret,
+                         sizeof (sockets.random_secret),
+                         sockets.counter, r.message, r.msize))
+     printf ("  this is a valid authenticating keepalive\n");
+else print_buffer (r.message, r.msize, "  invalid keepalive", 48, 1); }
+}
+#endif /* LOG_PACKETS */
+    if ((! r.success) || (r.message == NULL) ||
+        (r.msize < ALLNET_HEADER_SIZE) ||
+        (! is_valid_message (r.message, r.msize, NULL))) {
+#ifdef LOG_PACKETS
+if (r.message != NULL) printf ("invalid message of size %d\n", r.msize);
+#endif /* LOG_PACKETS */
       continue;   /* no valid message, no action needed, restart the loop */
+    }
 #ifdef DEBUG_FOR_DEVELOPER
 #ifdef DEBUG_PRINT
 printf ("received %d bytes\n", r.msize);
@@ -802,6 +900,8 @@ print_packet (r.message, r.msize, ", packet", 1);
 print_socket_set (&sockets);
 #endif /* DEBUG_PRINT */
 #endif /* DEBUG_FOR_DEVELOPER */
+    if (! r.socket_address_is_new)
+      update_sender_keepalive (r.message, r.msize, r.sav);
     if ((r.socket_address_is_new) &&
         ((r.sock->is_global_v4) || (r.sock->is_global_v6)) &&
         (! is_auth_keepalive (r.from, sockets.random_secret,
@@ -815,8 +915,14 @@ print_socket_set (&sockets);
 #define STRICT_AUTHENTICATION
 #endif /* DEBUG_FOR_DEVELOPER */
 #ifdef STRICT_AUTHENTICATION
-      if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen))
+      if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) {
+#ifdef LOG_PACKETS
+printf ("message from unauthenticated sender: ");
+print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
+printf ("\n");
+#endif /* LOG_PACKETS */
         continue;   /* not authenticated, do not process this packet */
+      }
 #endif /* STRICT_AUTHENTICATION */
     }
     if ((r.socket_address_is_new) || (r.sav == NULL))
@@ -829,6 +935,15 @@ print_socket_set (&sockets);
     struct message_process m =
          ((hp->message_type == ALLNET_TYPE_MGMT) ? process_mgmt (&r)
                                                  : process_message (&r));
+#ifdef LOG_PACKETS
+/* print all but the local keepalives */
+if ((m.process != 0) || (m.msize != 32) || (! r.sock->is_local))
+printf ("ad.c process msize %d, %s: %s\n", m.msize,
+((m.process == PROCESS_PACKET_ALL) ? "forward local+out" :
+ ((m.process & PROCESS_PACKET_LOCAL) ? "forward local" :
+  ((m.process & PROCESS_PACKET_OUT) ? "forward out" : "do not forward"))),
+ m.debug_reason);
+#endif /* LOG_PACKETS */
     if (m.process & PROCESS_PACKET_LOCAL)
       socket_send_local (&sockets, m.message, m.msize, m.priority,
                          virtual_clock, r.from, r.alen);
@@ -846,6 +961,12 @@ print_socket_set (&sockets);
     }
     update_virtual_clock ();
     update_dht ();
+#ifdef LOG_STATE
+    printf ("=============================================================\n");
+    print_dht (0);
+    printf ("=\n");
+    print_socket_global_addrs (&sockets);
+#endif /* LOG_STATE */
   }
 }
 
