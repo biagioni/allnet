@@ -145,7 +145,8 @@ extern int socket_send_to_ip (int sockfd, const char * message, int msize,
  * returns the number of messages sent
  * if the keepalive is being sent through the internet,
  * sender and receiver authentications
- * are copied into each keepalive before it is sent */ 
+ * are copied into each keepalive before it is sent
+ * do NOT send keepalives to broadcast addresses */
 extern int socket_send_keepalives (struct socket_set * s,
                                    long long int current_time,
                                    long long int local, long long int remote);
@@ -159,5 +160,6 @@ extern int socket_create_bind (struct socket_set * s, int is_local,
 
 /* for debugging */
 extern void print_socket_set (struct socket_set * s);
+extern void print_socket_global_addrs (struct socket_set * s);
 
 #endif /* ALLNET_SOCKETS_H */

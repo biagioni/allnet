@@ -107,6 +107,22 @@ void print_socket_set (struct socket_set * s)
   }
 }
 
+void print_socket_global_addrs (struct socket_set * s)
+{
+  int si;
+  for (si = 0; si < s->num_sockets; si++) {
+    struct socket_address_set * sas = &(s->sockets [si]);
+    if ((sas->is_global_v6) || (sas->is_global_v4)) {
+      int ai;
+      for (ai = 0; ai < sas->num_addrs; ai++) {
+        struct socket_address_validity * sav = &(sas->send_addrs [ai]);
+        print_sockaddr ((struct sockaddr *) (&(sav->addr)), sav->alen);
+        printf ("\n");
+      }
+    }
+  }
+}
+
 void check_sav (struct socket_address_validity * sav, const char * desc)
 {
   if ((sav->alen > sizeof (sav->addr)) ||
@@ -139,6 +155,12 @@ static int socket_sock_loop_locked (struct socket_set * s,
   for (si = 0; si < s->num_sockets; si++) {
     struct socket_address_set * sas = &(s->sockets [si]);
     if (! f (sas, ref)) {  /* delete this element */
+#ifdef DEBUG_PRINT
+      if (! sas->is_broadcast)
+        printf ("deleting socket %d, l %d, 4 %d, 6 %d, b %d, %d addrs\n",
+                sas->sockfd, sas->is_local, sas->is_global_v4,
+                sas->is_global_v6, sas->is_broadcast, sas->num_addrs);
+#endif /* DEBUG_PRINT */
       close (sas->sockfd);
       count++;
       /* compress the array to replace the deleted element */
@@ -171,6 +193,11 @@ static int socket_addr_loop_locked (struct socket_set * s,
       struct socket_address_validity * sav = sas->send_addrs + ai;
 check_sav (sav, "socket_addr_loop");
       if (! f (sas, sav, ref)) {  /* delete this element */
+#ifdef DEBUG_PRINT
+        printf ("deleting address: ");
+        print_sockaddr ((struct sockaddr *) &(sav->addr), sav->alen);
+        printf ("\n");
+#endif /* DEBUG_PRINT */
         count++;
         /* compress the array to replace the deleted element */
         int aim;
@@ -554,6 +581,11 @@ check_sav (sav, "send_on_socket");
 #ifdef MSG_NOSIGNAL
   flags = MSG_NOSIGNAL;
 #endif /* MSG_NOSIGNAL */
+#ifdef LOG_PACKETS
+  printf ("send_sock sending %d bytes to ", msize);
+  print_sockaddr ((struct sockaddr *) (&(sav->addr)), sav->alen);
+  printf ("\n");
+#endif /* LOG_PACKETS */
   ssize_t result = sendto (sockfd, message, msize, flags,
                            (struct sockaddr *) (&(sav->addr)), sav->alen);
   if (result == msize) {
@@ -712,6 +744,11 @@ int socket_send_to_ip (int sockfd, const char * message, int msize,
 #ifdef MSG_NOSIGNAL
   flags = MSG_NOSIGNAL;
 #endif /* MSG_NOSIGNAL */
+#ifdef LOG_PACKETS
+  printf ("send_ip sending %d bytes to ", msize);
+  print_sockaddr ((struct sockaddr *) (&sas), alen);
+  printf ("\n");
+#endif /* LOG_PACKETS */
   ssize_t result = sendto (sockfd, message, msize, flags,
                            (struct sockaddr *) (&sas), alen);
   if (result == msize)
@@ -729,12 +766,14 @@ int socket_send_to_ip (int sockfd, const char * message, int msize,
  * returns the number of messages sent
  * if the keepalive is being sent through the internet,
  * sender and receiver authentications
- * are copied into each keepalive before it is sent */ 
+ * are copied into each keepalive before it is sent
+ * do NOT send keepalives to broadcast addresses */
 int socket_send_keepalives (struct socket_set * s, long long int current_time,
                             long long int local, long long int remote)
 {
   int count = 0;
   unsigned int msize;
+  /* the basic keepalive, only sent to local processes */
   const char * message = keepalive_packet (&msize); /* small, w/o auth */
   char message_with_priority [ALLNET_MTU + 2];
   if (local)
@@ -744,6 +783,9 @@ int socket_send_keepalives (struct socket_set * s, long long int current_time,
   int si;
   for (si = 0; si < s->num_sockets; si++) {
     struct socket_address_set * sas = &(s->sockets [si]);
+    if (sas->is_broadcast)
+      continue;
+    /* size and msg refer to either message (above) or auth_msg (below) */
     const char * msg = message;
     int size = msize;
     if (sas->is_local) {
@@ -756,6 +798,7 @@ int socket_send_keepalives (struct socket_set * s, long long int current_time,
 check_sav (sav, "socket_send_keepalives");
       char auth_msg [ALLNET_MTU];
       if (sas->is_global_v4 || sas->is_global_v6) {
+        /* an authenticating keepalive, specific to this destination */
         size = keepalive_auth (auth_msg, sizeof (auth_msg),
                                sav->addr, s->random_secret,
                                sizeof (s->random_secret), s->counter,
