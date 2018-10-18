@@ -144,63 +144,88 @@ static int already_listed (struct sockaddr_storage * sap,
 }
 
 /* run as a thread since getaddrinfo can be extremely slow (10's of seconds) */
+static void * init_one_default_dns (void * arg)
+{
+  int dns_index = *(int *) arg;
+  if ((dns_index < 0) || (dns_index >= NUM_DEFAULTS)) {
+    printf ("error: illegal DNS index %d, max %zd\n", dns_index, NUM_DEFAULTS);
+    return NULL;
+  }
+  char service [10];
+  snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
+  struct addrinfo * next;
+  int code = getaddrinfo (default_dns [dns_index], service, NULL, &next);
+  if (code == 0) {   /* getaddrinfo succeded */
+    struct addrinfo * original = next;  /* so we can free it */
+    while (next != NULL) {
+#ifdef DEBUG_PRINT
+      print_sockaddr (next->ai_addr, next->ai_addrlen);
+      printf ("\n");
+#endif /* DEBUG_PRINT */
+      struct sockaddr * sap = NULL;
+      if ((next->ai_family == AF_INET) && (ip4_defaults [dns_index].ss_family == 0))
+        sap = (struct sockaddr *) (&(ip4_defaults [dns_index]));
+      else if ((next->ai_family == AF_INET6) &&
+               (ip6_defaults [dns_index].ss_family == 0))
+        sap = (struct sockaddr *) (&(ip6_defaults [dns_index]));
+      else if ((next->ai_family != AF_INET) && (next->ai_family != AF_INET6))
+        printf ("init_default_dns: unknown address family %d (%d, %d)\n",
+                next->ai_family, ip4_defaults [dns_index].ss_family,
+                ip6_defaults [dns_index].ss_family);
+      if ((sap != NULL) &&
+          (next->ai_addrlen <= sizeof (struct sockaddr_storage)))
+        memcpy ((char *) sap, (char *) (next->ai_addr), next->ai_addrlen);
+      next = next->ai_next;
+    }
+    freeaddrinfo (original);
+  } else {
+    int print = 0;
+#ifdef DEBUG_PRINT
+    print = 1; /* print unconditionally */
+#endif /* DEBUG_PRINT */
+    if (print || (code != EAI_NONAME)) {
+      snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n",
+                default_dns [dns_index], gai_strerror (code));
+      log_print (alog);
+    }
+  }
+  return NULL;
+}
+
+/* run as a thread since getaddrinfo can be extremely slow (10's of seconds)
+ * in addition, run all of the getaddrinfo's in parallel, each in its thread */
 static void * init_default_dns (void * arg)
 {
   int * initialized = (int *) arg;
-  char service [10];
-  snprintf (service, sizeof (service), "%d", ALLNET_PORT);
   unsigned int i;
   /* begin connecting at a random position in the DNS array */
-  unsigned int random_offset = (unsigned int)(random_int (0, NUM_DEFAULTS - 1));
+  pthread_t threads [NUM_DEFAULTS];
+  int indices [NUM_DEFAULTS];
   for (i = 0; i < NUM_DEFAULTS; i++) {
     ip4_defaults [i].ss_family = 0;
     ip6_defaults [i].ss_family = 0;
-    struct addrinfo * next;
-    int dns_index = (random_offset + i) % NUM_DEFAULTS;
-    int code = getaddrinfo (default_dns [dns_index], service, NULL, &next);
-    if (code == 0) {   /* getaddrinfo succeded */
-      struct addrinfo * original = next;  /* so we can free it */
-      while (next != NULL) {
-#ifdef DEBUG_PRINT
-        print_sockaddr (next->ai_addr, next->ai_addrlen, -1);
-        printf ("\n");
-#endif /* DEBUG_PRINT */
-        struct sockaddr * sap = NULL;
-        if ((next->ai_family == AF_INET) && (ip4_defaults [i].ss_family == 0))
-          sap = (struct sockaddr *) (&(ip4_defaults [i]));
-        else if ((next->ai_family == AF_INET6) &&
-                 (ip6_defaults [i].ss_family == 0))
-          sap = (struct sockaddr *) (&(ip6_defaults [i]));
-        else if ((next->ai_family != AF_INET) && (next->ai_family != AF_INET6))
-          printf ("init_default_dns: unknown address family %d (%d, %d)\n",
-                  next->ai_family, ip4_defaults [i].ss_family,
-                  ip6_defaults [i].ss_family);
-        if ((sap != NULL) &&
-            (next->ai_addrlen <= sizeof (struct sockaddr_storage)))
-          memcpy ((char *) sap, (char *) (next->ai_addr), next->ai_addrlen);
-        next = next->ai_next;
-      }
-      freeaddrinfo (original);
-    } else {
-#ifdef DEBUG_PRINT
-      {   /* print unconditionally */
-#else /* ! DEBUG_PRINT */
-      if (code != EAI_NONAME) {
-#endif /* DEBUG_PRINT */
-        snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n",
-                  default_dns [dns_index], gai_strerror (code));
-        log_print (alog);
-      }
-    }
+    indices [i] = i;
+    pthread_create (&(threads [i]), NULL, init_one_default_dns,
+                    (void *) (&indices [i]));
   }
+  /* now wait for all the threads to finish */
+  for (i = 0; i < NUM_DEFAULTS; i++)
+    pthread_join (threads [i], NULL);
+
 #ifdef DEBUG_PRINT
   for (i = 0; i < NUM_DEFAULTS; i++) {
     printf ("%d: (4 and 6): ", i);
-    print_sockaddr ((struct sockaddr *) (&(ip4_defaults [i])),
-                    sizeof (struct sockaddr_in), -1);
-    printf (" ");
-    print_sockaddr ((struct sockaddr *) (&(ip6_defaults [i])),
-                    sizeof (struct sockaddr_in6), -1);
+    if (ip4_defaults [i].ss_family == 0)
+      printf ("no ipv4");
+    else
+      print_sockaddr ((struct sockaddr *) (&(ip4_defaults [i])),
+                      sizeof (struct sockaddr_in));
+    printf (", ");
+    if (ip6_defaults [i].ss_family == 0)
+      printf ("no ipv6");
+    else
+      print_sockaddr ((struct sockaddr *) (&(ip6_defaults [i])),
+                      sizeof (struct sockaddr_in6));
     printf ("\n");
   }
 #endif /* DEBUG_PRINT */
@@ -220,11 +245,8 @@ static void start_dns_thread ()
   if (dns_init == -1)  /* already running */
     return;
   dns_init = -1;   /* initialization in progress */
-  pthread_attr_t attr;
-  pthread_attr_init (&attr);
-  pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED);
   pthread_t thread;
-  pthread_create (&thread, &attr, init_default_dns, (void *) (&dns_init));
+  pthread_create (&thread, NULL, init_default_dns, (void *) (&dns_init));
   pthread_detach (thread);
 }
 
