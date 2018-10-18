@@ -326,7 +326,7 @@ missing_count++;
   }
 #ifdef DEBUG_FOR_DEVELOPER
 if (missing_count > 0)
-printf ("%s missing %d msgs, %d singles + %d ranges: ",
+printf ("%s missing %d msgs, %d singles + %d ranges\n",
 contact, missing_count, singles_used, ranges_used);
 #endif /* DEBUG_FOR_DEVELOPER */
   if ((singles_used == 0) && (ranges_used == 0))

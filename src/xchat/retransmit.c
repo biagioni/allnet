@@ -143,9 +143,6 @@ int send_retransmit_request (const char * contact, keyset k, int sock,
    * messages have been sent that are after the last one we've received */
   if (((msize == 0) || (rcvd_sequence == 0)) && ((random_int (1, 100)) <= 95))
     return 0;
-#ifdef DEBUG_FOR_DEVELOPER
-  if ((msize == 0) || (rcvd_sequence == 0)) printf ("95%%: ");
-#endif /* DEBUG_FOR_DEVELOPER */
 
   char request [ALLNET_MTU];
   int size = sizeof (request);
@@ -167,8 +164,8 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
   uint64_t last = readb64u (hp->last_received);
   if (counter >= last)
     return;
-  printf ("error: counter %ju < last_received %ju\n",
-          (uintmax_t)counter, (uintmax_t)last);
+  printf ("error: counter %ju < last_received %ju, contact %s/%d\n",
+          (uintmax_t)counter, (uintmax_t)last, contact, k);
   /* send an empty message, using the last missing sequence number */
   size_t cd_size = sizeof (struct chat_descriptor);
   size_t dsize = 1;  /* message is a single space, " " */

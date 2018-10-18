@@ -1767,9 +1767,6 @@ int debug3 = 0;
     result = 0;      /* unable to send to this contact */
     if (send_retransmit_request (contact, kset, sock,
                                  hops, ALLNET_PRIORITY_LOCAL_LOW, expiration)) {
-#ifdef DEBUG_FOR_DEVELOPER
-printf ("sent req for %s\n", contact);
-#endif /* DEBUG_FOR_DEVELOPER */
       last_retransmit = now;   /* sent something, update time */
       result = 1;    /* transmission successful */
 debug1++;
@@ -1848,18 +1845,15 @@ debug2++;
 	  prob_millionths = 86400000000LL / delta + 1;
           this_random = random_int (0, 1000000);
         }
-#ifdef DEBUG_FOR_DEVELOPER
-printf ("%s (%d/%d), key %d (%d/%d), last was %llds ago (%lldd), p %lld/%llu\n",
-ru_contact, ic, count, ru_kset, ik, nk, delta, delta / 86400,
-prob_millionths, this_random);
-#endif /* DEBUG_FOR_DEVELOPER */
         if (prob_millionths > this_random) {
 #ifdef DEBUG_PRINT
           printf ("resending unacked to contact %s\n", ru_contact);
 #endif /* DEBUG_PRINT */
           if (resend_unacked (ru_contact, ru_kset, sock, hops,
                               ALLNET_PRIORITY_LOCAL_LOW, 10) > 0) {
+#ifdef DEBUG_FOR_DEVELOPER
 printf ("resent unacked to contact %s\n", ru_contact);
+#endif /* DEBUG_FOR_DEVELOPER */
             last_resend = now;
             if (result != 1)
               result = 2;
