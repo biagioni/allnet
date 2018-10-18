@@ -23,6 +23,7 @@
 #include "util.h"
 #include "sha.h"
 #include "priority.h"
+#include "sockets.h"
 #include "crypt_sel.h"
 
 #ifdef ALLNET_USE_FORK
@@ -133,18 +134,21 @@ static int send_with_priority (const char * message, int msize, unsigned int p)
     printf ("crashing %d\n", *pq);
     return 0;
   }
-  char * copy = malloc_or_fail (msize + 2, "app_util.c send_with_priority");
+  char copy [SOCKET_READ_MIN_BUFFER];
+  if (msize + 4 > SOCKET_READ_MIN_BUFFER) {
+    printf ("error: illegal app_util.c/send_with_priority size %d\n", msize);
+    return 0;
+  }
   memcpy (copy, message, msize);
-  writeb16 (copy + msize, p);
-  ssize_t s = sendto (internal_sockfd, copy, msize + 2, 0, sap, alen);
+  writeb32 (copy + msize, p);
+  ssize_t s = sendto (internal_sockfd, copy, msize + 4, 0, sap, alen);
   if ((s < 0) && (internal_print_send_errors)) {
 int e = errno;
     perror ("send_with_priority send");
 printf ("send (%d, %p, %d, 0): result %zd, errno %d\n",
-internal_sockfd, copy, msize + 2, s, e);
+internal_sockfd, copy, msize + 4, s, e);
   }
-  free (copy);
-  return (s == (msize + 2));
+  return (s == (msize + 4));
 }
 
 /* send a keepalive unless we have sent messages in the last 5s */
@@ -382,17 +386,17 @@ int local_receive (unsigned int timeout,
   } else {               /* keepalive_count > 0 */
     keepalive_count--;
   }
-  char buffer [ALLNET_MTU + 2];
+  char buffer [ALLNET_MTU + 4];
   int flags = MSG_DONTWAIT;
   unsigned long long int loop_count = 0;
   while (allnet_time () < last_rcvd + 10 * KEEPALIVE_SECONDS) {
     loop_count++;
     ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
-    if ((r > 2) && (r <= ALLNET_MTU + 2)) {
-      *message = memcpy_malloc (buffer, r - 2, "local_receive");
-      *priority = readb16 (buffer + (r - 2));
+    if ((r > 4) && (r <= ALLNET_MTU + 4)) {
+      *message = memcpy_malloc (buffer, r - 4, "local_receive");
+      *priority = readb32 (buffer + (r - 4));
       last_rcvd = allnet_time ();
-      return (int)(r - 2);
+      return (int)(r - 4);
     }
     if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
       perror ("local_receive recv");

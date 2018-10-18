@@ -137,14 +137,14 @@ void check_sav (struct socket_address_validity * sav, const char * desc)
 static void add_priority (const char * message, int msize, unsigned int p,
                           char * buffer, int bsize)
 {
-  int new_size = msize + 2;
+  int new_size = msize + 4;
   if (new_size > bsize) {
-    printf ("add_priority error: new size %d = %d + 2 > buffer size %d\n",
+    printf ("add_priority error: new size %d = %d + 4 > buffer size %d\n",
             new_size, msize, bsize);
     exit (1);
   }
   memcpy (buffer, message, msize);
-  writeb16 (buffer + msize, p);
+  writeb32 (buffer + msize, p);
 }
 
 static int socket_sock_loop_locked (struct socket_set * s,
@@ -424,10 +424,10 @@ static struct socket_read_result
                   char * buffer, int rcvd, int auth)
 {
   int is_local = sock->is_local;
-  int delta = (is_local ? 2 : 0);    /* local packets have priority also */
+  int delta = (is_local ? 4 : 0);    /* local packets have priority also */
   assert (rcvd >= ((ssize_t) (ALLNET_HEADER_SIZE + delta)));
   int msize = rcvd - delta;
-  int priority = (is_local ? readb16 (buffer + msize) : 1);
+  int priority = (is_local ? readb32 (buffer + msize) : 1);
   int is_new = 0;
   int recv_limit_reached = 0;
   struct socket_address_validity * sav = NULL;
@@ -655,10 +655,10 @@ int socket_send_local (struct socket_set * s, const char * message, int msize,
                        unsigned int priority, unsigned long long int sent_time,
                        struct sockaddr_storage except_to, socklen_t alen)
 {
-  char buffer [ALLNET_MTU + 2];
+  char buffer [ALLNET_MTU + 4];
   add_priority (message, msize, priority, buffer, sizeof (buffer));
   struct socket_send_data ssd =
-    { .message = buffer, .msize = msize + 2,
+    { .message = buffer, .msize = msize + 4,
       .sent_time = sent_time, .alen = alen, .local_not_remote = 1, .error = 0 };
   memset (&(ssd.except_to), 0, sizeof (ssd.except_to));
   if ((alen > 0) && (alen < sizeof (except_to)))
@@ -719,11 +719,11 @@ int socket_send_to (const char * message, int msize, unsigned int priority,
 {
 check_sav (addr, "socket_send_to");
   lock ("socket_send_to");
-  char buffer [ALLNET_MTU + 2]; /* local: copy message to the buffer */
+  char buffer [ALLNET_MTU + 4]; /* local: copy message to the buffer */
   if (sock->is_local) {
     add_priority (message, msize, priority, buffer, sizeof (buffer));
     message = buffer;
-    msize += 2;
+    msize += 4;
   }
   int result = send_on_socket (message, msize, sent_time, sock->sockfd, addr,
                                "socket_send_to", NULL, -1, -1);
@@ -775,11 +775,11 @@ int socket_send_keepalives (struct socket_set * s, long long int current_time,
   unsigned int msize;
   /* the basic keepalive, only sent to local processes */
   const char * message = keepalive_packet (&msize); /* small, w/o auth */
-  char message_with_priority [ALLNET_MTU + 2];
+  char message_with_priority [ALLNET_MTU + 4];
   if (local)
     add_priority (message, msize, ALLNET_PRIORITY_EPSILON,
                   message_with_priority, sizeof (message_with_priority));
-  int msize_local = msize + 2;
+  int msize_local = msize + 4;
   int si;
   for (si = 0; si < s->num_sockets; si++) {
     struct socket_address_set * sas = &(s->sockets [si]);

@@ -241,11 +241,11 @@ static void send_ack (const char * ack, const struct allnet_header * hp,
                       int sockfd, struct sockaddr_storage addr, socklen_t alen,
                       int is_local)
 {
-  char message [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE + 2];
+  char message [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE + 4];
   int msize = sizeof (message);
-  int expected_allnet_size = msize - 2;  /* the size without priority */
+  int expected_allnet_size = msize - 4;  /* the size without priority */
   if (! is_local)
-    msize -= 2;
+    msize -= 4;
   unsigned int size = 0;
   init_ack (hp, (const unsigned char *) ack, NULL, ADDRESS_BITS,
             message, &size);
@@ -253,7 +253,7 @@ static void send_ack (const char * ack, const struct allnet_header * hp,
     printf ("send_ack: %d != actual size %d, l %d\n",
             expected_allnet_size, size, is_local);
   if (is_local)
-    writeb16 (message + (sizeof (message) - 2), ALLNET_PRIORITY_LOCAL);
+    writeb32 (message + (sizeof (message) - 4), ALLNET_PRIORITY_LOCAL);
   /* send this ack back to the sender, no need to ack more widely */
   socket_send_to_ip (sockfd, message, msize, addr, alen, "ad.c/send_ack");
 }
@@ -938,7 +938,8 @@ printf ("\n");
 #ifdef LOG_PACKETS
 /* print all but the local keepalives */
 if ((m.process != 0) || (m.msize != 32) || (! r.sock->is_local))
-printf ("ad.c process msize %d, %s: %s\n", m.msize,
+printf ("ad.c process msize %d, priority %08x >=? %08x %s: %s\n",
+m.msize, m.priority, priority_threshold,
 ((m.process == PROCESS_PACKET_ALL) ? "forward local+out" :
  ((m.process & PROCESS_PACKET_LOCAL) ? "forward local" :
   ((m.process & PROCESS_PACKET_OUT) ? "forward out" : "do not forward"))),

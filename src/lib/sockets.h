@@ -96,7 +96,7 @@ struct socket_read_result {
  * returns success = 1 and fields should be valid, and
  * updates the socket_address_validity's alive_rcvd to rcvd_time.
  * the pointers point into the socket_set or buffer, do not free.
- * the buffer must have size at least ALLNET_MTU + 2 (the + 2 is important!)
+ * the buffer must have size at least ALLNET_MTU + 4 (the + 4 is important!)
  * special cases of "success": 
  *   if the address is not found in the socket set, socket_address_is_new
  *   is 1 (otherwise 0) and sav is NULL.
@@ -106,7 +106,7 @@ struct socket_read_result {
  * if success is 0, the pointers are NULL and the call timed out.
  * if success is -1, the sock pointer is either NULL or points to a socket
  *   that is no longer valid, and the other pointers are NULL */
-#define SOCKET_READ_MIN_BUFFER	(ALLNET_MTU + 2)
+#define SOCKET_READ_MIN_BUFFER	(ALLNET_MTU + 4)
 extern struct socket_read_result socket_read (struct socket_set * s,
                                               char * buffer, int timeout,
                                               long long int rcvd_time);
