@@ -288,7 +288,7 @@ if ((readb16 (message + hsize + esize + ssize) != 512)) print_buffer (message, m
   int result = local_send (message, msize, priority);
   free (message);
   if (! result) {
-    perror ("send_pipe_message_free");
+    perror ("local_send");
     printf ("unable to send packet to %s, key %d, socket %d\n",
             contact, k, sock);
     result = 0;  /* still save if possible */
