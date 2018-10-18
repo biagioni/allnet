@@ -824,7 +824,7 @@ int print_sockaddr_str (const struct sockaddr * sap, socklen_t addr_size,
   case AF_PACKET:
     n += snprintf (s + n, minz (len, n),
                    "packet protocol 0x%x if %d ha %d pkt %d address (%d)",
-                   sll->sll_protocol, sll->sll_ifindex, sll->sll_hatype,
+                   ntohs (sll->sll_protocol), sll->sll_ifindex, sll->sll_hatype,
                    sll->sll_pkttype, sll->sll_halen);
     for (i = 0; i < sll->sll_halen; i++)
       n += snprintf (s + n, minz (len, n), " %02x", sll->sll_addr [i] & 0xff);
