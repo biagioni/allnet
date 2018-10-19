@@ -103,7 +103,7 @@ int main (int argc, char ** argv)
     int i;
     keyset * keys = NULL;
     int nkeys = all_keys (contact, &keys);
-    if ((argc > 2) && (nkeys > 0)) {
+    if (nkeys > 0) {
       int max_key = 0;
       for (i = 0; i < nkeys; i++) {
         allnet_rsa_prvkey key;
@@ -111,7 +111,7 @@ int main (int argc, char ** argv)
         if (ksize > max_key)
           max_key = ksize;
       }
-      static char text [ALLNET_MTU];
+      static char text [ALLNET_MTU] = "";
       int size = sizeof (text) - CHAT_DESCRIPTOR_SIZE -
                  ALLNET_SIZE (ALLNET_TRANSPORT_ACK_REQ) -
                  max_key; /* the maximum size of a signature */
@@ -123,13 +123,20 @@ int main (int argc, char ** argv)
         p += n;
         size -= n;
       }
-  /*  printf ("sending %d chars: '%s'\n", printed, text); */
-      sent_seq = send_data_message (sock, contact, text, printed);
-      if (sent_seq == 0)
-        printf ("error sending message\n");
-      ack_expected = 1;
-      free (keys);
-    } else if (nkeys > 0) {
+      if ((printed == 0) || (strlen (text) == 0)) {  /* read from stdin */
+        int c = '\0';
+        while ((printed + 1 < size) && ((c = getchar ()) != EOF))
+          text [printed++] = c;
+        text [printed] = '\0';  /* make it into a valid C string */
+      }
+   /* printf ("sending %d chars: '%s'\n", printed, text); */
+      if ((printed > 0) && (strlen (text) >= 0)) {  /* read from stdin */
+        sent_seq = send_data_message (sock, contact, text, printed);
+        if (sent_seq == 0)
+          printf ("error sending message\n");
+        ack_expected = 1;
+      } else
+        printf ("no content to send, not sending message\n");
       free (keys);
     } else if (nkeys == 0) {
       printf ("error: no keys for contact '%s'\n", contact);
