@@ -1,6 +1,9 @@
 /* arems.c: execute command from trusted remote senders (Allnet REMote Shell) */
 /* invoke as "arems -s sender1 sender2 ... senderN" to invoke as a server */
 /* invoke as "arems receiver command" to invoke as a client */
+/* commands and responses are sent with a per-contact counter (persistently
+ * kept in ~/.allnet/contacts/.../arems_counter).  Only new counter values
+ * will be executed, older commands are ignored. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +28,84 @@
 #define MAX_STRING_LENGTH	450  /* maximum length of command or response */
 #define MEDIA_ID	ALLNET_MEDIA_TEXT_PLAIN
 #define APP_ID		"REMS"
+#define COUNTER_SIZE	8
+
+struct arems_header {
+  unsigned char message_ack [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
+  struct allnet_app_media_header app_media;
+#define COUNTER_TYPE_LOCAL	8  /* commands we send, responses we receive */
+#define COUNTER_TYPE_REMOTE	9  /* commands we receive, responses we send */
+  unsigned char counter     [   COUNTER_SIZE];
+#define MESSAGE_TYPE_COMMAND	1  /* commands we send or receive */
+#define MESSAGE_TYPE_RESPONSE	2  /* responses we send or receive */
+  unsigned char type;       /* 1 for command, 2 for response */
+  unsigned char padding     [7];
+};
+
+/* returns -1 in case of errors */
+static long long int get_counter (const char * contact, keyset k, int ctype)
+{
+  char * kd = key_dir (k);
+  if (kd == NULL) {
+    printf ("get_counter: key_dir is NULL for %d\n", k);
+    return -1;
+  }
+  char fname [PATH_MAX];
+  snprintf (fname, sizeof (fname), "%s/arems_counter", kd);
+  free (kd);
+  char * content = NULL;
+  int csize = read_file_malloc (fname, &content, 1);
+  if (csize <= 0)
+    return -1;
+  char copy [100];
+  if (csize >= sizeof (copy)) {
+    printf ("error: arems_counter file has size %d\n", csize);
+    return -1;
+  }
+  memcpy (copy, content, csize);
+  copy [csize] = '\0';
+  long long int local_counter;
+  long long int remote_counter;
+  int found = sscanf (copy, "%lld %lld", &local_counter, &remote_counter);
+  if (found == 2) {
+    if (ctype == COUNTER_TYPE_LOCAL)
+      return local_counter;
+    else if (ctype == COUNTER_TYPE_REMOTE)
+      return remote_counter;
+  }
+  printf ("error: arems_counter copy '%s', found %d\n", copy, found);
+  return -1;
+}
+
+static void save_counter (const char * contact, keyset k, long long int counter,
+                          int ctype)
+{
+  long long int local_counter = 0;
+  long long int remote_counter = 0;
+  if (ctype == COUNTER_TYPE_LOCAL) {
+    local_counter  = counter;
+    remote_counter = get_counter (contact, k, COUNTER_TYPE_REMOTE);
+  } else {
+    local_counter  = get_counter (contact, k, COUNTER_TYPE_LOCAL );
+    remote_counter = counter;
+  }
+  if (remote_counter < 0) remote_counter = 0;
+  if (local_counter  < 0) local_counter  = 0;
+  char * kd = key_dir (k);
+  if (kd == NULL) {
+    printf ("save_counter: key_dir is NULL for %d\n", k);
+    return;
+  }
+  char fname [PATH_MAX];
+  snprintf (fname, sizeof (fname), "%s/arems_counter", kd);
+  free (kd);
+  char content [100];
+  snprintf (content, sizeof (content),
+            "%lld %lld", local_counter, remote_counter);
+  write_file (fname, content, strlen (content), 1);
+}
+
+static int command_timeout = 5;     /* time out commands after 5s by default */
 
 /* returns a pointer to the start of the allnet payload,
  * after the message ack if any, or NULL in case of errors */
@@ -44,7 +125,7 @@ static char * send_ack (struct allnet_header * hp, int msize)
   if (ackp == NULL)
     return result;
   local_send ((char *) ackp, size, ALLNET_PRIORITY_LOCAL);
-print_buffer (message_ack, MESSAGE_ID_SIZE, "sent ack", 8, 1);
+/* print_buffer (message_ack, MESSAGE_ID_SIZE, "sent ack", 8, 1); */
   return result;
 }
 
@@ -92,6 +173,7 @@ syslog (syslog_option, "sending response: '%s'\n", result);
 }
 
 static void encrypt_sign_send (const char * data, int dsize, int hops,
+                               long long int counter, int message_type,
                                const char * contact, keyset k)
 {
   allnet_rsa_prvkey priv_key;
@@ -103,15 +185,19 @@ static void encrypt_sign_send (const char * data, int dsize, int hops,
             k, contact, priv_ksize, ksize);
     return;
   }
-  struct allnet_app_media_header amh;
-  memcpy (amh.app, APP_ID, sizeof (amh.app));
-  writeb32u (amh.media, MEDIA_ID);
-  char data_with_amh [MAX_STRING_LENGTH + sizeof (amh)];
-  memcpy (data_with_amh, &amh, sizeof (amh));
-  memcpy (data_with_amh + sizeof (amh), data, dsize);
+  struct arems_header ah;
+  memset (&ah, 0, sizeof (ah));
+  random_bytes ((char *)ah.message_ack, sizeof (ah.message_ack));
+  memcpy (ah.app_media.app, APP_ID, sizeof (ah.app_media.app));
+  writeb32u (ah.app_media.media, MEDIA_ID);
+  writeb64u (ah.counter, counter);
+  ah.type = message_type;
+  char data_with_ah [MAX_STRING_LENGTH + sizeof (ah)];
+  memcpy (data_with_ah, &ah, sizeof (ah));
+  memcpy (data_with_ah + sizeof (ah), data, dsize);
   char * encrypted = NULL;
   char * signature = NULL;
-  int esize = allnet_encrypt (data_with_amh, dsize + sizeof (amh), key,
+  int esize = allnet_encrypt (data_with_ah, dsize + sizeof (ah), key,
                               &encrypted);
   if (esize == 0) {
     printf ("unable to encrypt, contact %s key %d, data %p %d bytes\n",
@@ -125,17 +211,21 @@ static void encrypt_sign_send (const char * data, int dsize, int hops,
     return;
   } /* else, create a packet and send it */
   int payload_size = esize + ssize + 2;
-  /* note if we ever add acks: if ack is not NULL, init_packet adds
-   * MESSAGE_ID_SIZE to the size, so we should subtract it from payload_size */
+  /* init_packet adds MESSAGE_ID_SIZE to the size for the ack */
   char buffer [ALLNET_MTU];
+  unsigned char ack [MESSAGE_ID_SIZE];
+  random_bytes ((char *)ack, sizeof (ack));
   unsigned char local_address [ADDRESS_SIZE];
   unsigned char remote_address [ADDRESS_SIZE];
   int sbits = get_local (k, local_address);
   int dbits = get_remote (k, remote_address);
   struct allnet_header * hp =
-    init_packet (buffer, payload_size, ALLNET_TYPE_DATA, hops,
-                 ALLNET_SIGTYPE_RSA_PKCS1,
-                 local_address, sbits, remote_address, dbits, NULL, NULL);
+    init_packet (buffer, payload_size + ALLNET_TIME_SIZE, ALLNET_TYPE_DATA,
+                 hops, ALLNET_SIGTYPE_RSA_PKCS1,
+                 local_address, sbits, remote_address, dbits, NULL, ack);
+  hp->transport = hp->transport | ALLNET_TRANSPORT_EXPIRATION;
+  writeb64 (ALLNET_EXPIRATION (hp, hp->transport, sizeof (buffer)),
+            allnet_time () + command_timeout);
   char * payload = buffer + ALLNET_SIZE (hp->transport);
   memcpy (payload, encrypted, esize);
   memcpy (payload + esize, signature, ssize);
@@ -152,10 +242,12 @@ static void encrypt_sign_send (const char * data, int dsize, int hops,
  * hops is the number of hops visited by the incoming packet. */
 typedef int (* received_packet_handler) (void * state,
                                          const char * data, int dsize, int hops,
+                                         long long int counter,
                                          const char * contact, keyset k);
 
 /* timeout is in ms, -1 to never time out */
 static void receive_packet_loop (received_packet_handler handler, void * state,
+                                 int mtype,
                                  char ** authorized, int nauth, int timeout)
 {
   long long int quitting_time = allnet_time_ms () + timeout;
@@ -200,27 +292,35 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
           printf ("got message from %s, who is not authorized\n", contact);
           continue;   /* next packet, please */
         }
-        char * p = text + ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) ?
-                           MESSAGE_ID_SIZE : 0);
-        struct allnet_app_media_header * amhp =
-          (struct allnet_app_media_header *) p;
-        if ((memcmp (amhp->app, APP_ID, sizeof (amhp->app)) != 0) ||
-            (readb32u (amhp->media) != MEDIA_ID)) {
+        struct arems_header * ahp = (struct arems_header *) text;
+        if ((memcmp (ahp->app_media.app, APP_ID,
+                     sizeof (ahp->app_media.app)) != 0) ||
+            (readb32u (ahp->app_media.media) != MEDIA_ID)) {
           char print_app [5];
-          memcpy (print_app, amhp->app, 4);
+          memcpy (print_app, ahp->app_media.app, 4);
           print_app [4] = '\0';
-          printf ("from %s unexpected app %s media %ld, expected %s %d\n",
-                  contact, print_app, readb32u (amhp->media), APP_ID, MEDIA_ID);
+          printf ("from %s unexpected app %s media %lx, expected %s %x\n",
+                  contact, print_app, readb32u (ahp->app_media.media),
+                  APP_ID, MEDIA_ID);
+          continue;   /* next packet, please */
+        }
+        if (ahp->type != mtype) {
+          printf ("got message type %d, expected %d\n", ahp->type, mtype);
           continue;   /* next packet, please */
         }
         send_ack (hp, msize);
+        if (readb64u (ahp->counter) < 0) {
+          printf ("got negative counter %lld\n", readb64u (ahp->counter));
+          continue;   /* next packet, please */
+        }
         char string [ALLNET_MTU + 1];  /* a null-terminated C string */
-        memcpy (string, text + sizeof (struct allnet_app_media_header),
-                tsize - sizeof (struct allnet_app_media_header));
-        string [tsize - sizeof (struct allnet_app_media_header)] = '\0';
-        /* printf ("got %d-byte message '%s' from %s/%d\n",
-                tsize, string, contact, k); */
-        if (handler (state, string, strlen (string), hp->hops, contact, k))
+        int stsize = tsize - sizeof (struct arems_header);
+        memcpy (string, text + sizeof (struct arems_header), stsize);
+        string [stsize] = '\0';
+        /* printf ("got %d/%d-byte message '%s' from %s/%d, counter %lld\n",
+                tsize, stsize, string, contact, k, readb64u (ahp->counter)); */
+        if (handler (state, string, strlen (string), hp->hops,
+                     readb64u (ahp->counter), contact, k))
           break;
         free (text);
         free (contact);
@@ -231,22 +331,19 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
 
 static int client_handler (void * state, /* ignored for now */
                            const char * data, int dsize, int hops,
+                           long long int counter,
                            const char * contact, keyset k)
 {
+  long long int last_counter = get_counter (contact, k, COUNTER_TYPE_LOCAL);
+  if (counter != last_counter) {
+    printf ("client_handler: received counter %lld, expected %lld\n",
+            counter, last_counter);
+    return 0;  /* continue the loop */
+  }
   int * timed_out = (int *) state;
   printf ("from %s got response:\n%s", contact, data);
   *timed_out = 0;
-  return 1;  /* exit */
-}
-
-static int server_handler (void * state, /* ignored for now */
-                           const char * data, int dsize, int hops,
-                           const char * contact, keyset k)
-{
-  char result [MAX_STRING_LENGTH];
-  int rsize = my_system (data, result, sizeof (result), contact);
-  encrypt_sign_send (result, rsize, hops + 2, contact, k);
-  return 0;  /* continue the loop */
+  return 1;    /* exit the loop*/
 }
 
 static void client_rpc (const char * data, int dsize, char * contact)
@@ -259,17 +356,41 @@ static void client_rpc (const char * data, int dsize, char * contact)
             contact, nkeys);
     return;
   }
-  encrypt_sign_send (data, dsize, 10, contact, k [0]);
+  long long int counter = get_counter (contact, k [0], COUNTER_TYPE_LOCAL) + 1;
+  if (counter < 0)
+    counter = 0;
+  save_counter (contact, k [0], counter, COUNTER_TYPE_LOCAL);
+  encrypt_sign_send (data, dsize, 10, counter, MESSAGE_TYPE_COMMAND,
+                     contact, k [0]);
   char * authorized [1] = { contact };
-  int timed_out = 1;
-  receive_packet_loop (&client_handler, &timed_out, authorized, 1, 5000);
+  int timed_out = 1;   /* if nothing happens, we time out */
+  receive_packet_loop (&client_handler, &timed_out, MESSAGE_TYPE_RESPONSE,
+                       authorized, 1, command_timeout * 1000);
   if (timed_out)
-    printf ("command timed out after 5 seconds\n");
+    printf ("command timed out after %d seconds\n", command_timeout);
+}
+
+static int server_handler (void * state, /* ignored for now */
+                           const char * data, int dsize, int hops,
+                           long long int counter,
+                           const char * contact, keyset k)
+{
+  long long int last_counter = get_counter (contact, k, COUNTER_TYPE_REMOTE);
+  if ((last_counter < 0) || (counter > last_counter)) {
+    char result [MAX_STRING_LENGTH];
+    int rsize = my_system (data, result, sizeof (result), contact);
+    save_counter (contact, k, counter, COUNTER_TYPE_REMOTE);
+    encrypt_sign_send (result, rsize, hops + 2, counter,
+                       MESSAGE_TYPE_RESPONSE, contact, k);
+  } else if (counter <= last_counter)
+    printf ("got duplicate counter %lld, latest %lld\n", counter, last_counter);
+  return 0;     /* continue the loop */
 }
 
 static void server_loop (char ** const authorized, int nauth)
 {
-  receive_packet_loop (&server_handler, NULL, authorized, nauth, -1);
+  receive_packet_loop (&server_handler, NULL, MESSAGE_TYPE_COMMAND,
+                       authorized, nauth, -1);
 }
 
 /* if it is a server, returns the updated list of authorized users
