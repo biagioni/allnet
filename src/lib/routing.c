@@ -13,6 +13,7 @@
 #include <net/if.h>
 #include <arpa/inet.h>
 
+#include "routing.h"
 #include "packet.h"
 #include "mgmt.h"
 #include "util.h"
@@ -45,11 +46,11 @@ static char my_address [ADDRESS_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0};
 /* some of these domain names may not be defined, but at least some should be */
 /* in case DNS is broken, we include the current IPv4 address for alnt.org */
 static char * default_dns [] =
-  { "a0.alnt.org", "108.161.130.251",
-    "a1.alnt.org", "a2.alnt.org", "a3.alnt.org",
+  { "a0.alnt.org", "a1.alnt.org", "a2.alnt.org", "a3.alnt.org",
     "a4.alnt.org", "a5.alnt.org", "a6.alnt.org", "a7.alnt.org",
     "a8.alnt.org", "a9.alnt.org", "aa.alnt.org", "ab.alnt.org",
-    "ac.alnt.org", "ad.alnt.org", "ae.alnt.org", "af.alnt.org" };
+    "ac.alnt.org", "ad.alnt.org", "ae.alnt.org", "af.alnt.org",
+    "108.161.130.251" };
 #define NUM_DEFAULTS	((sizeof (default_dns)) / (sizeof (char *)))
 struct sockaddr_storage ip4_defaults [NUM_DEFAULTS];
 struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
@@ -71,8 +72,12 @@ static struct allnet_log * alog = NULL;
 #define PEER_SAVE_TIME		86400
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
 
-void print_dht (int to_log)
+/* fd is -1 to print to the log, 0 to print to stdout,
+ * and a valid fd otherwise */
+void print_dht (int fd)
 {
+  if (fd == 0)
+    fd = STDOUT_FILENO;
   if ((dns_init <= 0) || (alog == NULL)) {  /* not initialized */
 #ifdef DEBUG_PRINT
     printf ("print_dht called before initialization, state %d, alog %p\n",
@@ -88,17 +93,17 @@ void print_dht (int to_log)
   int n = snprintf (alog->b, alog->s, "%d peers: ", npeers);
   buffer_to_string (my_address, ADDRESS_SIZE, "my address is",
                     ADDRESS_SIZE, 1, alog->b + n, alog->s - n);
-  if (to_log) log_print (alog); else printf ("%s", alog->b);
+  if (fd < 0) log_print (alog); else dprintf (fd, "%s", alog->b);
   for (i = 0; i < MAX_PEERS; i++) {
     if (peers [i].ai.nbits != 0) {
       n = snprintf (alog->b, alog->s, "%3d (%d): ", i, peers [i].refreshed);
       addr_info_to_string (&(peers [i].ai), alog->b + n, alog->s - n);
-      if (to_log) log_print (alog); else printf ("%s", alog->b);
+      if (fd < 0) log_print (alog); else dprintf (fd, "%s", alog->b);
     }
   }
 }
 
-void print_ping_list (int to_log)
+void print_ping_list (int fd)
 {
   if ((dns_init <= 0) || (alog == NULL)) {  /* not initialized */
 #ifdef DEBUG_PRINT
@@ -107,18 +112,20 @@ void print_ping_list (int to_log)
 #endif /* DEBUG_PRINT */
     return;
   }
+  if (fd == 0)
+    fd = STDOUT_FILENO;
   int i, n;
   int count = 0;
   for (i = 0; i < MAX_PINGS; i++)
     if (pings [i].ai.nbits > 0)
       count++;
   snprintf (alog->b, alog->s, "pings: %d\n", count);
-  if (to_log) log_print (alog); else printf ("%s", alog->b);
+  if (fd < 0) log_print (alog); else dprintf (fd, "%s", alog->b);
   for (i = 0; i < MAX_PINGS; i++) {
     if (pings [i].ai.nbits > 0) {
       n = snprintf (alog->b, alog->s, "%3d (%d): ", i, pings [i].refreshed);
       addr_info_to_string (&(pings [i].ai), alog->b + n, alog->s - n);
-      if (to_log) log_print (alog); else printf ("%s", alog->b);
+      if (fd < 0) log_print (alog); else dprintf (fd, "%s", alog->b);
     }
   }
 }
@@ -143,154 +150,33 @@ static int already_listed (struct sockaddr_storage * sap,
   return 0;       /* not listed */
 }
 
-/* run as a thread since getaddrinfo can be extremely slow (10's of seconds) */
-static void * init_one_default_dns (void * arg)
+/* ID is a number 0..NUM_DEFAULTS-1 -- NUM_DEFAULTS - 1 refers to ID 0. */
+static void routing_add_dht_sockaddr (struct sockaddr * ip_addr, int id)
 {
-  int dns_index = *(int *) arg;
-  if ((dns_index < 0) || (dns_index >= NUM_DEFAULTS)) {
-    printf ("error: illegal DNS index %d, max %zd\n", dns_index, NUM_DEFAULTS);
-    return NULL;
+  if (id >= NUM_DEFAULTS - 1)
+    id = 0;
+  struct addr_info addr;
+  memset (&addr, 0, sizeof (addr));
+  if (ip_addr->sa_family == AF_INET) {
+    struct sockaddr_in * sin = (struct sockaddr_in *) ip_addr;
+    memset (addr.ip.ip.s6_addr + 10, 0xff, 2);
+    memcpy (addr.ip.ip.s6_addr + 12, &(sin->sin_addr.s_addr), 4);
+    addr.ip.ip_version = 4;
+  } else if (ip_addr->sa_family == AF_INET6) {
+    struct sockaddr_in6 * sin = (struct sockaddr_in6 *) ip_addr;
+    memcpy (addr.ip.ip.s6_addr, sin->sin6_addr.s6_addr, 16);
+    addr.ip.ip_version = 6;
   }
-  char service [10];
-  snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
-  struct addrinfo * next;
-  int code = getaddrinfo (default_dns [dns_index], service, NULL, &next);
-  if (code == 0) {   /* getaddrinfo succeded */
-    struct addrinfo * original = next;  /* so we can free it */
-    while (next != NULL) {
-#ifdef DEBUG_PRINT
-      print_sockaddr (next->ai_addr, next->ai_addrlen);
-      printf ("\n");
-#endif /* DEBUG_PRINT */
-      struct sockaddr * sap = NULL;
-      if ((next->ai_family == AF_INET) && (ip4_defaults [dns_index].ss_family == 0))
-        sap = (struct sockaddr *) (&(ip4_defaults [dns_index]));
-      else if ((next->ai_family == AF_INET6) &&
-               (ip6_defaults [dns_index].ss_family == 0))
-        sap = (struct sockaddr *) (&(ip6_defaults [dns_index]));
-      else if ((next->ai_family != AF_INET) && (next->ai_family != AF_INET6))
-        printf ("init_default_dns: unknown address family %d (%d, %d)\n",
-                next->ai_family, ip4_defaults [dns_index].ss_family,
-                ip6_defaults [dns_index].ss_family);
-      if ((sap != NULL) &&
-          (next->ai_addrlen <= sizeof (struct sockaddr_storage)))
-        memcpy ((char *) sap, (char *) (next->ai_addr), next->ai_addrlen);
-      next = next->ai_next;
-    }
-    freeaddrinfo (original);
-  } else {
-    int print = 0;
-#ifdef DEBUG_PRINT
-    print = 1; /* print unconditionally */
-#endif /* DEBUG_PRINT */
-    if (print || (code != EAI_NONAME)) {
-      snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n",
-                default_dns [dns_index], gai_strerror (code));
-      log_print (alog);
-    }
-  }
-  return NULL;
-}
-
-/* run as a thread since getaddrinfo can be extremely slow (10's of seconds)
- * in addition, run all of the getaddrinfo's in parallel, each in its thread */
-static void * init_default_dns (void * arg)
-{
-  int * initialized = (int *) arg;
-  unsigned int i;
-  /* begin connecting at a random position in the DNS array */
-  pthread_t threads [NUM_DEFAULTS];
-  int indices [NUM_DEFAULTS];
-  for (i = 0; i < NUM_DEFAULTS; i++) {
-    ip4_defaults [i].ss_family = 0;
-    ip6_defaults [i].ss_family = 0;
-    indices [i] = i;
-    pthread_create (&(threads [i]), NULL, init_one_default_dns,
-                    (void *) (&indices [i]));
-  }
-  /* now wait for all the threads to finish */
-  for (i = 0; i < NUM_DEFAULTS; i++)
-    pthread_join (threads [i], NULL);
-
-#ifdef DEBUG_PRINT
-  for (i = 0; i < NUM_DEFAULTS; i++) {
-    printf ("%d: (4 and 6): ", i);
-    if (ip4_defaults [i].ss_family == 0)
-      printf ("no ipv4");
-    else
-      print_sockaddr ((struct sockaddr *) (&(ip4_defaults [i])),
-                      sizeof (struct sockaddr_in));
-    printf (", ");
-    if (ip6_defaults [i].ss_family == 0)
-      printf ("no ipv6");
-    else
-      print_sockaddr ((struct sockaddr *) (&(ip6_defaults [i])),
-                      sizeof (struct sockaddr_in6));
-    printf ("\n");
-  }
-#endif /* DEBUG_PRINT */
-  *initialized = 1;
-  snprintf (alog->b, alog->s, "init_default_dns is complete\n");
-  log_print (alog);
-  dns_init = 1;  /* done initializing addresses from dns */
-#ifdef DEBUG_PRINT
-  printf ("after init, ");
-  print_dht (0);
-#endif /* DEBUG_PRINT */
-  return NULL;
-}
-
-static void start_dns_thread ()
-{
-  if (dns_init == -1)  /* already running */
+  if ((addr.ip.ip_version != 4) && (addr.ip.ip_version != 6)) {
+    printf ("error: routing_add_dht_sockaddr IP version %d\n",
+            addr.ip.ip_version);
     return;
-  dns_init = -1;   /* initialization in progress */
-  pthread_t thread;
-  pthread_create (&thread, NULL, init_default_dns, (void *) (&dns_init));
-  pthread_detach (thread);
-}
-
-/* returns number of entries added, 0...max */
-/* if an entry has both IPv4 and IPv6, only list the IPv4 -- in 2018,
- * probably still the safe thing to do.   Later, perhaps, list only
- * the IPv6.  Listing both would double the traffic for little
- * obvious benefit */
-static int add_default_routes (struct sockaddr_storage * result,
-                               socklen_t * alen,
-                               int off, int max)
-{
-  unsigned int i;
-  int number = off;
-  for (i = 0; (i < NUM_DEFAULTS) && (number >= 0) && (number < max); i++) {
-#if 0
-if ((ip4_defaults [i].ss_family == AF_INET) ||
- (ip6_defaults [i].ss_family == AF_INET6)) {
-printf ("%d (%d->%d/%d): already_listed %d %d for ", i, off, number, max,
-        already_listed (ip4_defaults + i, result, number),
-        already_listed (ip6_defaults + i, result, number));
-print_sockaddr ((struct sockaddr *) (ip4_defaults + i),
-                sizeof (struct sockaddr_storage), 0);
-printf (",  ");
-print_sockaddr ((struct sockaddr *) (ip6_defaults + i),
-                sizeof (struct sockaddr_storage), 0);
-printf ("\n");
-}
-#endif /* 0 */
-    if ((! already_listed (ip4_defaults + i, result, number)) &&
-        (! already_listed (ip6_defaults + i, result, number))) {
-      /* prefer IPv4 for now (2018) by checking it first */
-      if (ip4_defaults [i].ss_family == AF_INET) {
-        if (alen != NULL) alen [number] = sizeof (struct sockaddr_in);
-        result [number++] = ip4_defaults [i];
-      } else if (ip6_defaults [i].ss_family == AF_INET6) {
-        if (alen != NULL) alen [number] = sizeof (struct sockaddr_in6);
-        result [number++] = ip6_defaults [i];
-      }
-    }
   }
-  if ((number == off) && (dns_init == 1))
-    start_dns_thread (); /* done initializing but no entries found, so repeat */
-  return number - off;
+  addr.ip.port = ntohs (ALLNET_PORT);
+  addr.destination [0] = (id % 16) << 4;
+  addr.nbits = ADDRESS_BITS;
+  addr.type = ALLNET_ADDR_INFO_TYPE_DHT;
+  routing_add_dht (addr);
 }
 
 static time_t peers_file_time = 0;
@@ -325,10 +211,6 @@ static void save_id ()
                         line, sizeof (line));
       if (write (fd, line, strlen (line)) != (int) (strlen (line)))
         perror ("save_id write");  /* report, but continue */
-#ifdef DEBUG_EBADFD
-snprintf (ebadfbuf, EBADFBUFS, "routing.c save_id, closing my_id fd %d\n", fd);
-record_message (info->pipe_descriptor);
-#endif /* DEBUG_EBADFD */
       close (fd);
     }
   }
@@ -341,6 +223,8 @@ static void save_peers ()
   print_dht (0);
   print_ping_list (0);
 #endif /* DEBUG_PRINT */
+  if (dns_init <= 0)  /* only save after we are initialized */
+    return;
   /* only save once every second to once every 30min, depending how
    * long we've been running */
   static unsigned long long int num_saves = 0;
@@ -357,17 +241,155 @@ static void save_peers ()
     cpeer += entry_to_file (fd, &(peers [i].ai), i);
   for (i = 0; i < MAX_PINGS; i++)
     cping += entry_to_file (fd, &(pings [i].ai), -1);
-#ifdef DEBUG_EBADFD
-snprintf (ebadfbuf, EBADFBUFS,
-"routing.c save_peers, closing peers fd %d\n", fd);
-record_message (info->pipe_descriptor);
-#endif /* DEBUG_EBADFD */
   close (fd);
   peers_file_time = time (NULL);  /* no need to re-read in load_peers (1) */
 #ifdef DEBUG_PRINT
   printf ("saved %d peers and %d pings, time is %ld\n",
           cpeer, cping, peers_file_time);
 #endif /* DEBUG_PRINT */
+}
+
+/* run as a thread since getaddrinfo can be extremely slow (10's of seconds) */
+static void * init_one_default_dns (void * arg)
+{
+  int dns_index = *(int *) arg;
+  if ((dns_index < 0) || (dns_index >= NUM_DEFAULTS)) {
+    printf ("error: illegal DNS index %d, max %zd\n", dns_index, NUM_DEFAULTS);
+    return NULL;
+  }
+  char service [10];
+  snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
+  struct addrinfo * next;
+  int code = getaddrinfo (default_dns [dns_index], service, NULL, &next);
+  if (code == 0) {   /* getaddrinfo succeded */
+    struct addrinfo * original = next;  /* so we can free it */
+    while (next != NULL) {
+#ifdef DEBUG_PRINT
+      print_sockaddr (next->ai_addr, next->ai_addrlen);
+      printf ("\n");
+#endif /* DEBUG_PRINT */
+      char * sap = NULL;
+      if ((next->ai_family == AF_INET) &&
+          (ip4_defaults [dns_index].ss_family == 0))
+        sap = (char *) (&(ip4_defaults [dns_index]));
+      else if ((next->ai_family == AF_INET6) &&
+               (ip6_defaults [dns_index].ss_family == 0))
+        sap = (char *) (&(ip6_defaults [dns_index]));
+      else if ((next->ai_family != AF_INET) && (next->ai_family != AF_INET6))
+        printf ("init_default_dns: unknown address family %d (%d, %d)\n",
+                next->ai_family, ip4_defaults [dns_index].ss_family,
+                ip6_defaults [dns_index].ss_family);
+      if ((sap != NULL) &&
+          (next->ai_addrlen <= sizeof (struct sockaddr_storage))) {
+        memcpy (sap, (char *) (next->ai_addr), next->ai_addrlen);
+        routing_add_dht_sockaddr ((struct sockaddr *) sap, dns_index);
+      }
+      next = next->ai_next;
+    }
+    freeaddrinfo (original);
+  } else {
+    int print = 0;
+#ifdef DEBUG_PRINT
+    print = 1; /* print unconditionally */
+#endif /* DEBUG_PRINT */
+    if (print || (code != EAI_NONAME)) {
+      snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n",
+                default_dns [dns_index], gai_strerror (code));
+      if (print) printf ("%s", alog->b);
+      log_print (alog);
+    }
+  }
+  return NULL;
+}
+
+/* run as a thread since getaddrinfo can be extremely slow (10's of seconds)
+ * in addition, run all of the getaddrinfo's in parallel, each in its thread */
+static void * init_default_dns (void * arg)
+{
+  int * initialized = (int *) arg;
+  unsigned int i;
+  /* begin connecting at a random position in the DNS array */
+  pthread_t threads [NUM_DEFAULTS];
+  int indices [NUM_DEFAULTS];
+  for (i = 0; i < NUM_DEFAULTS; i++) {
+    ip4_defaults [i].ss_family = 0;
+    ip6_defaults [i].ss_family = 0;
+    indices [i] = i;
+    pthread_create (&(threads [i]), NULL, init_one_default_dns,
+                    (void *) (&indices [i]));
+  }
+  /* now wait for all the threads to finish */
+  for (i = 0; i < NUM_DEFAULTS; i++)
+    pthread_join (threads [i], NULL);
+#ifdef DEBUG_PRINT
+  for (i = 0; i < NUM_DEFAULTS; i++) {
+    printf ("%d: (4 and 6): ", i);
+    if (ip4_defaults [i].ss_family == 0)
+      printf ("no ipv4");
+    else
+      print_sockaddr ((struct sockaddr *) (&(ip4_defaults [i])),
+                      sizeof (struct sockaddr_in));
+    printf (", ");
+    if (ip6_defaults [i].ss_family == 0)
+      printf ("no ipv6");
+    else
+      print_sockaddr ((struct sockaddr *) (&(ip6_defaults [i])),
+                      sizeof (struct sockaddr_in6));
+    printf ("\n");
+  }
+#endif /* DEBUG_PRINT */
+  *initialized = 1;
+  snprintf (alog->b, alog->s, "init_default_dns is complete\n");
+#ifdef DEBUG_PRINT
+  printf ("%s", alog->b);
+#endif /* DEBUG_PRINT */
+  log_print (alog);
+  dns_init = 1;  /* done initializing addresses from dns */
+  save_peers ();
+#ifdef DEBUG_PRINT
+  printf ("after init, ");
+  print_dht (0);
+#endif /* DEBUG_PRINT */
+  return NULL;
+}
+
+static void start_dns_thread ()
+{
+  if (dns_init == -1)  /* already running */
+    return;
+  dns_init = -1;   /* initialization in progress */
+  pthread_t thread;
+  pthread_create (&thread, NULL, init_default_dns, (void *) (&dns_init));
+  pthread_detach (thread);
+}
+
+/* returns number of entries added, 0...max */
+/* if an entry has both IPv4 and IPv6, only list the IPv4 -- in 2018,
+ * probably still the safe thing to do.   Later, perhaps, list only
+ * the IPv6.  Listing both would double the traffic for little
+ * obvious benefit */
+static int add_default_routes (struct sockaddr_storage * result,
+                               socklen_t * alen,
+                               int off, int max)
+{
+  unsigned int i;
+  int number = off;
+  for (i = 0; (i < NUM_DEFAULTS) && (number >= 0) && (number < max); i++) {
+    if ((! already_listed (ip4_defaults + i, result, number)) &&
+        (! already_listed (ip6_defaults + i, result, number))) {
+      /* prefer IPv4 for now (2018) by checking it first */
+      if (ip4_defaults [i].ss_family == AF_INET) {
+        if (alen != NULL) alen [number] = sizeof (struct sockaddr_in);
+        result [number++] = ip4_defaults [i];
+      } else if (ip6_defaults [i].ss_family == AF_INET6) {
+        if (alen != NULL) alen [number] = sizeof (struct sockaddr_in6);
+        result [number++] = ip6_defaults [i];
+      }
+    }
+  }
+  if ((number == off) && (dns_init == 1))
+    start_dns_thread (); /* done initializing but no entries found, so repeat */
+  return number - off;
 }
 
 static int read_line (int fd, char * buf, int bsize)
@@ -486,20 +508,12 @@ static void init_defaults ()
   save_id ();
 }
 
-static void load_peers (int only_if_newer)
+static void read_my_id ()
 {
-  time_t mtime = config_file_mod_time ("adht", "peers");
-  if ((only_if_newer) && ((mtime == 0) || (mtime <= peers_file_time)))
-    return;
-  peers_file_time = mtime;
-  /* an unused entry has nbits set to 0 -- might as well clear everything */
-  memset ((char *) (peers), 0, sizeof (peers));
-  memset ((char *) (pings), 0, sizeof (pings));
-  memset (my_address, 0, sizeof (my_address));
   char line [1000];
   int fd = open_read_config ("adht", "my_id", 1);
   if (fd < 0) {
-printf ("unable to open .allnet/adht/my_id\n");
+    printf ("unable to open .allnet/adht/my_id\n");
     init_defaults ();
   } else {
     if ((! read_line (fd, line, sizeof (line))) ||
@@ -515,14 +529,14 @@ printf ("unable to open .allnet/adht/my_id\n");
     } else {   /* line >= 30 bytes long, beginning with "8 bytes: " */
       read_buffer (line + 9, (int)strlen (line + 9), my_address, ADDRESS_SIZE);
     }
-#ifdef DEBUG_EBADFD
-snprintf (ebadfbuf, EBADFBUFS,
-"routing.c load_peers, closing peers fd %d\n", fd);
-record_message (info->pipe_descriptor);
-#endif /* DEBUG_EBADFD */
     close (fd);
   }
-  fd = open_read_config ("adht", "peers", 1);
+}
+
+static void read_peers_file ()
+{
+  char line [1000];
+  int fd = open_read_config ("adht", "peers", 1);
   if (fd < 0)
     return;
   int ping_index = 0;
@@ -535,30 +549,29 @@ record_message (info->pipe_descriptor);
         peers [peer].refreshed = 1;
       }
     } else {
-      load_peer (&(pings [ping_index++].ai), line + 1, 0);
+      load_peer (&(pings [ping_index].ai), line + 1, 0);
+      pings [ping_index].refreshed = 1;
+      ping_index++;
     }
   }
-#ifdef DEBUG_EBADFD
-snprintf (ebadfbuf, EBADFBUFS,
-"routing.c load_peers, re-closing peers fd %d\n", fd);
-record_message (info->pipe_descriptor);
-#endif /* DEBUG_EBADFD */
   close (fd);
 /* printf ("load_peers complete:\n");
 print_dht (0); */
-  int i;
-  int cpeers = 0;
-  int cpings = 0;
-  for (i = 0; i < MAX_PEERS; i++)
-    if (peers [i].ai.nbits != 0) {
-      peers [i].refreshed = 1;
-      cpeers++;
-    }
-  for (i = 0; i < MAX_PINGS; i++)
-    if (pings [i].ai.nbits != 0) {
-      pings [i].refreshed = 1;
-      cpings++;
-    }
+}
+
+static void load_peers (int only_if_newer)
+{
+  time_t mtime = config_file_mod_time ("adht", "peers");
+  if ((only_if_newer) && ((mtime == 0) || (mtime <= peers_file_time)))
+    return;
+  peers_file_time = mtime;
+  /* an unused entry has nbits set to 0 -- might as well clear everything */
+  memset ((char *) (peers), 0, sizeof (peers));
+  memset ((char *) (pings), 0, sizeof (pings));
+  read_my_id ();
+  read_peers_file ();
+/* printf ("load_peers complete:\n");
+print_dht (0); */
 }
 
 /* always called with lock held
@@ -592,7 +605,10 @@ static int init_peers (int check_only, int always_read_from_file)
 void routing_my_address (unsigned char * addr)
 {
   pthread_mutex_lock (&mutex);
-  init_peers (0, 0);
+  /* routing_my_address is called from all the applications, so do
+   * not call init_peers (0, 0), which should only be called by allnetd */
+  if (dns_init <= 0)
+    read_my_id ();
   memcpy (addr, my_address, ADDRESS_SIZE);
   pthread_mutex_unlock (&mutex);
 }
@@ -853,7 +869,7 @@ int routing_add_dht (struct addr_info addr)
     last_saved = allnet_time ();
   }
 #ifdef DEBUG_PRINT
-  printf ("after adding ");
+  printf ("after adding %s", (save ? "(saved) " : ""));
   print_addr_info (&addr);
   print_dht (0);
 #endif /* DEBUG_PRINT */

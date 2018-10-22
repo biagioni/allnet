@@ -57,8 +57,10 @@ extern int routing_add_ping (struct addr_info * addr);
 extern int routing_ping_iterator (int iter, struct addr_info * ai);
 
 /* for debugging */
-extern void print_dht (int to_log);
-extern void print_ping_list (int to_log);
+/* fd is -1 to print to the log, 0 to print to stdout,
+ * and a valid fd otherwise */
+extern void print_dht (int fd);
+extern void print_ping_list (int fd);
 
 /* returns the number of entries filled in, 0...max */
 /* entry may be NULL, in which case nothing is filled in */

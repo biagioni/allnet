@@ -201,8 +201,8 @@ int dht_update (struct socket_set * s, char ** message)
     snprintf (alog->b, alog->s,
               "no publically routable IP address, not sending\n");
     log_print (alog);
-    print_dht (1);
-    print_ping_list (1);
+    print_dht (-1);
+    print_ping_list (-1);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
     return 0;
@@ -310,7 +310,7 @@ void dht_process (char * message, unsigned int msize,
       }
     }
   }
-  print_dht (1);
+  print_dht (-1);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
   for (i = 0; i < n_dht; i++) {
@@ -324,7 +324,7 @@ void dht_process (char * message, unsigned int msize,
         routing_add_ping (ai);
     }
   }
-  print_ping_list (1);
+  print_ping_list (-1);
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
 }
