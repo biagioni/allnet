@@ -296,6 +296,47 @@ static void send_one_keepalive (const char * desc,
                   &sockets, sock, sav);
 }
 
+/* returns 1 if the address is in the bitmap, otherwise returns 0 and adds it */
+static int check_recent_address (struct sockaddr_storage addr)
+{
+  static int my_modulo = 11;  /* prime number < size of bitmap */
+  static uint16_t bitmap = 0;
+  static unsigned long long int start_time = 0;
+  unsigned long long int now = allnet_time ();
+  if (now > start_time + my_modulo) {  /* average at most one per second */
+    bitmap = 0;
+    start_time = now;
+    switch (my_modulo) {
+/* to make continuing collisions less likely, switch the modulo around.
+ * we can do this because we just reset the bitmap. */
+      case 11: my_modulo = 13; break;
+      case 13: my_modulo = 7; break;
+      case 7:
+      default: my_modulo = 11; break;
+    }
+  }
+  /* now get a hash of the address.  For IPv4, the address is the hash */
+  uint64_t hash = 0;
+  if (addr.ss_family == AF_INET) {
+    struct sockaddr_in * sin = (struct sockaddr_in *) (&addr);
+    hash = sin->sin_addr.s_addr;
+  } else if (addr.ss_family == AF_INET6) {
+    struct sockaddr_in6 * sin = (struct sockaddr_in6 *) (&addr);
+    hash = readb64 ((char *) sin->sin6_addr.s6_addr) +
+           readb64 ((char *) sin->sin6_addr.s6_addr + 8);
+  }
+  if (hash == 0)
+    return 1;      /* weird address, do not send a keepalive */
+  while ((hash % my_modulo) == 0)
+    hash = hash / my_modulo;
+  int pos = hash % my_modulo;
+  uint16_t mask = 1 << pos;
+  if (bitmap & mask)
+    return 1;
+  bitmap |= mask;
+  return 0;
+}
+
 /* if this is a keepalive with only a sender authentication, send back
  * a keepalive with my authentication as well as the sender's authentication */
 static void send_auth_response (int sockfd, struct sockaddr_storage addr,
@@ -303,20 +344,28 @@ static void send_auth_response (int sockfd, struct sockaddr_storage addr,
                                 uint64_t counter,
                                 const char * message, int msize)
 {
-  int hsize = ALLNET_MGMT_HEADER_SIZE (ALLNET_TRANSPORT_DO_NOT_CACHE);
-  int wanted_size = hsize + KEEPALIVE_AUTHENTICATION_SIZE;
-  if (msize != wanted_size)  /* only look at packets with the right size */
+  if (check_recent_address (addr))
+    return;
+  if (msize < ALLNET_HEADER_SIZE)
     return;
   const struct allnet_header * hp = (const struct allnet_header *) message;
-  const struct allnet_mgmt_header * mhp =
-    (const struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
-  if ((hp->hops > 1) || (hp->message_type != ALLNET_TYPE_MGMT) ||
-      (mhp->mgmt_type != ALLNET_MGMT_KEEPALIVE))
+  int hsize = ALLNET_SIZE (hp->transport);
+  if (msize < hsize)
     return;
+  int mhsize = ALLNET_MGMT_HEADER_SIZE (hp->transport);
+  int wanted_size1 = mhsize + KEEPALIVE_AUTHENTICATION_SIZE;
+  int wanted_size2 = wanted_size1 + KEEPALIVE_AUTHENTICATION_SIZE;
+  const struct allnet_mgmt_header * mhp =
+    (const struct allnet_mgmt_header *) (message + hsize);
+  const char * receiver_auth = NULL;
+  if (((msize == wanted_size1) || (msize == wanted_size2)) &&
+      (hp->message_type == ALLNET_TYPE_MGMT) &&
+      (mhp->mgmt_type == ALLNET_MGMT_KEEPALIVE))
+    receiver_auth = message + mhsize;
   char response [ALLNET_MTU];
   unsigned int rsize = keepalive_auth (response, sizeof (response),
                                        addr, secret, slen, counter,
-                                       message + hsize);
+                                       receiver_auth);
   socket_send_to_ip (sockfd, response, rsize, addr, alen,
                      "ad.c/send_auth_response");
 }
@@ -330,6 +379,7 @@ static int new_priority_threshold (int old_priority_threshold,
   static long long int measurement_start = 0;
   static long long int measurement_time = 0;
   static long long int measurement_bytes = 0;
+  static long long int measurement_interval = 60;
   long long int now = allnet_time_us ();
   long long int delta = now - send_start;
   measurement_time += delta;
@@ -341,36 +391,49 @@ static int new_priority_threshold (int old_priority_threshold,
    * in microseconds, the percentage is multiplied by 10,000, i.e. tenK */
   const long long int max_rate = 8000;  /* 8KB/s -- later, configurable */
   const long long int max_percent_tenK = 10000;  /* 1% for now */
-  if (now_s > measurement_start + 60) {   /* new minute, compute */
+  if (now_s > measurement_start + measurement_interval) {
+    /* new minute, compute */
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("measured: %lld / %lld = %lldB/s, t%% %lld / %lld = %lld: thresh %08x",
         measurement_bytes, delta_s, measurement_bytes / delta_s,
         measurement_time, delta_s, measurement_time / delta_s,
         old_priority_threshold);
 #endif /* DEBUG_FOR_DEVELOPER */
-    if ((measurement_bytes / delta_s > max_rate) ||
-        (measurement_time / delta_s > max_percent_tenK)) {
+    if ((bytes_sent > 0) &&
+        ((measurement_bytes / delta_s > max_rate) ||
+         (measurement_time / delta_s > max_percent_tenK))) {
       new_threshold += (ALLNET_PRIORITY_MAX - old_priority_threshold) / 8;
 #ifdef DEBUG_FOR_DEVELOPER
 printf (" -> %08x (slower)\n", new_threshold);
 #endif /* DEBUG_FOR_DEVELOPER */
-    } else if ((new_threshold > ALLNET_PRIORITY_EPSILON) &&
-               (measurement_bytes / delta_s < (max_rate / 8)) &&
-               (measurement_time / delta_s < (max_percent_tenK / 8))) {
+    } else if (((new_threshold > ALLNET_PRIORITY_EPSILON) &&
+                (measurement_bytes / delta_s < (max_rate / 2)) &&
+                (measurement_time / delta_s < (max_percent_tenK / 2))) ||
+               (bytes_sent == 0)) {
+#ifdef DEBUG_FOR_DEVELOPER
+int debug_threshold = new_threshold;
+#endif /* DEBUG_FOR_DEVELOPER */
       int delta = ALLNET_PRIORITY_ONE_EIGHT / 4;
       new_threshold = (new_threshold > delta) ? (new_threshold - delta) :
                       ALLNET_PRIORITY_EPSILON;
 #ifdef DEBUG_FOR_DEVELOPER
+if (debug_threshold > new_threshold)
 printf (" -> %08x (faster)\n", new_threshold);
+else printf ("\n");
 #endif /* DEBUG_FOR_DEVELOPER */
     } else {
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("\n");
 #endif /* DEBUG_FOR_DEVELOPER */
     }
-    measurement_start = now_s;
-    measurement_time = 0;
-    measurement_bytes = 0;
+    if (new_threshold <= ALLNET_PRIORITY_EPSILON) { /* start new measurement */
+      measurement_start = now_s;
+      measurement_time = 0;
+      measurement_bytes = 0;
+      measurement_interval = 60;
+    } else {   /* continue to measure, until we get to less than max_rate */
+      measurement_interval += 60;
+    }
   }
   return new_threshold;
 }
@@ -380,8 +443,17 @@ printf ("\n");
 static void send_out (const char * message, int msize, int max_addrs,
                       const struct sockaddr_storage * except, /* may be NULL */
                       socklen_t elen,  /* should be 0 if except is NULL */
-                      int priority)
+                      int priority,
+                      /* if sent_to is not NULL, num_sent should also not be */
+                      struct sockaddr_storage * sent_to,
+                      int * sent_num)
 {
+  int sent_available = 0;
+  int sent_index = 0;
+  if (sent_num != NULL) {
+    sent_available = *sent_num;
+    *sent_num = 0;
+  }
 #ifdef THROTTLE_SENDING
   static int skipped = 0;
   if ((priority < priority_threshold) && (skipped++ % 10 != 9))
@@ -425,7 +497,9 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
       sockfd = sock_v6;
     } else if (sockfd < 0) {  /* if sock_v4 is not valid, use sock_v6 */
       sockfd = sock_v6;
+#ifdef __APPLE__
       ai_embed_v4_in_v6 (&dest, &alen);  /* needed on apple systems */
+#endif /* __APPLE__ */
     }
     if (sockfd >= 0) {
       if (send_keepalives) {
@@ -440,25 +514,30 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
 #ifdef THROTTLE_SENDING
         bytes_sent += msize;
 #endif /* THROTTLE_SENDING */
+      } else {
+        if ((sent_to != NULL) && (sent_index < sent_available))
+          sent_to [sent_index] = dest;
+        sent_index++;
       }
     }
   }
-#ifdef THROTTLE_SENDING
-  int num_sockets = 0;
-#endif /* THROTTLE_SENDING */
   if (send_keepalives)
-#ifdef THROTTLE_SENDING
-    num_sockets =
-#endif /* THROTTLE_SENDING */
-      socket_send_keepalives (&sockets, virtual_clock, SEND_KEEPALIVES_LOCAL,
-                              SEND_KEEPALIVES_REMOTE);
+    socket_send_keepalives (&sockets, virtual_clock, SEND_KEEPALIVES_LOCAL,
+                            SEND_KEEPALIVES_REMOTE);
   static struct sockaddr_storage empty;  /* used if except is null */
+  struct sockaddr_storage * my_sent_to = ((sent_to == NULL) ? NULL :
+                                          (sent_to + sent_index));
+  int my_sent_num = minz (sent_available, sent_index);
   socket_send_out (&sockets, message, msize, virtual_clock,
-                   ((except == NULL) ? empty : *except), elen);
+                   ((except == NULL) ? empty : *except), elen,
+                   my_sent_to, &my_sent_num);
   if (dht_send_error)
     routing_expire_dht (&sockets);
+  int sent_total = sent_index + my_sent_num;
+  if (sent_num != NULL)
+    *sent_num = sent_total;
 #ifdef THROTTLE_SENDING
-  bytes_sent += (msize + 48) * num_sockets;
+  bytes_sent += (msize + 48) * sent_total;
   priority_threshold =
     new_priority_threshold (priority_threshold, send_start, bytes_sent);
 #endif /* THROTTLE_SENDING */
@@ -474,7 +553,7 @@ static void update_dht ()
     socket_send_local (&sockets, dht_message, msize, ALLNET_PRIORITY_LOCAL_LOW,
                        virtual_clock, sas, 0);
     send_out (dht_message, msize, ROUTING_DHT_ADDRS_MAX, NULL, 0,
-              ALLNET_PRIORITY_LOCAL_LOW);
+              ALLNET_PRIORITY_LOCAL_LOW, NULL, NULL);
     free (dht_message);
   }
 }
@@ -737,7 +816,7 @@ static struct message_process process_mgmt (struct socket_read_result *r)
                                r->from, r->alen);
         else
           send_out (trace_reply, trace_reply_size, ROUTING_ADDRS_MAX,
-                    NULL, 0, ALLNET_PRIORITY_TRACE);
+                    NULL, 0, ALLNET_PRIORITY_TRACE, NULL, NULL);
       }
       pcache_save_packet (trace_reply, trace_reply_size, ALLNET_PRIORITY_TRACE);
       free (trace_reply);
@@ -857,33 +936,14 @@ void allnet_daemon_loop ()
     char message [SOCKET_READ_MIN_BUFFER];
     struct socket_read_result r = socket_read (&sockets, message,
                                                10, virtual_clock);
-#ifdef LOG_PACKETS
-if ((r.success) && (r.message != NULL) &&
-/* print all but the local keepalives */
-    ((r.msize != 32) || (! r.sock->is_local))) {
-char * debug_print = "ad.c got";
-if (r.sock->is_local) debug_print = "ad.c got local";
-if ((r.msize > ALLNET_HEADER_SIZE) &&
-    (r.msize > ALLNET_MGMT_HEADER_SIZE (r.message [7])) &&
-    (r.message [1] == ALLNET_TYPE_MGMT))
-  printf ("mgmt %d ", r.message [ALLNET_SIZE (r.message [7])]);
-print_buffer (r.message, r.msize, debug_print, 4, 0);
-printf (", t %02x, from ", r.message [7] & 0xff);
-print_sockaddr ((struct sockaddr *)(&(r.from)), r.alen);
-printf ("\n");
-if (r.msize == 48) {
-  if (is_auth_keepalive (r.from, sockets.random_secret,
-                         sizeof (sockets.random_secret),
-                         sockets.counter, r.message, r.msize))
-     printf ("  this is a valid authenticating keepalive\n");
-else print_buffer (r.message, r.msize, "  invalid keepalive", 48, 1); }
-}
-#endif /* LOG_PACKETS */
+    char * reason_not_valid = "size less than 24";
     if ((! r.success) || (r.message == NULL) ||
         (r.msize < ALLNET_HEADER_SIZE) ||
-        (! is_valid_message (r.message, r.msize, NULL))) {
+        (! is_valid_message (r.message, r.msize, &reason_not_valid))) {
 #ifdef LOG_PACKETS
-if (r.message != NULL) printf ("invalid message of size %d\n", r.msize);
+if ((r.success) && (r.message != NULL) &&
+    (strcmp (reason_not_valid, "hops > max_hops") != 0))
+printf ("invalid message of size %d, %s\n", r.msize, reason_not_valid);
 #endif /* LOG_PACKETS */
       continue;   /* no valid message, no action needed, restart the loop */
     }
@@ -917,7 +977,7 @@ print_socket_set (&sockets);
 #ifdef STRICT_AUTHENTICATION
       if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) {
 #ifdef LOG_PACKETS
-printf ("message from unauthenticated sender: ");
+printf ("%d-byte message from unauthenticated sender: ", r.msize);
 print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
 printf ("\n");
 #endif /* LOG_PACKETS */
@@ -935,22 +995,28 @@ printf ("\n");
     struct message_process m =
          ((hp->message_type == ALLNET_TYPE_MGMT) ? process_mgmt (&r)
                                                  : process_message (&r));
-#ifdef LOG_PACKETS
+#ifdef LOG_PACKETS_NO_LONGER_NEEDED_I_THINK
 /* print all but the local keepalives */
 if ((m.process != 0) || (m.msize != 32) || (! r.sock->is_local))
-printf ("ad.c process msize %d, priority %08x >=? %08x %s: %s\n",
-m.msize, m.priority, priority_threshold,
+printf ("ad.c process msize %d, priority %08x >=? %08x hops %d<=?%d %s: %s\n",
+m.msize, m.priority, priority_threshold, hp->hops, hp->max_hops,
 ((m.process == PROCESS_PACKET_ALL) ? "forward local+out" :
  ((m.process & PROCESS_PACKET_LOCAL) ? "forward local" :
   ((m.process & PROCESS_PACKET_OUT) ? "forward out" : "do not forward"))),
  m.debug_reason);
-#endif /* LOG_PACKETS */
-    if (m.process & PROCESS_PACKET_LOCAL)
+#endif /* LOG_PACKETS_NO_LONGER_NEEDED_I_THINK */
+    if ((m.process & PROCESS_PACKET_LOCAL) && (hp->hops <= hp->max_hops))
       socket_send_local (&sockets, m.message, m.msize, m.priority,
                          virtual_clock, r.from, r.alen);
-    if (m.process & PROCESS_PACKET_OUT)
+#define MAX_SENT_ADDRS	1000
+    int num_sent_addrs = MAX_SENT_ADDRS;
+    struct sockaddr_storage sent_addrs [MAX_SENT_ADDRS];
+#undef MAX_SENT_ADDRS
+    if ((m.process & PROCESS_PACKET_OUT) && (hp->hops <= hp->max_hops))
       send_out (m.message, m.msize, ROUTING_ADDRS_MAX,
-                &(r.from), r.alen, m.priority);
+                &(r.from), r.alen, m.priority, sent_addrs, &num_sent_addrs);
+    else
+      num_sent_addrs = -1;
     if ((m.allocated) && (m.message != NULL))
       free (m.message);
     if (r.recv_limit_reached) {  /* time to send a keepalive */
@@ -962,12 +1028,9 @@ m.msize, m.priority, priority_threshold,
     }
     update_virtual_clock ();
     update_dht ();
-#ifdef LOG_STATE
-    printf ("=============================================================\n");
-    print_dht (0);
-    printf ("=\n");
-    print_socket_global_addrs (&sockets);
-#endif /* LOG_STATE */
+    sockets_log_addresses ("ad.c at end of cycle", &sockets,
+                           (num_sent_addrs >= 0 ? sent_addrs : NULL),
+                           num_sent_addrs);
   }
 }
 

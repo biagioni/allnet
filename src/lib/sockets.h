@@ -118,7 +118,7 @@ extern int socket_update_recv_limit (int new_recv_limit, struct socket_set * s,
  * return the number of records deleted */
 extern int socket_update_time (struct socket_set * s, long long int new_time);
 
-/* socket_send_{local,remote} remove any address that has become invalid
+/* socket_send_{local,out} remove any address that has become invalid
  * due to send limit.
  * return 1 for success, 0 for at least some error */
 extern int socket_send_local (struct socket_set * s, const char * message,
@@ -126,9 +126,14 @@ extern int socket_send_local (struct socket_set * s, const char * message,
                               unsigned long long int sent_time,
                               struct sockaddr_storage except_to,
                               socklen_t alen);
+/* if sent_to and num_sent are not NULL, *num_sent should have the
+ * number of available entries in sent_to.  These will be filled
+ * with the addresses to which we send, and the number of these is
+ * placed back in *num_sent */
 extern int socket_send_out (struct socket_set * s, const char * message,
                             int msize, unsigned long long int sent_time,
-                            struct sockaddr_storage except_to, socklen_t alen);
+                            struct sockaddr_storage except_to, socklen_t alen,
+                            struct sockaddr_storage * sent_to, int * num_sent);
 /* send only to the given socket and address */
 extern int socket_send_to (const char * message, int msize,
                            unsigned int priority,
@@ -161,5 +166,14 @@ extern int socket_create_bind (struct socket_set * s, int is_local,
 /* for debugging */
 extern void print_socket_set (struct socket_set * s);
 extern void print_socket_global_addrs (struct socket_set * s);
+
+/* use result -100 to say we don't know the result */ 
+extern void sockets_log_sr (int sent_not_received, const char * debug,
+                            const char * message, int msize,
+                            const struct sockaddr * sent, int alen, int result);
+extern void sockets_log_addresses (const char * debug,
+                                   struct socket_set * sockets,
+                                   const struct sockaddr_storage * addrs,
+                                   int num_addrs);
 
 #endif /* ALLNET_SOCKETS_H */

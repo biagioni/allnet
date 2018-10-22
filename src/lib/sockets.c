@@ -9,12 +9,15 @@
 #include <sys/select.h>
 
 #include <netinet/in.h>
+#include <fcntl.h>
 
 #include "sockets.h"
 #include "packet.h"
 #include "util.h"
 #include "priority.h"
 #include "ai.h"   /* same_sockaddr */
+#include "configfiles.h"
+#include "routing.h"   /* print_dht */
 
 #ifdef ALLNET_NETPACKET_SUPPORT
 #include <linux/if_packet.h>
@@ -38,19 +41,28 @@ static void debug_crash ()
   printf ("now crashing: %d\n", *p);
 }
 
-void print_sav (struct socket_address_validity * sav)
+void print_sav_to_fd (struct socket_address_validity * sav, int fd)
 {
    int limit = (sav->alen == 16 ? 8 : 24);
-   print_buffer ((char *) (&sav->addr), sav->alen, NULL, limit, 0);
-   printf (", alive %lld/%lld, time %lld, rl %d, sl %d/%d",
+   char large_buffer [10000];
+   buffer_to_string ((char *) (&sav->addr), sav->alen, NULL, limit, 0,
+                     large_buffer, sizeof (large_buffer));
+   dprintf (fd, "%s", large_buffer);
+   dprintf (fd, ", alive %lld/%lld, time %lld, rl %d, sl %d/%d",
            sav->alive_rcvd, sav->alive_sent,
            sav->time_limit, sav->recv_limit, 
            sav->send_limit, sav->send_limit_on_recv); 
    int ks = KEEPALIVE_AUTHENTICATION_SIZE;
+   buffer_to_string (sav->keepalive_auth, ks, ", ka", 8, 1,
+                     large_buffer, sizeof (large_buffer));
    if (memget (sav->keepalive_auth, 0, ks))
-     printf ("\n");
+     dprintf (fd, "\n");
    else
-     print_buffer (sav->keepalive_auth, ks, ", ka", 8, 1);
+     dprintf (fd, "%s\n", large_buffer);
+}
+void print_sav (struct socket_address_validity * sav)
+{
+  print_sav_to_fd (sav, STDOUT_FILENO);
 }
 
 #ifdef DEBUG_SOCKETS
@@ -87,27 +99,32 @@ struct socket_set * debug_copy_socket_set (const struct socket_set * s)
 }
 #endif /* DEBUG_SOCKETS */
 
-void print_socket_set (struct socket_set * s)
+void print_socket_set_to_fd (struct socket_set * s, int fd)
 {
   int si;
   for (si = 0; si < s->num_sockets; si++) {
     struct socket_address_set * sas = &(s->sockets [si]);
-    printf ("socket %d/%d: sockfd %d, %s%s%s%s%d addrs\n",
-            si, s->num_sockets, sas->sockfd,
-            ((sas->is_local) ? "local, " : ""),
-            ((sas->is_global_v6) ? "globalv6, " : ""),
-            ((sas->is_global_v4) ? "globalv4, " : ""),
-            ((sas->is_broadcast) ? "bc, " : ""), sas->num_addrs);  
+    dprintf (fd, "socket %d/%d: sockfd %d, %s%s%s%s%d addrs\n",
+             si, s->num_sockets, sas->sockfd,
+             ((sas->is_local) ? "local, " : ""),
+             ((sas->is_global_v6) ? "globalv6, " : ""),
+             ((sas->is_global_v4) ? "globalv4, " : ""),
+             ((sas->is_broadcast) ? "bc, " : ""), sas->num_addrs);  
     int ai;
     for (ai = 0; ai < sas->num_addrs; ai++) {
       struct socket_address_validity * sav = &(sas->send_addrs [ai]);
-      printf ("  sav %d/%d: ", ai, sas->num_addrs);
-      print_sav (sav);
+      dprintf (fd, "  sav %d/%d: ", ai, sas->num_addrs);
+      print_sav_to_fd (sav, fd);
     }
   }
 }
 
-void print_socket_global_addrs (struct socket_set * s)
+void print_socket_set (struct socket_set * s)
+{
+  print_socket_set_to_fd (s, STDOUT_FILENO);
+}
+
+void print_socket_global_addrs_to_fd (struct socket_set * s, int fd)
 {
   int si;
   for (si = 0; si < s->num_sockets; si++) {
@@ -115,12 +132,18 @@ void print_socket_global_addrs (struct socket_set * s)
     if ((sas->is_global_v6) || (sas->is_global_v4)) {
       int ai;
       for (ai = 0; ai < sas->num_addrs; ai++) {
+        char buffer [10000];
         struct socket_address_validity * sav = &(sas->send_addrs [ai]);
-        print_sockaddr ((struct sockaddr *) (&(sav->addr)), sav->alen);
-        printf ("\n");
+        print_sockaddr_str ((struct sockaddr *) (&(sav->addr)), sav->alen,
+                            buffer, sizeof (buffer));
+        dprintf (fd, "%s\n", buffer);
       }
     }
   }
+}
+void print_socket_global_addrs (struct socket_set * s)
+{
+  print_socket_global_addrs_to_fd (s, STDOUT_FILENO);
 }
 
 void check_sav (struct socket_address_validity * sav, const char * desc)
@@ -478,6 +501,7 @@ static struct socket_read_result
                     is_auth_keepalive (sas, s->random_secret, 
                                        sizeof (s->random_secret), s->counter,
                                        buffer, (int)rcvd) : 1);
+        sockets_log_sr (0, "socket_read", buffer, (int)rcvd, sap, alen, -100);
         return record_message (s, rcvd_time, sock, sas, alen,
                                buffer, (int)rcvd, auth);
       }
@@ -577,17 +601,13 @@ static int send_on_socket (const char * message, int msize,
                            int si, int ai)
 {
 check_sav (sav, "send_on_socket");
+  struct sockaddr * sap = (struct sockaddr *) (&(sav->addr));
   int flags = 0;
 #ifdef MSG_NOSIGNAL
   flags = MSG_NOSIGNAL;
 #endif /* MSG_NOSIGNAL */
-#ifdef LOG_PACKETS
-  printf ("send_sock sending %d bytes to ", msize);
-  print_sockaddr ((struct sockaddr *) (&(sav->addr)), sav->alen);
-  printf ("\n");
-#endif /* LOG_PACKETS */
-  ssize_t result = sendto (sockfd, message, msize, flags,
-                           (struct sockaddr *) (&(sav->addr)), sav->alen);
+  ssize_t result = sendto (sockfd, message, msize, flags, sap, sav->alen);
+  sockets_log_sr (1, "send_on_socket", message, msize, sap, sav->alen, result);
   if (result == msize) {
     sav->alive_sent = sent_time;
     return 1;
@@ -611,6 +631,9 @@ struct socket_send_data {
   struct sockaddr_storage except_to;
   socklen_t alen;
   int error;
+  struct sockaddr_storage * sent_addrs;  /* may be NULL */
+  int sent_num;
+  int sent_available;
 };
 
 static int socket_send_fun (struct socket_address_set * sock,
@@ -624,6 +647,9 @@ check_sav (sav, "socket_send_fun");
                         &(sav->addr), sav->alen))) {
     if (send_on_socket (ssd->message, ssd->msize, ssd->sent_time,
                         sock->sockfd, sav, "socket_send_fun", NULL, -1, -1)) {
+      if ((ssd->sent_addrs != NULL) && (ssd->sent_num < ssd->sent_available))
+        ssd->sent_addrs [ssd->sent_num] = sav->addr;
+      ssd->sent_num++;
       sav->alive_sent = ssd->sent_time;
       if (sav->send_limit > 0) {
         sav->send_limit--;
@@ -659,7 +685,8 @@ int socket_send_local (struct socket_set * s, const char * message, int msize,
   add_priority (message, msize, priority, buffer, sizeof (buffer));
   struct socket_send_data ssd =
     { .message = buffer, .msize = msize + 4,
-      .sent_time = sent_time, .alen = alen, .local_not_remote = 1, .error = 0 };
+      .sent_time = sent_time, .alen = alen, .local_not_remote = 1, .error = 0,
+      .sent_addrs = NULL, .sent_available = 0, .sent_num = 0 };
   memset (&(ssd.except_to), 0, sizeof (ssd.except_to));
   if ((alen > 0) && (alen < sizeof (except_to)))
     memcpy (&(ssd.except_to), &(except_to), alen);
@@ -669,17 +696,26 @@ int socket_send_local (struct socket_set * s, const char * message, int msize,
   return 1;
 }
 
-int socket_send_out (struct socket_set * s, const char * message, int msize,
-                     unsigned long long int sent_time,
-                     struct sockaddr_storage except_to, socklen_t alen)
+/* if sent_to and num_sent are not NULL, *num_sent should have the
+ * number of available entries in sent_to.  These will be filled
+ * with the addresses to which we send, and the number of these is
+ * placed back in *num_sent */
+int socket_send_out (struct socket_set * s, const char * message,
+                     int msize, unsigned long long int sent_time,
+                     struct sockaddr_storage except_to, socklen_t alen,
+                     struct sockaddr_storage * sent_to, int * num_sent)
 {
   struct socket_send_data ssd =
     { .message = message, .msize = msize,
-      .sent_time = sent_time, .alen = alen, .local_not_remote = 0, .error = 0 };
+      .sent_time = sent_time, .alen = alen, .local_not_remote = 0, .error = 0,
+      .sent_addrs = sent_to, .sent_num = 0,
+      .sent_available = ((num_sent != NULL) ? *num_sent : 0) };
+  if (num_sent != NULL) *num_sent = 0;
   memset (&(ssd.except_to), 0, sizeof (ssd.except_to));
   if ((alen > 0) && (alen < sizeof (except_to)))
     memcpy (&(ssd.except_to), &(except_to), alen);
   socket_addr_loop (s, socket_send_fun, &ssd);
+  if (num_sent != NULL) *num_sent = ssd.sent_num;
   if (ssd.error)
     return 0;
   return 1;
@@ -740,17 +776,14 @@ int socket_send_to_ip (int sockfd, const char * message, int msize,
                        struct sockaddr_storage sas, socklen_t alen,
                        const char * debug)
 {
+  struct sockaddr * sap = (struct sockaddr *) (&sas);
   int flags = 0;
 #ifdef MSG_NOSIGNAL
   flags = MSG_NOSIGNAL;
 #endif /* MSG_NOSIGNAL */
-#ifdef LOG_PACKETS
-  printf ("send_ip sending %d bytes to ", msize);
-  print_sockaddr ((struct sockaddr *) (&sas), alen);
-  printf ("\n");
-#endif /* LOG_PACKETS */
   ssize_t result = sendto (sockfd, message, msize, flags,
                            (struct sockaddr *) (&sas), alen);
+  sockets_log_sr (1, "send_to_ip", message, msize, sap, alen, result);
   if (result == msize)
     return 1;
   if (errno != ENETUNREACH) {
@@ -836,4 +869,109 @@ int socket_create_bind (struct socket_set * s, int is_local,
     return sockfd;
   if (! quiet) printf ("unable to add %d socket %d\n", sap->sa_family, sockfd);
   return -1;
+}
+
+#if defined(LOG_PACKETS) || defined(LOG_STATE)
+static int sockets_open_file (const char * name, int trunc)
+{
+  char * fname = NULL;
+  if ((config_file_name ("log", name, &fname) <= 0) || (fname == NULL)) {
+    printf ("unable to open file log/%s\n", name);
+    return -1;
+  }
+  int flags = O_WRONLY | O_CREAT;
+  if (trunc)
+    flags |= O_TRUNC;
+  else
+    flags |= O_APPEND;
+  int fd = open (fname, flags, 0644);
+  if (fd < 0) {
+    perror ("open");
+    printf ("error opening %s (%s)\n", name, fname);
+    free (fname);
+    return -1;
+  }
+  free (fname);
+  return fd;
+}
+#endif /* LOG_PACKETS || LOG_STATE */
+
+/* use result -100 to say we don't know the result */ 
+void sockets_log_sr (int sent_not_received, const char * debug,
+                     const char * message, int msize,
+                     const struct sockaddr * sent, int alen, int result)
+{
+#ifdef LOG_PACKETS
+#ifndef LOG_EVEN_LOCAL_KEEPALIVES
+  if ((msize == 36) || (msize == 32))
+    return;
+#endif /* LOG_EVEN_LOCAL_KEEPALIVES */
+  struct timeval tv;
+  gettimeofday (&tv, NULL);
+  int milli = tv.tv_usec / 1000;
+  char * ct = ctime (&(tv.tv_sec));
+  char * now_day_hour = ct + 8;
+  char * now_min_sec = ct + 14;
+  now_min_sec [5] = '\0';
+  char addr_str [1000];
+  print_sockaddr_str (sent, alen, addr_str, sizeof (addr_str));
+  const char * sr = (sent_not_received ? "sent" : "rcvd");
+  const char * sr_tf = (sent_not_received ? "to" : "from");
+  char fname [100] = "sent_rcvd.0102.txt";
+  memcpy (fname + 10, now_day_hour, 2);
+  memcpy (fname + 12, now_day_hour + 3, 2);
+  int fd = sockets_open_file (fname, 0);
+  if (fd < 0)
+    return;
+  if (result != -100)
+    dprintf (fd, "%s.%03d %s %s %d bytes %s %s => %d\n",
+             now_min_sec, milli, debug, sr, msize, sr_tf, addr_str, result);
+  else
+    dprintf (fd, "%s.%03d %s %s %d bytes %s %s\n",
+             now_min_sec, milli, debug, sr, msize, sr_tf, addr_str);
+  close (fd);
+#endif /* LOG_PACKETS */
+}
+
+void sockets_log_addresses (const char * debug, struct socket_set * s,
+                            const struct sockaddr_storage * addrs,
+                            int num_addrs)
+{
+#ifdef LOG_STATE
+  time_t now = time (NULL);
+  char * now_day_hour = ctime (&now) + 8;
+  char fname [100] = "state.0102.txt";
+  memcpy (fname + 6, now_day_hour, 2);
+  memcpy (fname + 8, now_day_hour + 3, 2);
+  int fd = sockets_open_file (fname, 1);
+  if (fd < 0)
+    return;
+  dprintf (fd, "%s:\ndht is:\n", debug);
+  print_dht (fd);
+  dprintf (fd, "global addresses in sockets:\n");
+  print_socket_global_addrs_to_fd (s, fd);
+#define MAX_SAVED_ADDRS	1000
+  static struct sockaddr_storage saved_addrs [MAX_SAVED_ADDRS];
+  static int num_saved_addrs = 0;
+  if ((num_addrs == -1) && (num_saved_addrs > 0)) {
+    addrs = saved_addrs;
+    num_addrs = num_saved_addrs;
+  }
+  if ((addrs != NULL) && (num_addrs > 0)) {
+    if (addrs != saved_addrs)
+      num_saved_addrs = 0;
+    dprintf (fd, "send_out sent to addresses:\n");
+    int i;
+    for (i = 0; i < num_addrs; i++) {
+      char buffer [10000];
+      print_sockaddr_str ((struct sockaddr *) (addrs + i),
+                          sizeof (struct sockaddr_storage),
+                          buffer, sizeof (buffer));
+      dprintf (fd, "%s\n", buffer);
+      if ((addrs != saved_addrs) && (num_saved_addrs < MAX_SAVED_ADDRS))
+        saved_addrs [num_saved_addrs++] = addrs [i];
+    }
+  }
+  close (fd);
+#endif /* LOG_STATE */
 }
