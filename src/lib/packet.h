@@ -17,7 +17,7 @@
 
 /* multicast link-local address used for IPv6:
  * the hex spells out "ALLNet LOCAL BroadCAST" twice in a row */
-#define ALLNET_IPV6_MCAST  "ff02:a119:10ca:1bca:59a1:1910:ca1b:ca59"
+#define ALLNET_IPV6_MCAST  "ff02:a119:10ca:1bca:52a1:1910:ca1b:ca53"
 
 /* for receiving allnet messages, the receiver must know in advance what the
  * maximum packet size will be.  So allnet defines a maximum size, which
