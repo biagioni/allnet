@@ -935,7 +935,7 @@ void sockets_log_sr (int sent_not_received, const char * debug,
 
 void sockets_log_addresses (const char * debug, struct socket_set * s,
                             const struct sockaddr_storage * addrs,
-                            int num_addrs)
+                            int num_addrs, int priority_threshold)
 {
 #ifdef LOG_STATE
   time_t now = time (NULL);
@@ -946,7 +946,10 @@ void sockets_log_addresses (const char * debug, struct socket_set * s,
   int fd = sockets_open_file (fname, 1);
   if (fd < 0)
     return;
-  dprintf (fd, "%s:\ndht is:\n", debug);
+  dprintf (fd, "%s:\n", debug);
+  if (priority_threshold != 0)
+    dprintf (fd, "priority threshold: %08x\n", priority_threshold);
+  dprintf (fd, "dht is:\n");
   print_dht (fd);
   dprintf (fd, "global addresses in sockets:\n");
   print_socket_global_addrs_to_fd (s, fd);
@@ -960,7 +963,7 @@ void sockets_log_addresses (const char * debug, struct socket_set * s,
   if ((addrs != NULL) && (num_addrs > 0)) {
     if (addrs != saved_addrs)
       num_saved_addrs = 0;
-    dprintf (fd, "send_out sent to addresses:\n");
+    dprintf (fd, "send_out sent to %d addresses:\n", num_addrs);
     int i;
     for (i = 0; i < num_addrs; i++) {
       char buffer [10000];

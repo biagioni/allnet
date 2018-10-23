@@ -379,12 +379,13 @@ static int new_priority_threshold (int old_priority_threshold,
   static long long int measurement_start = 0;
   static long long int measurement_time = 0;
   static long long int measurement_bytes = 0;
-  static long long int measurement_interval = 60;
+#define BASIC_MEASUREMENT_INTERVAL	1	/* 60? */
+  static long long int measurement_interval = BASIC_MEASUREMENT_INTERVAL;
   long long int now = allnet_time_us ();
   long long int delta = now - send_start;
   measurement_time += delta;
   measurement_bytes += bytes_sent;
-  long long int now_s = now / 1000000;
+  long long int now_s = now / ALLNET_US_PER_S;
   long long int delta_s = now_s - measurement_start;
   /* throttle if we are averaging more than 8KB/second, or 
    * if our send time is more than 1% -- since the measurement_time is
@@ -392,7 +393,7 @@ static int new_priority_threshold (int old_priority_threshold,
   const long long int max_rate = 8000;  /* 8KB/s -- later, configurable */
   const long long int max_percent_tenK = 10000;  /* 1% for now */
   if (now_s > measurement_start + measurement_interval) {
-    /* new minute, compute */
+    /* new interval, compute */
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("measured: %lld / %lld = %lldB/s, t%% %lld / %lld = %lld: thresh %08x",
         measurement_bytes, delta_s, measurement_bytes / delta_s,
@@ -413,7 +414,7 @@ printf (" -> %08x (slower)\n", new_threshold);
 #ifdef DEBUG_FOR_DEVELOPER
 int debug_threshold = new_threshold;
 #endif /* DEBUG_FOR_DEVELOPER */
-      int delta = ALLNET_PRIORITY_ONE_EIGHT / 4;
+      int delta = ALLNET_PRIORITY_ONE_EIGHT;
       new_threshold = (new_threshold > delta) ? (new_threshold - delta) :
                       ALLNET_PRIORITY_EPSILON;
 #ifdef DEBUG_FOR_DEVELOPER
@@ -430,13 +431,15 @@ printf ("\n");
       measurement_start = now_s;
       measurement_time = 0;
       measurement_bytes = 0;
-      measurement_interval = 60;
+      measurement_interval = BASIC_MEASUREMENT_INTERVAL;
     } else {   /* continue to measure, until we get to less than max_rate */
-      measurement_interval += 60;
+      measurement_interval = (now_s - measurement_start) +
+                             BASIC_MEASUREMENT_INTERVAL;
     }
   }
   return new_threshold;
 }
+#undef BASIC_MEASUREMENT_INTERVAL
 #endif /* THROTTLE_SENDING */
 
 /* send to a limited number of DHT addresses and to socket_send_out */
@@ -900,7 +903,7 @@ static struct message_process process_message (struct socket_read_result *r)
 print_packet (r->message, r->msize, "received data request", 1);
 #endif /* DEBUG_PRINT */
 #endif /* DEBUG_FOR_DEVELOPER */
-      char request_buffer [500000];
+      char request_buffer [50000];
       struct pcache_result cached_messages =
         pcache_request (req, max_messages,
                         request_buffer, sizeof (request_buffer));
@@ -977,7 +980,9 @@ print_socket_set (&sockets);
 #ifdef STRICT_AUTHENTICATION
       if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) {
 #ifdef LOG_PACKETS
-printf ("%d-byte message from unauthenticated sender: ", r.msize);
+printf ("%d-byte message from unauthenticated sender: %02x -> %02x, ", r.msize,
+        (r.msize >= 24) ? (r.message [8] & 0xff) : 0,
+        (r.msize >= 24) ? (r.message [16] & 0xff) : 0);
 print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
 printf ("\n");
 #endif /* LOG_PACKETS */
@@ -1028,9 +1033,13 @@ m.msize, m.priority, priority_threshold, hp->hops, hp->max_hops,
     }
     update_virtual_clock ();
     update_dht ();
+    int debug_priority = 0;
+#ifdef THROTTLE_SENDING
+    debug_priority = priority_threshold;
+#endif /* THROTTLE_SENDING */
     sockets_log_addresses ("ad.c at end of cycle", &sockets,
                            (num_sent_addrs >= 0 ? sent_addrs : NULL),
-                           num_sent_addrs);
+                           num_sent_addrs, debug_priority);
   }
 }
 

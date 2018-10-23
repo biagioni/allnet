@@ -174,6 +174,6 @@ extern void sockets_log_sr (int sent_not_received, const char * debug,
 extern void sockets_log_addresses (const char * debug,
                                    struct socket_set * sockets,
                                    const struct sockaddr_storage * addrs,
-                                   int num_addrs);
+                                   int num_addrs, int priority_threshold);
 
 #endif /* ALLNET_SOCKETS_H */
