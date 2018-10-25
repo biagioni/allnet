@@ -697,12 +697,11 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
       }
     }
     if (merge) {  /* the sequence number is adjacent to at least two entries */
-      /* we may modify cache_used during the loop, so while instead of for */
+      /* we may modify cache_used during the loops, so while instead of for */
       i = 0;
       while (i + 1 < cache_used) {
-        int j;
-        for (j = i + 1; j < cache_used; j++) {
-          /* in the code that follows, i < j */
+        int j = i + 1;    /* in the code that follows, i < j */
+        while (j < cache_used) {
           int merged = 0;
           if (cache [j].last + 1 == cache [i].first) {
             cache [i].first = cache [j].first;
@@ -716,6 +715,7 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
             cache [j] = cache [cache_used - 1];
             cache_used = cache_used - 1;
           }
+          j++;
         }
         i++;
       }
@@ -745,11 +745,9 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
 /* returns 1 if this sequence number has been received, 0 otherwise */
 int was_received (const char * contact, keyset k, uint64_t wanted)
 {
-#ifndef DEBUG_FOR_DEVELOPER
   int cached = is_in_cache (contact, k, wanted, 0);
   if (cached >= 0)   /* cache is authoritative */
-    return 1;
-#endif /* DEBUG_FOR_DEVELOPER */
+    return cached;
   /* rebuild the cache */
   struct msg_iter * iter = start_iter (contact, k);
   if (iter == NULL)
