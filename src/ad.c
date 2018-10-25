@@ -888,9 +888,13 @@ static struct message_process process_message (struct socket_read_result *r)
     } else {
       seen_before = pcache_id_found (id);
     }
-    drop.debug_reason = "nonlocal message seen before";
-    if ((! r->sock->is_local) && (seen_before))
-      return drop;            /* we have seen it before, drop the message */
+    if ((! r->sock->is_local) && (seen_before)) {
+      struct message_process local_forward =
+        { .process = PROCESS_PACKET_LOCAL,
+          .message = r->message, .msize = r->msize, .priority = r->priority,
+          .allocated = 0, .debug_reason = "nonlocal message seen before" };
+      return local_forward; /* we have seen it before, only forward locally */
+    }
     if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
       char * data = ALLNET_DATA_START (hp, hp->transport, r->msize);
       struct allnet_data_request * req = (struct allnet_data_request *) data;
