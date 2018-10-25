@@ -457,9 +457,6 @@ send_count, max);
       break;
     if (send_count++ >= max)
       break;
-#ifdef DEBUG_FOR_DEVELOPER
-printf ("resending messages, sequence %ld\n", prev);
-#endif /* DEBUG_FOR_DEVELOPER */
     resend_message (prev, contact, k, sock, hops, priority);
     last = prev;
     priority -= ALLNET_PRIORITY_EPSILON;
