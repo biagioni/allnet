@@ -848,7 +848,17 @@ int interface_broadcast_addrs (struct sockaddr_storage ** addrs)
       success = (ioctl (socket_fd, SIOCGIFFLAGS, &ifr) >= 0);
       if (success && (ifr.ifr_flags & IFF_BROADCAST)) {
         if (ioctl (socket_fd, SIOCGIFBRDADDR, &ifr) >= 0) {
+          /* SIOCGIFBRDADDR only returns AF_INET/ipv4 addresses */
           struct sockaddr * sap = (struct sockaddr *) &(ifr.ifr_broadaddr);
+          int previous;
+          int already_found = 0;
+          for (previous = 0; previous < interface_index; previous++) {
+            if (memcmp (intermediate + previous, intermediate + interface_index,
+                        sizeof (struct sockaddr)) == 0)
+              already_found = 1;
+          }
+          if ((already_found) || (sap->sa_family != AF_INET))
+            continue;  /* do not add */
           uint32_t ip = htonl (((struct sockaddr_in *) sap)->sin_addr.s_addr);
           if ((ip != 0) && ((ip >> 24) != 0x7f)) {
             memcpy (intermediate + result_count, &(ifr.ifr_broadaddr),
