@@ -414,8 +414,8 @@ printf (" -> %08x (slower)\n", new_threshold);
 #ifdef DEBUG_FOR_DEVELOPER
 int debug_threshold = new_threshold;
 #endif /* DEBUG_FOR_DEVELOPER */
-      int delta = ALLNET_PRIORITY_ONE_EIGHT;
-      new_threshold = (new_threshold > delta) ? (new_threshold - delta) :
+      int decrease = ALLNET_PRIORITY_ONE_EIGHT;
+      new_threshold = (new_threshold > decrease) ? (new_threshold - decrease) :
                       ALLNET_PRIORITY_EPSILON;
 #ifdef DEBUG_FOR_DEVELOPER
 if (debug_threshold > new_threshold)
@@ -440,13 +440,24 @@ printf ("\n");
   return new_threshold;
 }
 #undef BASIC_MEASUREMENT_INTERVAL
+
+static int skip_this_packet (int priority)
+{
+  static int skipped = 0;
+  int skipping = 10;  /* normally, send 1 in 10 lower-priority packets */
+  if (priority_threshold >= ALLNET_ONE_HALF) skipping = 100; /* cut back */
+  if (priority_threshold >= ALLNET_PRIORITY_LOCAL_LOW) skipping = 1000; /* !! */
+  if ((priority < priority_threshold) && (skipped++ % skipping != 0))
+    return 1;
+  return 0;
+}
 #endif /* THROTTLE_SENDING */
 
 /* send to a limited number of DHT addresses and to socket_send_out */
 static void send_out (const char * message, int msize, int max_addrs,
                       const struct sockaddr_storage * except, /* may be NULL */
                       socklen_t elen,  /* should be 0 if except is NULL */
-                      int priority,
+                      int priority, int throttle_and_count,
                       /* if sent_to is not NULL, num_sent should also not be */
                       struct sockaddr_storage * sent_to,
                       int * sent_num)
@@ -458,8 +469,7 @@ static void send_out (const char * message, int msize, int max_addrs,
     *sent_num = 0;
   }
 #ifdef THROTTLE_SENDING
-  static int skipped = 0;
-  if ((priority < priority_threshold) && (skipped++ % 10 != 9))
+  if (throttle_and_count && (skip_this_packet (priority)))
     return;
   long long int send_start = allnet_time_us ();
   long long int bytes_sent = 0;
@@ -541,8 +551,9 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
     *sent_num = sent_total;
 #ifdef THROTTLE_SENDING
   bytes_sent += (msize + 48) * sent_total;
-  priority_threshold =
-    new_priority_threshold (priority_threshold, send_start, bytes_sent);
+  if (throttle_and_count)  /* don't count locally-sent traffic */
+    priority_threshold =
+      new_priority_threshold (priority_threshold, send_start, bytes_sent);
 #endif /* THROTTLE_SENDING */
 }
 
@@ -556,7 +567,7 @@ static void update_dht ()
     socket_send_local (&sockets, dht_message, msize, ALLNET_PRIORITY_LOCAL_LOW,
                        virtual_clock, sas, 0);
     send_out (dht_message, msize, ROUTING_DHT_ADDRS_MAX, NULL, 0,
-              ALLNET_PRIORITY_LOCAL_LOW, NULL, NULL);
+              ALLNET_PRIORITY_LOCAL_LOW, 0, NULL, NULL);
     free (dht_message);
   }
 }
@@ -609,8 +620,7 @@ static int send_message_to_one (const char * message, int msize, int priority,
                                 struct sockaddr_storage addr, socklen_t alen)
 {
 #ifdef THROTTLE_SENDING
-  static int skipped = 0;
-  if ((priority < priority_threshold) && (skipped++ % 10 != 9))
+  if (skip_this_packet (priority))
     return 0;
   long long int send_start = allnet_time_us ();
   long long int bytes_sent = 0;
@@ -819,7 +829,7 @@ static struct message_process process_mgmt (struct socket_read_result *r)
                                r->from, r->alen);
         else
           send_out (trace_reply, trace_reply_size, ROUTING_ADDRS_MAX,
-                    NULL, 0, ALLNET_PRIORITY_TRACE, NULL, NULL);
+                    NULL, 0, ALLNET_PRIORITY_TRACE, 1, NULL, NULL);
       }
       pcache_save_packet (trace_reply, trace_reply_size, ALLNET_PRIORITY_TRACE);
       free (trace_reply);
@@ -896,6 +906,14 @@ static struct message_process process_message (struct socket_read_result *r)
       return local_forward; /* we have seen it before, only forward locally */
     }
     if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
+      static int none_until = 0;
+      if ((! r->sock->is_local) &&
+          (none_until != 0) && (allnet_time () < none_until)) {
+        drop.debug_reason = "data request within 10s of the last data request";
+        return drop;
+      }
+      if (! r->sock->is_local)
+        none_until = allnet_time () + 10;
       char * data = ALLNET_DATA_START (hp, hp->transport, r->msize);
       struct allnet_data_request * req = (struct allnet_data_request *) data;
       struct sockaddr_storage saddr = ((r->sav != NULL) ? r->sav->addr
@@ -949,7 +967,8 @@ void allnet_daemon_loop ()
         (! is_valid_message (r.message, r.msize, &reason_not_valid))) {
 #ifdef LOG_PACKETS
 if ((r.success) && (r.message != NULL) &&
-    (strcmp (reason_not_valid, "hops > max_hops") != 0))
+    (strcmp (reason_not_valid, "hops > max_hops") != 0) &&
+    (strcmp (reason_not_valid, "expired packet") != 0))
 printf ("invalid message of size %d, %s\n", r.msize, reason_not_valid);
 #endif /* LOG_PACKETS */
       continue;   /* no valid message, no action needed, restart the loop */
@@ -1004,16 +1023,6 @@ printf ("\n");
     struct message_process m =
          ((hp->message_type == ALLNET_TYPE_MGMT) ? process_mgmt (&r)
                                                  : process_message (&r));
-#ifdef LOG_PACKETS_NO_LONGER_NEEDED_I_THINK
-/* print all but the local keepalives */
-if ((m.process != 0) || (m.msize != 32) || (! r.sock->is_local))
-printf ("ad.c process msize %d, priority %08x >=? %08x hops %d<=?%d %s: %s\n",
-m.msize, m.priority, priority_threshold, hp->hops, hp->max_hops,
-((m.process == PROCESS_PACKET_ALL) ? "forward local+out" :
- ((m.process & PROCESS_PACKET_LOCAL) ? "forward local" :
-  ((m.process & PROCESS_PACKET_OUT) ? "forward out" : "do not forward"))),
- m.debug_reason);
-#endif /* LOG_PACKETS_NO_LONGER_NEEDED_I_THINK */
     if ((m.process & PROCESS_PACKET_LOCAL) && (hp->hops <= hp->max_hops))
       socket_send_local (&sockets, m.message, m.msize, m.priority,
                          virtual_clock, r.from, r.alen);
@@ -1023,7 +1032,8 @@ m.msize, m.priority, priority_threshold, hp->hops, hp->max_hops,
 #undef MAX_SENT_ADDRS
     if ((m.process & PROCESS_PACKET_OUT) && (hp->hops <= hp->max_hops))
       send_out (m.message, m.msize, ROUTING_ADDRS_MAX,
-                &(r.from), r.alen, m.priority, sent_addrs, &num_sent_addrs);
+                &(r.from), r.alen, m.priority, (! r.sock->is_local),
+                sent_addrs, &num_sent_addrs);
     else
       num_sent_addrs = -1;
     if ((m.allocated) && (m.message != NULL))
