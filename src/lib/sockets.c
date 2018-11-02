@@ -53,7 +53,7 @@ void print_sav_to_fd (struct socket_address_validity * sav, int fd)
            sav->time_limit, sav->recv_limit, 
            sav->send_limit, sav->send_limit_on_recv); 
    int ks = KEEPALIVE_AUTHENTICATION_SIZE;
-   buffer_to_string (sav->keepalive_auth, ks, ", ka", 8, 1,
+   buffer_to_string (sav->keepalive_auth, ks, ", ka", 8, 0,
                      large_buffer, sizeof (large_buffer));
    if (memget (sav->keepalive_auth, 0, ks))
      dprintf (fd, "\n");
@@ -919,6 +919,8 @@ void sockets_log_sr (int sent_not_received, const char * debug,
   const char * sr_tf = (sent_not_received ? "to" : "from");
   char fname [100] = "sent_rcvd.0102.txt";
   memcpy (fname + 10, now_day_hour, 2);
+  if (fname [10] == ' ')
+    fname [10] = '0';
   memcpy (fname + 12, now_day_hour + 3, 2);
   int fd = sockets_open_file (fname, 0);
   if (fd < 0)
@@ -942,6 +944,8 @@ void sockets_log_addresses (const char * debug, struct socket_set * s,
   char * now_day_hour = ctime (&now) + 8;
   char fname [100] = "state.0102.txt";
   memcpy (fname + 6, now_day_hour, 2);
+  if (fname [6] == ' ')
+    fname [6] = '0';
   memcpy (fname + 8, now_day_hour + 3, 2);
   int fd = sockets_open_file (fname, 1);
   if (fd < 0)
@@ -967,14 +971,24 @@ void sockets_log_addresses (const char * debug, struct socket_set * s,
     int i;
     for (i = 0; i < num_addrs; i++) {
       char buffer [10000];
-      print_sockaddr_str ((struct sockaddr *) (addrs + i),
-                          sizeof (struct sockaddr_storage),
-                          buffer, sizeof (buffer));
+      int alen = sizeof (struct sockaddr_storage);
+      struct sockaddr * sap = (struct sockaddr *) (addrs + i);
+      if (sap->sa_family == AF_INET)
+        alen = sizeof (struct sockaddr_in);
+      else if (sap->sa_family == AF_INET6)
+        alen = sizeof (struct sockaddr_in6);
+#ifdef ALLNET_NETPACKET_SUPPORT
+      else if (sap->sa_family == AF_PACKET)
+        alen = sizeof (struct sockaddr_ll);
+#endif /* ALLNET_NETPACKET_SUPPORT */
+      print_sockaddr_str (sap, alen, buffer, sizeof (buffer));
       dprintf (fd, "%s\n", buffer);
       if ((addrs != saved_addrs) && (num_saved_addrs < MAX_SAVED_ADDRS))
         saved_addrs [num_saved_addrs++] = addrs [i];
     }
   }
+  print_socket_set_to_fd (s, fd);
   close (fd);
+#undef MAX_SAVED_ADDRS
 #endif /* LOG_STATE */
 }
