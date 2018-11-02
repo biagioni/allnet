@@ -248,7 +248,8 @@ typedef int (* received_packet_handler) (void * state,
 /* timeout is in ms, -1 to never time out */
 static void receive_packet_loop (received_packet_handler handler, void * state,
                                  int mtype,
-                                 char ** authorized, int nauth, int timeout)
+                                 char ** authorized, int nauth, int timeout,
+                                 int print_unauth)
 {
   long long int quitting_time = allnet_time_ms () + timeout;
   int msize = 0;
@@ -289,7 +290,8 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
             is_authorized = 1;
         }
         if (! is_authorized) {
-          printf ("got message from %s, who is not authorized\n", contact);
+          if (print_unauth)
+            printf ("got message from %s, who is not authorized\n", contact);
           continue;   /* next packet, please */
         }
         struct arems_header * ahp = (struct arems_header *) text;
@@ -365,7 +367,7 @@ static void client_rpc (const char * data, int dsize, char * contact)
   char * authorized [1] = { contact };
   int timed_out = 1;   /* if nothing happens, we time out */
   receive_packet_loop (&client_handler, &timed_out, MESSAGE_TYPE_RESPONSE,
-                       authorized, 1, command_timeout * 1000);
+                       authorized, 1, command_timeout * 1000, 0);
   if (timed_out)
     printf ("command timed out after %d seconds\n", command_timeout);
 }
@@ -390,7 +392,7 @@ static int server_handler (void * state, /* ignored for now */
 static void server_loop (char ** const authorized, int nauth)
 {
   receive_packet_loop (&server_handler, NULL, MESSAGE_TYPE_COMMAND,
-                       authorized, nauth, -1);
+                       authorized, nauth, -1, 1);
 }
 
 /* if it is a server, returns the updated list of authorized users
@@ -403,10 +405,12 @@ static char ** is_server (int argc, char ** argv, int * nauth)
   for (i = 1; i < argc; i++) {
     if (strcmp (argv [i], "-s") == 0)
       found_switch = i;
+    else if (strcmp (argv [i], "-t") == 0)
+      return NULL;   /* not a server */
     else if (num_keysets (argv [i]) <= 0) {
       if (found_switch)
         printf ("found server switch -s, but user %s is unknown\n", argv [i]);
-      return NULL;   /* not an authorized user */
+      exit (1);   /* not an authorized user */
     }
   }
   if (! found_switch)
@@ -427,7 +431,7 @@ int main (int argc, char ** argv)
   if (argc < 2) {
     printf ("%s: needs at least one remote authorized user\n", argv [0]);
     printf ("usage: %s -s authorized-user+\n", argv [0]);
-    printf (" or    %s receiver command\n", argv [0]);
+    printf (" or    %s [-t seconds] receiver command\n", argv [0]);
     exit (1);
   }
   int nauth = 0;
@@ -445,6 +449,18 @@ int main (int argc, char ** argv)
       printf ("%s%s", authorized [i], ((i + 1 >= nauth) ? "\n" : ", "));
     server_loop (authorized, nauth);  /* infinite loop */
   } else if (argc > 2) {
+    if (strcmp (argv [1], "-t") == 0) {
+      char * end = NULL;
+      errno = 0;
+      int arg2 = strtol (argv [2], &end, 10);
+      if ((errno == 0) && (*end == '\0'))
+        command_timeout = arg2;
+      int i;
+      for (i = 1; i + 2 < argc; i++)
+        argv [i] = argv [i + 2];
+      argc -= 2;
+for (i = 1; i < argc; i++) printf ("argv [%d] is now %s\n", i, argv [i]);
+    }
     char * contact = argv [1];
     char command [MAX_STRING_LENGTH];
     int off = 0;
