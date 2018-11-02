@@ -270,8 +270,11 @@ static void send_routing_keepalive (int sockfd, struct sockaddr_storage addr,
                               sizeof (sockets.random_secret),
                               sockets.counter, receiver_auth);
   if (! socket_send_to_ip (sockfd, message, msize, addr, alen, "sending probe"))
+#ifdef DEBUG_FOR_DEVELOPER
     print_buffer ((char *)&(addr), alen, "error sending probe keepalive to",
-                  100, 1);
+                  100, 1)
+#endif /* DEBUG_FOR_DEVELOPER */
+    ;
 }
 
 static void send_one_keepalive (const char * desc,
