@@ -264,7 +264,7 @@ static int if_command (const char * basic_command, const char * interface,
   if (interface != NULL)
     ilen = (int)strlen (interface);
   if (strlen (basic_command) + ilen + 1 >= sizeof (command)) {
-    printf ("abc-iw: command %d+interface %d + 1 >= %d\n",
+    printf ("abc.c: command %d+interface %d + 1 >= %d\n",
             (int) (strlen (basic_command)), ilen, (int) (sizeof (command)));
     printf (basic_command, interface);
     return 0;
@@ -279,7 +279,7 @@ static int if_command (const char * basic_command, const char * interface,
   max_print_success = 4;
 #endif /* DEBUG_PRINT */
   if ((sys_result == 0) && (printed_success++ < max_print_success))
-    printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
+    printf ("abc.c: result of calling '%s' was %d\n", command, sys_result);
   if (sys_result != 0) {
     if (sys_result != -1)
       printf ("if_command: program exit status for %s was %d, status %d\n",
@@ -292,7 +292,7 @@ static int if_command (const char * basic_command, const char * interface,
         printf ("if_command: call to '%s' failed %d\n", command, sys_result);
     } else {  /* sys_result == wireless_status */
       if (fail_wireless == NULL) {
-        printf ("abc-iw: result of calling '%s' was %d\n", command, sys_result);
+        printf ("abc.c: result of calling '%s' was %d\n", command, sys_result);
       } else if (strlen (fail_wireless) > 0) {
         printf ("%s: %s\n", interface, fail_wireless);
       }
@@ -463,16 +463,18 @@ int main (int argc, char ** argv)
   print_socket_set (&sockets);
   int timeout = 1000;   /* initial timeout is 1s */
   while (1) {
-    struct socket_read_result res = socket_read (&sockets, timeout, 1);
+    static char buffer [SOCKET_READ_MIN_BUFFER];
+    struct socket_read_result res = socket_read (&sockets, buffer, timeout, 1);
     if (res.success) {
       printf ("read a packet of size %d\n", res.msize);
     } else {
       printf ("timeout %3lld (%d)\n", allnet_time () % 1000, timeout / 1000);
       if (timeout < 3600 * 1000)
         timeout += timeout;   /* subsequent timeouts double each time */
-      char message [24] = { 0x03, 0x07, 0x00, 0x01, };
-      struct sockaddr_storage sas;
-      if (! socket_send_out (&sockets, message, sizeof (message), 1, sas, 0))
+      char message [32] = { 0x03, 0x07, 0x00, 0x01, };
+      struct sockaddr_storage except;
+      if (! socket_send_out (&sockets, message, sizeof (message), 1,
+                             except, 0, NULL, NULL))
         print_buffer (message, sizeof (message), "unable to send", 10000, 1);
     }
   }
