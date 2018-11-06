@@ -58,21 +58,21 @@ static int username_matches (const char * user)
 
 #ifdef LOG_TO_FILE 
 /* returns 1 if the file exists by the end of the call, and 0 otherwise. */
-static int create_if_needed (const char * name)
+static int create_if_needed (const char * caller_name)
 {
   char original [PATH_MAX];  /* for debugging */
   strncpy (original, log_file_name, sizeof (original));
   int fd = open (log_file_name, O_WRONLY | O_APPEND | O_CREAT, 0644);
   if (fd < 0) {
     perror ("creat");
-    printf ("%s: unable to create %s(%zd)/%s(%zd)\n", name,
+    printf ("%s: unable to create %s(%zd) (was %s(%zd))\n", caller_name,
             log_file_name, strlen (log_file_name), original, strlen (original));
     /* clear the name */
     log_file_name [0] = '\0';
     return 0;
   }
   close (fd);   /* file has been created, should now exist */
-  /* printf ("%s: created file %s\n", module_name, log_file_name); */
+  /* printf ("%s: created file %s\n", caller_name, log_file_name); */
   return 1;
 }
 
@@ -91,7 +91,7 @@ static int file_name (const char * name, time_t seconds)
 }
 
 /* put the latest log file name in log_file_name */
-static void latest_file (const char * name, time_t seconds)
+static void latest_log_file (const char * caller_name, time_t seconds)
 {
   DIR * dir = opendir (log_dir);
   if (dir == NULL) {
@@ -103,9 +103,13 @@ static void latest_file (const char * name, time_t seconds)
   struct dirent * dent;
   while ((dent = readdir (dir)) != NULL) {
 /* printf ("log.c: looking at %s/%s\n", log_dir, dent->d_name); */
+    char * end = NULL;
     if ((dent->d_name [0] != '.') &&
+        (strtol (dent->d_name, &end, 10) >= 20180000) &&
+        (end != NULL) && (*end == '-') &&
         ((latest == NULL) || (strcmp (dent->d_name, latest) > 0))) {
-/* printf ("log.c:    using %s/%s\n", log_dir, dent->d_name); */
+      /* printf ("log.c:    using %s/%s for %s\n", log_dir,
+               dent->d_name, caller_name); */
       if (latest != NULL)
         free (latest);
       latest = strcpy_malloc (dent->d_name, "log.c latest_file()");
@@ -117,15 +121,15 @@ static void latest_file (const char * name, time_t seconds)
     snprintf (log_file_name, sizeof (log_file_name),
               "%s/%s", log_dir, latest);
     free (latest);
-    file_exists = create_if_needed (name);
+    file_exists = create_if_needed (caller_name);
 /* printf ("log.c: checked %s, result is %d\n", log_file_name, file_exists); */
   }
   if (! file_exists)
-    file_name (name, seconds);  /* create new log file */
+    file_name (caller_name, seconds);  /* create new log file */
 }
 #endif /* LOG_TO_FILE */
 
-struct allnet_log * init_log (const char * name)
+struct allnet_log * init_log (const char * caller_name)
 {
 #ifdef LOG_TO_FILE   /* create a log file */
   // pthread_mutex_lock (&log_mutex);
@@ -139,20 +143,21 @@ struct allnet_log * init_log (const char * name)
   }
 
   if (! create_dir (log_dir))
-    printf ("%s: unable to create directory %s\n", name, log_dir);
+    printf ("%s: unable to create directory %s\n", caller_name, log_dir);
   time_t now = time (NULL);
   /* only open a new log file if this is the astart or allnet module */
-  if ((strcasecmp (name, "astart") == 0) || (strcasecmp (name, "allnetd") == 0))
-    file_name (name, now); /* create a new file */
+  if ((strcasecmp (caller_name, "astart") == 0) ||
+      (strcasecmp (caller_name, "allnetd") == 0))
+    file_name (caller_name, now); /* create a new file */
   else /* use the latest available file, only create new if none are present */
-    latest_file (name, now);
+    latest_log_file (caller_name, now);
   // pthread_mutex_unlock (&log_mutex);
 #endif /* LOG_TO_FILE */
   
-  size_t count = sizeof (struct allnet_log) + strlen (name) + 1;
+  size_t count = sizeof (struct allnet_log) + strlen (caller_name) + 1;
   struct allnet_log * result = malloc_or_fail (count, "init_log");
   result->debug_info = ((char *) result) + sizeof (struct allnet_log);
-  strncpy (result->debug_info, name, count - sizeof (struct allnet_log));
+  strncpy (result->debug_info, caller_name, count - sizeof (struct allnet_log));
   result->b [0] = '\0';  /* clear the buffer */
   result->s = LOG_SIZE;
   result->log_to_output = 0;
