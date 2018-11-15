@@ -110,7 +110,6 @@ void stop_allnet_threads ()
 #endif /* ALLNET_USE_FORK */
 
 #define ROOT_USER_ID	0
-#if 0
 /* if astart is called as root, abc should run as root, and everything
  * else should be run as the calling user, if any, and otherwise,
  * user "allnet" (if it exists) or user "nobody" otherwise */
@@ -171,7 +170,6 @@ static void make_root_other (int verbose)
   if (verbose) printf ("set uids to %d %d\n", getuid (), geteuid ());
 #endif /* ALLNET_USE_FORK */
 }
-#endif /* 0 */
 
 #ifdef ALLNET_USE_FORK
 static void print_pid (int fd, int pid)
@@ -394,11 +392,13 @@ static void replace_command (char * old, int olen, char * new)
 
 static void my_call1 (char * argv, int alen, char * program,
                       void (*run_function) (char *), int fd, pid_t parent,
-                      int start_immediately)
+                      int start_immediately, int become_nobody)
 {
 #ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
+    if (become_nobody) /* if we were root, become the caller or allnet/nobody */
+      make_root_other (0);
     close (fd);   /* not used in the child */
     replace_command (argv, alen, program);
     snprintf (alog->b, alog->s, "calling %s\n", program);
@@ -425,79 +425,6 @@ static void my_call1 (char * argv, int alen, char * program,
   log_print (alog);
 #endif /* ALLNET_USE_FORK */
 }
-
-#ifdef ALLNET_USE_FORK
-static char * interface_extra (struct interface_addr * interface)
-{
-  if (interface == NULL)  /* can happen */
-    return "";
-  int i;
-  for (i = 0; i < interface->num_addresses; i++) {
-    struct sockaddr * sa = (struct sockaddr *) ((interface->addresses) + i);
-    if (sa->sa_family == AF_INET) /* || when add ipv6 to abc-ip.c
-        (sa->sa_family == AF_INET6)) */
-      return "ip";
-  }
-  if ((strncmp (interface->interface_name, "wlan", 4) == 0) ||
-      (strncmp (interface->interface_name, "wlo", 3) == 0) ||
-      (strncmp (interface->interface_name, "wlp", 3) == 0) ||
-      (strncmp (interface->interface_name, "wlx", 3) == 0)) {
-    if (geteuid () == 0)
-      return "wifi";
-    else
-      return ""; /* don't use "wifi,nm" for now, hasn't been thought through */
-  }
-  return "";
-}
-
-static int default_interfaces (char * * * interfaces_p)
-{
-  struct interface_addr * int_addrs;
-  int num_interfaces = interface_addrs (&int_addrs);
-  *interfaces_p = NULL;
-  int i;
-  /* compute the buffer size needed to store all interface information */
-  int count = 0;
-  size_t length = 0;
-  for (i = 0; i < num_interfaces; i++) {
-    if ((! int_addrs [i].is_loopback) && (int_addrs [i].is_broadcast)) {
-      /* run abc for this interface */
-      size_t extra_len = strlen (interface_extra (int_addrs + i));
-      if (extra_len != 0) {
-        count++; /* and add interface/extra and the null char */
-        length += strlen (int_addrs [i].interface_name) + 1 + extra_len + 1;
-      }
-    }
-  }
-  int result = 0;
-  if (count > 0) {
-    size_t size = count * sizeof (char *) + length;
-    *interfaces_p = malloc_or_fail (size, "default_interfaces");
-    char * * interfaces = *interfaces_p;
-    /* copy the names/extra to the malloc'd space after the pointers */
-    char * write_to = ((char *) (interfaces + count));
-    size_t write_len = length;
-    for (i = 0; ((write_len > 0) && (i < num_interfaces)); i++) {
-      if ((! int_addrs [i].is_loopback) && (int_addrs [i].is_broadcast)) {
-        char * extra = interface_extra (int_addrs + i);
-        if (strlen (extra) > 0) {
-          interfaces [result++] = write_to;
-          off_t slen = snprintf (write_to, write_len, "%s/%s",
-                                 int_addrs [i].interface_name, extra)
-                   + 1;  /* for the null character */
-          write_len -= slen;
-          write_to += slen;
-        }
-      }
-    }
-    if (result <= 0) {
-      free (*interfaces_p);
-      *interfaces_p = NULL;
-    }
-  }
-  return result;
-}
-#endif /* ALLNET_USE_FORK */
 
 static void find_path (char * arg, char ** path, char ** program)
 {
@@ -578,44 +505,6 @@ int astart_main (int argc, char ** argv)
   pid_t astart_pid = getpid ();
   do_root_init ();
 
-  char ** interfaces = NULL;
-  int num_interfaces = 0;
-#ifdef ALLNET_USE_FORK  /* for now, don't run abc on android and ios */
-  num_interfaces = argc - 1;
-  if ((argc > 1) && (strncmp (argv [1], "def", 3) == 0))
-    num_interfaces = default_interfaces (&interfaces);
-  else if (argc == 1)
-    num_interfaces = 0;
-  else {  /* interfaces specified on the command line */
-    int size = (argc - 1) * sizeof (char *);
-    interfaces = malloc_or_fail (size, "specified interfaces");
-    int i;
-    for (i = 0; i < (argc - 1); i++)
-      interfaces [i] = strcpy_malloc (argv [i + 1], "specific interface");
-  }
-#endif /* ! ALLNET_USE_FORK */
-  pid_t * abc_pids = NULL;
-  if (num_interfaces > 0)
-    abc_pids = malloc_or_fail (num_interfaces * sizeof (pid_t), "abc pids");
-
-  /* in case we are root, start abc first, then become non-root, and
-   * only after we become non-root start the other daemons */
-  int i;
-/*
-  for (i = 0; i < num_interfaces; i++) {
-    char * interface;
-    if (interfaces != NULL)
-      interface = interfaces [i];
-    else
-      interface = argv [i + 1];
-    my_call_abc (argc, argv, alen, alen_arg, "abc",
-                 rpipe, wpipe, ppipe1, ppipe2,
-                 interface, abc_pids + i, astart_pid);
-  } */
-#if 0
-  make_root_other (0); /* if we were root, become the caller or allnet/nobody */
-#endif /* 0 */
-
   int pid_fd = 0;
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
   char * fname = pid_file_name ();
@@ -627,40 +516,29 @@ int astart_main (int argc, char ** argv)
     exit (1);
   }
   free (fname);
-/*
-  for (i = 0; i < num_interfaces; i++)
-    print_pid (pid_fd, abc_pids [i]);
-*/
 #endif /* ALLNET_USE_FORK */
-  if (num_interfaces > 0)
-    free (abc_pids);
 
   alog = init_log ("astart");  /* now we can do logging */
   snprintf (alog->b, alog->s, "astart called with %d arguments\n", argc);
   log_print (alog);
+  int i;
   for (i = 0; i < argc + 1; i++) {  /* argc+1 to print the final null pointer */
     snprintf (alog->b, alog->s, "argument %d: %s\n", i, argv [i]);
     log_print (alog);
   }
-  for (i = 0; i < num_interfaces; i++) {
-    snprintf (alog->b, alog->s, "called abc on interface %d: %s\n",
-              i, interfaces [i]);
-    log_print (alog);
-  }
-
   /* start the dependent processes, keyd and keygen */
 #ifdef ALLNET_USE_FORK /* keyd only works as a separate process */
-  my_call1 (argv [0], alen, "allnet-keyd", keyd_main, pid_fd, astart_pid, 0);
+  my_call1 (argv [0], alen, "allnet-keyd", keyd_main, pid_fd, astart_pid, 0, 1);
 #endif /* ALLNET_USE_FORK */
   my_call1 (argv [0], alen, "allnet-kgen",
-            keyd_generate, pid_fd, astart_pid, 0);
+            keyd_generate, pid_fd, astart_pid, 0, 1);
 
   /* start allnet */
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
   setup_signal_handler (1);
   /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
 #endif /* ALLNET_USE_FORK */
-  my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1);
+  my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1, 0);
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
   close (pid_fd);
 #endif /* ALLNET_USE_FORK */
