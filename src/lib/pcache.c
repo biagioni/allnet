@@ -299,12 +299,14 @@ static void initialize_acks_from_scratch ()
 }
 
 /* called at the beginning, and in case of any initialization error */
+/* assumes that message_table_size and num_acks are set correctly */
 static void initialize_from_scratch ()
 {
   num_external_tokens = 0;
   random_bytes (local_token, sizeof (local_token));
   memset (token_list, 0, sizeof (token_list));
-  message_table_size = DEFAULT_MESSAGE_TABLE_SIZE;
+  if (message_table_size < 100000)
+    message_table_size = DEFAULT_MESSAGE_TABLE_SIZE;
   num_message_table_entries =
     message_table_size / sizeof (struct hash_table_entry);
   if (message_table != NULL) free (message_table);
@@ -458,7 +460,7 @@ printf ("ack table size %d, expecting %d for %d acks\n",
   return result;
 }
 
-/* load the three tables from files */
+/* load the three tables from files.  Sizes should already be set */
 static void initialize_from_file ()
 {
   initialize_from_scratch ();
@@ -478,7 +480,7 @@ static void initialize_from_file ()
   }
   printf ("error (%d/%d/%d) reading from files, starting with an empty cache\n",
           tokens_ok, messages_ok, acks_ok);
-  initialize_from_scratch ();   /* some error, re-initialize */
+  initialize_from_scratch ();   /* some error, re-initialize completely */
 }
 
 /* return 1 if too soon, else update *time_var and state and return 0 */
@@ -658,7 +660,10 @@ void pcache_write ()
   write_messages_file (1, WRITE_FILE_WAIT);
   write_acks_file (1, WRITE_FILE_WAIT);
   write_tokens_file (1, WRITE_FILE_WAIT);
+#ifdef RELY_ON_BLOOM_FILTER
   pid_save_bloom ();
+#endif /* RELY_ON_BLOOM_FILTER */
+  sync ();
 printf ("pcache_write completed\n");
 }
 
@@ -979,7 +984,9 @@ static int do_gc (int eindex, int msize,
   if (write_msg) write_messages_file (1, WRITE_FILE_ASYNC);
   if (write_ack) write_acks_file (1, WRITE_FILE_ASYNC);
   pid_advance_bloom ();
+#ifdef RELY_ON_BLOOM_FILTER
   pid_save_bloom ();
+#endif /* RELY_ON_BLOOM_FILTER */
   return result;
 }
 
@@ -1080,8 +1087,10 @@ static int pcache_id_found_delete (const char * id, int delete,
 int pcache_id_found (const char * id)
 {
   init_pcache ();
+#ifdef RELY_ON_BLOOM_FILTER
   if (pid_is_in_bloom (id, PID_MESSAGE_FILTER))
     return 1;
+#endif /* RELY_ON_BLOOM_FILTER */
   return pcache_id_found_delete (id, 0, NULL);  /* do not delete */
 }
 
@@ -1132,8 +1141,10 @@ static int save_one_ack (const char * ack, int max_hops)
   received_count++;
 #endif /* DEBUG_PRINT */
   /* if it is in the bloom filter, no need to save */
+#ifdef RELY_ON_BLOOM_FILTER
   if (pid_is_in_bloom (ack, PID_ACK_FILTER))
     return 0;
+#endif /* RELY_ON_BLOOM_FILTER */
   char id [MESSAGE_ID_SIZE];
   sha512_bytes (ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
   int aindex = find_one_ack (id);
@@ -1283,10 +1294,12 @@ print_buffer (token_list [i], MESSAGE_ID_SIZE, NULL, 8, 1);
 int pcache_ack_for_token (const char * token, const char * ack)
 {
   init_pcache ();
+#ifdef RELY_ON_BLOOM_FILTER
   /* assume that acks in the bloom filter have been sent to all tokens */
   /*   the assumption is not true, but it helps drop old acks */
   if (pid_is_in_bloom (ack, PID_ACK_FILTER))
     return 0;
+#endif /* RELY_ON_BLOOM_FILTER */
   char id [MESSAGE_ID_SIZE];
   sha512_bytes (ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
   int aindex = find_one_ack (id);
