@@ -52,6 +52,7 @@
  * only meaning of "slot" for the acks table. */
 #define ACKS_PER_SLOT	64
 
+#define ALLNET_RESOURCE_CONSTRAINED    /* by default, use fewer resources */
 #ifdef ALLNET_RESOURCE_CONSTRAINED     /* use fewer resources */
 /* allow 4MiB of messages, 64Ki acks = 3MiB */
 #define DEFAULT_MESSAGE_TABLE_SIZE	4194304
