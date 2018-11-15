@@ -174,6 +174,7 @@ if (memcmp (sav->keepalive_auth, message + mhsize,
             KEEPALIVE_AUTHENTICATION_SIZE) != 0) {
 print_buffer (message + mhsize, KEEPALIVE_AUTHENTICATION_SIZE,
               "new sender secret", 8, 0);
+if (! memget (sav->keepalive_auth, 0, KEEPALIVE_AUTHENTICATION_SIZE))
 print_buffer (sav->keepalive_auth, KEEPALIVE_AUTHENTICATION_SIZE,
               ", old", 8, 0);
 printf (" for ");
@@ -397,38 +398,38 @@ static int new_priority_threshold (int old_priority_threshold,
   const long long int max_percent_tenK = 10000;  /* 1% for now */
   if (now_s > measurement_start + measurement_interval) {
     /* new interval, compute */
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 printf ("measured: %lld / %lld = %lldB/s, t%% %lld / %lld = %lld: thresh %08x",
         measurement_bytes, delta_s, measurement_bytes / delta_s,
         measurement_time, delta_s, measurement_time / delta_s,
         old_priority_threshold);
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
     if ((bytes_sent > 0) &&
         ((measurement_bytes / delta_s > max_rate) ||
          (measurement_time / delta_s > max_percent_tenK))) {
       new_threshold += (ALLNET_PRIORITY_MAX - old_priority_threshold) / 8;
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 printf (" -> %08x (slower)\n", new_threshold);
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
     } else if (((new_threshold > ALLNET_PRIORITY_EPSILON) &&
                 (measurement_bytes / delta_s < (max_rate / 2)) &&
                 (measurement_time / delta_s < (max_percent_tenK / 2))) ||
                (bytes_sent == 0)) {
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 int debug_threshold = new_threshold;
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
       int decrease = ALLNET_PRIORITY_ONE_EIGHT;
       new_threshold = (new_threshold > decrease) ? (new_threshold - decrease) :
                       ALLNET_PRIORITY_EPSILON;
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 if (debug_threshold > new_threshold)
 printf (" -> %08x (faster)\n", new_threshold);
 else printf ("\n");
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
     } else {
-#ifdef DEBUG_FOR_DEVELOPER
+#ifdef DEBUG_FOR_DEVELOPER_OFF
 printf ("\n");
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_FOR_DEVELOPER_OFF */
     }
     if (new_threshold <= ALLNET_PRIORITY_EPSILON) { /* start new measurement */
       measurement_start = now_s;
