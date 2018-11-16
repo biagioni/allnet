@@ -117,8 +117,14 @@ public class Message implements java.lang.Comparable<Message> {
 //      }   // just compare times and dates
       if (this.sentTime < m.sentTime)
           return -1;
-      else if (this.sentTime > m.sentTime)
+      if (this.sentTime > m.sentTime)
           return 1;
+      if ((this.sequence >= 0) && (m.sequence >= 0)) {
+          if (this.sequence > m.sequence)
+            return 1;
+          if (this.sequence < m.sequence)
+            return -1;
+      }
       return 0;  // equal
     }
 
