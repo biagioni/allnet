@@ -114,7 +114,7 @@ class ConversationPanel extends JPanel implements ComponentListener {
         // don't want a border around it
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         // set it so the scroll wheel scrolls substantially
-        scrollPane.getVerticalScrollBar().setUnitIncrement(10);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(30);
         //
         // make it scroll to the bottom when we add something
         scrollPane.getVerticalScrollBar().addAdjustmentListener(
