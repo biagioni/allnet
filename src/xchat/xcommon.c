@@ -734,7 +734,10 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
                   MESSAGE_ID_SIZE, 1);
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_FOR_DEVELOPER
-    printf ("sending quick ack for cached message\n");
+    /* printf ("sending quick ack for cached message\n"); */
+    printf ("%lld: ", allnet_time_us ());
+    print_buffer (message_ack, MESSAGE_ID_SIZE, "quick ack",
+                  MESSAGE_ID_SIZE, 1);
 #endif /* DEBUG_FOR_DEVELOPER */
     send_ack (sock, hp, (unsigned char *)message_ack, 0, "unknown", 0);
     return 0;
@@ -864,7 +867,11 @@ printf ("got chat control message %s, but media %ld != %d\n",
 #ifdef DEBUG_PRINT
       printf ("got chat control message from %s, responding\n", *contact);
 #endif /* DEBUG_PRINT */
-      do_chat_control (*contact, *kset, text, tsize, sock, hops + 4);
+      static long long int last_sent = 0;  /* only do once every 10s */
+      if ((last_sent == 0) || (allnet_time () > last_sent + 10)) {
+        do_chat_control (*contact, *kset, text, tsize, sock, hops + 4);
+        last_sent = allnet_time ();
+      }
       if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL)) {
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("acking control packet with media %lx\n", media);
@@ -1741,12 +1748,10 @@ last_call, now, eagerly ? "eager" : "not eager"); */
 int debug1 = 0;
 int debug2 = 0;
 int debug3 = 0;
-#ifndef DEBUG_FOR_DEVELOPER
   if (last_call >= now)
     return -1; /* only allow one call per second, even if eagerly */
-#endif /* DEBUG_FOR_DEVELOPER */
-  if ((last_call + 1 >= now) && (! eagerly))
-    return -1; /* if not eagerly, only allow one call per two seconds */
+  if ((last_call + 9 >= now) && (! eagerly))
+    return -1; /* if not eagerly, only allow one call per ten seconds */
   last_call = now;
 #ifdef DEBUG_PRINT
   printf ("request and resend for %s\n", contact);
@@ -1760,8 +1765,7 @@ int debug3 = 0;
   /* let requests expire so on average at most ~3 will be cached at any time */
   static unsigned long long int last_retransmit = 0;
   int result = -1;   /* too soon */
-  if (eagerly ||                        /* if not eagerly send at most */
-      (last_retransmit + 30 <= now)) {  /* once every ~30s */
+  if (last_retransmit + 30 <= now) {  /* send at most once every 30s */
     char expiration [ALLNET_TIME_SIZE];
     compute_expiration (expiration, now, last_retransmit, 100);
     result = 0;      /* unable to send to this contact */
