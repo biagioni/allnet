@@ -183,7 +183,7 @@ printf ("\n");
   }
 #endif /* LOG_PACKETS */
   /* save the received sender keepalive secret, even if it is the same
-   * memcpy should be cheaper than memcmp */
+   * memcpy should be faster than memcmp anyway */
   memcpy (sav->keepalive_auth, message + mhsize,
           KEEPALIVE_AUTHENTICATION_SIZE);
 }
@@ -902,15 +902,16 @@ static struct message_process process_message (struct socket_read_result *r)
     } else {
       seen_before = pcache_id_found (id);
     }
-    if ((! r->sock->is_local) && (seen_before)) {
+    if ((! r->sock->is_local) && (seen_before)) {  /* we have seen it before */
       struct message_process local_forward =
         { .process = PROCESS_PACKET_LOCAL,
           .message = r->message, .msize = r->msize, .priority = r->priority,
           .allocated = 0, .debug_reason = "nonlocal message seen before" };
-      return local_forward; /* we have seen it before, only forward locally */
+      if (random_int (1, 1000) > 100)   /* with 90% probability */
+        return local_forward;           /* only forward locally */
     }
     if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
-      static int none_until = 0;
+      static unsigned long long int none_until = 0;
       if ((! r->sock->is_local) &&
           (none_until != 0) && (allnet_time () < none_until)) {
         drop.debug_reason = "data request within 10s of the last data request";
@@ -990,7 +991,8 @@ print_packet (r.message, r.msize, ", packet", 1);
 print_socket_set (&sockets);
 #endif /* DEBUG_PRINT */
 #endif /* DEBUG_FOR_DEVELOPER */
-    if (! r.socket_address_is_new)
+    if ((! r.socket_address_is_new) &&
+        (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)))
       update_sender_keepalive (r.message, r.msize, r.sav);
     if ((r.socket_address_is_new) &&
         ((r.sock->is_global_v4) || (r.sock->is_global_v6)) &&
