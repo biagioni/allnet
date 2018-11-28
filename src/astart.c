@@ -88,14 +88,6 @@ static void * generic_thread (void * arg)
   return NULL;
 }
 
-static int noop_fork ()
-{
-  printf ("using threads instead of fork\n");
-  return 0;  /* execute the child code */
-}
-
-#define fork  noop_fork
-
 /* stop all of the other threads */
 void stop_allnet_threads ()
 {
@@ -110,6 +102,7 @@ void stop_allnet_threads ()
 #endif /* ALLNET_USE_FORK */
 
 #define ROOT_USER_ID	0
+#ifdef ALLNET_USE_FORK   /* on iOS or android, no point in doing any of this */
 /* if astart is called as root, abc should run as root, and everything
  * else should be run as the calling user, if any, and otherwise,
  * user "allnet" (if it exists) or user "nobody" otherwise */
@@ -124,7 +117,6 @@ void stop_allnet_threads ()
  */
 static void make_root_other (int verbose)
 {
-#ifdef ALLNET_USE_FORK   /* on iOS or android, no point in doing any of this */
   if (geteuid () != ROOT_USER_ID)
     return;   /* not root, nothing to do, and cannot change uids anyway */
   uid_t real_uid = getuid ();
@@ -168,8 +160,8 @@ static void make_root_other (int verbose)
     stop_all ();
   }
   if (verbose) printf ("set uids to %d %d\n", getuid (), geteuid ());
-#endif /* ALLNET_USE_FORK */
 }
+#endif /* ALLNET_USE_FORK */
 
 #ifdef ALLNET_USE_FORK
 static void print_pid (int fd, int pid)
@@ -378,17 +370,15 @@ static void child_return (char * executable, pid_t parent, int stop_allnet)
   }
   exit (1);  /* at any rate, stop this process */
 }
-#endif /* ALLNET_USE_FORK */
 
 static void replace_command (char * old, int olen, char * new)
 {
-#ifdef ALLNET_USE_FORK
   /* printf ("replacing %s ", old); */
   /* strncpy, for all its quirks, is just right for this application */
   strncpy (old, new, olen);
   /* printf ("with %s (%s, %d)\n", new, old, olen); */
-#endif /* ALLNET_USE_FORK */
 }
+#endif /* ALLNET_USE_FORK */
 
 static void my_call1 (char * argv, int alen, char * program,
                       void (*run_function) (char *), int fd, pid_t parent,
