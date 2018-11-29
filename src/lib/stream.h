@@ -52,7 +52,7 @@ extern int
  * allnet_stream_encrypt_buffer, usually on a remote system.
  *
  * state must have been initialized by allnet_stream_init
- * tsize must be >= csize - counter_size - hash_size specified for state
+ * tsize must be >= psize - counter_size - hash_size specified for state
  * returns 1 for successful authentication and decryption, 0 otherwise
  * note: an attacker has a 256^-hash_size chance of sending a packet that
  * decrypt_buffer will consider authentic.  In such cases, decrypt_buffer
