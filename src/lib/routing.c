@@ -501,6 +501,8 @@ static void load_peer (struct addr_info * peer, const char * line,
 
 static void init_defaults ()
 {
+  if (alog == NULL)
+    alog = init_log ("routing-init-defaults");
   random_bytes (my_address, ADDRESS_SIZE);
   buffer_to_string (my_address, ADDRESS_SIZE, "new random address",
                     ADDRESS_SIZE, 1, alog->b, alog->s);
