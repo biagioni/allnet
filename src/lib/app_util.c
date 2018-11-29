@@ -399,8 +399,10 @@ int local_receive (unsigned int timeout,
       return (int)(r - 4);
     }
     if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
+      int saved_errno = errno;
       perror ("local_receive recv");
-      printf ("the local allnet is no longer responding\n");
+      printf ("the local allnet is no longer responding, error %d/%s\n",
+              saved_errno, strerror (saved_errno));
       exit (0);
     }
     usleep (1000);
