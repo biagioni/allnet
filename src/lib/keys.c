@@ -2387,7 +2387,7 @@ int save_key_state (const char * contact,
     return 0;
   /* else found contact, with or without state */
   if (ki < 0)  /* no state, but the code is the same */
-    ki = -ki;
+    ki = -ki - 1;  /* e.g., ki -1 becomes ki 0 */
   memcpy (&(kip [ki].state), state,
           sizeof (struct allnet_stream_encryption_state));
   kip [ki].has_state = 1;
@@ -2403,7 +2403,6 @@ int save_key_state (const char * contact,
   int result = write_file (fname, print_buffer, (int)strlen (print_buffer), 1);
   free (fname);
   return result;
-
 }
 
 /* after invalidating, can set a new symmetric key, and then the old
