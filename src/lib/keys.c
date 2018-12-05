@@ -93,6 +93,8 @@ static void print_contacts (char * desc, int individual_only)
  * contact's index in cp */
 static int contact_exists (const char * contact)
 {
+  if (contact == NULL)
+    return 0;
   int i;
   for (i = 0; i < cp_used; i++) {
     if (strcmp (cpx [i], contact) == 0)
