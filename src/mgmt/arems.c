@@ -172,6 +172,190 @@ syslog (syslog_option, "sending response: '%s'\n", result);
   return strlen (result);
 }
 
+/* report whether this message was recently received,
+ * and if not, add it to the cache */
+static int recently_received (const char * message, int msize)
+{
+  struct message_cache {
+    char message [ALLNET_MTU];
+    int msize;  /* 0 for a message that is not in here */
+  };
+#define RECENTLY_RECEIVED_MESSAGES	50
+  static struct message_cache recent_messages [RECENTLY_RECEIVED_MESSAGES];
+  static int last_message = -1;  /* after init, 0..99 */
+  if ((msize > sizeof (recent_messages [0].message)) ||
+      (msize <= ALLNET_HEADER_SIZE))
+    return 0;
+  const struct allnet_header * hp = (const struct allnet_header *) message;
+  int hsize = ALLNET_SIZE (hp->transport);
+  if (msize <= hsize)
+    return 0;
+  message += hsize;
+  msize -= hsize;
+  int i;
+  if (last_message < 0) {
+    for (i = 0; i < RECENTLY_RECEIVED_MESSAGES; i++)
+      recent_messages [i].msize = 0;
+    last_message = 0;
+  }
+  for (i = 0; i < RECENTLY_RECEIVED_MESSAGES; i++)
+    if ((recent_messages [i].msize > 0) &&
+        (recent_messages [i].msize == msize) &&
+        (memcmp (recent_messages [i].message, message, msize) == 0))
+      return 1;
+  /* not found.  Add the message to the cache */
+  last_message = (last_message + 1) % RECENTLY_RECEIVED_MESSAGES;
+  recent_messages [last_message].msize = msize;
+  memcpy (recent_messages [last_message].message, message, msize);
+  return 0;
+}
+
+#if 1  /* newer version, 2018/11/29 */
+/* encrypts and signs the data and saves the result in destination_buffer
+ * returns the size of the signed and encrypted content if all goes well
+ * this size will always be <= dest_size and > 0.
+ * returns 0 otherwise, i.e. in case of errors */
+static int public_key_encrypt (const char * data, int dsize,
+                               long long int counter, int message_type,
+                               const char * contact, keyset k,
+                               char * destination_buffer, int dest_size)
+{
+  allnet_rsa_prvkey priv_key;
+  allnet_rsa_pubkey key;
+  int priv_ksize = get_my_privkey (k, &priv_key);
+  int ksize = get_contact_pubkey (k, &key);
+  if ((priv_ksize == 0) || (ksize == 0)) {
+    printf ("unable to locate key %d for contact %s (%d, %d)\n",
+            k, contact, priv_ksize, ksize);
+    return 0;
+  }
+  char * encrypted = NULL;
+  char * signature = NULL;
+  int esize = allnet_encrypt (data, dsize, key, &encrypted);
+  if (esize == 0) {
+    printf ("unable to encrypt, contact %s key %d, data %p %d bytes\n",
+            contact, k, data, dsize);
+    return 0;
+  } /* else, sign */
+  int ssize = allnet_sign (encrypted, esize, priv_key, &signature);
+  if (ssize == 0) {
+    printf ("unable to sign, contact %s key %d, data %p %d bytes esize %d\n",
+            contact, k, data, dsize, esize);
+    return 0;
+  } /* else, create a packet and send it */
+  int payload_size = esize + ssize + 2;
+  if (payload_size > dest_size) {
+    printf ("unable to save signed/encrypted data, %d available, %d needed\n",
+            dest_size, payload_size);
+    return 0;
+  }
+  memcpy (destination_buffer, encrypted, esize);
+  memcpy (destination_buffer + esize, signature, ssize);
+  writeb16 (destination_buffer + esize + ssize, ssize);
+  if (encrypted != NULL)
+    free (encrypted);
+  if (signature != NULL)
+    free (signature);
+  return payload_size;
+}
+
+static int symmetric_key_encrypt (const char * data, int dsize,
+                                  long long int counter, int message_type,
+                                  const char * contact, keyset k,
+                                  char * destination_buffer, int dest_size)
+{
+  unsigned int sksize = has_symmetric_key (contact, NULL, 0);
+  if (sksize < ALLNET_STREAM_KEY_SIZE) {  /* invalid symmetric key */
+    if (sksize != 0)
+      printf ("in symmetric_key_encrypt for %s, %d < %d\n", contact,
+              sksize, ALLNET_STREAM_KEY_SIZE);
+    return 0;
+  }
+  /* sksize >= ALLNET_STREAM_KEY_SIZE */
+  struct allnet_stream_encryption_state sym_state;
+  if (! symmetric_key_state (contact, &sym_state)) { /* initialize the state */
+    char * sym_key = malloc_or_fail (sksize * 2, "symmetric_key_encrypt");
+    sksize = has_symmetric_key (contact, sym_key, sksize);
+    /* copy the key to the upper part of sym_key, to make a secret */
+    memmove (sym_key + sksize, sym_key, sksize);
+    allnet_stream_init (&sym_state, sym_key, 0, sym_key, 0, 8, 32);
+    free (sym_key);
+    save_key_state (contact, &sym_state);
+  }
+  int esize = dsize + sym_state.counter_size + sym_state.hash_size;
+  if ((esize > dest_size) || (esize <= 0)) {
+    printf ("unable to save encrypted data, %d available, %d needed\n",
+            dest_size, esize);
+    return 0;
+  }
+  int esize2 = allnet_stream_encrypt_buffer (&sym_state, data, dsize,
+                                             destination_buffer, esize);
+  if ((esize != esize2) || (esize > dest_size) || (esize <= 0)) {
+    printf ("unable to save encrypted data, %d available, %d =? %d needed\n",
+            dest_size, esize, esize2);
+    return 0;
+  }
+  save_key_state (contact, &sym_state);
+  return esize;
+}
+
+static void encrypt_sign_send (const char * data, int dsize, int hops,
+                               long long int counter,
+                               unsigned long long int expiration,
+                               int message_type,
+                               const char * contact, keyset k)
+{
+  struct arems_header ah;
+  memset (&ah, 0, sizeof (ah));
+  random_bytes ((char *)ah.message_ack, sizeof (ah.message_ack));
+  memcpy (ah.app_media.app, APP_ID, sizeof (ah.app_media.app));
+  writeb32u (ah.app_media.media, MEDIA_ID);
+  writeb64u (ah.counter, counter);
+  ah.type = message_type;
+  char data_with_ah [MAX_STRING_LENGTH + sizeof (ah)];
+  memcpy (data_with_ah, &ah, sizeof (ah));
+  memcpy (data_with_ah + sizeof (ah), data, dsize);
+  char ebuf [ALLNET_MTU];
+  int esize = symmetric_key_encrypt (data_with_ah, sizeof (ah) + dsize,
+                                     counter, message_type,
+                                     contact, k, ebuf, sizeof (ebuf));
+  int sigtype = ALLNET_SIGTYPE_NONE; /* the hash provides the authentication */
+  if (esize <= 0) {
+    esize = public_key_encrypt (data_with_ah, sizeof (ah) + dsize,
+                                counter, message_type,
+                                contact, k, ebuf, sizeof (ebuf));
+    sigtype = ALLNET_SIGTYPE_RSA_PKCS1;  /* explicit signature */
+  }
+  if (esize <= 0)
+    return;
+  char buffer [ALLNET_MTU];
+  unsigned char ack [MESSAGE_ID_SIZE];
+  random_bytes ((char *)ack, sizeof (ack));
+  unsigned char local_address [ADDRESS_SIZE];
+  unsigned char remote_address [ADDRESS_SIZE];
+  int sbits = get_local (k, local_address);
+  int dbits = get_remote (k, remote_address);
+  struct allnet_header * hp =
+    init_packet (buffer, esize + ALLNET_TIME_SIZE, ALLNET_TYPE_DATA,
+                 hops, sigtype, local_address, sbits, remote_address, dbits,
+                 NULL, ack);
+  hp->transport = hp->transport | ALLNET_TRANSPORT_EXPIRATION;
+  if ((expiration == 0) || (expiration < allnet_time () + command_timeout))
+    expiration = allnet_time () + command_timeout;
+  writeb64 (ALLNET_EXPIRATION (hp, hp->transport, sizeof (buffer)), expiration);
+  int hsize = ALLNET_SIZE (hp->transport);
+  char * payload = buffer + hsize;
+  if (esize + hsize > sizeof (buffer)) {
+    printf ("error: esize %d + hsize %d > %zd\n", esize, hsize, sizeof buffer);
+    return;
+  }
+  memcpy (payload, ebuf, esize);
+  /* save in the cache, so we don't try to process it */
+  recently_received (buffer, hsize + esize);
+  local_send (buffer, hsize + esize, ALLNET_PRIORITY_LOCAL);
+}
+
+#else  /* older version, 2018/11/29 */
 static void encrypt_sign_send (const char * data, int dsize, int hops,
                                long long int counter, int message_type,
                                const char * contact, keyset k)
@@ -237,12 +421,82 @@ static void encrypt_sign_send (const char * data, int dsize, int hops,
   if (signature != NULL)
     free (signature);
 }
+#endif /* newer/older version, 2018/11/29 */
+
+/* similar to decrypt_verify (with which it may eventually be integrated),
+ * but uses symmetric keys if available, and gives up otherwise */
+static int
+  symmetric_decrypt_verify (int sig_algo, char * encrypted, int esize,
+                            char ** contact, keyset * kset, char ** text,
+                            char * sender, int sbits, char * dest, int dbits,
+                            int maxcontacts)
+{
+  *contact = NULL;
+  *kset = -1;
+  *text = NULL;
+  if (sig_algo != ALLNET_SIGTYPE_NONE)  /* not a symmetric key */
+    return 0;
+  int cindex;
+  int count = 0;
+  int decrypt_count = 0;
+  char ** contacts = NULL;
+  int ncontacts = all_individual_contacts (&contacts);
+#if 0  /* maybe re-enable later -- but should not count contacts w/o sym key */
+  if ((maxcontacts > 0) && (maxcontacts < ncontacts)) {
+    contacts = randomize_contacts (contacts, ncontacts, maxcontacts);
+    ncontacts = maxcontacts;
+  }
+#endif
+  for (cindex = 0; ((*contact == NULL) && (cindex < ncontacts)); cindex++) {
+    count++;
+    unsigned int sksize = has_symmetric_key (contacts [cindex], NULL, 0);
+    if (sksize < ALLNET_STREAM_KEY_SIZE)  /* invalid symmetric key */
+      continue;                           /* try the next contact */
+    /* sksize >= ALLNET_STREAM_KEY_SIZE */
+    struct allnet_stream_encryption_state sym_state;
+    if (! symmetric_key_state (contacts [cindex], &sym_state)) {
+      /* initialize the state */
+      char * sym_key = malloc_or_fail (sksize * 2, "symmetric_decrypt_verify");
+      sksize = has_symmetric_key (contacts [cindex], sym_key, sksize);
+      /* copy the key to the upper part of sym_key, to make a secret */
+      memmove (sym_key + sksize, sym_key, sksize);
+      allnet_stream_init (&sym_state, sym_key, 0, sym_key, 0, 8, 32);
+      free (sym_key);
+      /* save the state only if we are successful */
+    }
+    int tsize = esize - (sym_state.counter_size + sym_state.hash_size); 
+    char buf [ALLNET_MTU];
+    if (tsize > sizeof (buf)) {
+      printf ("error: %s asked to decrypt %d bytes, %zd max\n",
+              contacts [cindex], tsize, sizeof (buf));
+      continue;
+    }
+    decrypt_count++;
+    if (allnet_stream_decrypt_buffer (&sym_state, encrypted, esize,
+                                      buf, tsize)) {   /* success! */
+      save_key_state (contacts [cindex], &sym_state);
+      *contact = strcpy_malloc (contacts [cindex], "symmetric_decrypt_verify2");
+      *text = memcpy_malloc (buf, tsize, "symmetric_decrypt_verify3");
+      keyset * kp = NULL;
+      if (all_keys (contacts [cindex], &kp) > 0) {
+        *kset = kp [0];
+        free (kp);
+      }
+      return tsize;
+    }  /* else, not a match, try the next */
+if (decrypt_count == maxcontacts)
+printf ("symmetric key decryption trying more than %d contacts\n", maxcontacts);
+  }
+  return 0;
+}
 
 /* returns 1 if the receive loop should exit, 0 if it should continue
- * hops is the number of hops visited by the incoming packet. */
+ * hops is the number of hops visited by the incoming packet.
+ * if the packet has no expiration, expiration is 0 */
 typedef int (* received_packet_handler) (void * state,
                                          const char * data, int dsize, int hops,
                                          long long int counter,
+                                         unsigned long long int expiration,
                                          const char * contact, keyset k);
 
 /* timeout is in ms, -1 to never time out */
@@ -266,6 +520,8 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
       continue;   /* next packet, please */
     if ((msize < ALLNET_HEADER_SIZE) || (message [1] != ALLNET_TYPE_DATA))
       continue;   /* next packet, please */
+    if (recently_received (message, msize))
+      continue;   /* duplicate: next packet, please */
 #ifdef DEBUG_PRINT
     print_buffer (message, msize, "received", 10, 0);
     printf (", dst ");
@@ -278,10 +534,16 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
     char * payload = message + ALLNET_SIZE (hp->transport);
     int psize = msize - ALLNET_SIZE (hp->transport);
     if (psize > 0) {
-      int tsize = decrypt_verify (ALLNET_SIGTYPE_RSA_PKCS1, payload, psize,
+      int tsize =
+        symmetric_decrypt_verify (hp->sig_algo, payload, psize,
                                   &contact, &k, &text,
                                   (char *) hp->source, hp->src_nbits,
                                   (char *) hp->destination, hp->dst_nbits, 0);
+      if ((tsize <= 8) && (hp->sig_algo == ALLNET_SIGTYPE_RSA_PKCS1))
+        tsize = decrypt_verify (hp->sig_algo, payload, psize,
+                                &contact, &k, &text,
+                                (char *) hp->source, hp->src_nbits,
+                                (char *) hp->destination, hp->dst_nbits, 0);
       if (tsize > 8) {
         int i;
         int is_authorized = 0;
@@ -319,10 +581,12 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
         int stsize = tsize - sizeof (struct arems_header);
         memcpy (string, text + sizeof (struct arems_header), stsize);
         string [stsize] = '\0';
+        char * ep = ALLNET_EXPIRATION (hp, hp->transport, msize);
+        unsigned long long int expiration = ((ep == NULL) ? 0 : readb64 (ep));
         /* printf ("got %d/%d-byte message '%s' from %s/%d, counter %lld\n",
                 tsize, stsize, string, contact, k, readb64u (ahp->counter)); */
         if (handler (state, string, strlen (string), hp->hops,
-                     readb64u (ahp->counter), contact, k))
+                     readb64u (ahp->counter), expiration, contact, k))
           break;
         free (text);
         free (contact);
@@ -334,6 +598,7 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
 static int client_handler (void * state, /* ignored for now */
                            const char * data, int dsize, int hops,
                            long long int counter,
+                           unsigned long long int expiration,
                            const char * contact, keyset k)
 {
   long long int last_counter = get_counter (contact, k, COUNTER_TYPE_LOCAL);
@@ -344,11 +609,13 @@ static int client_handler (void * state, /* ignored for now */
   }
   int * timed_out = (int *) state;
   printf ("from %s got response:\n%s", contact, data);
+  if ((strlen (data) > 0) && (data [strlen (data) - 1] != '\n'))
+    printf (" [output may be truncated]\n");
   *timed_out = 0;
   return 1;    /* exit the loop*/
 }
 
-static void client_rpc (const char * data, int dsize, char * contact)
+static int client_rpc (const char * data, int dsize, char * contact)
 {
   printf ("sending command '%s' to %s\n", data, contact);
   keyset * k = NULL;
@@ -356,35 +623,40 @@ static void client_rpc (const char * data, int dsize, char * contact)
   if (nkeys != 1) {
     printf ("error: contact %s has %d keys, 1 expected, aborting\n",
             contact, nkeys);
-    return;
+    return 0;
   }
   long long int counter = get_counter (contact, k [0], COUNTER_TYPE_LOCAL) + 1;
   if (counter < 0)
     counter = 0;
   save_counter (contact, k [0], counter, COUNTER_TYPE_LOCAL);
-  encrypt_sign_send (data, dsize, 10, counter, MESSAGE_TYPE_COMMAND,
+  encrypt_sign_send (data, dsize, 10, counter, 0, MESSAGE_TYPE_COMMAND,
                      contact, k [0]);
   char * authorized [1] = { contact };
   int timed_out = 1;   /* if nothing happens, we time out */
   receive_packet_loop (&client_handler, &timed_out, MESSAGE_TYPE_RESPONSE,
                        authorized, 1, command_timeout * 1000, 0);
-  if (timed_out)
+  if (timed_out) {
     printf ("command timed out after %d seconds\n", command_timeout);
+    return 0;
+  }
+  return 1;
 }
 
 static int server_handler (void * state, /* ignored for now */
                            const char * data, int dsize, int hops,
                            long long int counter,
+                           unsigned long long int expiration,
                            const char * contact, keyset k)
 {
+  static int printed = 0;
   long long int last_counter = get_counter (contact, k, COUNTER_TYPE_REMOTE);
   if ((last_counter < 0) || (counter > last_counter)) {
     char result [MAX_STRING_LENGTH];
     int rsize = my_system (data, result, sizeof (result), contact);
     save_counter (contact, k, counter, COUNTER_TYPE_REMOTE);
-    encrypt_sign_send (result, rsize, hops + 2, counter,
+    encrypt_sign_send (result, rsize, hops + 2, counter, expiration,
                        MESSAGE_TYPE_RESPONSE, contact, k);
-  } else if (counter <= last_counter)
+  } else if ((counter <= last_counter) && (printed++ < 5))
     printf ("got duplicate counter %lld, latest %lld\n", counter, last_counter);
   return 0;     /* continue the loop */
 }
@@ -407,11 +679,6 @@ static char ** is_server (int argc, char ** argv, int * nauth)
       found_switch = i;
     else if (strcmp (argv [i], "-t") == 0)
       return NULL;   /* not a server */
-    else if (num_keysets (argv [i]) <= 0) {
-      if (found_switch)
-        printf ("found server switch -s, but user %s is unknown\n", argv [i]);
-      exit (1);   /* not an authorized user */
-    }
   }
   if (! found_switch)
     return NULL;
@@ -423,6 +690,12 @@ static char ** is_server (int argc, char ** argv, int * nauth)
 /* printf ("argv is now:");
   for (i = 0; i < *nauth; i++) printf (" %s", (argv + 1) [i]);
   printf (", nauth %d\n", *nauth); */
+  for (i = 1; i < *nauth; i++) {
+    if (found_switch && (num_keysets (argv [i]) <= 0)) {
+      printf ("found server switch -s, but user %s is unknown\n", argv [i]);
+      exit (1);   /* not an authorized user */
+    }
+  }
   return (argv + 1);
 } 
 
@@ -459,7 +732,6 @@ int main (int argc, char ** argv)
       for (i = 1; i + 2 < argc; i++)
         argv [i] = argv [i + 2];
       argc -= 2;
-for (i = 1; i < argc; i++) printf ("argv [%d] is now %s\n", i, argv [i]);
     }
     char * contact = argv [1];
     char command [MAX_STRING_LENGTH];
@@ -468,6 +740,6 @@ for (i = 1; i < argc; i++) printf ("argv [%d] is now %s\n", i, argv [i]);
     for (i = 2; (i < argc) && (off < sizeof (command)); i++)
       off += snprintf (command + off, sizeof (command) - off, "%s%s",
                        argv [i], ((i + 1 < argc) ? " " : ""));
-    client_rpc (command, strlen (command), contact);
+    return (client_rpc (command, strlen (command), contact) ? 0 : 1);
   }
 }
