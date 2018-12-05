@@ -624,7 +624,7 @@ static int print_times (struct allnet_mgmt_trace_entry * entry,
           start->tv_sec, start->tv_usec, delta_ts); */
     if (print_details) {
       unsigned long long int now_delta = delta_us (now, start);
-      if ((delta_ts >= 0) && (now_delta >= 0) && (delta_ts <= now_delta))
+      if ((delta_ts > 0) && (now_delta > 0) && (delta_ts <= now_delta))
         off += snprintf (buf + off, bsize - off,
                          " %3lld.%06llds timestamp", delta_ts / 1000000LL,
                          delta_ts % 1000000LL);
