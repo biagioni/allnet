@@ -184,7 +184,7 @@ int debug_recv_count = 0;
     error_desc = NULL;  /* timeout */
     long long int start = allnet_time ();
     int flags = MSG_DONTWAIT;
-    while (allnet_time () < start + 2) {
+    while (allnet_time () < start + 5) {
       /* send a keepalive to start the flow of data */
       local_send_keepalive (1);
       /* now read a response (hopefully) */
@@ -391,6 +391,7 @@ int local_receive (unsigned int timeout,
   unsigned long long int loop_count = 0;
   while (allnet_time () < last_rcvd + 10 * KEEPALIVE_SECONDS) {
     loop_count++;
+    local_send_keepalive (0);      /* send a keepalive if the time is right */
     ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
     if ((r > 4) && (r <= ALLNET_MTU + 4)) {
       *message = memcpy_malloc (buffer, r - 4, "local_receive");
