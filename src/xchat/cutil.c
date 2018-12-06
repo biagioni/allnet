@@ -284,7 +284,6 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
 #ifdef DEBUG_PRINT
   print_packet (message, msize, "cutil send_to_one sending", 1);
 #endif /* DEBUG_PRINT */
-if ((readb16 (message + hsize + esize + ssize) != 512)) print_buffer (message, msize, "final", msize, 1);
   int result = local_send (message, msize, priority);
   free (message);
   if (! result) {
