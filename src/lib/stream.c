@@ -178,7 +178,7 @@ int allnet_stream_decrypt_buffer (struct allnet_stream_encryption_state * sp,
     if (sp->hash_size > SHA512_SIZE)
       num_bytes = SHA512_SIZE;
     if (memcmp (packet + (psize - num_bytes), hmac, num_bytes) != 0) {
-      printf ("aes authentication failed\n");
+      /* printf ("aes authentication failed\n"); */
       return 0;
     }
   }
