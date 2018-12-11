@@ -3,7 +3,7 @@
 
 m4_define([allnet_api_version], [3.3.0])
 
-AC_PREREQ([2.68])
+AC_PREREQ([2.63])
 AC_INIT([allnet],[allnet_api_version],[esb@hawaii.edu])
 AM_INIT_AUTOMAKE(foreign)
 AM_SILENT_RULES
