@@ -24,6 +24,7 @@
 #include "lib/cipher.h"
 #include "lib/keys.h"
 #include "lib/media.h"
+#include "lib/sha.h"
 
 #define MAX_STRING_LENGTH	450  /* maximum length of command or response */
 #define MEDIA_ID	ALLNET_MEDIA_TEXT_PLAIN
@@ -265,21 +266,32 @@ static int symmetric_key_encrypt (const char * data, int dsize,
                                   char * destination_buffer, int dest_size)
 {
   unsigned int sksize = has_symmetric_key (contact, NULL, 0);
-  if (sksize < ALLNET_STREAM_KEY_SIZE) {  /* invalid symmetric key */
+  if (sksize != ALLNET_STREAM_KEY_SIZE) {  /* invalid symmetric key */
     if (sksize != 0)
-      printf ("in symmetric_key_encrypt for %s, %d < %d\n", contact,
+      printf ("in symmetric_key_encrypt for %s, %d != %d\n", contact,
               sksize, ALLNET_STREAM_KEY_SIZE);
     return 0;
   }
   /* sksize >= ALLNET_STREAM_KEY_SIZE */
   struct allnet_stream_encryption_state sym_state;
   if (! symmetric_key_state (contact, &sym_state)) { /* initialize the state */
-    char * sym_key = malloc_or_fail (sksize * 2, "symmetric_key_encrypt");
+    char sym_key [ALLNET_STREAM_KEY_SIZE];
+    char secret [ALLNET_STREAM_SECRET_SIZE];
+    if (sizeof (sym_key) != sksize) {  /* error */
+      printf ("error in symmetric_key_encrypt: %zd != %u, %s\n",
+              sizeof (sym_key), sksize, contact);
+      return 0;
+    }
     sksize = has_symmetric_key (contact, sym_key, sksize);
-    /* copy the key to the upper part of sym_key, to make a secret */
-    memmove (sym_key + sksize, sym_key, sksize);
-    allnet_stream_init (&sym_state, sym_key, 0, sym_key, 0, 8, 32);
-    free (sym_key);
+    if ((sizeof (sym_key) != sksize) ||
+        (sizeof (secret) != SHA512_SIZE)) { /* serious error */
+      printf ("error in symmetric_key_encrypt: %zd != %u or %zd != %d, %s\n",
+              sizeof (sym_key), sksize, sizeof (secret), SHA512_SIZE, contact);
+      exit (1);
+    }
+    /* hash the key to make a secret */
+    sha512 (sym_key, sksize, secret);
+    allnet_stream_init (&sym_state, sym_key, 0, secret, 0, 8, 32);
     save_key_state (contact, &sym_state);
   }
   int esize = dsize + sym_state.counter_size + sym_state.hash_size;
@@ -623,7 +635,7 @@ static int client_rpc (const char * data, int dsize, char * contact)
   if (nkeys != 1) {
     printf ("error: contact %s has %d keys, 1 expected, aborting\n",
             contact, nkeys);
-    return 0;
+    return -1;
   }
   long long int counter = get_counter (contact, k [0], COUNTER_TYPE_LOCAL) + 1;
   if (counter < 0)
@@ -722,24 +734,32 @@ int main (int argc, char ** argv)
       printf ("%s%s", authorized [i], ((i + 1 >= nauth) ? "\n" : ", "));
     server_loop (authorized, nauth);  /* infinite loop */
   } else if (argc > 2) {
-    if (strcmp (argv [1], "-t") == 0) {
+    /* arems -r -t seconds name command -- must be specified in that order */
+    int nextindex = 1;   /* index of the next argument to look at */
+    int repeat_until_response = 0;  /* by default, only try once */
+    if (strcmp (argv [nextindex], "-r") == 0) {
+      repeat_until_response = 1;
+      nextindex++;
+    }
+    if (strcmp (argv [nextindex], "-t") == 0) {
       char * end = NULL;
       errno = 0;
-      int arg2 = strtol (argv [2], &end, 10);
+      int arg2 = strtol (argv [nextindex + 1], &end, 10);
       if ((errno == 0) && (*end == '\0'))
         command_timeout = arg2;
-      int i;
-      for (i = 1; i + 2 < argc; i++)
-        argv [i] = argv [i + 2];
-      argc -= 2;
+      nextindex += 2;
     }
-    char * contact = argv [1];
+    char * contact = argv [nextindex];
     char command [MAX_STRING_LENGTH];
     int off = 0;
     int i;
-    for (i = 2; (i < argc) && (off < sizeof (command)); i++)
-      off += snprintf (command + off, sizeof (command) - off, "%s%s",
+    for (i = nextindex + 1; (i < argc) && (off < sizeof (command)); i++)
+      off += snprintf (command + off, minz (sizeof (command), off), "%s%s",
                        argv [i], ((i + 1 < argc) ? " " : ""));
-    return (client_rpc (command, strlen (command), contact) ? 0 : 1);
+    int success;
+    do {
+      success = client_rpc (command, strlen (command), contact);
+    } while ((success == 0) && (repeat_until_response));
+    return ((success > 0) ? 0 : 1);
   }
 }
