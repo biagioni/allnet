@@ -34,12 +34,29 @@ compile for iOS on xcode
       (wait for review to complete)
 
 compile for arm:
-  sudo apt install gcc-arm-linux-gnueabi libc6-dev-i386
-  sudo apt install autoconf libtool autotools-dev pkg-config libssl-dev
+  sudo apt install gcc-arm-linux-gnueabi libc6-dev-i386 autoconf libtool autotools-dev pkg-config libssl-dev
 
   ./autogen.sh
-  ./configure --disable-shared --host=arm-linux-gnueabi --disable-gui --disable-network-manager CFLAGS="-I/usr/local/include"
+  ./configure --disable-shared --host=arm-linux-gnueabi --disable-gui --disable-network-manager --disable-openssl CFLAGS="-I/usr/local/include -static"
   make
+
+note: I included disable-openssl because I haven't been able to link
+openssl with this cross-compiler and my ARM platform (see below for
+details).  You may wish to try first without disable-openssl -- if you
+are successful, encryption and decryption will be much faster.
+
+note: if you built your openssl cross-compiled for ARM, you probably need:
+in openssl (after downloading it from openssl.org and verifying it)
+  ./Configure -static linux-armv4 --prefix=/usr/local/openssl --openssldir=/usr/local/openssl
+  make CC=arm-linux-gnueabi-gcc
+in allnet:
+  ./configure --enable-static --disable-shared --host=arm-linux-gnueabi --disable-gui --disable-network-manager CFLAGS="-I/usr/local/include -I/usr/local/openssl/include -L/usr/local/openssl/lib -static -DHAVE_OPENSSL_ONE_ONE"
+However, I haven't been able to figure out how to really make the
+executable static, and chances are that the version of libc on the
+target system will be incompatible with the version of openssl or
+libressl that you cross-compiled :(
+Fix for now is to compile with --disable-openssl, which slows down
+all crypto operations.  :(
 
   copy back binaries
   make binary directory 
