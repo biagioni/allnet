@@ -105,6 +105,7 @@ class ContactsPanel extends JPanel {
         scrP.setViewportView(panel);
         // don't want a border around it
         scrP.setBorder(BorderFactory.createEmptyBorder());
+        scrP.getVerticalScrollBar().setUnitIncrement(30);
         return scrP;
     }
 
