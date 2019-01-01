@@ -1009,7 +1009,9 @@ print_socket_set (&sockets);
 #ifdef STRICT_AUTHENTICATION
       if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) {
 #ifdef LOG_PACKETS
-printf ("%d-byte message from unauthenticated sender: %02x -> %02x, ", r.msize,
+printf ("%d-byte message on socket %d (global %d %d) ", r.msize,
+        r.sock->sockfd, r.sock->is_global_v4, r.sock->is_global_v6);
+printf ("from unauthenticated sender: %02x -> %02x, ",
         (r.msize >= 24) ? (r.message [8] & 0xff) : 0,
         (r.msize >= 24) ? (r.message [16] & 0xff) : 0);
 print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
