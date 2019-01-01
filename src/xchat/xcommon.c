@@ -1855,9 +1855,6 @@ debug2++;
 #endif /* DEBUG_PRINT */
           if (resend_unacked (ru_contact, ru_kset, sock, hops,
                               ALLNET_PRIORITY_LOCAL_LOW, 10) > 0) {
-#ifdef DEBUG_FOR_DEVELOPER
-printf ("resent unacked to contact %s\n", ru_contact);
-#endif /* DEBUG_FOR_DEVELOPER */
             last_resend = now;
             if (result != 1)
               result = 2;

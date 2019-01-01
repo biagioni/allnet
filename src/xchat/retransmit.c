@@ -349,10 +349,6 @@ static void resend_message (uint64_t seq, const char * contact,
           contact, (uintmax_t)seq, (uintmax_t)time, (uintmax_t)time);
   print_buffer ((char *) cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
 #endif /* DEBUG_PRINT */
-#ifdef DEBUG_FOR_DEVELOPER
-printf ("contact %s, seq %lld, ", contact, readb64u (cdp->counter));
-print_buffer (cdp->message_ack, MESSAGE_ID_SIZE, "resend_packet", 4, 1);
-#endif /* DEBUG_FOR_DEVELOPER */
   resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
                  hops, priority);
 #ifdef DEBUG_PRINT
