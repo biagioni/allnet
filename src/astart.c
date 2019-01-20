@@ -1,14 +1,6 @@
 /* astart.c: start all the processes used by the allnet daemon */
-/* compiles to the executable now called "allnet" */
-/* takes as arguments:
-   - the interface(s) on which to start sending and receiving broadcast packets
-   - "defaults" (or any string beginning with "def"), which means to
-     broadcast on all local interfaces
-   - no arguments, which means to not broadcast on local interfaces
- */
-/* in the future this may be automated or from config file */
-/* (the config file should also tell us the bandwidth available
- * on each interface) */
+/* compiles to the executable now called "allnetd" */
+/* takes no arguments, I usually run it as bin/allnetd */
 
 #include <stdio.h>
 #include <stdlib.h>
