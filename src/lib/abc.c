@@ -83,6 +83,39 @@ static void add_v4 (struct socket_set * sockets,
   }
 }
 
+#if 0  /* I think we have to bind to one interface per address! */
+/* if possible, we should bind to a local IPv6 adddress, rather than
+ * the generic in6addr_any.  Otherwise, the address from which we
+ * send may change over time, which leads to problems with authentication */
+static struct in6_addr get_local_ipv6_address ()
+{
+  struct in6_addr result = in6addr_any;
+  struct interface_addr * interfaces = NULL;
+  int n = interface_addrs (&interfaces);
+  if ((interfaces == NULL) || (n <= 0)) {
+    if (interfaces != NULL)
+      free (interfaces);
+    return result;
+  }
+  int i;
+  for (i = 0; i < n; i++) {
+    if ((! interfaces [i].is_loopback) && (! interfaces [i].is_broadcast)) {
+      int j;
+      for (j = 0; j < interfaces [i].num_addresses; j++) {
+        if (interfaces [i].addresses [j].ss_family == AF_INET6) {
+          struct sockaddr_in6 * sin = 
+            (struct sockaddr_in6 *) (&(interfaces [i].addresses [j]));
+          result = sin.sin6_addr;
+        }
+      }
+    }
+  }
+  if (interfaces != NULL)
+    free (interfaces);
+  return result;
+}
+#endif /* 0 */
+
 static void add_v6 (struct socket_set * sockets)
 {
   int s = socket (PF_INET6, SOCK_DGRAM, IPPROTO_UDP);
@@ -148,13 +181,26 @@ static void add_v6 (struct socket_set * sockets)
 
 #ifdef ALLNET_NETPACKET_SUPPORT
 
+static int is_routable_ipv6 (struct sockaddr * addr)
+{
+  if (addr->sa_family != AF_INET6)
+    return 0;
+  struct sockaddr_in6 * sin = (struct sockaddr_in6 *) addr;
+  if (memget (sin->sin6_addr.s6_addr, 0, 8)) /* begins with 8 zero bytes */
+    return 0;
+  if ((sin->sin6_addr.s6_addr [0] == 0xfe) || /* link-local address */
+      (sin->sin6_addr.s6_addr [0] == 0xff))   /* multicast address */
+    return 0;
+  return 1;
+}
+
 static int has_ip_address (const char * name, const struct ifaddrs * ifa)
 {
   const struct ifaddrs * ifa_loop = ifa;
   while (ifa_loop != NULL) {
     if ((strcmp (name, ifa_loop->ifa_name) == 0) &&
         ((ifa_loop->ifa_addr->sa_family == AF_INET) ||
-         (ifa_loop->ifa_addr->sa_family == AF_INET6)))
+         (is_routable_ipv6 (ifa_loop->ifa_addr))))
       return 1;
     ifa_loop = ifa_loop->ifa_next;
   }
@@ -364,6 +410,8 @@ static void start_wireless (const char * name, const struct ifaddrs * ifa)
  * from trying to use different bssids, which prevents communication.
  * This BSSID is the MAC address of an existing Ethernet card,
  * so should not be in use by anyone else in the world. */
+/* On the other hand, in 2019, using a fixed bssid caused the ad-hoc
+ * to fail altogether, so disabled */
   char * cmd = "iw dev %s ibss join allnet 2412 fixed-freq 60:a4:4c:e8:bc:9c";
 #endif /* 0 */
   char * cmd = "iw dev %s ibss join allnet 2412 fixed-freq";
