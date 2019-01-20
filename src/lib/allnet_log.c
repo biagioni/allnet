@@ -64,9 +64,13 @@ static int create_if_needed (const char * caller_name)
   strncpy (original, log_file_name, sizeof (original));
   int fd = open (log_file_name, O_WRONLY | O_APPEND | O_CREAT, 0644);
   if (fd < 0) {
-    perror ("creat");
-    printf ("%s: unable to create %s(%zd) (was %s(%zd))\n", caller_name,
-            log_file_name, strlen (log_file_name), original, strlen (original));
+    int saved_errno = errno;
+    if (saved_errno != EACCES) {
+      perror ("creat");
+      printf ("%s: unable to create %s(%zd) (was %s(%zd)), errno %d/%d\n",
+              caller_name, log_file_name, strlen (log_file_name),
+              original, strlen (original), saved_errno, EACCES);
+    }
     /* clear the name */
     log_file_name [0] = '\0';
     return 0;
