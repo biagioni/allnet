@@ -125,6 +125,8 @@ static long long int last_sent = 0;
 static long long int last_rcvd = 0;
 static int internal_print_send_errors = 1;
 
+static int connect_once (int print_error);
+
 static int send_with_priority (const char * message, int msize, unsigned int p)
 {
   if (internal_sockfd < 0) {
@@ -143,10 +145,12 @@ static int send_with_priority (const char * message, int msize, unsigned int p)
   writeb32 (copy + msize, p);
   ssize_t s = sendto (internal_sockfd, copy, msize + 4, 0, sap, alen);
   if ((s < 0) && (internal_print_send_errors)) {
-int e = errno;
+    int e = errno;
     perror ("send_with_priority send");
-printf ("send (%d, %p, %d, 0): result %zd, errno %d\n",
-internal_sockfd, copy, msize + 4, s, e);
+    printf ("send (%d, %p, %d, 0): result %zd, errno %d\n",
+            internal_sockfd, copy, msize + 4, s, e);
+    if (errno == EBADF)   /* socket was closed, reopen it */
+      connect_once (1);
   }
   return (s == (msize + 4));
 }
@@ -395,7 +399,7 @@ int local_receive (unsigned int timeout,
     ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
     if ((r > 4) && (r <= ALLNET_MTU + 4)) {
       *message = memcpy_malloc (buffer, r - 4, "local_receive");
-      *priority = readb32 (buffer + (r - 4));
+      *priority = (unsigned int) readb32 (buffer + (r - 4));
       last_rcvd = allnet_time ();
       return (int)(r - 4);
     }
