@@ -67,6 +67,13 @@ int minz (int from, int subtract)
     return from - subtract;
   return 0;
 }
+/* returns (from - subtract) if from >= subtract, otherwise returns 0 */
+ssize_t minzs (ssize_t from, ssize_t subtract)
+{
+  if (from >= subtract)
+    return from - subtract;
+  return 0;
+}
 
 /* returns the number of bits needed to represent the number in binary,
  * and 0 for 0 */

@@ -330,6 +330,8 @@ extern void print_usage (int argc, char ** argv, int user_callable,
                          int do_exit);
 /* returns (from - subtract) if from >= subtract, otherwise returns 0 */
 extern int minz (int from, int subtract);
+/* returns (from - subtract) if from >= subtract, otherwise returns 0 */
+extern ssize_t minzs (ssize_t from, ssize_t subtract);
 
 /* returns the number of bits needed to represent the number in binary,
  * and 0 for 0 */
