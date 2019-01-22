@@ -176,7 +176,6 @@ static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
                               int local)
 {
   memset (new_entry, 0, sizeof (struct allnet_mgmt_trace_entry));
-  /* assume accuracy is 1ms, or 3 decimal digits */
   long long int now = allnet_time_us ();
   /* assume accuracy is 1ms, or 3 decimal digits,
    * unless the hop count is 0, in which case accuracy is 1us or 6 digits */
@@ -185,7 +184,13 @@ static void init_trace_entry (struct allnet_mgmt_trace_entry * new_entry,
   writeb64u (new_entry->seconds_fraction, (now % 1000000) / (local ? 1 : 1000));
   new_entry->hops_seen = hops;
   new_entry->nbits = abits;
-  memcpy (new_entry->address, my_address, (abits + 7) / 8);
+  if (abits > 0) {
+    memcpy (new_entry->address, my_address, (abits + 7) / 8);
+    if ((abits % 8) != 0) {   /* clear the low-order bits */
+      new_entry->address [abits / 8] &=
+          (((unsigned int) (-1)) << (8 - (abits % 8)));
+    }
+  }
 }
 
 /* see if adht has an address, if so, use that */
@@ -238,7 +243,7 @@ static unsigned int add_my_entry (char * in, unsigned int insize,
                                   char * * result)
 {
   *result = NULL;
-  if (intrp->num_entries >= 255)
+  if ((intrp->num_entries >= 255) || (abits <= 0))
     return 0;
   int n = intrp->num_entries + 1;
   int t = inhp->transport;
@@ -276,6 +281,8 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
                              unsigned char * my_address, unsigned int abits,
                              char ** result)
 {
+  if ((abits == 0) && (inhp->hops != 0))	/* do not trace */
+    return 0;
   *result = NULL;
   unsigned int insize_needed =
     ALLNET_TRACE_REQ_SIZE (inhp->transport, intrp->num_entries, 0);
@@ -640,14 +647,23 @@ static int print_entry (struct allnet_mgmt_trace_entry * entry,
                         char * buf, int bsize)
 {
   int off = 0;
-  if (entry->nbits > 0)
+  if (entry->nbits > 0) {
     off += snprintf (buf + off, bsize - off,
                      "%02x", entry->address [0] % 0xff);
-  int i;
-  for (i = 1; ((i < ADDRESS_SIZE) && (i < (entry->nbits + 7) / 8)); i++)
-    off += snprintf (buf + off, bsize - off,
-                     ".%02x", entry->address [i] % 0xff);
-  off += snprintf (buf + off, bsize - off, "/%d  ", entry->nbits);
+    if (entry->nbits > 8) {
+      int i;
+      for (i = 1; ((i < ADDRESS_SIZE) && (i < (entry->nbits + 7) / 8)); i++)
+        off += snprintf (buf + off, minz (bsize, off),
+                         ".%02x", entry->address [i] % 0xff);
+    } else {
+      off += snprintf (buf + off, minz (bsize, off), "    ");
+    }
+  } else {
+    off += snprintf (buf + off, minz (bsize, off), "     ");
+  }
+  off += snprintf (buf + off, minz (bsize, off), "/%d  ", entry->nbits);
+  if (entry->nbits < 10)
+    off += snprintf (buf + off, minz (bsize, off), " ");
 
   if (print_hop) {
     int index = (entry->hops_seen) & 0xff;
