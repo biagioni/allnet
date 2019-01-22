@@ -507,6 +507,7 @@ static void init_defaults ()
   buffer_to_string (my_address, ADDRESS_SIZE, "new random address",
                     ADDRESS_SIZE, 1, alog->b, alog->s);
   log_print (alog);
+  save_my_own_address = 0;
   save_id ();
 }
 
@@ -515,7 +516,7 @@ static void read_my_id ()
   char line [1000];
   int fd = open_read_config ("adht", "my_id", 1);
   if (fd < 0) {
-    printf ("unable to open .allnet/adht/my_id\n");
+    /* printf ("unable to open .allnet/adht/my_id\n"); */
     init_defaults ();
   } else {
     if ((! read_line (fd, line, sizeof (line))) ||
