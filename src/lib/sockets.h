@@ -170,7 +170,8 @@ extern void print_socket_global_addrs (struct socket_set * s);
 /* use result -100 to say we don't know the result */ 
 extern void sockets_log_sr (int sent_not_received, const char * debug,
                             const char * message, int msize,
-                            const struct sockaddr * sent, int alen, int result);
+                            const struct sockaddr * sent, int alen,
+                            ssize_t result);
 extern void sockets_log_addresses (const char * debug,
                                    struct socket_set * sockets,
                                    const struct sockaddr_storage * addrs,

@@ -450,7 +450,7 @@ static struct socket_read_result
   int delta = (is_local ? 4 : 0);    /* local packets have priority also */
   assert (rcvd >= ((ssize_t) (ALLNET_HEADER_SIZE + delta)));
   int msize = rcvd - delta;
-  int priority = (is_local ? readb32 (buffer + msize) : 1);
+  int priority = (is_local ? ((int) readb32 (buffer + msize)) : 1);
   int is_new = 0;
   int recv_limit_reached = 0;
   struct socket_address_validity * sav = NULL;
@@ -899,7 +899,7 @@ static int sockets_open_file (const char * name, int trunc)
 /* use result -100 to say we don't know the result */ 
 void sockets_log_sr (int sent_not_received, const char * debug,
                      const char * message, int msize,
-                     const struct sockaddr * sent, int alen, int result)
+                     const struct sockaddr * sent, int alen, ssize_t result)
 {
 #ifdef LOG_PACKETS
 #ifndef LOG_EVEN_LOCAL_KEEPALIVES
@@ -926,7 +926,7 @@ void sockets_log_sr (int sent_not_received, const char * debug,
   if (fd < 0)
     return;
   if (result != -100)
-    dprintf (fd, "%s.%03d %s %s %d bytes %s %s => %d\n",
+    dprintf (fd, "%s.%03d %s %s %d bytes %s %s => %zd\n",
              now_min_sec, milli, debug, sr, msize, sr_tf, addr_str, result);
   else
     dprintf (fd, "%s.%03d %s %s %d bytes %s %s\n",
