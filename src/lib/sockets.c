@@ -495,8 +495,15 @@ static struct socket_read_result
       ssize_t rcvd = recvfrom (sock->sockfd, buffer, SOCKET_READ_MIN_BUFFER,
                                MSG_DONTWAIT, sap, &alen);
       /* all packets must have a min header, local packets also have priority */
-      int min = ALLNET_HEADER_SIZE + ((sock->is_local) ? 2 : 0);
+      int min = ALLNET_HEADER_SIZE + ((sock->is_local) ? 4 : 0);
       if ((rcvd >= (ssize_t) min) && (rcvd <= SOCKET_READ_MIN_BUFFER)) {
+#ifdef ALLNET_NETPACKET_SUPPORT
+        /* special handling for 40-byte ack packets sent on ethernet,
+         * which get padded with 0s out to 46 bytes */
+        if ((sap->sa_family == AF_PACKET) && (rcvd == 46) &&
+            (buffer [1] == ALLNET_TYPE_ACK) && (memget (buffer + 40, 0, 6)))
+          rcvd = 40;
+#endif /* ALLNET_NETPACKET_SUPPORT */
         int auth = ((sock->is_global_v4 || sock->is_global_v6) ?
                     is_auth_keepalive (sas, s->random_secret, 
                                        sizeof (s->random_secret), s->counter,
@@ -510,7 +517,12 @@ static struct socket_read_result
         result.sock = sock;
       } else {
         perror ("get_message recvfrom");
-        /* TODO: should we close the socket? */
+        static int error_count = 0;
+        if (error_count++ > 10) {
+          result.success = -1;    /* error on this socket */
+          result.sock = sock;
+          exit (1);
+        }
       }
       break;
     }
@@ -519,7 +531,7 @@ static struct socket_read_result
   return result;
 }
 
-/* the buffer must have length at least SOCKET_READ_MIN_BUFFER = ALLNET_MTU+2 */
+/* the buffer must have length at least SOCKET_READ_MIN_BUFFER = ALLNET_MTU+4 */
 struct socket_read_result socket_read (struct socket_set * s,
                                        char * buffer, int timeout,
                                        long long int rcvd_time)
