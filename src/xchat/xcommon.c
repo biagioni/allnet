@@ -1893,6 +1893,7 @@ int create_contact_send_key (int sock, const char * contact,
                              const char * secret1, const char * secret2,
                              unsigned int hops)
 {
+  int error_tracker = 1;  /* for debugging */
   unsigned char addr [ADDRESS_SIZE];
   if ((contact == NULL) || (strlen (contact) == 0)) {
     printf ("empty contact, cannot send key\n");
@@ -1900,12 +1901,14 @@ int create_contact_send_key (int sock, const char * contact,
 #endif /* DEBUG_PRINT */
     return 0;
   }
+  error_tracker = 2;      /* for debugging */
   if ((secret1 == NULL) || (strlen (secret1) == 0)) {
     printf ("empty secret1, cannot send key\n");
 #ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
     return 0;
   }
+  error_tracker = 3;      /* for debugging */
   keyset kset;
   unsigned int abits = 16;  /* static for now */
   if (num_keysets (contact) < 0) {
@@ -1914,13 +1917,16 @@ int create_contact_send_key (int sock, const char * contact,
     memset (addr, 0, ADDRESS_SIZE);
     random_bytes ((char *) addr, (abits + 7) / 8);
     kset = create_contact (contact, 4096, 1, NULL, 0, addr, abits, NULL, 0);
+    error_tracker = 4;    /* for debugging */
     if (kset < 0) {
       printf ("contact %s already exists\n", contact);
       return 0;
     }
+    error_tracker = 5;    /* for debugging */
     char * dir = key_dir (kset);   /* create the exchange file */
     char * hs = NULL;
     if (dir != NULL) {
+      error_tracker = 6;  /* for debugging */
       hs = strcat_malloc (dir, "/exchange", "create_contact_send_key exchange");
       char content [ALLNET_MTU];
       if (secret2 != NULL)
@@ -1930,12 +1936,14 @@ int create_contact_send_key (int sock, const char * contact,
         snprintf (content, sizeof (content), "%d\n%s\n", hops, secret1);
       write_file (hs, content, (int)strlen (content), 1);
       free (hs);
+      error_tracker = 7;  /* for debugging */
     }
-    
   } else {  /* contact already exists, get the keyset and the address */
+    error_tracker = 8;    /* for debugging */
     keyset * keysets = NULL;
     int n = all_keys (contact, &keysets);
     if (n <= 0) {
+      error_tracker = 9;  /* for debugging */
       printf ("contact %s already exists, but not found! %d\n", contact, n);
       return 0;
     }
@@ -1944,6 +1952,7 @@ int create_contact_send_key (int sock, const char * contact,
     abits = get_local (kset, addr);
   }
   if (send_key (sock, contact, kset, secret1, addr, abits, hops)) {
+    error_tracker = 10;   /* for debugging */
     char time_string [100];
     allnet_time_string (allnet_time (), time_string);
 #ifdef DEBUG_PRINT
@@ -1956,7 +1965,7 @@ int create_contact_send_key (int sock, const char * contact,
 #endif /* DEBUG_PRINT */
     return 1;
   }
-  printf ("send_key failed for create_contact_send_key\n");
+  printf ("send_key failed for create_contact_send_key (%d)\n", error_tracker);
   return 0;
 }
 
