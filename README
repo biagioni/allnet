@@ -28,7 +28,7 @@ and Android source is at     https://github.com/biagioni/allnet-android.git
 
 Before building, you may need to install libtool and autoconf.
 On debian/ubuntu and similar systems this requires:
-  sudo apt-get install libtool autoconf autotools-dev libdbus-1-dev pkg-config
+  sudo apt install libtool autoconf autotools-dev libdbus-1-dev pkg-config
 You may also need to install git and either libssl-dev, or libssl<version>-dev
 (libressl may be better than openssl if you can get it).
 On other systems, use the native package manager to install these packages.
