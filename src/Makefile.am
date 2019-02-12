@@ -21,8 +21,6 @@ includes = \
 	social.h \
 	track.h
 
-adlink = social.c record.c track.c
-
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/allnetd \
@@ -34,6 +32,7 @@ __ALLNET_BINDIR__allnetd_SOURCES = astart.c \
 				   record.c \
 				   social.c \
 				   track.c \
+				   atcpd.c \
 				   mgmt/keyd.c \
 				   ${includes}
 __ALLNET_BINDIR__allnetd_LDFLAGS = -lpthread
