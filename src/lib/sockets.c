@@ -101,6 +101,10 @@ struct socket_set * debug_copy_socket_set (const struct socket_set * s)
 
 void print_socket_set_to_fd (struct socket_set * s, int fd)
 {
+  if (s == NULL) {
+    printf ("NULL socket set\n");
+    return;
+  }
   int si;
   for (si = 0; si < s->num_sockets; si++) {
     struct socket_address_set * sas = &(s->sockets [si]);
@@ -494,6 +498,7 @@ static struct socket_read_result
       socklen_t alen = sizeof (sas);
       ssize_t rcvd = recvfrom (sock->sockfd, buffer, SOCKET_READ_MIN_BUFFER,
                                MSG_DONTWAIT, sap, &alen);
+      int save_errno = errno;
       /* all packets must have a min header, local packets also have priority */
       int min = ALLNET_HEADER_SIZE + ((sock->is_local) ? 4 : 0);
       if ((rcvd >= (ssize_t) min) && (rcvd <= SOCKET_READ_MIN_BUFFER)) {
@@ -512,17 +517,25 @@ static struct socket_read_result
         return record_message (s, rcvd_time, sock, sas, alen,
                                buffer, (int)rcvd, auth);
       }
-      if (errno == ECONNREFUSED) {  /* connected socket was closed by peer */
-        result.success = -1;    /* error on this socket */
-        result.sock = sock;
-      } else {
+if (rcvd >= 0) printf ("received illegal message of size %zd\n", rcvd);
+      if (rcvd >= 0)  /* try the next socket */
+        continue;
+      static int error_count = 0;
+      if (error_count++ < 30)
         perror ("get_message recvfrom");
-        static int error_count = 0;
-        if (error_count++ > 10) {
-          result.success = -1;    /* error on this socket */
-          result.sock = sock;
-          exit (1);
+      if (error_count < 10) {
+        if (save_errno == ENODEV) { /* not sure. 2019/02/13 */
+          printf ("errno %d on socket %d\n", save_errno, sock->sockfd);
+          print_socket_set (s);
+        } else if (save_errno != ECONNREFUSED) {
+          printf ("error number %d on socket %d\n", save_errno, sock->sockfd);
         }
+      }
+      if ((error_count >= 10) || (save_errno == ECONNREFUSED)) {
+        /* ECONNREFUSED: connected socket closed by peer */
+        result.success = 0;    /* error on this socket */
+        result.sock = sock;
+        int zero = 0; result.success = error_count / zero;  /* crash */
       }
       break;
     }
@@ -546,7 +559,7 @@ struct socket_read_result socket_read (struct socket_set * s,
     lock ("socket_read");
     fd_set receiving;
     int max_pipe = make_fdset (s, &receiving);
-    /* always select for 1ms, since we are holding the lock */
+    /* always select for 10ms, since we are holding the lock */
     struct timeval tv = { .tv_sec = 0, .tv_usec = 10000 };
     int result = select (max_pipe, &receiving, NULL, NULL, &tv);
     if (result > 0)      /* found something, get_message unlocks global_mutex */
@@ -595,9 +608,13 @@ static void send_error (const char * message, int msize, int flags, int res,
     print_socket_set (s);
   if (sav != NULL)
     print_sav (sav);
-  /* no need to die for network or host unreachable or unavailable addrs */
+  print_buffer (message, msize, "message", 32, 0);
+  if (msize > 32)
+    print_buffer (message + msize - 4, 4, "...", 4, 1);
+  /* no need to die for network or host unreachable or unavailable addrs
+   * or message too long */
   if ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
-      (e != EADDRNOTAVAIL)) {
+      (e != EADDRNOTAVAIL) && (e != EMSGSIZE)) {
     char * q = NULL;
     printf ("now crashing: %d\n", *q);
   }
@@ -631,6 +648,7 @@ check_sav (sav, "send_on_socket");
     /* some error, so the rest of this function is for debugging */
     send_error (message, msize, flags, (int)result,
                 sav->addr, sav->alen, desc2, s, sockfd, sav, si, ai);
+    print_socket_set (s);
   }
   return 0;
 }
