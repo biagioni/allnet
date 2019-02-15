@@ -44,6 +44,9 @@ static int tcp_fds [MAX_CONNECTIONS];
 static char tcp_buffers [MAX_CONNECTIONS] [BUFSIZE];
 static size_t tcp_bytes [MAX_CONNECTIONS];
 
+/* used to terminate the program if the keepalives stop */
+static unsigned long long int last_udp_received_time = 0;
+
 struct atcp_thread_args {
   int running;   /* set to zero when the main thread terminates */
   int local_sock;
@@ -96,47 +99,58 @@ static void release (pthread_mutex_t * mutex, const char * message)
 #endif /* DEBUG_PRINT */
 }
 
+/* if running becomes false, exit immediately, otherwise sleep */
+static void sleep_while_running (struct atcp_thread_args * args, int ms)
+{
+  while ((args->running) && (ms > 0)) {
+    usleep (10000);
+    ms -= 10;
+  }
+}
+
 /* returns the number of bytes left in the buffer after processing */
 /* if the buffer is full, removes at least 16 bytes from the buffer */
 static size_t atcp_process (int fd, char * buffer, size_t bsize)
 {
-  if (bsize <= HEADER_FOR_TCP_SIZE)  /* no valid header or no data, continue */
-    return bsize;
-  if (memcmp (buffer, MAGIC_STRING, MAGIC_STRING_SIZE) == 0) {
-    /* buffer starts with a valid header */
-    unsigned long int length = readb32 (buffer + MAGIC_STRING_SIZE +
-                                        PRIORITY_SIZE);
-    if (length <= bsize) {   /* valid packet, send to ad */
-      send (fd, buffer + HEADER_FOR_TCP_SIZE, length, MSG_DONTWAIT);
-      if (length == bsize)   /* consumed everything */
-        return 0;
-      memmove (buffer, buffer + length, bsize - length);
-      return bsize - length;
-    }  /* else, length > bsize, continue to accept data */
-    if (length <= ALLNET_MTU)  /* legal length > bsize, keep accumulating */
-      return bsize;
-    /* else: illegal length > MTU, look for the next header after
-     * deleting the illegal one */
-    bsize -= HEADER_FOR_TCP_SIZE;
-    memmove (buffer, buffer + HEADER_FOR_TCP_SIZE, bsize);
-  }  /* buffer does not begin with a magic string, look for one */
-  if (bsize < MAGIC_STRING_SIZE)  /* nothing to do */
-    return bsize;              /* if we do not return here, 8 <= bsize */
-  /* find the magic string, if any -- it cannot be at the start of the buffer */
-  char * magic = find_magic (buffer + 1, bsize - 1);
-  if (magic == NULL)  /* save the last 7 bytes of the buffer */
-    /* we know that bsize >= MAGIC_STRING_SIZE, so magic will be > buffer */
-    magic = buffer + (bsize - (MAGIC_STRING_SIZE - 1)); /* magic=buf+bsize-7 */
-  /* invariant: magic >= buffer (from the considerations above) */
-  size_t delta = magic - buffer;
-  /* invariant: 0 < delta <= bsize - 7          (given that 8 <= bsize)
-     "if (magic is not NULL)", 8 < bsize, and 1 <= delta <= bsize - 8
-     "if (magic == NULL)", sets delta to bsize - 7 (magic - buffer = bsize - 7):
-     so 1 <= delta == bsize - 7. */
-  size_t new_size = bsize - delta;
-  /* invariant: 7 <= new_size < bsize */
-  memmove (buffer, magic, new_size);
-  return new_size;
+  while (bsize > HEADER_FOR_TCP_SIZE) {
+    if (memcmp (buffer, MAGIC_STRING, MAGIC_STRING_SIZE) == 0) {
+      /* buffer starts with a valid header */
+      unsigned long int length = readb32 (buffer + MAGIC_STRING_SIZE +
+                                          PRIORITY_SIZE);
+      if ( /* (length > ALLNET_HEADER_SIZE) && */ (length <= ALLNET_MTU)) {
+        unsigned long int total = length + HEADER_FOR_TCP_SIZE;
+        if (total <= bsize) {   /* valid, send to ad */
+if ((length > 1460) || (length < 24)) {
+printf ("atcpd forwarding to ad %ld-byte message\n", length);
+print_buffer (buffer, HEADER_FOR_TCP_SIZE, "header", 32, 1); }
+          char * message = buffer + HEADER_FOR_TCP_SIZE;
+          send (fd, message, length, MSG_DONTWAIT);
+          if (total == bsize)   /* consumed everything */
+            return 0;
+          /* move remaining bytes to the front of the array, and adjust bsize */
+          memmove (buffer, buffer + total, bsize - total);
+          return bsize - total;
+        }  /* else, total > bsize, continue to accept data */
+        return bsize;
+      } /* else: illegal length, delete the header, then loop again */
+      bsize -= HEADER_FOR_TCP_SIZE;
+      memmove (buffer, buffer + HEADER_FOR_TCP_SIZE, bsize);
+    } else { /* buffer does not begin with a magic string, look for one */
+      char * magic = find_magic (buffer + MAGIC_STRING_SIZE,
+                                 bsize - MAGIC_STRING_SIZE);
+      if (magic != NULL) {
+        bsize -= (magic - buffer);
+        memmove (buffer, magic, bsize);  /* then loop again */
+      } else {  /* bsize > 7, so save the last 7 bytes, then accumulate more */
+        size_t new_size = MAGIC_STRING_SIZE - 1;
+        size_t offset = bsize - new_size;
+        memmove (buffer, buffer + offset, new_size);
+        return new_size;
+      }
+    }
+  }
+  /* bsize <= HEADER_FOR_TCP_SIZE, return whatever size is left */
+  return bsize;
 }
 
 /* receive from TCP, adding bytes to buffers until we have complete packets */
@@ -176,8 +190,9 @@ static void * atcp_recv_thread (void * arg)
       }
     }
     release (&(args->lock), "r");
-    usleep (30000);  /* sleep 1/30s */
+    sleep_while_running (args, 30);  /* sleep 1/30s */
   }
+  printf ("%lld: atcpd_recv_thread %p ending\n", allnet_time (), arg);
   return NULL;
 }
 
@@ -271,18 +286,29 @@ static void * atcp_accept_thread (void * arg)
   sin.sin_addr.s_addr = allnet_htonl (INADDR_ANY);
   if (bind (listen_socket, (struct sockaddr *) (&sin), sizeof (sin)) != 0) {
     perror ("atcp_accept_thread bind");
-    sleep (240);  /* wait for long enough for the port to be released */
+    /* wait 240s, long enough for the port to be released */
+    sleep_while_running (args, 240000);
     if (bind (listen_socket, (struct sockaddr *) (&sin), sizeof (sin)) != 0) {
       perror ("atcp_accept_thread bind again");
       printf ("another atcpd already running, quitting this one\n");
       args->running = 0;
       return NULL;
-    }
+    } else printf ("second bind successful\n");
   }
   if (listen (listen_socket, 5) != 0) {
     perror ("atcp_accept_thread listen");
     return NULL;
   }
+  /* make the socket asynchronous so accept doesn't block */
+  int flags = fcntl (listen_socket, F_GETFL);
+  if (flags != -1) {
+    flags |= O_NONBLOCK;
+    if (fcntl (listen_socket, F_SETFL, flags) != 0)
+      perror ("fcntl (F_SETFL)");
+  } else {
+    perror ("fcntl (F_GETFL)");
+  }
+
   while (args->running) {   /* loop until main thread goes away */
     struct sockaddr_storage sas;
     socklen_t alen = sizeof (sas);
@@ -301,8 +327,15 @@ static void * atcp_accept_thread (void * arg)
       }
       tcp_fds [index] = new_socket;
       release (&(args->lock), "a");
+    } else if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+      sleep_while_running (args, 1000);
+    } else {
+      perror ("atcpd accept");
+      args->running = 0;
     }
   }
+  printf ("%lld: atcpd_accept_thread %p ending\n", allnet_time (), arg);
+  close (listen_socket);
   return NULL;
 }
 
@@ -344,13 +377,18 @@ perror ("atcpd TCP socket");
       }
     }
     release (&(args->lock), "c");
-    sleep (sleep_time);
+    sleep_while_running (args, sleep_time * 1000);
     sleep_time = sleep_time * 12 / 10;          /* gradual increase, 20%/loop */
 #define MAX_SLEEP_TIME (KEEPALIVE_SECONDS * 24) /* try at least every 4min */
     if (sleep_time > MAX_SLEEP_TIME)
       sleep_time = MAX_SLEEP_TIME;
 #undef MAX_SLEEP_TIME
   }
+  printf ("%lld: atcpd_connect_thread %p ending\n", allnet_time (), arg);
+  int i;
+  for (i = 0; i < MAX_CONNECTIONS; i++)
+    if (tcp_fds [i] != -1)
+      close (tcp_fds [i]);
   return NULL;
 }
 
@@ -362,8 +400,27 @@ static void * atcp_keepalive_thread (void * arg)
   const char * packet = keepalive_packet (&size_to_send);
   while (args->running) {   /* loop until main thread goes away */
     send (local_sock, packet, size_to_send, MSG_DONTWAIT);
-    sleep (KEEPALIVE_SECONDS);
+    sleep_while_running (args, KEEPALIVE_SECONDS * 1000);
   }
+  printf ("%lld: atcpd_keepalive_thread %p ending\n", allnet_time (), arg);
+  return NULL;
+}
+
+static void * atcp_timer_thread (void * arg)
+{
+  struct atcp_thread_args * args = ((struct atcp_thread_args *) arg);
+  int missed_count = 0;
+  do {
+    sleep_while_running (args, KEEPALIVE_SECONDS * 3 * 1000);
+    while (args->running &&
+           (last_udp_received_time + KEEPALIVE_SECONDS * 25 > allnet_time ())) {
+      missed_count = 0;  /* recently received */
+      sleep_while_running (args, KEEPALIVE_SECONDS * 1000);
+    }
+  } while (args->running && (missed_count++ < 3));
+  printf ("%lld: atcpd_timer_thread %p ending %d\n", allnet_time (), arg,
+          args->running);
+  args->running = 0;  /* gracefully stop all the other threads */
   return NULL;
 }
 
@@ -392,40 +449,70 @@ static int local_socket ()
 void * atcpd_main (char * arg)
 {
   alog = init_log ("atcpd");
-  struct atcp_thread_args * thread_args =
-    malloc_or_fail (sizeof (struct atcp_thread_args), "atcpd_main");
-  thread_args->local_sock = local_socket ();
-  int i;
-  for (i = 0; i < MAX_CONNECTIONS; i++) {
-    tcp_fds [i] = -1;
-    tcp_bytes [i] = 0;
-  }
-  pthread_mutex_init (&(thread_args->lock), NULL);
-  thread_args->running = 1;
-  pthread_t thr;
-  pthread_create (&thr, NULL, atcp_connect_thread, (void *) thread_args);
-  pthread_create (&thr, NULL, atcp_recv_thread, (void *) thread_args);
-  pthread_create (&thr, NULL, atcp_keepalive_thread, (void *) thread_args);
-  pthread_create (&thr, NULL, atcp_accept_thread, (void *) thread_args);
-  while (thread_args->running) {  /* loop until an error occurs */
-    char buffer [ALLNET_MTU];
-    struct sockaddr_storage sas;
-    struct sockaddr * sap = (struct sockaddr *) (&sas);
-    socklen_t addr_len = sizeof (sas);
-    ssize_t r = recvfrom (thread_args->local_sock, buffer, sizeof (buffer), 0,
-                          sap, &addr_len);
-    if (r < 0) {   /* some error */
-      snprintf (alog->b, alog->s, "atcpd pipe closed, restarting\n");
-      log_print (alog);
-      close (thread_args->local_sock);
-      thread_args->local_sock = local_socket ();
-    } else if (r > 0) {           /* got a packet */
-      atcp_handle_local_packet (thread_args->local_sock, buffer, (int) r,
-                                &(thread_args->lock), sas);
+  int restart_count = 0;
+  while (restart_count++ < 3) {
+    int new_sock = local_socket ();
+    last_udp_received_time = allnet_time (); /* start all the timers now */
+    if (new_sock < 0) {
+      sleep (2);
+      continue;
     }
+    struct atcp_thread_args * thread_args =
+      malloc_or_fail (sizeof (struct atcp_thread_args), "atcpd_main");
+    thread_args->local_sock = new_sock;
+    int i;
+    for (i = 0; i < MAX_CONNECTIONS; i++) {
+      tcp_fds [i] = -1;
+      tcp_bytes [i] = 0;
+    }
+    pthread_mutex_init (&(thread_args->lock), NULL);
+    thread_args->running = 1;
+    pthread_t thr1, thr2, thr3, thr4, thr5;
+    pthread_create (&thr1, NULL, atcp_connect_thread, (void *) thread_args);
+    pthread_create (&thr2, NULL, atcp_recv_thread, (void *) thread_args);
+    pthread_create (&thr3, NULL, atcp_keepalive_thread, (void *) thread_args);
+    pthread_create (&thr4, NULL, atcp_accept_thread, (void *) thread_args);
+    pthread_create (&thr5, NULL, atcp_timer_thread, (void *) thread_args);
+    while (thread_args->running) {  /* loop until an error occurs */
+      char buffer [ALLNET_MTU];
+      struct sockaddr_storage sas;
+      struct sockaddr * sap = (struct sockaddr *) (&sas);
+      socklen_t addr_len = sizeof (sas);
+      ssize_t r = recvfrom (thread_args->local_sock, buffer, sizeof (buffer),
+                            MSG_DONTWAIT, sap, &addr_len);
+      if ((r < 0) &&   /* some error, or timeout */
+          (errno != EAGAIN) && (errno != EWOULDBLOCK)) {  /* not a timeout */
+        if (errno == ECONNREFUSED)
+          snprintf (alog->b, alog->s,
+                    "atcpd socket %d connection refused, %p\n",
+                    thread_args->local_sock, thread_args);
+        else
+          snprintf (alog->b, alog->s,
+                    "atcpd socket closed, socket %d, errno %d, restarting %p\n",
+                    thread_args->local_sock, errno, thread_args);
+        printf ("%s", alog->b);
+        log_print (alog);
+        close (thread_args->local_sock);
+        thread_args->running = 0;  /* kill off all the other threads, if any */
+      } else if (r > 0) {           /* got a packet */
+        atcp_handle_local_packet (thread_args->local_sock, buffer, (int) r,
+                                  &(thread_args->lock), sas);
+        last_udp_received_time = allnet_time ();
+        restart_count = 0; /* successful, doesn't count as a restart any more */
+/* printf ("received %d bytes, time %lld\n", (int) r, last_udp_received_time); */
+      }
+      sleep_while_running (thread_args, 30);  /* sleep 1/30s */
+    }
+    pthread_join (thr1, NULL);
+    pthread_join (thr2, NULL);
+    pthread_join (thr3, NULL);
+    pthread_join (thr4, NULL);
+    pthread_join (thr5, NULL);
+    free (thread_args);
+    printf ("%lld: atcpd_main restarting %d\n", allnet_time (), restart_count);
+    snprintf (alog->b, alog->s, "atcpd_main restarting\n");
+    log_print (alog);
   }
-  snprintf (alog->b, alog->s, "keyd infinite loop ended, exiting\n");
-  log_print (alog);
   return NULL;
 }
 
