@@ -33,6 +33,7 @@ extern void allnet_daemon_main (void);
 extern void keyd_main (char * pname);
 #endif /* ALLNET_USE_FORK */
 extern void keyd_generate (char * pname);
+extern void atcpd_main (char * pname);
 
 static struct allnet_log * alog = NULL;
 
@@ -508,15 +509,17 @@ int astart_main (int argc, char ** argv)
     snprintf (alog->b, alog->s, "argument %d: %s\n", i, argv [i]);
     log_print (alog);
   }
-  /* start the dependent processes, keyd and keygen */
+
+  /* start the dependent processes, keyd, keygen, and atcpd */
+  my_call1 (argv [0], alen, "allnet-tcpd",
+            atcpd_main, pid_fd, astart_pid, 0, 1);
+  my_call1 (argv [0], alen, "allnet-kgen",
+            keyd_generate, pid_fd, astart_pid, 0, 1);
 #ifdef ALLNET_USE_FORK /* keyd only works as a separate process */
   my_call1 (argv [0], alen, "allnet-keyd", keyd_main, pid_fd, astart_pid, 0, 1);
 #endif /* ALLNET_USE_FORK */
-  my_call1 (argv [0], alen, "allnet-kgen",
-            keyd_generate, pid_fd, astart_pid, 0, 1);
-
   /* start allnet */
-#ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
+#ifdef ALLNET_USE_FORK  /* only set up the signal handler for allnetd */
   setup_signal_handler (1);
   /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
 #endif /* ALLNET_USE_FORK */
