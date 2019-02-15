@@ -130,6 +130,41 @@ void print_ping_list (int fd)
   }
 }
 
+/* returns one if the addr_info passes sanity checks, 0 otherwise */
+/* if desc is not NULL, prints error messages */
+static int sane_addr_info (const struct addr_info * addr, const char * desc)
+{
+  static int max_print = 10;
+  if (max_print <= 0)
+    desc = NULL;
+  if (addr == NULL) {
+    if (desc != NULL) printf ("sane_addr_info (%s): addr is NULL\n", desc);
+    max_print--;
+    return 0;
+  }
+  if ((addr->ip.ip_version != 4) && (addr->ip.ip_version != 6)) {
+    if (desc != NULL) printf ("sane_addr_info (%s): ip version %d != %d, %d\n",
+                              desc, addr->ip.ip_version, 4, 6);
+    max_print--;
+    return 0;
+  }
+  if (addr->nbits > ADDRESS_BITS) {
+    if (desc != NULL) printf ("sane_addr_info (%s): nbits %d > %d\n",
+                              desc, addr->nbits, ADDRESS_BITS);
+    max_print--;
+    return 0;
+  }
+  if ((addr->type != ALLNET_ADDR_INFO_TYPE_RP) &&
+      (addr->type != ALLNET_ADDR_INFO_TYPE_DHT)) {
+    if (desc != NULL)
+      printf ("sane_addr_info (%s): addr type %d != %d, %d\n", desc, addr->type,
+              ALLNET_ADDR_INFO_TYPE_RP, ALLNET_ADDR_INFO_TYPE_DHT);
+    max_print--;
+    return 0;
+  }
+  return 1;
+}
+
 /* for addresses that are not valid, say they are not listed */
 static int already_listed (struct sockaddr_storage * sap,
                            struct sockaddr_storage * already, int na)
@@ -181,8 +216,11 @@ static void routing_add_dht_sockaddr (struct sockaddr * ip_addr, int id)
 
 static time_t peers_file_time = 0;
 
-static int entry_to_file (int fd, struct addr_info * entry, int index)
+static int entry_to_file (int fd, struct addr_info * entry, int index,
+                          const char * caller)
 {
+  if (! sane_addr_info (entry, caller)) /* don't save insane entries */
+    return 0;
   char line [300];
   char buf [200];
   if (entry->nbits != 0) {
@@ -237,10 +275,14 @@ static void save_peers ()
   int cping = 0;
   int fd = open_write_config ("adht", "peers", 1);
   int i;
-  for (i = 0; i < MAX_PEERS; i++)
-    cpeer += entry_to_file (fd, &(peers [i].ai), i);
-  for (i = 0; i < MAX_PINGS; i++)
-    cping += entry_to_file (fd, &(pings [i].ai), -1);
+  for (i = 0; i < MAX_PEERS; i++) {
+    if (peers [i].refreshed)
+      cpeer += entry_to_file (fd, &(peers [i].ai), i, "save_peers/peer");
+  }
+  for (i = 0; i < MAX_PINGS; i++) {
+    if (pings [i].refreshed)
+      cping += entry_to_file (fd, &(pings [i].ai), -1, "save_peers/ping");
+  }
   close (fd);
   peers_file_time = time (NULL);  /* no need to re-read in load_peers (1) */
 #ifdef DEBUG_PRINT
@@ -434,58 +476,61 @@ static const char * read_buffer (const char * in, int nbytes,
   return in;
 }
 
-static void load_peer (struct addr_info * peer, const char * line,
-                       int real_peer)
+/* returns 1 if successful, 0 otherwise */
+static int load_peer (struct addr_info * peer, const char * line,
+                      int real_peer)
 {
+  memset (peer, 0, sizeof (struct addr_info));
   const char * original_line = line;  /* for debugging */
   /* printf ("load_peer parsing line %s\n", line); */
   if (*line != ':')
-    return;
+    return 0;
   line++;
   char * end = (char *)line;  /* end cannot be const because used in strtol */
   if ((end [0] != ' ') || (end [1] != '('))
-    return;
+    return 0;
   line = end + 2;
   int nbits = (int)strtol (line, &end, 10);
-  if (end == line)
-    return;
+  if ((end == line) || (nbits < 0) || (nbits > ADDRESS_BITS))
+    return 0;
   if ((end [0] != ')') || (end [1] != ' '))
-    return;
+    return 0;
   line = end + 2;
   int num_bytes = (int)strtol (line, &end, 10);
-  if ((num_bytes > 8) || (end == line) || (memcmp (end, " bytes: ", 8) != 0))
-    return;
+  if ((num_bytes < 0) || (num_bytes > ADDRESS_SIZE) || (end == line) ||
+      (memcmp (end, " bytes: ", 8) != 0))
+    return 0;
   line = end + 8;
   char address [ADDRESS_SIZE];
   memset (address, 0, sizeof (address));
   line = read_buffer (line, (nbits + 7) / 8, address, sizeof (address));
   if (memcmp (line, ", v ", 4) != 0)
-    return;
+    return 0;
   line += 4;
   int ipversion = (int)strtol (line, &end, 10);
   if (end == line)
-    return;
+    return 0;
   if ((ipversion != 4) && (ipversion != 6)) {
     printf ("load_peer: IP version %d in '%s'\n", ipversion, original_line);
-    return;
+    return 0;
   }
   line = end;
   if (memcmp (line, ", port ", 7) != 0)
-    return;
+    return 0;
   line += 7;
   int port = (int)strtol (line, &end, 10);
   if (end == line)
-    return;
+    return 0;
   line = end;
   if (memcmp (line, ", addr ", 7) != 0)
-    return;
+    return 0;
   line += 7;
   int af = AF_INET;
   if (ipversion == 6)
     af = AF_INET6;
   char storage [sizeof (struct in6_addr)];
   if (inet_pton (af, line, storage) != 1)
-    return;
+    return 0;
   memset (((char *) (peer)), 0, sizeof (struct addr_info));
   peer->ip.ip.s6_addr [10] = 0xff;
   peer->ip.ip.s6_addr [11] = 0xff;
@@ -497,6 +542,10 @@ static void load_peer (struct addr_info * peer, const char * line,
   peer->ip.ip_version = ipversion;
   memcpy (peer->destination, address, ADDRESS_SIZE);
   peer->nbits = nbits;
+  peer->type = ALLNET_ADDR_INFO_TYPE_DHT;
+  if (! sane_addr_info (peer, "load_peer"))
+    return 0;
+  return 1;
 }
 
 static void init_defaults ()
@@ -548,13 +597,14 @@ static void read_peers_file ()
       char * end;
       int peer = (int)strtol (line, &end, 10);
       if ((end != line) && (peer >= 0) && (peer < MAX_PEERS)) {
-        load_peer (&(peers [peer].ai), end, 1);
-        peers [peer].refreshed = 1;
+        if (load_peer (&(peers [peer].ai), end, 1))
+          peers [peer].refreshed = 1;
       }
     } else {
-      load_peer (&(pings [ping_index].ai), line + 1, 0);
-      pings [ping_index].refreshed = 1;
-      ping_index++;
+      if (load_peer (&(pings [ping_index].ai), line + 1, 0)) {
+        pings [ping_index].refreshed = 1;
+        ping_index++;
+      }
     }
   }
   close (fd);
@@ -817,9 +867,8 @@ int routing_add_dht (struct addr_info addr)
 {
   int result = -1;
   /* sanity check first */
-  if (addr.nbits > ADDRESS_BITS) {
-    printf ("routing_add_dht given address with %d > %d bits, not saving\n",
-            addr.nbits, ADDRESS_BITS);
+  if (! sane_addr_info (&addr, "routing_add_dht")) {
+    printf ("routing_add_dht given bad address, not saving\n");
     print_addr_info (&addr);
     return -1;
   }
@@ -898,18 +947,19 @@ static int find_ping (struct addr_info * addr)
  * is already in the DHT list, and -2 for other errors */
 static int routing_add_ping_locked (struct addr_info * addr)
 {
-  int result = -2;
   int i;
+  if (! sane_addr_info (addr, "routing_add_ping_locked"))
+    return -2;
   if (find_peer (peers, MAX_PEERS, addr) >= 0) {
 #ifdef DEBUG_PRINT
     printf ("rapl found peer, returning -1\n");
 #endif /* DEBUG_PRINT */
-    result = -1;
+    return -1;
   } else if (find_ip (&(addr->ip)) >= 0) {
 #ifdef DEBUG_PRINT
     printf ("rapl found ip, returning -1\n");
 #endif /* DEBUG_PRINT */
-    result = -1;
+    return -1;
   } else {
     int n = find_ping (addr);
     if (n == -1) {   /* add to the front */
@@ -917,22 +967,22 @@ static int routing_add_ping_locked (struct addr_info * addr)
         pings [i] = pings [i - 1];
       pings [0].ai = *addr;
       pings [0].refreshed = 1;
-      result = 1;
 #ifdef DEBUG_PRINT
       printf ("rapl did not find ping, returning 1\n");
 #endif /* DEBUG_PRINT */
+      return 1;
     } else {         /* move to the front */
       for (i = n; i > 0; i--)
         pings [i] = pings [i - 1];
       pings [0].ai = *addr;
       pings [0].refreshed = 1;
-      result = 0;
 #ifdef DEBUG_PRINT
       printf ("rapl found ping, returning 0\n");
 #endif /* DEBUG_PRINT */
+      return 0;
     }
   }
-  return result;
+  return -2;
 }
 
 static int delete_matching_address (struct socket_address_set * sock,
