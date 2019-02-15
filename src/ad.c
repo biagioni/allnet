@@ -138,6 +138,10 @@ static unsigned char my_address [ADDRESS_SIZE];
 /* the virtual clock is updated about every 10s. It should never be zero. */
 static long long int virtual_clock = 1;
 
+/* if receiving data from an unauthenticated sender, send at most one
+   keepalive per virtual clock */
+static int keepalive_sent_this_virtual_clock = 0;
+
 /* update the virtual clock about every 10 seconds */
 /* and do other periodic tasks */
 static void update_virtual_clock ()
@@ -151,6 +155,7 @@ static void update_virtual_clock ()
                             SEND_KEEPALIVES_REMOTE);
     socket_update_time (&sockets, virtual_clock);
     add_local_broadcast_sockets (&sockets);
+    keepalive_sent_this_virtual_clock = 0;
   }
 }
 
@@ -193,7 +198,7 @@ printf ("\n");
 struct allnet_keepalive_entry {
   struct sockaddr_storage addr;
   socklen_t alen;
-  char keepalive_auth [KEEPALIVE_AUTHENTICATION_SIZE];
+  char auth [KEEPALIVE_AUTHENTICATION_SIZE];
 };
 struct allnet_keepalive_entry routing_keepalives [ADDRS_MAX];
 int num_routing_keepalives = 0;
@@ -227,10 +232,10 @@ exit (1);
   }
   if ((same_sockaddr (&(routing_keepalives [index].addr),
                       routing_keepalives [index].alen, &addr, alen)) &&
-      (memcmp (routing_keepalives [index].keepalive_auth, keepalive_auth, 
+      (memcmp (routing_keepalives [index].auth, keepalive_auth, 
                KEEPALIVE_AUTHENTICATION_SIZE) == 0))
     return 0;   /* we already have it, no need to resend the keepalive */
-  memcpy (routing_keepalives [index].keepalive_auth, keepalive_auth, 
+  memcpy (routing_keepalives [index].auth, keepalive_auth, 
           KEEPALIVE_AUTHENTICATION_SIZE);
   routing_keepalives [index].addr = addr;
   routing_keepalives [index].alen = alen;
@@ -263,8 +268,7 @@ static void send_routing_keepalive (int sockfd, struct sockaddr_storage addr,
                                     socklen_t alen)
 {
   int index = routing_keepalive_index (addr, alen);
-  char * receiver_auth = ((index < 0) ? NULL :
-                          routing_keepalives [index].keepalive_auth);
+  char * receiver_auth = ((index < 0) ? NULL : routing_keepalives [index].auth);
   char message [ALLNET_MTU];
   int msize = keepalive_auth (message, sizeof (message),
                               addr, sockets.random_secret,
@@ -999,14 +1003,17 @@ print_socket_set (&sockets);
         (! is_auth_keepalive (r.from, sockets.random_secret,
                               sizeof (sockets.random_secret),
                               sockets.counter, r.message, r.msize))) {
-      /* respond with a challenge, see if they get back to us */
-      send_auth_response (r.sock->sockfd, r.from, r.alen, sockets.random_secret,
-                          sizeof (sockets.random_secret),
-                          sockets.counter, r.message, r.msize);
+      if (! keepalive_sent_this_virtual_clock) {
+        /* respond with a challenge, see if they get back to us */
+        send_auth_response (r.sock->sockfd, r.from, r.alen,
+                            sockets.random_secret,
+                            sizeof (sockets.random_secret),
+                            sockets.counter, r.message, r.msize);
+        keepalive_sent_this_virtual_clock = 1;
+      }
 #ifdef DEBUG_FOR_DEVELOPER
 #define STRICT_AUTHENTICATION
 #endif /* DEBUG_FOR_DEVELOPER */
-#ifdef STRICT_AUTHENTICATION
       if (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)) {
 #ifdef LOG_PACKETS
 printf ("%d-byte message on socket %d (global %d %d) ", r.msize,
@@ -1017,9 +1024,13 @@ printf ("from unauthenticated sender: %02x -> %02x, ",
 print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
 printf ("\n");
 #endif /* LOG_PACKETS */
+#ifdef STRICT_AUTHENTICATION
+printf ("not adding this sender: ");
+print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
+printf ("\n");
         continue;   /* not authenticated, do not process this packet */
-      }
 #endif /* STRICT_AUTHENTICATION */
+      }
     }
     if ((r.socket_address_is_new) || (r.sav == NULL))
       r.sav = add_received_address (r);
