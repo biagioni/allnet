@@ -470,9 +470,9 @@ static int
       /* initialize the state */
       char * sym_key = malloc_or_fail (sksize * 2, "symmetric_decrypt_verify");
       sksize = has_symmetric_key (contacts [cindex], sym_key, sksize);
-      /* copy the key to the upper part of sym_key, to make a secret */
-      memmove (sym_key + sksize, sym_key, sksize);
-      allnet_stream_init (&sym_state, sym_key, 0, sym_key, 0, 8, 32);
+      char secret [ALLNET_STREAM_SECRET_SIZE];
+      sha512 (sym_key, sksize, secret);
+      allnet_stream_init (&sym_state, sym_key, 0, secret, 0, 8, 32);
       free (sym_key);
       /* save the state only if we are successful */
     }
