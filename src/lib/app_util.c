@@ -87,14 +87,7 @@ static void exec_allnet (const char * arg, const char * config_path)
       printf ("unable to start AllNet daemon %s\n", astart);
       exit (1);   /* only exits the child */
     }
-    /* put extra spaces in "default" so we can see more of the arguments */
-#define DEFAULT_STRING	"default                     "
-    char * args [] = { astart, "-d", NULL, DEFAULT_STRING, NULL };
-    if (config_path == NULL) {
-      args [1] = DEFAULT_STRING;  /* replace "-d" */
-    } else {                 /* replace the NULL with the path */
-      args [2] = strcpy_malloc (config_path, "exec_allnet thread path");
-    }
+    char * args [] = { astart, NULL };
 #ifdef DEBUG_PRINT
     printf ("calling");
     int i;
@@ -124,6 +117,9 @@ static const socklen_t alen = sizeof (struct sockaddr_in);
 static long long int last_sent = 0;
 static long long int last_rcvd = 0;
 static int internal_print_send_errors = 1;
+static int timed_out_before = 0; /* if the clock changes, it's ok to time out,
+                                  * but only once or twice */
+static char program_name_copy [10000];
 
 static int connect_once (int print_error);
 
@@ -329,6 +325,7 @@ int connect_to_local (const char * program_name, const char * arg0,
                       const char * path, int start_allnet_if_needed,
                       int start_keepalive_thread)
 {
+  snprintf (program_name_copy, sizeof (program_name_copy), "%s", program_name);
   static int first_call = 1;
   if (! first_call)
     close (internal_sockfd);
@@ -377,6 +374,30 @@ int local_send (const char * message, int msize, unsigned int priority)
   return 0;
 }
 
+static int do_recv (char ** message, unsigned int * priority)
+{
+  char buffer [ALLNET_MTU + 4];
+  int flags = MSG_DONTWAIT;
+  ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
+  int saved_errno = errno;
+  if ((r > 4) && (r <= ALLNET_MTU + 4)) {
+    if (message != NULL)
+      *message = memcpy_malloc (buffer, r - 4, "local_receive");
+    if (priority != NULL)
+      *priority = (unsigned int) readb32 (buffer + (r - 4));
+    last_rcvd = allnet_time ();
+    timed_out_before = 0;
+    return (int)(r - 4);
+  }
+  if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
+    perror ("local_receive recv");
+    printf ("the local allnet is no longer responding, error %d/%s\n",
+            saved_errno, strerror (saved_errno));
+    exit (0);
+  }
+  return 0;
+}
+
 /* return the message size > 0 for success, 0 otherwise. timeout in ms */
 int local_receive (unsigned int timeout,
                    char ** message, unsigned int * priority)
@@ -390,34 +411,28 @@ int local_receive (unsigned int timeout,
   } else {               /* keepalive_count > 0 */
     keepalive_count--;
   }
-  char buffer [ALLNET_MTU + 4];
-  int flags = MSG_DONTWAIT;
+  int result = do_recv (message, priority);
+  if (result > 0)
+    return result;
   unsigned long long int loop_count = 0;
   while (allnet_time () < last_rcvd + 10 * KEEPALIVE_SECONDS) {
     loop_count++;
     local_send_keepalive (0);      /* send a keepalive if the time is right */
-    ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
-    if ((r > 4) && (r <= ALLNET_MTU + 4)) {
-      *message = memcpy_malloc (buffer, r - 4, "local_receive");
-      *priority = (unsigned int) readb32 (buffer + (r - 4));
-      last_rcvd = allnet_time ();
-      return (int)(r - 4);
-    }
-    if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
-      int saved_errno = errno;
-      perror ("local_receive recv");
-      printf ("the local allnet is no longer responding, error %d/%s\n",
-              saved_errno, strerror (saved_errno));
-      exit (0);
-    }
+    result = do_recv (message, priority);
+    if (result > 0)
+      return result;
     usleep (1000);
     if (timeout <= 1)
       return 0;
     timeout--;
   }
   if (loop_count == 0) {
-    printf ("no response from the local allnet\n");
-    exit (0);
+    if (timed_out_before < 2) {
+      timed_out_before++;
+    } else {
+      printf ("%s: no response from the local allnet\n", program_name_copy);
+      exit (0);
+    }
   }
   return 0;
 }
