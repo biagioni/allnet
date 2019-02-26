@@ -129,10 +129,6 @@ void gui_socket_main_loop (int gui_sock, int allnet_sock)
   char * old_contact = NULL;
   keyset old_kset = -1;
   while ((rcvd = local_receive (timeout, &packet, &pri)) >= 0) {
-#if 0
-  while ((rcvd = receive_pipe_message_any (p, timeout, &packet, &pipe, &pri))
-         >= 0) {
-#endif /* 0 */
     int verified = 0, duplicate = -1, broadcast = -2;
     uint64_t seq = 0;
     char * peer = NULL;
