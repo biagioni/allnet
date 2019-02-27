@@ -1003,14 +1003,16 @@ static int handle_sub (int sock, struct allnet_header * hp,
   return -1;
 }
 
+/* returns 1 for success, 0 for failure */
 static int send_key (int sock, const char * contact, keyset kset,
                      const char * secret, unsigned char * address, int abits,
-                     int max_hops)
+                     int max_hops, int send_even_if_recent)
 {
   static char most_recent_contact [100] = "";
   static char most_recent_secret [100] = "";
   static long long int most_recent_send = 0;
-  if ((most_recent_send + 60 >= allnet_time ()) && /* sent in the last minute */
+  if ((! send_even_if_recent) &&
+      (most_recent_send + 60 >= allnet_time ()) && /* sent in the last minute */
       (strcmp (most_recent_contact, contact) == 0) &&
       (strcmp (most_recent_secret, secret) == 0)) {
 #ifdef DEBUG_PRINT
@@ -1051,7 +1053,9 @@ static int send_key (int sock, const char * contact, keyset kset,
               data + pub_ksize);
   random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
 
-/* printf ("sending key of size %d\n", size); */
+#ifdef DEBUG_PRINT
+  printf ("sending key of size %d\n", size);
+#endif /* DEBUG_PRINT */
   int r = local_send (message, size, ALLNET_PRIORITY_LOCAL);
   free (message);
   if (! r) {
@@ -1256,7 +1260,7 @@ static void resend_peer_key (const char * contact, keyset k,
                              unsigned char * addr, unsigned int abits,
                              int max_hops, int sock)
 {
-  if (! send_key (sock, contact, k, secret, addr, abits, max_hops))
+  if (! send_key (sock, contact, k, secret, addr, abits, max_hops, 0))
 #ifdef DEBUG_PRINT
     printf ("send_key failed for key %d\n", k)
 #endif /* DEBUG_PRINT */
@@ -1951,17 +1955,21 @@ int create_contact_send_key (int sock, const char * contact,
     free (keysets);
     abits = get_local (kset, addr);
   }
-  if (send_key (sock, contact, kset, secret1, addr, abits, hops)) {
+  if (send_key (sock, contact, kset, secret1, addr, abits, hops, 1)) {
     error_tracker = 10;   /* for debugging */
     char time_string [100];
     allnet_time_string (allnet_time (), time_string);
-#ifdef DEBUG_PRINT
-    printf ("%s: sent key to contact %s, %d hops, %s",
-            time_string, contact, hops, secret1);
+    error_tracker = 11;   /* for debugging */
     if ((secret2 != NULL) && (strlen (secret2) > 0) &&
-        (send_key (sock, contact, kset, secret2, addr, abits, hops)))
-      printf ("+%s", secret2);
-    printf ("\n");
+        (send_key (sock, contact, kset, secret2, addr, abits, hops, 1)))
+      error_tracker = 12;   /* for debugging */
+#ifdef DEBUG_PRINT
+    if (error_tracker == 12)
+      printf ("%s: sent key to contact %s, %d hops, %s+%s\n",
+              time_string, contact, hops, secret1, secret2);
+    else
+      printf ("%s: sent key to contact %s, %d hops, %s\n",
+              time_string, contact, hops, secret1);
 #endif /* DEBUG_PRINT */
     return 1;
   }
