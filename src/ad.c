@@ -977,8 +977,9 @@ void allnet_daemon_loop ()
 #ifdef LOG_PACKETS
 if ((r.success) && (r.message != NULL) &&
     (strcmp (reason_not_valid, "hops > max_hops") != 0) &&
-    (strcmp (reason_not_valid, "expired packet") != 0))
+    (strcmp (reason_not_valid, "expired packet") != 0)) {
 printf ("invalid message of size %d, %s\n", r.msize, reason_not_valid);
+print_buffer (r.message, r.msize, NULL, 32, 1); }
 #endif /* LOG_PACKETS */
       continue;   /* no valid message, no action needed, restart the loop */
     }
