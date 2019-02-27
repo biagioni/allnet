@@ -511,6 +511,17 @@ typedef int (* received_packet_handler) (void * state,
                                          unsigned long long int expiration,
                                          const char * contact, keyset k);
 
+static int receive_timeout (char ** message, unsigned int * priority,
+                            int timeout, long long int quitting_time)
+{
+  if ((timeout != -1) && (allnet_time_ms () > quitting_time))
+    return -1;
+  int result = local_receive (timeout, message, priority);
+  if (((timeout == -1) && (result <= 0)) || (result < 0))
+    return -1;
+  return result;
+}
+
 /* timeout is in ms, -1 to never time out */
 static void receive_packet_loop (received_packet_handler handler, void * state,
                                  int mtype,
@@ -521,8 +532,10 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
   int msize = 0;
   char * message = NULL;
   unsigned int priority;
-  while (((timeout < 0) || (allnet_time_ms () <= quitting_time)) &&
-         (msize = local_receive (timeout, &message, &priority)) > 0) {
+  while ((msize = receive_timeout (&message, &priority,
+                                   timeout, quitting_time)) >= 0) {
+    if (msize == 0)
+      continue;   /* next packet, please */
     if (message == NULL) {
       printf ("error: received null message, msize %d\n", msize);
       continue;   /* next packet, please */
@@ -607,7 +620,10 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
   }
 }
 
-static int client_handler (void * state, /* ignored for now */
+static int num_tries = 1;
+
+/* *((int *)state) is set to 0 if we got a message */
+static int client_handler (void * state,
                            const char * data, int dsize, int hops,
                            long long int counter,
                            unsigned long long int expiration,
@@ -620,7 +636,10 @@ static int client_handler (void * state, /* ignored for now */
     return 0;  /* continue the loop */
   }
   int * timed_out = (int *) state;
-  printf ("from %s got response:\n%s", contact, data);
+  if (num_tries > 1)
+    printf ("from %s got response on try %d:\n%s", contact, num_tries, data);
+  else
+    printf ("from %s got response:\n%s", contact, data);
   if ((strlen (data) > 0) && (data [strlen (data) - 1] != '\n'))
     printf (" [output may be truncated]\n");
   *timed_out = 0;
@@ -649,6 +668,7 @@ static int client_rpc (const char * data, int dsize, char * contact)
                        authorized, 1, command_timeout * 1000, 0);
   if (timed_out) {
     printf ("command timed out after %d seconds\n", command_timeout);
+    num_tries++;
     return 0;
   }
   return 1;
