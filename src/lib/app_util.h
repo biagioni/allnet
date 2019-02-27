@@ -24,7 +24,8 @@ extern int connect_to_local (const char * program_name,
 /* return 1 for success, 0 otherwise */
 extern int local_send (const char * message, int msize, unsigned int priority);
 extern void local_send_keepalive (int send_even_if_recently_sent);
-/* return the message size > 0 for success, 0 otherwise. timeout in ms */
+/* return the message size > 0 for success, 0 otherwise, -1 for error.
+ * timeout in ms, SOCKETS_TIMEOUT_FOREVER or -1 to wait forever */
 extern int local_receive (unsigned int timeout,
                           char ** message, unsigned int * priority);
 

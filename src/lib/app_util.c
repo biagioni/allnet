@@ -117,8 +117,6 @@ static const socklen_t alen = sizeof (struct sockaddr_in);
 static long long int last_sent = 0;
 static long long int last_rcvd = 0;
 static int internal_print_send_errors = 1;
-static int timed_out_before = 0; /* if the clock changes, it's ok to time out,
-                                  * but only once or twice */
 static char program_name_copy [10000];
 
 static int connect_once (int print_error);
@@ -380,25 +378,25 @@ static int do_recv (char ** message, unsigned int * priority)
   int flags = MSG_DONTWAIT;
   ssize_t r = recv (internal_sockfd, buffer, sizeof (buffer), flags);
   int saved_errno = errno;
-  if ((r > 4) && (r <= ALLNET_MTU + 4)) {
+  if ((r > (ssize_t) (4 + ALLNET_HEADER_SIZE)) && (r <= ALLNET_MTU + 4)) {
     if (message != NULL)
       *message = memcpy_malloc (buffer, r - 4, "local_receive");
     if (priority != NULL)
       *priority = (unsigned int) readb32 (buffer + (r - 4));
     last_rcvd = allnet_time ();
-    timed_out_before = 0;
     return (int)(r - 4);
   }
   if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
     perror ("local_receive recv");
     printf ("the local allnet is no longer responding, error %d/%s\n",
             saved_errno, strerror (saved_errno));
-    exit (0);
+    return -1;
   }
   return 0;
 }
 
-/* return the message size > 0 for success, 0 otherwise. timeout in ms */
+/* return the message size > 0 for success, 0 otherwise, -1 for error.
+ * timeout in ms, SOCKETS_TIMEOUT_FOREVER or -1 to wait forever */
 int local_receive (unsigned int timeout,
                    char ** message, unsigned int * priority)
 {
@@ -411,27 +409,31 @@ int local_receive (unsigned int timeout,
   } else {               /* keepalive_count > 0 */
     keepalive_count--;
   }
-  int result = do_recv (message, priority);
-  if (result > 0)
-    return result;
-  unsigned long long int loop_count = 0;
-  while (allnet_time () < last_rcvd + 10 * KEEPALIVE_SECONDS) {
-    loop_count++;
-    local_send_keepalive (0);      /* send a keepalive if the time is right */
-    result = do_recv (message, priority);
+  while (1) {
+/* if the clock changes, it's ok to try again, but only once or twice */
+    static int timed_out_before = 0;
+    local_send_keepalive (0);
+    int result = do_recv (message, priority);
+    if (result > 0)
+      timed_out_before = 0;   /* did not time out */
     if (result > 0)
       return result;
+    if (result < 0)           /* error */
+      return -1;
     usleep (1000);
-    if (timeout <= 1)
-      return 0;
-    timeout--;
-  }
-  if (loop_count == 0) {
-    if (timed_out_before < 2) {
-      timed_out_before++;
-    } else {
-      printf ("%s: no response from the local allnet\n", program_name_copy);
-      exit (0);
+    if (timeout != SOCKETS_TIMEOUT_FOREVER) {
+      if (timeout == 0)
+        break;   /* timeout, this is normal */
+      timeout--;
+    }
+    if (allnet_time () >= last_rcvd + 10 * KEEPALIVE_SECONDS) {
+      if (timed_out_before < 2) {
+        timed_out_before++;
+        last_rcvd = allnet_time ();  /* restart the clock */
+      } else {
+        printf ("local_receive: no more keepalives from ad\n");
+        return -1;
+      }
     }
   }
   return 0;
