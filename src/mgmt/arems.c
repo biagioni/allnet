@@ -211,7 +211,6 @@ static int recently_received (const char * message, int msize)
   return 0;
 }
 
-#if 1  /* newer version, 2018/11/29 */
 /* encrypts and signs the data and saves the result in destination_buffer
  * returns the size of the signed and encrypted content if all goes well
  * this size will always be <= dest_size and > 0.
@@ -367,74 +366,6 @@ static void encrypt_sign_send (const char * data, int dsize, int hops,
   local_send (buffer, hsize + esize, ALLNET_PRIORITY_LOCAL);
 }
 
-#else  /* older version, 2018/11/29 */
-static void encrypt_sign_send (const char * data, int dsize, int hops,
-                               long long int counter, int message_type,
-                               const char * contact, keyset k)
-{
-  allnet_rsa_prvkey priv_key;
-  allnet_rsa_pubkey key;
-  int priv_ksize = get_my_privkey (k, &priv_key);
-  int ksize = get_contact_pubkey (k, &key);
-  if ((priv_ksize == 0) || (ksize == 0)) {
-    printf ("unable to locate key %d for contact %s (%d, %d)\n",
-            k, contact, priv_ksize, ksize);
-    return;
-  }
-  struct arems_header ah;
-  memset (&ah, 0, sizeof (ah));
-  random_bytes ((char *)ah.message_ack, sizeof (ah.message_ack));
-  memcpy (ah.app_media.app, APP_ID, sizeof (ah.app_media.app));
-  writeb32u (ah.app_media.media, MEDIA_ID);
-  writeb64u (ah.counter, counter);
-  ah.type = message_type;
-  char data_with_ah [MAX_STRING_LENGTH + sizeof (ah)];
-  memcpy (data_with_ah, &ah, sizeof (ah));
-  memcpy (data_with_ah + sizeof (ah), data, dsize);
-  char * encrypted = NULL;
-  char * signature = NULL;
-  int esize = allnet_encrypt (data_with_ah, dsize + sizeof (ah), key,
-                              &encrypted);
-  if (esize == 0) {
-    printf ("unable to encrypt, contact %s key %d, data %p %d bytes\n",
-            contact, k, data, dsize);
-    return;
-  } /* else, sign */
-  int ssize = allnet_sign (encrypted, esize, priv_key, &signature);
-  if (ssize == 0) {
-    printf ("unable to sign, contact %s key %d, data %p %d bytes esize %d\n",
-            contact, k, data, dsize, esize);
-    return;
-  } /* else, create a packet and send it */
-  int payload_size = esize + ssize + 2;
-  /* init_packet adds MESSAGE_ID_SIZE to the size for the ack */
-  char buffer [ALLNET_MTU];
-  unsigned char ack [MESSAGE_ID_SIZE];
-  random_bytes ((char *)ack, sizeof (ack));
-  unsigned char local_address [ADDRESS_SIZE];
-  unsigned char remote_address [ADDRESS_SIZE];
-  int sbits = get_local (k, local_address);
-  int dbits = get_remote (k, remote_address);
-  struct allnet_header * hp =
-    init_packet (buffer, payload_size + ALLNET_TIME_SIZE, ALLNET_TYPE_DATA,
-                 hops, ALLNET_SIGTYPE_RSA_PKCS1,
-                 local_address, sbits, remote_address, dbits, NULL, ack);
-  hp->transport = hp->transport | ALLNET_TRANSPORT_EXPIRATION;
-  writeb64 (ALLNET_EXPIRATION (hp, hp->transport, sizeof (buffer)),
-            allnet_time () + command_timeout);
-  char * payload = buffer + ALLNET_SIZE (hp->transport);
-  memcpy (payload, encrypted, esize);
-  memcpy (payload + esize, signature, ssize);
-  writeb16 (payload + esize + ssize, ssize);
-  int size = ALLNET_SIZE (hp->transport) + payload_size;
-  local_send ((char *) buffer, size, ALLNET_PRIORITY_LOCAL);
-  if (encrypted != NULL)
-    free (encrypted);
-  if (signature != NULL)
-    free (signature);
-}
-#endif /* newer/older version, 2018/11/29 */
-
 /* similar to decrypt_verify (with which it may eventually be integrated),
  * but uses symmetric keys if available, and gives up otherwise */
 static int
@@ -534,7 +465,7 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
   unsigned int priority;
   while ((msize = receive_timeout (&message, &priority,
                                    timeout, quitting_time)) >= 0) {
-    if (msize == 0)
+    if (msize <= ALLNET_HEADER_SIZE)
       continue;   /* next packet, please */
     if (message == NULL) {
       printf ("error: received null message, msize %d\n", msize);
@@ -543,7 +474,7 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
     char * error_desc = NULL;
     if (! is_valid_message (message, msize, &error_desc))
       continue;   /* next packet, please */
-    if ((msize < ALLNET_HEADER_SIZE) || (message [1] != ALLNET_TYPE_DATA))
+    if (message [1] != ALLNET_TYPE_DATA)
       continue;   /* next packet, please */
     if (recently_received (message, msize))
       continue;   /* duplicate: next packet, please */
@@ -564,11 +495,17 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
                                   &contact, &k, &text,
                                   (char *) hp->source, hp->src_nbits,
                                   (char *) hp->destination, hp->dst_nbits, 0);
+#ifdef DEBUG_RECEIVE
+if (tsize <= 8) printf ("unable to symmetric_decrypt_verify\n");
+#endif /* DEBUG_RECEIVE */
       if ((tsize <= 8) && (hp->sig_algo == ALLNET_SIGTYPE_RSA_PKCS1))
         tsize = decrypt_verify (hp->sig_algo, payload, psize,
                                 &contact, &k, &text,
                                 (char *) hp->source, hp->src_nbits,
                                 (char *) hp->destination, hp->dst_nbits, 0);
+#ifdef DEBUG_RECEIVE
+if (tsize <= 8) printf ("unable to decrypt_verify\n");
+#endif /* DEBUG_RECEIVE */
       if (tsize > 8) {
         int i;
         int is_authorized = 0;
