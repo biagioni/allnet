@@ -1793,16 +1793,17 @@ int is_expired_message (const char * packet, unsigned int size)
   return 0;      /* message is not expired */
 }
 
+#define return_valid_err(s) { if (error_desc != NULL) *error_desc = (s); \
+			      return 0; }
+
 /* returns 1 if the message is valid, 0 otherwise
  * If returns zero and error_desc is not NULL, it is filled with
  * a description of the error -- do not modify in any way. */
 extern int is_valid_message (const char * packet, unsigned int size,
                              char ** error_desc)
 {
-  if (size < (int) ALLNET_HEADER_SIZE) {
-    if (error_desc != NULL) *error_desc = "packet size less than header size";
-    return 0;
-  }
+  if (size < (int) ALLNET_HEADER_SIZE)
+    return_valid_err ("packet size less than header size");
 /* received a message with a header */
   const struct allnet_header * ah = (const struct allnet_header *) packet;
 /* make sure version, address bit counts and hops are sane */
@@ -1818,70 +1819,46 @@ sleep (60);
 ah->version = 0;
 printf ("time to crash %d\n", 1000 / ah->version);
 #endif /* 0 */
-    if (error_desc != NULL) {
-      if (ah->hops > ah->max_hops) *error_desc = "hops > max_hops";
-      if (ah->dst_nbits > ADDRESS_BITS) *error_desc = "dst_nbits > 64";
-      if (ah->src_nbits > ADDRESS_BITS) *error_desc = "src_nbits > 64";
-      if (ah->version != ALLNET_VERSION) *error_desc = "version number";
-    }
-    return 0;
+    if (ah->hops > ah->max_hops) return_valid_err ("hops > max_hops");
+    if (ah->dst_nbits > ADDRESS_BITS) return_valid_err ("dst_nbits > 64");
+    if (ah->src_nbits > ADDRESS_BITS) return_valid_err ("src_nbits > 64");
+    if (ah->version != ALLNET_VERSION) return_valid_err ("version number");
+    return_valid_err ("unknown error");
   }
   if ((ah->message_type < ALLNET_TYPE_DATA) ||
-      (ah->message_type > ALLNET_TYPE_MGMT)) {  /* nonsense packet */
-    if (error_desc != NULL) *error_desc = "bad message type";
-    return 0;
-  }
+      (ah->message_type > ALLNET_TYPE_MGMT))    /* nonsense packet */
+    return_valid_err ("bad message type");
 /* check the validity of the packet, as defined in packet.h */
   if ((ah->message_type == ALLNET_TYPE_ACK) && (ah->transport != 0)) {
-    char buffer [10000];
-    snprintf (buffer, sizeof (buffer),
-              "received ack, transport 0x%x != 0", ah->transport);
-/* printf ("%s", buffer); */
-    if (error_desc != NULL) *error_desc = "req with nonzero transport";
-    return 0;
+    /* printf ("received ack, transport 0x%x != 0", ah->transport); */
+    return_valid_err ("ack with nonzero transport");
   }
   if (ah->message_type == ALLNET_TYPE_DATA_REQ) {
 /* do not enforce for now -- still experimental  2018/07/25
-    if ((ah->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0) {
-      if (error_desc != NULL) *error_desc = "req fails to specify do-not-cache";
-      return 0;
-    }
+    if ((ah->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0)
+      return_valid_err ("req fails to specify do-not-cache");
  */
     /* check the sizes */
     const struct allnet_data_request * rp = (const struct allnet_data_request *)
       ALLNET_DATA_START (ah, ah->transport, size);
     int wanted = sizeof (struct allnet_data_request);
     if (wanted > size) {
-      if (error_desc != NULL) *error_desc = "data request too small";
 printf ("got data request of size %d, min %d\n", size, wanted);
-      return 0;
+      return_valid_err ("data request too small");
     }
-    if (rp->dst_bits_power_two > 16) {  /* size doesn't fit in an ALLNET_MTU */
-      if (error_desc != NULL) *error_desc = "data request dst > 16";
-      return 0;
-    }
-    if (rp->src_bits_power_two > 16) {  /* size doesn't fit in an ALLNET_MTU */
-      if (error_desc != NULL) *error_desc = "data request src > 16";
-      return 0;
-    }
-    if (rp->mid_bits_power_two > 16) {  /* size doesn't fit in an ALLNET_MTU */
-      if (error_desc != NULL) *error_desc = "data request mid > 16";
-      return 0;
-    }
+    if (rp->dst_bits_power_two > 16)    /* size doesn't fit in an ALLNET_MTU */
+      return_valid_err ("data request dst > 16");
+    if (rp->src_bits_power_two > 16)    /* size doesn't fit in an ALLNET_MTU */
+      return_valid_err ("data request src > 16");
+    if (rp->mid_bits_power_two > 16)    /* size doesn't fit in an ALLNET_MTU */
+      return_valid_err ("data request mid > 16");
 /* add 6 (rather than 7) so that if power_two is 0, we add 0 bytes
  * for that bitmap */
     wanted += (p2 (rp->dst_bits_power_two) + 6) / 8;
     wanted += (p2 (rp->src_bits_power_two) + 6) / 8;
     wanted += (p2 (rp->mid_bits_power_two) + 6) / 8;
-    if (wanted > size) {
-      if (error_desc != NULL) *error_desc = "data request too small";
-/*
-printf ("got data request of size %d, expected %d (%d, %d, %d)\n",
-size, wanted, rp->dst_bits_power_two, rp->src_bits_power_two,
-rp->mid_bits_power_two);
-*/
-      return 0;
-    }
+    if (wanted > size)
+      return_valid_err ("data request too small");
   }
   int payload_size = size -
                      ALLNET_AFTER_HEADER (ah->transport, (unsigned int) size);
@@ -1891,49 +1868,35 @@ rp->mid_bits_power_two);
             payload_size, size, MESSAGE_ID_SIZE,
             payload_size % MESSAGE_ID_SIZE);
     print_buffer (packet, size, NULL, 100, 1);
-    if (error_desc != NULL) *error_desc = "ack size not multiple of 16";
-    return 0;
+    return_valid_err ("ack size not a multiple of 16");
   }
   if (((ah->transport & ALLNET_TRANSPORT_ACK_REQ) != 0) &&
       (payload_size < MESSAGE_ID_SIZE)) {
     printf ("message has size %d (%d), min %d\n",
             payload_size, size, MESSAGE_ID_SIZE);
-    if (error_desc != NULL) *error_desc = "insufficient room for message ID";
-    return 0;
+    return_valid_err ("insufficient room for message ID");
   }
   if (((ah->transport & ALLNET_TRANSPORT_ACK_REQ) == 0) &&
       ((ah->transport & ALLNET_TRANSPORT_LARGE) != 0)) {
     printf ("large message missing ack bit\n");
-    if (error_desc != NULL) *error_desc = "large message missing ack bit";
-    return 0;
+    return_valid_err ("large message missing ack bit");
   }
   if (((ah->transport & ALLNET_TRANSPORT_EXPIRATION) != 0)) {
     time_t now = time (NULL);
     char * ep = ALLNET_EXPIRATION (ah, ah->transport, (unsigned int) size);
     if ((now <= ALLNET_Y2K_SECONDS_IN_UNIX) || (ep == NULL) ||
-        (((time_t) readb64 (ep)) < (now - ALLNET_Y2K_SECONDS_IN_UNIX))) {
-   /* fairly common, no need to print
-      printf ("expired packet, %lld < %ld (ep %p)\n",
-              readb64 (ep), now - ALLNET_Y2K_SECONDS_IN_UNIX, ep); */
-      if (error_desc != NULL) *error_desc = "expired packet";
-      return 0;
-    }
+        (((time_t) readb64 (ep)) < (now - ALLNET_Y2K_SECONDS_IN_UNIX)))
+      return_valid_err ("expired packet");
   }
   if (ah->sig_algo != ALLNET_SIGTYPE_NONE) {
     unsigned int hsize = ALLNET_SIZE (ah->transport);
-    if (size <= hsize + 2) { /* not enough room for signature length */
-      if (error_desc != NULL) *error_desc = "too small for signature length";
-      return 0;
-    }
+    if (size <= hsize + 2)   /* not enough room for signature length */
+      return_valid_err ("too small for signature length");
     unsigned int length = readb16 (packet + (size - 2));
-    if (length <= 0) {       /* not enough room for a signature */ 
-      if (error_desc != NULL) *error_desc = "too small for signature";
-      return 0;
-    }
-    if (size <= length + 2) { /* not enough room for any data */ 
-      if (error_desc != NULL) *error_desc = "too small for data";
-      return 0;
-    }
+    if (length <= 0)         /* not enough room for a signature */ 
+      return_valid_err ("too small for signature");
+    if (size <= length + 2)   /* not enough room for any data */ 
+      return_valid_err ("too small for data");
   }
   return 1;
 }
