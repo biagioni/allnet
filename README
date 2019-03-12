@@ -74,15 +74,9 @@ the binaries in your path, you should skip the "bin/" part.
     ================ running allnet ================
 
 the first thing to run is
-   bin/allnet default
+   bin/allnetd
 
-this will start the allnet daemon (previously called astart).  It will
-also print the interfaces allnet is trying to use to communicate (see below
-under "ad-hoc wireless").  AllNet will also communicate over the Internet
-if available.
-
-If you omit the word "default", AllNet will only communicate over
-the Internet.
+this will start the allnet daemon (previously called astart and allnet).
 
 The allnet daemon is lightweight, and can be left running forever.
 Should you wish to stop the allnet daemon, run
@@ -90,7 +84,8 @@ Should you wish to stop the allnet daemon, run
    bin/astop
 
 If the allnet daemon is not running when an allnet user program is
-started, the allnet user program will automatically call "bin/allnet default".
+started, the allnet user program will automatically call "bin/allnetd"
+(except "trace" doesn't start bin/allnetd).
 
     ================ ad-hoc wireless ================
 
@@ -99,25 +94,25 @@ AllNet these privileges is optional -- if you are constantly connected
 to the Internet, you do not need to do this.  But if you wish to connect
 directly to devices near you, you will need to do ONE of the following:
 
-   sudo bin/allnet default
+   sudo bin/allnetd
 (sudo): runs allnet as the root user.  You probably will have to enter your
 password.
 
-   sudo chown root bin/allnet ; sudo chmod u+s bin/allnet 
+   sudo chown root bin/allnetd ; sudo chmod u+s bin/allnetd 
 (setuid): this only needs to be done once (you probably will have to
 enter your password), and will run AllNet as the root user until you undo
-it by removing bin/allnet and running "make" again.
+it by removing bin/allnetd and running "make" again.
 
-After "chown" and "chmod", "bin/allnet default" will use the ad-hoc
-wireless even without "sudo".
+After "chown" and "chmod", "bin/allnetd" will use the ad-hoc wireless
+(if any) even without "sudo".
 
 If your system doesn't have sudo, you will need to figure out how to run
-"bin/allnet default" (or the "chown" and "chmod" programs) with root
-privileges (typically "su", then enter the commands without "sudo").
+"bin/allnetd" (or the "chown" and "chmod" programs) with root privileges
+(typically "su", then enter the commands without "sudo").
 
     ================ allnet user programs (allnet apps) ================
 
-Current AllNet user programs include the AllNet chat program xchat,
+Current AllNet user programs include the AllNet chat programs xchat and xt,
 broadcast/subscribe, and trace.
 
          ======== xchat (allnet chat) with gui ========
@@ -149,7 +144,37 @@ The contact's name can be anything you choose.  It is not used in the
 key exchange, and only used to identify the contact to you within xchat
 and other allnet programs.
 
-       ======== xchat (allnet chat) without gui ========
+       ======== xt (text-based allnet chat) ========
+
+xt is similar to xchat, but does not have a GUI.  Instead, it has
+two menus.  The first, displayed by default when you start, gives
+a number of options, all beginning with '.'.  Any line that does
+not begin with dot is text which is sent to the default contact shown
+in the prompt (caution -- it is easy to send to a contact other than
+the one that was intended).  This default contact is the last one to
+whom you sent a message, if any.
+
+The only command that is not intuitive is .k, to connect with other
+users and manage creating and sending keys.  To create a new contact, try
+  .k contact-name 5
+xt will print a secret (e.g. ABCDEF) which the other side can use
+to connect.  If the other side is also using xt (they could be using one
+of the other chat programs as well), they would type
+  .k your-name 5 ABCDEF
+to connect to you.
+
+Once both sides have completed the key exchange,
+  .k - contact-name
+will terminate the key exchange.  However, be sure not to do this
+until the other side has received your key.  If this is slow, you
+may resend the key with
+  .k + contact-name
+
+When you just type .k, it will list any pending key exchanges, each
+next to a number 1, 2, 3, ...   In the above commands, you may use
+the number instead of the contact name if you prefer.
+
+       ======== command-line chat ========
 
 It is a good idea to read this whole section before trying anything.
 
@@ -160,11 +185,11 @@ In one terminal window simply run
    bin/xchatr
 
 In another terminal window, run
-   bin/xchats friends-name message
+   bin/xchats contact-name message
 
-where "friends-name" is the name of your friend as specified in the
+where "contact-name" is the name of your contact as specified in the
 key exchange (see above and below), and "message" is the message you
-want to send to your friend.  The message ends when you press return.
+want to send to your contact.  The message ends when you press return.
 It is generally best to enclose the message in double quotes, otherwise
 the shell may interpret any special characters such as quotes, question
 marks, etc.
@@ -180,18 +205,16 @@ john's answer, if any, appears in the xchatr window.  You can then type:
 Before you can chat with somebody, you must exchange keys.  This can be
 done from the GUI, using the "New Contact" tab, or using bin/xchats -k
 
-In order to securely exchange keys, you and your friend must both know
-a shared secret string that is provided for you by either the GUI,
-or xchats -k.  The string is conveniently short if you are directly
-connected to your contact, and more securely long if you are communicating
-over longer distances.  Only one side needs to enter the other side's
-secret string -- as long as one of the two secret strings is used, it
-does not matter which of the two.  The string may be entered in UPPER
-or Mixed or lower case.
+In order to securely exchange keys, you and your contact must both know
+a shared secret string that is provided for you by either the GUI, or
+the .k command in xt, or xchats -k.  Only one side needs to enter the
+other side's secret string -- as long as one of the two secret strings
+is used, it does not matter which of the two.  The string may be entered
+in UPPER or Mixed or lower case, and spaces do not matter.
 
 The secret string must be exchanged in an authenticated way between you
-and your friend.  That means you must be sure that it is really your
-friend that gave you the secret, and not somebody else.  The secret
+and your contact.  That means you must be sure that it is really your
+contact that gave you the secret, and not somebody else.  The secret
 also really should be a secret, that is, only known to the two of you,
 for at least the time needed for the key exchange.  If your exchange is
 not secure, an attacker may be able to listen in on your conversations,
@@ -205,7 +228,7 @@ and the second one runs
 
 Again, "contact-name" is any name each of you chooses to identify
 the other person.  "Number-of-hops" is 1 for a direct connection, and
-typically 10 otherwise.
+typically 5 or 10 otherwise.
 
 If the exchange is not successful, the contact may have been partially
 created.  If that is the case, find it under your home directory's
