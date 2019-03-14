@@ -50,7 +50,7 @@ static char * default_dns [] =
     "a4.alnt.org", "a5.alnt.org", "a6.alnt.org", "a7.alnt.org",
     "a8.alnt.org", "a9.alnt.org", "aa.alnt.org", "ab.alnt.org",
     "ac.alnt.org", "ad.alnt.org", "ae.alnt.org", "af.alnt.org",
-    "108.161.130.251" };
+    "45.61.48.146" };
 #define NUM_DEFAULTS	((sizeof (default_dns)) / (sizeof (char *)))
 struct sockaddr_storage ip4_defaults [NUM_DEFAULTS];
 struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
