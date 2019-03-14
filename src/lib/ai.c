@@ -54,20 +54,11 @@ int addr_info_to_string (struct addr_info * ai, char * buf, size_t bsize)
   int offset = 0;
   offset += snprintf (buf, bsize, "(%d) ", ai->nbits);
   offset += buffer_to_string ((char *) (ai->destination), (ai->nbits + 7) / 8,
-                              NULL,
-#ifdef LOG_STATE
-                              2,
-#else /* LOG_STATE */
-                              ADDRESS_SIZE,
-#endif /* LOG_STATE */
+                              NULL, ADDRESS_SIZE,
                               0, buf + offset, bsize - offset);
-#ifdef LOG_STATE
-  offset += snprintf (buf + offset, bsize - offset, " addr ");
-#else /* LOG_STATE */
   offset += snprintf (buf + offset, bsize - offset,
                       ", v %d, port %d, addr ", ai->ip.ip_version,
                       ntohs (ai->ip.port));
-#endif /* LOG_STATE */
   unsigned char * ap = (unsigned char *) &(ai->ip.ip);
   if (ai->ip.ip_version == 4)
     offset += snprintf (buf + offset, bsize - offset,
@@ -345,8 +336,11 @@ int is_loopback_ip (const struct sockaddr * ap, socklen_t asize)
     return ap4->sin_addr.s_addr == htonl (INADDR_LOOPBACK);
   } else if ((asize >= sizeof (struct sockaddr_in6)) &&
              (ap->sa_family == AF_INET6)) {
-    return (0 == memcmp (&(ap6->sin6_addr), &(in6addr_loopback),
-                         sizeof (ap6->sin6_addr)));
+    char * p = (char *) (&(ap6->sin6_addr));
+    return ((0 == memcmp (p, &(in6addr_loopback), sizeof (ap6->sin6_addr))) ||
+            ((memget (p, 0, 10)) &&
+             (memget (p + 10, 0xff, 2)) &&
+             (readb32 (p + 12) == INADDR_LOOPBACK)));
   } else  /* unknown address type */
     return 0;
 }
