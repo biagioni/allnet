@@ -1892,11 +1892,11 @@ printf ("got data request of size %d, min %d\n", size, wanted);
     unsigned int hsize = ALLNET_SIZE (ah->transport);
     if (size <= hsize + 2)   /* not enough room for signature length */
       return_valid_err ("too small for signature length");
-    unsigned int length = readb16 (packet + (size - 2));
-    if (length <= 0)         /* not enough room for a signature */ 
-      return_valid_err ("too small for signature");
-    if (size <= length + 2)   /* not enough room for any data */ 
-      return_valid_err ("too small for data");
+    unsigned int siglen = readb16 (packet + (size - 2));
+    if (siglen < 16)         /* not enough room for a signature */ 
+      return_valid_err ("signature length too small for signature");
+    if (size <= siglen + 2)   /* not enough room for any data */ 
+      return_valid_err ("signature leaves no room for data");
   }
   return 1;
 }
