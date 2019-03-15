@@ -130,7 +130,7 @@ int ia_to_sockaddr (const struct internet_addr * ia,
     if (salen != NULL)
       *salen = sizeof (struct sockaddr_in);
   } else {   /* not found */
-    printf ("coding error: addr_info has version %d\n", ia->ip_version);
+    printf ("coding error: internet_addr has version %d\n", ia->ip_version);
     return 0;
   }
   return 1;
