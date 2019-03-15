@@ -635,6 +635,15 @@ check_sav (sav, "send_on_socket");
 #ifdef MSG_NOSIGNAL
   flags = MSG_NOSIGNAL;
 #endif /* MSG_NOSIGNAL */
+#ifdef TEST_TCP_ONLY
+  if ((msize > 3) && ((message [2] & 0xff) > (message [3] & 0xff))) {
+    print_buffer (message, msize, "send_on_socket sending bad hops", 10, 1);
+    printf ("sleeping 100, pid %d, hops %d > %d\n", getpid (),
+            message [2], message [3]);
+    sleep (100);
+    printf ("done sleeping 100, pid %d\n", getpid ());
+  }
+#endif /* TEST_TCP_ONLY */
   ssize_t result = sendto (sockfd, message, msize, flags, sap, sav->alen);
   sockets_log_sr (1, "send_on_socket", message, msize, sap, sav->alen, result);
   if (result == msize) {
@@ -675,6 +684,11 @@ check_sav (sav, "socket_send_fun");
   if ((sock->is_local == ssd->local_not_remote) &&
       (! same_sockaddr (&(ssd->except_to), ssd->alen,
                         &(sav->addr), sav->alen))) {
+#ifdef TEST_TCP_ONLY
+    if ((! sock->is_local) &&
+        (! is_loopback_ip ((struct sockaddr *) &(sav->addr), sav->alen)))
+    return 1;  /* debugging: only send to local sockets */
+#endif /* TEST_TCP_ONLY */
     if (send_on_socket (ssd->message, ssd->msize, ssd->sent_time,
                         sock->sockfd, sav, "socket_send_fun", NULL, -1, -1)) {
       if ((ssd->sent_addrs != NULL) && (ssd->sent_num < ssd->sent_available))
@@ -811,6 +825,15 @@ int socket_send_to_ip (int sockfd, const char * message, int msize,
 #ifdef MSG_NOSIGNAL
   flags = MSG_NOSIGNAL;
 #endif /* MSG_NOSIGNAL */
+#ifdef TEST_TCP_ONLY
+  if ((msize > 3) && ((message [2] & 0xff) > (message [3] & 0xff))) {
+    print_buffer (message, msize, "socket_send_to_ip sending bad hops", 10, 1);
+    printf ("sleeping 100, pid %d, hops %d > %d\n",
+            getpid (), message [2], message [3]);
+    sleep (100);
+    printf ("done sleeping 100, pid %d\n", getpid ());
+  }
+#endif /* TEST_TCP_ONLY */
   ssize_t result = sendto (sockfd, message, msize, flags,
                            (struct sockaddr *) (&sas), alen);
   sockets_log_sr (1, "send_to_ip", message, msize, sap, alen, result);
