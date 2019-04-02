@@ -949,7 +949,9 @@ static int routing_add_ping_locked (struct addr_info * addr)
 {
   int i;
   if (! sane_addr_info (addr, "routing_add_ping_locked"))
+{ print_buffer (addr, sizeof (struct addr_info), "rapl: bad addr_info", 40, 1);
     return -2;
+}
   if (find_peer (peers, MAX_PEERS, addr) >= 0) {
 #ifdef DEBUG_PRINT
     printf ("rapl found peer, returning -1\n");
