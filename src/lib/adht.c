@@ -320,8 +320,15 @@ void dht_process (char * message, unsigned int msize,
       struct sockaddr * pingp = (struct sockaddr *) (&ping_addr);
       socklen_t plen = 0;
       ai_to_sockaddr (ai, &ping_addr, &plen);
-      if (! is_in_routing_table (pingp, plen))
-        routing_add_ping (ai);
+      if (! is_in_routing_table (pingp, plen)) {
+        int validity = is_valid_address (&(ai->ip));
+        if (validity == 1) {  /* valid address */
+          routing_add_ping (ai);
+        } else if (validity == -1) {  /* IPv4 in IPv6 address */
+          ai->ip.ip_version = 4;
+          routing_add_ping (ai);
+        } /* else: invalid address, do not add */
+      }
     }
   }
   print_ping_list (-1);
