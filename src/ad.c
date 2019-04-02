@@ -676,17 +676,18 @@ static int send_messages_to_one (struct pcache_result r,
     r.n = SEND_EXTERNAL_MAX;
   int result = 0;
   int i;
-  char * e = "unknown error";
   for (i = 0; i < r.n; i++) {
-    if (! is_valid_message (r.messages [i].message, r.messages [i].msize, &e)) {
+    char * e = "unknown error";
+    if (is_valid_message (r.messages [i].message, r.messages [i].msize, &e)) {
+      result += send_message_to_one (r.messages [i].message,
+                                     r.messages [i].msize,
+                                     r.messages [i].priority, token,
+                                     sock, addr, alen);
+    } else {
       printf ("error: send_messages_to_one sending invalid message (%s)\n", e);
       print_buffer (r.messages [i].message, r.messages [i].msize, NULL, 100, 1);
     }
   }
-  for (i = 0; i < r.n; i++)
-    result += send_message_to_one (r.messages [i].message, r.messages [i].msize,
-                                   r.messages [i].priority, token,
-                                   sock, addr, alen);
   return result;
 }
 
