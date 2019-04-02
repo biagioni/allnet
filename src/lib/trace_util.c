@@ -417,7 +417,8 @@ void trace_forward (char * message, int msize,
 static void send_trace (int sock, const unsigned char * address, int abits,
                         char * trace_id, unsigned char * my_address,
                         int my_abits, int max_hops, int record_intermediates,
-                        int expiration_sec, struct allnet_log * alog)
+                        int expiration_sec, int caching,
+                        struct allnet_log * alog)
 {
   int transport = ALLNET_TRANSPORT_EXPIRATION;
   if (expiration_sec <= 0)
@@ -445,6 +446,8 @@ static void send_trace (int sock, const unsigned char * address, int abits,
     writeb64 (ALLNET_EXPIRATION (hp, hp->transport, total_size),
               allnet_time () + expiration_sec);
   }
+  if (! caching)
+    hp->transport |= ALLNET_TRANSPORT_DO_NOT_CACHE;
   char * buffer = (char *) hp;
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (buffer + ALLNET_SIZE (hp->transport));
@@ -758,7 +761,10 @@ static void print_trace_result (struct allnet_mgmt_trace_reply * trp,
 static void handle_packet (char * message, int msize, char * seeking,
                            struct timeval start, int seq,
                            int match_only, int no_intermediates,
-                           int null_term, int fd_out,
+                           int null_term,
+                           int xaddrs, unsigned char * excluded, int * xbits,
+                           int minhops,
+                           int fd_out,
                            char * rememberedh, int nh, int * positionh,
                            struct allnet_log * alog)
 {
@@ -779,6 +785,8 @@ static void handle_packet (char * message, int msize, char * seeking,
   min_size = ALLNET_TRACE_REPLY_SIZE (hp->transport, 1);
   if (msize < min_size)
     return;
+  if ((minhops > 0) && (minhops > hp->hops))
+    return;
 
   struct allnet_mgmt_header * mp =
     (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
@@ -797,6 +805,20 @@ static void handle_packet (char * message, int msize, char * seeking,
                   "received trace_id", 100, 1);
 #endif /* DEBUG_PRINT */
     return;
+  }
+  if ((xaddrs > 0) && (excluded != NULL) && (xbits != NULL) &&
+      (trp->num_entries > 0)) {
+    struct allnet_mgmt_trace_entry * sender =
+      trp->trace + (trp->num_entries - 1);
+    int i;
+    for (i = 0; i < xaddrs; i++) {
+      if (xbits [i] > 0) {
+        int b = matching_bits (sender->address, sender->nbits,
+                               excluded + ADDRESS_SIZE * i, xbits [i]);
+        if (b >= xbits [i]) /* matches an excluded address, don't print it */
+          return;
+      }
+    }
   }
 #ifdef CHECK_FOR_DUPLICATES
   if (packet_received_before (message, msize, rememberedh, nh, positionh)) {
@@ -820,7 +842,9 @@ static void handle_packet (char * message, int msize, char * seeking,
 
 static void wait_for_responses (int sock, char * trace_id, int sec,
                                 int seq, int match_only, int no_intermediates,
-                                int null_term,
+                                int null_term, int xaddrs,
+                                unsigned char * excluded, int * xbits,
+                                int minhops,
                                 int fd_out,
                                 char * rememberedh, int nh, int * positionh,
                                 struct timeval tv_start,
@@ -839,8 +863,9 @@ static void wait_for_responses (int sock, char * trace_id, int sec,
     int found = local_receive (ms, &message, &pri);
     if (found > 0) {
       handle_packet (message, found, trace_id, tv_start, seq, match_only,
-                     no_intermediates, null_term, fd_out,
-                     rememberedh, nh, positionh, alog);
+                     no_intermediates, null_term, xaddrs, excluded, xbits,
+                     minhops,
+                     fd_out, rememberedh, nh, positionh, alog);
       free (message);
     }
     local_send_keepalive (0);
@@ -853,8 +878,10 @@ static void wait_for_responses (int sock, char * trace_id, int sec,
 
 void do_trace_loop (int sock,
                     int naddrs, unsigned char * addresses, int * abits,
-                    int repeat, int sleep, int nhops, int match_only,
-                    int no_intermediates, int wide, int null_term,
+                    int xaddrs, unsigned char * excluded, int * xbits,
+                    int repeat, int sleep, int minhops, int nhops,
+                    int match_only, int no_intermediates, int caching,
+                    int wide, int null_term,
                     int fd_out, int reset_counts,
                     struct allnet_log * alog)
 {
@@ -890,7 +917,7 @@ void do_trace_loop (int sock,
     gettimeofday (&tv_start, NULL);
     if (naddrs == 0) {
       send_trace (sock, extra_addr, 0, trace_id, my_addr, 5, nhops,
-                  ! no_intermediates, sleep * 10, alog);
+                  ! no_intermediates, sleep * 10, caching, alog);
       sent_count++;
     } else {
       int dest;
@@ -898,12 +925,13 @@ void do_trace_loop (int sock,
         trace_id [MESSAGE_ID_SIZE - 1] = dest;
         send_trace (sock, addresses + (dest * ADDRESS_SIZE), abits [dest],
                     trace_id, my_addr, 5, nhops, ! no_intermediates,
-                    sleep * 10, alog);
+                    sleep * 10, caching, alog);
         sent_count++;
       }
     }
     wait_for_responses (sock, trace_id, sleep, count,
                         match_only, no_intermediates, null_term,
+                        xaddrs, excluded, xbits, minhops,
                         fd_out, remembered_hashes,
                         NUM_REMEMBERED_HASHES, &remembered_position,
                         tv_start, alog);
@@ -938,8 +966,9 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
 
   int abits_array [1];
   abits_array [0] = abits;
-  do_trace_loop (sock, 1, address, abits_array, 1, sleep, nhops, match_only,
-                 no_intermediates, wide, 0, fd, 0, alog);
+  do_trace_loop (sock, 1, address, abits_array, 0, NULL, NULL,
+                 1, sleep, 0, nhops, match_only,
+                 no_intermediates, 0, wide, 0, fd, 0, alog);
   close (fd);
   char * result;
   size_t success = read_file_malloc (fname, &result, 0);
@@ -961,7 +990,7 @@ int start_trace (int sock, const unsigned char * addr, unsigned int abits,
   random_bytes ((char *) my_addr, sizeof (my_addr));
   struct allnet_log * alog = init_log ("start_trace");
   send_trace (sock, addr, abits, trace_id, my_addr, 5, nhops,
-              record_intermediates, expiration_seconds, alog);
+              record_intermediates, expiration_seconds, 1, alog);
   return 1;
 }
 

@@ -17,6 +17,8 @@
            -v for verbose
            -t sec, time to sleep after send (default 5 seconds)
            -h hops gives the maximum number of hops (default 10)
+           -l minimum (least) hops (default 0) -- -l 1 to not print self
+           -c disallow caching (turn on Do Not Cache flag in trace messages)
  */
 
 #include <stdio.h>
@@ -97,15 +99,17 @@ static int get_address (const char * address, unsigned char * result, int rsize)
 
 static void trace_usage (char * pname)
 {
-  printf ("usage: %s [-f|-r n] [-m] [-i] [-v] [-t sec] %s\n",
+  printf ("usage: %s [-f|-r n] [-m] [-i] [-v] [-t sec] [-l h] [-h h] %s\n",
           pname, "[<address_in_hex>[/<number_of_bits>]]*");
   printf ("       -f repeats forever, or -r n repeats n times\n");
   printf ("       -m only reports responses from matching addresses\n");
   printf ("       -i does not report intermediate nodes (a bit like ping)\n");
-  printf ("       -i implies -m\n");
+  printf ("              -i implies -m\n");
   printf ("       -v for verbose\n");
   printf ("       -t sec, time to sleep after send (default 5 seconds)\n");
   printf ("       -h hops gives the maximum number of hops (default 10)\n");
+  printf ("       -l minimum (least) hops, so -l 1 to not print self\n");
+  printf ("       -c disallow caching of trace messages\n");
 }
 
 static int atoi_in_range (char * value, int min, int max, int dflt, char * name)
@@ -136,7 +140,9 @@ int trace_main (int argc, char ** argv)
   int opt;
   int sleep = 5;
   int nhops = 10;
-  char * opt_string = "mivfr:t:h:";
+  int minhops = 0;
+  int caching = 1;
+  char * opt_string = "cfimvh:l:r:t:";
   while ((opt = getopt (argc, argv, opt_string)) != -1) {
     switch (opt) {
     case 'm': match_only = 1; break;
@@ -146,6 +152,8 @@ int trace_main (int argc, char ** argv)
     case 'r': repeat = atoi_in_range (optarg, 1, 0, repeat, "repeats"); break;
     case 't': sleep = atoi_in_range (optarg, 1, 0, sleep, "seconds"); break;
     case 'h': nhops = atoi_in_range (optarg, 1, 255, nhops, "hops"); break;
+    case 'l': minhops = atoi_in_range (optarg, 0, nhops, 0, "min hops"); break;
+    case 'c': caching = 0;
     default:
       trace_usage (argv [0]);
       exit (1);
@@ -173,26 +181,49 @@ int trace_main (int argc, char ** argv)
 #endif /* 0 */
 
   unsigned char addresses [ADDRESS_SIZE * MAX_ADDRS];
+  unsigned char excluded [ADDRESS_SIZE * MAX_ADDRS];
   memset (addresses, 0, sizeof (addresses));/* set any unused part to zeros */
+  memset (excluded, 0, sizeof (excluded));  /* set any unused part to zeros */
   int abits [MAX_ADDRS];
+  int xbits [MAX_ADDRS];
   memset (abits, 0, sizeof (abits));        /* set any unused part to zero */
-  int num_addrs;
-  for (num_addrs = 0; num_addrs < (argc - optind); num_addrs++) {
-    /* use the address(es) specified on the command line */
-    int b = get_address (argv [optind + num_addrs],
-                         addresses + (num_addrs * ADDRESS_SIZE), ADDRESS_SIZE);
-    if (b <= 0) {
-      printf ("argc %d/%d/%s, invalid number of bits, should be > 0\n",
-              argc, optind, argv [optind]);
-      trace_usage (argv [0]);
-      return 1;
-    }
-    abits [num_addrs] = b;
+  memset (xbits, 0, sizeof (xbits));        /* set any unused part to zero */
+  int i;
+  int num_addrs = 0;
+  int num_x = 0;
+  for (i = 0; i < (argc - optind); i++) {
+    /* address(es) beginning with x are excluded */
+    if (argv [optind + i] [0] != 'x') {
+      /* use the address(es) specified on the command line */
+      int b = get_address (argv [optind + i],
+                           addresses + (num_addrs * ADDRESS_SIZE),
+                           ADDRESS_SIZE);
+      if (b <= 0) {
+        printf ("argc %d/%d/%s, invalid number of bits, should be > 0\n",
+                argc, optind, argv [optind]);
+        trace_usage (argv [0]);
+        return 1;
+      }
+      abits [num_addrs] = b;
+      num_addrs++;
 #ifdef DEBUG_PRINT
-    printf ("using address [%d] = %02x/%d\n", num_addrs,
-            addresses [(num_addrs * ADDRESS_SIZE)],
-            abits [num_addrs]);
+      printf ("using address [%d] = %02x/%d\n", num_addrs,
+              addresses [(num_addrs * ADDRESS_SIZE)],
+              abits [num_addrs]);
 #endif /* DEBUG_PRINT */
+    } else {  /* an address to exclude from printing */
+      int b = get_address (argv [optind + i] + 1,
+                           excluded + (num_x * ADDRESS_SIZE),
+                           ADDRESS_SIZE);
+      if (b <= 0) {
+        printf ("argc %d/%d/%s, invalid number of bits, should be > 0\n",
+                argc, optind, argv [optind]);
+        trace_usage (argv [0]);
+        return 1;
+      }
+      xbits [num_x] = b;
+      num_x++;
+    }
   }
   alog = init_log ("trace");
   int sock = connect_to_local (argv [0], argv [0], NULL, 0, 1);
@@ -210,9 +241,9 @@ int trace_main (int argc, char ** argv)
     if (n > 0)
       nhops = n;
   }
-  do_trace_loop (sock, num_addrs, addresses, abits,
-                 repeat, sleep, nhops, match_only,
-                 no_intermediates, 1, 0, STDOUT_FILENO, 0, alog);
+  do_trace_loop (sock, num_addrs, addresses, abits, num_x, excluded, xbits,
+                 repeat, sleep, minhops, nhops, match_only, no_intermediates,
+                 caching, 1, 0, STDOUT_FILENO, 0, alog);
   return 0;
 }
 

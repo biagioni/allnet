@@ -29,8 +29,10 @@ extern void trace_print_summary (int signal);
  * of size naddrs * ADDRESS_SIZE.  likewise, abits has naddrs int's */
 extern void do_trace_loop (int sock,
                            int naddrs, unsigned char * addresses, int * abits,
-                           int repeat, int sleep, int nhops, int match_only,
-                           int no_intermediates, int wide, int null_term,
+                           int xaddrs, unsigned char * excluded, int * xbits,
+                           int repeat, int sleep, int minhops, int nhops,
+                           int match_only, int no_intermediates, int caching,
+                           int wide, int null_term,
                            int fd_out, int reset_counts,
                            struct allnet_log * alog);
 
