@@ -53,6 +53,9 @@ struct atcp_thread_args {
   int running;   /* set to zero when the main thread terminates */
   int local_sock;
   pthread_mutex_t lock;
+  unsigned long long int last_keepalive_sent_time;
+  char * authenticating_keepalive;
+  unsigned int aksize;
 };
 
 /* memmem is standard if _GNU_SOURCE is defined, but not otherwise */
@@ -243,7 +246,8 @@ static size_t atcp_make (const char * message, int msize, char * buffer)
 }
 
 /* returns true if this was a packet that we should not forward */
-static int respond_to_keepalive (int fd, const char * message, int msize,
+static int respond_to_keepalive (struct atcp_thread_args * args,
+                                 const char * message, int msize,
                                  struct sockaddr_storage addr)
 {
 /* print_buffer (message, msize, "respond_to_keepalive", 10, 1); */
@@ -252,50 +256,67 @@ static int respond_to_keepalive (int fd, const char * message, int msize,
   const struct allnet_header * hp = (const struct allnet_header *) message;
   if ((hp->message_type != ALLNET_TYPE_MGMT) ||
       (msize < ALLNET_MGMT_HEADER_SIZE (hp->transport)))
-    return 0;   /* not a valid keepalive */
+    return 0;   /* a valid message, but not a valid keepalive -- respond */
   const struct allnet_mgmt_header * mhp =
     (const struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   if (mhp->mgmt_type != ALLNET_MGMT_KEEPALIVE)
-    return 0;   /* not a valid keepalive */
-  /* it is a valid keepalive.  Respond appropriately */
-  static int skip = 0;   /* only respond to one out of every 4 keepalives */
-  if (skip++ < 3)
-    return 1;            /* because it is a valid keepalive */
-  skip = 0;
-  if (msize == ALLNET_MGMT_HEADER_SIZE (hp->transport)) {
-    /* simple keepalive, send back the same */
-    send (fd, message, msize, 0);
+    return 0;   /* a valid message, but not a valid keepalive -- respond */
+  /* it is a valid keepalive.  Respond here if at all, and always return 1 */
+  unsigned int hdr_size = ALLNET_MGMT_HEADER_SIZE (hp->transport);
+  if (hdr_size != ALLNET_MGMT_HEADER_SIZE (0)) {
+    printf ("possible error: header size %u (%d) != %zd\n",
+            hdr_size, hp->transport, ALLNET_MGMT_HEADER_SIZE (0));
     return 1;
   }
-  char secret [KEEPALIVE_AUTHENTICATION_SIZE];
-  static int initialized = 0;
-  if (! initialized)
-    random_bytes (secret, sizeof (secret));
-  initialized = 1;
-  const char * receiver_auth = NULL;
-  if (msize >= ALLNET_MGMT_HEADER_SIZE (hp->transport) +
-               KEEPALIVE_AUTHENTICATION_SIZE)
-    receiver_auth = message + ALLNET_MGMT_HEADER_SIZE (hp->transport);
-  char buffer [ALLNET_MTU];
-  int send_len = keepalive_auth (buffer, sizeof (buffer), addr,
-                                 secret, sizeof (secret), 1, receiver_auth);
-  send (fd, buffer, send_len, 0);
+  unsigned int min_size = hdr_size + KEEPALIVE_AUTHENTICATION_SIZE;
+  unsigned int max_size = min_size + KEEPALIVE_AUTHENTICATION_SIZE;
+  if (msize < min_size) {    /* simple keepalive, send back the same */
+    printf ("unusual: atcpd responding to simple keepalive\n");
+    send (args->local_sock, message, msize, 0);
+    return 1;
+  }
+  acquire (&(args->lock), "q");
+  if ((args->authenticating_keepalive == NULL) || (args->aksize < min_size) ||
+      (args->last_keepalive_sent_time + KEEPALIVE_SECONDS <= allnet_time ())) {
+    /* no authenticating keepalive sent in the last 10 seconds */
+    args->last_keepalive_sent_time = allnet_time ();
+    const char * ad_auth = message + hdr_size;
+    if ((args->authenticating_keepalive == NULL) || (args->aksize < max_size)) {
+      static char secret [KEEPALIVE_AUTHENTICATION_SIZE];
+      static int initialized = 0;
+      if (! initialized)
+        random_bytes (secret, sizeof (secret));
+      initialized = 1;
+      args->authenticating_keepalive = malloc_or_fail (max_size, "atcpd rtk");
+      args->aksize = keepalive_auth (args->authenticating_keepalive, max_size,
+                                     addr, secret, sizeof (secret), 1,
+                                     ad_auth);
+    }
+    char * auth = args->authenticating_keepalive + min_size;
+    if (memcmp (ad_auth, auth, KEEPALIVE_AUTHENTICATION_SIZE) != 0) {
+print_buffer (auth, KEEPALIVE_AUTHENTICATION_SIZE, "ad changed auth", 32, 1);
+print_buffer (ad_auth, KEEPALIVE_AUTHENTICATION_SIZE, "to", 32, 1);
+      memcpy (auth, ad_auth, KEEPALIVE_AUTHENTICATION_SIZE);
+    }
+    send (args->local_sock, args->authenticating_keepalive, args->aksize, 0);
+  }
+  release (&(args->lock), "q");
   return 1;
 }
 
 /* send most packets out on all the TCP connections, respond to keepalives */
-static void atcp_handle_local_packet (int fd, const char * message, int msize,
-                                      pthread_mutex_t * mutex,
+static void atcp_handle_local_packet (struct atcp_thread_args * args,
+                                      const char * message, int msize,
                                       struct sockaddr_storage addr)
 {
   /* do not forward keepalives.  Instead, respond to them */
-  if (respond_to_keepalive (fd, message, msize, addr))
+  if (respond_to_keepalive (args, message, msize, addr))
     return;
 /* printf ("not a keepalive\n"); */
   /* not a keepalive, forward to all the valid tcp sockets */
   char buffer [ALLNET_MTU + HEADER_FOR_TCP_SIZE];
   size_t send_len = atcp_make (message, msize, buffer);
-  acquire (mutex, "h");
+  acquire (&(args->lock), "h");
   if (send_len > 0) {
     int i;
     for (i = 0; i < MAX_CONNECTIONS; i++) {
@@ -315,7 +336,7 @@ sizeof (struct sockaddr_storage)); printf ("\n");
       }
     }
   }
-  release (mutex, "h");
+  release (&(args->lock), "h");
 }
 
 static void make_socket_nonblocking (int fd, const char * desc)
@@ -540,8 +561,18 @@ static void * atcp_keepalive_thread (void * arg)
   unsigned int size_to_send = 0;
   const char * packet = keepalive_packet (&size_to_send);
   while (args->running) {   /* loop until main thread goes away */
-    send (local_sock, packet, size_to_send, 0);
-    sleep_while_running (args, KEEPALIVE_SECONDS * 1000);
+    acquire (&(args->lock), "k");
+    if (args->last_keepalive_sent_time + KEEPALIVE_SECONDS * 100 <
+        allnet_time ()) {
+      if ((args->authenticating_keepalive != NULL) &&
+          (args->aksize > 0))
+        send (local_sock, args->authenticating_keepalive, args->aksize, 0);
+      else
+        send (local_sock, packet, size_to_send, 0);
+      args->last_keepalive_sent_time = allnet_time ();
+    }
+    release (&(args->lock), "k");
+    sleep_while_running (args, KEEPALIVE_SECONDS * 100);
   }
   printf ("%lld: atcpd_keepalive_thread %p ending\n", allnet_time (), arg);
   return NULL;
@@ -599,7 +630,7 @@ void * atcpd_main (char * arg)
     last_udp_received_time = allnet_time (); /* start all the timers now */
     if (new_sock < 0) {
       sleep (2);
-      continue;
+      continue;  /* start over, after a two-second pause */
     }
     struct atcp_thread_args * thread_args =
       malloc_or_fail (sizeof (struct atcp_thread_args), "atcpd_main");
@@ -612,6 +643,9 @@ void * atcpd_main (char * arg)
     memset (tcp_addrs, 0, sizeof (tcp_addrs));
     pthread_mutex_init (&(thread_args->lock), NULL);
     thread_args->running = 1;
+    thread_args->last_keepalive_sent_time = 0; /* we have sent no keepalives */
+    thread_args->authenticating_keepalive = NULL;
+    thread_args->aksize = 0;
     pthread_t thr1, thr2, thr3, thr4, thr5, thr6;
     pthread_create (&thr1, NULL, atcp_connect_thread, (void *) thread_args);
     pthread_create (&thr2, NULL, atcp_recv_thread, (void *) thread_args);
@@ -642,8 +676,7 @@ void * atcpd_main (char * arg)
         close (thread_args->local_sock);
         thread_args->running = 0;  /* kill off all the other threads, if any */
       } else if (r > 0) {           /* got a packet */
-        atcp_handle_local_packet (thread_args->local_sock, buffer, (int) r,
-                                  &(thread_args->lock), sas);
+        atcp_handle_local_packet (thread_args, buffer, (int) r, sas);
         last_udp_received_time = allnet_time ();
         restart_count = 0; /* successful, doesn't count as a restart any more */
 /* printf ("received %d bytes, time %lld\n", (int) r, last_udp_received_time); */
