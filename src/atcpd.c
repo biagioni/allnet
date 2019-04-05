@@ -419,7 +419,8 @@ static void * atcp_accept_thread (void * arg)
      * ipv4 should be 10s behind ipv6, to give it a chance to succeed first */
     sleep_while_running (args, 240000);
     if (bind (listen_socket, sap, alen) != 0) {
-      perror2 ("atcp_accept_thread bind again", ipv);
+      if (! success)
+        perror2 ("atcp_accept_thread bind again", ipv);
       if ((af == AF_INET) && (! success)) {
         printf ("another atcpd already running, quitting this one\n");
         args->running = 0;
