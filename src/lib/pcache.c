@@ -1397,8 +1397,8 @@ static void print_rd (const struct req_details *rd)
 
 static void print_pr (const struct pcache_result * res)
 {
-  printf ("result %p (free %p) has %d messages %p\n",
-          res, res->free_ptr, res->n, res->messages);
+  printf ("result %p has %d messages %p\n",
+          res, res->n, res->messages);
   int i;
   for (i = 0; i < res->n; i++) {
     struct pcache_message * pm = &(res->messages [i]);
@@ -1560,7 +1560,7 @@ static int matches_data_request (const struct req_details *rd,
 
 /* if successful, return the messages.
    return a result with n = 0 if there are no messages,
-   and n = -1 in case of failure -- in both of these cases, free_ptr is NULL.
+   and n = -1 in case of failure.
    messages are in order of descending priority.
    If max > 0, at most max messages will be returned.
    The memory used by pcache_result is allocated in the given buffer */
@@ -1592,10 +1592,10 @@ struct pcache_result pcache_request (const struct allnet_data_request *req,
 #endif /* DEBUG_PRINT */
     return result;
   }
-int debug_count = 0;
-int exp_count = 0;
-int token_count = 0;
-int max_count = 0;
+  int debug_count = 0;
+  int exp_count = 0;
+  int token_count = 0;
+  int max_count = 0;
   if (message_table != NULL) {
     int ie;
     for (ie = 0; (last_message != NULL) &&
@@ -1611,7 +1611,7 @@ debug_count++;
         char * msg = p + MESSAGE_HEADER_SIZE;
         if (match_all || matches_data_request (&rd, msg, mh.length)) {
           if (is_expired_message (msg, mh.length))
-            exp_count++;
+            exp_count++;  /* todo: delete from the cache */
           else if ((token_index >= 0) &&
                    (! memget (token, 0, sizeof (token))) &&
                    ((mh.sent_to_tokens & (one64 << token_index)) != 0))
@@ -1717,8 +1717,8 @@ static void print_message_table_entry (int eindex)
     struct message_header mh;
     memcpy (&mh, message_table [eindex].storage + offset, MESSAGE_HEADER_SIZE);
     char desc [1000];
-    snprintf (desc, sizeof (desc), "message %d: offset %d, token %" PRIx64 "",
-              i, offset, mh.sent_to_tokens);
+    snprintf (desc, sizeof (desc), "message %d.%2d: offset %d, token %" PRIx64,
+              eindex, i, offset, mh.sent_to_tokens);
     print_buffer (message_table [eindex].storage + offset + MESSAGE_HEADER_SIZE,
                   mh.length, desc, 36, 1);
     offset += mh.length + MESSAGE_HEADER_SIZE;
@@ -1756,6 +1756,8 @@ int main (int argc, char ** argv)
 #endif /* PRINT_CACHE_FILES */
 
 #ifdef TEST_CACHE_FILES
+/* compile with:
+   gcc -DTEST_CACHE_FILES -o test_cache pcache.c ai.c allnet_log.c configfiles.c pid_bloom.c sha.c util.c -lpthread */
 
 int main (int argc, char ** argv)
 {
@@ -1763,7 +1765,8 @@ int main (int argc, char ** argv)
   if (argc <= 1) {  /* simple test, request everything */
     struct allnet_data_request req; /* null request, should return everything */
     memset (&req, 0, sizeof (struct allnet_data_request));
-    struct pcache_result res = pcache_request (&req);
+    static char buf [50000];
+    struct pcache_result res = pcache_request (&req, 0, buf, sizeof (buf));
     print_pr (&res);
     return 0;
   }
@@ -1845,7 +1848,8 @@ int main (int argc, char ** argv)
     else
       printf ("coding error on argument [%d] %s\n", i, argv [i]);
   }
-  struct pcache_result res = pcache_request (adr);
+  static char buf [50000];
+  struct pcache_result res = pcache_request (adr, 0, buf, sizeof (buf));
   print_pr (&res);
 }
 #endif /* TEST_CACHE_FILES */
