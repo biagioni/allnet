@@ -352,7 +352,7 @@ static void switch_to_contact (char * new_peer, char ** peer)
   int pto = 1;   /* call print_to_output at the end -- unless already done */
   strip_final_newline (new_peer);
   if ((strlen (new_peer) > 0) && (num_keysets (new_peer) > 0)) {
-    if (strcasecmp (new_peer, *peer) != 0) {
+    if ((*peer == NULL) || (strcasecmp (new_peer, *peer) != 0)) {
       if (*peer != NULL) {
         free (*peer);   /* free earlier peer */
         pto = 0;        /* print in this if */
@@ -361,7 +361,7 @@ static void switch_to_contact (char * new_peer, char ** peer)
       prompt = *peer;
       if (! pto)
         print_n_messages (prompt, NULL, 10);
-    }
+    }  /* else: peer and new_peer are the same, do nothing */
   } else {                             /* no such peer */
     int print_peers = 1;               /* turn off if numeric selector */
     char ** contacts = NULL;
