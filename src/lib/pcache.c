@@ -205,6 +205,22 @@ static void print_stats (const char * desc)
           max_acks, (int) ACKS_PER_SLOT, max_acks_index);
 }
 
+#ifdef PRINT_CACHE_FILES
+static void print_tokens ()
+{
+  print_buffer (local_token, sizeof (local_token), "local token",
+                ALLNET_TOKEN_SIZE, 1);
+  int i;
+  for (i = 0; i < MAX_TOKENS; i++) {
+    if (! memget (token_list [i], 0, ALLNET_TOKEN_SIZE)) {
+      printf ("token %d: ", i);
+      print_buffer (token_list [i], ALLNET_TOKEN_SIZE, NULL,
+                    ALLNET_TOKEN_SIZE, 1);
+    }
+  }
+}
+#endif /* PRINT_CACHE_FILES */
+
 static void print_ack_table_entry (int aindex)
 {
   int base = aindex - (aindex % ACKS_PER_SLOT);
@@ -1717,8 +1733,18 @@ static void print_message_table_entry (int eindex)
     struct message_header mh;
     memcpy (&mh, message_table [eindex].storage + offset, MESSAGE_HEADER_SIZE);
     char desc [1000];
-    snprintf (desc, sizeof (desc), "message %d.%2d: offset %d, token %" PRIx64,
-              eindex, i, offset, mh.sent_to_tokens);
+    snprintf (desc, sizeof (desc),
+              "message %d.%2d: offset %d, p %x, token %" PRIx64 "",
+              eindex, i, offset, mh.priority, mh.sent_to_tokens);
+    int first = 1;
+    for (int x = 0; x < MAX_TOKENS; x++) {
+      if ((mh.sent_to_tokens & (one64 << x)) != 0) {  /* bit set */
+        int c = ((first) ? '=' : ',');
+        first = 0;
+        int n = strlen (desc);
+        snprintf (desc + n, minz (sizeof (desc), n), "%c%d", c, x);
+      }
+    }
     print_buffer (message_table [eindex].storage + offset + MESSAGE_HEADER_SIZE,
                   mh.length, desc, 36, 1);
     offset += mh.length + MESSAGE_HEADER_SIZE;
@@ -1742,6 +1768,7 @@ int main (int argc, char ** argv)
           printf ("ack table slot beginning with %d:\n", aindex);
           print_ack_table_entry (aindex);
         }
+        print_tokens ();
         break;   /* don't bother with any other arguments */
       }
       int eaindex = atoi (argv [i]);
