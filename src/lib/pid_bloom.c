@@ -89,8 +89,8 @@ static int bloom_init (int do_init)
                 (int) BLOOM_SIZE, size, fname);
         unlink (fname);
       } else {   /* from_file is NULL, the file does not exist */
-        printf ("error reading %s: no such file\n", fname);
 #ifdef DEBUG_PRINT
+        printf ("error reading %s: no such file\n", fname);
 #endif /* DEBUG_PRINT */
       }
       if (from_file != NULL) free (from_file);
