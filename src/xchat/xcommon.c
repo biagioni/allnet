@@ -257,12 +257,8 @@ static int send_data_request (int sock, int priority, char * start)
 #ifdef DEBUG_PRINT
   print_packet (((const char *) hp), size, "sending data request", 1);
 #endif /* DEBUG_PRINT */
-#if 0
-  int r = send_pipe_message_free (sock, (char *) (hp), size, priority, alog);
-#else
   int r = local_send ((char *) (hp), size, priority);
   free (hp);
-#endif /* 0 */
   if (! r) {
     snprintf (alog->b, alog->s, "unable to request data on %d\n", sock);
     log_print (alog);
@@ -2017,12 +2013,7 @@ static int send_key_request (int sock, const char * phrase)
 #ifdef DEBUG_PRINT
   printf ("sending %d-byte key request\n", psize);
 #endif /* DEBUG_PRINT */
-#if 0
-  int res = send_pipe_message_free (sock, packet, psize,
-                                    ALLNET_PRIORITY_LOCAL, alog);
-#else
   int res = local_send (packet, psize, ALLNET_PRIORITY_LOCAL);
-#endif /* 0 */
   if (! res) {
     printf ("unable to send key request message\n");
     return 0;
