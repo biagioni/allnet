@@ -563,7 +563,7 @@ static void * atcp_keepalive_thread (void * arg)
   const char * packet = keepalive_packet (&size_to_send);
   while (args->running) {   /* loop until main thread goes away */
     acquire (&(args->lock), "k");
-    if (args->last_keepalive_sent_time + KEEPALIVE_SECONDS * 100 <
+    if (args->last_keepalive_sent_time + KEEPALIVE_SECONDS * 10 <
         allnet_time ()) {
       if ((args->authenticating_keepalive != NULL) &&
           (args->aksize > 0))
