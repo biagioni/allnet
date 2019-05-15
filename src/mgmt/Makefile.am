@@ -22,10 +22,12 @@ keydlibincludes = \
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \
 	$(ALLNET_BINDIR)/trace \
+	$(ALLNET_BINDIR)/allnet-data-request \
 	$(ALLNET_BINDIR)/arems \
 	$(ALLNET_BINDIR)/allnet-sniffer
 __ALLNET_BINDIR__trace_SOURCES = trace.c ${libincludes}
 __ALLNET_BINDIR__arems_SOURCES = arems.c ${libincludes}
+__ALLNET_BINDIR__allnet_data_request_SOURCES = request.c ${libincludes}
 __ALLNET_BINDIR__allnet_sniffer_SOURCES = sniffer.c ${libincludes} lib/ai.h
 
 # Hooks to link traced to trace. Uncomment when not separately recompiled above.
