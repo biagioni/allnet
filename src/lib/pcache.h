@@ -49,25 +49,19 @@ struct pcache_result {
 
 /* if successful, return the messages.
    return a result with n = 0 if there are no messages,
-   and n = -1 in case of failure -- in both of these cases, free_ptr is NULL.
+   and n = -1 in case of failure
    messages are in order of descending priority.
    If max > 0, at most max messages will be returned.
-   The memory used by pcache_result is allocated in the given buffer */
+   If rlen <= 0, only returns messages addressed to source/nbits --
+   and if nbits is 0 or source is NULL, returns all messages
+   The memory used by pcache_result is allocated in the given buffer
+   If the request includes a token, the token is marked as having received
+   these messages.
+ */
 extern struct pcache_result
-  pcache_request (const struct allnet_data_request *req, int max,
+  pcache_request (const struct allnet_data_request *req, int rlen,
+                  int nbits, const unsigned char * source, int max,
                   char * buffer, int bsize);
-
-#ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
-/* similar to pcache_request.
-   Modifies req to reflect any IDs (may be 0) that are found */
-extern struct pcache_result
-  pcache_id_request (struct allnet_mgmt_id_request * req);
-#endif /* IMPLEMENT_MGMT_ID_REQUEST */
-
-/* mark that this message need never again be sent to this token */
-extern void
-  pcache_mark_token_sent (const char * token,  /* ALLNET_TOKEN_SIZE bytes */
-                          const char * message, int msize);
 
 /* acks */
 
@@ -95,7 +89,7 @@ extern int pcache_acks_for_token (const char * token,
 
 /* return 1 if the trace request/reply has been seen before, or otherwise
  * return 0 and save the ID.  Trace ID should be MESSAGE_ID_SIZE bytes */
-extern int pcache_trace_request (const unsigned char * id);
+extern int pcache_trace_request (const char * id);
 /* for replies, we look at the entire packet, without the header */
 extern int pcache_trace_reply (const char * msg, int msize);
 

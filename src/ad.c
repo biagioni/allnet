@@ -623,7 +623,6 @@ static struct socket_address_validity *
 }
 
 static int send_message_to_one (const char * message, int msize, int priority,
-                                const unsigned char * token,
                                 struct socket_address_set * sock,
                                 struct sockaddr_storage addr, socklen_t alen)
 {
@@ -650,8 +649,6 @@ static int send_message_to_one (const char * message, int msize, int priority,
     message = message_with_priority;
     msize += 2;
   }
-  if (token != NULL)
-    pcache_mark_token_sent ((const char * ) token, message, msize);
   int result = socket_send_to_ip (sock->sockfd, message, msize, addr, alen,
                                   "ad.c/send_message_to_one");
 #ifdef THROTTLE_SENDING
@@ -666,7 +663,6 @@ static int send_message_to_one (const char * message, int msize, int priority,
 
 /* return the number of messages sent (r.n), or 0 if none */
 static int send_messages_to_one (struct pcache_result r,
-                                 const unsigned char * token,
                                  struct socket_address_set * sock,
                                  struct sockaddr_storage addr, socklen_t alen)
 {
@@ -681,7 +677,7 @@ static int send_messages_to_one (struct pcache_result r,
     if (is_valid_message (r.messages [i].message, r.messages [i].msize, &e)) {
       result += send_message_to_one (r.messages [i].message,
                                      r.messages [i].msize,
-                                     r.messages [i].priority, token,
+                                     r.messages [i].priority,
                                      sock, addr, alen);
     } else {
       printf ("error: send_messages_to_one sending invalid message (%s)\n", e);
@@ -725,6 +721,16 @@ static unsigned int message_priority (char * message, struct allnet_header * hp,
   return compute_priority (size, hp->src_nbits, hp->dst_nbits,
                            hp->hops, hp->max_hops, social_distance,
                            rate_fraction, cacheable);
+}
+
+/* assumes it is only called on valid messages */
+static void save_or_record (const char * message, int msize, int priority)
+{
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0)
+    pcache_save_packet (message, msize, priority);
+  else
+    pcache_record_packet (message, msize);
 }
 
 /* special handling, only forward the acks we haven't seen before
@@ -815,20 +821,10 @@ static struct message_process process_mgmt (struct socket_read_result *r)
   case ALLNET_MGMT_PEERS:
     all.debug_reason = "peers or peer request";
     return all;
-#ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
-  case ALLNET_MGMT_ID_REQUEST:
-    assert (0);
-    struct allnet_mgmt_id_request * id_req = (struct allnet_mgmt_id_request *)
-                  (r->message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-    send_messages_to_one (pcache_id_request (id_req), NULL, r->sock,
-                          r->from, r->alen);
-    all.debug_reason = "id request";
-    return all;     /* and forward the request*/
-#endif /* IMPLEMENT_MGMT_ID_REQUEST */
   case ALLNET_MGMT_TRACE_REQ:
     drop.debug_reason = "trace request seen before";
-    if (pcache_trace_request (in_trace_req->trace_id))  /* seen before */
-      return drop;
+    if (pcache_trace_request ((char *) (in_trace_req->trace_id)))
+      return drop;     /* seen before */
     trace_forward (r->message, r->msize, my_address, 16,
                    &new_trace_request, &new_trace_request_size,
                    &trace_reply, &trace_reply_size);
@@ -841,13 +837,13 @@ static struct message_process process_mgmt (struct socket_read_result *r)
         struct allnet_header * thp = (struct allnet_header *) trace_reply;
         if (thp->max_hops == 1)    /* just return to the sender */
           send_message_to_one (trace_reply, trace_reply_size,
-                               ALLNET_PRIORITY_TRACE, NULL, r->sock,
+                               ALLNET_PRIORITY_TRACE, r->sock,
                                r->from, r->alen);
         else
           send_out (trace_reply, trace_reply_size, ROUTING_ADDRS_MAX,
                     NULL, 0, ALLNET_PRIORITY_TRACE, 1, NULL, NULL);
       }
-      pcache_save_packet (trace_reply, trace_reply_size, ALLNET_PRIORITY_TRACE);
+      save_or_record (trace_reply, trace_reply_size, ALLNET_PRIORITY_TRACE);
       free (trace_reply);
     }
     if (new_trace_request_size > 0) {
@@ -857,7 +853,7 @@ static struct message_process process_mgmt (struct socket_read_result *r)
         all.message = new_trace_request;
         all.allocated = 1;
       } /* else forward the original request */
-      pcache_save_packet (all.message, all.msize, ALLNET_PRIORITY_TRACE);
+      save_or_record (all.message, all.msize, ALLNET_PRIORITY_TRACE);
       all.debug_reason = "trace request forward";
       return all;
     }
@@ -871,7 +867,7 @@ static struct message_process process_mgmt (struct socket_read_result *r)
         (pcache_trace_reply (mgmt_payload, mgmt_payload_size)))
       return drop;  /* invalid, or seen before */
     all.priority = ALLNET_PRIORITY_TRACE;
-    pcache_save_packet (r->message, r->msize, ALLNET_PRIORITY_TRACE);
+    save_or_record (r->message, r->msize, ALLNET_PRIORITY_TRACE);
     all.debug_reason = "trace_reply";
     return all;
   default:
@@ -944,9 +940,9 @@ print_packet (r->message, r->msize, "received data request", 1);
 #endif /* DEBUG_FOR_DEVELOPER */
       char request_buffer [50000];
       struct pcache_result cached_messages =
-        pcache_request (req, max_messages,
-                        request_buffer, sizeof (request_buffer));
-      send_messages_to_one (cached_messages, req->token, r->sock, saddr, salen);
+        pcache_request (req, data - r->message, hp->src_nbits, hp->source,
+                        max_messages, request_buffer, sizeof (request_buffer));
+      send_messages_to_one (cached_messages, r->sock, saddr, salen);
       /* replace the token in the message with our own token */
       pcache_current_token ((char *) (req->token));
       /* and then do normal packet processing (forward) this data request */
@@ -963,12 +959,8 @@ print_packet (r->message, r->msize, "received data request", 1);
         { .process = PROCESS_PACKET_ALL, .message = r->message,
           .msize = r->msize, .priority = r->priority, .allocated = 0,
           .debug_reason = debug_message };
-  if (save_message && (! seen_before)) {
-    if ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0)
-      pcache_save_packet (r->message, r->msize, r->priority);
-    else
-      pcache_record_packet (r->message, r->msize);
-  }
+  if (save_message && (! seen_before))
+    save_or_record (r->message, r->msize, r->priority);
   return result;
 }
 
