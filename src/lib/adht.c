@@ -323,10 +323,24 @@ void dht_process (char * message, unsigned int msize,
       if (! is_in_routing_table (pingp, plen)) {
         int validity = is_valid_address (&(ai->ip));
         if (validity == 1) {  /* valid address */
-          routing_add_ping (ai);
+          int rapl = routing_add_ping (ai);
+          if (rapl < -1) {
+            printf ("adht dht_process: routing_add_ping result is %d, val %d\n",
+                    rapl, validity);
+print_buffer (sap, alen, "from", alen, 1);
+print_addr_info (ai);
+print_buffer (ai, sizeof (*ai), "ai", sizeof (*ai), 1);
+          }
         } else if (validity == -1) {  /* IPv4 in IPv6 address */
           ai->ip.ip_version = 4;
-          routing_add_ping (ai);
+          int rapl = routing_add_ping (ai);
+          if (rapl < -1) {
+            printf ("adht dht_process2: routing_add_ping result %d, val %d\n",
+                    rapl, validity);
+print_buffer (sap, alen, "from", alen, 1);
+print_addr_info (ai);
+print_buffer (&ai, sizeof (ai), "ai", sizeof (ai), 1);
+          }
         } /* else: invalid address, do not add */
       }
     }
