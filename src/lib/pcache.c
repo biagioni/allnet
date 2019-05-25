@@ -240,7 +240,7 @@ static size_t gc_messages (const char * id, const char * message, int msize,
     message = NULL;
     msize = 0;
     priority = 0;
-printf ("starting gc, length is %zd\n", msg_table_size);
+/* printf ("starting gc, length is %zd\n", msg_table_size); */
   }
 else printf ("inserting gc, length is %zd\n", msg_table_size);
   char * copy_to = (char *) msg_table;
@@ -533,7 +533,8 @@ printf ("saved messages table, %zd bytes\n", w);
 #endif /* PRINT_CACHE_FILES */
 }
 
-static void init_pcache ()
+/* initialize and do any needed maintenance */
+static void pcache_init_maint ()
 {
   static int initialized = 0;
   if (! initialized) {
@@ -541,15 +542,25 @@ static void init_pcache ()
     read_tokens_file ();
     read_hash_files ();
     read_messages_file ();
-write_messages_file (1);
     initialized = 1;
+  }
+/* save at least once when first called.  Further, save every 1-60 minutes */
+  static unsigned long long int next_save = 0;
+  static unsigned long long int minutes_increment = 1;
+  if (allnet_time () >= next_save) {
+    write_tokens_file (0);
+    write_hash_files (0);
+    write_messages_file (0);
+    next_save = allnet_time () + minutes_increment * 60;
+    if (minutes_increment < 60)
+      minutes_increment += 1;  /* add one minute */
   }
 }
 
 /* fills in the first ALLNET_TOKEN_SIZE bytes of token with the current token */
 void pcache_current_token (char * token)
 {
-  init_pcache ();
+  pcache_init_maint ();
   memcpy (token, tokens.tokens [0], ALLNET_TOKEN_SIZE);
 }
 
@@ -557,7 +568,7 @@ void pcache_current_token (char * token)
  * look inside a message and fill in its ID (MESSAGE_ID_SIZE bytes). */
 int pcache_message_id (const char * message, int msize, char * result_id)
 {
-  init_pcache ();
+  pcache_init_maint ();
   if (msize < ALLNET_HEADER_SIZE)
     return 0;
   struct allnet_header * hp = (struct allnet_header *) message;
@@ -582,7 +593,7 @@ int pcache_message_id (const char * message, int msize, char * result_id)
  * id must have MESSAGE_ID_SIZE bytes */
 static int pcache_record_packet_id (const char * message, int msize, char * id)
 {
-  init_pcache ();
+  pcache_init_maint ();
   if (! pcache_message_id (message, msize, id)) {
     print_buffer (message, msize, "no message ID for packet: ", msize, 1);
     return 0;
@@ -640,7 +651,7 @@ void pcache_record_packet (const char * message, int msize)
  * ID is MESSAGE_ID_SIZE bytes. */
 int pcache_id_found (const char * id)
 {
-  init_pcache ();
+  pcache_init_maint ();
   int index = id_index (id, num_mid, mid_secret);
   return (memcmp (mid_table [index].ida, id, MESSAGE_ID_SIZE) == 0);
 }
@@ -730,7 +741,7 @@ struct pcache_result
                   int nbits, const unsigned char * source, int max,
                   char * buffer, int bsize)
 {
-  init_pcache ();
+  pcache_init_maint ();
   struct pcache_result
     result = {.n = 0, .messages = (struct pcache_message *) buffer };
   if (bsize <= 0)
@@ -822,7 +833,7 @@ static void save_one_ack (const char * ack, int max_hops)
 /* record all these acks and delete (stop caching) corresponding messages */
 void pcache_save_acks (const char * acks, int num_acks, int max_hops)
 {
-  init_pcache ();
+  pcache_init_maint ();
   int i;
   for (i = 0; i < num_acks; i++)
     save_one_ack (acks + i * MESSAGE_ID_SIZE, max_hops);
@@ -832,7 +843,7 @@ void pcache_save_acks (const char * acks, int num_acks, int max_hops)
 /* return 1 if we have the ack, 0 if we do not */
 int pcache_ack_found (const char * ack)
 {
-  init_pcache ();
+  pcache_init_maint ();
   int aindex = ack_index (ack);
   if (memcmp (ack_table [aindex].ida, ack, MESSAGE_ID_SIZE) == 0)
     return 1;
@@ -843,7 +854,7 @@ int pcache_ack_found (const char * ack)
  * if returning 1, fill in the ack */
 int pcache_id_acked (const char * id, char * ack)
 {
-  init_pcache ();
+  pcache_init_maint ();
   int aindex = id_index (id, num_ack, ack_secret);
   char check_id [MESSAGE_ID_SIZE];
   sha512_bytes (ack_table [aindex].ida, MESSAGE_ID_SIZE,
@@ -860,7 +871,7 @@ int pcache_id_acked (const char * id, char * ack)
  * otherwise, return 0 */
 int pcache_ack_for_token (const char * token, const char * ack)
 {
-  init_pcache ();
+  pcache_init_maint ();
   int aindex = ack_index (ack);
   if (memcmp (ack_table [aindex].ida, ack, MESSAGE_ID_SIZE) != 0)
     return 1; /* this ack is not in the table, go ahead and forward it */
@@ -880,7 +891,7 @@ int pcache_ack_for_token (const char * token, const char * ack)
 int pcache_acks_for_token (const char * token,
                            char * acks, int num_acks)
 {
-  init_pcache ();
+  pcache_init_maint ();
   const char * ack = acks;
   char * offset = acks;
   int result = 0;
@@ -901,7 +912,7 @@ int pcache_acks_for_token (const char * token,
  * return 0 and save the ID.  Trace ID should be MESSAGE_ID_SIZE bytes */
 int pcache_trace_request (const char * id)
 {
-  init_pcache ();
+  pcache_init_maint ();
   int index = id_index (id, num_trc, trc_secret);
   if (memcmp (trc_table [index].ida, id, MESSAGE_ID_SIZE) == 0)
     return 1;  /* already there */
@@ -917,7 +928,7 @@ int pcache_trace_request (const char * id)
 /* for replies, we look at the entire packet, without the header */
 int pcache_trace_reply (const char * msg, int msize)
 {
-  init_pcache ();
+  pcache_init_maint ();
   char id [MESSAGE_ID_SIZE];
   sha512_bytes (msg, msize, id, sizeof (id));
   return pcache_trace_request (id);
@@ -926,7 +937,7 @@ int pcache_trace_reply (const char * msg, int msize)
 /* save cached information to disk */
 void pcache_write (void)
 {
-  init_pcache ();
+  pcache_init_maint ();
   write_tokens_file (1);
   write_hash_files (1);
   write_messages_file (1);
@@ -1071,7 +1082,7 @@ print_buffer (p + msg_table_offset + mh_size + current->length - 4, 4, NULL, 4, 
 
 int main (int argc, char ** argv)
 {
-  init_pcache ();
+  pcache_init_maint ();
   if (argc > 1) {
     int i;
     for (i = 1; i < argc; i++) {
