@@ -275,36 +275,37 @@ printf ("gc discarding message, %d, %d (%s), %d\n", x1, x2, e2, x3);
     memset (copy_to, 0, mh_size);
     copy_to += mh_size; 
   }
-printf ("finishing gc, length is %zd\n", copy_to - p);
+/* printf ("finishing gc, length is %zd\n", copy_to - p); */
 /* print_buffer (p, copy_to - p, "finished gc", 40, 1);  */
   return copy_to - p;
 }
 
-static int get_size_from_file (int line)
+static int get_size_from_file (int line, int dflt)
 {
   int fd = open_read_config ("acache", "sizes", 1);
   char * data = NULL;
   int size = read_fd_malloc (fd, &data, 0, 1, "~/.allnet/acache/sizes");
   if (size <= 0)
-    return 0;
-  /* data should be terminated by a null character */
-  int result = 0;
+    return dflt;
+  /* read_fd_malloc terminates the content with a null character,
+   * so the content is a valid C string */
+  int result = dflt;
   char * p = data;
   while (line-- > 0) {
     char * endp = NULL;
     result = (int) strtol (p, &endp, 10);
     if (endp == p) {
-      result = 0;
+      result = dflt;
       break;
     }
     if (*endp == '\0') {
       if (line == 0)
         break;
-      result = 0;
+      result = dflt;
       break;
     }
     if (*endp != '\n') {
-      result = 0;
+      result = dflt;
       break;
     }  /* else, *endp is the newline character */
     p = endp + 1;
@@ -418,7 +419,6 @@ static void write_hash_file (const char * fname, struct hash_entry * table,
     if (ws != sizeof (buffer))
       perror ("write_hash_file error writing secret");
     close (fd);
-printf ("saved %s table, %zd bytes\n", fname, w + ws);
   }
 #endif /* PRINT_CACHE_FILES */
 }
@@ -428,7 +428,7 @@ static const int min_hash_file_size = 64 * 1024 * sizeof (struct hash_entry);
 
 static void read_hash_files ()
 {
-  int default_file_size = get_size_from_file (2);
+  int default_file_size = get_size_from_file (2, min_hash_file_size);
   if (default_file_size < min_hash_file_size)
     default_file_size = min_hash_file_size;
   read_hash_file ("ack", default_file_size, &ack_table, &num_ack, &ack_secret);
@@ -458,7 +458,7 @@ static void read_messages_file ()
   ssize_t size = read_fd_malloc (fd, &data, 1, 1, "~/.allnet/acache/message");
   close (fd);
   if ((size > 0) && (data != NULL)) {  /* check and create mid */
-    ssize_t min_size = get_size_from_file (1);
+    ssize_t min_size = get_size_from_file (1, 8 * min_hash_file_size);
     if (size < min_size) {  /* extend to min size */
       data = realloc (data, min_size);
       memset (data + size, 0, min_size - size);
@@ -467,7 +467,7 @@ static void read_messages_file ()
     msg_table = (struct message_header *) data;
     msg_table_size = size;
     /* create the message ID table, and fill it in as we check the messages */
-    ssize_t mid_size = get_size_from_file (2);
+    ssize_t mid_size = get_size_from_file (2, min_hash_file_size);
     if (size > min_size * 2)  /* increase the mid table size in proportion */
       mid_size *= (size / min_size);
     if (mid_size < min_hash_file_size)
@@ -495,13 +495,13 @@ static void read_messages_file ()
   if (data != NULL)
     free (data);
   printf ("error reading messages file, initializing from scratch\n");
-  msg_table_size = get_size_from_file (1);
+  msg_table_size = get_size_from_file (1, 8 * min_hash_file_size);
   if (msg_table_size < 4 * 1024 * 1024)  /* at least four MBi */
     msg_table_size = 4 * 1024 * 1024;
   msg_table = malloc_or_fail (msg_table_size, "read_messages_file init");
   /* put an all-zero message_header as a marker that we are at the end */
   memset (msg_table, 0, sizeof (struct message_header));
-  int mid_size = get_size_from_file (2);
+  int mid_size = get_size_from_file (2, min_hash_file_size);
   if (mid_size < min_hash_file_size)
     mid_size = min_hash_file_size;
   mid_table = malloc_or_fail (mid_size, "read_messages_file mid init");
@@ -525,7 +525,6 @@ static void write_messages_file (int always)
     } else
       save_messages = 0;
     close (fd);
-printf ("saved messages table, %zd bytes\n", w);
   }
 #else /* PRINT_CACHE_FILES */
   if (len < 1000)
@@ -799,7 +798,7 @@ if ((current->priority != 0) &&
     ((x != 0) || (strcmp ("expired packet", error) != 0))) {
 if (x == 0)
 printf ("deleting %d (%s), %d: ", x, error, id_is_acked (current->id));
-else
+else if (! id_is_acked (current->id))
 printf ("deleting message, %d, %d, %d: ",
 current->priority, x, id_is_acked (current->id));
 print_buffer (message, current->length, NULL, 10, 1);
