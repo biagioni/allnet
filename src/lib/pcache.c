@@ -106,12 +106,12 @@ static struct message_header * next_message (struct message_header * hp)
     size_t msg_table_offset = ((char *) hp) - ((char *) msg_table);
     size_t current_size = mh_size + msg_storage (hp->length);
     /* do some checking, so we don't have to do it elsewhere */
-    if ((hp->length == 0) || ((msg_table_offset % 16) != 0) ||
+    if ((hp->length == 0) || (hp->length > ALLNET_MTU) ||
+        ((msg_table_offset % 16) != 0) ||
         (current_size + msg_table_offset > msg_table_size)) {
       printf ("next_message: hp %p/%d, offset %zd, sizes %zd+%zd, table %p\n",
               hp, hp->length, (((char *) hp) - ((char *) msg_table)),
               current_size, msg_table_offset, msg_table);
-      crash ();
       return NULL;
     }
     result = (struct message_header *) (((char *) hp) + current_size);
@@ -266,7 +266,9 @@ int x3 = (x2 > 0) ? id_is_acked (current->id) : -1;
       save_messages = 1;          /* gc'd at least one message */
       copy_to += hdr_msg_size;
     } /* done with this message */
-else printf ("gc discarding message, %d, %d (%s), %d\n", x1, x2, e2, x3);
+else if (! (((x1 == 0) && (strcmp (e2, "zero priority") == 0)) ||
+            ((x1 > 0) && (strcmp (e2, "expired packet") == 0))))
+printf ("gc discarding message, %d, %d (%s), %d\n", x1, x2, e2, x3);
   }
   char * p = (char *) msg_table;
   if ((copy_to - p) + mh_size <= msg_table_size) { /* add a sentinel record */
@@ -274,13 +276,12 @@ else printf ("gc discarding message, %d, %d (%s), %d\n", x1, x2, e2, x3);
     copy_to += mh_size; 
   }
 printf ("finishing gc, length is %zd\n", copy_to - p);
-print_buffer (p, copy_to - p, "finished gc", 40, 1); 
+/* print_buffer (p, copy_to - p, "finished gc", 40, 1);  */
   return copy_to - p;
 }
 
 static int get_size_from_file (int line)
 {
-printf ("get_size_from_file line %d, ", line);
   int fd = open_read_config ("acache", "sizes", 1);
   char * data = NULL;
   int size = read_fd_malloc (fd, &data, 0, 1, "~/.allnet/acache/sizes");
@@ -309,7 +310,6 @@ printf ("get_size_from_file line %d, ", line);
     p = endp + 1;
   }
   free (data);
-printf ("result %d\n", result);
   return result;
 }
 
@@ -340,6 +340,7 @@ static void read_tokens_file ()
 
 static void write_tokens_file (int always)
 {
+#ifndef PRINT_CACHE_FILES
   if ((! always) && (! save_tokens))
     return;
   int fd = open_write_config ("acache", "token", 1);
@@ -350,6 +351,7 @@ static void write_tokens_file (int always)
     perror ("error writing tokens file\n");
   close (fd);
   save_tokens = 0;
+#endif /* PRINT_CACHE_FILES */
 }
 
 static void read_hash_file (const char * fname, int fsize,
@@ -389,7 +391,6 @@ printf ("rehashing %s table, secret %llx\n", fname, *secret);
       if (save_tokens)  /* tokens have been reset */
         for (int i = 0; i < *num; i++)
           hash [i].sent_to_tokens = 0;
-printf ("hash table %s, secret %llx, %d entries\n", fname, *secret, *num);
       return;
     } /* else size is too small or bad, ignore contents */
       /* and of course, free the file contents if they were allocated */
@@ -400,12 +401,12 @@ printf ("hash table %s, secret %llx, %d entries\n", fname, *secret, *num);
   *table = malloc_or_fail (fsize, "read_hash_file");
   memset (*table, 0, fsize);
   *secret = random_int (0, (unsigned long long int) (-1));
-printf ("created %s table, secret %llx\n", fname, *secret);
 }
 
 static void write_hash_file (const char * fname, struct hash_entry * table,
                              int num, unsigned long long int secret)
 {
+#ifndef PRINT_CACHE_FILES
   int fd = open_write_config ("acache", fname, 1);
   if (fd >= 0) {
     size_t w = write (fd, table, num * sizeof (struct hash_entry));
@@ -417,16 +418,19 @@ static void write_hash_file (const char * fname, struct hash_entry * table,
     if (ws != sizeof (buffer))
       perror ("write_hash_file error writing secret");
     close (fd);
+printf ("saved %s table, %zd bytes\n", fname, w + ws);
   }
-printf ("saved %s table, secret %llx\n", fname, secret);
+#endif /* PRINT_CACHE_FILES */
 }
+
+/* a hash table should have at least 64K ids */
+static const int min_hash_file_size = 64 * 1024 * sizeof (struct hash_entry);
 
 static void read_hash_files ()
 {
   int default_file_size = get_size_from_file (2);
-  int min_file_size = 64 * 1024 * sizeof (struct hash_entry);  /* 64K ids */
-  if (default_file_size < min_file_size)
-    default_file_size = min_file_size;
+  if (default_file_size < min_hash_file_size)
+    default_file_size = min_hash_file_size;
   read_hash_file ("ack", default_file_size, &ack_table, &num_ack, &ack_secret);
   read_hash_file ("trace", default_file_size,
                   &trc_table, &num_trc, &trc_secret);
@@ -466,6 +470,8 @@ static void read_messages_file ()
     ssize_t mid_size = get_size_from_file (2);
     if (size > min_size * 2)  /* increase the mid table size in proportion */
       mid_size *= (size / min_size);
+    if (mid_size < min_hash_file_size)
+      mid_size = min_hash_file_size;
     num_mid = mid_size / sizeof (struct hash_entry);
     mid_table = malloc_or_fail (mid_size, "read_messages_file mid_table");
     /* now check each message and add it to the mid */
@@ -496,6 +502,8 @@ static void read_messages_file ()
   /* put an all-zero message_header as a marker that we are at the end */
   memset (msg_table, 0, sizeof (struct message_header));
   int mid_size = get_size_from_file (2);
+  if (mid_size < min_hash_file_size)
+    mid_size = min_hash_file_size;
   mid_table = malloc_or_fail (mid_size, "read_messages_file mid init");
   num_mid = mid_size / sizeof (struct hash_entry);
   memset (mid_table, 0, mid_size);
@@ -504,6 +512,7 @@ print_buffer (msg_table, msg_table_size, "finished init msg_table", 40, 1);
 
 static void write_messages_file (int always)
 {
+#ifndef PRINT_CACHE_FILES
   if ((! always) && (! save_messages))
     return;
   size_t len = gc_messages (NULL, NULL, 0, 0);
@@ -518,6 +527,7 @@ static void write_messages_file (int always)
     close (fd);
 printf ("saved messages table, %zd bytes\n", w);
   }
+#endif /* PRINT_CACHE_FILES */
 }
 
 static void init_pcache ()
@@ -525,14 +535,11 @@ static void init_pcache ()
   static int initialized = 0;
   if (! initialized) {
     mid_secret = random_int (0, (unsigned long long int) (-1));
-printf ("mid_secret is %llx\n", mid_secret);
     read_tokens_file ();
     read_hash_files ();
     read_messages_file ();
 write_messages_file (1);
     initialized = 1;
-printf ("init_pcache complete, sizes are %zd %d %d %d\n",
-msg_table_size, num_ack, num_mid, num_trc);
   }
 }
 
@@ -774,7 +781,8 @@ if (eff_len > 2048) crash ();
 {
 char * error = NULL;
 int x = is_valid_message (message, current->length, &error);
-if (current->priority != 0) {
+if ((current->priority != 0) &&
+    ((x != 0) || (strcmp ("expired packet", error) != 0))) {
 if (x == 0)
 printf ("deleting %d (%s), %d: ", x, error, id_is_acked (current->id));
 else
@@ -980,8 +988,8 @@ static void print_hash_entry (const char * name, int index, int verbose,
   struct hash_entry * current = table + index;
   if (verbose || current->used) {  /* print this ack */
     char desc [1000];
-    snprintf (desc, sizeof (desc), "%s %d: max %d, u %d, token %" PRIx64,
-              name, index, current->max_hops,
+    snprintf (desc, sizeof (desc), "%s %d/%d: max %d, u %d, token %" PRIx64,
+              name, index, num_entries, current->max_hops,
               current->used, current->sent_to_tokens);
     print_buffer (table [index].ida, MESSAGE_ID_SIZE, desc,
                   MESSAGE_ID_SIZE, 1);
