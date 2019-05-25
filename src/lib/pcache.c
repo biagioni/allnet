@@ -512,10 +512,10 @@ print_buffer (msg_table, msg_table_size, "finished init msg_table", 40, 1);
 
 static void write_messages_file (int always)
 {
-#ifndef PRINT_CACHE_FILES
   if ((! always) && (! save_messages))
     return;
   size_t len = gc_messages (NULL, NULL, 0, 0);
+#ifndef PRINT_CACHE_FILES
   int fd = open_write_config ("acache", "message", 1);
   if (fd >= 0) {
     size_t w = write (fd, msg_table, len);
@@ -527,6 +527,9 @@ static void write_messages_file (int always)
     close (fd);
 printf ("saved messages table, %zd bytes\n", w);
   }
+#else /* PRINT_CACHE_FILES */
+  if (len < 1000)
+    printf ("after gc, %zd bytes left\n", len);
 #endif /* PRINT_CACHE_FILES */
 }
 
