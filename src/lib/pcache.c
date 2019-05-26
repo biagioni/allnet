@@ -267,7 +267,8 @@ int x3 = (x2 > 0) ? id_is_acked (current->id) : -1;
       copy_to += hdr_msg_size;
     } /* done with this message */
 else if (! (((x1 == 0) && (strcmp (e2, "zero priority") == 0)) ||
-            ((x1 > 0) && (strcmp (e2, "expired packet") == 0))))
+            ((x1 > 0) && (strcmp (e2, "expired packet") == 0)) ||
+            (x3 > 0)))
 printf ("gc discarding message, %d, %d (%s), %d\n", x1, x2, e2, x3);
   }
   char * p = (char *) msg_table;
