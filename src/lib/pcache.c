@@ -671,7 +671,7 @@ static int
   if (nbits <= 0)
     return 1;   /* no address, so accept */
   /* the index/mask functions always require 16 bits */
-  int sixteen = readb16u (bitmap);
+  int sixteen = readb16u (addr);
   int index = allnet_bitmap_byte_index (p2, sixteen);
   int mask = allnet_bitmap_byte_mask (p2, sixteen);
   return ((bitmap [index] & mask) != 0);
