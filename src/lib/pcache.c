@@ -508,7 +508,7 @@ static void read_messages_file ()
   mid_table = malloc_or_fail (mid_size, "read_messages_file mid init");
   num_mid = mid_size / sizeof (struct hash_entry);
   memset (mid_table, 0, mid_size);
-print_buffer (msg_table, msg_table_size, "finished init msg_table", 40, 1); 
+/* print_buffer (msg_table, msg_table_size, "finished init msgtbl", 40, 1);  */
 }
 
 static void write_messages_file (int always)
@@ -796,11 +796,11 @@ if (eff_len > 2048) crash ();
 char * error = NULL;
 int x = is_valid_message (message, current->length, &error);
 if ((current->priority != 0) &&
-    ((x != 0) || (strcmp ("expired packet", error) != 0))) {
+    ((x != 0) || (strcmp ("expired packet", error) != 0)) &&
+    (! id_is_acked (current->id))) {
 if (x == 0)
 printf ("deleting %d (%s), %d: ", x, error, id_is_acked (current->id));
-else if (! id_is_acked (current->id))
-printf ("deleting message, %d, %d, %d: ",
+else printf ("deleting message, %d, %d, %d: ",
 current->priority, x, id_is_acked (current->id));
 print_buffer (message, current->length, NULL, 10, 1);
 if (((char *) current) + sizeof (struct message_header) != message)
