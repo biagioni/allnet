@@ -480,16 +480,10 @@ public class CoreConnect extends Thread implements CoreAPI {
     public void setVisible(String contact) {
         byte [] response = doRPCWithCodeOp (guiSetVariable, guiVariableVisible,
                                             contact);
-//        if (response [1] == 0) {
-//            System.out.println ("failed to make " + contact + " visible");
-//        }
     }
     public void unsetVisible(String contact) {  // make not visible
         byte [] response = doRPCWithCodeOp (guiUnsetVariable,
                                             guiVariableVisible, contact);
-//        if (response [1] == 0) {
-//            System.out.println ("failed to make " + contact + " invisible");
-//        }
     }
 
     public boolean isNotify(String contact) {
@@ -497,10 +491,12 @@ public class CoreConnect extends Thread implements CoreAPI {
                                        contact);
     }
     public void setNotify(String contact) { 
-        System.out.println("setNotify not implemented yet");
+        byte [] response = doRPCWithCodeOp (guiSetVariable, guiVariableNotify,
+                                            contact);
     }
     public void unsetNotify(String contact) { 
-        System.out.println("unsetNotify not implemented yet");
+        byte [] response = doRPCWithCodeOp (guiUnsetVariable, guiVariableNotify,
+                                            contact);
     }
 
     public boolean isSavingMessages(String contact) { 
@@ -508,10 +504,12 @@ public class CoreConnect extends Thread implements CoreAPI {
                                        guiVariableSavingMessages, contact);
     }
     public void setSavingMessages(String contact) { 
-        System.out.println("setSavingMessages not implemented yet");
+        byte [] response = doRPCWithCodeOp (guiSetVariable,
+                                            guiVariableSavingMessages, contact);
     }
     public void unsetSavingMessages(String contact) { 
-        System.out.println("unsetSavingMessages not implemented yet");
+        byte [] response = doRPCWithCodeOp (guiUnsetVariable,
+                                            guiVariableSavingMessages, contact);
     }
 
     // a key exchange is only complete once
