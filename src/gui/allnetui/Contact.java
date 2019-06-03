@@ -19,14 +19,17 @@ public class Contact {
     private boolean notify, saveMessages, visible;
     private ArrayList<String> groups;
 
-    public Contact(String name, ContactType type) {
-        id = nextContactID;
+    public Contact(String name, ContactType type,
+                   boolean visible, boolean notify, boolean save) {
+        this.id = nextContactID;
         nextContactID++;
         this.name = name;
         this.type = type;
-        conversation = new Conversation(name);
-        notify = saveMessages = visible = true;
-        groups = new ArrayList<>();
+        this.conversation = new Conversation(name);
+        this.visible = visible;
+        this.notify = notify;
+        this.saveMessages = save;
+        this.groups = new ArrayList<>();
     }
 
     public boolean isBroadcast() {

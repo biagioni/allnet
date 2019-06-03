@@ -23,12 +23,14 @@ public class ContactData {
         contacts = new HashMap<>();
     }
 
-    public void createContact(String contactName, ContactType type) {
+    public void createContact(String contactName, ContactType type,
+                              boolean visible, boolean notify, boolean save) {
         if (contactExists(contactName)) {
             // throw new RuntimeException("tried to create contact with existing contact name: " + contactName);
             return;
         }
-        contacts.put(contactName, new Contact(contactName, type));
+        contacts.put(contactName, new Contact(contactName, type,
+                                              visible, notify, save));
     }
 
     public void removeContact(String contactName) {
@@ -47,6 +49,22 @@ public class ContactData {
     public boolean isBroadcast(String contactName) {
         try {
             return (contacts.get(contactName).isBroadcast());
+        } catch (java.lang.NullPointerException e) {
+            return false;
+        }
+    }
+
+    public boolean isNotify(String contactName) {
+        try {
+            return (contacts.get(contactName).isNotify());
+        } catch (java.lang.NullPointerException e) {
+            return false;
+        }
+    }
+
+    public boolean isSavingMessages(String contactName) {
+        try {
+            return (contacts.get(contactName).isSaveMessages());
         } catch (java.lang.NullPointerException e) {
             return false;
         }

@@ -157,6 +157,9 @@ class UIController implements ControllerInterface, UIAPI {
     private void contactCreated(final String contactName,
                                 final boolean isBroadcast,
                                 final boolean isGroup) {
+        final boolean v = coreAPI.isVisible (contactName);
+        final boolean n = coreAPI.isNotify (contactName);
+        final boolean s = coreAPI.isSavingMessages (contactName);
         Runnable r = new Runnable() {
 
             @Override
@@ -164,7 +167,7 @@ class UIController implements ControllerInterface, UIAPI {
                 ContactType t = (isGroup ? ContactType.GROUP :
                                  (isBroadcast ? ContactType.BROADCAST :
                                   ContactType.PERSONAL));
-                contactData.createContact(contactName, t);
+                contactData.createContact(contactName, t, v, n, s);
                 updateContactsPanel(contactName, isBroadcast);
                 contactConfigPanel.update();
                 KeyExchangePanel kep = getKeyExchangePanel(contactName);
@@ -263,6 +266,24 @@ class UIController implements ControllerInterface, UIAPI {
                         coreAPI.setVisible(contactName);
                         updateContactsPanel(contactName, false);
                         contactConfigPanel.update();
+                    }
+                }
+                if (! contactData.isNotify(contactName)) {
+                    if (coreAPI.isNotify(contactName)) {
+                        coreAPI.unsetNotify(contactName);
+                    }
+                } else {
+                    if (! coreAPI.isNotify(contactName)) {
+                        coreAPI.setNotify(contactName);
+                    }
+                }
+                if (! contactData.isSavingMessages(contactName)) {
+                    if (coreAPI.isSavingMessages(contactName)) {
+                        coreAPI.unsetSavingMessages(contactName);
+                    }
+                } else {
+                    if (! coreAPI.isSavingMessages(contactName)) {
+                        coreAPI.setSavingMessages(contactName);
                     }
                 }
             }
