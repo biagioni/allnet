@@ -253,39 +253,46 @@ class UIController implements ControllerInterface, UIAPI {
 
             @Override
             public void run() {
+                boolean contactsModified = false;
                 contactsPanel.updateButtonsPanel();
                 if (! contactData.isVisible(contactName)) {
                     myTabbedPane.removeTab(contactName);
                     if (coreAPI.isVisible(contactName)) {
                         coreAPI.unsetVisible(contactName);
-                        updateContactsPanel(contactName, false);
-                        contactConfigPanel.update();
+			contactsModified = true;
                     }
                 } else {
                     if (! coreAPI.isVisible(contactName)) {
                         coreAPI.setVisible(contactName);
-                        updateContactsPanel(contactName, false);
-                        contactConfigPanel.update();
+			contactsModified = true;
                     }
                 }
                 if (! contactData.isNotify(contactName)) {
                     if (coreAPI.isNotify(contactName)) {
                         coreAPI.unsetNotify(contactName);
+			contactsModified = true;
                     }
                 } else {
                     if (! coreAPI.isNotify(contactName)) {
                         coreAPI.setNotify(contactName);
+			contactsModified = true;
                     }
                 }
                 if (! contactData.isSavingMessages(contactName)) {
                     if (coreAPI.isSavingMessages(contactName)) {
                         coreAPI.unsetSavingMessages(contactName);
+			contactsModified = true;
                     }
                 } else {
                     if (! coreAPI.isSavingMessages(contactName)) {
                         coreAPI.setSavingMessages(contactName);
+			contactsModified = true;
                     }
                 }
+                if (contactsModified) {
+                    updateContactsPanel(contactName, false);
+                    contactConfigPanel.update();
+            	}
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
