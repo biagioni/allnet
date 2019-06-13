@@ -11,7 +11,7 @@
 
 struct allnet_stream_encryption_state {
   char key [ALLNET_STREAM_KEY_SIZE];
-  char secret [ALLNET_STREAM_SECRET_SIZE];
+  char secret [ALLNET_STREAM_SECRET_SIZE];      /* used for the HMAC */
   int counter_size;
   int hash_size;
   uint64_t counter;
