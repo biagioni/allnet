@@ -103,7 +103,7 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
   if (verify < 2) {
     print_buffer (data, dsize, "   payload:", max, 0);
     if (dsize > max)  /* print the signature size */
-      printf (" %02x %02x", data [dsize - 2], data [dsize - 1]);
+      printf (" %02x %02x", data [dsize - 2] & 0xff, data [dsize - 1] & 0xff);
     printf ("\n");
   }
   if (verify) {
@@ -132,10 +132,10 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
       int verified = 0;
       int ssize = readb16 (data + dsize - 2) + 2;
       if ((ssize > 2) && (ssize < dsize)) {
-        int msize = dsize - ssize;  /* size of text message */
+        int tmsize = dsize - ssize;  /* size of text message */
         char * likely_start = data + sizeof (struct allnet_app_media_header);
-        char * likely_end = data + msize;
-        char * sig = data + msize;
+        char * likely_end = data + tmsize;
+        char * sig = data + tmsize;
         struct bc_key_info * keys;
         int nkeys = get_other_keys (&keys);
         int i;

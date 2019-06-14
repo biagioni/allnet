@@ -940,8 +940,9 @@ print_packet (r->message, r->msize, "received data request", 1);
 #endif /* DEBUG_FOR_DEVELOPER */
       char request_buffer [50000];
       struct pcache_result cached_messages =
-        pcache_request (req, data - r->message, hp->src_nbits, hp->source,
-                        max_messages, request_buffer, sizeof (request_buffer));
+        pcache_request (req, (int) (data - r->message),
+                        hp->src_nbits, hp->source, max_messages,
+                        request_buffer, sizeof (request_buffer));
       send_messages_to_one (cached_messages, r->sock, saddr, salen);
       /* replace the token in the message with our own token */
       pcache_current_token ((char *) (req->token));

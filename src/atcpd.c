@@ -138,7 +138,8 @@ static size_t atcp_process (int fd, char * buffer, size_t bsize, int dbg)
           return bsize;        /* continue to receive new data */
         const char * message = buffer + HEADER_FOR_TCP_SIZE;
         char * errs = "unknown error";
-        if (is_valid_message (buffer + HEADER_FOR_TCP_SIZE, length, &errs)) {
+        if (is_valid_message (buffer + HEADER_FOR_TCP_SIZE,
+                              (unsigned int) length, &errs)) {
           /* valid length and valid message, send to ad */
           send (fd, message, length, 0);
           if (total == bsize)  /* consumed everything */
@@ -401,9 +402,9 @@ static void * atcp_accept_thread (void * arg)
   static int success = 0;
   struct atcp_thread_args * args = ((struct atcp_thread_args *) arg);
   struct sockaddr_storage addr;
-  socklen_t alen;
+  socklen_t balen;  /* address length for the binding address */
   char * ipv = "unknown";
-  int af = atcp_accept_common (args, &addr, &alen, &ipv);
+  int af = atcp_accept_common (args, &addr, &balen, &ipv);
   struct sockaddr * sap = (struct sockaddr *) &addr;
   if (af == AF_INET)  /* wait 10s for IPv6 to succeed */
     sleep_while_running (args, 10000);
@@ -412,13 +413,13 @@ static void * atcp_accept_thread (void * arg)
     perror2 ("atcp_accept_thread socket", ipv);
     return NULL;
   }
-  if (bind (listen_socket, sap, alen) != 0) {
+  if (bind (listen_socket, sap, balen) != 0) {
     if (! success)
       perror2 ("atcp_accept_thread bind", ipv);
     /* wait 240s, long enough for the port to be released
      * ipv4 should be 10s behind ipv6, to give it a chance to succeed first */
     sleep_while_running (args, 240000);
-    if (bind (listen_socket, sap, alen) != 0) {
+    if (bind (listen_socket, sap, balen) != 0) {
       if (! success)
         perror2 ("atcp_accept_thread bind again", ipv);
       if ((af == AF_INET) && (! success)) {
@@ -438,12 +439,12 @@ static void * atcp_accept_thread (void * arg)
 
   while (args->running) {   /* loop until main thread goes away */
     struct sockaddr_storage sas;
-    socklen_t alen = sizeof (sas);
-    int new_socket = accept (listen_socket, (struct sockaddr *) &sas, &alen);
+    socklen_t aalen = sizeof (sas);  /* length of accept address */
+    int new_socket = accept (listen_socket, (struct sockaddr *) &sas, &aalen);
     if ((new_socket >= 0) && (! addr_in_list (&sas))) {/* save the new socket */
 #ifdef TEST_TCP_ONLY
 printf ("accepted connection from: ");
-print_sockaddr ((struct sockaddr *) &sas, alen); printf ("\n");
+print_sockaddr ((struct sockaddr *) &sas, aalen); printf ("\n");
 #endif /* TEST_TCP_ONLY */
       make_socket_nonblocking (new_socket, "accept_thread new_socket");
       int i;
@@ -453,7 +454,7 @@ print_sockaddr ((struct sockaddr *) &sas, alen); printf ("\n");
         if (tcp_fds [i] == -1)
           index = i;
       if (index < 0) {   /* no free fds, close a random connection */
-        index = random_int (MAX_CONNECTIONS / 2, MAX_CONNECTIONS - 1);
+        index = (int) (random_int (MAX_CONNECTIONS / 2, MAX_CONNECTIONS - 1));
 #ifdef TEST_TCP_ONLY
 printf ("accept randomly closing socket to: ");
 print_sockaddr ((struct sockaddr *) (tcp_addrs + index),
@@ -464,12 +465,12 @@ sizeof (struct sockaddr_storage)); printf ("\n");
       }
       tcp_fds [index] = new_socket;
       tcp_bytes [index] = 0;
-      memcpy (tcp_addrs + index, &sas, alen);
+      memcpy (tcp_addrs + index, &sas, aalen);
       release (&(args->lock), "a");
     } else if (new_socket >= 0) {  /* address is in the list */
 #ifdef TEST_TCP_ONLY
 printf ("refusing connection, address already in list: ");
-print_sockaddr ((struct sockaddr *) &sas, alen); printf ("\n");
+print_sockaddr ((struct sockaddr *) &sas, aalen); printf ("\n");
 #endif /* TEST_TCP_ONLY */
       close (new_socket);
       sleep_while_running (args, 1000);

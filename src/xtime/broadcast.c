@@ -22,8 +22,6 @@
 #include "lib/keys.h"
 #include "lib/allnet_log.h"
 
-static struct allnet_log * log = NULL;
-
 static int init_broadcast (char * arg0)
 {
   int sock = connect_to_local ("cmdline_broadcast", arg0, NULL, 0, 1);
@@ -69,9 +67,9 @@ static void broadcast (char * data, int dsize, int hops,
         ssize = 0;
       } else {
         hp->sig_algo = ALLNET_SIGTYPE_RSA_PKCS1;
-        char * sp = dp + dsize;
-        memcpy (sp, sig, ssize);
-        writeb16 (sp + ssize, ssize);
+        char * sigp = dp + dsize;
+        memcpy (sigp, sig, ssize);
+        writeb16 (sigp + ssize, ssize);
         ssize += 2;
       }
       free (sig);
@@ -108,7 +106,7 @@ printf ("sending using key %s\n", key->identifier);
           key->address [1] & 0xff);
 */
   
-  log = init_log ("xtime/broadcast");
+  struct allnet_log * alog = init_log ("xtime/broadcast");
   init_broadcast (argv [0]);
 
   char buffer [100000];
@@ -118,7 +116,7 @@ printf ("sending using key %s\n", key->identifier);
        *eol = '\0';
     broadcast (buffer, strlen (buffer), hops, key->prv_key,
                key->address, ADDRESS_BITS, key->address, ADDRESS_BITS,
-               log);
+               alog);
   }
   return 0;
 }

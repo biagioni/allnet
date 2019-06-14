@@ -1193,7 +1193,7 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
  * normally call after calling save_record (or internally)
  * return 1 if successful, 0 if not */
 int add_message (struct message_store_info ** msgs, int * num_alloc,
-                 int * num_used, int position, keyset keyset,
+                 int * num_used, int position, keyset ks,
                  int type, uint64_t seq, uint64_t missing,
                  uint64_t time, int tz_min, uint64_t rcvd_ackd_time,
                  int acked, const char * ack,
@@ -1230,7 +1230,7 @@ int add_message (struct message_store_info ** msgs, int * num_alloc,
     *(p + 1) = *p;
   }
   *num_used = (*num_used) + 1;
-  p->keyset = keyset;
+  p->keyset = ks;
   p->msg_type = type;
   p->seq = seq;
   p->prev_missing = missing;

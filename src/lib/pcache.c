@@ -109,8 +109,8 @@ static struct message_header * next_message (struct message_header * hp)
     if ((hp->length == 0) || (hp->length > ALLNET_MTU) ||
         ((msg_table_offset % 16) != 0) ||
         (current_size + msg_table_offset > msg_table_size)) {
-      printf ("next_message: hp %p/%d, offset %zd, sizes %zd+%zd, table %p\n",
-              hp, hp->length, (((char *) hp) - ((char *) msg_table)),
+      printf ("next_message: hp %p/%d, offset %d, sizes %zd+%zd, table %p\n",
+              hp, hp->length, (int)(((char *) hp) - ((char *) msg_table)),
               current_size, msg_table_offset, msg_table);
       return NULL;
     }
@@ -250,16 +250,16 @@ else printf ("inserting gc, length is %zd\n", msg_table_size);
     const uint32_t eff_len = msg_storage (current->length);
     size_t hdr_msg_size = mh_size + eff_len;
 if (eff_len > 2048) crash ();
-    const char * message = ((char *) current) + mh_size;
+    const char * current_message = ((char *) current) + mh_size;
     /* delete messages with priority 0, invalid (likely expired)
      * messages, and messages that have been acked.  We delete them by
      * only keeping messages that don't match any of these criteria */
 int x1 = current->priority;
 char * e2 = "zero priority";
-int x2 = (x1 != 0) ? is_valid_message (message, current->length, &e2) : -1;
+int x2 = (x1 != 0) ? is_valid_message (current_message, current->length, &e2) : -1;
 int x3 = (x2 > 0) ? id_is_acked (current->id) : -1;
     if ((current->priority != 0) &&
-        (is_valid_message (message, current->length, NULL)) &&
+        (is_valid_message (current_message, current->length, NULL)) &&
         (! id_is_acked (current->id))) {
       if (((char *)current) != copy_to)
         memmove (copy_to, current, hdr_msg_size);
@@ -473,7 +473,7 @@ static void read_messages_file ()
       mid_size *= (size / min_size);
     if (mid_size < min_hash_file_size)
       mid_size = min_hash_file_size;
-    num_mid = mid_size / sizeof (struct hash_entry);
+    num_mid = (int) (mid_size / sizeof (struct hash_entry));
     mid_table = malloc_or_fail (mid_size, "read_messages_file mid_table");
     /* now check each message and add it to the mid */
     struct message_header * current = NULL;
@@ -508,7 +508,8 @@ static void read_messages_file ()
   mid_table = malloc_or_fail (mid_size, "read_messages_file mid init");
   num_mid = mid_size / sizeof (struct hash_entry);
   memset (mid_table, 0, mid_size);
-/* print_buffer (msg_table, msg_table_size, "finished init msgtbl", 40, 1);  */
+/* print_buffer (msg_table, (int) msg_table_size,
+                 "finished init msgtbl", 40, 1); */
 }
 
 static void write_messages_file (int always)
@@ -629,7 +630,6 @@ if (msize > 2048) crash ();
      * inserted, the gc could be partial, only up to the insertion point) */
     if (((hp->priority != 0) && (priority >= hp->priority)) || /* insert here */
         (hp->length == 0)) {           /* last message, used as a sentinel */
-      char * p = (char *) msg_table;
       if (next_i < msg_table_size)    /* move others out of the way */
         memmove (p + next_i, p + i, msg_table_size - next_i);
       save_message (p + i, id, message, msize, priority);

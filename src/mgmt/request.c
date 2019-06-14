@@ -159,16 +159,17 @@ print_buffer (packet, total_size, "sending request", total_size, 1);
     free (received);
   }
   for (int i = 0; i < num_received; i++) {
-    struct allnet_header * hp = (struct allnet_header *) (messages [i].message);
-    if ((hp->message_type == ALLNET_TYPE_DATA) &&
-        ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) != 0)) {
+    struct allnet_header * check_hp =
+      (struct allnet_header *) (messages [i].message);
+    if ((check_hp->message_type == ALLNET_TYPE_DATA) &&
+        ((check_hp->transport & ALLNET_TRANSPORT_ACK_REQ) != 0)) {
       printf ("rcvd mid %4db %2dc", messages [i].msize, messages [i].refcount);
-      print_buffer (ALLNET_MESSAGE_ID (hp, hp->transport, messages [i].msize),
-                    16, NULL, 16, 1);
+      print_buffer (ALLNET_MESSAGE_ID (check_hp, check_hp->transport,
+                                       messages [i].msize), 16, NULL, 16, 1);
     } else {
       printf ("%4db %2dc %x/%x, ", messages [i].msize, messages [i].refcount,
-              hp->message_type, hp->transport);
-      print_buffer (hp, messages [i].msize, NULL, 10, 1);
+              check_hp->message_type, check_hp->transport);
+      print_buffer (check_hp, messages [i].msize, NULL, 10, 1);
     }
   }
 }
