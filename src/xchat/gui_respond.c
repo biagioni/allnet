@@ -489,7 +489,8 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
               }
             }
           } else {
-            printf ("gui_variable_hop_count/secret: unable to parse file\n");
+            printf ("gui_variable_hop_count/secret: "
+                    "unable to parse file for contact %s\n", contact);
           }
         } else {
           printf ("gui_variable_hop_count/secret: unsupported %d/%d, %s\n",
