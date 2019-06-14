@@ -535,6 +535,12 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     private String addSpaces(String s) {
+        String letters = "";	// remove any pre-existing spaces
+	for (int i = 0; i < s.length (); i++) {
+	    if (Character.isLetter (s.charAt (i)))
+		letters = letters + s.charAt (i);
+        }
+        s = letters;
         if (s.length() <= 5)   // base case for recursion
             return s;
         String pre = s.substring(0, 5);
