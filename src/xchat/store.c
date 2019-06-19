@@ -1341,26 +1341,6 @@ int list_all_messages (const char * contact,
     set_missing (*msgs, *num_used, k [ik]);
   }
   free (k);
-#ifdef DEBUG_PRINT
-  /* test code -- let's see if everything is set correctly */
-  if (strcmp (contact, "edo-on-maru") == 0) {
-    int i;
-    for (i = 0; i < *num_used; i++) {
-      struct message_store_info * msg = (*msgs) + i;
-      printf ("%s [%d] is ", contact, i);
-      printf ("%zd B @%p, ", msg->msize, msg->message);
-      printf ("k %d, type %d, ", msg->keyset, msg->msg_type);
-      printf ("seq %" PRIu64 "", msg->seq);
-      if (msg->message_has_been_acked)
-        printf (" (acked)");
-      if (msg->prev_missing != 0)
-        printf (" (%" PRIu64 " missing)", msg->prev_missing);
-      printf ("\n     times %" PRIu64 " %d %" PRIu64 "\n",
-              msg->time, msg->tz_min, msg->rcvd_time);
-      print_buffer (msg->ack, MESSAGE_ID_SIZE, "     ack", 6, 1);
-    }
-  }
-#endif /* DEBUG_PRINT */
   return 1;
 }
 
