@@ -1,6 +1,7 @@
 /* astart.c: start all the processes used by the allnet daemon */
 /* compiles to the executable now called "allnetd" */
 /* takes no arguments, I usually run it as bin/allnetd */
+/* with -D, runs ad in the main process rather returning immediately */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -523,7 +524,10 @@ int astart_main (int argc, char ** argv)
   setup_signal_handler (1);
   /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
 #endif /* ALLNET_USE_FORK */
-  my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1, 0);
+  if ((argc > 1) && (strcmp (argv [1], "-D") == 0))
+    call_ad (NULL);
+  else
+    my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1, 0);
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
   close (pid_fd);
 #endif /* ALLNET_USE_FORK */
