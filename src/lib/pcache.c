@@ -101,7 +101,7 @@ static struct message_header * next_message (struct message_header * hp)
   if (hp == NULL) {   /* special case, check whether msg_table is empty */
     if ((msg_table_size < mh_size) || (msg_table->length == 0))
       return NULL;
-    result = msg_table;
+    result = msg_table;   /* return the first message */
   } else {
     size_t msg_table_offset = ((char *) hp) - ((char *) msg_table);
     size_t current_size = mh_size + msg_storage (hp->length);
@@ -1065,12 +1065,12 @@ static void print_message_ack (int index, int verbose)
           snprintf (desc + n, minz (sizeof (desc), n), "%c%d", c, x);
         }
       }
-/*
-      print_buffer (p + msg_table_offset + mh_size,
-                    current->length, desc, 36, 1);
-*/
-print_buffer (p + msg_table_offset + mh_size, current->length, desc, 36, 0);
-print_buffer (p + msg_table_offset + mh_size + current->length - 4, 4, NULL, 4, 1);
+      const char * prt = p + msg_table_offset + mh_size;
+/*    print_buffer (prt, current->length, desc, 36, 1); */
+print_buffer (prt, current->length, desc, 36, 0);
+printf (" %02x %02x %02x %02x\n",
+prt [current->length - 4] & 0xff, prt [current->length - 3] & 0xff,
+prt [current->length - 2] & 0xff, prt [current->length - 1] & 0xff);
     }
     count++;
     msg_table_offset += hdr_msg_size;
