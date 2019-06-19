@@ -565,7 +565,7 @@ static void gui_send_result_messages (int code,
   for (i = 0; i < count; i++)
     message_alloc += (MESSAGE_HEADER_SIZE + strlen (msgs [i].message) + 1);
   size_t alloc = MESSAGE_ARRAY_HEADER_SIZE + message_alloc;
-/* printf ("gui_send_result_mesages (%d, %p, %d, %d, %llu) allocating %zd(%zd)\n", code, msgs, count, sock, lr, alloc, message_alloc); */
+/* printf ("gui_send_result_messages (%d, %p, %d, %d, %llu) allocating %zd(%zd)\n", code, msgs, count, sock, lr, alloc, message_alloc); */
   char * reply = malloc_or_fail (alloc, "gui_send_messages");
   memset (reply, 0, alloc);  /* clear everything */
   reply [0] = code;
