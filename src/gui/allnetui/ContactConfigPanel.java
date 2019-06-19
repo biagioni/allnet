@@ -235,8 +235,8 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     }
 
     private void saveChanges() {
-        // options are right to left, ie cancel will be on right
-        Object[] options = {"Cancel", "Save Changes"};
+        // options are right to left, ie cancel will be on left
+        Object[] options = {"Save Changes", "Cancel"};
         JComboBox<String> contactBox =
             contactSelectPanel.getComboBoxes().get(0);
         String contactName = (String) contactBox.getSelectedItem();
@@ -247,9 +247,9 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
             JOptionPane.WARNING_MESSAGE,
             null,
             options,
-            options[0]);
-        // NO_OPTION actually means the elft button, ie do it
-        if (n != JOptionPane.NO_OPTION) {
+            options[1]);
+        // NO_OPTION actually means the left button, ie don't do it
+        if (n == JOptionPane.NO_OPTION) {
             return;
         }
         // that's a go, so let's do it
