@@ -415,21 +415,26 @@ static void * atcp_accept_thread (void * arg)
     return NULL;
   }
   if (bind (listen_socket, sap, balen) != 0) {
+#ifdef DEBUG_PRINT
     if (! success)
       perror2 ("atcp_accept_thread bind", ipv);
+#endif /* DEBUG_PRINT */
     /* wait 240s, long enough for the port to be released
      * ipv4 should be 10s behind ipv6, to give it a chance to succeed first */
     sleep_while_running (args, 240000);
     if (bind (listen_socket, sap, balen) != 0) {
       if (! success)
-        perror2 ("atcp_accept_thread bind again", ipv);
+        perror2 ("atcp_accept_thread bind (again)", ipv);
       if ((af == AF_INET) && (! success)) {
         printf ("another atcpd already running, quitting this one\n");
         args->running = 0;
       }
       close (listen_socket);
       return NULL;
-    } else printf ("second bind successful\n");
+    }
+#ifdef DEBUG_PRINT
+    printf ("second bind successful\n");
+#endif /* DEBUG_PRINT */
   }
   success = 1;  /* to be seen by the other thread */
   if (listen (listen_socket, 5) != 0) {
