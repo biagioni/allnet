@@ -524,13 +524,17 @@ int astart_main (int argc, char ** argv)
   setup_signal_handler (1);
   /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
 #endif /* ALLNET_USE_FORK */
-  if ((argc > 1) && (strcmp (argv [1], "-D") == 0))
+  if ((argc > 1) && (strcmp (argv [1], "-D") == 0)) {
+#ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
+    close (pid_fd);
+#endif /* ALLNET_USE_FORK */
     call_ad (NULL);
-  else
+  } else {
     my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1, 0);
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
-  close (pid_fd);
+    close (pid_fd);
 #endif /* ALLNET_USE_FORK */
+  }
 
   return 0;
 }
