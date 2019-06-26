@@ -60,3 +60,10 @@ all crypto operations.  :(
 
   copy back binaries
   make binary directory 
+
+Note -- an alternative is to build on the raspberry pi.  The result is
+only independent of local libraries with the following configure:
+  CC=musl-gcc ./configure --disable-openssl --disable-shared CFLAGS="-Wall -Wshadow -g -static -static-libgcc"
+Yes, this means using the musl-gcc wrapper around gcc (see
+http://www.musl-libc.org/).  And "file bin/trace" still thinks trace is
+dynamically linked (and the rest too).
