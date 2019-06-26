@@ -281,7 +281,7 @@ public class CoreConnect extends Thread implements CoreAPI {
             }
             if (sleep) {
                 try {  // let somebody else run
-                    Thread.sleep(100);
+                    Thread.sleep(1);
                 } catch (Exception e) {} // ignore InterruptedException
             }
         }
