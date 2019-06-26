@@ -120,7 +120,7 @@ int buffer_to_string (const char * buffer, unsigned int count,
   return offset;
 }
 
-static char * mtype_to_string (int mtype)
+static char * mtype_to_string (int mtype, int mgmt_type)
 {
   switch (mtype) {
   case ALLNET_TYPE_DATA:
@@ -136,6 +136,30 @@ static char * mtype_to_string (int mtype)
   case ALLNET_TYPE_CLEAR:
     return "clear";
   case ALLNET_TYPE_MGMT:
+    switch (mgmt_type) {
+      case ALLNET_MGMT_BEACON:
+        return "mgmt(beacon)";
+      case ALLNET_MGMT_BEACON_REPLY:
+        return "mgmt(beacon_reply)";
+      case ALLNET_MGMT_BEACON_GRANT:
+        return "mgmt(beacon_grant)";
+      case ALLNET_MGMT_PEER_REQUEST:
+        return "mgmt(peer_request)";
+      case ALLNET_MGMT_PEERS:
+        return "mgmt(peers)";
+      case ALLNET_MGMT_DHT:
+        return "mgmt(dht)";
+      case ALLNET_MGMT_TRACE_REQ:
+        return "mgmt(trace_req)";
+      case ALLNET_MGMT_TRACE_REPLY:
+        return "mgmt(trace_reply)";
+      case ALLNET_MGMT_KEEPALIVE:
+        return "mgmt(keepalive)";
+#ifdef IMPLEMENT_MGMT_ID_REQUEST  /* not used, so, not implemented */
+      case ALLNET_MGMT_ID_REQUEST:
+        return "mgmt(id_request)";
+#endif /* IMPLEMENT_MGMT_ID_REQUEST */
+    }
     return "mgmt";
   default:
     return "unknown message type";
@@ -433,9 +457,12 @@ void packet_to_string (const char * buffer, unsigned int bsize,
     off += snprintf (to + off, minz (itsize, off), "v %d (current %d) ",
                      hp->version, ALLNET_VERSION);
   int t = hp->transport;
+  int hsize = ALLNET_SIZE (t);
+  int mgmt_type = ((bsize > hsize) ? (buffer [hsize] & 0xff) : -1);
   off += snprintf (to + off, minz (itsize, off),
                    "(%dB) %d/%s: %d/%d hops, sig %d, t %x", bsize,
-                   hp->message_type, mtype_to_string (hp->message_type),
+                   hp->message_type,
+                   mtype_to_string (hp->message_type, mgmt_type),
                    hp->hops, hp->max_hops, hp->sig_algo, t);
 
   /* print the addresses, if any */
