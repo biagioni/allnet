@@ -20,7 +20,7 @@
 #include "routing.h"   /* print_dht */
 
 #ifdef ALLNET_NETPACKET_SUPPORT
-#include <linux/if_packet.h>
+#include <linux/if_packet.h>  /* sockaddr_ll */
 #endif /* ALLNET_NETPACKET_SUPPORT */
 
 static pthread_mutex_t global_mutex = PTHREAD_MUTEX_INITIALIZER;
