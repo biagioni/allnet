@@ -49,11 +49,13 @@ unsigned int allnet_divide (unsigned int n1, unsigned int n2)
   return divide (n1, n2);
 }
 
+/* expiration in seconds from now, or 0 for a packet that does not expire */
 unsigned int compute_priority (unsigned int size,
                                unsigned int sbits, unsigned int dbits,
                                unsigned int hops_already, unsigned int hops_max,
                                unsigned int social_distance,
-                               unsigned int rate_fraction, int cacheable)
+                               unsigned int rate_fraction,
+                               unsigned int expiration, int cacheable)
 {
   int debug = 0;
   if (debug)
@@ -107,6 +109,25 @@ unsigned int compute_priority (unsigned int size,
       result = ALLNET_PRIORITY_MAX;
     else
       result += result / 10;
+  }
+  /* give a slight boost to packets that expire soon */
+  if (expiration > 0) {
+    /* expiration within a minute or less gets maximum boost (10%), anything
+     * else is inversely proportional, e.g. 2min is 5%, 3min is 3.3%, etc. */
+    unsigned int boost_fraction = ALLNET_PRIORITY_MAX /
+                                  ((expiration <= 60) ? 10 : (expiration / 6));
+    unsigned int boost = allnet_multiply (result, boost_fraction);
+#ifdef DEBUG_PRINT
+    int original_result = result;
+#endif /* DEBUG_PRINT */
+    if (result >= ALLNET_PRIORITY_MAX - boost)
+      result = ALLNET_PRIORITY_MAX;
+    else
+      result += boost;
+#ifdef DEBUG_PRINT
+    printf ("expiration %u, boost %x -> %u(%x), result %d -> %d\n",
+            expiration, boost_fraction, boost, boost, original_result, result);
+#endif /* DEBUG_PRINT */
   }
 if ((result <= 0) && (hops_max < 15) && (hops_max > 0)) debug = 1;
   if (debug)

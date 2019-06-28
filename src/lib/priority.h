@@ -60,13 +60,14 @@
 
 /* computes priority as a fraction of ALLNET_PRIORITY_MAX.  For example, a
  * priority of 3/4 is ALLNET_PRIORITY_MAX / 4 * 3
- */
+ * expiration in seconds from now, or 0 for a packet that does not expire */
 extern unsigned int compute_priority (unsigned int size, unsigned int sbits,
                                       unsigned int dbits,
                                       unsigned int hops_already,
                                       unsigned int hops_max,
                                       unsigned int social_distance,
                                       unsigned int rate_fraction,
+                                      unsigned int expiration,
                                       int cacheable);
 
 /* for use with priorities and also other fractions */

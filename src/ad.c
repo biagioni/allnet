@@ -689,7 +689,7 @@ static int send_messages_to_one (struct pcache_result r,
 
 /* compute a forwarding priority for non-local messages */
 static unsigned int message_priority (char * message, struct allnet_header * hp,
-                                     unsigned int size)
+                                      unsigned int size)
 {
   unsigned int sig_size = 0;
   if (hp->sig_algo != ALLNET_SIGTYPE_NONE)
@@ -716,11 +716,16 @@ static unsigned int message_priority (char * message, struct allnet_header * hp,
     rate_fraction = track_rate (hp->source, hp->src_nbits, size);
   else
     social_distance = UNKNOWN_SOCIAL_TIER;
+  char * expiration = ALLNET_EXPIRATION (hp, hp->transport, size);
+  const unsigned long long int now = allnet_time ();
+  const unsigned long long int evalue =
+    ((expiration == NULL) ? 0 : readb64 (expiration));
+  const unsigned int exp_delta = ((evalue <= now) ? 0 : (evalue - now));
   int cacheable = ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0);
   /* compute_priority is in lib/priority.[hc] */
   return compute_priority (size, hp->src_nbits, hp->dst_nbits,
                            hp->hops, hp->max_hops, social_distance,
-                           rate_fraction, cacheable);
+                           rate_fraction, exp_delta, cacheable);
 }
 
 /* assumes it is only called on valid messages */
