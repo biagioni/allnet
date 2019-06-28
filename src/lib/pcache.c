@@ -245,8 +245,11 @@ static size_t gc_messages (const char * id, const char * message, int msize,
 else printf ("inserting gc, length is %zd\n", msg_table_size);
   char * copy_to = (char *) msg_table;
   const size_t mh_size = sizeof (struct message_header);
-  struct message_header * current = NULL;
-  while ((current = next_message (current)) != NULL) {
+  struct message_header * next = next_message (NULL);
+  while (next != NULL) {
+    struct message_header * current = next;
+    /* update next *before* modifying the message table or anything else */
+    next = next_message (current);
     const uint32_t eff_len = msg_storage (current->length);
     size_t hdr_msg_size = mh_size + eff_len;
 if (eff_len > 2048) crash ();
@@ -1021,7 +1024,8 @@ static void print_hash_all (const char * name, int index, int verbose,
   }
 }
 
-static void print_message_ack (int index, int verbose)
+static void print_message_ack (int index, int verbose,
+                               int msgs, int acks, int trcs)
 {
   size_t msg_table_offset = 0;      /* where we are reading msg_table */
   const size_t mh_size = sizeof (struct message_header);
@@ -1075,28 +1079,48 @@ prt [current->length - 2] & 0xff, prt [current->length - 1] & 0xff);
     count++;
     msg_table_offset += hdr_msg_size;
   }
-  print_hash_all ("ack", index, verbose, ack_table, num_ack);
-  print_hash_all ("trc", index, verbose, trc_table, num_trc);
-  print_hash_all ("mid", index, verbose, mid_table, num_mid);
+  if (acks)
+    print_hash_all ("ack", index, verbose, ack_table, num_ack);
+  if (trcs)
+    print_hash_all ("trc", index, verbose, trc_table, num_trc);
+  if (msgs)
+    print_hash_all ("mid", index, verbose, mid_table, num_mid);
 }
 
 int main (int argc, char ** argv)
 {
   pcache_init_maint ();
+  int do_print_messages = 0;
+  int do_print_acks = 0;
+  int do_print_traces = 0;
+  int do_print_tokens = 0;
   if (argc > 1) {
     int i;
     for (i = 1; i < argc; i++) {
       if (strcasecmp (argv [i], "all") == 0) {
-        print_message_ack (-1, 0);
+        do_print_messages = do_print_acks = 1;
+        do_print_traces = do_print_tokens = 1;
+      } else if (strcasecmp (argv [i], "msgs") == 0) {
+        do_print_messages = 1;
+      } else if (strcasecmp (argv [i], "acks") == 0) {
+        do_print_acks = 1;
+      } else if (strcasecmp (argv [i], "trcs") == 0) {
+        do_print_traces = 1;
+      } else if (strcasecmp (argv [i], "tkns") == 0) {
+        do_print_tokens = 1;
       } else {
         char * endp = NULL;
         int index = (int) strtol (argv [i], &endp, 10);
         if ((index >= 0) && (endp != argv [i]))
-          print_message_ack (index, 0);
+          print_message_ack (index, 0, 1, 1, 1);
       }
     }
   }
-  print_tokens ();
+  if (do_print_messages || do_print_acks || do_print_traces)
+    print_message_ack (-1, 0,
+                       do_print_messages, do_print_acks, do_print_traces);
+  if (do_print_tokens)
+    print_tokens ();
   print_stats ("print cache");
 }
 
