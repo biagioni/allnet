@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
+#include <limits.h>
 #include <pthread.h>
 #include <assert.h>
 
@@ -720,7 +721,9 @@ static unsigned int message_priority (char * message, struct allnet_header * hp,
   const unsigned long long int now = allnet_time ();
   const unsigned long long int evalue =
     ((expiration == NULL) ? 0 : readb64 (expiration));
-  const unsigned int exp_delta = ((evalue <= now) ? 0 : (evalue - now));
+  const unsigned int exp_delta =
+    (((evalue <= now) || (evalue - now > UINT_MAX)) ? 0 :
+     ((unsigned int) (evalue - now)));
   int cacheable = ((hp->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0);
   /* compute_priority is in lib/priority.[hc] */
   return compute_priority (size, hp->src_nbits, hp->dst_nbits,
