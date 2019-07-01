@@ -1159,7 +1159,7 @@ int parse_exchange_file (const char * contact, int * nhops,
     *s2 = NULL;
   char * content = NULL;
   int size = contact_file_get (contact, "exchange", &content);
-  if (size <= 0)
+  if ((size <= 0) || (content == NULL))
     return 0;
   /* s1p and s2p point into "content", cannot be returned directly */
   char * s1p = NULL;
