@@ -135,9 +135,13 @@ public class ContactData {
         int count = 0;
         Conversation conv;
         while (it.hasNext()) {
-            conv = getConversation(it.next());
-            if (conv != null)
-                count += conv.getNumNewMsgs();
+            String n = it.next();  // only call it.next once per loop
+            Contact c = getContact(n);
+            if ((c != null) && (c.isVisible ()) && (c.isNotify())) {
+                conv = getConversation(n);
+                if (conv != null)
+                    count += conv.getNumNewMsgs();
+            }
         }
         return (count);
     }
@@ -149,9 +153,13 @@ public class ContactData {
         int count = 0;
         Conversation conv;
         while (it.hasNext()) {
-            conv = getConversation(it.next());
-            if ((conv != null) && (conv.getNumNewMsgs() > 0)) {
-                count++;
+            String n = it.next();  // only call it.next once per loop
+            Contact c = getContact(n);
+            if ((c != null) && (c.isVisible ()) && (c.isNotify())) {
+                conv = getConversation(n);
+                if ((conv != null) && (conv.getNumNewMsgs() > 0)) {
+                    count++;
+                }
             }
         }
         return (count);
@@ -164,8 +172,11 @@ public class ContactData {
         int count = 0;
         Conversation conv;
         while (it.hasNext()) {
-            conv = getConversation(it.next());
-            if ((conv != null) && (contact.equals(conv.getOtherParty()))) {
+            String n = it.next();  // only call it.next once per loop
+            Contact c = getContact(n);
+            conv = getConversation(n);
+            if ((conv != null) && (contact.equals(conv.getOtherParty())) &&
+                (c != null) && (c.isVisible()) && (c.isNotify())) {
                 count += conv.getNumNewMsgs();
             }
         }
