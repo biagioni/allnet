@@ -182,15 +182,16 @@ class UIController implements ControllerInterface, UIAPI {
                         }
                     }
                 } else {    // incomplete key exchange
+// System.out.println (contactName + " is incomplete");
                     if (kep == null) {
                         int hops = coreAPI.incompleteHopCount(contactName);
-                        if (hops > 0) {   // valid exchange file
+                        String secret = coreAPI.incompleteSecret(contactName);
+                        if ((hops > 0) && (secret != null)) {
+                            // valid exchange file
                             int button = 1;   // multi-hop exchange
                             if (hops == 1) {
                                 button = 0;     // 1-hop exchange
                             }
-                            String secret
-                                = coreAPI.incompleteSecret(contactName);
                             // now put up a key exchange panel
                             String[] middlePanelMsg = makeMiddlePanel(secret);
                             String[] bottomPanelMsg = new String[]{
@@ -206,7 +207,7 @@ class UIController implements ControllerInterface, UIAPI {
                     } 
                     if ((kep != null) &&
                         (coreAPI.contactHasPeerKey(contactName))) {
-                            showKeyExchangeSuccess(kep, contactName);
+                        showKeyExchangeSuccess(kep, contactName);
                     }
                 }
             }
@@ -291,6 +292,7 @@ class UIController implements ControllerInterface, UIAPI {
                 }
                 if (contactsModified) {
                     updateContactsPanel(contactName, false);
+                    updateContactsPanelStatus();
                     contactConfigPanel.update();
             	}
             }
@@ -769,11 +771,19 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     private String[] makeMiddlePanel(String secret) {
-        return new String[] {
-            " Shared secret:",
-            " " + addSpaces(secret.toUpperCase()),
-            " (spaces are optional)"
-        };
+        if (secret != null) {
+            return new String[] {
+                " Shared secret:",
+                " " + addSpaces(secret.toUpperCase()),
+                " (spaces are optional)"
+            };
+        } else {
+            return new String[] {
+                " Some error:",
+                " shared secret",
+                " not found"
+            };
+        }
     }
 
     private void processNewContactEvent(String command) {
