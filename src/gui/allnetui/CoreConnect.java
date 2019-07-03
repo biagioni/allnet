@@ -22,6 +22,10 @@ public class CoreConnect extends Thread implements CoreAPI {
     byte[] bufferedResponse = null;
     // mutex is used to serialize access to bufferedResponse and sockIn
     private final Object mutex = new Object();
+    // only deliver callbacks after all contacts have been loaded
+    private boolean readyForCallbacks = false;
+    private java.util.LinkedList<byte []>
+        pendingCallbacks = new java.util.LinkedList();
 
     static final byte guiContacts = 1;
     static final byte guiSubscriptions = 2;
@@ -184,19 +188,39 @@ public class CoreConnect extends Thread implements CoreAPI {
     private boolean dispatch(byte[] value) {
         switch(value[0]) {
         case guiCallbackMessageReceived:
-            callbackMessageReceived(value);
+            if (readyForCallbacks) {
+                callbackMessageReceived(value);
+            } else {
+                pendingCallbacks.add(value);
+            }
             return true;
         case guiCallbackMessageAcked:
-            callbackMessageAcked(value);
+            if (readyForCallbacks) {
+                callbackMessageAcked(value);
+            } else {
+                pendingCallbacks.add(value);
+            }
             return true;
         case guiCallbackContactCreated:
-            callbackContactCreated(value);
+            if (readyForCallbacks) {
+                callbackContactCreated(value);
+            } else {
+                pendingCallbacks.add(value);
+            }
             return true;
         case guiCallbackSubscriptionComplete:
-            callbackSubscriptionComplete(value);
+            if (readyForCallbacks) {
+                callbackSubscriptionComplete(value);
+            } else {
+                pendingCallbacks.add(value);
+            }
             return true;
         case guiCallbackTraceResponse:
-            callbackTraceResponse(value);
+            if (readyForCallbacks) {
+                callbackTraceResponse(value);
+            } else {
+                pendingCallbacks.add(value);
+            }
             return true;
         default:
             return false;
@@ -287,7 +311,7 @@ public class CoreConnect extends Thread implements CoreAPI {
         }
     }
 
-    private byte[] doRPC(byte[] arg) {
+    private synchronized byte[] doRPC(byte[] arg) {
         sendRPC(arg);
         byte[] result = receiveRPC(arg[0]);
         return result;
@@ -307,6 +331,15 @@ public class CoreConnect extends Thread implements CoreAPI {
             cachedContacts = new java.util.HashSet<String>();
             for (String contact: result) {
                 cachedContacts.add(contact);
+            }
+            if (! readyForCallbacks) {
+                readyForCallbacks = true;
+System.out.println ("executing " + pendingCallbacks.size () +
+                    " delayed callbacks");
+		for (byte [] c: pendingCallbacks) {
+                    dispatch (c);
+                }
+                pendingCallbacks = null; // remove old links
             }
         } else {
            result = cachedContacts.toArray(new String[0]);
