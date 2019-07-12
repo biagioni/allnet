@@ -471,7 +471,11 @@ void do_request_and_resend (int sock)
   static int num_keysets = 0;
   static int current_contact = 0;
   static int current_keyset = 0;
-  while (1) {
+  /* in the tests below, if all of the contacts are groups, we may
+   * end up in an infinite loop of request_and_resend.  So, put a
+   * cap of at most num_contacts on the number of loops we will do */
+  int loop_count = ((num_contacts <= 0) ? 1 : num_contacts);
+  while (loop_count-- > 0) {
     /* make sure we have a valid contact */
     if ((num_contacts <= 0) || (contacts == NULL) ||
         (current_contact >= num_contacts)) {  /* restart */
