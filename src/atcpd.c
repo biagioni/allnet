@@ -527,8 +527,12 @@ printf ("atcp_connect_thread: %d peers\n", n);
         log_print (alog);
       } else {
         if (connect (sock, sap, addr_lengths [i]) != 0) {
-          snprintf (alog->b, alog->s, "atcpd unable to connect TCP socket\n");
-          log_print (alog);
+          char addr_str [1000];
+          print_sockaddr_str (sap, addr_lengths [i],
+                              addr_str, sizeof (addr_str));
+          snprintf (alog->b, alog->s,
+                    "atcpd unable to connect TCP socket to %s\n", addr_str);
+          log_error (alog, "connect");
           close (sock);
         } else {  /* success! */
 #ifdef TEST_TCP_ONLY
