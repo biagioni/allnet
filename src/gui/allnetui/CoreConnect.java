@@ -25,7 +25,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     // only deliver callbacks after all contacts have been loaded
     private boolean readyForCallbacks = false;
     private java.util.LinkedList<byte []>
-        pendingCallbacks = new java.util.LinkedList();
+        pendingCallbacks = new java.util.LinkedList<byte []>();
 
     static final byte guiContacts = 1;
     static final byte guiSubscriptions = 2;
@@ -331,15 +331,6 @@ public class CoreConnect extends Thread implements CoreAPI {
             cachedContacts = new java.util.HashSet<String>();
             for (String contact: result) {
                 cachedContacts.add(contact);
-            }
-            if (! readyForCallbacks) {
-                readyForCallbacks = true;
-System.out.println ("executing " + pendingCallbacks.size () +
-                    " delayed callbacks");
-		for (byte [] c: pendingCallbacks) {
-                    dispatch (c);
-                }
-                pendingCallbacks = null; // remove old links
             }
         } else {
            result = cachedContacts.toArray(new String[0]);
@@ -742,6 +733,18 @@ System.out.println ("executing " + pendingCallbacks.size () +
             this.handlers.subscriptionComplete(sender);
         }
         this.handlers.initializationComplete();
+        if (! readyForCallbacks) {
+            readyForCallbacks = true;
+if (pendingCallbacks.size() > 0) System.out.println ("executing " +
+pendingCallbacks.size () + " delayed callbacks");
+	    for (byte [] c: pendingCallbacks) {
+                dispatch (c);
+            }
+            pendingCallbacks = null; // remove old links
+        } else {
+            System.out.println ("CoreConnect.run error: ready for callbacks");
+            // throw some exception?
+        }
         receiveRPC((byte)0);  // loop forever
     }
 }
