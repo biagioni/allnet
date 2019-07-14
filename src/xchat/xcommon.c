@@ -465,6 +465,11 @@ static void send_ack (int sock, struct allnet_header * hp,
 /* each time it is called, queries a different contact or keyset */
 void do_request_and_resend (int sock)
 {
+  static unsigned long long int last_time = 0;
+  unsigned long long int now = allnet_time ();
+  if (last_time == now)  /* allow at most one call per second */
+    return;
+  last_time = now;
   static char * * contacts = NULL;
   static int num_contacts = 0;
   static keyset * keysets = NULL;
