@@ -321,8 +321,9 @@ static void remove_unprintable (char * s)
   int i = 0;
   do {
 /* the way ASCII works, remove all characters less than space except '\0'
- * this preserves all UTF characters and the null terminator */
-    if ((s [i] < ' ') && (s [i] != '\0'))
+ * this preserves all UTF characters and the null terminator
+ * most UTF characters are 'negative', so keep values < 0 */
+    if ((s [i] < ' ') && (s [i] > '\0'))
       offset++;
     else
       s [i - offset] = s [i];
