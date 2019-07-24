@@ -344,8 +344,12 @@ static void gui_rename_contact (char * message, int64_t length, int gui_sock)
     size_t offset = strlen (message) + 1;  /* should be index of new name */
     if (offset + 1 < length) { /* room for new name, plus null termination */
       char * new = message + offset;
-      if ((strlen (old) > 0) && (strlen (new) > 0) && (rename (old, new)))
+      if ((strlen (old) > 0) && (strlen (new) > 0) &&
+          (rename_contact (old, new)))
         reply [1] = 1;    /* success */
+      else
+        printf ("gui_rename_contact error: failed to rename %s to %s\n",
+                old, new);
     }
   }
   gui_send_buffer (gui_sock, reply, sizeof (reply));
