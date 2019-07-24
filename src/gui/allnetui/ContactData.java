@@ -37,6 +37,16 @@ public class ContactData {
         contacts.remove(contactName);
     }
 
+    public void renameContact(String oldName, String newName) {
+        Contact value = contacts.get (oldName);
+        if (value != null) {
+            contacts.remove(oldName);
+	    contacts.put (newName, value);
+        }
+else System.out.println ("renameContact (" + oldName + ", " + newName +
+"): not found");
+    }
+
     public void clearConversation(String contactName) {
         Contact contact = contacts.get(contactName);
         contact.getConversation().clear();

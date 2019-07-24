@@ -59,6 +59,7 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
             return;
         for (int i = 0; i < tabbedPane.getTabCount(); i++) {
             if (tabbedPane.getComponentAt(i) == wanted) {
+System.out.println ("component at " + i + " is " + id);
                 tabbedPane.setTitleAt(i, newTitle);
                 return;
             }
@@ -69,10 +70,11 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
         addTabWithClose(0, id, title, panel,closeCommand);
     }
     
-    public void addTabWithCloseRight(String id, String title, JPanel panel, String closeCommand) {
-        addTabWithClose(tabbedPane.getTabCount(), id, title, panel,closeCommand);
+    public void addTabWithCloseRight(String id, String title,
+                                     JPanel panel, String closeCommand) {
+        addTabWithClose(tabbedPane.getTabCount(), id, title, panel,
+                        closeCommand);
     }
-    
 
     private void addTabWithClose(int idx, String id, String title, JPanel panel, String closeCommand) {
         addTab(idx, id, title, panel);
@@ -101,6 +103,16 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
             tabbedPane.remove(panel);
             idToPanel.remove(id);
         }
+    }
+
+    public void renameTab(String oldName, String newName) {
+        Component panel = idToPanel.getValueFor(oldName);
+        if (panel != null) {
+            idToPanel.remove(oldName);
+            panel.setName(newName);
+            idToPanel.put(newName, panel);
+        }
+else System.out.println ("renameTab (" + oldName + ") not found");
     }
 
     public String getCommandPrefix() {

@@ -196,6 +196,26 @@ class ContactsPanel extends JPanel {
         return (button);
     }
 
+    void renameContact(String oldName, String newName) {
+        JButton button = map.get(oldName);
+        if (button != null) {
+            map.remove(oldName);
+            map.put(newName, button);
+            int topIndex = topNames.indexOf (oldName);
+	    if (topIndex >= 0) {
+		topNames.remove(topIndex);
+		topNames.add(newName);
+	    }
+            int bottomIndex = bottomNames.indexOf (oldName);
+	    if (bottomIndex >= 0) {
+		bottomNames.remove(bottomIndex);
+		bottomNames.add(newName);
+	    }
+            updateButtonsPanel();
+        }
+else System.out.println ("ContactsPanel.rename (" + oldName + ") not found");
+    }
+
     void removeName(String name) {
         JButton button = map.get(name);
         if (button != null) {

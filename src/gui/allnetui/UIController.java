@@ -256,42 +256,47 @@ class UIController implements ControllerInterface, UIAPI {
             public void run() {
                 boolean contactsModified = false;
                 contactsPanel.updateButtonsPanel();
-                if (! contactData.isVisible(contactName)) {
-                    myTabbedPane.removeTab(contactName);
-                    if (coreAPI.isVisible(contactName)) {
-                        coreAPI.unsetVisible(contactName);
-			contactsModified = true;
-                    }
-                } else {
-                    if (! coreAPI.isVisible(contactName)) {
+		if (contactData.isVisible(contactName) !=
+                    coreAPI.isVisible(contactName)) {
+                    if (contactData.isVisible(contactName))
                         coreAPI.setVisible(contactName);
-			contactsModified = true;
-                    }
+                    else
+                        coreAPI.unsetVisible(contactName);
+		    contactsModified = true;
                 }
-                if (! contactData.isNotify(contactName)) {
-                    if (coreAPI.isNotify(contactName)) {
-                        coreAPI.unsetNotify(contactName);
-			contactsModified = true;
-                    }
-                } else {
-                    if (! coreAPI.isNotify(contactName)) {
+		if (contactData.isNotify(contactName) !=
+                    coreAPI.isNotify(contactName)) {
+                    if (contactData.isNotify(contactName))
                         coreAPI.setNotify(contactName);
-			contactsModified = true;
-                    }
+                    else
+                        coreAPI.unsetNotify(contactName);
+		    contactsModified = true;
                 }
-                if (! contactData.isSavingMessages(contactName)) {
-                    if (coreAPI.isSavingMessages(contactName)) {
-                        coreAPI.unsetSavingMessages(contactName);
-			contactsModified = true;
-                    }
-                } else {
-                    if (! coreAPI.isSavingMessages(contactName)) {
+		if (contactData.isSavingMessages(contactName) !=
+                    coreAPI.isSavingMessages(contactName)) {
+                    if (contactData.isSavingMessages(contactName))
                         coreAPI.setSavingMessages(contactName);
-			contactsModified = true;
-                    }
+                    else
+                        coreAPI.unsetSavingMessages(contactName);
+		    contactsModified = true;
+                }
+System.out.println ("name is " + contactName +
+", new name is " + contactData.getContact(contactName).getName());
+		String contactToUpdate = contactName;
+		String newName = contactData.getContact(contactName).getName();
+		if (! contactName.equals (newName)) {   // renamed
+		    contactData.renameContact(contactName, newName);
+                    contactsPanel.renameContact(contactName, newName);
+                    myTabbedPane.renameTab(contactName, newName);
+                    coreAPI.renameContact(contactName, newName);
+		    contactToUpdate = newName;
+                    // updateContactsPanel(newName, false);
+                    // updateContactsPanelStatus();
+                    // contactConfigPanel.update();
+		    contactsModified = true;
                 }
                 if (contactsModified) {
-                    updateContactsPanel(contactName, false);
+                    updateContactsPanel(contactToUpdate, false);
                     updateContactsPanelStatus();
                     contactConfigPanel.update();
             	}
@@ -644,14 +649,17 @@ class UIController implements ControllerInterface, UIAPI {
 
     // update the ContactsPanel with the info related to this contact 
     private void updateContactsPanel(String contact, boolean broadcast) {
+System.out.println ("updateContactsPanel (" + contact + ")");
         if (contact == null) {
             return;
             // throw new RuntimeException("tried to update contacts panel for null contact name");
         }
+System.out.println ("isVisible = " + coreAPI.isVisible(contact));
         if (! coreAPI.isVisible(contact)) {  // nothing to see here
             return;
         }
         Conversation conv = contactData.getConversation(contact);
+System.out.println ("conversation = " + conv);
         if (conv == null) {
             return;   // there is no conversation, that's OK
             // throw new RuntimeException("tried to update contacts panel for invalid contact name: " + contact);

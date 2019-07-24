@@ -254,11 +254,17 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         }
         // that's a go, so let's do it
         Contact contact = contactData.getContact(contactName);
+        // checkboxes
         JCheckBox[] cbs = configPanel.getCheckBoxes();
         contact.setNotify(cbs[0].isSelected());
         contact.setSaveMessages(cbs[1].isSelected());
         contact.setVisible(cbs[2].isSelected());
-        //
+        // rename
+        String newName = renamePanel.getNameField ();
+        if ((newName != null) && (! newName.equals (contact.getName ()))) {
+            contact.setName (newName);
+        }
+        // groups
         ArrayList<JComboBox<String>> groupsBoxes = groupsPanel.getComboBoxes();
         String groupToAdd = (String) groupsBoxes.get(0).getSelectedItem();
         if (groupToAdd != null) {
