@@ -9,6 +9,7 @@
 .q    quit \n\
 .h    print this help message \n\
 .l n  print the last n messages (default n=10, .ll long)\n\
+.m    mark as 'read' all messages for this contact\n\
 .t    trace (hop count .t 1, address .t 1 f0)\n\
 .k    key exchanges (type .k for more information) \n\
 "
@@ -56,8 +57,8 @@ static void print_to_output (const char * string)
                      ((strlen (string) > 0) &&
                       (string [strlen (string) - 1] != '\n')));
   if (string != NULL)
-    printf ("%s%s%s: ", string, ((add_newline) ? "\n" : ""), prompt); 
-  else  /* just print the prompt */
+    printf ("%s%s", string, ((add_newline) ? "\n" : "")); 
+  if (strlen (prompt) > 0) /* print the prompt, with a colon */
     printf ("%s: ", prompt);
   fflush (stdout);
   pthread_mutex_unlock (&mutex);
@@ -256,6 +257,7 @@ static void print_n_messages (const char * peer, const char * arg, int def)
     print_to_output ("");
     return;
   }
+  unsigned long long int last_read = last_read_time (peer);
   /* indices into the msgs data structure of the first (earliest in time)
    * message to be printed, and last (latest in time). */
   /* note first is actually off by one as an index */
@@ -268,15 +270,13 @@ static void print_n_messages (const char * peer, const char * arg, int def)
   size_t off = 0;
   int i;
   for (i = first_message - 1; i >= last_message; i--) {
-    char print_date [1000];
-    char print_rcvd_ackd [1000];
-    print_date [0] = '\0';          /* off by default */
-    print_rcvd_ackd [0] = '\0';     /* off by default */
+    char print_date [1000] = "";         /* by default, nothing here */
+    char status = ' ';                   /* '*' if unacked, '+' if new */
     if (print_long)
       make_date (print_date, sizeof (print_date), "sent", msgs [i].time);
     if (msgs [i].msg_type == MSG_TYPE_SENT) {
       if (msgs [i].message_has_been_acked) {
-        snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd), "* ");
+        status = ' ';
         if (print_long) {
           char print_buf [sizeof (print_date)];
           strncpy (print_buf, print_date, sizeof (print_date));
@@ -294,34 +294,34 @@ static void print_n_messages (const char * peer, const char * arg, int def)
             snprintf (print_date, sizeof (print_date), "%s: ", print_buf);
         }
       } else {   /* not acked, add : to the date */
-        snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd), "%s", print_date);
+        status = '*';
         if (print_long)
-          snprintf (print_date, sizeof (print_date), ": ");
-        else
-          print_date [0] = '\0';
+          strncat (print_date, ": ", sizeof (print_date));
       }
       off += snprintf (string + off, minz (total_size, off),
-                       "s %" PRIu64 " %s%s%s\n", msgs [i].seq, print_rcvd_ackd,
+                       "s%c%" PRIu64 " %s%s\n", status, msgs [i].seq,
                        print_date, msgs [i].message);
     } else {   /* received */
+      char print_rcvd_time [1000] = "";    /* details about when received */
       if (msgs [i].prev_missing > 0)
         off += snprintf (string + off, minz (total_size, off),
                          "(%" PRIu64 " messages missing)\n",
                          msgs [i].prev_missing);
+      if (msgs [i].rcvd_ackd_time > last_read) status = '+';
       if ((print_long) && (msgs [i].rcvd_ackd_time > msgs [i].time)) {
         if (msgs [i].rcvd_ackd_time > msgs [i].time + 1)
-          snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd),
+          snprintf (print_rcvd_time, sizeof (print_rcvd_time),
                     ", received %" PRIu64 " seconds later: ",
                      msgs [i].rcvd_ackd_time - msgs [i].time);
         else
-          snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd),
+          snprintf (print_rcvd_time, sizeof (print_rcvd_time),
                     ", received 1 second later: ");
       } else if (print_long) {
-        snprintf (print_rcvd_ackd, sizeof (print_rcvd_ackd), ": ");
+        snprintf (print_rcvd_time, sizeof (print_rcvd_time), ": ");
       }
       off += snprintf (string + off, minz (total_size, off),
-                       "r %" PRIu64 " %s%s%s\n", msgs [i].seq,
-                       print_date, print_rcvd_ackd, msgs [i].message);
+                       "r%c%" PRIu64 " %s%s%s\n", status, msgs [i].seq,
+                       print_date, print_rcvd_time, msgs [i].message);
     }
   }
   free_all_messages (msgs, num_used);
@@ -347,6 +347,50 @@ static void append_to_message (const char * message, char ** result)
   strip_final_newline (*result);
 }
 
+static int num_new_messages (const char * contact)
+{
+  unsigned long long int last_read = last_read_time (contact);
+  keyset * k = NULL;
+  int nk = all_keys (contact, &k);
+  int result = 0;
+  int ik;
+  for (ik = 0; ik < nk; ik++) {
+    struct msg_iter * iter = start_iter (contact, k [ik]);
+    uint64_t rcvd_time;
+    int mtype = MSG_TYPE_DONE;
+    while ((mtype = prev_message (iter, NULL, NULL, NULL, &rcvd_time,
+                                  NULL, NULL, NULL)) != MSG_TYPE_DONE) {
+      if (mtype == MSG_TYPE_RCVD) {
+        if (rcvd_time > last_read)
+          result++;
+        else
+	  break;
+      }
+    }
+    free_iter (iter);
+  }
+  if (k != NULL)
+    free (k);
+  return result;
+}
+
+static void print_peers (int only_with_new_messages)
+{
+  char ** contacts = NULL;
+  int n = all_contacts (&contacts);
+  int i;
+  for (i = 0; i < n; i++) {
+    int num_new = num_new_messages (contacts [i]);
+    if (num_new > 0)
+      printf ("%3d: %s: %d new message%s\n", i + 1, contacts [i], num_new,
+              (num_new != 1) ? "s" : "");
+    else if (! only_with_new_messages)
+      printf ("%3d: %s\n", i + 1, contacts [i]);
+  }
+  if (contacts != NULL)
+    free (contacts);
+}
+
 static void switch_to_contact (char * new_peer, char ** peer)
 {
   int pto = 1;   /* call print_to_output at the end -- unless already done */
@@ -363,7 +407,7 @@ static void switch_to_contact (char * new_peer, char ** peer)
         print_n_messages (prompt, NULL, 10);
     }  /* else: peer and new_peer are the same, do nothing */
   } else {                             /* no such peer */
-    int print_peers = 1;               /* turn off if numeric selector */
+    int do_print_peers = 1;            /* turn off if numeric selector */
     char ** contacts = NULL;
     int n = all_contacts (&contacts);
     if (strlen (new_peer) > 0) {
@@ -382,7 +426,7 @@ static void switch_to_contact (char * new_peer, char ** peer)
           if (! pto)
             print_n_messages (prompt, NULL, 10);
         }
-        print_peers = 0;
+        do_print_peers = 0;
       } else {                     /* contact specified, but does not exist */
         char string [PRINT_BUF_SIZE];
         snprintf (string, sizeof (string),
@@ -391,24 +435,8 @@ static void switch_to_contact (char * new_peer, char ** peer)
       }
     }
     /* print available peers */
-    if (print_peers && (n > 0) && (contacts != NULL)) {
-      char peers [PRINT_BUF_SIZE];
-      size_t size = PRINT_BUF_SIZE;
-      char * p = peers;
-      int i;
-      for (i = 0; ((i < n) && (size > 0)); i++) {
-        int off = printf ("%d: %s\n", i + 1, contacts [i]);
-        /* int off = printf (p, size, "%d: %s\n", i + 1, contacts [i]); */
-        if (off < 0)
-          return;
-        else if (off > size)    /* finished buffer */
-          size = 0;
-        else {
-          size -= off;
-          p += off;
-        }
-      }
-    }
+    if (do_print_peers)
+      print_peers (0);
     if (contacts != NULL)
       free (contacts);
   }
@@ -793,10 +821,18 @@ int main (int argc, char ** argv)
   pthread_create (&thread, NULL, receive_thread, &rta);
   pthread_detach (thread);
 
+  print_peers (1);
   char * peer = most_recent_contact ();
   if (peer != NULL) {
     prompt = peer;
-    print_to_output (XCHAT_TERM_HELP_MESSAGE);
+    if (num_new_messages (peer) > 0) {
+      prompt = "";
+      print_to_output (XCHAT_TERM_HELP_MESSAGE);
+      prompt = peer;
+      print_n_messages (peer, NULL, num_new_messages (peer));
+    } else {
+      print_to_output (XCHAT_TERM_HELP_MESSAGE);
+    }
   } else {
     print_to_output (NULL);
   }
@@ -855,8 +891,14 @@ int main (int argc, char ** argv)
       case 'k':  /* exchange a key with a new contact, optional secret */
         key_exchange (sock, log, next, &peer);
         break;
-      default:   /* send as a message */
+      case 'm':  /* exchange a key with a new contact, optional secret */
+        set_last_read_time (peer);
+	print_peers (1);
+        print_to_output (NULL);
+        break;
+      default:   /* unknown command */
         print_to_output ("unknown command\n");;
+        print_to_output (XCHAT_TERM_HELP_MESSAGE);
         break;
     }
   }
