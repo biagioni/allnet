@@ -447,13 +447,7 @@ static void gui_variable (char * message, int64_t length, int op, int gui_sock)
         break;
       case GUI_VARIABLE_READ_TIME:
         if (op == 1) {      /* set */
-          keyset * k = NULL;
-          int nk = all_keys (contact, &k);
-          int ik;
-          for (ik = 0; ik < nk; ik++) 
-            xchat_file_write (contact, k [ik], "last_read", " ", 1);
-          if (k != NULL)
-            free (k);
+          set_last_read_time (contact);
         } else {
           printf ("gui_variable_read_time: unsupported %d/%d, %s\n",
                   op, code, contact);
@@ -620,19 +614,8 @@ static void gui_get_messages (char * message, int64_t length, int gui_sock)
     message += 8;
     length -= 8;
     char * contact = contact_name_from_buffer (message, length);
-    keyset * k = NULL;
-    int nk = all_keys (contact, &k);
-    int ik;
-    unsigned long long int latest = 0;
-    for (ik = 0; ik < nk; ik++) {
-      unsigned long long int time =
-        xchat_file_time (contact, k [ik], "last_read", 0) / ALLNET_US_PER_S;
-      if (time > latest)
-        latest = time;
-    }
-    if (k != NULL)
-      free (k);
-    if (nk > 0) {  /* contact exists */
+    unsigned long long int latest = last_read_time (contact);
+    if (num_keysets (contact) > 0) { /* contact exists */
       /* for now, use list_all_messages.  Later, modify list_all_messages
        * to accept a maximum number of messages */
       struct message_store_info * msgs = NULL;
