@@ -49,6 +49,11 @@ extern char * chat_time_to_string (unsigned char * t, int static_result);
 extern char * chat_descriptor_to_string (struct chat_descriptor * cdp,
                                          int show_id, int static_result);
 
+/* when did a user last read messages from this contact?
+ * returns 0 if never read or for other errors */
+extern unsigned long long int last_read_time (const char * contact);
+extern void set_last_read_time (const char * contact);  /* all messages read */
+
 /* strip most non-alphabetic characters, and convert the rest to uppercase */
 extern void normalize_secret (char * s);
 

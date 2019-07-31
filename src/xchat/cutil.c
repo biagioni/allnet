@@ -510,6 +510,34 @@ char * chat_descriptor_to_string (struct chat_descriptor * cdp,
   return result;
 }
 
+unsigned long long int last_read_time (const char * contact)
+{
+  keyset * k = NULL;
+  int nk = all_keys (contact, &k);
+  int ik;
+  unsigned long long int latest = 0;
+  for (ik = 0; ik < nk; ik++) {
+    unsigned long long int time =
+      xchat_file_time (contact, k [ik], "last_read", 0) / ALLNET_US_PER_S;
+    if (time > latest)
+      latest = time;
+  }
+  if (k != NULL)
+    free (k);
+  return latest;
+}
+
+void set_last_read_time (const char * contact)
+{
+  keyset * k = NULL;
+  int nk = all_keys (contact, &k);
+  int ik;
+  for (ik = 0; ik < nk; ik++)
+    xchat_file_write (contact, k [ik], "last_read", " ", 1);
+  if (k != NULL)
+    free (k);
+}
+
 /* the chat descriptor stores time with the main part in the first 48 bits,
  * and the time zone (in signed minutes from UTC -- positive is East) in
  * the lower 16 bits */
