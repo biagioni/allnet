@@ -288,6 +288,10 @@ System.out.println ("name is " + contactName +
 		    contactData.renameContact(contactName, newName);
                     contactsPanel.renameContact(contactName, newName);
                     myTabbedPane.renameTab(contactName, newName);
+                    Component cp = myTabbedPane.getTabContent(newName);
+                    if (cp != null) {
+                        ((ConversationPanel)cp).renameContact(newName);
+                    }
                     coreAPI.renameContact(contactName, newName);
 		    contactToUpdate = newName;
                     // updateContactsPanel(newName, false);
@@ -649,17 +653,14 @@ System.out.println ("name is " + contactName +
 
     // update the ContactsPanel with the info related to this contact 
     private void updateContactsPanel(String contact, boolean broadcast) {
-System.out.println ("updateContactsPanel (" + contact + ")");
         if (contact == null) {
             return;
             // throw new RuntimeException("tried to update contacts panel for null contact name");
         }
-System.out.println ("isVisible = " + coreAPI.isVisible(contact));
         if (! coreAPI.isVisible(contact)) {  // nothing to see here
             return;
         }
         Conversation conv = contactData.getConversation(contact);
-System.out.println ("conversation = " + conv);
         if (conv == null) {
             return;   // there is no conversation, that's OK
             // throw new RuntimeException("tried to update contacts panel for invalid contact name: " + contact);

@@ -199,6 +199,7 @@ class ContactsPanel extends JPanel {
     void renameContact(String oldName, String newName) {
         JButton button = map.get(oldName);
         if (button != null) {
+            button.setActionCommand(commandPrefix + ":" + newName);
             map.remove(oldName);
             map.put(newName, button);
             int topIndex = topNames.indexOf (oldName);

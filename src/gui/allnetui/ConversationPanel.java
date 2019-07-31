@@ -57,7 +57,7 @@ class ConversationPanel extends JPanel implements ComponentListener {
     // morePanel holds moreMsgs button, need ref here for when we make new message panels
     private JPanel morePanel;
     // the command prefix will identify which instance of the Class is sending the event
-    private String commandPrefix;
+    // private String commandPrefix;
     // default colors to use
     private static Color backgroundColor = Color.GRAY, foregroundColor = Color.WHITE;
     private static Color broadcastColor = Color.LIGHT_GRAY;
@@ -77,7 +77,7 @@ class ConversationPanel extends JPanel implements ComponentListener {
 
     ConversationPanel(String info, String commandPrefix, String contactName,
         boolean createDialogBox, Component resizingKey) {
-        this.commandPrefix = commandPrefix;
+        // this.commandPrefix = commandPrefix;
         this.contactName = contactName;
         //
         this.resizingKey = resizingKey;
@@ -212,6 +212,12 @@ class ConversationPanel extends JPanel implements ComponentListener {
         return contactName;
     }
 
+    public void renameContact(String newName) {
+        contactName = newName;
+        sendButton.setActionCommand(contactName + ":" + SEND_COMMAND);
+        moreMsgsButton.setActionCommand(contactName + ":" + DISPLAY_MORE_MSGS_COMMAND);      
+    }
+    
     // this provides the title on the conversation tab
     public String getTitle() {
         int idx = contactName.indexOf("@");
@@ -246,7 +252,8 @@ class ConversationPanel extends JPanel implements ComponentListener {
 
     private JButton makeButton(String text, String command) {
         JButton button = new JButton(text);
-        button.setActionCommand(commandPrefix + ":" + command);
+        // button.setActionCommand(commandPrefix + ":" + command);
+        button.setActionCommand(contactName + ":" + command);
         return (button);
     }
 

@@ -54,6 +54,10 @@ public class SimpleButton extends JPanel implements MouseListener {
         this.command = command;
     }
 
+    public void setId(String id) {
+        this.id = id;
+    }
+
     // ----------------   mouse interface   ----------------- //
     @Override
     public void mouseClicked(MouseEvent e) {

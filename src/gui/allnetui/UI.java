@@ -158,11 +158,13 @@ class UI extends ApplicationFrame {
                     // for the UI to display
                     if (UI.debug) {
                         UITester test = new UITester(controller);
+                        CoreAPI coreAPI = new CoreDebug ();
+                        controller.setCore (coreAPI);
                         for (String contactName : debugContactNames) {
                             controller.contactCreated(contactName);
                         }
-                        CoreAPI coreAPI = new CoreDebug ();
-                        controller.setCore (coreAPI);
+//                        CoreAPI coreAPI = new CoreDebug ();
+//                        controller.setCore (coreAPI);
                     }
                     else {
                         CoreConnect coreAPI = new CoreConnect (controller);

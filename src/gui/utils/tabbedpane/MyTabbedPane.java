@@ -59,7 +59,6 @@ public class MyTabbedPane extends JPanel implements ChangeListener, ActionListen
             return;
         for (int i = 0; i < tabbedPane.getTabCount(); i++) {
             if (tabbedPane.getComponentAt(i) == wanted) {
-System.out.println ("component at " + i + " is " + id);
                 tabbedPane.setTitleAt(i, newTitle);
                 return;
             }
@@ -109,8 +108,29 @@ System.out.println ("component at " + i + " is " + id);
         Component panel = idToPanel.getValueFor(oldName);
         if (panel != null) {
             idToPanel.remove(oldName);
-            panel.setName(newName);
             idToPanel.put(newName, panel);
+            // panel.setName(newName);
+            int index = tabbedPane.indexOfComponent(panel);
+            // panel exists, so we know index >=0
+            // if (index < 0)
+            //    return;
+            Component tabComp = tabbedPane.getTabComponentAt(index);
+            
+            // set title won't work because we are using a tab component 
+            // tabbedPane.setTitleAt(index, newName);
+            Component[]  jcs = ((JPanel)tabComp).getComponents();
+            for (Component c : jcs) {
+                String className = c.getClass().getName();
+                if (className.contains("SimpleButton")) {
+                    SimpleButton sb = (SimpleButton)c;
+                    sb.setId(newName);
+                }
+                if (className.contains("JLabel")) {
+                    JLabel jl = (JLabel)c;
+                    jl.setText(newName);
+                }
+            }
+                        
         }
 else System.out.println ("renameTab (" + oldName + ") not found");
     }
