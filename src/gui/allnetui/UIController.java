@@ -280,30 +280,27 @@ class UIController implements ControllerInterface, UIAPI {
                         coreAPI.unsetSavingMessages(contactName);
 		    contactsModified = true;
                 }
-System.out.println ("name is " + contactName +
-", new name is " + contactData.getContact(contactName).getName());
 		String contactToUpdate = contactName;
 		String newName = contactData.getContact(contactName).getName();
-		if (! contactName.equals (newName)) {   // renamed
-		    contactData.renameContact(contactName, newName);
-                    contactsPanel.renameContact(contactName, newName);
-                    myTabbedPane.renameTab(contactName, newName);
-                    Component cp = myTabbedPane.getTabContent(newName);
-                    if (cp != null) {
-                        ((ConversationPanel)cp).renameContact(newName);
-                    }
-                    coreAPI.renameContact(contactName, newName);
-		    contactToUpdate = newName;
-                    // updateContactsPanel(newName, false);
-                    // updateContactsPanelStatus();
-                    // contactConfigPanel.update();
+		if (! contactName.equals (newName)) {    // renamed
+                    if (! coreAPI.contactExists (newName)) { // valid
+		        contactData.renameContact(contactName, newName);
+                        contactsPanel.renameContact(contactName, newName);
+                        myTabbedPane.renameTab(contactName, newName);
+                        Component cp = myTabbedPane.getTabContent(newName);
+                        if (cp != null) {
+                            ((ConversationPanel)cp).renameContact(newName);
+                        }
+                        coreAPI.renameContact(contactName, newName);
+		        contactToUpdate = newName;
+                    }   // refresh everything even if the rename was not valid
 		    contactsModified = true;
                 }
                 if (contactsModified) {
                     updateContactsPanel(contactToUpdate, false);
                     updateContactsPanelStatus();
-                    contactConfigPanel.update();
             	}
+                contactConfigPanel.update();
             }
         };
         // schedule it in the event disp thread, but don't wait for it to execute
