@@ -16,6 +16,7 @@
 #include "lib/cipher.h"
 #include "lib/allnet_log.h"
 #include "lib/app_util.h"
+#include "lib/routing.h"
 #include "chat.h"
 #include "cutil.h"
 #include "message.h"
@@ -557,3 +558,184 @@ time, tz, (time << 16) | (tz & 0xffff)); */
   return (time << 16) | (tz & 0xffff);
 }
 
+/* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
+ * and power_two must be less than 32.
+ * selector should be FILL_LOCAL/REMOTE_ADDRESS or FILL_ACK
+ * returns the number of bits filled, or -1 for errors */
+int fill_bits (unsigned char * bitmap, int power_two, int selector)
+{
+  if ((power_two < 0) || (power_two >= 32))
+    return -1;
+  if (power_two == 0)
+    return 0;
+  int res = 0;
+  int bsize = 1;
+  if (power_two > 3)
+    bsize = 1 << (power_two - 3);
+  memset (bitmap, 0, bsize);
+  char ** contacts = NULL;
+  int ncontacts = all_contacts (&contacts);
+  int icontact;
+  for (icontact = 0; icontact < ncontacts; icontact++) {
+    keyset * keysets = NULL;
+    int nkeysets = all_keys (contacts [icontact], &keysets);
+    int ikeyset;
+    for (ikeyset = 0; ikeyset < nkeysets; ikeyset++) {
+      if (selector == FILL_ACK) {   /* fill bitmap with outstanding acks */
+        int singles, ranges;
+        char * unacked = get_unacked (contacts [icontact], keysets [ikeyset],
+                                      &singles, &ranges);
+        char * ptr = unacked;
+        int i;
+        for (i = 0; i < singles + ranges; i++) {
+          uint64_t seq = readb64 (ptr);
+          ptr += COUNTER_SIZE;
+          uint64_t last = seq;
+          if (i >= singles) {   /* it's a range */
+            last = readb64 (ptr);
+            ptr += COUNTER_SIZE;
+          }
+          while (seq <= last) {
+            char ack [MESSAGE_ID_SIZE];
+            char * message = get_outgoing (contacts [icontact],
+                                           keysets [ikeyset], seq,
+                                           NULL, NULL, ack);
+            if (message != NULL) {
+              free (message); /* we only use the ack, not the message */
+              char mid [MESSAGE_ID_SIZE];  /* message id, hash of the ack */
+              sha512_bytes (ack, MESSAGE_ID_SIZE, mid, MESSAGE_ID_SIZE);
+              int bits = (int)readb16 (mid);
+              int index = allnet_bitmap_byte_index (power_two, bits);
+              int mask = allnet_bitmap_byte_mask (power_two, bits);
+              if ((index < 0) || (mask < 0)) {
+                printf ("fill_bits error: index %d, mask %d, p2 %d, bits %d\n",
+                        index, mask, power_two, bits);
+              } else if ((bitmap [index] & mask) == 0) {
+                bitmap [index] |= mask;
+                res++; /* the point of the if is to increment this correctly */
+              }
+            }
+            seq++;
+          }
+        }
+        free (unacked);
+      } else {   /* 0 for remote address, 1 for local address
+                  * most of the logic is the same */
+        unsigned char addr [ADDRESS_SIZE];
+        int nbits = -1;
+        if (selector == FILL_LOCAL_ADDRESS)
+          nbits = get_local (keysets [ikeyset], addr);
+        else
+          nbits = get_remote (keysets [ikeyset], addr);
+        if (nbits > 0) {
+          int bits = (int)readb16 ((char *)addr);
+          if (nbits < power_two) {  /* add a random factor */
+            int r = (int) (random_int (0, (1 << (power_two - nbits)) - 1));
+printf ("fill_bits (%p, %d, %d) found nbits %d < %d, bits %04x, xoring %04x for (%s, %d)\n",
+bitmap, power_two, selector, nbits, power_two, bits, r,
+contacts [icontact], keysets [ikeyset]);
+            bits ^= r;
+          }
+          int index = allnet_bitmap_byte_index (power_two, bits);
+          int mask = allnet_bitmap_byte_mask (power_two, bits);
+          if ((index < 0) || (mask < 0)) {
+            printf ("fill_bits2 error: index %d, mask %d, p2 %d, bits %d\n",
+                    index, mask, power_two, bits);
+          } else if ((bitmap [index] & mask) == 0) {
+              bitmap [index] |= mask;
+              res++;  /* the point of the if is to increment this correctly */
+          }
+        } else if (nbits == 0) {  /* no address, ignore */
+          static int first_time = 1;
+          if (first_time) {
+            printf ("%s (%d) may be an incomplete contact:\n",
+                    contacts [icontact], keysets [ikeyset]);
+            printf ("  fill_bits (%p, %d, %d) found nbits %d\n",
+                    bitmap, power_two, selector, nbits);
+            first_time = 0;
+          }
+        }
+      }
+    }
+    if ((nkeysets > 0) && (keysets != NULL))
+      free (keysets);
+  }
+  if ((ncontacts > 0) && (contacts != NULL))
+    free (contacts);
+  if (selector == FILL_LOCAL_ADDRESS) {  /* add my local trace address */
+    unsigned char addr [ADDRESS_SIZE];
+    routing_my_address (addr);
+    /* repeating some of the code above */
+    int bits = readb16 ((char *) addr);
+    int index = allnet_bitmap_byte_index (power_two, bits);
+    int mask = allnet_bitmap_byte_mask (power_two, bits);
+    if ((index < 0) || (mask < 0)) {
+      printf ("fill_bits3 error: index %d, mask %d, p2 %d, bits %d\n",
+              index, mask, power_two, bits);
+    } else if ((bitmap [index] & mask) == 0) {
+      bitmap [index] |= mask;
+      res++;  /* the point of the if is to increment this correctly */
+    }
+  }
+  return res;
+}
+
+/* place in the given buffer a push request, and return the size
+ * push requests are similar to data requests from packet.h, but
+ * instead of the 16-byte token they carry (a) a push protocol ID,
+ * (b) the number of bytes in the token, (c) the token itself, and
+ * (d) padding to make this header a multiple of 16 bytes */
+int create_push_request (const char * key, int ksize, int id,
+                         const char * device_token, int tsize,
+                         const char * since,
+                         char * result, int rsize)
+{
+  allnet_rsa_pubkey rsa;
+  write_file ("/tmp/allnet-push-pubkey", key, ksize, 1);
+  if (allnet_rsa_read_pubkey ("/tmp/allnet-push-pubkey", &rsa) == 0) {
+    printf ("failed to read pubkey\n");
+    return 0;
+  }
+  int iksize = allnet_rsa_pubkey_size (rsa);
+  if ((iksize <= 41 + 2 /* id */ + tsize + 16 /* alignment */
+               + 96 /* hard-coded 256 bits/32 bytes for each bitmap */ ) ||
+      (iksize >= ALLNET_MTU) || (tsize > 128) || (iksize > rsize)) {
+    printf ("ksize %d, iksize %d (max %d), needed 41 + 2 + %d + 16 + 96 = %d\n",
+            ksize, iksize, (int) ALLNET_MTU, tsize, 41 + 2 + tsize + 16 + 96);
+    if (iksize > 0)
+      allnet_rsa_free_pubkey (rsa);
+    return 0;
+  }
+  char data [ALLNET_MTU];
+  memset (data, 0, iksize);
+  writeb16 (data, id);
+  writeb16 (data + 2, tsize);
+  memcpy (data + 4, device_token, tsize);
+  int insize = 4 + tsize;
+  if (insize % 16 != 0)
+    insize += 16 - (insize % 16);
+  if (since != NULL)
+    memcpy (data + insize, since, ALLNET_TIME_SIZE);
+  insize += ALLNET_TIME_SIZE;
+  /* for now, hard-code 8 bits */
+#define BITSET_POWER_TWO	8	/* 256 dst bits */
+#define BITSET_BYTES		((1 << BITSET_POWER_TWO) / 8)  /* 32 bytes */
+printf ("%d bitset bytes, should be 32\n", BITSET_BYTES);
+  data [insize] = BITSET_POWER_TWO;
+  data [insize + 1] = BITSET_POWER_TWO;
+  insize += 8;            /* 0 mid bits */
+  unsigned char * dst = (unsigned char *) (data + insize);
+  unsigned char * src = dst + BITSET_BYTES;
+  if ((fill_bits (dst, BITSET_POWER_TWO, FILL_LOCAL_ADDRESS ) < 0) ||
+      (fill_bits (src, BITSET_POWER_TWO, FILL_REMOTE_ADDRESS) < 0)) {
+    allnet_rsa_free_pubkey (rsa);
+    return 0;
+  }
+  insize += 2 * BITSET_BYTES;
+print_buffer (data, insize, NULL, sizeof (data), 1);
+printf ("encrypting %d bytes using %d-byte key => %d, ", insize, iksize, rsize);
+  int outsize = allnet_rsa_encrypt (rsa, data, insize, result, rsize, 1);
+printf ("%d\n", outsize);
+  allnet_rsa_free_pubkey (rsa);
+  return outsize;
+}

@@ -73,4 +73,41 @@ extern void get_time_tz (uint64_t raw, uint64_t * time, int * tz);
 
 extern uint64_t make_time_tz (uint64_t time, int tz);
 
+/* selector for fill_bits */
+#define FILL_LOCAL_ADDRESS	1
+#define FILL_REMOTE_ADDRESS	0
+#define FILL_ACK		2
+
+/* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
+ * and power_two must be less than 32.
+ * selector should be FILL_LOCAL/REMOTE_ADDRESS or FILL_ACK
+ * returns the number of bits filled, or -1 for errors */
+extern int fill_bits (unsigned char * bitmap, int power_two, int selector);
+
+/* place in the given buffer a push request, and return the size
+ * push requests are similar to data requests from packet.h, but
+ * instead of the 16-byte token they carry (a) a push protocol ID,
+ * (b) the number of bytes in the token, (c) the token itself, and
+ * (d) padding to make this a multiple of 16 bytes
+   struct push_request {
+     unsigned short id;
+     unsigned short token_size;
+     unsigned char token [.token_size];
+     unsigned char token_padding [0..15];
+     unsigned char since [ALLNET_TIME_SIZE];  -- from since param, if not NULL
+     unsigned char dst_bits_power_two;
+     unsigned char src_bits_power_two;
+     unsigned char mid_bits_power_two;
+     unsigned char padding [5];
+     unsigned char dst_bitmap [0];
+     unsigned char src_bitmap [0];
+     unsigned char mid_bitmap [0];
+   }; */
+#define ALLNET_PUSH_APNS_ID	1	/* Apple Push Notification Service */
+#define ALLNET_PUSH_FCM_ID	2	/* Firebase Cloud Messaging (Android) */
+extern int create_push_request (const char * key, int ksize, int id,
+				const char * device_token, int tsize,
+                                const char * since,
+                                char * result, int rsize);
+
 #endif /* ALLNET_CHAT_UTIL_H */

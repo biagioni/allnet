@@ -33,11 +33,6 @@
 /* #define DEBUG_PRINT */
 #define HAVE_REQUEST_THREAD   /* run a thread to request data */
 
-/* selector for fill_bits */
-#define FILL_LOCAL_ADDRESS	1
-#define FILL_REMOTE_ADDRESS	0
-#define FILL_ACK		2
-
 static struct allnet_log * alog = NULL;
 
 /* time constants for requesting cached and missing data */
@@ -50,128 +45,6 @@ static struct allnet_log * alog = NULL;
 #define SLEEP_MAX		300  /* seconds -- 5min */
 
 static char global_token [ALLNET_TOKEN_SIZE];
-
-/* there must be 2^power_two bits in the bitmap (2^(power_two - 3) bytes),
- * and power_two must be less than 32.
- * selector should be FILL_LOCAL/REMOTE_ADDRESS or FILL_ACK
- * returns the number of bits filled, or -1 for errors */
-static int fill_bits (unsigned char * bitmap, int power_two, int selector)
-{
-  if ((power_two < 0) || (power_two >= 32))
-    return -1;
-  if (power_two == 0)
-    return 0;
-  int res = 0;
-  int bsize = 1;
-  if (power_two > 3)
-    bsize = 1 << (power_two - 3);
-  memset (bitmap, 0, bsize);
-  char ** contacts = NULL;
-  int ncontacts = all_contacts (&contacts);
-  int icontact;
-  for (icontact = 0; icontact < ncontacts; icontact++) {
-    keyset * keysets = NULL;
-    int nkeysets = all_keys (contacts [icontact], &keysets);
-    int ikeyset;
-    for (ikeyset = 0; ikeyset < nkeysets; ikeyset++) {
-      if (selector == FILL_ACK) {   /* fill bitmap with outstanding acks */
-        int singles, ranges;
-        char * unacked = get_unacked (contacts [icontact], keysets [ikeyset],
-                                      &singles, &ranges);
-        char * ptr = unacked;
-        int i;
-        for (i = 0; i < singles + ranges; i++) {
-          uint64_t seq = readb64 (ptr);
-          ptr += COUNTER_SIZE;
-          uint64_t last = seq;
-          if (i >= singles) {   /* it's a range */
-            last = readb64 (ptr);
-            ptr += COUNTER_SIZE;
-          }
-          while (seq <= last) {
-            char ack [MESSAGE_ID_SIZE];
-            char * message = get_outgoing (contacts [icontact],
-                                           keysets [ikeyset], seq,
-                                           NULL, NULL, ack);
-            if (message != NULL) {
-              free (message); /* we only use the ack, not the message */
-              char mid [MESSAGE_ID_SIZE];  /* message id, hash of the ack */
-              sha512_bytes (ack, MESSAGE_ID_SIZE, mid, MESSAGE_ID_SIZE);
-              int bits = (int)readb16 (mid);
-              int index = allnet_bitmap_byte_index (power_two, bits);
-              int mask = allnet_bitmap_byte_mask (power_two, bits);
-              if ((index < 0) || (mask < 0)) {
-                printf ("fill_bits error: index %d, mask %d, p2 %d, bits %d\n",
-                        index, mask, power_two, bits);
-              } else if ((bitmap [index] & mask) == 0) {
-                bitmap [index] |= mask;
-                res++; /* the point of the if is to increment this correctly */
-              }
-            }
-            seq++;
-          }
-        }
-        free (unacked);
-      } else {   /* 0 for remote address, 1 for local address
-                  * most of the logic is the same */
-        unsigned char addr [ADDRESS_SIZE];
-        int nbits = -1;
-        if (selector == FILL_LOCAL_ADDRESS)
-          nbits = get_local (keysets [ikeyset], addr);
-        else
-          nbits = get_remote (keysets [ikeyset], addr);
-        if (nbits > 0) {
-          int bits = (int)readb16 ((char *)addr);
-          if (nbits < power_two) {  /* add a random factor */
-            int r = (int) (random_int (0, (1 << (power_two - nbits)) - 1));
-printf ("fill_bits (%p, %d, %d) found nbits %d < %d, bits %04x, xoring %04x for (%s, %d)\n",
-bitmap, power_two, selector, nbits, power_two, bits, r,
-contacts [icontact], keysets [ikeyset]);
-            bits ^= r;
-          }
-          int index = allnet_bitmap_byte_index (power_two, bits);
-          int mask = allnet_bitmap_byte_mask (power_two, bits);
-          if ((index < 0) || (mask < 0)) {
-            printf ("fill_bits2 error: index %d, mask %d, p2 %d, bits %d\n",
-                    index, mask, power_two, bits);
-          } else if ((bitmap [index] & mask) == 0) {
-              bitmap [index] |= mask;
-              res++;  /* the point of the if is to increment this correctly */
-          }
-        } else if (nbits == 0) {  /* no address, ignore */
-          static int first_time = 1;
-          if (first_time) {
-            printf ("%s (%d) may be an incomplete contact:\n",
-                    contacts [icontact], keysets [ikeyset]);
-            printf ("  fill_bits (%p, %d, %d) found nbits %d\n",
-                    bitmap, power_two, selector, nbits);
-            first_time = 0;
-          }
-        }
-      }
-    }
-    if ((nkeysets > 0) && (keysets != NULL))
-      free (keysets);
-  }
-  if ((ncontacts > 0) && (contacts != NULL))
-    free (contacts);
-  if (selector == FILL_LOCAL_ADDRESS) {  /* add my local trace address */
-    unsigned char addr [ADDRESS_SIZE];
-    routing_my_address (addr);
-    /* repeating some of the code above */
-    int bits = readb16 ((char *) addr);
-    int index = allnet_bitmap_byte_index (power_two, bits);
-    int mask = allnet_bitmap_byte_mask (power_two, bits);
-    if ((index < 0) || (mask < 0)) {
-      printf ("fill_bits3 error: index %d, mask %d, p2 %d, bits %d\n",
-              index, mask, power_two, bits);
-    } else if ((bitmap [index] & mask) == 0) {
-      bitmap [index] |= mask;
-      res++;  /* the point of the if is to increment this correctly */
-    }
-  }
-  return res;
-}
 
 /* return a number between 1 and 10, with 1 twice as likely as 2,
  * 2 twice as likely as 3, and so on. */
@@ -356,6 +229,37 @@ int xchat_init (const char * arg0, const char * path)
   pthread_create (&request_thread, NULL, request_cached_data, (void *)(arg));
   pthread_detach (request_thread);
 #endif /* HAVE_REQUEST_THREAD */
+#ifdef TEST_PUSH_REQUEST
+const char public_key [] =
+"-----BEGIN RSA PUBLIC KEY-----\n"
+"MIICCgKCAgEA22TQgMWDQ8HqpEh96L+eb9UpvY26bqtTZAR+9zTIM5bC880Bn/t1\n"
+"81znkrJjVyors3POm5JKrBHfnC5WNIF+YUXqwxzQsAPD5k6/6R5G9mfcW7jFKpbr\n"
+"FGH/V59HPUwCzDg0S2PTZBIlv4vhcT1uBh+KBATEd1j+HCPSLm/FosGRW2MyG1Zh\n"
+"sGmKcboNXwhQf9Fzd8SeISIbdG4ZBXhSuWaxM0YT9U8W/V/ZKuh/opDHNC0rKK5p\n"
+"K69RafPXB6iLVd3eFzV6GAj3LbPR6HRmI2qmxiTYVrNkYQeMc8+SNmLPMrETvpFU\n"
+"nkEgECwck0Ij37mvXAI75F83ZZGVrurYjmeqzTlzRy5xsYSCSR0WzOjvUC4UmRX6\n"
+"e0rUJBMJ22Mv+xLMFO2WAYwVMDCxsD0L49TcwoLOfglYTuLz+Z9nM60WGluWHBxG\n"
+"ldRzQOssEYeOpXflFx4SChwkhZ7BZuDHqp8xj5lIqwOggQHVTjbo4uXO641fmfpP\n"
+"1xYKTIrHK4cjU5H4fEA4jxjl3B04w6nO2O5l2MTTRcKhSklc0ghWCLFsnZaHNJzE\n"
+"8/LNRA31BTjPDbsW7K3ZhIpfQ1d2seWe/5LoN/HHWKubtPxUpCqZLPSsiVb2NrID\n"
+"pbTwtDNiNsjkyY+Vox3f+tWiocIop3MZsSiGceqTxlY1NgN9lZl/AyECAwEAAQ==\n"
+"-----END RSA PUBLIC KEY-----\n";
+char token [] = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+                  0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+                  0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+                  0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+                  0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27,
+                  0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+                  0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37,
+                  0x38, 0x39, 0x3a, 0x3b, 0x3c, 0x3d, 0x3e, 0x3f };
+char buf [ALLNET_MTU];
+char since [] = { 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47 };
+int r =
+  create_push_request (public_key, strlen (public_key), ALLNET_PUSH_APNS_ID,
+                       token, sizeof (token), since, buf, sizeof (buf));
+print_buffer (buf, r, "push request", sizeof (buf), 1);
+#endif /* TEST_PUSH_REQUEST */
+
   return sock;
 }
 
