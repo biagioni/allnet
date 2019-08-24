@@ -769,7 +769,7 @@ if (eff_len > 2048) crash ();
         (! id_is_acked (current->id))) {
       if (message_matches (req, rlen, nbits, source, current, message)) {
         /* add this message */
-        if (buffer_offset <= needed + array_size) {
+        if (buffer_offset < needed + array_size) {
           printf ("error: offset %zd <= needed %zd + array %zd\n",
                   buffer_offset, needed, array_size);
           printf ("  sizes %zd + %zd, n %d\n",
