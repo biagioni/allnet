@@ -685,23 +685,17 @@ contacts [icontact], keysets [ikeyset]);
  * instead of the 16-byte token they carry (a) a push protocol ID,
  * (b) the number of bytes in the token, (c) the token itself, and
  * (d) padding to make this header a multiple of 16 bytes */
-int create_push_request (const char * key, int ksize, int id,
+int create_push_request (allnet_rsa_pubkey rsa, int id,
                          const char * device_token, int tsize,
                          const char * since,
                          char * result, int rsize)
 {
-  allnet_rsa_pubkey rsa;
-  write_file ("/tmp/allnet-push-pubkey", key, ksize, 1);
-  if (allnet_rsa_read_pubkey ("/tmp/allnet-push-pubkey", &rsa) == 0) {
-    printf ("failed to read pubkey\n");
-    return 0;
-  }
   int iksize = allnet_rsa_pubkey_size (rsa);
   if ((iksize <= 41 + 2 /* id */ + tsize + 16 /* alignment */
                + 96 /* hard-coded 256 bits/32 bytes for each bitmap */ ) ||
       (iksize >= ALLNET_MTU) || (tsize > 128) || (iksize > rsize)) {
-    printf ("ksize %d, iksize %d (max %d), needed 41 + 2 + %d + 16 + 96 = %d\n",
-            ksize, iksize, (int) ALLNET_MTU, tsize, 41 + 2 + tsize + 16 + 96);
+    printf ("iksize %d (max %d), needed 41 + 2 + %d + 16 + 96 = %d\n",
+            iksize, (int) ALLNET_MTU, tsize, 41 + 2 + tsize + 16 + 96);
     if (iksize > 0)
       allnet_rsa_free_pubkey (rsa);
     return 0;

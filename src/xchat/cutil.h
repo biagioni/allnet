@@ -7,6 +7,7 @@
 
 #include "chat.h"
 #include "lib/keys.h"
+#include "lib/crypt_sel.h"
 
 /* returns 1 if successful, 0 otherwise */
 extern int init_chat_descriptor (struct chat_descriptor * cp,
@@ -105,7 +106,7 @@ extern int fill_bits (unsigned char * bitmap, int power_two, int selector);
    }; */
 #define ALLNET_PUSH_APNS_ID	1	/* Apple Push Notification Service */
 #define ALLNET_PUSH_FCM_ID	2	/* Firebase Cloud Messaging (Android) */
-extern int create_push_request (const char * key, int ksize, int id,
+extern int create_push_request (allnet_rsa_pubkey rsa, int id,
 				const char * device_token, int tsize,
                                 const char * since,
                                 char * result, int rsize);
