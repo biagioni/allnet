@@ -633,11 +633,25 @@ static int local_socket ()
   return result;
 }
 
+/* if arg != NULL, this thread runs until another thread calls this with
+ * arg == NULL, or until there is an error */
 void * atcpd_main (char * arg)
 {
+  static int run_state = 0;   /* stopped */
+  if (arg == NULL) {
+printf ("stopping atcpd_main\n");
+    if (run_state == 1)
+      run_state = -1;         /* ask the other thread to stop */
+printf ("waiting for ad to complete %llu\n", allnet_time_us ());
+    while (run_state != 0)
+      sleep (1);
+printf ("   ad is complete %llu\n", allnet_time_us ());
+    return NULL;              /* done, other thread has finished */
+  }
+  run_state = 1;              /* running */
   alog = init_log ("atcpd");
   int restart_count = 0;
-  while (restart_count++ < 3) {
+  while ((restart_count++ < 3) && (run_state == 1)) {
     int new_sock = local_socket ();
     last_udp_received_time = allnet_time (); /* start all the timers now */
     if (new_sock < 0) {
@@ -666,7 +680,7 @@ void * atcpd_main (char * arg)
     pthread_create (&thr4, NULL, atcp_accept_thread, (void *) thread_args);
     pthread_create (&thr5, NULL, atcp_accept_thread, (void *) thread_args);
     pthread_create (&thr6, NULL, atcp_timer_thread, (void *) thread_args);
-    while (thread_args->running) {  /* loop until an error occurs */
+    while (thread_args->running) {  /* loop until we are stopped or an error */
       char buffer [ALLNET_MTU];
       struct sockaddr_storage sas;
       struct sockaddr * sap = (struct sockaddr *) (&sas);
@@ -694,12 +708,15 @@ void * atcpd_main (char * arg)
 /* printf ("received %d bytes, time %lld\n", (int) r, last_udp_received_time); */
       }
       sleep_while_running (thread_args, 30);  /* sleep 1/30s */
+      if (run_state != 1)
+        thread_args->running = 0;  /* kill off all the other threads, if any */
     }
     pthread_join (thr1, NULL);
     pthread_join (thr2, NULL);
     pthread_join (thr3, NULL);
     pthread_join (thr4, NULL);
     pthread_join (thr5, NULL);
+    close (thread_args->local_sock);  /* may already be closed */
     free (thread_args);
     printf ("%lld: atcpd_main restarting %d\n", allnet_time (), restart_count);
     snprintf (alog->b, alog->s, "atcpd_main restarting\n");

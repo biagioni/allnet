@@ -975,18 +975,17 @@ print_packet (r->message, r->msize, "received data request", 1);
 
 void allnet_daemon_loop ()
 {
-  while (1) {
-    char message [SOCKET_READ_MIN_BUFFER];
-    struct socket_read_result r = socket_read (&sockets, message,
-                                               10, virtual_clock);
+  char message [SOCKET_READ_MIN_BUFFER];
+  struct socket_read_result r = socket_read (&sockets, message,
+                                             10, virtual_clock);
 #ifdef TEST_TCP_ONLY /* ignore non-local IPs to force everything over tcp */
   if ((r.success) &&
       (! ((is_loopback_ip ((struct sockaddr *) &(r.from), r.alen))))) continue;
 #endif /* TEST_TCP_ONLY */
-    char * reason_not_valid = "size less than 24";
-    if ((! r.success) || (r.message == NULL) ||
-        (r.msize < ALLNET_HEADER_SIZE) ||
-        (! is_valid_message (r.message, r.msize, &reason_not_valid))) {
+  char * reason_not_valid = "size less than 24";
+  if ((! r.success) || (r.message == NULL) ||
+      (r.msize < ALLNET_HEADER_SIZE) ||
+      (! is_valid_message (r.message, r.msize, &reason_not_valid))) {
 #ifdef LOG_PACKETS
 if ((r.success) && (r.message != NULL) &&
     (strcmp (reason_not_valid, "hops > max_hops") != 0) &&
@@ -994,8 +993,8 @@ if ((r.success) && (r.message != NULL) &&
 printf ("invalid message of size %d, %s\n", r.msize, reason_not_valid);
 print_buffer (r.message, r.msize, NULL, 32, 1); }
 #endif /* LOG_PACKETS */
-      continue;   /* no valid message, no action needed, restart the loop */
-    }
+    return;   /* no valid message, no action needed, restart the loop */
+  }
 #ifdef DEBUG_FOR_DEVELOPER
 #ifdef DEBUG_PRINT
 printf ("received %d bytes\n", r.msize);
@@ -1009,33 +1008,33 @@ print_packet (r.message, r.msize, ", packet", 1);
 print_socket_set (&sockets);
 #endif /* DEBUG_PRINT */
 #endif /* DEBUG_FOR_DEVELOPER */
-    if ((! r.socket_address_is_new) &&
-        (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)))
-      update_sender_keepalive (r.message, r.msize, r.sav);
-    if ((r.socket_address_is_new) &&
-        ((r.sock->is_global_v4) || (r.sock->is_global_v6)) &&
-        (! is_auth_keepalive (r.from, sockets.random_secret,
-                              sizeof (sockets.random_secret),
-                              sockets.counter, r.message, r.msize))) {
-      if (! keepalive_sent_this_virtual_clock) {
-        /* respond with a challenge, see if they get back to us */
-        send_auth_response (r.sock->sockfd, r.from, r.alen,
-                            sockets.random_secret,
+  if ((! r.socket_address_is_new) &&
+      (! is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)))
+    update_sender_keepalive (r.message, r.msize, r.sav);
+  if ((r.socket_address_is_new) &&
+      ((r.sock->is_global_v4) || (r.sock->is_global_v6)) &&
+      (! is_auth_keepalive (r.from, sockets.random_secret,
                             sizeof (sockets.random_secret),
-                            sockets.counter, r.message, r.msize);
-        keepalive_sent_this_virtual_clock = 1;
-      }
+                            sockets.counter, r.message, r.msize))) {
+    if (! keepalive_sent_this_virtual_clock) {
+      /* respond with a challenge, see if they get back to us */
+      send_auth_response (r.sock->sockfd, r.from, r.alen,
+                          sockets.random_secret,
+                          sizeof (sockets.random_secret),
+                          sockets.counter, r.message, r.msize);
+      keepalive_sent_this_virtual_clock = 1;
+    }
 #ifdef DEBUG_FOR_DEVELOPER
 #define STRICT_AUTHENTICATION
 #endif /* DEBUG_FOR_DEVELOPER */
-      if (! ((is_loopback_ip ((struct sockaddr *) &(r.from), r.alen)) ||
-             (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)))) {
+    if (! ((is_loopback_ip ((struct sockaddr *) &(r.from), r.alen)) ||
+           (is_in_routing_table ((struct sockaddr *) &(r.from), r.alen)))) {
 #ifdef LOG_PACKETS
 printf ("%d-byte message on socket %d (global %d %d) ", r.msize,
-        r.sock->sockfd, r.sock->is_global_v4, r.sock->is_global_v6);
+      r.sock->sockfd, r.sock->is_global_v4, r.sock->is_global_v6);
 printf ("from unauthenticated sender: %02x -> %02x, ",
-        (r.msize >= 24) ? (r.message [8] & 0xff) : 0,
-        (r.msize >= 24) ? (r.message [16] & 0xff) : 0);
+      (r.msize >= 24) ? (r.message [8] & 0xff) : 0,
+      (r.msize >= 24) ? (r.message [16] & 0xff) : 0);
 print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
 printf ("\n");
 #endif /* LOG_PACKETS */
@@ -1043,58 +1042,70 @@ printf ("\n");
 printf ("not adding this sender: ");
 print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
 printf ("\n");
-        continue;   /* not authenticated, do not process this packet */
+      continue;   /* not authenticated, do not process this packet */
 #endif /* STRICT_AUTHENTICATION */
-      }
     }
-    if ((r.socket_address_is_new) || (r.sav == NULL))
-      r.sav = add_received_address (r);
-    else if ((r.sav != NULL) && (r.sav->time_limit != 0))
-      r.sav->time_limit = virtual_clock + ((r.sock->is_local) ? 6 : 180);
-    struct allnet_header * hp = (struct allnet_header *) r.message;
-    if ((hp->hops < 255) && (! r.sock->is_local))  /* for non-local messages */
-      hp->hops++;            /* before processing, increment number of hops */
-    if (hp->hops <= hp->max_hops) {
-      struct message_process m =
-           ((hp->message_type == ALLNET_TYPE_MGMT) ? process_mgmt (&r)
-                                                   : process_message (&r));
-      if (m.process & PROCESS_PACKET_LOCAL)
-        socket_send_local (&sockets, m.message, m.msize, m.priority,
-                             virtual_clock, r.from, r.alen);
-#define MAX_SENT_ADDRS	1000
-      int num_sent_addrs = MAX_SENT_ADDRS;
-      struct sockaddr_storage sent_addrs [MAX_SENT_ADDRS];
-#undef MAX_SENT_ADDRS
-      if (m.process & PROCESS_PACKET_OUT)
-        send_out (m.message, m.msize, ROUTING_ADDRS_MAX,
-                  &(r.from), r.alen, m.priority, (! r.sock->is_local),
-                  sent_addrs, &num_sent_addrs);
-      else
-        num_sent_addrs = -1;
-      if ((m.allocated) && (m.message != NULL))
-        free (m.message);
-      int debug_priority = 0;
-#ifdef THROTTLE_SENDING
-      debug_priority = priority_threshold;
-#endif /* THROTTLE_SENDING */
-      sockets_log_addresses ("ad.c after sending", &sockets,
-                             (num_sent_addrs >= 0 ? sent_addrs : NULL),
-                             num_sent_addrs, debug_priority);
-    }
-    if (r.recv_limit_reached) {  /* time to send a keepalive */
-      socket_update_recv_limit (RECV_LIMIT_DEFAULT, &sockets, r.from, r.alen);
-      if (r.sav != NULL)
-        send_one_keepalive ("update_recv_limit", r.sock, r.sav,
-                            sockets.random_secret,
-                            sizeof (sockets.random_secret), sockets.counter);
-    }
-    update_virtual_clock ();
-    update_dht ();
   }
+  if ((r.socket_address_is_new) || (r.sav == NULL))
+    r.sav = add_received_address (r);
+  else if ((r.sav != NULL) && (r.sav->time_limit != 0))
+    r.sav->time_limit = virtual_clock + ((r.sock->is_local) ? 6 : 180);
+  struct allnet_header * hp = (struct allnet_header *) r.message;
+  if ((hp->hops < 255) && (! r.sock->is_local))  /* for non-local messages */
+    hp->hops++;            /* before processing, increment number of hops */
+  if (hp->hops <= hp->max_hops) {
+    struct message_process m =
+         ((hp->message_type == ALLNET_TYPE_MGMT) ? process_mgmt (&r)
+                                                 : process_message (&r));
+    if (m.process & PROCESS_PACKET_LOCAL)
+      socket_send_local (&sockets, m.message, m.msize, m.priority,
+                           virtual_clock, r.from, r.alen);
+#define MAX_SENT_ADDRS	1000
+    int num_sent_addrs = MAX_SENT_ADDRS;
+    struct sockaddr_storage sent_addrs [MAX_SENT_ADDRS];
+#undef MAX_SENT_ADDRS
+    if (m.process & PROCESS_PACKET_OUT)
+      send_out (m.message, m.msize, ROUTING_ADDRS_MAX,
+                &(r.from), r.alen, m.priority, (! r.sock->is_local),
+                sent_addrs, &num_sent_addrs);
+    else
+      num_sent_addrs = -1;
+    if ((m.allocated) && (m.message != NULL))
+      free (m.message);
+    int debug_priority = 0;
+#ifdef THROTTLE_SENDING
+    debug_priority = priority_threshold;
+#endif /* THROTTLE_SENDING */
+    sockets_log_addresses ("ad.c after sending", &sockets,
+                           (num_sent_addrs >= 0 ? sent_addrs : NULL),
+                           num_sent_addrs, debug_priority);
+  }
+  if (r.recv_limit_reached) {  /* time to send a keepalive */
+    socket_update_recv_limit (RECV_LIMIT_DEFAULT, &sockets, r.from, r.alen);
+    if (r.sav != NULL)
+      send_one_keepalive ("update_recv_limit", r.sock, r.sav,
+                          sockets.random_secret,
+                          sizeof (sockets.random_secret), sockets.counter);
+  }
+  update_virtual_clock ();
+  update_dht ();
 }
 
-void allnet_daemon_main ()
+/* if start == 1, this thread runs until another thread calls this with
+ * start == 0. */
+void allnet_daemon_main (int start)
 {
+  static int run_state = 0;   /* stopped */
+  if (! start) {
+    if (run_state == 1)
+      run_state = -1;         /* ask the other thread to stop */
+printf ("waiting for ad to complete %llu\n", allnet_time_us ());
+    while (run_state != 0)
+      sleep (1);
+printf ("   ad is complete %llu\n", allnet_time_us ());
+    return;                   /* done, other thread has finished */
+  }
+  run_state = 1;              /* running */
   alog = init_log ("ad");
   sockets.num_sockets = 0;
   sockets.sockets = NULL;
@@ -1102,5 +1113,8 @@ void allnet_daemon_main ()
   routing_my_address (my_address);
   initialize_sockets ();
   update_virtual_clock ();  /* 2018/08/03: not sure if this is useful */
-  allnet_daemon_loop ();
+  while (run_state == 1)
+    allnet_daemon_loop ();
+  close_socket_set (&sockets);
+  run_state = 0;
 }

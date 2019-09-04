@@ -29,7 +29,7 @@
 #include "lib/pcache.h"
 #include "lib/routing.h"
 
-extern void allnet_daemon_main (void);
+extern void allnet_daemon_main (int start);
 #ifdef ALLNET_USE_FORK  /* start a keyd process */
 extern void keyd_main (char * pname);
 #endif /* ALLNET_USE_FORK */
@@ -85,6 +85,8 @@ static void * generic_thread (void * arg)
 /* stop all of the other threads */
 void stop_allnet_threads ()
 {
+  allnet_daemon_main (0);  /* stop ad */
+  atcpd_main (NULL);       /* stop atcpd */
   int i;
   for (i = free_thread_arg - 1; i >= 0; i--) {
     if (! pthread_equal (thread_args [i].id, pthread_self ())) {
@@ -458,7 +460,7 @@ static void do_root_init ()
 
 static void call_ad (char * ignored)
 {
-  allnet_daemon_main ();
+  allnet_daemon_main (1);
 }
 
 int astart_main (int argc, char ** argv)
