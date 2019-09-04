@@ -166,6 +166,7 @@ extern int socket_create_bind (struct socket_set * s, int is_local,
 /* for debugging */
 extern void print_socket_set (struct socket_set * s);
 extern void print_socket_global_addrs (struct socket_set * s);
+extern void close_socket_set (struct socket_set * s);
 
 /* use result -100 to say we don't know the result */ 
 extern void sockets_log_sr (int sent_not_received, const char * debug,

@@ -150,6 +150,20 @@ void print_socket_global_addrs (struct socket_set * s)
   print_socket_global_addrs_to_fd (s, STDOUT_FILENO);
 }
 
+void close_socket_set (struct socket_set * s)
+{
+  if ((s == NULL) || (s->num_sockets <= 0) || (s->sockets == NULL))
+    return;
+  int is;
+  for (is = 0; is < s->num_sockets; is++) {
+    close (s->sockets [is].sockfd);
+    if (s->sockets [is].send_addrs != NULL)
+      free (s->sockets [is].send_addrs);
+  }
+  s->num_sockets = 0;
+  s->sockets = NULL;
+}
+
 void check_sav (struct socket_address_validity * sav, const char * desc)
 {
   if ((sav->alen > sizeof (sav->addr)) ||
