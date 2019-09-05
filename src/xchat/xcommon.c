@@ -147,6 +147,11 @@ static void * request_cached_data (void * arg)
   free (arg);
   /* initial sleep is 12s-20s, slowly grow to ~5min */
   int sleep_time = (int)random_int (SLEEP_INITIAL_MIN, SLEEP_INITIAL_MAX);
+  /* subsequent sleep (used on mobile devices when pushed) is much shorter */
+  static int first_call = 1;
+  if (! first_call)
+    sleep_time = 3;   /* request almost immediately */
+  first_call = 0;
   while (send_data_request (sock, ALLNET_PRIORITY_LOCAL_LOW, NULL) != 0) {
     /* loop forever, unless the socket is closed */
     sleep (sleep_time);
