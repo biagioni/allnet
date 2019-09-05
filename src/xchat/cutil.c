@@ -687,7 +687,7 @@ contacts [icontact], keysets [ikeyset]);
  * (d) padding to make this header a multiple of 16 bytes */
 int create_push_request (allnet_rsa_pubkey rsa, int id,
                          const char * device_token, int tsize,
-                         const char * since,
+                         const char * since, const char * mid,
                          char * result, int rsize)
 {
   int iksize = allnet_rsa_pubkey_size (rsa);
@@ -725,6 +725,10 @@ int create_push_request (allnet_rsa_pubkey rsa, int id,
     return 0;
   }
   insize += 2 * BITSET_BYTES;
+  if (mid != NULL) {
+    memcpy (src + BITSET_BYTES, mid, BITSET_BYTES);
+    insize += BITSET_BYTES;
+  }
   int outsize = allnet_rsa_encrypt (rsa, data, insize, result, rsize, 1);
   allnet_rsa_free_pubkey (rsa);
   return outsize;

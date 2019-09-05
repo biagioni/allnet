@@ -96,19 +96,21 @@ extern int fill_bits (unsigned char * bitmap, int power_two, int selector);
      unsigned char token [.token_size];
      unsigned char token_padding [0..15];
      unsigned char since [ALLNET_TIME_SIZE];  -- from since param, if not NULL
-     unsigned char dst_bits_power_two;
-     unsigned char src_bits_power_two;
-     unsigned char mid_bits_power_two;
+     unsigned char dst_bits_power_two;  -- 8
+     unsigned char src_bits_power_two;  -- 8
+     unsigned char mid_bits_power_two;  -- 0 if mid param is NULL, 8 otherwise
      unsigned char padding [5];
-     unsigned char dst_bitmap [0];
-     unsigned char src_bitmap [0];
-     unsigned char mid_bitmap [0];
-   }; */
+     unsigned char dst_bitmap [32];
+     unsigned char src_bitmap [32];
+     unsigned char mid_bitmap [(mid != NULL) ? 32 : 0];
+   }; 
+   the mid parameter, if not NULL, must be a pointer to a 32-byte array
+   containing the message ID bitmap */
 #define ALLNET_PUSH_APNS_ID	1	/* Apple Push Notification Service */
 #define ALLNET_PUSH_FCM_ID	2	/* Firebase Cloud Messaging (Android) */
 extern int create_push_request (allnet_rsa_pubkey rsa, int id,
 				const char * device_token, int tsize,
-                                const char * since,
+                                const char * since, const char * mid,
                                 char * result, int rsize);
 
 #endif /* ALLNET_CHAT_UTIL_H */
