@@ -714,7 +714,6 @@ int create_push_request (allnet_rsa_pubkey rsa, int id,
   /* for now, hard-code 8 bits */
 #define BITSET_POWER_TWO	8	/* 256 dst bits */
 #define BITSET_BYTES		((1 << BITSET_POWER_TWO) / 8)  /* 32 bytes */
-printf ("%d bitset bytes, should be 32\n", BITSET_BYTES);
   data [insize] = BITSET_POWER_TWO;
   data [insize + 1] = BITSET_POWER_TWO;
   insize += 8;            /* 0 mid bits */
@@ -726,10 +725,7 @@ printf ("%d bitset bytes, should be 32\n", BITSET_BYTES);
     return 0;
   }
   insize += 2 * BITSET_BYTES;
-print_buffer (data, insize, NULL, sizeof (data), 1);
-printf ("encrypting %d bytes using %d-byte key => %d, ", insize, iksize, rsize);
   int outsize = allnet_rsa_encrypt (rsa, data, insize, result, rsize, 1);
-printf ("%d\n", outsize);
   allnet_rsa_free_pubkey (rsa);
   return outsize;
 }
