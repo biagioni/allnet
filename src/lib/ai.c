@@ -941,6 +941,8 @@ int is_valid_address (const struct internet_addr * ip)
 int same_sockaddr (const struct sockaddr_storage * a, socklen_t alen,
                    const struct sockaddr_storage * b, socklen_t blen)
 {
+  if ((a == NULL) || (b == NULL) || (alen == 0) || (blen == 0))
+    return 0;        /* invalid sockaddrs do not match */
   if (alen == blen)
     return (memcmp (a, b, alen) == 0);   /* easy, quick case */
   if ((alen == sizeof (struct sockaddr_in)) &&
