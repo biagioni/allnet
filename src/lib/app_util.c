@@ -153,7 +153,8 @@ static int send_with_priority (const char * message, int msize, unsigned int p)
 void local_send_keepalive (int override)
 {
   long long int now = allnet_time ();
-  if ((! override) && (last_sent + (KEEPALIVE_SECONDS / 2) > now))
+  if (((! override) && (last_sent + (KEEPALIVE_SECONDS / 2) > now)) ||
+      (internal_sockfd < 0))
     return;  /* do nothing */
 #if 0
 struct sockaddr_storage local_sas; socklen_t local_alen = sizeof (local_sas);
