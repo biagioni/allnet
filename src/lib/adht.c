@@ -271,10 +271,10 @@ void dht_process (char * message, unsigned int msize,
     (struct allnet_mgmt_dht *)
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
 
+#ifdef DEBUG_PRINT
   int off = snprintf (alog->b, alog->s, "got %d byte DHT packet: ", msize);
   packet_to_string (message, msize, NULL, 1, alog->b + off, alog->s - off);
   log_print (alog);
-#ifdef DEBUG_PRINT
 #endif /* DEBUG_PRINT */
 
   int n_sender = (dhtp->num_sender & 0xff);
@@ -310,8 +310,8 @@ void dht_process (char * message, unsigned int msize,
       }
     }
   }
-  print_dht (-1);
 #ifdef DEBUG_PRINT
+  print_dht (-1);
 #endif /* DEBUG_PRINT */
   for (i = 0; i < n_dht; i++) {
     struct addr_info * ai = dhtp->nodes + n_sender + i;
