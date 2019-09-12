@@ -296,7 +296,8 @@ static void print_n_messages (const char * peer, const char * arg, int def)
       } else {   /* not acked, add : to the date */
         status = '*';
         if (print_long)
-          strncat (print_date, ": ", sizeof (print_date));
+          strncat (print_date, ": ",
+                   sizeof (print_date) - strlen (print_date) - 1);
       }
       off += snprintf (string + off, minz (total_size, off),
                        "s%c%" PRIu64 " %s%s\n", status, msgs [i].seq,
