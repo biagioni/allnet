@@ -562,6 +562,10 @@ static void init_defaults ()
 
 static void read_my_id ()
 {
+  static int initialized = 0;
+  if (initialized)
+    return;
+  initialized = 1;
   char line [1000];
   int fd = open_read_config ("adht", "my_id", 1);
   if (fd < 0) {
