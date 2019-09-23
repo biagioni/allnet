@@ -19,6 +19,9 @@ import javax.swing.JFrame;
 public class MyFrame extends JFrame implements WindowListener, ActionListener {
 
     private static final long serialVersionUID = 1L;
+    private static final String fname = "xchat_screen_location.txt";
+    private static final String home = System.getProperty("user.home");
+    private static final java.nio.file.Path fpath = java.nio.file.Paths.get(home, ".allnet", fname);
 
     /**
      * Makes a JFrame with application support methods.
@@ -76,8 +79,9 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
         Dimension wSize = getSize();
         Dimension scrSize = Toolkit.getDefaultToolkit().getScreenSize();
 
+        int bsize = 6;   // let the border be out of the screen
         // test if window fits where we're told to put it
-        if ((x >= 0) && (y >= 0) && (x + wSize.width < scrSize.width) && (y + wSize.height < scrSize.height)) {
+        if ((x >= 0) && (y >= 0) && (x + wSize.width <= scrSize.width + bsize) && (y + wSize.height <= scrSize.height + bsize)) {
             pt = new Point(x, y);
         }
         else {
@@ -86,6 +90,32 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
                     (scrSize.height - wSize.height) / 2);
         }
         setLocation(pt);
+    }
+
+    public boolean useSavedLocation() {
+        try {
+            java.util.List<String> lines =
+                java.nio.file.Files.readAllLines(fpath);
+            if (lines.size() > 0) {
+                setMyLocation(lines.get(0));
+                return true;
+            }
+        } catch (java.nio.file.NoSuchFileException e) {  // silent
+        } catch (Exception e) {  // report
+           System.out.println (e);
+        }
+        return false;
+    }
+
+    public void saveLocation() {
+        String location = new String(getX() + "," + getY());
+        java.util.List<String> lines = new java.util.LinkedList<String>();
+        lines.add(location);
+        try {
+            java.nio.file.Files.write(fpath, lines);
+        } catch (Exception e) {
+           System.out.println (e);
+        }
     }
 
     public void putInCenter() {

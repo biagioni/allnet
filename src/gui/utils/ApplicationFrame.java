@@ -38,6 +38,7 @@ public class ApplicationFrame extends MyFrame {
      */
     @Override
     public void windowClosing(WindowEvent e) {
+        super.saveLocation();
         controller.exit();
     }
 

@@ -151,7 +151,9 @@ class UI extends ApplicationFrame {
                     Image icon = Toolkit.getDefaultToolkit().getImage(iconUrl);
                     ui.setIconImage(icon);                
 
-                    ui.setMyLocation("center");
+                    if (! ui.useSavedLocation()) {
+                        ui.setMyLocation("center");
+                    }
                     ui.setVisible(true);
 
                     // make a tester frame to generate message
