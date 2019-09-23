@@ -710,6 +710,8 @@ int create_push_request (allnet_rsa_pubkey rsa, int id,
     insize += 16 - (insize % 16);
   if (since != NULL)
     memcpy (data + insize, since, ALLNET_TIME_SIZE);
+  else
+    writeb64 (data + insize, allnet_time ());
   insize += ALLNET_TIME_SIZE;
   /* for now, hard-code 8 bits */
 #define BITSET_POWER_TWO	8	/* 256 dst bits */
