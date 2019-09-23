@@ -46,9 +46,14 @@ static int tcp_fds [MAX_CONNECTIONS];
 static char tcp_buffers [MAX_CONNECTIONS] [BUFSIZE];
 static size_t tcp_bytes [MAX_CONNECTIONS];
 static struct sockaddr_storage tcp_addrs [MAX_CONNECTIONS];
+/* addresses and fds on which connect has been called but not yet completed */
+static struct sockaddr_storage tcp_connecting [MAX_CONNECTIONS];
+static int tcp_connecting_fds [MAX_CONNECTIONS];
 
 /* used to terminate the program if the keepalives stop */
 static unsigned long long int last_udp_received_time = 0;
+
+static int debug_keepalive = 0;
 
 struct atcp_thread_args {
   int running;   /* set to zero when the main thread terminates */
@@ -99,20 +104,44 @@ static void sleep_while_running (struct atcp_thread_args * args, int ms)
   }
 }
 
-/* returns 1 if an open connection to the new address is in tcp_addrs */
-static int addr_in_list (struct sockaddr_storage * new_addr)
+static socklen_t sockaddr_len (struct sockaddr_storage * addr)
 {
-  int i;
+  if (addr == NULL)
+    return 0;
+  if (addr->ss_family == AF_INET)
+    return sizeof (struct sockaddr_in);
+  if (addr->ss_family == AF_INET6)
+    return sizeof (struct sockaddr_in6);
+  return 0;
+}
+
+/* returns 1 if an open connection to the new address is in tcp_addrs
+ * if connecting is true, also checks the connecting list (for connect)
+ * if connecting is false, also removes it from the connecting list (accept) */
+static int addr_in_list (struct sockaddr_storage * new_addr, int connecting)
+{
   socklen_t new_len = sizeof (struct sockaddr_in);
   if (new_addr->ss_family == AF_INET6)
     new_len = sizeof (struct sockaddr_in6);
+  int pending_index = -1;
+  int i;
   for (i = 0; i < MAX_CONNECTIONS; i++) {
-    if (tcp_fds [i] != -1) {
-      socklen_t this_len = sizeof (struct sockaddr_in);
-      if (tcp_addrs [i].ss_family == AF_INET6)
-        this_len = sizeof (struct sockaddr_in6);
-      if (same_sockaddr (new_addr, new_len, tcp_addrs + i, this_len))
-        return 1;
+    if ((tcp_connecting_fds [i] != -1) &&
+        (same_sockaddr (new_addr, new_len,
+                        tcp_connecting + i, sockaddr_len (tcp_connecting + i))))
+      pending_index = i;
+  }
+  if (connecting && (pending_index >= 0))  /* found */
+    return 1;
+  for (i = 0; i < MAX_CONNECTIONS; i++) {
+    if ((tcp_fds [i] != -1) &&
+        (same_sockaddr (new_addr, new_len,
+                        tcp_addrs + i, sockaddr_len (tcp_addrs + i)))) {
+      if ((! connecting) && (pending_index >= 0)) {  /* remove */
+        tcp_connecting [pending_index].ss_family = 0;
+        close (tcp_connecting_fds [pending_index]);
+      }
+      return 1;
     }
   }
   return 0;
@@ -231,7 +260,7 @@ sizeof (struct sockaddr_storage)); printf ("\n");
     release (&(args->lock), "r");
     sleep_while_running (args, 100);  /* sleep 1/10s */
   }
-  printf ("%lld: atcpd_recv_thread %p ending\n", allnet_time (), arg);
+  printf ("%lld: atcpd_recv_thread ending\n", allnet_time ());
   return NULL;
 }
 
@@ -248,11 +277,12 @@ static size_t atcp_make (const char * message, int msize, char * buffer)
 }
 
 /* returns true if this was a packet that we should not forward */
-static int respond_to_keepalive (struct atcp_thread_args * args,
-                                 const char * message, int msize,
-                                 struct sockaddr_storage addr)
+static int handle_keepalive (struct atcp_thread_args * args,
+                             const char * message, int msize,
+                             struct sockaddr_storage addr)
 {
-/* print_buffer (message, msize, "respond_to_keepalive", 10, 1); */
+if (debug_keepalive) printf ("handle_keepalive received message\n");
+/* print_buffer (message, msize, "handle_keepalive", 10, 1); */
   if (msize <= ALLNET_HEADER_SIZE)
     return 1;   /* not a valid packet */
   const struct allnet_header * hp = (const struct allnet_header *) message;
@@ -263,6 +293,7 @@ static int respond_to_keepalive (struct atcp_thread_args * args,
     (const struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
   if (mhp->mgmt_type != ALLNET_MGMT_KEEPALIVE)
     return 0;   /* a valid message, but not a valid keepalive -- respond */
+if (debug_keepalive) printf ("handle_keepalive received valid keepalive\n");
   /* it is a valid keepalive.  Respond here if at all, and always return 1 */
   unsigned int hdr_size = ALLNET_MGMT_HEADER_SIZE (hp->transport);
   if (hdr_size != ALLNET_MGMT_HEADER_SIZE (0)) {
@@ -272,35 +303,30 @@ static int respond_to_keepalive (struct atcp_thread_args * args,
   }
   unsigned int min_size = hdr_size + KEEPALIVE_AUTHENTICATION_SIZE;
   unsigned int max_size = min_size + KEEPALIVE_AUTHENTICATION_SIZE;
-  if (msize < min_size) {    /* simple keepalive, send back the same */
-    printf ("unusual: atcpd responding to simple keepalive\n");
-    send (args->local_sock, message, msize, 0);
+  if (msize < min_size) {    /* simple keepalive, ignore */
+    printf ("unusual: atcpd got simple keepalive\n");
     return 1;
   }
+  const char * ad_auth = message + hdr_size;
   acquire (&(args->lock), "q");
-  if ((args->authenticating_keepalive == NULL) || (args->aksize < min_size) ||
-      (args->last_keepalive_sent_time + KEEPALIVE_SECONDS <= allnet_time ())) {
-    /* no authenticating keepalive sent in the last 10 seconds */
+  if ((args->authenticating_keepalive == NULL) || (args->aksize < min_size)) {
+    /* no authenticating keepalive received before */
     args->last_keepalive_sent_time = allnet_time ();
-    const char * ad_auth = message + hdr_size;
-    if ((args->authenticating_keepalive == NULL) || (args->aksize < max_size)) {
-      static char secret [KEEPALIVE_AUTHENTICATION_SIZE];
-      static int initialized = 0;
-      if (! initialized)
-        random_bytes (secret, sizeof (secret));
-      initialized = 1;
-      args->authenticating_keepalive = malloc_or_fail (max_size, "atcpd rtk");
-      args->aksize = keepalive_auth (args->authenticating_keepalive, max_size,
-                                     addr, secret, sizeof (secret), 1,
-                                     ad_auth);
-    }
-    char * auth = args->authenticating_keepalive + min_size;
-    if (memcmp (ad_auth, auth, KEEPALIVE_AUTHENTICATION_SIZE) != 0) {
+    static char secret [KEEPALIVE_AUTHENTICATION_SIZE];
+    static int initialized = 0;
+    if (! initialized)
+      random_bytes (secret, sizeof (secret));
+    initialized = 1;
+    args->authenticating_keepalive = malloc_or_fail (max_size, "atcpd rtk");
+    args->aksize = keepalive_auth (args->authenticating_keepalive, max_size,
+                                   addr, secret, sizeof (secret), 1,
+                                   ad_auth);
+  }
+  char * auth = args->authenticating_keepalive + min_size;
+  if (memcmp (ad_auth, auth, KEEPALIVE_AUTHENTICATION_SIZE) != 0) {
 print_buffer (auth, KEEPALIVE_AUTHENTICATION_SIZE, "ad changed auth", 32, 1);
 print_buffer (ad_auth, KEEPALIVE_AUTHENTICATION_SIZE, "to", 32, 1);
-      memcpy (auth, ad_auth, KEEPALIVE_AUTHENTICATION_SIZE);
-    }
-    send (args->local_sock, args->authenticating_keepalive, args->aksize, 0);
+    memcpy (auth, ad_auth, KEEPALIVE_AUTHENTICATION_SIZE);
   }
   release (&(args->lock), "q");
   return 1;
@@ -312,7 +338,7 @@ static void atcp_handle_local_packet (struct atcp_thread_args * args,
                                       struct sockaddr_storage addr)
 {
   /* do not forward keepalives.  Instead, respond to them */
-  if (respond_to_keepalive (args, message, msize, addr))
+  if (handle_keepalive (args, message, msize, addr))
     return;
 /* printf ("not a keepalive\n"); */
   /* not a keepalive, forward to all the valid tcp sockets */
@@ -400,13 +426,13 @@ static void perror2 (const char * first, const char * second)
 
 static void * atcp_accept_thread (void * arg)
 {
-  static int success = 0;
+  static int success = 0;  /* shared among the two accept threads */
   struct atcp_thread_args * args = ((struct atcp_thread_args *) arg);
-  struct sockaddr_storage addr;
+  struct sockaddr_storage bind_addr;
   socklen_t balen;  /* address length for the binding address */
   char * ipv = "unknown";
-  int af = atcp_accept_common (args, &addr, &balen, &ipv);
-  struct sockaddr * sap = (struct sockaddr *) &addr;
+  int af = atcp_accept_common (args, &bind_addr, &balen, &ipv);
+  struct sockaddr * sap = (struct sockaddr *) &bind_addr;
   if (af == AF_INET)  /* wait 10s for IPv6 to succeed */
     sleep_while_running (args, 10000);
   int listen_socket = socket (af, SOCK_STREAM, IPPROTO_TCP);
@@ -430,6 +456,7 @@ static void * atcp_accept_thread (void * arg)
         args->running = 0;
       }
       close (listen_socket);
+printf ("%lld: (spare?) atcpd_accept_thread ending\n", allnet_time ());
       return NULL;
     }
 #ifdef DEBUG_PRINT
@@ -447,65 +474,84 @@ static void * atcp_accept_thread (void * arg)
     struct sockaddr_storage sas;
     socklen_t aalen = sizeof (sas);  /* length of accept address */
     int new_socket = accept (listen_socket, (struct sockaddr *) &sas, &aalen);
-    if ((new_socket >= 0) && (! addr_in_list (&sas))) {/* save the new socket */
+    if (new_socket >= 0) {
+      if (addr_in_list (&sas, 0)) {  /* address is in the list */
+#ifdef TEST_TCP_ONLY
+printf ("refusing connection, address already in list: ");
+print_sockaddr ((struct sockaddr *) &sas, aalen); printf ("\n");
+#endif /* TEST_TCP_ONLY */
+        close (new_socket);
+        sleep_while_running (args, 1000);
+      } else {    /* save the new socket */
 #ifdef TEST_TCP_ONLY
 printf ("accepted connection from: ");
 print_sockaddr ((struct sockaddr *) &sas, aalen); printf ("\n");
 #endif /* TEST_TCP_ONLY */
-      make_socket_nonblocking (new_socket, "accept_thread new_socket");
-      int i;
-      int index = -1;
-      acquire (&(args->lock), "a"); /* find a free fd slot, save the socket */
-      for (i = MAX_CONNECTIONS / 2; i < MAX_CONNECTIONS; i++)
-        if (tcp_fds [i] == -1)
-          index = i;
-      if (index < 0) {   /* no free fds, close a random connection */
-        index = (int) (random_int (MAX_CONNECTIONS / 2, MAX_CONNECTIONS - 1));
+        make_socket_nonblocking (new_socket, "accept_thread new_socket");
+        int i;
+        int index = -1;
+        acquire (&(args->lock), "a"); /* find a free fd slot, save the socket */
+        for (i = MAX_CONNECTIONS / 2; i < MAX_CONNECTIONS; i++)
+          if (tcp_fds [i] == -1)
+            index = i;
+        if (index < 0) {   /* no free fds, close a random connection */
+          index = (int) (random_int (MAX_CONNECTIONS / 2, MAX_CONNECTIONS - 1));
 #ifdef TEST_TCP_ONLY
 printf ("accept randomly closing socket to: ");
 print_sockaddr ((struct sockaddr *) (tcp_addrs + index),
 sizeof (struct sockaddr_storage)); printf ("\n");
 #endif /* TEST_TCP_ONLY */
-        close (tcp_fds [index]);
-        tcp_fds [index] = -1;
+          close (tcp_fds [index]);
+          tcp_fds [index] = -1;
+        }
+        tcp_fds [index] = new_socket;
+        tcp_bytes [index] = 0;
+        memcpy (tcp_addrs + index, &sas, aalen);
+        release (&(args->lock), "a");
       }
-      tcp_fds [index] = new_socket;
-      tcp_bytes [index] = 0;
-      memcpy (tcp_addrs + index, &sas, aalen);
-      release (&(args->lock), "a");
-    } else if (new_socket >= 0) {  /* address is in the list */
-#ifdef TEST_TCP_ONLY
-printf ("refusing connection, address already in list: ");
-print_sockaddr ((struct sockaddr *) &sas, aalen); printf ("\n");
-#endif /* TEST_TCP_ONLY */
-      close (new_socket);
-      sleep_while_running (args, 1000);
     } else if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
-      sleep_while_running (args, 1000);
+      sleep_while_running (args, 1000);   /* accept timed out, wait 1s */
     } else {
       perror2 ("atcpd accept", ipv);
       args->running = 0;
     }
   }
-  printf ("%lld: atcpd_accept_thread %p ending\n", allnet_time (), arg);
+  printf ("%lld: atcpd_accept_thread ending\n", allnet_time ());
   close (listen_socket);
+  int i;
+  for (i = MAX_CONNECTIONS / 2; i < MAX_CONNECTIONS; i++) {
+    if (tcp_fds [i] != -1)
+      close (tcp_fds [i]);
+    tcp_fds [i] = -1;
+    tcp_bytes [i] = 0;
+  }
   return NULL;
+}
+
+static void log_connect_error (struct sockaddr * sap, int err)
+{
+  char addr_str [1000];
+  print_sockaddr_str (sap, sockaddr_len ((struct sockaddr_storage *) sap),
+                      addr_str, sizeof (addr_str));
+  snprintf (alog->b, alog->s, "atcpd unable to connect to %s\n", addr_str);
+  errno = err;
+  log_error (alog, "connect");
 }
 
 static void * atcp_connect_thread (void * arg)
 {
   struct atcp_thread_args * args = ((struct atcp_thread_args *) arg);
   routing_init_is_complete (1);
-  struct sockaddr_storage addrs [MAX_CONNECTIONS / 2];
-  socklen_t addr_lengths [MAX_CONNECTIONS / 2];
+#define NUM_CONNECT	(MAX_CONNECTIONS / 2)
+  struct sockaddr_storage addrs [NUM_CONNECT];
+  socklen_t addr_lengths [NUM_CONNECT];
   /* since we never update the routing info, there is no point
    * in reading it more than once */
   unsigned char dest [ADDRESS_SIZE];
   memset (dest, 0, ADDRESS_SIZE);
   int sleep_time = KEEPALIVE_SECONDS;           /* initial interval */
   sleep_time = 2;
-  int n = routing_top_dht_matches (dest, 0, addrs, addr_lengths,
-                                   MAX_CONNECTIONS / 2);
+  int n = routing_top_dht_matches (dest, 0, addrs, addr_lengths, NUM_CONNECT);
 #ifdef TEST_TCP_ONLY
 printf ("atcp_connect_thread: %d peers\n", n);
 #endif /* TEST_TCP_ONLY */
@@ -517,7 +563,8 @@ printf ("atcp_connect_thread: %d peers\n", n);
   while (args->running) {   /* loop until main thread goes away */
     acquire (&(args->lock), "c");
     unsigned long long int i = random_int (0, n - 1);
-    if ((! addr_in_list (addrs + i)) && (tcp_fds [i] < 0)) {
+    if ((! addr_in_list (addrs + i, 1)) && (tcp_fds [i] < 0) &&
+        (tcp_connecting_fds [i] < 0)) {
       /* try to connect this random socket */
       struct sockaddr * sap = (struct sockaddr *) (addrs + i);
       int sock = socket (sap->sa_family, SOCK_STREAM, IPPROTO_TCP);
@@ -526,23 +573,56 @@ printf ("atcp_connect_thread: %d peers\n", n);
         snprintf (alog->b, alog->s, "atcpd unable to open TCP socket\n");
         log_print (alog);
       } else {
-        if (connect (sock, sap, addr_lengths [i]) != 0) {
-          char addr_str [1000];
-          print_sockaddr_str (sap, addr_lengths [i],
-                              addr_str, sizeof (addr_str));
-          snprintf (alog->b, alog->s,
-                    "atcpd unable to connect TCP socket to %s\n", addr_str);
-          log_error (alog, "connect");
-          close (sock);
-        } else {  /* success! */
-#ifdef TEST_TCP_ONLY
-printf ("connected to: ");
-print_sockaddr (sap, addr_lengths [i]); printf ("\n");
-#endif /* TEST_TCP_ONLY */
-          make_socket_nonblocking (sock, "connect_thread new socket");
-          tcp_fds [i] = sock;
-          tcp_bytes [i] = 0;
-          memcpy (tcp_addrs + i, sap, addr_lengths [i]);
+        make_socket_nonblocking (sock, "connect_thread new socket");
+        int connect_res = connect (sock, sap, addr_lengths [i]);
+        if (connect_res != 0) {
+          if (errno == EINPROGRESS) {   /* waiting for connection */
+            tcp_connecting_fds [i] = sock;
+            tcp_connecting [i] = addrs [i];
+          } else {   /* error */
+            log_connect_error (sap, errno);
+            close (sock);
+          }
+        }
+      }
+    }   /* end of trying to connect address i */
+    /* see if any pending connect has completed */
+    int maxfd = -1;
+    fd_set write_fds;
+    FD_ZERO (&write_fds);
+    for (i = 0; i < n; i++) {
+      if (tcp_connecting_fds [i] >= 0) {
+        FD_SET (tcp_connecting_fds [i], &write_fds);
+        if (tcp_connecting_fds [i] > maxfd)
+          maxfd = tcp_connecting_fds [i];
+      }
+    }
+    if (maxfd >= 0) {
+      struct timeval timeout = { .tv_sec = 0, .tv_usec = 200 * 1000 };
+      if (select (maxfd + 1, NULL, &write_fds, NULL, &timeout) > 0) {
+        for (i = 0; i < n; i++) {
+          if (FD_ISSET (tcp_connecting_fds [i], &write_fds)) {
+            int ov = 0;  /* option value -- 0 for success */
+            socklen_t ovl = sizeof (ov);
+            int still_in_progress = 0;
+            if (getsockopt (tcp_connecting_fds [i], SOL_SOCKET, SO_ERROR,
+                            &ov, &ovl) == 0) {
+              if (ov == 0) {   /* success */
+                still_in_progress = 0;
+                tcp_fds [i] = tcp_connecting_fds [i];
+                tcp_addrs [i] = tcp_connecting [i];
+                tcp_bytes [i] = 0;
+              } else if (ov != EINPROGRESS) {   /* error */
+                still_in_progress = 0;
+                log_connect_error ((struct sockaddr *)(tcp_connecting + i), ov);
+                close (tcp_connecting_fds [i]);
+              }
+            }
+            if (! still_in_progress) {   /* clear the "connecting" variables */
+              tcp_connecting_fds [i] = -1;
+              tcp_connecting [i].ss_family = 0;
+            }
+          }
         }
       }
     }
@@ -555,12 +635,18 @@ print_sockaddr (sap, addr_lengths [i]); printf ("\n");
       sleep_time = MAX_SLEEP_TIME;
 #undef MAX_SLEEP_TIME
   }
-  printf ("%lld: atcpd_connect_thread %p ending\n", allnet_time (), arg);
+  printf ("%lld: atcpd_connect_thread ending\n", allnet_time ());
   int i;
-  for (i = 0; i < MAX_CONNECTIONS; i++) {
+  for (i = 0; i < NUM_CONNECT; i++) {
     if (tcp_fds [i] != -1)
       close (tcp_fds [i]);
+    tcp_fds [i] = -1;
     tcp_bytes [i] = 0;
+  }
+  for (i = 0; i < MAX_CONNECTIONS; i++) {
+    if (tcp_connecting_fds [i] != -1)
+      close (tcp_connecting_fds [i]);
+    tcp_connecting_fds [i] = -1;
   }
   memset (tcp_addrs, 0, sizeof (tcp_addrs));
   return NULL;
@@ -574,19 +660,19 @@ static void * atcp_keepalive_thread (void * arg)
   const char * packet = keepalive_packet (&size_to_send);
   while (args->running) {   /* loop until main thread goes away */
     acquire (&(args->lock), "k");
-    if (args->last_keepalive_sent_time + KEEPALIVE_SECONDS * 10 <
-        allnet_time ()) {
-      if ((args->authenticating_keepalive != NULL) &&
-          (args->aksize > 0))
+    unsigned long long int now = allnet_time ();
+    if (args->last_keepalive_sent_time + KEEPALIVE_SECONDS < now) {
+if (debug_keepalive) printf ("sending keepalive %p %d\n", args->authenticating_keepalive, args->aksize);
+      if ((args->authenticating_keepalive != NULL) && (args->aksize > 0))
         send (local_sock, args->authenticating_keepalive, args->aksize, 0);
       else
         send (local_sock, packet, size_to_send, 0);
-      args->last_keepalive_sent_time = allnet_time ();
+      args->last_keepalive_sent_time = now;
     }
     release (&(args->lock), "k");
-    sleep_while_running (args, KEEPALIVE_SECONDS * 100);
+    sleep_while_running (args, KEEPALIVE_SECONDS);
   }
-  printf ("%lld: atcpd_keepalive_thread %p ending\n", allnet_time (), arg);
+  printf ("%lld: atcpd_keepalive_thread ending\n", allnet_time ());
   return NULL;
 }
 
@@ -598,14 +684,17 @@ static void * atcp_timer_thread (void * arg)
     sleep_while_running (args, KEEPALIVE_SECONDS * 3 * 1000);
     while (args->running &&
            (last_udp_received_time + KEEPALIVE_SECONDS * 50 > allnet_time ())) {
+if (debug_keepalive) printf ("atcp_timer_thread clearing debug_keepalive\n");
+debug_keepalive = 0;
       missed_count = 0;  /* recently received */
       sleep_while_running (args, KEEPALIVE_SECONDS * 1000);
     }
-    printf ("last_udp_receive_time %lld, current time %lld (k %d, m %d)\n",
+    printf ("last_udp_received_time %lld, current time %lld (k %d, m %d)\n",
             last_udp_received_time, allnet_time (),
             (int) KEEPALIVE_SECONDS, missed_count);
+debug_keepalive = 1;
   } while (args->running && (missed_count++ < 3));
-  printf ("%lld: atcpd_timer_thread %p ending %d\n", allnet_time (), arg,
+  printf ("%lld: atcpd_timer_thread ending %d\n", allnet_time (),
           args->running);
   args->running = 0;  /* gracefully stop all the other threads */
   return NULL;
@@ -664,6 +753,7 @@ printf ("   ad is complete %llu\n", allnet_time_us ());
     int i;
     for (i = 0; i < MAX_CONNECTIONS; i++) {
       tcp_fds [i] = -1;
+      tcp_connecting_fds [i] = -1;
       tcp_bytes [i] = 0;
     }
     memset (tcp_addrs, 0, sizeof (tcp_addrs));
@@ -673,14 +763,15 @@ printf ("   ad is complete %llu\n", allnet_time_us ());
     thread_args->authenticating_keepalive = NULL;
     thread_args->aksize = 0;
     pthread_t thr1, thr2, thr3, thr4, thr5, thr6;
-    pthread_create (&thr1, NULL, atcp_connect_thread, (void *) thread_args);
-    pthread_create (&thr2, NULL, atcp_recv_thread, (void *) thread_args);
-    pthread_create (&thr3, NULL, atcp_keepalive_thread, (void *) thread_args);
+    pthread_create (&thr1, NULL, atcp_recv_thread, (void *) thread_args);
+    pthread_create (&thr2, NULL, atcp_keepalive_thread, (void *) thread_args);
     /* two accept threads, one each for IPv4 and IPv6. */
-    pthread_create (&thr4, NULL, atcp_accept_thread, (void *) thread_args);
+    pthread_create (&thr3, NULL, atcp_accept_thread, (void *) thread_args);
+    pthread_create (&thr4, NULL, atcp_connect_thread, (void *) thread_args);
     pthread_create (&thr5, NULL, atcp_accept_thread, (void *) thread_args);
     pthread_create (&thr6, NULL, atcp_timer_thread, (void *) thread_args);
-    while (thread_args->running) {  /* loop until we are stopped or an error */
+    while (thread_args->running) {
+      /* read packets from ad until we are stopped or have an error */
       char buffer [ALLNET_MTU];
       struct sockaddr_storage sas;
       struct sockaddr * sap = (struct sockaddr *) (&sas);
@@ -712,10 +803,17 @@ printf ("   ad is complete %llu\n", allnet_time_us ());
         thread_args->running = 0;  /* kill off all the other threads, if any */
     }
     pthread_join (thr1, NULL);
+printf ("pthread_join(1) completed\n");
     pthread_join (thr2, NULL);
+printf ("pthread_join(2) completed\n");
     pthread_join (thr3, NULL);
+printf ("pthread_join(3) completed\n");
     pthread_join (thr4, NULL);
+printf ("pthread_join(4) completed\n");
     pthread_join (thr5, NULL);
+printf ("pthread_join(5) completed\n");
+    pthread_join (thr6, NULL);
+printf ("pthread_join(6) completed\n");
     close (thread_args->local_sock);  /* may already be closed */
     free (thread_args);
     printf ("%lld: atcpd_main restarting %d\n", allnet_time (), restart_count);
