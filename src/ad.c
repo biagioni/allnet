@@ -1042,7 +1042,7 @@ printf ("\n");
 printf ("not adding this sender: ");
 print_sockaddr ((struct sockaddr *) (&(r.from)), r.alen);
 printf ("\n");
-      continue;   /* not authenticated, do not process this packet */
+      return;   /* not authenticated, do not process this packet */
 #endif /* STRICT_AUTHENTICATION */
     }
   }
