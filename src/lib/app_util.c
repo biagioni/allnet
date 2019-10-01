@@ -119,15 +119,15 @@ static long long int last_rcvd = 0;
 static int internal_print_send_errors = 1;
 static char program_name_copy [10000];
 
-static int connect_once (int print_error);
-
 static int send_with_priority (const char * message, int msize, unsigned int p)
 {
   if (internal_sockfd < 0) {
     printf ("send_with_priority: unininitialzed socket %d, ls %lld\n",
             internal_sockfd, last_sent);
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* normal on iOS after restarting */
     char * pq = NULL;
     printf ("crashing %d\n", *pq);
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
     return 0;
   }
   char copy [SOCKET_READ_MIN_BUFFER];
@@ -143,8 +143,8 @@ static int send_with_priority (const char * message, int msize, unsigned int p)
     perror ("send_with_priority send");
     printf ("send (%d, %p, %d, 0): result %zd, errno %d\n",
             internal_sockfd, copy, msize + 4, s, e);
-    if (errno == EBADF)   /* socket was closed, reopen it */
-      connect_once (1);
+    if (errno == EBADF)  /* socket was closed, let someone else reopen it */
+      printf ("ebadf\n"); /* connect_once (1); */
   }
   return (s == (msize + 4));
 }
@@ -202,8 +202,10 @@ ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK);
       }
       if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
         error_desc = "connect_once recv";
+#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* normal on iOS after restarting */
         char * pq = NULL;
         printf ("%d\n", *pq);
+#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
         break;
       }
       usleep (50000);  /* wait for 50ms */
