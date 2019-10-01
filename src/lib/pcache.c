@@ -60,9 +60,9 @@ static struct hash_entry * trc_table = NULL;  /* trace requests and replies */
 static int num_trc = 0;
 
 /* combine IDs with a random value to make it harder to guess how we hash */
-unsigned long long int ack_secret = 0;
-unsigned long long int mid_secret = 0;
-unsigned long long int trc_secret = 0;
+static unsigned long long int ack_secret = 0;
+static unsigned long long int mid_secret = 0;
+static unsigned long long int trc_secret = 0;
 
 #define MAX_TOKENS	64	/* external tokens.  The list of which tokens
                                    we have sent to can be saved in a uint64_t */
