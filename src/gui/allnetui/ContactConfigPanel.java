@@ -152,6 +152,8 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
 
     private void init(String contactName) {
         Contact contact = contactData.getContact(contactName);
+        if (contact == null)
+            return;
         JCheckBox[] cbs = configPanel.getCheckBoxes();
         cbs[0].setSelected(contact.isNotify());
         cbs[1].setSelected(contact.isSaveMessages());
@@ -254,6 +256,8 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         }
         // that's a go, so let's do it
         Contact contact = contactData.getContact(contactName);
+        if (contact == null)
+            return;
         // checkboxes
         JCheckBox[] cbs = configPanel.getCheckBoxes();
         contact.setNotify(cbs[0].isSelected());

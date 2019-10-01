@@ -126,6 +126,7 @@
         int pos = start;
         for (int i = 0; i < count; i++) {
             result[i] = bString(data, pos);
+            if (result [i] == null) result [i] = new String ("");
             pos += numBytes(result[i]) + 1; 
         }
         return result;
@@ -198,6 +199,7 @@ System.out.println("hex for " + b + "/" + i + " is " + result);
             long receivedTime = toJavaMilli(b64(data, pos + 27));
             boolean isNew = (data[pos + 35] != 0);
             String text = bString(data, pos + 36);
+            if (text == null) text = new String ("");
             if (type < 3) {          // sent message
                 boolean acked = (type == 2);
                 result[i] = new Message(contact, sentTime, seq, text, acked);

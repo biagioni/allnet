@@ -48,8 +48,11 @@ else System.out.println ("renameContact (" + oldName + ", " + newName +
     }
 
     public void clearConversation(String contactName) {
-        Contact contact = contacts.get(contactName);
-        contact.getConversation().clear();
+        try {
+            Contact contact = contacts.get(contactName);
+            contact.getConversation().clear();
+        } catch (java.lang.NullPointerException e) {
+        }
     }
 
     public boolean contactExists(String contactName) {

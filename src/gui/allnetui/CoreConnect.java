@@ -97,6 +97,14 @@ public class CoreConnect extends Thread implements CoreAPI {
         }
     }
 
+    // calls SocketUtils.bString, but never returns null
+    private static String stringFromBytes(byte[] data, int start) {
+        String result = SocketUtils.bString(data, start);
+        if (result == null)
+            result = new String("");
+        return result;
+    }
+
     private void callbackMessageReceived(byte[] value) {
         assert(value.length > 18);
         boolean isBroadcast = (value[1] != 0);
@@ -104,11 +112,11 @@ public class CoreConnect extends Thread implements CoreAPI {
         // for the time, convert to the unix epoch and seconds to milliseconds
         long time = (SocketUtils.b64(value, 10) + allnetY2kSecondsInUnix)
                   * 1000;
-        String peer = SocketUtils.bString(value, 18);
+        String peer = stringFromBytes(value, 18);
         int peerEnd = 18 + peer.length() + 1;
-        String message = SocketUtils.bString(value, peerEnd);
+        String message = stringFromBytes(value, peerEnd);
         int messageEnd = peerEnd + message.length() + 1;
-        String desc = SocketUtils.bString(value, messageEnd);
+        String desc = stringFromBytes(value, messageEnd);
         int descEnd = messageEnd + desc.length() + 1;
         assert(descEnd == value.length);
         String dm = ((desc.length() > 0) ? (desc + "\n" + message) : message);
@@ -122,21 +130,21 @@ public class CoreConnect extends Thread implements CoreAPI {
     private void callbackMessageAcked(byte[] value) {
         assert(value.length > 9);
         long ack = SocketUtils.b64(value, 1);
-        String peer = SocketUtils.bString(value, 9);
+        String peer = stringFromBytes(value, 9);
         handlers.messageAcked(peer, ack);
     }
 
     private void callbackContactCreated(byte[] value) {
         assert(value.length > 2);
         cachedContacts = null;   // reset the cache
-        String peer = SocketUtils.bString(value, 1);
+        String peer = stringFromBytes(value, 1);
         handlers.contactCreated(peer);
     }
 
     private void callbackSubscriptionComplete(byte[] value) {
         assert(value.length > 2);
         cachedSubscriptions = null;   // reset the cache
-        String sender = SocketUtils.bString(value, 1);
+        String sender = stringFromBytes(value, 1);
         handlers.subscriptionComplete(sender);
     }
 
@@ -567,7 +575,7 @@ public class CoreConnect extends Thread implements CoreAPI {
                                            guiVariableSecret, contact);
         if (response [1] <= 0)
             return null;
-        return SocketUtils.bString(response, 2);
+        return stringFromBytes(response, 2);
     }
 
     // ultimately from xchat/store.h

@@ -237,10 +237,10 @@ else System.out.println ("ContactsPanel.rename (" + oldName + ") not found");
     void setActionListener(ActionListener listener) {
         this.listener = listener;
         Iterator<String> it = map.keySet().iterator();
-        JButton button;
         while (it.hasNext()) {
-            button = map.get(it.next());
-            button.addActionListener(listener);
+            JButton button = map.get(it.next());
+            if (button != null)
+                button.addActionListener(listener);
         }
     }
 
