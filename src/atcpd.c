@@ -1,4 +1,7 @@
 /* atcpd.c: allnet TCP daemon, to maintain TCP connections */
+/* 2019/10/01 note: args->running and run_state are doing the
+ * same thing -- stopping the processes.  Perhaps args->running could
+ * be removed and only run_state used */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,6 +56,10 @@ static int tcp_connecting_fds [MAX_CONNECTIONS];
 /* used to terminate the program if the keepalives stop */
 static unsigned long long int last_udp_received_time = 0;
 
+/* allow a separate thread to kill this thread */
+static int run_state = 0;      /* stopped */
+static int accept_count = 0;   /* the accept code does IPv6 (0) and IPv4 (1) */
+
 static int debug_keepalive = 0;
 
 struct atcp_thread_args {
@@ -98,10 +105,12 @@ static void release (pthread_mutex_t * mutex, const char * message)
 /* if running becomes false, exit immediately, otherwise sleep */
 static void sleep_while_running (struct atcp_thread_args * args, int ms)
 {
-  while ((args->running) && (ms > 0)) {
+  while ((run_state == 1) && (args->running) && (ms > 0)) {
     usleep (10000);
     ms -= 10;
   }
+  if (run_state != 1)
+    args->running = 0;
 }
 
 static socklen_t sockaddr_len (struct sockaddr_storage * addr)
@@ -389,13 +398,12 @@ static int atcp_accept_common (struct atcp_thread_args * args,
                                struct sockaddr_storage * addr,
                                socklen_t * alen, char ** ipv)
 {
-  static int count = 0;
   int result = 0;
   memset (addr, 0, sizeof (struct sockaddr_storage));
   *alen = 0;
   *ipv = "not IP";
   acquire (&(args->lock), "x");
-  if (count == 1) {
+  if (accept_count == 1) {
     struct sockaddr_in * sin = (struct sockaddr_in *) addr;
     sin->sin_family = AF_INET;
     sin->sin_addr.s_addr = allnet_htonl (INADDR_ANY);
@@ -403,7 +411,7 @@ static int atcp_accept_common (struct atcp_thread_args * args,
     *alen = sizeof (struct sockaddr_in);
     *ipv = "IPv4";
     result = AF_INET;
-  } else if (count == 0) {
+  } else if (accept_count == 0) {
     struct sockaddr_in6 * sin = (struct sockaddr_in6 *) addr;
     sin->sin6_family = AF_INET6;
     sin->sin6_addr = in6addr_any;
@@ -412,7 +420,7 @@ static int atcp_accept_common (struct atcp_thread_args * args,
     *ipv = "IPv6";
     result = AF_INET6;
   } /* else: result is 0 */
-  count++;
+  accept_count++;
   release (&(args->lock), "x");
   return result;
 }
@@ -432,6 +440,10 @@ static void * atcp_accept_thread (void * arg)
   socklen_t balen;  /* address length for the binding address */
   char * ipv = "unknown";
   int af = atcp_accept_common (args, &bind_addr, &balen, &ipv);
+  if (af <= 0) {
+    printf ("atcp_accept_thread socket, af %d, count %d\n", af, accept_count);
+    return NULL;
+  }
   struct sockaddr * sap = (struct sockaddr *) &bind_addr;
   if (af == AF_INET)  /* wait 10s for IPv6 to succeed */
     sleep_while_running (args, 10000);
@@ -601,7 +613,8 @@ printf ("atcp_connect_thread: %d peers\n", n);
       struct timeval timeout = { .tv_sec = 0, .tv_usec = 200 * 1000 };
       if (select (maxfd + 1, NULL, &write_fds, NULL, &timeout) > 0) {
         for (i = 0; i < n; i++) {
-          if (FD_ISSET (tcp_connecting_fds [i], &write_fds)) {
+          if ((tcp_connecting_fds [i] >= 0) &&
+              (FD_ISSET (tcp_connecting_fds [i], &write_fds))) {
             int ov = 0;  /* option value -- 0 for success */
             socklen_t ovl = sizeof (ov);
             int still_in_progress = 0;
@@ -726,22 +739,23 @@ static int local_socket ()
  * arg == NULL, or until there is an error */
 void * atcpd_main (char * arg)
 {
-  static int run_state = 0;   /* stopped */
   if (arg == NULL) {
 printf ("stopping atcpd_main\n");
     if (run_state == 1)
       run_state = -1;         /* ask the other thread to stop */
-printf ("waiting for ad to complete %llu\n", allnet_time_us ());
+printf ("waiting for atcpd to complete %llu\n", allnet_time_us ());
     while (run_state != 0)
       sleep (1);
-printf ("   ad is complete %llu\n", allnet_time_us ());
+printf ("   atcpd is complete %llu\n", allnet_time_us ());
     return NULL;              /* done, other thread has finished */
   }
   run_state = 1;              /* running */
+  accept_count = 0;           /* do IPv6 first, then IPv4 */
   alog = init_log ("atcpd");
   int restart_count = 0;
   while ((restart_count++ < 3) && (run_state == 1)) {
     int new_sock = local_socket ();
+    make_socket_nonblocking (new_sock, "main thread UDP socket to/from AD");
     last_udp_received_time = allnet_time (); /* start all the timers now */
     if (new_sock < 0) {
       sleep (2);
@@ -799,8 +813,6 @@ printf ("   ad is complete %llu\n", allnet_time_us ());
 /* printf ("received %d bytes, time %lld\n", (int) r, last_udp_received_time); */
       }
       sleep_while_running (thread_args, 30);  /* sleep 1/30s */
-      if (run_state != 1)
-        thread_args->running = 0;  /* kill off all the other threads, if any */
     }
     pthread_join (thr1, NULL);
 printf ("pthread_join(1) completed\n");
@@ -816,10 +828,12 @@ printf ("pthread_join(5) completed\n");
 printf ("pthread_join(6) completed\n");
     close (thread_args->local_sock);  /* may already be closed */
     free (thread_args);
-    printf ("%lld: atcpd_main restarting %d\n", allnet_time (), restart_count);
+    printf ("%lld: atcpd_main restarting %d, run state %d\n",
+            allnet_time (), restart_count, run_state);
     snprintf (alog->b, alog->s, "atcpd_main restarting\n");
     log_print (alog);
   }
+  run_state = 0;
   return NULL;
 }
 
