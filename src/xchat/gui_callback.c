@@ -35,10 +35,10 @@ static void gui_callback_message_received (const char * peer,
   p += strlen (message) + 1;
   if (desc != NULL) {
     strcpy (p, desc);
-    p += strlen (desc) + 1;
+    p += strlen (desc) + 1; /* p never used again, but future-proof is better */
   } else {       /* only put the terminating null character */
     *p = '\0';
-    p++;
+    p++;                    /* p never used again, but future-proof is better */
   }
   gui_send_buffer (gui_sock, reply, alloc);
   free (reply);

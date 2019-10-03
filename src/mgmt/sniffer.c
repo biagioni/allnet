@@ -58,11 +58,10 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
   struct allnet_header * hp = (struct allnet_header *) message;
   char * reason = NULL;
   if (! is_valid_message (message, msize, &reason)) {
-    int saved_hops = -1;
     int print_msg = 0;
     if ((msize > ALLNET_HEADER_SIZE) && (hp->hops > hp->max_hops)) {
       /* if a packet is valid but has invalid hop count, show anyway */
-      saved_hops = hp->hops;
+      int saved_hops = hp->hops;
       hp->hops = hp->max_hops;
       print_msg = (! is_valid_message (message, msize, &reason));
       hp->hops = saved_hops;

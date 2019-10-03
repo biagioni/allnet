@@ -622,11 +622,9 @@ int fill_bits (unsigned char * bitmap, int power_two, int selector)
       } else {   /* 0 for remote address, 1 for local address
                   * most of the logic is the same */
         unsigned char addr [ADDRESS_SIZE];
-        int nbits = -1;
-        if (selector == FILL_LOCAL_ADDRESS)
-          nbits = get_local (keysets [ikeyset], addr);
-        else
-          nbits = get_remote (keysets [ikeyset], addr);
+        int nbits = ((selector == FILL_LOCAL_ADDRESS) ?
+                     get_local  (keysets [ikeyset], addr) :
+                     get_remote (keysets [ikeyset], addr));
         if (nbits > 0) {
           int bits = (int)readb16 ((char *)addr);
           if (nbits < power_two) {  /* add a random factor */

@@ -270,7 +270,12 @@ static int socket_add_locked (struct socket_set * s, int sockfd, int is_local,
   int index = s->num_sockets;
   s->num_sockets++;
   int size = s->num_sockets * sizeof (struct socket_address_set);
+  struct socket_address_set * old = s->sockets;
   s->sockets = realloc (s->sockets, size);
+  if (s->sockets == NULL) {
+    s->sockets = old;
+    return 0;            /* re-allocation failed */
+  }
   s->sockets [index].sockfd = sockfd;
   s->sockets [index].is_local = is_local;
   s->sockets [index].is_global_v6 = is_global_v6;

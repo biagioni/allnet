@@ -27,7 +27,10 @@ struct dcache {
   int num_entries;
   release_function f;
   int last_match;
-  int busy;   /* 0, except when calling f */
+  /* busy is 0, except when calling f -- functions called by f do nothing
+   * in other words, busy prevents recursive calls, but does not stop
+   * calls from different threads (the mutex serializes those) */
+  int busy;
   char * name;
 /* the entries are kept in order of last usage, most recently used first */
   struct dcache_entry entries [0];

@@ -163,8 +163,10 @@ static int read_all_or_none (char * fname, char * buffer, int bsize)
   int total = 0;
   do {
     n = read (fd, buffer + total, bsize - total);
-    if (n < 0)
+    if (n < 0) {
+      close (fd);
       return -1;
+    }
     total += n;
   } while (total < bsize);
   close (fd);
@@ -1006,7 +1008,6 @@ static int rsa_unpad (int nbits, char * result, int rsize,
                       uint64_t * data, int dsize, int padding)
 {
   int nbytes = nbits / 8;
-  int bytes_in_payload = -1;
   if (dsize != nbytes)
     return -1;
   if (padding == WP_RSA_PADDING_NONE) {
@@ -1033,7 +1034,7 @@ static int rsa_unpad (int nbits, char * result, int rsize,
       return -1;  /* padding error */
     }
     int data_start = i + 1;
-    bytes_in_payload = nbytes - data_start;
+    int bytes_in_payload = nbytes - data_start;
     memmove (result, result + data_start, bytes_in_payload);
     memset (result + bytes_in_payload, 0, rsize - bytes_in_payload);
     return bytes_in_payload;

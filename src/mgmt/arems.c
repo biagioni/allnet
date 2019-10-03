@@ -591,6 +591,8 @@ static int client_rpc (const char * data, int dsize, char * contact)
   if (nkeys != 1) {
     printf ("error: contact %s has %d keys, 1 expected, aborting\n",
             contact, nkeys);
+    if (k != NULL)
+      free (k);
     return -1;
   }
   long long int counter = get_counter (contact, k [0], COUNTER_TYPE_LOCAL) + 1;
@@ -599,6 +601,7 @@ static int client_rpc (const char * data, int dsize, char * contact)
   save_counter (contact, k [0], counter, COUNTER_TYPE_LOCAL);
   encrypt_sign_send (data, dsize, 10, counter, 0, MESSAGE_TYPE_COMMAND,
                      contact, k [0]);
+  free (k);
   char * authorized [1] = { contact };
   int timed_out = 1;   /* if nothing happens, we time out */
   receive_packet_loop (&client_handler, &timed_out, MESSAGE_TYPE_RESPONSE,

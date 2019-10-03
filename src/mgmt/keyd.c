@@ -39,10 +39,10 @@ static void keyd_send_key (struct bc_key_info * key, const char * return_key,
   if ((klen > dlen) || (klen == 0)) {
     snprintf (alog->b, alog->s, "error in keyd_send_key: %d, %d\n", klen, dlen);
     log_print (alog);
+    free (data);
     return;
   }
   int type = ALLNET_TYPE_CLEAR;
-  unsigned int allocated = 0;
   unsigned int amhsize = sizeof (struct allnet_app_media_header);
   unsigned int bytes;
   struct allnet_header * hp =
@@ -56,8 +56,7 @@ static void keyd_send_key (struct bc_key_info * key, const char * return_key,
   writeb32u (amhp->media, ALLNET_MEDIA_PUBLIC_KEY);
   char * dp = adp + amhsize;
   memcpy (dp, data, dlen);
-  if (allocated)
-    free (data);
+  free (data);
 #ifdef DEBUG_PRINT
   print_buffer (dp, dlen, "keyd_send_key", 12, 1);
 #endif /* DEBUG_PRINT */

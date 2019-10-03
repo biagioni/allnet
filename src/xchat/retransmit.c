@@ -174,8 +174,10 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
   memcpy (data, " ", dsize);
   size_t msize = cd_size + dsize;
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
-  if (! init_chat_descriptor (cdp, contact))
+  if (! init_chat_descriptor (cdp, contact)) {
+    free (message);
     return;
+  }
   writeb64u (cdp->counter, last);  /* final sequence number */
   save_outgoing (contact, k, cdp, data, 0);
   /* since this is sort of a housekeeping message, send with minimum priority */

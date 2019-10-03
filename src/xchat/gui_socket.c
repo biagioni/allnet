@@ -90,6 +90,7 @@ static int accept_incoming (int listen_sock)
             (((unsigned char *)(&(sin.sin_port))) [0] * 256 +
              ((unsigned char *)(&(sin.sin_port))) [1]));
 #endif /* DEBUG_PRINT */
+  close (listen_sock);
   return result;
 }
 

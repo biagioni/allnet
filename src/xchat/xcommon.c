@@ -1661,11 +1661,6 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
 {
   static unsigned long long int last_call = 0;
   unsigned long long int now = allnet_time ();
-/* printf ("request_and_resend (%s): last %llu, now %llu, %s\n", contact,
-last_call, now, eagerly ? "eager" : "not eager"); */
-int debug1 = 0;
-int debug2 = 0;
-int debug3 = 0;
   if (last_call >= now)
     return -1; /* only allow one call per second, even if eagerly */
   if ((last_call + 9 >= now) && (! eagerly))
@@ -1691,7 +1686,6 @@ int debug3 = 0;
                                  hops, ALLNET_PRIORITY_LOCAL_LOW, expiration)) {
       last_retransmit = now;   /* sent something, update time */
       result = 1;    /* transmission successful */
-debug1++;
     }
   }
   /* send a data request, again at a very limited rate */
@@ -1713,7 +1707,6 @@ debug1++;
         sleep_time = random_int (sleep_time,
                                  (sleep_time * SLEEP_INCREASE_NUMERATOR) /
                                  SLEEP_INCREASE_DENOMINATOR);
-debug2++;
     }
   }
   /* resend any unacked messages, but less than once every hour (or eagerly) */
@@ -1776,7 +1769,6 @@ debug2++;
             last_resend = now;
             if (result != 1)
               result = 2;
-debug3++;
           }
         }
       }
@@ -1793,10 +1785,6 @@ debug3++;
     resend_pending_keys (sock, now);
     last_key_resend = now;
   }
-/* if (strcmp (contact, "arb2018") == 0)
-printf ("request_and_resend (%s): last %llu, now %llu, %s: %d, %d, %d => %d\n",
-contact, last_call, now, eagerly ? "eager" : "not eager", debug1, debug2,
-debug3, result); */
   return result;
 }
 

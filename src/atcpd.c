@@ -561,8 +561,8 @@ static void * atcp_connect_thread (void * arg)
    * in reading it more than once */
   unsigned char dest [ADDRESS_SIZE];
   memset (dest, 0, ADDRESS_SIZE);
-  int sleep_time = KEEPALIVE_SECONDS;           /* initial interval */
-  sleep_time = 2;
+  /* int sleep_time = KEEPALIVE_SECONDS;            initial interval */
+  int sleep_time = 2;     /* go rather quickly, in case restarted in ios */
   int n = routing_top_dht_matches (dest, 0, addrs, addr_lengths, NUM_CONNECT);
 #ifdef TEST_TCP_ONLY
 printf ("atcp_connect_thread: %d peers\n", n);
@@ -730,6 +730,7 @@ static int local_socket ()
     print_sockaddr ((struct sockaddr *) (&sin), sizeof (sin));
     snprintf (alog->b, alog->s, "atcpd unable to connect UDP port, exiting\n");
     log_print (alog);
+    close (result);
     return -1;
   }
   return result;

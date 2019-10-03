@@ -210,6 +210,8 @@ int open_rw_config (const char * program, const char * file, int print_errors)
 void set_home_directory (const char * root)
 {
 printf ("setting global home directory to %s\n", root);
+  if (global_home_directory != NULL)
+    free (global_home_directory);
   global_home_directory = strcpy_malloc (root, "set_home_directory");
 }
 

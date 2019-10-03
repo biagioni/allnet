@@ -777,14 +777,19 @@ static void add_to_message_id_cache (char * ack)
     int total = ((current_cache_size > 0) ? (current_cache_size * 2) : 500);
     size_t size = total * MESSAGE_ID_SIZE;
     char * new_ids = realloc (message_id_cache, size);
+    if (new_ids == NULL) {
+      printf ("allocation error in add_to_message_id: %zd %d %p/%p\n",
+              size, total, new_ids, message_id_cache);
+      return;  /* don't add */
+    }
+    message_id_cache = new_ids;
     char * new_acks = realloc (message_ack_cache, size); 
-    if ((new_ids == NULL) || (new_acks == NULL)) {
+    if (new_acks == NULL) {
       printf ("allocation error in add_to_message_id: %zd %d %p/%p %p/%p\n",
               size, total, new_ids, message_id_cache,
               new_acks, message_ack_cache);
       return;  /* don't add */
     }
-    message_id_cache = new_ids;
     message_ack_cache = new_acks;
     current_cache_size = total;
   }

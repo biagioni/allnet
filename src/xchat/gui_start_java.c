@@ -122,6 +122,8 @@ static char * find_java_path ()
         free (free_path);
         return test;   /* found! */
       }
+    } else {
+      free (test);
     }
     path = next;
     if (path != NULL)
@@ -180,6 +182,7 @@ static pid_t exec_java_ui (const char * arg)
 #ifdef DEBUG_EXEC_JAVA
       printf ("exec_java_ui: new path is %s\n", path);
 #endif /* DEBUG_EXEC_JAVA */
+      free (jarfile);
       jarfile = strcat3_malloc (path, "/", JAR_FILE_NAME, "exec_java_ui 2");
 #ifdef DEBUG_EXEC_JAVA
       printf ("exec_java_ui: new jarfile is %s\n", jarfile);
@@ -189,11 +192,13 @@ static pid_t exec_java_ui (const char * arg)
   if (access (jarfile, R_OK) != 0) {
     perror ("access");
     printf ("unable to start Java gui %s\n", jarfile);
+    free (jarfile);
     return -1;
   }
   pid_t pid = fork ();
   if (pid < 0) {
     perror ("fork");
+    free (jarfile);
     return pid;
   }
   if (pid == 0) {   /* child process */
@@ -205,6 +210,7 @@ static pid_t exec_java_ui (const char * arg)
      * the file tree is different for the two, but relative paths work */
     if ((jarfile [0] == '/') || (jarfile [0] == '\\')) {
       if (chdir (path) == 0)
+        free (jarfile);
         jarfile = JAR_FILE_NAME;  /* cd successful, so use just the name */
     }
 #ifdef DEBUG_EXEC_JAVA

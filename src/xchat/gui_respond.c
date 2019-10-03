@@ -366,6 +366,7 @@ static void gui_clear_conversation (char * message, int64_t length,
   if (length > 1) {   /* shortest is a single-character name */
     char * contact = contact_name_from_buffer (message, length);
     reply [1] = clear_conversation (contact);
+    free (contact);
   }
   gui_send_buffer (gui_sock, reply, sizeof (reply));
 }
@@ -381,6 +382,7 @@ static void gui_delete_contact (char * message, int64_t length, int gui_sock)
     char * contact = contact_name_from_buffer (message, length);
     delete_conversation (contact);  /* ignore the result, not relevant */
     reply [1] = delete_contact (contact);  /* this is the one we report */
+    free (contact);
   }
   gui_send_buffer (gui_sock, reply, sizeof (reply));
 }
@@ -628,9 +630,11 @@ static void gui_get_messages (char * message, int64_t length, int gui_sock)
         gui_send_result_messages (GUI_GET_MESSAGES, msgs, nresult,
                                   gui_sock, latest);
         free_all_messages (msgs, num_used);
+        free (contact);
         return;
       }
     }
+    free (contact);
   }
   /* if we didn't reply above, something went wrong.  Send 0 messages */
   gui_send_buffer (gui_sock, reply_header, sizeof (reply_header));
@@ -733,6 +737,7 @@ static void gui_subscribe (char * message, int64_t length,
   if (length > 0) {
     char * ahra = contact_name_from_buffer (message, length);
     reply_header [1] = subscribe_broadcast (allnet_sock, ahra);
+    free (ahra);
   }
   gui_send_buffer (gui_sock, reply_header, sizeof (reply_header));
 }

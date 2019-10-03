@@ -626,6 +626,7 @@ int wp_rsa_read_key_from_file (const char * fname, int * nbits,
   ssize_t nread = read (fd, wp_buffer, sizeof (wp_buffer));
   if (nread < 0) {
     perror ("read key file");
+    close (fd);
     return 0;
   }
   close (fd);
@@ -665,16 +666,19 @@ int wp_rsa_write_key_to_file (const char * fname, const wp_rsa_key_pair * key)
   ssize_t nwrite = write (fd, prefix, strlen (prefix));
   if (nwrite != strlen (prefix)) {
     perror ("write");
+    close (fd);
     return 0;
   }
   nwrite = write (fd, wp_buffer, dbytes);
   if (nwrite != dbytes) {
     perror ("write 2");
+    close (fd);
     return 0;
   }
   nwrite = write (fd, postfix, strlen (postfix));
   if (nwrite != strlen (postfix)) {
     perror ("write 3");
+    close (fd);
     return 0;
   }
   close (fd);
