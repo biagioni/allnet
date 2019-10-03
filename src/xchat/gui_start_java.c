@@ -209,9 +209,10 @@ static pid_t exec_java_ui (const char * arg)
      * cygwin process, whereas the java executes as a windows process, and
      * the file tree is different for the two, but relative paths work */
     if ((jarfile [0] == '/') || (jarfile [0] == '\\')) {
-      if (chdir (path) == 0)
+      if (chdir (path) == 0) {
         free (jarfile);
         jarfile = JAR_FILE_NAME;  /* cd successful, so use just the name */
+      }
     }
 #ifdef DEBUG_EXEC_JAVA
     char debug [PATH_MAX + 1];
