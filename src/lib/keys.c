@@ -115,9 +115,18 @@ static void generate_contacts ()
   int ki = 0;
   cp_used = 0;
   for (ki = 0; ki < num_key_infos; ki++) {
-    if ((kip [ki].contact_name != NULL) &&
-        (! contact_exists (kip [ki].contact_name)))
-      cpx [cp_used++] = kip [ki].contact_name;
+    if (kip [ki].contact_name != NULL) {
+      int index_plus_one = contact_exists (kip [ki].contact_name);
+      if (index_plus_one == 0) {  /* the normal case */
+        cpx [cp_used++] = kip [ki].contact_name;
+      } else {                    /* duplicate name */
+        printf ("duplicate name %s found at indices %d and %d\n",
+                kip [ki].contact_name, index_plus_one - 1, cp_used);
+        char * dname = strcat_malloc (kip [ki].contact_name, " (duplicate)",
+                                      "generate_contacts in keys.c");
+        cpx [cp_used++] = dname;
+      }
+    }
   }
 }
 
