@@ -751,7 +751,6 @@ printf ("   atcpd is complete %llu\n", allnet_time_us ());
     return NULL;              /* done, other thread has finished */
   }
   run_state = 1;              /* running */
-  accept_count = 0;           /* do IPv6 first, then IPv4 */
   alog = init_log ("atcpd");
   int restart_count = 0;
   while ((restart_count++ < 3) && (run_state == 1)) {
@@ -771,6 +770,7 @@ printf ("   atcpd is complete %llu\n", allnet_time_us ());
       tcp_connecting_fds [i] = -1;
       tcp_bytes [i] = 0;
     }
+    accept_count = 0;           /* do IPv6 first, then IPv4 */
     memset (tcp_addrs, 0, sizeof (tcp_addrs));
     pthread_mutex_init (&(thread_args->lock), NULL);
     thread_args->running = 1;
