@@ -933,6 +933,43 @@ uint64_t highest_seq_any_key (const char * contact, int type_wanted)
   return result;
 }
 
+static void missing_before_loop (const struct message_store_info * msgs,
+                                 int num_used, keyset k, uint64_t seq,
+                                 uint64_t * missing_before)
+{
+  *missing_before = 0;
+  uint64_t prev_seq = 0; /* the first sequence number should be 1 */
+  int i;
+  for (i = 0; i < num_used; i++) {
+    if ((msgs [i].keyset == k) && (msgs [i].msg_type == MSG_TYPE_RCVD) &&
+        (msgs [i].seq < seq) && (msgs [i].seq > prev_seq))
+      prev_seq = msgs [i].seq;
+  }
+  if (prev_seq + 1 < seq)
+    *missing_before = seq - (prev_seq + 1);
+}
+
+/* to be called with the sequence number of a received message.
+ * returns 1 and fills in the results if successful, or returns 0 otherwise */
+int missing_before (const char * contact, keyset k, uint64_t seq,
+                    uint64_t * missing_before)
+{
+  int result = 0;
+  if (missing_before == NULL)
+    return result;
+  *missing_before = 0;
+  pthread_mutex_lock (&message_cache_mutex);
+  int index = find_message_cache_record (contact);
+  if (index >= 0) {
+    missing_before_loop (message_cache [index].msgs,
+                         message_cache [index].num_used, k, seq,
+                         missing_before);
+    result = 1;
+  }
+  pthread_mutex_unlock (&message_cache_mutex);
+  return result;
+}
+
 /* fix the prev_missing of each received message.  quadratic loop */
 static void set_missing (struct message_store_info * msgs, int num_used,
                          keyset k)
@@ -941,23 +978,36 @@ static void set_missing (struct message_store_info * msgs, int num_used,
   for (i = 0; i < num_used; i++) {
     if ((msgs [i].keyset == k) && (msgs [i].msg_type == MSG_TYPE_RCVD)) {
       uint64_t seq = msgs [i].seq;
-      uint64_t prev_seq = 0; /* the first sequence number should be 1 */
-      int index;
-      for (index = 0; index < num_used; index++) {
-        if ((msgs [index].keyset == k) &&
-            (msgs [index].msg_type == MSG_TYPE_RCVD) &&
-            (msgs [index].seq < seq) &&
-            (msgs [index].seq > prev_seq))
-          prev_seq = msgs [index].seq;
-      }
-      msgs [i].prev_missing = 0;
-      if (prev_seq >= msgs [i].seq)
-        printf ("error: prev_seq %" PRIu64 " >= seq [%d] %" PRIu64 "\n",
-                prev_seq, i, msgs [i].seq);
-      else /* prev_seq < msgs [i].seq) */
-        msgs [i].prev_missing = (msgs [i].seq - (prev_seq + 1));
+      uint64_t before = 0;
+      missing_before_loop (msgs, num_used, k, seq, &before);
+      msgs [i].prev_missing = before;
     }
   }
+}
+
+/* fix the prev_missing of message seq and of any message following it. */
+static void fix_missing (struct message_store_info * msgs, int num_used,
+                         keyset k, uint64_t seq, uint64_t * prev_missing)
+{
+  uint64_t prev_seq = 0;
+  int prev_index = -1;
+  int my_index = -1;
+  int i;
+  for (i = 0; i < num_used; i++) {
+    if ((msgs [i].keyset == k) && (msgs [i].msg_type == MSG_TYPE_RCVD) &&
+        (msgs [i].seq == seq))
+      my_index = i;
+    if ((msgs [i].keyset == k) && (msgs [i].msg_type == MSG_TYPE_RCVD) &&
+        (msgs [i].seq < seq) && (msgs [i].seq > prev_seq)) {
+      prev_index = i;
+      prev_seq = msgs [i].seq;
+    }
+  }
+  uint64_t prev = (prev_index == -1) ? 0 : (seq - (prev_seq + 1));
+  if (prev_missing != NULL)
+    *prev_missing = prev;
+  if (my_index != -1)
+    msgs [my_index].prev_missing = prev;
 }
 
 /* set the message_has_been_acked of each sent message acked by this message */
@@ -1107,10 +1157,73 @@ static void store_save_message_seq_time (int fd, uint64_t seq,
   store_save_string (fd, "\n");
 }
 
+/* add an individual message, modifying msgs, num_alloc or num_used as needed
+ * 0 <= position <= *num_used
+ * called from save_record and add_all_messages
+ * return 1 if successful, 0 if not */
+static int add_message (struct message_store_info ** msgs, int * num_alloc,
+                        int * num_used, int position, keyset ks,
+                        int type, uint64_t seq, uint64_t missing,
+                        uint64_t time, int tz_min, uint64_t rcvd_ackd_time,
+                        int acked, const char * ack,
+                        const char * message, int msize)
+{
+  if ((num_used == NULL) || (num_alloc == NULL) || (msgs == NULL) ||
+      (position < 0) || (position > (*num_used) + 1))
+    return 0;
+  if (*num_used < 0)
+    *num_used = 0;
+  if ((*msgs == NULL) || (*num_used >= *num_alloc)) {
+  /* allocate sufficient space.  We allocate up to 10x as much space as
+   * we need, so that the reallocations are infrequent */
+    int count = *num_alloc;
+    if (count <= 0)
+      count = 100;
+    /* increase by a factor of 10, to do this as infrequently as possible */
+    int needed_count = count * 10;
+    size_t needed = needed_count * sizeof (struct message_store_info);
+    void * allocated = realloc (*msgs, needed);
+    if (allocated == NULL) {
+      perror ("realloc");
+      printf ("add_message error trying to allocate %zd bytes\n", needed);
+      return 0;
+    }
+    *num_alloc = needed_count;
+    *msgs = allocated;
+  }
+  int index = *num_used;
+  struct message_store_info * p = (*msgs) + index;
+  while (index > position) {   /* make room for the new message */
+    index--;
+    p--;
+    *(p + 1) = *p;
+  }
+  *num_used = (*num_used) + 1;
+  p->keyset = ks;
+  p->msg_type = type;
+  p->seq = seq;
+  p->prev_missing = missing;
+  p->time = time;
+  p->tz_min = tz_min;
+  p->rcvd_ackd_time = rcvd_ackd_time;
+  p->message_has_been_acked = acked;
+  if (ack != NULL)
+    memcpy (p->ack, ack, MESSAGE_ID_SIZE);
+  else
+    memset (p->ack, 0, MESSAGE_ID_SIZE);
+  p->message = strcpy_malloc (message, "add_message");
+  p->msize = msize;
+  return 1;
+}
+
+/* saves the record.  If type is MSG_TYPE_RCVD, also fills in 
+ * prev_missing (if not null) */
 void save_record (const char * contact, keyset k, int type, uint64_t seq,
                   uint64_t t, int tz_min, uint64_t rcvd_time,
-                  const char * message_ack, const char * message, int msize)
+                  const char * message_ack, const char * message, int msize,
+                  uint64_t * prev_missing)
 {
+  if (prev_missing != NULL) *prev_missing = 0;
   if ((type != MSG_TYPE_RCVD) && (type != MSG_TYPE_SENT) &&
       (type != MSG_TYPE_ACK))
     return;
@@ -1160,13 +1273,13 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
       add_message (&(message_cache [index].msgs),
                    &(message_cache [index].num_alloc),
                    &(message_cache [index].num_used),
-                   message_cache [index].num_used,  /* add at the end */
-                   k, type, seq, 0,  /* none missing */
+                   0,  /* add at the beginning */
+                   k, type, seq, 0,  /* none missing before -- for now */
                    t, tz_min, rcvd_time, 0, /* no ack */
                    message_ack, message, msize);
-      if (type == MSG_TYPE_RCVD) /* may change prev_missing */
-        set_missing (message_cache [index].msgs,
-                     message_cache [index].num_used, k);
+      if (type == MSG_TYPE_RCVD) /* may change missing_*   */
+        fix_missing (message_cache [index].msgs, message_cache [index].num_used,
+                     k, seq, prev_missing);
       if (type == MSG_TYPE_SENT) /* may change message_has_been_acked */
         ack_all_messages (message_cache [index].msgs,
                           message_cache [index].num_used, contact, k);
@@ -1186,65 +1299,6 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
       save_int_to_file (contact, k, "last_received", seq);
   }
   pthread_mutex_unlock (&message_cache_mutex);
-}
-
-/* add an individual message, modifying msgs, num_alloc or num_used as needed
- * 0 <= position <= *num_used
- * normally call after calling save_record (or internally)
- * return 1 if successful, 0 if not */
-int add_message (struct message_store_info ** msgs, int * num_alloc,
-                 int * num_used, int position, keyset ks,
-                 int type, uint64_t seq, uint64_t missing,
-                 uint64_t time, int tz_min, uint64_t rcvd_ackd_time,
-                 int acked, const char * ack,
-                 const char * message, int msize)
-{
-  if ((num_used == NULL) || (num_alloc == NULL) || (msgs == NULL) ||
-      (position < 0) || (position > (*num_used) + 1))
-    return 0;
-  if (*num_used < 0)
-    *num_used = 0;
-  if ((*msgs == NULL) || (*num_used >= *num_alloc)) {
-  /* allocate sufficient space.  We allocate up to 10x as much space as
-   * we need, so that the reallocations are infrequent */
-    int count = *num_alloc;
-    if (count <= 0)
-      count = 100;
-    /* increase by a factor of 10, to do this as infrequently as possible */
-    int needed_count = count * 10;
-    size_t needed = needed_count * sizeof (struct message_store_info);
-    void * allocated = realloc (*msgs, needed);
-    if (allocated == NULL) {
-      perror ("realloc");
-      printf ("add_message error trying to allocate %zd bytes\n", needed);
-      return 0;
-    }
-    *num_alloc = needed_count;
-    *msgs = allocated;
-  }
-  int index = *num_used;
-  struct message_store_info * p = (*msgs) + index;
-  while (index > position) {   /* make room for the new message */
-    index--;
-    p--;
-    *(p + 1) = *p;
-  }
-  *num_used = (*num_used) + 1;
-  p->keyset = ks;
-  p->msg_type = type;
-  p->seq = seq;
-  p->prev_missing = missing;
-  p->time = time;
-  p->tz_min = tz_min;
-  p->rcvd_ackd_time = rcvd_ackd_time;
-  p->message_has_been_acked = acked;
-  if (ack != NULL)
-    memcpy (p->ack, ack, MESSAGE_ID_SIZE);
-  else
-    memset (p->ack, 0, MESSAGE_ID_SIZE);
-  p->message = strcpy_malloc (message, "add_message");
-  p->msize = msize;
-  return 1;
 }
 
 #ifdef DEBUG_PRINT

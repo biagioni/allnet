@@ -106,14 +106,15 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     private void callbackMessageReceived(byte[] value) {
-        assert(value.length > 18);
+        assert(value.length > 32);
         boolean isBroadcast = (value[1] != 0);
         long seq = SocketUtils.b64(value, 2);
         // for the time, convert to the unix epoch and seconds to milliseconds
         long time = (SocketUtils.b64(value, 10) + allnetY2kSecondsInUnix)
                   * 1000;
-        String peer = stringFromBytes(value, 18);
-        int peerEnd = 18 + peer.length() + 1;
+        long prevMissing = SocketUtils.b64(value, 18);
+        String peer = stringFromBytes(value, 26);
+        int peerEnd = 26 + peer.length() + 1;
         String message = stringFromBytes(value, peerEnd);
         int messageEnd = peerEnd + message.length() + 1;
         String desc = stringFromBytes(value, messageEnd);
@@ -124,7 +125,8 @@ public class CoreConnect extends Thread implements CoreAPI {
             setComplete(peer);
             setVisible(peer);
         }
-        handlers.messageReceived(peer, time, seq, message, isBroadcast);
+        handlers.messageReceived(peer, time, seq, message, isBroadcast,
+                                 prevMissing);
     }
 
     private void callbackMessageAcked(byte[] value) {
@@ -451,30 +453,57 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // @return true if was able to create the group
     public boolean createGroup(String name) {
+        byte[] result = doRPCWithCode(guiCreateGroup, name);
         cachedContacts = null;   // reset the cache
-        System.out.println ("createGroup not implemented yet");
-        return false;
+        boolean r = (result[1] != 0);
+        System.out.println ("createGroup => " + (r ? "true" : "false"));
+        return r;
     }
+
     // @return the members of this group, null if group does not exist
+    // @todo if used, add same caching as memberOfGroupsRecursive
     public String[] members(String group) {
-        System.out.println ("members not implemented yet");
-        return null;
+        byte[] result = doRPCWithCode(guiMembers, group);
+        long count = SocketUtils.b64(result, 1); 
+        String[] mem = SocketUtils.bStringArray(result, 9, count);
+        System.out.println ("members of " + group + " are " + mem);
+        return mem;
     }
+
     // @return the members of this group and recursively any subgroups
     //         in other words, all contacts returned are
     //         individual contacts, not groups
+    // @todo if used, add same caching as memberOfGroupsRecursive
     public String[] membersRecursive(String group) {
+        byte[] result = doRPCWithCode(guiMembersRecursive, group);
+        long count = SocketUtils.b64(result, 1); 
+        String[] mem = SocketUtils.bStringArray(result, 9, count);
         System.out.println ("membersRecursive not implemented yet");
-        return null;
+        return mem;
     }
+
     // @return the groups of which this contact is a member
+    // @todo if used, add same caching as memberOfGroupsRecursive
     public String[] memberOfGroups(String contact) {
+        byte[] result = doRPCWithCode(guiMemberOfGroups, contact);
+        long count = SocketUtils.b64(result, 1); 
+        String[] groups = SocketUtils.bStringArray(result, 9, count);
         System.out.println ("memberOfGroups not implemented yet");
-        return null;
+        return groups;
     }
+
+    private String memberOfGroupsRecursiveCachedContact = null;
+    private String[] memberOfGroupsRecursiveCachedGroups = null;
     public String[] memberOfGroupsRecursive(String contact) {
-        System.out.println ("memberOfGroupsRecursive not implemented yet");
-        return null;
+        if ((memberOfGroupsRecursiveCachedContact == null) ||
+            (! memberOfGroupsRecursiveCachedContact.equals(contact))) {
+            byte[] result = doRPCWithCode(guiMemberOfGroupsRecursive, contact);
+            long count = SocketUtils.b64(result, 1); 
+            String[] groups = SocketUtils.bStringArray(result, 9, count);
+            memberOfGroupsRecursiveCachedContact = contact;
+            memberOfGroupsRecursiveCachedGroups = groups;
+        }
+        return memberOfGroupsRecursiveCachedGroups;
     }
 
     // @return true if was able to rename the contact
@@ -734,8 +763,12 @@ public class CoreConnect extends Thread implements CoreAPI {
         // System.out.println("AllNetConnect thread running");
         for (String contact: contacts()) {
             this.handlers.contactCreated(contact);
-            Message[] msgs = getMessages(contact, -1);  // get all
-            this.handlers.savedMessages(msgs);
+        }
+        for (String contact: contacts()) {
+            if (! contactIsGroup(contact)) {
+                Message[] msgs = getMessages(contact, -1);  // get all
+                this.handlers.savedMessages(msgs);
+            }
         }
         for (String sender: subscriptions()) {
             this.handlers.subscriptionComplete(sender);

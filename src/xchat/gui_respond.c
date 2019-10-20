@@ -296,7 +296,7 @@ static void gui_members (unsigned int code, char * message, int64_t length,
     char * contact = contact_name_from_buffer (message, length);
     char ** members = NULL;
     int count = group_membership (contact, &members);
-    gui_send_string_array (GUI_CONTACTS, members, count,
+    gui_send_string_array (code, members, count,
                            gui_sock, "gui_members");
     free (contact);
     if (members != NULL)
@@ -319,7 +319,7 @@ static void gui_member_of (unsigned int code, char * message, int64_t length,
     char ** members = NULL;
     int count = (recursive ? member_of_groups_recursive (contact, &members)
                            : member_of_groups (contact, &members));
-    gui_send_string_array (GUI_CONTACTS, members, count,
+    gui_send_string_array (code, members, count,
                            gui_sock, "gui_member_of");
     free (contact);
     if (members != NULL)

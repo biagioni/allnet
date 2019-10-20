@@ -205,7 +205,7 @@ System.out.println("hex for " + b + "/" + i + " is " + result);
                 result[i] = new Message(contact, sentTime, seq, text, acked);
             } else {                 // received message
                 result[i] = new Message(contact, sentTime, receivedTime,
-                                        seq, text, bc, isNew);
+                                        seq, text, bc, isNew, missing);
             }
             pos += 36 + numBytes(text) + 1;
         }

@@ -15,20 +15,23 @@ static void gui_callback_message_received (const char * peer,
                                            const char * message,
                                            const char * desc,
                                            uint64_t seq, time_t mtime,
+                                           uint64_t prev_missing,
                                            int broadcast, int gui_sock)
 {
 /* format: code, 1-byte broadcast, 8-byte sequence, 8-byte time,
+           8-byte prev_missing,
            then null_terminated peer, message, and description */
   size_t string_alloc = strlen (peer) + strlen (message) +
                         ((desc == NULL) ? 0 : strlen (desc)) + 3;
-#define RECEIVED_MESSAGE_HEADER_SIZE	18
+#define RECEIVED_MESSAGE_HEADER_SIZE	26
   size_t alloc = RECEIVED_MESSAGE_HEADER_SIZE + string_alloc;
   char * reply = malloc_or_fail (alloc, "gui_callback_message_received");
   reply [0] = GUI_CALLBACK_MESSAGE_RECEIVED;
   reply [1] = broadcast;
   writeb64 (reply + 2, seq);
   writeb64 (reply + 10, mtime);
-  char * p = reply + 18;
+  writeb64 (reply + 18, prev_missing);
+  char * p = reply + RECEIVED_MESSAGE_HEADER_SIZE;
   strcpy (p, peer);
   p += strlen (peer) + 1;
   strcpy (p, message);
@@ -131,6 +134,7 @@ void gui_socket_main_loop (int gui_sock, int allnet_sock)
   while ((rcvd = local_receive (timeout, &packet, &pri)) >= 0) {
     int verified = 0, duplicate = -1, broadcast = -2;
     uint64_t seq = 0;
+    uint64_t prev_missing = 0;
     char * peer = NULL;
     keyset kset = 0;
     char * desc = NULL;
@@ -141,7 +145,7 @@ void gui_socket_main_loop (int gui_sock, int allnet_sock)
     time_t mtime = 0;
     int mlen = handle_packet (allnet_sock, packet, rcvd, pri,
                               &peer, &kset, &message, &desc,
-                              &verified, &seq, &mtime,
+                              &verified, &seq, &mtime, &prev_missing,
                               &duplicate, &broadcast, &acks, &trace);
 #ifdef DEBUG_PRINT
 if (mlen != 0) printf ("handle_packet returned %d\n", mlen);
@@ -152,17 +156,8 @@ if (mlen != 0) printf ("handle_packet returned %d\n", mlen);
           mtime = allnet_time ();
         if (local_is_visible (peer, broadcast))
           gui_callback_message_received (peer, message, desc, seq,
-                                         mtime, broadcast, gui_sock);
-        char ** groups = NULL;
-        int ngroups = member_of_groups_recursive (peer, &groups);
-        int ig;
-        for (ig = 0; ig < ngroups; ig++) {
-          if (is_visible (groups [ig]))
-            gui_callback_message_received (groups [ig], message, desc, seq,
-                                           mtime, broadcast, gui_sock);
-        }
-        if (groups != NULL)
-          free (groups);
+                                         mtime, prev_missing,
+                                         broadcast, gui_sock);
       }
       if ((! broadcast) &&
           ((old_contact == NULL) ||

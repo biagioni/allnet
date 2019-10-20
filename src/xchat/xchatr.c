@@ -68,7 +68,7 @@ int main (int argc, char ** argv)
       char * message = NULL;
       int mlen = handle_packet (sock, packet, found, pri, &peer, &kset,
                                 &message, &desc, &verified, &seq, NULL,
-                                &duplicate, &broadcast, NULL, NULL);
+                                NULL, &duplicate, &broadcast, NULL, NULL);
       if (mlen > 0) {
         /* time_t rtime = time (NULL); */
         char * ver_mess = "";

@@ -93,6 +93,7 @@ static void * receive_thread (void * arg)
     /* it's good to call handle_packet even if we didn't get a packet */
     int verified = 0, duplicate = -1, broadcast = -2;
     uint64_t seq = 0;
+    uint64_t prev_missing = 0;
     char * peer = NULL;
     keyset kset = 0;
     char * desc = NULL;
@@ -102,12 +103,17 @@ static void * receive_thread (void * arg)
     struct allnet_mgmt_trace_reply * trace = NULL;
     int mlen = handle_packet (a.sock, packet, found, pri, &peer, &kset,
                               &message, &desc, &verified, &seq, NULL,
+                              &prev_missing,
                               &duplicate, &broadcast, &acks, &trace);
     if (mlen > 0) {
       /* time_t rtime = time (NULL); */
       char * ver_mess = "";
       if (! verified)
         ver_mess = " (not verified)";
+      char p_mess [1000] = "";
+      if (prev_missing > 0)
+        snprintf (p_mess, sizeof (p_mess),
+                  " (%" PRIu64 " missing)", prev_missing);
       char * dup_mess = "";
       if (duplicate)
         dup_mess = "duplicate ";
@@ -115,17 +121,19 @@ static void * receive_thread (void * arg)
       if (broadcast) {
         bc_mess = "broadcast ";
         dup_mess = "";
+        p_mess [0] = '\0';
         desc = "";
       }
       if ((! duplicate) || (a.print_duplicates)) {
         char string [PRINT_BUF_SIZE];
         if (strcmp (prompt, peer) != 0)
           snprintf (string, sizeof (string),
-                    "from '%s'%s got %s%s%s\n  %s\n",
-                    peer, ver_mess, dup_mess, bc_mess, desc, message);
+                    "from '%s'%s got %s%s%s%s\n  %s\n",
+                    peer, ver_mess, dup_mess, p_mess, bc_mess, desc, message);
         else
           snprintf (string, sizeof (string),
-                    "got %s%s%s\n  %s\n", dup_mess, bc_mess, desc, message);
+                    "got %s%s%s%s\n  %s\n",
+                    dup_mess, p_mess, bc_mess, desc, message);
         print_to_output (string);
       }
       if ((! broadcast) &&

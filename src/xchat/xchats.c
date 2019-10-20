@@ -176,7 +176,7 @@ int main (int argc, char ** argv)
     keyset kset = -1;
     int mlen = handle_packet (sock, packet, found, pri, &peer, &kset,
                               &message, &desc, &verified, &rcvd_seq, NULL,
-                              &duplicate, &broadcast, &acks, NULL);
+                              NULL, &duplicate, &broadcast, &acks, NULL);
     if (mlen > 0) {
       /* time_t rtime = time (NULL); */
       char * ver_mess = "";

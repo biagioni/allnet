@@ -65,11 +65,12 @@ class UIController implements ControllerInterface, UIAPI {
     // the application should call this method after a valid message is received
     @Override
     public void messageReceived(final String from, final long sentTime,
-        final long seq, final String text, final boolean broadcast) {
+        final long seq, final String text, final boolean broadcast,
+        final long prevMissing) {
         Runnable r = new Runnable() {
             long rcvdTime = java.util.Calendar.getInstance().getTimeInMillis();
             Message message = new Message(from, sentTime,
-                rcvdTime, seq, text, broadcast, true);
+                rcvdTime, seq, text, broadcast, true, prevMissing);
 
             @Override
             public void run() {
@@ -992,94 +993,132 @@ class UIController implements ControllerInterface, UIAPI {
         }
     }
 
+    // returns an array with this contact and all the groups that
+    // get messages for this contact
+    private String[] contactAndRecursiveGroups(String contact) {
+        String[] groups = coreAPI.memberOfGroupsRecursive(contact);
+        String[] names = new String[1];
+        if ((groups != null) && (groups.length > 0)) {
+            names = new String [1 + groups.length];
+            System.arraycopy (groups, 0, names, 1, groups.length);
+        }
+        names[0] = contact;
+        return names;
+    }
+
     // called from the event disp thread, so can do what we want with the UI
     // in this method
     private void processReceivedMessage(Message msg, boolean isNew) {
-        String contactName = msg.from;
-        if (!contactData.contactExists(contactName)) {
-            // maybe should throw Exception here, in production code?
-            System.out.println("got message from unknown contact "
-                + contactName + " (self is " + Message.SELF + ")");
-            return;
-        }
-        Conversation conv = contactData.getConversation(contactName);
-        boolean addedAtEnd = conv.add(msg);
-        // see if there is a tab open for this conversation
-        ConversationPanel cp
-            = (ConversationPanel) myTabbedPane.getTabContent(contactName);
-        if (cp != null) {
-            if (addedAtEnd) {
-                if (msg.isReceivedMessage() && (! msg.isBroadcast())) {
-                    long lastReceived = cp.getLastReceived();
-                    if ((lastReceived >= 0)
-                        && (msg.sequence() > lastReceived + 1)) {
-                        cp.addMissing(msg.sequence() - (lastReceived + 1));
+        for (String contactName: contactAndRecursiveGroups(msg.from)) {
+            if (!contactData.contactExists(contactName)) {
+                // maybe should throw Exception here, in production code?
+                System.out.println("got message from unknown contact "
+                    + contactName + " (self is " + Message.SELF + ")");
+                return;
+            }
+            Conversation conv = contactData.getConversation(contactName);
+            boolean addedAtEnd = conv.add(msg);
+            if (isNew) {  // don't update during initialization
+                // see if there is a tab open for this conversation
+                ConversationPanel cp =
+                    (ConversationPanel) myTabbedPane.getTabContent(contactName);
+                if (cp != null) {
+                    if (addedAtEnd) {
+                        if (msg.isReceivedMessage() && (! msg.isBroadcast())) {
+                            if (msg.prevMissing() > 0)
+                                cp.addMissing(msg.prevMissing());
+                        }
+                        cp.addMsg(formatMessage(msg, contactName),
+                                  msg, myTabbedPane);
+                        cp.validateToBottom();
+                    } else {
+                    // out of order: delete everything, then add everything back
+                        initializeConversation(cp, conv, true);
                     }
-                    cp.setLastReceived(msg.sequence());
+                    // if the tab is currently selected, mark message as read
+                    String selectedName = myTabbedPane.getSelectedID();
+                    if (selectedName.equals(contactName)) {
+                        msg.setRead();
+                        coreAPI.setReadTime(contactName);
+                    }
                 }
-                cp.addMsg(formatMessage(msg), msg, myTabbedPane);
-                cp.validateToBottom();
+                // finally, update the contacts panel 
+                // (new messages or time of last msg for this contact)
+                boolean isBroadcast = contactData.isBroadcast(contactName);
+                updateContactsPanel(contactName, isBroadcast);
+                updateConversationPanels();
             }
-            else {
-                // out of order, so delete everything, then add everything back
-                // System.out.println ("received out-of-order message");
-                initializeConversation(cp, conv, true);
-            }
-            // if the tab is currently selected, then mark message as read
-            String selectedName = myTabbedPane.getSelectedID();
-            if (selectedName.equals(contactName)) {
-                msg.setRead();
-                coreAPI.setReadTime(contactName);
-            }
-        }
-        // finally, update the contacts panel 
-        // (new messages or time of last msg for this contact)
-        if (isNew) {  // don't update during initialization
-            boolean isBroadcast = contactData.isBroadcast(contactName);
-            updateContactsPanel(contactName, isBroadcast);
-            updateConversationPanels();
         }
     }
 
     private void initializeConversation(ConversationPanel cp,
-        Conversation conv,
-        boolean scrollToBottom) {
+                                        Conversation conv,
+                                        boolean scrollToBottom) {
         cp.clearMsgs();
         ArrayList<Message> msgs = conv.getMessages();
         int numToDisplay = cp.getNumMsgsToDisplay();
-        int startIdx = Math.max(0, msgs.size() - numToDisplay);
-        // find earliest unread msg
-        int earliest = Integer.MAX_VALUE;
-        for (int i = 0; i < msgs.size(); i++) {
-            if (msgs.get(i).isNewMessage()) {
-                earliest = i;
-                break;
+        int startIndex = Math.max(0, msgs.size() - numToDisplay);
+        int earliest = Integer.MAX_VALUE;     // find earliest unread msg
+        // keep track of sequence numbers to mark missing messages
+        java.util.Hashtable<String,java.util.List<Long>> contactSeqs =
+            new java.util.Hashtable<String,java.util.List<Long>>();
+        for (int i = startIndex; i < msgs.size(); i++) {
+            Message msg = msgs.get(i);
+            if (msg.isReceivedMessage() && (! msg.isBroadcast())) {
+                if (msg.isNewMessage()) {
+                    earliest = i;
+                }
+                java.util.List<Long> numbers =
+                    contactSeqs.get(msg.receivedFrom());
+                if (numbers == null) {
+                    numbers = new java.util.ArrayList<Long>();
+                }
+                numbers.add(msg.sequence());
+                contactSeqs.put(msg.receivedFrom(), numbers);
             }
         }
-        startIdx = Math.min(startIdx, earliest);
-        if (startIdx == 0) {
+        startIndex = Math.min(startIndex, earliest);
+        if (startIndex == 0) {
             cp.disableMoreMsgsButton();
-        }
-        else {
+        } else {
             cp.enableMoreMsgsButton();            
         }
-        long lastReceived = -1;  // needed to mark missing messages
-        for (int i = startIdx; i < msgs.size(); i++) {
-            Message savedMsg = msgs.get(i);
-            if (savedMsg.isReceivedMessage() && (! savedMsg.isBroadcast())) {
-                if ((lastReceived >= 0)
-                    && (savedMsg.sequence() > lastReceived + 1)) {
-                    cp.addMissing(savedMsg.sequence() - (lastReceived + 1));
+        // now compute missing messages
+// System.out.println ("initial contacts for " + cp.getContactName() + "/" + conv.getOtherParty() + " are " + contactSeqs);
+        java.util.Hashtable<String,Long> missing =
+            new java.util.Hashtable<String,Long>();
+        java.util.Enumeration<String> contactList = contactSeqs.keys();
+        while (contactList.hasMoreElements()) {
+            String contact = contactList.nextElement();
+            java.util.List<Long> seqs = contactSeqs.get(contact);
+            seqs.sort(null);
+            long lastSeq = seqs.get(0);
+            for (int i = 1; i < seqs.size(); i++) {
+                if (lastSeq + 1 < seqs.get(i)) {
+                    String key = "" + seqs.get(i) + " " + contact;
+                    missing.put(key, new Long(seqs.get(i) - (lastSeq + 1)));
                 }
-                lastReceived = savedMsg.sequence();
+                lastSeq = seqs.get(i);
             }
-            cp.addMsg(formatMessage(savedMsg), savedMsg, myTabbedPane);
         }
-        cp.setLastReceived(lastReceived);
+// System.out.println ("missing: " + missing);
+        for (int i = startIndex; i < msgs.size(); i++) {
+            Message msg = msgs.get(i);
+            if (msg.isReceivedMessage() && (! msg.isBroadcast())) {
+                String key = "" + msg.sequence() + " " + msg.receivedFrom();
+                Long m = missing.get(key);
+// if (m != null) System.out.println ("missing " + m + " for key " + key + ", msg " + msg);
+                if (m != null) {
+                    cp.addMissing(m);
+                }
+            }
+            // add the message itself to the conversation panel
+            cp.addMsg(formatMessage(msg, cp.getContactName()),
+                      msg, myTabbedPane);
+        }
         if (scrollToBottom) {
             cp.validateToBottom();
-        }
-        else {
+        } else {
             cp.validateToTop();
         }
     }
@@ -1126,11 +1165,17 @@ class UIController implements ControllerInterface, UIAPI {
     }
 
     // add a line at top for the date/time
-    private String formatMessage(Message msg) {
+    // if sender is not null, also show the sender
+    private String formatMessage(Message msg, String contactName) {
         Date date = new Date();
         date.setTime(msg.sentTime);
         String timeText = formatter.format(date);
         StringBuilder sb = new StringBuilder(timeText);
+        if ((contactName != null) && (! contactName.equals(msg.to)) &&
+            (! contactName.equals(msg.from))) {
+            String actualName = ((msg.isReceivedMessage()) ? msg.from : msg.to);
+            sb.append("   (" + actualName + ")");
+        }
         sb.append("\n");
         sb.append(msg.text);
         return (sb.toString());
@@ -1185,16 +1230,20 @@ class UIController implements ControllerInterface, UIAPI {
         if (!contactData.contactExists(msg.to)) {
             return;
         }
-        Conversation conv = contactData.getConversation(msg.to);
-        conv.add(msg);
-        // see if there is a tab open for this conversation
-        ConversationPanel cp = (ConversationPanel) myTabbedPane.getTabContent(msg.to);
-        if (cp != null) {
-            // add the message to it
-            cp.addMsg(formatMessage(msg), msg, myTabbedPane);
-            cp.validateToBottom();
-            // mark the message as read, even though this is not checked at present
-            msg.setRead();
+        for (String name: contactAndRecursiveGroups(msg.to)) {
+            Conversation conv = contactData.getConversation(name);
+            conv.add(msg);
+            // see if there is a tab open for this conversation
+            ConversationPanel cp =
+                (ConversationPanel) myTabbedPane.getTabContent(name);
+            if (cp != null) {
+                // add the message to it
+                cp.addMsg(formatMessage(msg, name), msg, myTabbedPane);
+                cp.validateToBottom();
+                // mark the message as read, even though at present this makes
+                // no difference for sent messages
+                msg.setRead();
+            }
         }
     }
 

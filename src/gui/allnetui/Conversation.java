@@ -82,7 +82,7 @@ public class Conversation {
         Message msg;
         for (int i = messages.size() - 1; i >= 0; i--) {
             msg = messages.get(i);
-            if (msg.from.equals(otherParty)) {
+            if (msg.isReceivedMessage()) {
                 return (msg);
             }
         }

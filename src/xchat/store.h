@@ -5,8 +5,8 @@
 #include "lib/keys.h"
 
 /* start_iter and prev_message define an iterator over messages.
- * the iterator proceeds backwards, setting type to MSG_TYPE_DONE
- * after the last message has been read. */
+ * the iterator proceeds backwards (in order of message time sent/received),
+ * setting type to MSG_TYPE_DONE after the last message has been read. */
 /* the iterator should be deallocated with free_iter after it is used */
 /* for a single record, use most_recent record. */
 
@@ -56,10 +56,18 @@ extern int most_recent_record (const char * contact, keyset k, int type_wanted,
                                uint64_t * rcvd_time, char * message_ack,
                                char ** message, int * msize);
 
-extern void save_record (const char * contact, keyset k, int type, uint64_t seq,
-                         uint64_t time, int tz_min, uint64_t rcvd_time,
-                         const char * message_ack, const char * message,
-                         int msize);
+/* saves the record.  If type is MSG_TYPE_RCVD, also fills in 
+ * prev_missing (if not null) */
+extern void save_record (const char * contact, keyset k, int type,
+                         uint64_t seq, uint64_t time, int tz_min,
+                         uint64_t rcvd_time, const char * message_ack,
+                         const char * message, int msize,
+                         uint64_t * prev_missing);
+
+/* to be called with the sequence number of a received message.
+ * returns 1 and fills in the results if successful, or returns 0 otherwise */
+extern int missing_before (const char * contact, keyset k, uint64_t seq,
+                           uint64_t * missing_before);
 
 /* all the information about a message, for list_all_messages */
 struct message_store_info {
@@ -93,6 +101,7 @@ extern int list_all_messages (const char * contact,
 /* frees the message storage pointed to by each message entry */
 extern void free_all_messages (struct message_store_info * msgs, int num_used);
 
+#if 0   /* deleted 2019/10/05 -- nobody seems to use it, and it is hard to use it right */
 /* add an individual message, modifying msgs, num_alloc or num_used as needed
  * 0 <= position <= *num_used
  * normally call after calling save_record
@@ -103,6 +112,7 @@ extern int add_message (struct message_store_info ** msgs, int * num_alloc,
                         uint64_t time, int tz_min, uint64_t rcvd_time,
                         int acked, const char * ack,
                         const char * message, int msize);
+#endif /* 0 */
 
 /* returns an estimate of the number of bytes used to save the
  * conversation information for this contact.

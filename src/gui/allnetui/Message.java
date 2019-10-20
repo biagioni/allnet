@@ -12,20 +12,22 @@ public class Message implements java.lang.Comparable<Message> {
     // a message is either sent or received
     boolean received;
     // the contact name of the sender
-    final String from, to;  // when sent/received, from/to may be SELF
+    final String from, to;    // when sent/received, from/to may be SELF
     final long sentTime;
     final long receivedTime;  // only meaningful for received packets
-    final long sequence;  // set to -1 if not known, e.g. for recv'd packets
+    final long sequence;      // set to -1 if not known, e.g. for recv'd packets
     final String text;
     final boolean sentNotReceived;   // set to true if not known
     final boolean broadcast;  // only meaningful for received messages
+    final long prevMissing;   // only meaningful for received messages
     boolean isAcked;          // only meaningful for sent messages
     // set to false by the client when message has been read
-    boolean newMessageFlag;  // only meaningful for received messages
+    boolean newMessageFlag;   // only meaningful for received messages
     
     // use this for received messages only
     Message(String from, long sentTime, long receivedTime, long seq,
-            String text, boolean broadcast, boolean newMessage) {
+            String text, boolean broadcast, boolean newMessage,
+            long prevMissing) {
         this.received = true;
         this.from = from;
         this.to = SELF;
@@ -34,6 +36,7 @@ public class Message implements java.lang.Comparable<Message> {
         this.sequence = seq;
         this.text = text;
         this.broadcast = broadcast;
+        this.prevMissing = prevMissing;
         this.sentNotReceived = false;
         this.isAcked = false;
         this.newMessageFlag = newMessage;
@@ -50,6 +53,7 @@ public class Message implements java.lang.Comparable<Message> {
         this.text = text;
         this.sentNotReceived = true;
         this.broadcast = false;
+        this.prevMissing = 0;
         this.isAcked = isAcked;
         this.newMessageFlag = false;
     }
@@ -85,10 +89,13 @@ public class Message implements java.lang.Comparable<Message> {
     @Override
     public String toString() {
       String isNew = (newMessageFlag ? ", new" : ", not new");
+      String missing = ((prevMissing == 0) ? "" :
+                        (", " + prevMissing + " messages missing before this"));
       return ("message from " + from +
               ", to " + to +
+              ", seq " + sequence +
               ", time " + sentTime +
-              ", broadcast " + broadcast + isNew +
+              ", broadcast " + broadcast + isNew + missing +
               ", text: '" + text + "'");
     }
 
@@ -135,6 +142,20 @@ public class Message implements java.lang.Comparable<Message> {
 
     public long sequence() {
         return this.sequence;
+    }
+
+    // returns null for a sent message
+    public String receivedFrom() {
+        if (received) {
+            return this.from;
+        }
+        return null;
+    }
+
+    // this is only the initial value -- it is NOT updated when
+    // new messages come in
+    public long prevMissing() {
+        return this.prevMissing;
     }
 
 }

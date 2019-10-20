@@ -37,10 +37,10 @@ struct allnet_ack_info {
  *
  * if it is a data message, it is saved in the xchat log
  * if it is a valid data message from a peer or a broadcaster,
- * fills in verified and broadcast
+ * fills in verified and broadcast and prev_missing
  * fills in contact, message (to point to malloc'd buffers, must be freed)
  * if not broadcast, fills in desc (also malloc'd), seq, sent (if not null)
- * and duplicate.
+ * prev_missing, and duplicate.
  * if verified and not broadcast, fills in kset.
  * the data message (if any) is null-terminated
  *
@@ -61,6 +61,7 @@ extern int handle_packet (int sock, char * packet, unsigned int psize,
                           char ** contact, keyset * kset,
                           char ** message, char ** desc, int * verified,
                           uint64_t * seq, time_t * sent,
+                          uint64_t * prev_missing,
                           int * duplicate, int * broadcast,
                           struct allnet_ack_info * acks,
                           struct allnet_mgmt_trace_reply ** trace_reply);

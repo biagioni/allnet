@@ -46,9 +46,12 @@ extern void save_outgoing (const char * contact, keyset k,
 extern char * get_outgoing (const char * contact, keyset k, uint64_t seq,
                             int * size, uint64_t * time, char * message_ack);
 
-/* save a received message */
+/* save a received message
+ * if prev_missing is not null, sets it to the number of missing messages
+ * before this one, or 0 */
 extern void save_incoming (const char * contact, keyset k,
-                           struct chat_descriptor * cp, char * text, int tsize);
+                           struct chat_descriptor * cp,
+                           char * text, int tsize, uint64_t * prev_missing);
 
 /* mark a previously sent message as acknowledged
  * return the sequence number > 0 if this is an ack for a known contact,

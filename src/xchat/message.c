@@ -135,7 +135,7 @@ void save_outgoing (const char * contact, keyset k, struct chat_descriptor * cp,
   get_time_tz (readb64u (cp->timestamp), &time, &tz);
   eliminate_nulls (text, tsize);
   save_record (contact, k, MSG_TYPE_SENT, readb64u (cp->counter), time, tz,
-               allnet_time (), (char *) (cp->message_ack), text, tsize);
+               allnet_time (), (char *) (cp->message_ack), text, tsize, NULL);
 }
 
 /* return the (malloc'd) outgoing message with the given sequence number,
@@ -181,9 +181,12 @@ seq, MSG_TYPE_SENT, mseq, result);
 /* forward declaration, implemented below */
 static void add_to_message_id_cache (char * ack);
 
-/* save a received message */
+/* save a received message.
+ * if prev_missing is not null, sets it to the number of missing messages
+ * before this one, or 0 */
 void save_incoming (const char * contact, keyset k,
-                    struct chat_descriptor * cp, char * text, int tsize)
+                    struct chat_descriptor * cp, char * text, int tsize,
+                    uint64_t * prev_missing)
 {
   uint64_t time;
   int tz;
@@ -192,8 +195,10 @@ void save_incoming (const char * contact, keyset k,
   if (find_ack (contact, k, ack, MSG_TYPE_RCVD, NULL) == 0) {
     eliminate_nulls (text, tsize);
     save_record (contact, k, MSG_TYPE_RCVD, readb64u (cp->counter),
-                 time, tz, allnet_time (), ack, text, tsize);
+                 time, tz, allnet_time (), ack, text, tsize, prev_missing);
     add_to_message_id_cache (ack);
+  } else if (prev_missing != NULL) {
+    missing_before (contact, k, readb64u (cp->counter), prev_missing);
   }
 }
 
@@ -241,7 +246,7 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset,
 #endif /* VERIFY_20170616_ACK_FINDER */
         if (! found_ack) {
           save_record (contacts [c], ksets [k], MSG_TYPE_ACK, seq,
-                       0, 0, allnet_time (), message_ack, NULL, 0);
+                       0, 0, allnet_time (), message_ack, NULL, 0, NULL);
           if (new_ack != NULL)
             *new_ack = 1;
         }

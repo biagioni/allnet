@@ -623,7 +623,7 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
                         char * data, unsigned int dsize,
                         char ** contact, keyset * kset,
                         char ** message, char ** desc, int * verified,
-                        uint64_t * seqp, time_t * sent,
+                        uint64_t * seqp, time_t * sent, uint64_t * prev_missing,
                         int * duplicate, int * broadcast)
 {
   if (hp->sig_algo == ALLNET_SIGTYPE_NONE) {
@@ -838,7 +838,7 @@ printf ("duplicate seq %" PRId64 ", not saving for %s\n", seq, *contact);
 #ifdef DEBUG_FOR_DEVELOPER
 printf ("saving seq %" PRId64 " for %s\n", seq, *contact);
 #endif /* DEBUG_FOR_DEVELOPER */
-    save_incoming (*contact, *kset, cdp, cleartext, msize);
+    save_incoming (*contact, *kset, cdp, cleartext, msize, prev_missing);
   }
 
   if (media == ALLNET_MEDIA_PUBLIC_KEY) {
@@ -1425,13 +1425,15 @@ int handle_packet (int sock, char * packet, unsigned int psize,
                    unsigned int priority,
                    char ** contact, keyset * kset,
                    char ** message, char ** desc, int * verified,
-                   uint64_t * seq, time_t * sent,
+                   uint64_t * seq, time_t * sent, uint64_t * prev_missing,
                    int * duplicate, int * broadcast,
                    struct allnet_ack_info * acks,
                    struct allnet_mgmt_trace_reply ** trace_reply)
 {
   if (acks != NULL)
     acks->num_acks = 0;
+  if (prev_missing != NULL)
+    *prev_missing = 0;
   if (trace_reply != NULL)
     *trace_reply = NULL;
   int free_packet = 0;
@@ -1485,7 +1487,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
   } else if (hp->message_type == ALLNET_TYPE_DATA) { /* encrypted data packet */
     result = handle_data (sock, hp, psize, packet + hsize, psize - hsize,
                           contact, kset, message, desc, verified, seq, sent,
-                          duplicate, broadcast);
+                          prev_missing, duplicate, broadcast);
   } else if (hp->message_type == ALLNET_TYPE_KEY_XCHG) {
     result = handle_key (sock, hp, packet + hsize, psize - hsize,
                          contact, kset);
