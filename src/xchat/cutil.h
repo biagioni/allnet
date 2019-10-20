@@ -9,9 +9,12 @@
 #include "lib/keys.h"
 #include "lib/crypt_sel.h"
 
-/* returns 1 if successful, 0 otherwise */
+/* returns 1 if successful, 0 otherwise.
+ * timestamp should always be allnet_time (), it is specified explicitly
+ * here so that all members of a group get a message sent at the same time */
 extern int init_chat_descriptor (struct chat_descriptor * cp,
-                                 const char * contact);
+                                 const char * contact,
+                                 unsigned long long int timestamp);
 
 /* send to the contact, returning the sequence number if successful, else 0 */
 /* unless ack_and_save is 0, requests an ack, and calls save_outgoing. */

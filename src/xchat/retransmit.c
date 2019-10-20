@@ -174,7 +174,7 @@ static void sanity_check_sequence_number (const char * contact, keyset k,
   memcpy (data, " ", dsize);
   size_t msize = cd_size + dsize;
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
-  if (! init_chat_descriptor (cdp, contact)) {
+  if (! init_chat_descriptor (cdp, contact, allnet_time ())) {
     free (message);
     return;
   }

@@ -96,7 +96,8 @@ static int local_time_offset ()
 }
 
 /* returns 1 if successful, 0 otherwise */
-int init_chat_descriptor (struct chat_descriptor * cp, const char * contact)
+int init_chat_descriptor (struct chat_descriptor * cp, const char * contact,
+                          unsigned long long int timestamp)
 {
   uint64_t counter = get_counter (contact);
   if (counter == 0) {
@@ -106,9 +107,7 @@ int init_chat_descriptor (struct chat_descriptor * cp, const char * contact)
   writeb64 ((char *) (cp->counter), counter);
 
   int my_time_offset = local_time_offset ();
-  uint64_t now = allnet_time ();
-
-  uint64_t compound = make_time_tz (now, my_time_offset);
+  uint64_t compound = make_time_tz (timestamp, my_time_offset);
   writeb64 ((char *) (cp->timestamp), compound);
 
   /* the fixed part of the header */
@@ -328,6 +327,35 @@ int send_to_key (char * data, unsigned int dsize,
 }
 
 static unsigned long long int
+  send_to_contact_common (char * data, unsigned int dsize,
+                          const char * contact, int sock,
+                          unsigned int hops, unsigned int priority,
+                          int ack_and_save, unsigned long long int timestamp)
+{
+  if (dsize < (int) (sizeof (struct chat_descriptor)))
+    return 0;
+  struct chat_descriptor * cp = (struct chat_descriptor *) data;
+  if (! init_chat_descriptor (cp, contact, timestamp))
+    return 0;
+  /* get the keys */
+  keyset * keys = NULL;
+  int nkeys = all_keys (contact, &keys);
+  if (nkeys <= 0) {
+    printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
+    return 0;
+  }
+  int k;
+  int success = 1;
+  for (k = 0; ((success) && (k < nkeys)); k++)
+    success = send_to_key (data, dsize, contact, keys [k], sock,
+                           hops, priority, NULL, ack_and_save, ack_and_save);
+  free (keys);
+  if (success)
+    return (readb64u (cp->counter));
+  return 0;  /* ! success */
+}
+
+static unsigned long long int
   send_to_group (int depth, char * data, unsigned int dsize,
                  const char * contact, int sock,
                  unsigned int hops, unsigned int priority, int ack_and_save)
@@ -341,6 +369,7 @@ static unsigned long long int
   if ((n <=0) || (members == NULL))
     return 0;
   unsigned long long int result = 0;
+  unsigned long long int now = allnet_time ();
   int success = 1;
   int i;
   for (i = 0; ((success) && (i < n)); i++) {
@@ -353,8 +382,8 @@ static unsigned long long int
       printf ("send_to_group %s sending to contact %s\n",
               contact, members [i]);
 #endif /* DEBUG_PRINT */
-      seq = send_to_contact (data, dsize, members [i], sock,
-                             hops, priority, ack_and_save);
+      seq = send_to_contact_common (data, dsize, members [i], sock,
+                                    hops, priority, ack_and_save, now);
     }
     success = (seq > 0);
     if (seq > result)
@@ -383,27 +412,8 @@ unsigned long long int send_to_contact (char * data, unsigned int dsize,
       return send_to_group (0, data, dsize, contact, sock,
                             hops, priority, ack_and_save);
   }
-  if (dsize < (int) (sizeof (struct chat_descriptor)))
-    return 0;
-  if (! init_chat_descriptor ((struct chat_descriptor *) data, contact))
-    return 0;
-  struct chat_descriptor * cp = (struct chat_descriptor *) data;
-  /* get the keys */
-  keyset * keys = NULL;
-  int nkeys = all_keys (contact, &keys);
-  if (nkeys <= 0) {
-    printf ("unable to locate key for contact %s (%d)\n", contact, nkeys);
-    return 0;
-  }
-  int k;
-  int success = 1;
-  for (k = 0; ((success) && (k < nkeys)); k++)
-    success = send_to_key (data, dsize, contact, keys [k], sock,
-                           hops, priority, NULL, ack_and_save, ack_and_save);
-  free (keys);
-  if (success)
-    return (readb64u (cp->counter));
-  return 0;  /* ! success */
+  return send_to_contact_common (data, dsize, contact, sock, hops, priority,
+                                 ack_and_save, allnet_time ());
 }
 
 char * chat_time_to_string (unsigned char * t, int static_result)
