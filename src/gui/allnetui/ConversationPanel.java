@@ -359,21 +359,14 @@ class ConversationPanel extends JPanel implements ComponentListener {
     }
 
     public void addMsg(String text, Message msg, JComponent container) {
-        boolean isReceived = msg.to.equals(Message.SELF);
-        // boolean broadcast = msg.isBroadcast();
+        boolean isReceived = msg.isReceivedMessage();
         boolean acked = msg.acked();
-        // boolean isNew = ((msg.isNewMessage() ||
-        //                 (isReceived &&
-        //                  (msg.receivedAt() + DAY >
-        //                      System.currentTimeMillis()))));
-        // String[] lines = text.split("\n");
         Color bg = getMsgColor(msg, isReceived);
         MessageBubble<Message> bubble
             = new MessageBubble<>(msg, isReceived, bg, text, container);
         addBubble(bubble, true);
-        // update ack tracking
+        // update ack tracking, i.e. only add if not acked
         if (!acked) {
-            // i.e. only add if not acked
             unackedBubbles.add(bubble);
         }
     }
