@@ -104,6 +104,15 @@ public class Message implements java.lang.Comparable<Message> {
                 (m.sentNotReceived == sentNotReceived));
     }
 
+    // only use for sent messages
+    public boolean sameMessageDifferentDestination(Message m) {
+        return (sentNotReceived &&
+                (sentNotReceived == m.sentNotReceived) &&
+                (sentTime == m.sentTime) &&
+                (text.equals(m.text)) &&
+                (! to.equals(m.to)));
+    }
+
     public int compareTo(Message m) {
       if (m == null)
         return 0;   // unknown
@@ -150,6 +159,14 @@ public class Message implements java.lang.Comparable<Message> {
             return this.from;
         }
         return null;
+    }
+
+    // returns null for a received message
+    public String sentTo() {
+        if (received) {
+            return null;
+        }
+        return this.to;
     }
 
     // this is only the initial value -- it is NOT updated when
