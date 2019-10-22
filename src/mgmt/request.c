@@ -133,6 +133,7 @@ print_buffer (packet, total_size, "sending request", total_size, 1);
   }
   unsigned long long int finish = allnet_time_ms () + 5000;
   unsigned long long int now;
+  int i;
   while ((now = allnet_time_ms ()) < finish) {
     char * received = NULL;
     unsigned int priority = 0;
@@ -143,7 +144,7 @@ print_buffer (packet, total_size, "sending request", total_size, 1);
       break;
     }
     int duplicate = 0;
-    for (int i = 0; i < num_received; i++) {
+    for (i = 0; i < num_received; i++) {
       if ((r == messages [i].msize) &&
           (memcmp (received, messages [i].message, r) == 0)) {
         messages [i].refcount = messages [i].refcount + 1;
@@ -158,7 +159,7 @@ print_buffer (packet, total_size, "sending request", total_size, 1);
     }
     free (received);
   }
-  for (int i = 0; i < num_received; i++) {
+  for (i = 0; i < num_received; i++) {
     struct allnet_header * check_hp =
       (struct allnet_header *) (messages [i].message);
     if ((check_hp->message_type == ALLNET_TYPE_DATA) &&

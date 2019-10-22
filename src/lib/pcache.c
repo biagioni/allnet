@@ -393,8 +393,9 @@ printf ("rehashing %s table, secret %llx\n", fname, *secret);
         *table = new;
       }
       struct hash_entry * hash = *table;
+      int i;
       if (save_tokens)  /* tokens have been reset */
-        for (int i = 0; i < *num; i++)
+        for (i = 0; i < *num; i++)
           hash [i].sent_to_tokens = 0;
       return;
     } /* else size is too small or bad, ignore contents */
@@ -951,7 +952,8 @@ void pcache_write (void)
 static int hash_stats (struct hash_entry * table, int num_entries)
 {
   int result = 0;
-  for (int i = 0; i < num_entries; i++)
+  int i;
+  for (i = 0; i < num_entries; i++)
     if (table [i].used)
       result++;
   return result;
@@ -1017,7 +1019,8 @@ static void print_hash_all (const char * name, int index, int verbose,
                             struct hash_entry * table, int num_entries)
 {
   if (index < 0) {
-    for (int i = 0; i < num_entries; i++)
+    int i;
+    for (i = 0; i < num_entries; i++)
       print_hash_entry (name, i, verbose, table, num_entries);
   } else {
     print_hash_entry (name, index, verbose, table, num_entries);
@@ -1061,7 +1064,8 @@ static void print_message_ack (int index, int verbose,
                 current->id [2] & 0xff, current->id [3] & 0xff,
                 current->priority, current->sent_to_tokens);
       int first = 1;
-      for (int x = 0; x < MAX_TOKENS; x++) {
+      int x;
+      for (x = 0; x < MAX_TOKENS; x++) {
         if ((current->sent_to_tokens & (one64 << x)) != 0) {  /* bit set */
           int c = ((first) ? '=' : ',');
           first = 0;
