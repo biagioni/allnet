@@ -1028,7 +1028,8 @@ class UIController implements ControllerInterface, UIAPI {
                             if (msg.prevMissing() > 0)
                                 cp.addMissing(msg.prevMissing());
                         }
-                        cp.addMsg(formatMessage(msg, contactName),
+                        cp.addMsg(formatMessage(msg, contactName,
+                                                msg.receivedFrom()),
                                   msg, myTabbedPane);
                         cp.validateToBottom();
                     } else {
@@ -1102,8 +1103,24 @@ class UIController implements ControllerInterface, UIAPI {
             }
         }
 // System.out.println ("missing: " + missing);
+        // warning: loop variable may be modified in the body of the loop!
         for (int i = startIndex; i < msgs.size(); i++) {
             Message msg = msgs.get(i);
+            int groupIndex = i + 1;
+            String peers = "";
+            if (msg.isReceivedMessage()) {
+                peers = msg.receivedFrom();
+            } else {
+                peers = msg.sentTo() + (msg.acked() ? "" : "-");
+                while ((groupIndex < msgs.size()) &&
+                       (! msgs.get(groupIndex).isReceivedMessage()) &&
+                       (msg.sameMessageDifferentDestination
+                           (msgs.get(groupIndex)))) {
+                    Message m = msgs.get(groupIndex);
+                    peers += ", " + m.sentTo() + (m.acked() ? "" : "-");
+                    groupIndex++;
+                }
+            }
             if (msg.isReceivedMessage() && (! msg.isBroadcast())) {
                 String key = "" + msg.sequence() + " " + msg.receivedFrom();
                 Long m = missing.get(key);
@@ -1113,8 +1130,11 @@ class UIController implements ControllerInterface, UIAPI {
                 }
             }
             // add the message itself to the conversation panel
-            cp.addMsg(formatMessage(msg, cp.getContactName()),
+            cp.addMsg(formatMessage(msg, cp.getContactName(), peers),
                       msg, myTabbedPane);
+            if (groupIndex > i + 1) {   // warning: modifying the loop variable!
+                i = groupIndex - 1;     // skip the messages we just recorded
+            }
         }
         if (scrollToBottom) {
             cp.validateToBottom();
@@ -1166,15 +1186,14 @@ class UIController implements ControllerInterface, UIAPI {
 
     // add a line at top for the date/time
     // if sender is not null, also show the sender
-    private String formatMessage(Message msg, String contactName) {
+    private String formatMessage(Message msg,
+                                 String contactName, String peers) {
         Date date = new Date();
         date.setTime(msg.sentTime);
         String timeText = formatter.format(date);
         StringBuilder sb = new StringBuilder(timeText);
-        if ((contactName != null) && (! contactName.equals(msg.to)) &&
-            (! contactName.equals(msg.from))) {
-            String actualName = ((msg.isReceivedMessage()) ? msg.from : msg.to);
-            sb.append("   (" + actualName + ")");
+        if ((contactName != null) && (! contactName.equals(peers))) {
+            sb.append("   (" + peers + ")");
         }
         sb.append("\n");
         sb.append(msg.text);
@@ -1237,8 +1256,15 @@ class UIController implements ControllerInterface, UIAPI {
             ConversationPanel cp =
                 (ConversationPanel) myTabbedPane.getTabContent(name);
             if (cp != null) {
-                // add the message to it
-                cp.addMsg(formatMessage(msg, name), msg, myTabbedPane);
+                // find out what to display as a name, if anything
+                String display = name;
+                if (coreAPI.contactIsGroup(name)) {
+                    String[] members = coreAPI.membersRecursive(name);
+                    java.util.List<String> list = java.util.Arrays.asList(members);
+                    display = String.join(", ", list);
+                }
+                // add the message to the contacts panel
+                cp.addMsg(formatMessage(msg, name, display), msg, myTabbedPane);
                 cp.validateToBottom();
                 // mark the message as read, even though at present this makes
                 // no difference for sent messages
