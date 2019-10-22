@@ -478,7 +478,6 @@ public class CoreConnect extends Thread implements CoreAPI {
         byte[] result = doRPCWithCode(guiMembersRecursive, group);
         long count = SocketUtils.b64(result, 1); 
         String[] mem = SocketUtils.bStringArray(result, 9, count);
-        System.out.println ("membersRecursive not implemented yet");
         return mem;
     }
 
