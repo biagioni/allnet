@@ -1419,17 +1419,19 @@ int create_group (const char * group)
 }
 
 /* returns the number of members of the group, and the names listed
- * in a dynamically allocated array (if not NULL, must be free'd) */
+ * in a dynamically allocated array (if not NULL, must be free'd)
+ * returns 0 for groups that have no members
+ * returns -1 if it is not a group, or for other errors */
 int group_membership (const char * group, char *** members)   
 {
   init_from_file ("group_membership");
   if (members != NULL)
     *members = NULL;
   if (! is_group (group))
-    return 0;
+    return -1;
   int index_plus_one = contact_exists (group);
   if (index_plus_one <= 0)
-    return 0;
+    return -1;
   int index = index_plus_one - 1;
   if ((members != NULL) && (kip [index].is_group) &&
       (kip [index].members != NULL) && (kip [index].num_group_members > 0)) {
@@ -1449,6 +1451,144 @@ int group_membership (const char * group, char *** members)
     *members = result;
   }
   return kip [index].num_group_members;
+}
+
+static int string_in_array (char ** array, int count, const char * string)
+{
+  int i;
+  for (i = 0; i < count; i++)
+    if (strcmp (string, array [i]) == 0)
+      return 1;
+  return 0;
+}
+
+/* doesn't change the allocated memory, but returns the new count */
+static int remove_from_array (char ** array, int count, const char * string)
+{
+  int i = 0;
+  while (i < count) {
+    if (strcmp (string, array [i]) == 0) {
+      count--;
+      array [i] = array [count];  /* replace with the last element */
+    } else {
+      i++;
+    }
+  }
+  return count;
+}
+
+/* assumes it's OK to reorder */
+static int eliminate_duplicates (char ** from, int fcount)
+{
+  int i = 0;
+  while (i < fcount) {             /* each loop, incr i or decr fcount */
+    int j;
+    int increment = 1;             /* increment i if no match found */
+    for (j = i + 1; j < fcount; j++) {
+      if (strcmp (from [i], from [j]) == 0) {
+        increment = 0;
+        fcount--;
+        from [j] = from [fcount];  /* put the last one in position j */
+        break;                     /* and start over with fcount less by 1 */
+      }
+    }
+    i += increment;                /* i++ or no change to i */
+  }
+  return fcount;
+}
+
+/* assumes it's OK to reorder */
+static int merge_no_duplicates (char ** a, int acount, char ** b, int bcount,
+                                char *** result)
+{
+  int i;
+  size_t needed = 0;  /* allocate for the duplicates too -- simpler */
+  int count = acount + bcount;
+  for (i = 0; i < acount; i++)
+    needed += sizeof (char *) + strlen (a [i]) + 1;
+  for (i = 0; i < bcount; i++)
+    needed += sizeof (char *) + strlen (b [i]) + 1;
+  char * memory = malloc_or_fail (needed, "merge_no_duplicates");
+  char ** res = (char **) memory;
+  *result = res;
+  char * strings = memory + (count * sizeof (char *));
+  ssize_t available = minzs (needed, (count * sizeof (char *)));
+  count = 0;
+  for (i = 0; i < acount; i++) {
+    if (! string_in_array (res, count, a [i])) {
+      strncpy (strings, a [i], available);
+      res [count] = strings;
+      available = minzs (available, (strlen (res [count]) + 1));
+      strings += (strlen (res [count]) + 1);
+      count++;
+    }
+  }
+  for (i = 0; i < bcount; i++) {
+    if (! string_in_array (res, count, b [i])) {
+      strncpy (strings, b [i], available);
+      res [count] = strings;
+      strings += (strlen (res [count]) + 1);
+      available = minzs (available, (strlen (res [count]) + 1));
+      count++;
+    }
+  }
+  return count;
+}
+
+/* returns the number of ultimate individual members of the group and
+ * recursively of the groups' subgroups.  The names are listed
+ * in a dynamically allocated array (if not NULL, must be free'd) */
+int group_membership_recursive (const char * group, char *** members)   
+{
+  init_from_file ("group_membership_recursive");
+  if (members != NULL)
+    *members = NULL;
+  if (! is_group (group))
+    return -1;
+  char ** first_members = NULL;
+  int first_count = group_membership (group, &first_members);
+  if ((first_count <= 0) || (first_members == NULL)) {
+    if (first_members != NULL)
+      free (first_members);
+    if (first_count > 0)
+      first_count = -1;   /* first_members is null, so there was some error */
+    return first_count;
+  }
+  /* if self is in group, remove */
+  first_count = remove_from_array (first_members, first_count, group);
+  int count = eliminate_duplicates (first_members, first_count);
+  char ** current_members = first_members;
+  int i = 0;
+  while (i < count) {  /* add members of any subgroup, but at most once */
+    char * this_member = current_members [i];
+    if (is_group (this_member)) {
+      count = remove_from_array (current_members, count, this_member);
+      char ** local_members = NULL;
+      int local_count = group_membership (this_member, &local_members);
+      if ((local_count > 0) && (local_members != NULL)) {
+        char ** new_members = NULL;
+        int new_count = merge_no_duplicates (current_members, count,
+                                             local_members, local_count,
+                                             &new_members);
+        if (new_count > count) {   /* added one or more */
+          free (current_members);
+          current_members = new_members;
+          count = new_count;
+          i = 0;   /* start again from the beginning of the array */
+          continue;
+        } else {   /* not added anything */
+          free (new_members);
+        }
+        free (local_members);
+      }
+    }
+    i++;
+  }
+  if (members != NULL)
+    *members = current_members;
+  else
+    free (current_members);
+  return count;
 }
 
 static int reload_members_from_file (int ki)
@@ -1602,6 +1742,7 @@ printf ("%d groups for contact %s\n", count, contact);
  * if groups is not NULL, also allocates and returns the list of groups */
 int member_of_groups (const char * contact, char *** groups)
 {
+  init_from_file ("member_of_groups");
   int count = groups_for_contact (contact, NULL, 0);
   if ((groups == NULL) || (count <= 0))
     return count;
@@ -1627,123 +1768,14 @@ int member_of_groups (const char * contact, char *** groups)
   return count;
 }
 
-/* identical to string_in_array, except for the order of parameters
-static int is_in_group (const char * contact, char ** group, int n_group)
-{
-  int i;
-  for (i = 0; i < n_group; i++)
-    if (strcmp (contact, group [i]) == 0)
-      return 1;
-  return 0;
-}
-*/
-
-static int string_in_array (char ** array, int count, const char * string)
-{
-  int i;
-  for (i = 0; i < count; i++)
-    if (strcmp (string, array [i]) == 0)
-      return 1;
-  return 0;
-}
-
-/* doesn't change the allocated memory, but returns the new count */
-static int remove_from_array (char ** array, int count, const char * string)
-{
-  int i = 0;
-  while (i < count) {
-    if (strcmp (string, array [i]) == 0) {
-      count--;
-      array [i] = array [count];  /* replace with the last element */
-    } else {
-      i++;
-    }
-  }
-  return count;
-}
-
-#if 0 /* not used */
-/* doesn't change the allocated memory, but returns the new count */
-static int remove_groups (char ** array, int count)
-{
-  int i = 0;
-  while (i < count) {
-    if (is_group (array [i])) {
-      count--;
-      array [i] = array [count];  /* replace with the last element */
-    } else {
-      i++;
-    }
-  }
-  return count;
-}
-#endif /* 0 */
-
-/* assumes it's OK to reorder */
-static int eliminate_duplicates (char ** from, int fcount)
-{
-  int i = 0;
-  while (i < fcount) {             /* each loop, incr i or decr fcount */
-    int j;
-    int increment = 1;             /* increment i if no match found */
-    for (j = i + 1; j < fcount; j++) {
-      if (strcmp (from [i], from [j]) == 0) {
-        increment = 0;
-        fcount--;
-        from [j] = from [fcount];  /* put the last one in position j */
-        break;                     /* and start over with fcount less by 1 */
-      }
-    }
-    i += increment;                /* i++ or no change to i */
-  }
-  return fcount;
-}
-
-/* assumes it's OK to reorder */
-static int merge_no_duplicates (char ** a, int acount, char ** b, int bcount,
-                                char *** result)
-{
-  int i;
-  size_t needed = 0;  /* allocate for the duplicates too -- simpler */
-  int count = acount + bcount;
-  for (i = 0; i < acount; i++)
-    needed += sizeof (char *) + strlen (a [i]) + 1;
-  for (i = 0; i < bcount; i++)
-    needed += sizeof (char *) + strlen (b [i]) + 1;
-  char * memory = malloc_or_fail (needed, "merge_no_duplicates");
-  char ** res = (char **) memory;
-  *result = res;
-  char * strings = memory + (count * sizeof (char *));
-  ssize_t available = minzs (needed, (count * sizeof (char *)));
-  count = 0;
-  for (i = 0; i < acount; i++) {
-    if (! string_in_array (res, count, a [i])) {
-      strncpy (strings, a [i], available);
-      res [count] = strings;
-      available = minzs (available, (strlen (res [count]) + 1));
-      strings += (strlen (res [count]) + 1);
-      count++;
-    }
-  }
-  for (i = 0; i < bcount; i++) {
-    if (! string_in_array (res, count, b [i])) {
-      strncpy (strings, b [i], available);
-      res [count] = strings;
-      strings += (strlen (res [count]) + 1);
-      available = minzs (available, (strlen (res [count]) + 1));
-      count++;
-    }
-  }
-  return count;
-}
-
 /* same as member_of_groups, but also lists the groups of this
  * contact's groups, and so on recursively */
 int member_of_groups_recursive (const char * contact, char *** groups)
 {
-  char ** first_groups = NULL;
+  init_from_file ("member_of_groups_recursive");
   if (groups != NULL)
     *groups = NULL;
+  char ** first_groups = NULL;
   int first_count = member_of_groups (contact, &first_groups);
   if ((first_count <= 0) || (first_groups == NULL)) {
     if (first_groups != NULL)

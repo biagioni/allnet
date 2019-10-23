@@ -91,8 +91,14 @@ extern int is_group (const char * contact);
 extern int create_group (const char * group);
 
 /* returns the number of members of the group, and the names listed
- * in a dynamically allocated array (if not NULL, must be free'd) */
+ * in a dynamically allocated array (if not NULL, must be free'd)
+ * returns 0 for groups that have no members
+ * returns -1 if it is not a group, or for other errors */
 extern int group_membership (const char * group, char *** members);   
+/* returns the number of ultimate individual members of the group and
+ * recursively of the groups' subgroups.  The names are listed
+ * in a dynamically allocated array (if not NULL, must be free'd) */
+extern int group_membership_recursive (const char * group, char *** members);   
 
 /* same, but (a) recursively examines all groups and subgroups, and
  * (b) includes one each of all non-group members of all (sub)groups */
