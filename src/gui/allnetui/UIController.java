@@ -1028,8 +1028,9 @@ class UIController implements ControllerInterface, UIAPI {
                             if (msg.prevMissing() > 0)
                                 cp.addMissing(msg.prevMissing());
                         }
-                        cp.addMsg(formatMessage(msg, contactName,
-                                                msg.receivedFrom()),
+                        String[] peer = new String[1];
+                        peer[0] = msg.receivedFrom();
+                        cp.addMsg(formatMessage(msg, contactName, peer),
                                   msg, myTabbedPane);
                         cp.validateToBottom();
                     } else {
@@ -1097,43 +1098,49 @@ class UIController implements ControllerInterface, UIAPI {
             for (int i = 1; i < seqs.size(); i++) {
                 if (lastSeq + 1 < seqs.get(i)) {
                     String key = "" + seqs.get(i) + " " + contact;
-                    missing.put(key, new Long(seqs.get(i) - (lastSeq + 1)));
+                    missing.put(key, Long.valueOf(seqs.get(i) - (lastSeq + 1)));
                 }
                 lastSeq = seqs.get(i);
             }
         }
 // System.out.println ("missing: " + missing);
-        // warning: loop variable may be modified in the body of the loop!
+        // warning: loop variable i may be modified in the body of the loop!
         for (int i = startIndex; i < msgs.size(); i++) {
             Message msg = msgs.get(i);
-            int groupIndex = i + 1;
-            String peers = "";
-            if (msg.isReceivedMessage()) {
-                peers = msg.receivedFrom();
-            } else {
-                peers = msg.sentTo() + (msg.acked() ? "" : "-");
-                while ((groupIndex < msgs.size()) &&
-                       (! msgs.get(groupIndex).isReceivedMessage()) &&
-                       (msg.sameMessageDifferentDestination
-                           (msgs.get(groupIndex)))) {
-                    Message m = msgs.get(groupIndex);
-                    peers += ", " + m.sentTo() + (m.acked() ? "" : "-");
-                    groupIndex++;
-                }
-            }
+            // add any missing
             if (msg.isReceivedMessage() && (! msg.isBroadcast())) {
                 String key = "" + msg.sequence() + " " + msg.receivedFrom();
                 Long m = missing.get(key);
-// if (m != null) System.out.println ("missing " + m + " for key " + key + ", msg " + msg);
                 if (m != null) {
                     cp.addMissing(m);
                 }
             }
+            // build the list of peers
+            int groupIndex = i;
+            java.util.Set<String> peers = new java.util.HashSet<String>();
+            java.util.Set<String> unacked = new java.util.HashSet<String>();
+            if (msg.isReceivedMessage()) {
+                peers.add(msg.receivedFrom());
+            } else {  // see if messages in sequence are really one group msg
+                for ( ; groupIndex < msgs.size(); groupIndex++) {
+                    Message m = msgs.get(groupIndex);
+                    if ((m.isReceivedMessage()) ||  // cannot be same message
+                        ((groupIndex > i) &&
+                         (! msg.sameMessageDifferentDestination(m)))) {
+                        break;   // done
+                    }
+                    peers.add(m.sentTo());
+                    if (! m.acked())
+                        unacked.add(m.sentTo());
+                }
+            }
             // add the message itself to the conversation panel
-            cp.addMsg(formatMessage(msg, cp.getContactName(), peers),
-                      msg, myTabbedPane);
+            String[] p = peers.toArray(new String[0]);
+            String[] u = unacked.toArray(new String[0]);
+            cp.addMsg(formatMessage(msg, cp.getContactName(), p),
+                      msg, myTabbedPane, p, u);
             if (groupIndex > i + 1) {   // warning: modifying the loop variable!
-                i = groupIndex - 1;     // skip the messages we just recorded
+                i = groupIndex - 1;     // skip the message(s) we just recorded
             }
         }
         if (scrollToBottom) {
@@ -1187,13 +1194,34 @@ class UIController implements ControllerInterface, UIAPI {
     // add a line at top for the date/time
     // if sender is not null, also show the sender
     private String formatMessage(Message msg,
-                                 String contactName, String peers) {
+                                 String contactName, String[] peers) {
         Date date = new Date();
         date.setTime(msg.sentTime);
         String timeText = formatter.format(date);
         StringBuilder sb = new StringBuilder(timeText);
-        if ((contactName != null) && (! contactName.equals(peers))) {
-            sb.append("   (" + peers + ")");
+        if (contactName != null) {
+            String[] members = coreAPI.membersRecursive(contactName);
+            boolean different = false;
+            if ((peers != null) && (peers.length > 0) &&
+                (members != null) && (members.length > 0)) {
+                java.util.Set<String> peerS =
+                    new java.util.HashSet<>(java.util.Arrays.asList(peers));
+                java.util.Set<String> memberS =
+                    new java.util.HashSet<>(java.util.Arrays.asList(members));
+                different = (! peerS.equals(memberS));
+            }
+            String candidatePeer = ((peers.length != 1) ? null : peers[0]);
+            if ((! contactName.equals(candidatePeer)) && (different)) {
+                if (peers.length > 1)
+                    sb.append("\n   ");
+                else
+                    sb.append("   ");
+                boolean first = true;
+                for (String p: peers) {
+                    sb.append((first ? "" : ", ") + p);
+                    first = false;
+                }
+            }
         }
         sb.append("\n");
         sb.append(msg.text);
@@ -1257,14 +1285,16 @@ class UIController implements ControllerInterface, UIAPI {
                 (ConversationPanel) myTabbedPane.getTabContent(name);
             if (cp != null) {
                 // find out what to display as a name, if anything
-                String display = name;
+                String[] display = new String[1];
                 if (coreAPI.contactIsGroup(name)) {
                     String[] members = coreAPI.membersRecursive(name);
-                    java.util.List<String> list = java.util.Arrays.asList(members);
-                    display = String.join(", ", list);
+                    display = new String[1 + members.length];
+                    System.arraycopy(members, 0, display, 1, members.length);
                 }
+                display[0] = name;
                 // add the message to the contacts panel
-                cp.addMsg(formatMessage(msg, name, display), msg, myTabbedPane);
+                String fmt = formatMessage(msg, name, display);
+                cp.addMsg(fmt, msg, myTabbedPane);
                 cp.validateToBottom();
                 // mark the message as read, even though at present this makes
                 // no difference for sent messages
