@@ -463,22 +463,33 @@ public class CoreConnect extends Thread implements CoreAPI {
     // @return the members of this group, null if group does not exist
     // @todo if used, add same caching as memberOfGroupsRecursive
     public String[] members(String group) {
+        if (! contactIsGroup(group))
+            return null;
         byte[] result = doRPCWithCode(guiMembers, group);
         long count = SocketUtils.b64(result, 1); 
         String[] mem = SocketUtils.bStringArray(result, 9, count);
-        System.out.println ("members of " + group + " are " + mem);
+System.out.print("members of " + group + " are");
+for (String s: mem) System.out.print(", " + s); System.out.println("");
         return mem;
     }
 
+    private String membersRecursiveCachedGroup = null;
+    private String[] membersRecursiveCachedMembers = null;
     // @return the members of this group and recursively any subgroups
     //         in other words, all contacts returned are
     //         individual contacts, not groups
-    // @todo if used, add same caching as memberOfGroupsRecursive
     public String[] membersRecursive(String group) {
-        byte[] result = doRPCWithCode(guiMembersRecursive, group);
-        long count = SocketUtils.b64(result, 1); 
-        String[] mem = SocketUtils.bStringArray(result, 9, count);
-        return mem;
+        if (! contactIsGroup(group))
+            return null;
+        if ((membersRecursiveCachedGroup == null) ||
+            (! membersRecursiveCachedGroup.equals(group))) {
+            byte[] result = doRPCWithCode(guiMembersRecursive, group);
+            long count = SocketUtils.b64(result, 1); 
+            String[] mem = SocketUtils.bStringArray(result, 9, count);
+            membersRecursiveCachedGroup = group;
+            membersRecursiveCachedMembers = mem;
+        }
+        return membersRecursiveCachedMembers;
     }
 
     // @return the groups of which this contact is a member

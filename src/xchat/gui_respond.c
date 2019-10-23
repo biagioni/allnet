@@ -295,7 +295,8 @@ static void gui_members (unsigned int code, char * message, int64_t length,
   if (length > 0) {
     char * contact = contact_name_from_buffer (message, length);
     char ** members = NULL;
-    int count = group_membership (contact, &members);
+    int count = (recursive ? group_membership_recursive (contact, &members)
+                           : group_membership (contact, &members));
     gui_send_string_array (code, members, count,
                            gui_sock, "gui_members");
     free (contact);
