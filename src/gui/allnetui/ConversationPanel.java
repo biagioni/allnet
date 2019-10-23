@@ -267,8 +267,8 @@ class ConversationPanel extends JPanel implements ComponentListener {
         return (panel);
     }
 
-    private Color getMsgColor(Message msg, boolean isReceived) {
-        if (msg.acked()) {
+    private Color getMsgColor(Message msg, boolean isReceived, boolean acked) {
+        if (acked || msg.acked()) {
             return ackedColor;
         }
         if (msg.isBroadcast()) {
@@ -358,10 +358,27 @@ class ConversationPanel extends JPanel implements ComponentListener {
         addBubble(bubble, true);
     }
 
+    public void addMsg(String text, Message msg, JComponent container,
+                       String[] peers, String[] unackedPeers) {
+        if (msg.isReceivedMessage()) {
+            addMsg(text, msg, container);
+            return;
+        }
+        Color bg = getMsgColor(msg, false,
+                               (unackedPeers.length < peers.length));
+        MessageBubble<Message> bubble
+            = new MessageBubble<>(msg, false, bg, text, container);
+        addBubble(bubble, true);
+        // update ack tracking, i.e. add as many as are not acked
+        for (String u: unackedPeers) {
+            unackedBubbles.add(bubble);
+        }
+    }
+
     public void addMsg(String text, Message msg, JComponent container) {
         boolean isReceived = msg.isReceivedMessage();
         boolean acked = msg.acked();
-        Color bg = getMsgColor(msg, isReceived);
+        Color bg = getMsgColor(msg, isReceived, acked);
         MessageBubble<Message> bubble
             = new MessageBubble<>(msg, isReceived, bg, text, container);
         addBubble(bubble, true);
