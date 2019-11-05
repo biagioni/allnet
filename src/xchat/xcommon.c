@@ -1174,7 +1174,7 @@ static void resend_peer_key (const char * contact, keyset k,
                              unsigned char * addr, unsigned int abits,
                              int max_hops, int sock)
 {
-  if (! send_key (sock, contact, k, secret, addr, abits, max_hops, 0))
+  if (! send_key (sock, contact, k, secret, addr, abits, max_hops, 1))
 #ifdef DEBUG_PRINT
     printf ("send_key failed for key %d\n", k)
 #endif /* DEBUG_PRINT */
