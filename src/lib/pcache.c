@@ -785,7 +785,8 @@ if (eff_len > 2048) crash ();
         result.messages [result.n].msize = current->length;
         result.messages [result.n].priority = current->priority;
         result.n += 1;
-        if (rlen >= ALLNET_TOKEN_SIZE) {
+        if ((rlen >= ALLNET_TOKEN_SIZE) &&
+            (! (memget (req->token, 0, ALLNET_TOKEN_SIZE)))) {
           int ti = token_find_index ((const char *) (req->token));
           if (ti < 0)  /* no such token */
             ti = add_token ((const char *) (req->token));
