@@ -578,8 +578,10 @@ struct socket_read_result socket_read (struct socket_set * s,
     lock ("socket_read");
     fd_set receiving;
     int max_pipe = make_fdset (s, &receiving);
-    /* always select for 10ms, since we are holding the lock */
+    /* normally select for only 10ms, since we are holding the lock */
     struct timeval tv = { .tv_sec = 0, .tv_usec = 10000 };
+    if (tv.tv_usec / 1000 > remaining_time)  /* select for less than 10ms */
+      tv.tv_usec = remaining_time * 1000;
     int result = select (max_pipe, &receiving, NULL, NULL, &tv);
     if (result > 0)      /* found something, get_message unlocks global_mutex */
       return get_message (s, buffer, &receiving, rcvd_time, r);
