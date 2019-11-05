@@ -1,4 +1,8 @@
 /* app_util.c: utility functions for applications */
+/* if ALLNET_USE_FORK, use a UDP socket to send and receive messages 
+ * to/from ad.  Otherwise, use set_next_local_message to send packets,
+ * and ad will call receiveAdPacket (must be defined in the UI code)
+ * to deliver packets. */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -109,6 +113,7 @@ static void exec_allnet (const char * arg, const char * config_path)
 
 #endif /* ALLNET_USE_FORK */
 
+#ifdef ALLNET_USE_FORK  /* otherwise, "send" to ad with a copy */
 static int internal_sockfd = -1;
 static struct sockaddr_storage sas;
 static struct sockaddr * sap = (struct sockaddr *) (&sas);
@@ -124,10 +129,8 @@ static int send_with_priority (const char * message, int msize, unsigned int p)
   if (internal_sockfd < 0) {
     printf ("send_with_priority: unininitialzed socket %d, ls %lld\n",
             internal_sockfd, last_sent);
-#ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* normal on iOS after restarting */
     char * pq = NULL;
     printf ("crashing %d\n", *pq);
-#endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
     return 0;
   }
   char copy [SOCKET_READ_MIN_BUFFER];
@@ -148,28 +151,24 @@ static int send_with_priority (const char * message, int msize, unsigned int p)
   }
   return (s == (msize + 4));
 }
+#endif /* ALLNET_USE_FORK */
 
 /* send a keepalive unless we have sent messages in the last 5s */
 void local_send_keepalive (int override)
 {
+#ifdef ALLNET_USE_FORK     /* only if we use sockets */
   long long int now = allnet_time ();
   if (((! override) && (last_sent + (KEEPALIVE_SECONDS / 2) > now)) ||
       (internal_sockfd < 0))
     return;  /* do nothing */
-#if 0
-struct sockaddr_storage local_sas; socklen_t local_alen = sizeof (local_sas);
-getsockname(internal_sockfd, (struct sockaddr *)(&local_sas), &local_alen);
-int port = htons (local_sas.ss_family == AF_INET
-                  ? ((struct sockaddr_in *) (&local_sas))->sin_port
-                  : ((struct sockaddr_in6 *) (&local_sas))->sin6_port);
-printf ("local_send_keepalive from port %04x\n", port);
-#endif /* 0 */
   last_sent = now;
   unsigned int msize;
   const char * message = keepalive_packet (&msize);
   send_with_priority (message, msize, ALLNET_PRIORITY_EPSILON);
+#endif /* ALLNET_USE_FORK */
 }
 
+#ifdef ALLNET_USE_FORK
 static int connect_once (int print_error)
 {
   memset (&sas, 0, sizeof (sas));
@@ -211,17 +210,29 @@ ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK);
       usleep (50000);  /* wait for 50ms */
     }
   }
-  if (print_error && (errno != 0) && (error_desc != NULL))
-    { printf ("error %d/%d,%d,%d,%d,%d, s %d count %d\n", errno,
-              ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK,
-              internal_sockfd, debug_recv_count);
-      perror (error_desc); }
-  else if (print_error)  /* timed out */
+  if (print_error && (errno != 0) && (error_desc != NULL)) {
+    perror (error_desc);
+    printf ("error %d/%d,%d,%d,%d,%d, s %d count %d\n", errno,
+            ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK,
+            internal_sockfd, debug_recv_count);
+  } else if (print_error) { /* timed out */
+    perror ("connect_once recv");
     printf ("no response after connecting to allnet\n");
+  }
   close (internal_sockfd);
   internal_sockfd = -1;
   return -1;
 }
+
+static void * keepalive_thread (void * arg)
+{
+  while (1) {
+    local_send_keepalive (0);
+    sleep (KEEPALIVE_SECONDS);
+  }
+  return NULL;
+}
+#endif /* ALLNET_USE_FORK */
 
 #ifndef ANDROID  /* android doesn't support initstate */
 static void read_n_bytes (int fd, char * buffer, int bsize)
@@ -303,15 +314,6 @@ static void seed_rng ()
 }
 #endif /* ANDROID */
 
-static void * keepalive_thread (void * arg)
-{
-  while (1) {
-    local_send_keepalive (0);
-    sleep (KEEPALIVE_SECONDS);
-  }
-  return NULL;
-}
-
 /* returns a UDP socket used to send messages to the allnet daemon
  * or receive messages from the allnet daemon
  * returns -1 in case of failure
@@ -326,16 +328,14 @@ int connect_to_local (const char * program_name, const char * arg0,
                       const char * path, int start_allnet_if_needed,
                       int start_keepalive_thread)
 {
+#ifdef ALLNET_USE_FORK
   snprintf (program_name_copy, sizeof (program_name_copy), "%s", program_name);
   static int first_call = 1;
   if (! first_call)
     close (internal_sockfd);
   internal_sockfd = -1;
   internal_print_send_errors = 0;
-#ifndef ANDROID
   seed_rng ();
-#endif /* ANDROID */
-#ifdef ALLNET_USE_FORK
   int sock = connect_once (! start_allnet_if_needed);
   if ((sock < 0) && start_allnet_if_needed) {
     printf ("%s", program_name);
@@ -349,9 +349,6 @@ int connect_to_local (const char * program_name, const char * arg0,
     if (sock < 0)
       printf ("unable to start allnet daemon, giving up\n");
   }
-#else /* ! ALLNET_USE_FORK */
-  int sock = connect_once (1);
-#endif /* ALLNET_USE_FORK */
   internal_print_send_errors = 1;
   if (sock < 0)
     return -1;
@@ -363,18 +360,30 @@ int connect_to_local (const char * program_name, const char * arg0,
   }
   first_call = 0;
   return sock;
+#else /* ALLNET_USE_FORK -- not much to do */
+#ifndef ANDROID
+  seed_rng ();
+#endif /* ANDROID */
+  return 99;   /* nothing to do, no sockets to mess with */
+#endif /* ALLNET_USE_FORK */
 }
 
 /* return 1 for success, 0 otherwise */
 int local_send (const char * message, int msize, unsigned int priority)
 {
+#ifdef ALLNET_USE_FORK
   if (send_with_priority (message, msize, priority)) {
     last_sent = allnet_time ();
     return 1;
   }
   return 0;
+#else /* ALLNET_USE_FORK */
+  extern int set_next_local_message (const char * message, int mlen, int pri);
+  return set_next_local_message (message, msize, priority);
+#endif /* ALLNET_USE_FORK */
 }
 
+#ifdef ALLNET_USE_FORK
 static int do_recv (char ** message, unsigned int * priority)
 {
   char buffer [ALLNET_MTU + 4];
@@ -397,6 +406,7 @@ static int do_recv (char ** message, unsigned int * priority)
   }
   return 0;
 }
+#endif /* ALLNET_USE_FORK */
 
 /* return the message size > 0 for success, 0 otherwise, -1 for error.
  * timeout in ms, SOCKETS_TIMEOUT_FOREVER or -1 to wait forever */
@@ -405,6 +415,7 @@ int local_receive (unsigned int timeout,
 {
   *message = NULL;
   *priority = 0;
+#ifdef ALLNET_USE_FORK
   static int keepalive_count = 0;   /* send a keepalive every 5 rcvd messages */
   if (keepalive_count <= 0) {
     local_send_keepalive (1);
@@ -439,6 +450,7 @@ int local_receive (unsigned int timeout,
       }
     }
   }
+#endif /* ALLNET_USE_FORK */
   return 0;
 }
 
@@ -456,7 +468,7 @@ void set_speculative_computation (int ok)
   ok_for_speculative_computation = ok;
 }
 
-#ifdef GET_BCKEY_IS_IMPLEMENTED
+#ifdef GET_BCKEY_IS_IMPLEMENTED  /* 2019/11/05: is this ever used? */
 /* retrieve or request a public key.
  *
  * if successful returns the key length and sets *key to point to
