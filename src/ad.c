@@ -78,12 +78,13 @@ static void initialize_sockets ()
   socklen_t alen6 = sizeof (struct sockaddr_in6);
   memset (&sasv4, 0, sizeof (sasv4));
   memset (&sasv6, 0, sizeof (sasv6));
-  /* first the local port */
   sin6->sin6_family = AF_INET6;
   memcpy (&(sin6->sin6_addr), &(in6addr_loopback), sizeof (sin6->sin6_addr));
-  sin6->sin6_port = htons (ALLNET_LOCAL_PORT);
   sin->sin_family = AF_INET;
   sin->sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+#ifdef ALLNET_USE_FORK
+  /* first the local port */
+  sin6->sin6_port = htons (ALLNET_LOCAL_PORT);
   sin->sin_port = htons (ALLNET_LOCAL_PORT);
   int local_v6 = socket_create_bind (&sockets, 1, sasv6, alen6, 0);
   if (local_v6 < 0)
@@ -96,6 +97,9 @@ static void initialize_sockets ()
     printf ("unable to create and bind to IPv4 local socket\n");
   else                     /* created ipv4 socket, record this */
     created_local = 1;
+#else /* ALLNET_USE_FORK -- called directly, not through a socket */
+  created_local = 1;
+#endif /* ALLNET_USE_FORK */
   /* now the outside port */
   memcpy (&(sin6->sin6_addr), &(in6addr_any), sizeof (sin6->sin6_addr));
   sin6->sin6_port = htons (ALLNET_PORT);
@@ -108,6 +112,14 @@ static void initialize_sockets ()
     created_out = 1;
   /* now IPv4 */
   sock_v4 = socket_create_bind (&sockets, 0, sasv4, alen4, created_out);
+#ifndef ALLNET_USE_FORK  /* try a few different ports */
+  int loop_count = 0;
+  while ((! created_out) && (sock_v4 < 0) && (loop_count++ < 10)) {
+    int port = (int) random_int (ALLNET_PORT + 16, ALLNET_PORT + 256);
+    sin->sin_port = htons (port);
+    sock_v4 = socket_create_bind (&sockets, 0, sasv4, alen4, created_out);
+  }
+#endif /* ALLNET_USE_FORK */
   if ((sock_v4 < 0) && (! created_out))
     printf ("unable to create and bind to IPv4 out socket\n");
   else if (created_out) {  /* ipv6 socket is valid, use it for ipv4 */
@@ -566,6 +578,19 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
 #endif /* THROTTLE_SENDING */
 }
 
+static void local_send (struct socket_set * s, const char * message, int msize,
+                        unsigned int priority, unsigned long long int sent_time,
+                        struct sockaddr_storage except_to, socklen_t alen)
+{
+#ifdef ALLNET_USE_FORK  /* deliver directly to the destination */
+  socket_send_local (s, message, msize, priority, sent_time, except_to, alen);
+#else /* ALLNET_USE_FORK -- call receiveAdPacket */
+  extern void
+    receiveAdPacket (const char * data, unsigned int dlen, unsigned int pri);
+  receiveAdPacket (message, msize, priority);
+#endif /* ALLNET_USE_FORK */
+}
+
 static void update_dht ()
 {
   char * dht_message = NULL;
@@ -573,8 +598,8 @@ static void update_dht ()
   if ((msize > 0) && (dht_message != NULL)) {
     struct sockaddr_storage sas;
     memset (&sas, 0, sizeof (sas));
-    socket_send_local (&sockets, dht_message, msize, ALLNET_PRIORITY_LOCAL_LOW,
-                       virtual_clock, sas, 0);
+    local_send (&sockets, dht_message, msize, ALLNET_PRIORITY_LOCAL_LOW,
+                virtual_clock, sas, 0);
     send_out (dht_message, msize, ROUTING_DHT_ADDRS_MAX, NULL, 0,
               ALLNET_PRIORITY_LOCAL_LOW, 0, NULL, NULL);
     free (dht_message);
@@ -623,10 +648,20 @@ static struct socket_address_validity *
   return result;
 }
 
+#ifndef ALLNET_USE_FORK  /* if sockfd is -1, deliver directly */
+#endif /* ALLNET_USE_FORK */
+
 static int send_message_to_one (const char * message, int msize, int priority,
                                 struct socket_address_set * sock,
                                 struct sockaddr_storage addr, socklen_t alen)
 {
+#ifndef ALLNET_USE_FORK  /* sockfd may be -1 to indicate deliver directly */
+  if (sock->sockfd < 0) {
+    struct sockaddr_storage sas = { .ss_family = 0, };   /* ignored */
+    local_send (NULL, message, msize, priority, 0, sas, 0);
+    return 1;
+  }
+#endif /* ALLNET_USE_FORK */
 #ifdef THROTTLE_SENDING
   if (skip_this_packet (priority))
     return 0;
@@ -839,8 +874,8 @@ static struct message_process process_mgmt (struct socket_read_result *r)
     if ((trace_reply != NULL) && (trace_reply_size > 0)) {
       struct sockaddr_storage empty;
       memset (&empty, 0, sizeof (empty));
-      socket_send_local (&sockets, trace_reply, trace_reply_size,
-                         ALLNET_PRIORITY_TRACE, virtual_clock, empty, 0);
+      local_send (&sockets, trace_reply, trace_reply_size,
+                  ALLNET_PRIORITY_TRACE, virtual_clock, empty, 0);
       if (! r->sock->is_local) {
         struct allnet_header * thp = (struct allnet_header *) trace_reply;
         if (thp->max_hops == 1)    /* just return to the sender */
@@ -973,11 +1008,71 @@ print_packet (r->message, r->msize, "received data request", 1);
   return result;
 }
 
+#ifndef ALLNET_USE_FORK  /* try a few different ports */
+static pthread_mutex_t next_message_mutex = PTHREAD_MUTEX_INITIALIZER;
+static struct socket_read_result next_message_result = { .success = 0 };
+static char next_message_data [ALLNET_MTU];
+static struct socket_address_set fake_socket_address_set =
+  { .sockfd = -1, .is_local = 1, .is_global_v6 = 0, .is_global_v4 = 0,
+    .is_broadcast = 0, .num_addrs = 0, .send_addrs = NULL };
+static struct sockaddr_in fake_socket_address =
+  { .sin_family = AF_INET, .sin_port = 0, .sin_addr = 0 };
+static struct socket_address_validity fake_sav =
+  { .alen = sizeof (struct sockaddr_in), .alive_rcvd = 0,
+    .alive_sent = 0, .time_limit = 0, .recv_limit = 0, .send_limit = 0,
+    .send_limit_on_recv = 0 };
+
+int set_next_local_message (const char * message, int mlen, int priority)
+{
+  pthread_mutex_lock (&next_message_mutex);
+  if (next_message_result.success) {
+    printf ("warning: new %d-byte local message overwrites %d-byte message\n",
+            mlen, next_message_result.msize);
+  }
+  memcpy (next_message_data, message, mlen);
+  next_message_result.message = next_message_data;
+  next_message_result.msize = mlen;
+  next_message_result.priority = priority;
+  next_message_result.sock = &fake_socket_address_set;
+  fake_socket_address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+  struct sockaddr_storage sas;
+  memset (&sas, 0, sizeof (sas));
+  *((struct sockaddr_in *) (&sas)) = fake_socket_address;
+  next_message_result.from = sas;
+  next_message_result.alen = sizeof (struct sockaddr_in);
+  next_message_result.socket_address_is_new = 0;
+  fake_sav.addr = sas;
+  next_message_result.sav = &fake_sav;
+  next_message_result.recv_limit_reached = 0;
+  next_message_result.success = 1;
+  pthread_mutex_unlock (&next_message_mutex);
+  return 1;
+}
+#endif /* ALLNET_USE_FORK */
+
+static struct socket_read_result next_message (char * message_buffer)
+{
+  int timeout = 10;      /* when all the data comes from sockets */
+#ifndef ALLNET_USE_FORK  /* see if we have been given a local message */
+  pthread_mutex_lock (&next_message_mutex);
+  struct socket_read_result r = next_message_result;  /* identical copy */
+  if (r.success) {
+    memcpy (message_buffer, r.message, r.msize);      /* copy the data */
+    r.message = message_buffer;        /* have r.message refer to the copy */
+    next_message_result.success = 0;   /* clear the cache */
+    pthread_mutex_unlock (&next_message_mutex);
+    return r;
+  }
+  pthread_mutex_unlock (&next_message_mutex);
+  timeout = 1;      /* quickly check again for a next_message */
+#endif /* ALLNET_USE_FORK */  /* no local message, or from sockets only */
+  return socket_read (&sockets, message_buffer, timeout, virtual_clock);
+}
+
 void allnet_daemon_loop ()
 {
   char message [SOCKET_READ_MIN_BUFFER];
-  struct socket_read_result r = socket_read (&sockets, message,
-                                             10, virtual_clock);
+  struct socket_read_result r = next_message (message);
 #ifdef TEST_TCP_ONLY /* ignore non-local IPs to force everything over tcp */
   if ((r.success) &&
       (! ((is_loopback_ip ((struct sockaddr *) &(r.from), r.alen))))) continue;
@@ -1058,8 +1153,8 @@ printf ("\n");
          ((hp->message_type == ALLNET_TYPE_MGMT) ? process_mgmt (&r)
                                                  : process_message (&r));
     if (m.process & PROCESS_PACKET_LOCAL)
-      socket_send_local (&sockets, m.message, m.msize, m.priority,
-                           virtual_clock, r.from, r.alen);
+      local_send (&sockets, m.message, m.msize, m.priority,
+                  virtual_clock, r.from, r.alen);
 #define MAX_SENT_ADDRS	1000
     int num_sent_addrs = MAX_SENT_ADDRS;
     struct sockaddr_storage sent_addrs [MAX_SENT_ADDRS];
