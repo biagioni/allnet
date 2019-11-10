@@ -118,29 +118,50 @@ static int copy_string_array (char * dest, size_t dsize,
   return 1;
 }
 
-static void gui_send_string_array (int code, char ** array, int count, int sock,
-                                   const char * caller)
+/* if extra is not null, adds esize bytes to the header */
+static void gui_send_string_array (int code, char ** array,
+                                   int count, char * extra, int esize,
+                                   int sock, const char * caller)
 {
-/* format: code, 64-bit number of strings, null-terminated strings */
+/* format: code, 64-bit number of strings, extra, null-terminated strings */
 #define STRING_ARRAY_HEADER_SIZE	9
+  if (extra == NULL)
+    esize = 0;
   size_t string_alloc = size_of_string_array (array, count);
-  size_t alloc = STRING_ARRAY_HEADER_SIZE + string_alloc;
+  size_t alloc = STRING_ARRAY_HEADER_SIZE + string_alloc + esize;
   char * reply = malloc_or_fail (alloc, caller);
   reply [0] = code;
   writeb64 (reply + 1, count);
-  if ((count > 0) && (string_alloc > 0)) {
-    copy_string_array (reply + STRING_ARRAY_HEADER_SIZE, string_alloc,
-                       array, count);
-  }
+  if (extra != NULL)
+    memcpy (reply + STRING_ARRAY_HEADER_SIZE, extra, esize);
+  int offset = STRING_ARRAY_HEADER_SIZE	+ esize;
+  if ((count > 0) && (string_alloc > 0))
+    copy_string_array (reply + offset, string_alloc, array, count);
   gui_send_buffer (sock, reply, alloc);
   free (reply);
 #undef STRING_ARRAY_HEADER_SIZE
 }
 
+/* returns new count */
+static int add_unique (char * match, char ** result, int count)
+{
+  int i;
+  for (i = 0; i < count; i++) {
+    if (strcmp (result [i], match) == 0)
+      return count;
+  }
+  result [count] = match;
+  return count + 1;
+}
+
 /* send all the contacts to the gui, null-separated */
 static void gui_contacts (int sock)
 {
-/* format: code, 64-bit number of contacts, null-terminated contacts */
+/* format: code, 64-bit number of contacts,
+ *               1-byte bitset for each contact,
+ *               null-terminated list of all contacts
+ * the bitset contains one bit each for visible (1), notify (2),
+ * save (4), is_group (8) */
   char ** contacts = NULL;
   int nc = all_contacts (&contacts);
   char ** invisibles = NULL;
@@ -149,31 +170,33 @@ static void gui_contacts (int sock)
   int ni = incomplete_key_exchanges (&incompletes, NULL, NULL);
   char ** all = malloc_or_fail (sizeof(char*) * (nc + ni + ninv),
                                 "gui_contacts 1");
-  int ia;    /* counts through the "all" array */
-  for (ia = 0; ia < nc; ia++)
-    all [ia] = contacts [ia];
-  int iinv;    /* counts through the "invisibles" array */
-  for (iinv = 0; iinv < ninv; iinv++) {
-    all [ia] = invisibles [iinv];
-    ia++;
-  }
-  int ii;    /* counts through the "incompletes" array */
-  for (ii = 0; ii < ni; ii++) {
-    int ic;  /* counts through the "contacts" array */
-    int found = 0;
-    for (ic = 0; ic < nc; ic++) {
-      if (strcmp (contacts [ic], incompletes [ii]) == 0) {
-        found = 1;
-        break;
-      }
+  int na = 0; /* total number of contacts */
+  int i;
+  for (i = 0; i < nc; i++)
+    na = add_unique (contacts [i], all, na);
+  for (i = 0; i < ninv; i++)
+    na = add_unique (invisibles [i], all, na);
+  for (i = 0; i < ni; i++)
+    na = add_unique (incompletes [i], all, na);
+  /* na has the count of names in the "all" array */
+  char * extra = NULL;
+  if (na > 0) {
+    extra = malloc_or_fail (na, "gui_contacts 2");
+    for (i = 0; i < na; i++) {
+      int byte = 0;
+      if (is_visible (all [i]))
+        byte |= 1;
+      if (contact_file_get (all [i], "no_notify", NULL) < 0)
+        byte |= 2;
+      if (contact_file_get (all [i], "no_saving", NULL) < 0)
+        byte |= 4;
+      if (is_group (all [i]))
+        byte |= 8;
+      extra [i] = byte;
     }
-    if (! found) {    /* incomplete contact is not also in contacts, add */
-      all [ia] = incompletes [ii];
-      ia++;
-    } /* else incompletes is also in contacts, do not add */
   }
-  /* ia has the count of names in the "all" array */
-  gui_send_string_array (GUI_CONTACTS, all, ia, sock, "gui_contacts");
+  gui_send_string_array (GUI_CONTACTS, all, na, extra, na,
+                         sock, "gui_contacts");
   if (contacts != NULL)
     free (contacts);
   if (invisibles != NULL)
@@ -182,6 +205,8 @@ static void gui_contacts (int sock)
     free (incompletes);
   if (all != NULL)
     free (all);
+  if (extra != NULL)
+    free (extra);
 }
 
 /* send all the subscriptions to the gui, null-separated */
@@ -194,8 +219,8 @@ static void gui_subscriptions (int sock)
   int i;
   for (i = 0; i < nb; i++)
     senders [i] = bki [i].identifier;
-  gui_send_string_array (GUI_SUBSCRIPTIONS, senders, nb, sock,
-                         "gui_subscriptions");
+  gui_send_string_array (GUI_SUBSCRIPTIONS, senders, nb, NULL, 0,
+                         sock, "gui_subscriptions");
   free (senders);
 }
 
@@ -297,7 +322,7 @@ static void gui_members (unsigned int code, char * message, int64_t length,
     char ** members = NULL;
     int count = (recursive ? group_membership_recursive (contact, &members)
                            : group_membership (contact, &members));
-    gui_send_string_array (code, members, count,
+    gui_send_string_array (code, members, count, NULL, 0,
                            gui_sock, "gui_members");
     free (contact);
     if (members != NULL)
@@ -320,7 +345,7 @@ static void gui_member_of (unsigned int code, char * message, int64_t length,
     char ** members = NULL;
     int count = (recursive ? member_of_groups_recursive (contact, &members)
                            : member_of_groups (contact, &members));
-    gui_send_string_array (code, members, count,
+    gui_send_string_array (code, members, count, NULL, 0,
                            gui_sock, "gui_member_of");
     free (contact);
     if (members != NULL)

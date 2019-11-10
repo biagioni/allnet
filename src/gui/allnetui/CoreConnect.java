@@ -75,6 +75,20 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // to refill these caches when something changes, just set them to null
     java.util.Collection<String> cachedContacts = null;
+    java.util.Map<String, Boolean> cachedVisibleContacts = null;
+    java.util.Map<String, Boolean> cachedNotifyContacts = null;
+    java.util.Map<String, Boolean> cachedSaveContacts = null;
+    java.util.Map<String, Boolean> cachedIsGroup = null;
+
+    private void clearCaches() {
+        cachedContacts = null;
+        cachedVisibleContacts = null;
+        cachedNotifyContacts = null;
+        cachedSaveContacts = null;
+        cachedIsGroup = null;
+    }
+
+    // subscriptions are separate from contacts, no need to put them together
     java.util.Collection<String> cachedSubscriptions = null;
 
     // list of incomplete contacts, so we don't always have to check back
@@ -138,7 +152,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     private void callbackContactCreated(byte[] value) {
         assert(value.length > 2);
-        cachedContacts = null;   // reset the cache
+        clearCaches();
         String peer = stringFromBytes(value, 1);
         handlers.contactCreated(peer);
     }
@@ -337,10 +351,21 @@ public class CoreConnect extends Thread implements CoreAPI {
             request[0] = guiContacts;
             byte[] response = doRPC(request);
             long count = SocketUtils.b64(response, 1); 
-            result = SocketUtils.bStringArray(response, 9, count);
+            result = SocketUtils.bStringArray(response, 9 + (int)count, count);
             cachedContacts = new java.util.HashSet<String>();
             for (String contact: result) {
                 cachedContacts.add(contact);
+            }
+            cachedVisibleContacts = new java.util.HashMap<String, Boolean>();
+            cachedNotifyContacts = new java.util.HashMap<String, Boolean>();
+            cachedSaveContacts = new java.util.HashMap<String, Boolean>();
+            cachedIsGroup = new java.util.HashMap<String, Boolean>();
+            for (int i = 0; i < count; i++) {
+              byte b = response [i + 9];
+              cachedVisibleContacts.put(result[i], (b & 1) != 0);
+              cachedNotifyContacts.put(result[i], (b & 2) != 0);
+              cachedSaveContacts.put(result[i], (b & 4) != 0);
+              cachedIsGroup.put(result[i], (b & 8) != 0);
             }
         } else {
            result = cachedContacts.toArray(new String[0]);
@@ -436,7 +461,16 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     public boolean contactIsGroup(String contact) {
-        return doRPCWithCodeNonZero (guiContactIsGroup, contact);
+        if (cachedIsGroup != null) {
+            Boolean v = cachedIsGroup.get(contact);
+            if (v != null)
+                return v;
+        } else {
+            cachedIsGroup = new java.util.HashMap<String, Boolean>();
+        }
+        boolean v = doRPCWithCodeNonZero (guiContactIsGroup, contact);
+        cachedIsGroup.put (contact, v);
+        return v;
     }
 
     // newly created contacts may not have the peer's key
@@ -454,7 +488,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     // @return true if was able to create the group
     public boolean createGroup(String name) {
         byte[] result = doRPCWithCode(guiCreateGroup, name);
-        cachedContacts = null;   // reset the cache
+        clearCaches();
         boolean r = (result[1] != 0);
         System.out.println ("createGroup => " + (r ? "true" : "false"));
         return r;
@@ -518,7 +552,7 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
 
     // @return true if was able to rename the contact
     public boolean renameContact(String oldName, String newName) {
-        cachedContacts = null;   // reset the cache
+        clearCaches();
         byte[] request = new byte[1 + 1 + SocketUtils.numBytes(oldName) +
                                   SocketUtils.numBytes(newName) + 2];
         request[0] = guiRenameContact;
@@ -540,47 +574,79 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
             System.out.println("deleting " + contact + " failed");
             return false;
         }
-        cachedContacts = null;   // reset the cache
+        clearCaches();
         return doRPCWithCodeNonZero (guiDeleteContact, contact);
     }
 
+    private boolean cacheValue (java.util.Map<String, Boolean> cache,
+                                byte var, String contact) {
+        boolean v = doRPCWithCodeOpNonZero (guiQueryVariable, var, contact);
+        cache.put (contact, v);
+        return v;
+    }
+
     public boolean isVisible(String contact) {
-        return doRPCWithCodeOpNonZero (guiQueryVariable, guiVariableVisible,
-                                       contact);
+        if (cachedVisibleContacts != null) {
+            Boolean v = cachedVisibleContacts.get(contact);
+            if (v != null)
+                return v;
+        } else {
+            cachedVisibleContacts = new java.util.HashMap<String, Boolean>();
+        }
+        return cacheValue(cachedVisibleContacts, guiVariableVisible, contact);
     }
     public void setVisible(String contact) {
         byte [] response = doRPCWithCodeOp (guiSetVariable, guiVariableVisible,
                                             contact);
+        clearCaches();
     }
     public void unsetVisible(String contact) {  // make not visible
         byte [] response = doRPCWithCodeOp (guiUnsetVariable,
                                             guiVariableVisible, contact);
+        clearCaches();
     }
 
     public boolean isNotify(String contact) {
-        return doRPCWithCodeOpNonZero (guiQueryVariable, guiVariableNotify,
-                                       contact);
+        if (cachedNotifyContacts != null) {
+            Boolean v = cachedNotifyContacts.get(contact);
+            if (v != null)
+                return v;
+        } else {
+            cachedNotifyContacts = new java.util.HashMap<String, Boolean>();
+        }
+        return cacheValue(cachedNotifyContacts, guiVariableNotify, contact);
     }
     public void setNotify(String contact) { 
         byte [] response = doRPCWithCodeOp (guiSetVariable, guiVariableNotify,
                                             contact);
+        clearCaches();
     }
     public void unsetNotify(String contact) { 
         byte [] response = doRPCWithCodeOp (guiUnsetVariable, guiVariableNotify,
                                             contact);
+        clearCaches();
     }
 
     public boolean isSavingMessages(String contact) { 
-        return doRPCWithCodeOpNonZero (guiQueryVariable,
-                                       guiVariableSavingMessages, contact);
+        if (cachedSaveContacts != null) {
+            Boolean v = cachedSaveContacts.get(contact);
+            if (v != null)
+                return v;
+        } else {
+            cachedSaveContacts = new java.util.HashMap<String, Boolean>();
+        }
+        return cacheValue(cachedSaveContacts,
+                          guiVariableSavingMessages, contact);
     }
     public void setSavingMessages(String contact) { 
         byte [] response = doRPCWithCodeOp (guiSetVariable,
                                             guiVariableSavingMessages, contact);
+        clearCaches();
     }
     public void unsetSavingMessages(String contact) { 
         byte [] response = doRPCWithCodeOp (guiUnsetVariable,
                                             guiVariableSavingMessages, contact);
+        clearCaches();
     }
 
     // a key exchange is only complete once
@@ -714,7 +780,7 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
         assert(endSecret2 == length);
         byte[] response = doRPC(request);
         incompletes.add(contact);
-        cachedContacts = null;
+        clearCaches();
         if (response[1] == 0) {
             System.out.println("initKeyExchange returned failure");
             return false;
@@ -786,8 +852,6 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
         this.handlers.initializationComplete();
         if (! readyForCallbacks) {
             readyForCallbacks = true;
-if (pendingCallbacks.size() > 0) System.out.println ("executing " +
-pendingCallbacks.size () + " delayed callbacks");
 	    for (byte [] c: pendingCallbacks) {
                 dispatch (c);
             }
