@@ -306,7 +306,13 @@ void dht_process (char * message, unsigned int msize,
         routing_add_dht (ai);
       } else {               /* zero address, use the sender's IP instead */
         sockaddr_to_ia (sap, alen, &(ai.ip));
-        routing_add_dht (ai);
+        if (is_valid_address (&ai.ip) == 1) {
+          routing_add_dht (ai);
+        } else {
+          printf ("adht.h dht_process, bad sender IP address: ");
+          print_sockaddr (sap, alen);
+          printf ("\n");
+        }
       }
     }
   }
