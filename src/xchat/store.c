@@ -124,6 +124,11 @@ static int start_iter_from_file (const char * contact, keyset k,
   return 1;
 }
 
+/* used in start_iter, but declared lower down */
+static int list_all_messages_from_file (const char * contact,
+                                        struct message_store_info ** msgs,
+                                        int * num_alloc, int * num_used);
+
 struct msg_iter * start_iter (const char * contact, keyset k)
 {
   if ((contact == NULL) || (k < 0))
@@ -136,7 +141,8 @@ struct msg_iter * start_iter (const char * contact, keyset k)
     struct message_store_info * msgs = NULL;
     int num_used = 0;
     int num_alloc = 0;
-    int success = list_all_messages (contact, &msgs, &num_alloc, &num_used);
+    int success =
+      list_all_messages_from_file (contact, &msgs, &num_alloc, &num_used);
     if (success) {
       index = add_message_cache_record (contact, msgs, num_alloc, num_used);
       if (index < 0) { /* unable to cache */
@@ -1369,16 +1375,11 @@ static void add_all_messages (struct message_store_info ** msgs,
   free_unallocated_iter (&iter);
 }
 
-/* *msgs must be NULL or pointing to num_alloc (malloc'd or realloc'd) records
- * of type struct message_store_info.  list_all_messages may realloc this if
- * more space is needed.  Initially, *num_used must be 0.  After returning,
- * *num_used <= *num_alloc (both numbers may have changed)
- * if msgs was previously used, its messages should have been freed
- * by calling free_all_messages.
- * return 1 if successful, 0 if not */
-int list_all_messages (const char * contact,
-                       struct message_store_info ** msgs,
-                       int * num_alloc, int * num_used)
+/* must be called with message_cache_mutex held */
+static int
+  list_all_messages_from_file (const char * contact,
+                               struct message_store_info ** msgs,
+                               int * num_alloc, int * num_used)
 {
   if ((contact == NULL) || (msgs == NULL) ||
       (num_alloc == NULL) || (num_used == NULL))
@@ -1396,6 +1397,43 @@ int list_all_messages (const char * contact,
   }
   free (k);
   return 1;
+}
+
+/* *msgs must be NULL or pointing to num_alloc (malloc'd or realloc'd) records
+ * of type struct message_store_info.  list_all_messages may realloc this if
+ * more space is needed.  Initially, *num_used must be 0.  After returning,
+ * *num_used <= *num_alloc (both numbers may have changed)
+ * if msgs was previously used, its messages should have been freed
+ * by calling free_all_messages.
+ * return 1 if successful, 0 if not */
+int list_all_messages (const char * contact,
+                       struct message_store_info ** msgs,
+                       int * num_alloc, int * num_used)
+{
+  if ((contact == NULL) || (msgs == NULL) ||
+      (num_alloc == NULL) || (num_used == NULL))
+    return 0;
+  *num_used = 0;
+  pthread_mutex_lock (&message_cache_mutex);
+  int index = find_message_cache_record (contact);
+  int result = 0;
+  if (index >= 0) {   /* it is in memory, use the iterator */
+    struct message_cache_record * cache = message_cache + index;
+    size_t size = cache->num_used * sizeof (struct message_store_info);
+    if (cache->num_used > *num_alloc) {  /* reallocate */
+      if (*msgs != NULL)
+        free (*msgs);
+      *msgs = malloc_or_fail (size, "list_all_messages");
+      *num_alloc = cache->num_used;
+    }  /* invariant: *num_alloc >= cache->num_used */
+    *num_used = cache->num_used;
+    memcpy (*msgs, cache->msgs, size);
+    result = 1;
+  } else {   /* not (yet) in memory */
+    result = list_all_messages_from_file (contact, msgs, num_alloc, num_used);
+  }
+  pthread_mutex_unlock (&message_cache_mutex);
+  return result;
 }
 
 /* frees the message storage pointed to by each message entry */
