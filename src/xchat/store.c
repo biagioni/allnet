@@ -1428,6 +1428,11 @@ int list_all_messages (const char * contact,
     }  /* invariant: *num_alloc >= cache->num_used */
     *num_used = cache->num_used;
     memcpy (*msgs, cache->msgs, size);
+    int i;
+    for (i = 0; i < cache->num_used; i++)  /* allocate+copy the messages */
+      if (cache->msgs [i].msize > 0)
+        (*msgs) [i].message = strcpy_malloc (cache->msgs [i].message,
+                                             "list_all_messages");
     result = 1;
   } else {   /* not (yet) in memory */
     result = list_all_messages_from_file (contact, msgs, num_alloc, num_used);
