@@ -369,6 +369,69 @@ static void send_ack (int sock, struct allnet_header * hp,
     request_and_resend (sock, contact, kset, 1);
 }
 
+/* fill in the next contact and keyset,
+ * and if not NULL, the total number of keysets for all individual contacts
+ * return 1 if returning a valid contact and keyset, 0 otherwise */
+static int next_keyset (char ** contact_p, keyset * k_p, int * total_keysets_p)
+{
+  static char * * contacts = NULL;
+  static int num_contacts = 0;
+  static keyset * keysets = NULL;
+  static int num_current_keysets = 0;
+  static int total_keysets = 0;
+  static int current_contact = 0;
+  static int current_keyset = 0;
+  *contact_p = NULL;
+  *k_p = -1;
+  if (total_keysets_p != NULL)
+    *total_keysets_p = total_keysets;
+  if ((num_contacts > 0) && (current_contact < num_contacts) &&
+      (num_current_keysets > 0) && (keysets != NULL) &&
+      (current_keyset < num_current_keysets)) {
+    /* note: this branch not usually taken, it is not common for
+     * an individual contact to have more than one keyset.
+     * We usually fall through to the next case. */
+    *contact_p = contacts [current_contact];
+    *k_p = keysets [current_keyset];
+    current_keyset++;   /* refer to the next keyset, if any */
+    return 1;           /* success */
+  } /* else: these keyset(s) are finished, try the next contact(s) */
+  if (keysets != NULL)
+    free (keysets);
+  /* get the next contact with keys, or if necessary, restart the list */
+  int do_twice;
+  int next_contact = current_contact + 1;
+  for (do_twice = 0; do_twice < 2; do_twice++) {
+    while (next_contact < num_contacts) {
+      num_current_keysets = all_keys (contacts [next_contact], &keysets);
+      if (num_current_keysets > 0) {  /* found */
+        current_contact = next_contact;
+        current_keyset = 1;  /* the next keyset, if any */
+        *contact_p = contacts [current_contact];
+        *k_p = keysets [0];  /* return the current keyset */
+        return 1;            /* success */
+      }
+      next_contact++;
+    }
+    if (do_twice == 0) {   /* first time around, reset the list of contacts */
+      if (contacts != NULL)
+        free (contacts);
+      num_contacts = all_individual_contacts (&contacts);
+      next_contact = 0;     /* restart the while loop from the beginning */
+      current_contact = num_contacts;  /* if success, set in the while loop */
+      total_keysets = 0;    /* recompute the total keysets, may have changed */
+      int c;
+      for (c = 0; c < num_contacts; c++) {
+        int nk = num_keysets (contacts [c]);
+        total_keysets += ((nk > 0) ? nk : 0);
+      }
+      if (total_keysets_p != NULL)
+        *total_keysets_p = total_keysets;
+    }
+  }
+  return 0;    /* nothing to return */
+}
+
 /* call every once in a while, e.g. every 1-10s, to poke all our
  * contacts and get any outstanding messages. */
 /* each time it is called, queries a different contact or keyset */
@@ -379,82 +442,32 @@ void do_request_and_resend (int sock)
   if (last_time == now)  /* allow at most one call per second */
     return;
   last_time = now;
-  static char * * contacts = NULL;
-  static int num_contacts = 0;
-  static keyset * keysets = NULL;
-  static int num_keysets = 0;
-  static int current_contact = 0;
-  static int current_keyset = 0;
-  /* in the tests below, if all of the contacts are groups, we may
-   * end up in an infinite loop of request_and_resend.  So, put a
-   * cap of at most num_contacts on the number of loops we will do */
-  int loop_count = ((num_contacts <= 0) ? 1 : num_contacts);
-  while (loop_count-- > 0) {
-    /* make sure we have a valid contact */
-    if ((num_contacts <= 0) || (contacts == NULL) ||
-        (current_contact >= num_contacts)) {  /* restart */
-      if (contacts != NULL)
-        free (contacts);
-      num_contacts = all_contacts (&contacts);
-      if (keysets != NULL)
-        free (keysets);
-      keysets = NULL;
-      num_keysets = 0;
-      current_contact = 0;
-      current_keyset = 0;
-    }
-    if ((num_contacts <= 0) || (contacts == NULL) ||
-        (current_contact >= num_contacts))
-      return;	/* no contacts, nothing to do */
-    /* make sure we have a valid keyset for the contact */
-    if ((num_keysets <= 0) || (keysets == NULL) ||
-        (current_keyset >= num_keysets)) {
-      if (keysets != NULL)
-        free (keysets);
-      keysets = NULL;
-      num_keysets = all_keys (contacts [current_contact], &keysets);
-      current_keyset = 0;
-    }
-    if ((num_keysets <= 0) || (keysets == NULL) ||
-        (current_keyset >= num_keysets) ||
-        (is_group (contacts [current_contact]))) {
-      if (keysets != NULL)
-        free (keysets);
-      keysets = NULL;
-      current_contact++;
-      continue;    /* loop around to the next contact, if any */
-    }
-    /* we have a valid contact and a valid keyset.  Do request and resend */
-    int r = request_and_resend (sock, contacts [current_contact],
-                                keysets [current_keyset], 0);
-/* request_and_resend returns -1 if it is too soon, 0 for did not send
- * because not missing anything, 1 if sent */
+  char * contact = NULL;
+  keyset k = 0;
+  int num_loops = 0;
+  if (! next_keyset (&contact, &k, &num_loops))
+    return;   /* nothing to do */
+  int i;      /* at most, try once for every keyset of every contact */
+  for (i = 0; i < num_loops; i++) {
+    int r = request_and_resend (sock, contact, k, 0);
+/* request_and_resend returns 1 if sent, -1 if it is too soon,
+ * 0 for nothing missing for this contact and keyset */
 #ifdef DEBUG_PRINT
     if (r >= 0) { /* tried to send */
-      time_t now = time (NULL);
-      char * now_string = ctime (&now);
+      time_t ctime_now = time (NULL);
+      char * now_string = ctime (&ctime_now);
       char start_string [20];
       memset (start_string, 0, sizeof (start_string));
       memcpy (start_string, now_string, sizeof (start_string) - 1);
-      printf ("%s: request_and_resend %d for %s(%d/%d)/%d(%d/%d)\n",
-              start_string, r,
-              contacts [current_contact], current_contact, num_contacts,
-              keysets  [current_keyset] , current_keyset , num_keysets);
+      printf ("%s: request_and_resend %d for %s/%d(%d)\n",
+              start_string, r, contact, k, num_loops);
     }
 #endif /* DEBUG_PRINT */
-    /* successful or not, advance to the next contact or keyset */
-    current_keyset++;
-    if (current_keyset >= num_keysets) {  /* try the next contact */
-      free (keysets);  /* keysets is not NULL */
-      keysets = NULL;
-      num_keysets = 0;
-      current_contact++;    /* loop around to the next contact, if any */
-    }
-    if (r > 0) /* r == 1 means sent, we are done */
-      return;
-    if (r < 0) /* r == -1 means too soon, stop trying for now */
-      return;
-      /* else, r == 0, continue with the next key or contact */
+    if (r != 0) /* r == 1 means sent, we are done */
+      return;   /* r == -1 means too soon, stop trying for now */
+                /* r == 0 means nothing to send for this contact/keyset */
+    if (! next_keyset (&contact, &k, NULL))
+      return;   /* nothing to do */
   }
 }
 
@@ -1651,7 +1664,7 @@ static void compute_expiration (char * expiration,
  * to be missing, requests it, but not too often */
 /* returns:
  *    -1 if it is too soon to request again
- *    0 if it it did not send a retransmit request for this contact/key 
+ *    0 if it did not send a retransmit request for this contact/key 
  *      (e.g. if nothing is known to be missing)
  *    1 or more if it sent a retransmit request
  */
@@ -1663,10 +1676,14 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
 {
   static unsigned long long int last_call = 0;
   unsigned long long int now = allnet_time ();
+#if 0
   if (last_call >= now)
     return -1; /* only allow one call per second, even if eagerly */
   if ((last_call + 9 >= now) && (! eagerly))
     return -1; /* if not eagerly, only allow one call per ten seconds */
+#endif /* 0 */
+  if ((last_call >= now) && (! eagerly))
+    return -1; /* if not eagerly, only allow one call per second */
   last_call = now;
 #ifdef DEBUG_PRINT
   printf ("request and resend for %s\n", contact);
