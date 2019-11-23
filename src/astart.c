@@ -76,7 +76,7 @@ static void * generic_thread (void * arg)
   if (! ta->start_immediately)
     sleep (2);   /* start the allnet daemon first, then run */
   ta->string_function (ta->string_arg);
-  printf ("astart generic_thread: error termination of %s\n", ta->name);
+  printf ("astart generic_thread: %s has ended\n", ta->name);
   /* exit (1);  debugging */
   /* free (ta); should not get here, but if we did, in theory should free ta */
   return NULL;
