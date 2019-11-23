@@ -635,6 +635,7 @@ static void send_error (const char * message, int msize, int flags, int res,
   /* no need to die for network or host unreachable or unavailable addrs
    * or message too long */
   if ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
+      (e != ENETDOWN) && (e != ENETRESET) &&
       (e != EADDRNOTAVAIL) && (e != EMSGSIZE)) {
     char * q = NULL;
     printf ("now crashing: %d\n", *q);
