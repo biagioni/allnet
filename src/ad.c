@@ -255,11 +255,28 @@ exit (1);
   return 1;
 }
 
+static void local_send (struct socket_set * s, const char * message, int msize,
+                        unsigned int priority, unsigned long long int sent_time,
+                        struct sockaddr_storage except_to, socklen_t alen)
+{
+#ifdef ALLNET_USE_FORK  /* deliver directly to the destination */
+  socket_send_local (s, message, msize, priority, sent_time, except_to, alen);
+#else /* ALLNET_USE_FORK -- call receiveAdPacket */
+  extern void
+    receiveAdPacket (const char * data, unsigned int dlen, unsigned int pri);
+  receiveAdPacket (message, msize, priority);
+#endif /* ALLNET_USE_FORK */
+}
+
 /* sends the ack to the address, given that hp has the packet we are acking */
 static void send_ack (const char * ack, const struct allnet_header * hp,
                       int sockfd, struct sockaddr_storage addr, socklen_t alen,
                       int is_local)
 {
+#ifndef ALLNET_USE_FORK  /* sockfd may be -1 to indicate deliver directly */
+  if (sockfd < 0)
+    is_local = 0;        /* do not add priority to the message */
+#endif /* ALLNET_USE_FORK */
   char message [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE + 4];
   int msize = sizeof (message);
   int expected_allnet_size = msize - 4;  /* the size without priority */
@@ -274,6 +291,13 @@ static void send_ack (const char * ack, const struct allnet_header * hp,
   if (is_local)
     writeb32 (message + (sizeof (message) - 4), ALLNET_PRIORITY_LOCAL);
   /* send this ack back to the sender, no need to ack more widely */
+#ifndef ALLNET_USE_FORK  /* sockfd may be -1 to indicate deliver directly */
+  if (sockfd < 0) {
+    struct sockaddr_storage sas = { .ss_family = 0, };   /* ignored */
+    local_send (NULL, message, msize, ALLNET_PRIORITY_LOCAL, 0, sas, 0);
+    return;
+  }
+#endif /* ALLNET_USE_FORK */
   socket_send_to_ip (sockfd, message, msize, addr, alen, "ad.c/send_ack");
 }
 
@@ -576,19 +600,6 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
     priority_threshold =
       new_priority_threshold (priority_threshold, send_start, bytes_sent);
 #endif /* THROTTLE_SENDING */
-}
-
-static void local_send (struct socket_set * s, const char * message, int msize,
-                        unsigned int priority, unsigned long long int sent_time,
-                        struct sockaddr_storage except_to, socklen_t alen)
-{
-#ifdef ALLNET_USE_FORK  /* deliver directly to the destination */
-  socket_send_local (s, message, msize, priority, sent_time, except_to, alen);
-#else /* ALLNET_USE_FORK -- call receiveAdPacket */
-  extern void
-    receiveAdPacket (const char * data, unsigned int dlen, unsigned int pri);
-  receiveAdPacket (message, msize, priority);
-#endif /* ALLNET_USE_FORK */
 }
 
 static void update_dht ()
@@ -1025,7 +1036,9 @@ static struct socket_address_validity fake_sav =
 int set_next_local_message (const char * message, int mlen, int priority)
 {
   pthread_mutex_lock (&next_message_mutex);
-  if (next_message_result.success) {
+  if ((next_message_result.success) &&
+      ((next_message_result.msize != mlen) ||
+       (memcmp (next_message_result.message, message, mlen) != 0))) {
     printf ("warning: new %d-byte local message overwrites %d-byte message\n",
             mlen, next_message_result.msize);
   }
