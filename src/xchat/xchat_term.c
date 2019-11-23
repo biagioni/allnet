@@ -5,6 +5,7 @@
 #define XCHAT_TERM_HELP_MESSAGE	\
 "<typing> send message to current contact (no . at start)\n\
    end line with .= or .- to continue typing on next line\n\
+   (receiving from someone else suspends current contact)\n\
 .c    list all contacts, .c n  start sending to contact n\n\
 .q    quit \n\
 .h    print this help message \n\
@@ -48,6 +49,7 @@
 #include "message.h"
 
 static const char * prompt = XCHAT_TERM_HELP_MESSAGE "<no contact>";
+static int interrupted = 0;
 
 static void print_to_output (const char * string)
 {
@@ -126,14 +128,20 @@ static void * receive_thread (void * arg)
       }
       if ((! duplicate) || (a.print_duplicates)) {
         char string [PRINT_BUF_SIZE];
-        if (strcmp (prompt, peer) != 0)
+        if (strcmp (prompt, peer) != 0) {
           snprintf (string, sizeof (string),
                     "from '%s'%s got %s%s%s%s\n  %s\n",
                     peer, ver_mess, dup_mess, p_mess, bc_mess, desc, message);
-        else
+          if (! interrupted) {
+            printf ("(conversation interrupted, switching to no contact)\n");
+            prompt = "<no contact>";
+          }
+          interrupted = 1;
+        } else {
           snprintf (string, sizeof (string),
                     "got %s%s%s%s\n  %s\n",
                     dup_mess, p_mess, bc_mess, desc, message);
+        }
         print_to_output (string);
       }
       if ((! broadcast) &&
@@ -414,6 +422,7 @@ static void switch_to_contact (char * new_peer, char ** peer)
       prompt = *peer;
       if (! pto)
         print_n_messages (prompt, NULL, 10);
+      interrupted = 0;
     }  /* else: peer and new_peer are the same, do nothing */
   } else {                             /* no such peer */
     int do_print_peers = 1;            /* turn off if numeric selector */
@@ -434,6 +443,7 @@ static void switch_to_contact (char * new_peer, char ** peer)
           prompt = *peer;
           if (! pto)
             print_n_messages (prompt, NULL, 10);
+          interrupted = 0;
         }
         do_print_peers = 0;
       } else {                     /* contact specified, but does not exist */
@@ -853,7 +863,11 @@ int main (int argc, char ** argv)
     if (len <= 0)              /* ignore */
       continue;
     /* strlen (message) > 0 */
-    if (message [0] != '.') {        /* not a command */
+    if ((! interrupted) && (message [0] != '.')) {        /* not a command */
+      if (interrupted) {
+        printf ("conversation was interrupted.  Use .c to list/switch contacts\n");
+        continue;
+      }
       if ((len > 3) && ((strncmp (".=", message + len - 3, 2) == 0) ||
                         (strncmp (".-", message + len - 3, 2) == 0))) {
         /* message continues on the next line */
@@ -870,6 +884,8 @@ int main (int argc, char ** argv)
       }
       continue;
     }
+    if (interrupted)
+      peer = NULL;
     /* message begins with '.'.  Strip leading blanks, if any */
     char * ptr = message + 1;
     while (*ptr == ' ')
