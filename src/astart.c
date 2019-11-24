@@ -143,14 +143,15 @@ static void make_root_other (int verbose)
       other = pwd->pw_uid;
     else if ((other < 0) && (strcmp (pwd->pw_name, "nobody") == 0))
       other = pwd->pw_uid;
-    else if ((home != NULL) && (strcmp (pwd->pw_dir, home) == 0))
+    else if ((home != NULL) && (strcmp (pwd->pw_dir, home) == 0) &&
+             (caller == -1))
       caller = pwd->pw_uid;
   }
   endpwent ();
 #endif /* ANDROID */
-  if (caller != -1)
+  if ((caller != -1) && (caller != 0))
     other = caller;
-  if ((other < 0) || (setuid (other) != 0)) {
+  if ((other <= 0) || (setuid (other) != 0)) {
     perror ("setuid/other");
     printf ("error: unable to change uid to other %d or %s\n", other, home);
     stop_all ();
