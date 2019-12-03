@@ -18,6 +18,7 @@ struct allnet_stream_encryption_state {
   int block_offset;   /* how many bytes we are into the block */
 };
 
+
 /* allnet_stream_init allocates and initializes state for encrypting and
  * decrypting.  It can do so from a given key and secret, or it can
  * initialize the the key and secret for the caller.
@@ -32,7 +33,16 @@ struct allnet_stream_encryption_state {
  * ALLNET_STREAM_SECRET_SIZE, and is initialized by the caller
  * or by allnet_stream_init as for the key, depending on init_secret.
  * counter size and hash size are the number of bytes of counter and hmac
- * to be added to each outgoing packet, and checked on each incoming packet */
+ * to be added to each outgoing packet, and checked on each incoming packet
+ * 
+ * to communicate successfully, the sender and receiver must have the
+ * same key, secret, counter size, hash size.  The counter and block
+ * offset are sent with each message if counter_size == 8, and only the
+ * LSBs are sent if counter_size < 8.  This means that
+ * if counter_size == 8, the receiver can simply use a counter of 0, and
+ * the counter is taken from the message -- which means the receiver
+ * only needs to know the key and hash, and does not need to save the counter.
+ * this helps in decrypting out-of-order messages */
 extern void allnet_stream_init (struct allnet_stream_encryption_state * state,
                                 char * key, int init_key,
                                 char * secret, int init_secret,
@@ -47,7 +57,7 @@ extern int
                                 const char * text, int tsize,
                                 char * result, int rsize);
 
-/* allnet_stream_encrypt_buffer decrypts a buffer given an encryption state
+/* allnet_stream_decrypt_buffer decrypts a buffer given an encryption state
  * the buffer must normally have been created by a corresponding call to
  * allnet_stream_encrypt_buffer, usually on a remote system.
  *
