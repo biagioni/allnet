@@ -1217,8 +1217,14 @@ static int add_message (struct message_store_info ** msgs, int * num_alloc,
     memcpy (p->ack, ack, MESSAGE_ID_SIZE);
   else
     memset (p->ack, 0, MESSAGE_ID_SIZE);
-  p->message = strcpy_malloc (message, "add_message");
+  char * ptr = malloc_or_fail (msize + 1, "add_message");
+  memcpy (ptr, message, msize);
+  ptr [msize] = '\0';
+  p->message = ptr;
   p->msize = msize;
+if (p->msize != strlen (p->message))
+printf ("p->msize %d != strlen (p->message) %d, %d\n",
+(int)p->msize, (int)strlen (p->message), (int)strlen(message));
   return 1;
 }
 
