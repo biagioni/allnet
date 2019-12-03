@@ -639,12 +639,6 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
                         uint64_t * seqp, time_t * sent, uint64_t * prev_missing,
                         int * duplicate, int * broadcast)
 {
-  if (hp->sig_algo == ALLNET_SIGTYPE_NONE) {
-#ifdef DEBUG_PRINT
-    printf ("handle_data ignoring unsigned message\n");
-#endif /* DEBUG_PRINT */
-    return 0;
-  }
   char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, psize);
   char message_ack [MESSAGE_ID_SIZE];
 /* relatively quick check to see if we may have gotten this message before */
