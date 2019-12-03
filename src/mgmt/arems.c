@@ -264,26 +264,21 @@ static int symmetric_key_encrypt (const char * data, int dsize,
                                   const char * contact, keyset k,
                                   char * destination_buffer, int dest_size)
 {
-  unsigned int sksize = has_symmetric_key (contact, NULL, 0);
-  if (sksize != ALLNET_STREAM_KEY_SIZE) {  /* invalid symmetric key */
+  char sym_key [ALLNET_STREAM_KEY_SIZE];
+  unsigned int sksize = has_symmetric_key (contact, sym_key, sizeof (sym_key));
+  if ((sksize != ALLNET_STREAM_KEY_SIZE) ||  /* invalid symmetric key */
+      (sksize != sizeof (sym_key))) {  /* invalid symmetric key */
     if (sksize != 0)
       printf ("in symmetric_key_encrypt for %s, %d != %d\n", contact,
               sksize, ALLNET_STREAM_KEY_SIZE);
     return 0;
   }
-  /* sksize >= ALLNET_STREAM_KEY_SIZE */
+  /* sksize == ALLNET_STREAM_KEY_SIZE */
   struct allnet_stream_encryption_state sym_state;
-  if (! symmetric_key_state (contact, &sym_state)) { /* initialize the state */
-    char sym_key [ALLNET_STREAM_KEY_SIZE];
+  if (! symmetric_key_state (contact, 1, &sym_state)) {
+    /* initialize the send state */
     char secret [ALLNET_STREAM_SECRET_SIZE];
-    if (sizeof (sym_key) != sksize) {  /* error */
-      printf ("error in symmetric_key_encrypt: %zd != %u, %s\n",
-              sizeof (sym_key), sksize, contact);
-      return 0;
-    }
-    sksize = has_symmetric_key (contact, sym_key, sksize);
-    if ((sizeof (sym_key) != sksize) ||
-        (sizeof (secret) != SHA512_SIZE)) { /* serious error */
+    if (sizeof (secret) != SHA512_SIZE) { /* serious error */
       printf ("error in symmetric_key_encrypt: %zd != %u or %zd != %d, %s\n",
               sizeof (sym_key), sksize, sizeof (secret), SHA512_SIZE, contact);
       exit (1);
@@ -291,7 +286,7 @@ static int symmetric_key_encrypt (const char * data, int dsize,
     /* hash the key to make a secret */
     sha512 (sym_key, sksize, secret);
     allnet_stream_init (&sym_state, sym_key, 0, secret, 0, 8, 32);
-    save_key_state (contact, &sym_state);
+    save_key_state (contact, 1, &sym_state);
   }
   int esize = dsize + sym_state.counter_size + sym_state.hash_size;
   if ((esize > dest_size) || (esize <= 0)) {
@@ -306,7 +301,7 @@ static int symmetric_key_encrypt (const char * data, int dsize,
             dest_size, esize, esize2);
     return 0;
   }
-  save_key_state (contact, &sym_state);
+  save_key_state (contact, 1, &sym_state);
   return esize;
 }
 
@@ -366,73 +361,6 @@ static void encrypt_sign_send (const char * data, int dsize, int hops,
   local_send (buffer, hsize + esize, ALLNET_PRIORITY_LOCAL);
 }
 
-/* similar to decrypt_verify (with which it may eventually be integrated),
- * but uses symmetric keys if available, and gives up otherwise */
-static int
-  symmetric_decrypt_verify (int sig_algo, char * encrypted, int esize,
-                            char ** contact, keyset * kset, char ** text,
-                            char * sender, int sbits, char * dest, int dbits,
-                            int maxcontacts)
-{
-  *contact = NULL;
-  *kset = -1;
-  *text = NULL;
-  if (sig_algo != ALLNET_SIGTYPE_NONE)  /* not a symmetric key */
-    return 0;
-  int cindex;
-  int count = 0;
-  int decrypt_count = 0;
-  char ** contacts = NULL;
-  int ncontacts = all_individual_contacts (&contacts);
-#if 0  /* maybe re-enable later -- but should not count contacts w/o sym key */
-  if ((maxcontacts > 0) && (maxcontacts < ncontacts)) {
-    contacts = randomize_contacts (contacts, ncontacts, maxcontacts);
-    ncontacts = maxcontacts;
-  }
-#endif
-  for (cindex = 0; ((*contact == NULL) && (cindex < ncontacts)); cindex++) {
-    count++;
-    unsigned int sksize = has_symmetric_key (contacts [cindex], NULL, 0);
-    if (sksize < ALLNET_STREAM_KEY_SIZE)  /* invalid symmetric key */
-      continue;                           /* try the next contact */
-    /* sksize >= ALLNET_STREAM_KEY_SIZE */
-    struct allnet_stream_encryption_state sym_state;
-    if (! symmetric_key_state (contacts [cindex], &sym_state)) {
-      /* initialize the state */
-      char * sym_key = malloc_or_fail (sksize * 2, "symmetric_decrypt_verify");
-      sksize = has_symmetric_key (contacts [cindex], sym_key, sksize);
-      char secret [ALLNET_STREAM_SECRET_SIZE];
-      sha512 (sym_key, sksize, secret);
-      allnet_stream_init (&sym_state, sym_key, 0, secret, 0, 8, 32);
-      free (sym_key);
-      /* save the state only if we are successful */
-    }
-    int tsize = esize - (sym_state.counter_size + sym_state.hash_size); 
-    char buf [ALLNET_MTU];
-    if (tsize > sizeof (buf)) {
-      printf ("error: %s asked to decrypt %d bytes, %zd max\n",
-              contacts [cindex], tsize, sizeof (buf));
-      continue;
-    }
-    decrypt_count++;
-    if (allnet_stream_decrypt_buffer (&sym_state, encrypted, esize,
-                                      buf, tsize)) {   /* success! */
-      save_key_state (contacts [cindex], &sym_state);
-      *contact = strcpy_malloc (contacts [cindex], "symmetric_decrypt_verify2");
-      *text = memcpy_malloc (buf, tsize, "symmetric_decrypt_verify3");
-      keyset * kp = NULL;
-      if (all_keys (contacts [cindex], &kp) > 0) {
-        *kset = kp [0];
-        free (kp);
-      }
-      return tsize;
-    }  /* else, not a match, try the next */
-if (decrypt_count == maxcontacts)
-printf ("symmetric key decryption trying more than %d contacts\n", maxcontacts);
-  }
-  return 0;
-}
-
 /* returns 1 if the receive loop should exit, 0 if it should continue
  * hops is the number of hops visited by the incoming packet.
  * if the packet has no expiration, expiration is 0 */
@@ -490,19 +418,10 @@ static void receive_packet_loop (received_packet_handler handler, void * state,
     char * payload = message + ALLNET_SIZE (hp->transport);
     int psize = msize - ALLNET_SIZE (hp->transport);
     if (psize > 0) {
-      int tsize =
-        symmetric_decrypt_verify (hp->sig_algo, payload, psize,
+      int tsize = decrypt_verify (hp->sig_algo, payload, psize,
                                   &contact, &k, &text,
                                   (char *) hp->source, hp->src_nbits,
                                   (char *) hp->destination, hp->dst_nbits, 0);
-#ifdef DEBUG_RECEIVE
-if (tsize <= 8) printf ("unable to symmetric_decrypt_verify\n");
-#endif /* DEBUG_RECEIVE */
-      if ((tsize <= 8) && (hp->sig_algo == ALLNET_SIGTYPE_RSA_PKCS1))
-        tsize = decrypt_verify (hp->sig_algo, payload, psize,
-                                &contact, &k, &text,
-                                (char *) hp->source, hp->src_nbits,
-                                (char *) hp->destination, hp->dst_nbits, 0);
 #ifdef DEBUG_RECEIVE
 if (tsize <= 8) printf ("unable to decrypt_verify\n");
 #endif /* DEBUG_RECEIVE */
