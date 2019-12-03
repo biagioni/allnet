@@ -136,19 +136,18 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
   if (log == NULL) /* initialize */
     log = init_log ("cutil send_to_one");
 /* printf ("cutil send_to_one sending to contact %s, keyset %d\n", contact, k); */
-  unsigned int sksize = has_symmetric_key (contact, NULL, 0);
+  char sym_key [ALLNET_STREAM_KEY_SIZE];
+  unsigned int sksize = has_symmetric_key (contact, sym_key, sizeof (sym_key));
   struct allnet_stream_encryption_state sym_state;
   int has_sym_state = 0;
-  if (symmetric_key_state (contact, &sym_state)) {
+  if (symmetric_key_state (contact, 1, &sym_state)) {
     has_sym_state = 1;
   } else if (sksize >= ALLNET_STREAM_KEY_SIZE) {  /* initialize the state */
-    char * sym_key = malloc_or_fail (sksize * 2, "cutil.c send_to_one sym_key");
-    sksize = has_symmetric_key (contact, sym_key, sksize);
-    /* copy the key to the upper part of sym_key, to make a secret */
-    memmove (sym_key + sksize, sym_key, sksize);
-    allnet_stream_init (&sym_state, sym_key, 0, sym_key, 0, 8, 32);
-    free (sym_key);
-    save_key_state (contact, &sym_state);
+    /* hash the key to make a secret */
+    char secret [ALLNET_STREAM_SECRET_SIZE];
+    sha512_bytes (sym_key, sizeof (sym_key), secret, sizeof (secret));
+    allnet_stream_init (&sym_state, sym_key, 0, secret, 0, 8, 32);
+    save_key_state (contact, 1, &sym_state);
     has_sym_state = 1;
   }
   /* if not already specified, get the addresses for the specific key */
@@ -196,7 +195,7 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
     encrypted = malloc_or_fail (esize, "cutil.c send_to_one encrypted msg");
     esize = allnet_stream_encrypt_buffer (&sym_state, data, dsize,
                                           encrypted, esize);
-    save_key_state (contact, &sym_state);
+    save_key_state (contact, 1, &sym_state);
     sigtype = ALLNET_SIGTYPE_NONE;  /* the hash provides the authentication */
     sendsize = esize;
   } else {
