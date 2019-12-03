@@ -65,8 +65,10 @@ struct key_info {
   char symmetric_key [SYMMETRIC_KEY_SIZE];
 /* state includes a key, which may or may not be the same as symmetric_key,
  * but usually will be. */
-  int has_state;
-  struct allnet_stream_encryption_state state;
+  int has_send_state;
+  struct allnet_stream_encryption_state send_state;
+  int has_receive_state;
+  struct allnet_stream_encryption_state receive_state;
 };
 static struct key_info * kip = NULL;
 static int num_key_infos = 0;
@@ -250,11 +252,12 @@ static char * s_to_bytes (char * hex, char * result, int rbytes)
 static int read_bytes_file (char * fname, char * bytes, int nbytes)
 {
   memset (bytes, 0, nbytes);
-  char * data;
+  char * data = NULL;
   int size = read_file_malloc (fname, &data, 0);
   if (size <= 0)
     return 0;
   char * next = s_to_bytes (data, bytes, nbytes);
+  free (data);
   if (next == NULL)
     return 0;
 #ifdef DEBUG_PRINT
@@ -497,6 +500,10 @@ static int read_key_info (const char * path, const char * file,
     int n = read_bytes_file (name, info->symmetric_key, SYMMETRIC_KEY_SIZE);
     if (n >= SYMMETRIC_KEY_SIZE) {
       info->has_symmetric_key = 1;
+      if (info->local.nbits <= 0)
+        read_address_file (basename, "local", &(info->local));
+      if (info->remote.nbits <= 0)
+        read_address_file (basename, "remote", &(info->remote));
     } else if (n < SYMMETRIC_KEY_SIZE) {
       memset (info->symmetric_key, 0, SYMMETRIC_KEY_SIZE);
       if ((n < SYMMETRIC_KEY_SIZE) && (n > 0))
@@ -513,10 +520,14 @@ static int read_key_info (const char * path, const char * file,
               info->symmetric_key [2]);
 #endif /* DEBUG_PRINT */
     if (info->has_symmetric_key) {
-      char * sname = strcat_malloc (basename, "/send_state", "symm state");
-      if (read_symmetric_state (sname, &(info->state)))
-        info->has_state = 1;
+      char * sname = strcat_malloc (basename, "/send_state", "symm state 1");
+      if (read_symmetric_state (sname, &(info->send_state)))
+        info->has_send_state = 1;
       free (sname);
+      char * rname = strcat_malloc (basename, "/receive_state", "symm state 2");
+      if (read_symmetric_state (sname, &(info->receive_state)))
+        info->has_receive_state = 1;
+      free (rname);
     }
   }
   if (info != NULL)
@@ -2360,14 +2371,15 @@ int set_symmetric_key (const char * contact, char * key, int ksize)
  * if any.  If the contact exists but has no state, it returns
  * -1 - (the index of the contact).
  * If the contact is not found, returns num_key_infos */
-static int find_state (const char * contact)
+static int find_state (const char * contact, int send)
 {
   int ki = 0;
   int found = num_key_infos;
   for (ki = 0; ki < num_key_infos; ki++) {
     if ((kip [ki].contact_name != NULL) &&
         (strcmp (kip [ki].contact_name, contact) == 0)) {
-      if (kip [ki].has_state) {
+      if ((send && (kip [ki].has_send_state)) ||
+          ((! send) && (kip [ki].has_receive_state))) {
         return ki;
       }
       found = -1 - ki;
@@ -2384,17 +2396,22 @@ static int find_state (const char * contact)
  *
  * to initialize the state correctly, always call allnet_stream_init with
  * the key given by has_symmetric_key */
-int symmetric_key_state (const char * contact,
+int symmetric_key_state (const char * contact, int send, /* 0 for recv */
                          struct allnet_stream_encryption_state * state)
 {
   init_from_file ("symmetric_key_state");
   if (state == NULL)
     return 0;
-  int found = find_state (contact);
+  int found = find_state (contact, send);
   if ((found >= 0) && (found < num_key_infos)) {  /* found */
-    if (state != NULL)
-      memcpy (state, &(kip [found].state),
-              sizeof (struct allnet_stream_encryption_state));
+    if (state != NULL) {
+      if (send)
+        memcpy (state, &(kip [found].send_state),
+                sizeof (struct allnet_stream_encryption_state));
+      else
+        memcpy (state, &(kip [found].receive_state),
+                sizeof (struct allnet_stream_encryption_state));
+    }
     return 1;
   }  /* else not found */
   return 0;
@@ -2420,21 +2437,27 @@ static char * array_to_buf (const char * array, int abytes,
 }
 
 /* returns 1 if the state was saved, 0 otherwise. */
-int save_key_state (const char * contact,
+int save_key_state (const char * contact, int send, /* 0 for recv */
                     struct allnet_stream_encryption_state * state)
 {
   init_from_file ("save_key_state");
   if (state == NULL)
     return 0;
-  int ki = find_state (contact);
+  int ki = find_state (contact, send);
   if (ki == num_key_infos)  /* contact not found */
     return 0;
   /* else found contact, with or without state */
   if (ki < 0)  /* no state, but the code is the same */
     ki = -ki - 1;  /* e.g., ki -1 becomes ki 0 */
-  memcpy (&(kip [ki].state), state,
-          sizeof (struct allnet_stream_encryption_state));
-  kip [ki].has_state = 1;
+  if (send) {
+    memcpy (&(kip [ki].send_state), state,
+            sizeof (struct allnet_stream_encryption_state));
+    kip [ki].has_send_state = 1;
+  } else {
+    memcpy (&(kip [ki].receive_state), state,
+            sizeof (struct allnet_stream_encryption_state));
+    kip [ki].has_receive_state = 1;
+  }
   char print_buffer [sizeof (struct allnet_stream_encryption_state) * 10];
   int psize = sizeof (print_buffer);
   char * next = array_to_buf (state->key, ALLNET_STREAM_KEY_SIZE,
@@ -2442,8 +2465,8 @@ int save_key_state (const char * contact,
   next = array_to_buf (state->secret, ALLNET_STREAM_SECRET_SIZE, next, &psize);
   snprintf (next, psize, "%d %d %" PRIu64 " %d\n", state->counter_size,
             state->hash_size, state->counter, state->block_offset);
-  char * fname = strcat_malloc (kip [ki].dir_name, "/send_state",
-                                "save_key_state");
+  char * file_name = (send ? "/send_state" : "/receive_state");
+  char * fname = strcat_malloc (kip [ki].dir_name, file_name, "save_key_state");
   int result = write_file (fname, print_buffer, (int)strlen (print_buffer), 1);
   free (fname);
   return result;

@@ -218,11 +218,11 @@ extern int set_symmetric_key (const char * contact, char * key, int ksize);
  *
  * to initialize the state correctly, always call allnet_stream_init with
  * the key given by has_symmetric_key */
-extern int symmetric_key_state (const char * contact,
+extern int symmetric_key_state (const char * contact, int send, /* 0 for recv */
                                 struct allnet_stream_encryption_state * state);
 /* returns 1 if the state was saved, 0 otherwise. */
-extern int save_key_state (const char * contact,
-                           struct allnet_stream_encryption_state * state);
+extern int save_key_state (const char * contact, int send, /* 0 for recv */
+                            struct allnet_stream_encryption_state * state);
 
 /* after invalidating, can set a new symmetric key, and then the old
  * one can no longer be revalidated.  Until then, revalidation is an option
