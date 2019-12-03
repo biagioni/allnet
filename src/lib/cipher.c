@@ -368,14 +368,44 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
                       (unsigned char *) raddr, rbits) <= 0))
           do_decrypt = 0;
       }
-      if (do_decrypt && (sig_algo != ALLNET_SIGTYPE_NONE)) {
-        /* verify signature */
-        do_decrypt = 0;
-        allnet_rsa_pubkey pub_key;
-        if (get_contact_pubkey (keys [j], &pub_key)) {
-          do_decrypt =
-            allnet_verify (encrypted, csize, sig, ssize - 2, pub_key);
-          count++;
+      if (do_decrypt) {
+        if (sig_algo != ALLNET_SIGTYPE_NONE) {
+          /* verify signature */
+          do_decrypt = 0;
+          allnet_rsa_pubkey pub_key;
+          if (get_contact_pubkey (keys [j], &pub_key)) {
+            do_decrypt =
+              allnet_verify (encrypted, csize, sig, ssize - 2, pub_key);
+            count++;
+          }
+        } else {  /* should have a symmetric key */
+          char sym_key [ALLNET_STREAM_KEY_SIZE];
+          int sksize =
+            has_symmetric_key (contacts [i], sym_key, sizeof (sym_key));
+          if (sksize >= ALLNET_STREAM_KEY_SIZE) { /* valid symmetric key */
+            struct allnet_stream_encryption_state sym_state;
+            if (! symmetric_key_state (contacts [i], 0, &sym_state)) {
+              char secret [ALLNET_STREAM_SECRET_SIZE];
+              /* sender must have computed the secret in the same way */
+              sha512_bytes (sym_key, ALLNET_STREAM_KEY_SIZE,
+                            secret, ALLNET_STREAM_SECRET_SIZE);
+              allnet_stream_init (&sym_state, sym_key, 0, secret, 0, 8, 32);
+            }
+            int tsize = esize - sym_state.counter_size - sym_state.hash_size; 
+            char result [ALLNET_MTU];
+            if ((tsize <= sizeof (result)) && 
+                (allnet_stream_decrypt_buffer (&sym_state, encrypted, esize,
+                                               result, tsize))) {
+              *contact = strcpy_malloc (contacts [i], "sym dv contact");
+              *kset = keys [j];
+              free (keys);
+              free (contacts);
+              *text = memcpy_malloc (result, tsize, "sym dv message");
+              return tsize;
+            }
+            /* much faster, do not count as a decryption: decrypt_count++; */
+          }
+          do_decrypt = 0;   /* no signature, and decryption failed */
         }
       }
 #ifdef DEBUG_PRINT
@@ -404,7 +434,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
                   time_delta / 1000000, time_delta % 1000000);
 #endif /* DEBUG_PRINT */
           free (keys);
-          if (contacts != NULL) free (contacts);
+          free (contacts);
           if (sig_algo != ALLNET_SIGTYPE_NONE)
             return res;
           else
