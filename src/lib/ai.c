@@ -333,7 +333,7 @@ int is_loopback_ip (const struct sockaddr * ap, socklen_t asize)
   struct sockaddr_in  * ap4 = (struct sockaddr_in  *) ap;
   struct sockaddr_in6 * ap6 = (struct sockaddr_in6 *) ap;
   if ((asize >= sizeof (struct sockaddr_in)) && (ap->sa_family == AF_INET)) {
-    return ap4->sin_addr.s_addr == htonl (INADDR_LOOPBACK);
+    return (127 == *((char *) (&ap4->sin_addr.s_addr)));
   } else if ((asize >= sizeof (struct sockaddr_in6)) &&
              (ap->sa_family == AF_INET6)) {
     char * p = (char *) (&(ap6->sin6_addr));
