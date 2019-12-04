@@ -1216,12 +1216,15 @@ int init_own_routing_entries (struct addr_info * entry, int max,
         int valid = 0;  /* set to 1 if we decide it's a valid entry */
         struct sockaddr * sa =
           (struct sockaddr *) (int_addrs [i].addresses + j);
-        if (sa->sa_family == AF_INET) {
+        if (is_loopback_ip (sa, sizeof (struct sockaddr_storage))) {
+          /* ignore */
+        } else if (sa->sa_family == AF_INET) {
           struct sockaddr_in * sinp = (struct sockaddr_in *) (sa);
           int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
           int next_byte = ((char *) (&(sinp->sin_addr.s_addr))) [1] & 0xff;
-          if ((high_byte != 10) &&  /* anything beginning with 10 is private */
-              ((high_byte != 172) || ((next_byte & 0xf0) != 16)) && /* 172.16/12 */
+          int next_half = next_byte & 0xf0;
+          if ((high_byte != 10) && /* 10/8, 172.16/12, 192.168/16 are private */
+              ((high_byte != 172) || (next_half != 16)) && /* 172.16/12 */
               ((high_byte != 192) || (next_byte != 168))) { /* 192.168/16 */
             if (entry != NULL) {
 /* the address is already zeroed.  Assign the IP address to the last four
