@@ -726,9 +726,10 @@ static int send_messages_to_one (struct pcache_result r,
                                      r.messages [i].msize,
                                      r.messages [i].priority,
                                      sock, addr, alen);
-    } else {
-      printf ("error: send_messages_to_one sending invalid message (%s)\n", e);
+    } else if (strcmp ("expired packet", e) != 0) {
+      printf ("error: send_messages_to_one for invalid message (%s)\n", e);
       print_buffer (r.messages [i].message, r.messages [i].msize, NULL, 100, 1);
+      print_packet (r.messages [i].message, r.messages [i].msize, NULL, 1);
     }
   }
   return result;

@@ -468,7 +468,6 @@ static void * atcp_accept_thread (void * arg)
         args->running = 0;
       }
       close (listen_socket);
-printf ("%lld: (spare?) atcpd_accept_thread ending\n", allnet_time ());
       return NULL;
     }
 #ifdef DEBUG_PRINT
