@@ -1447,7 +1447,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
   if ((psize == 0) || (packet == NULL)) /* may have a cached packet */
     psize = packet_cache_get (&packet, &free_packet);
   if ((packet == NULL) || (! is_valid_message (packet, psize, NULL)))
-    return 0;
+    return ((key_received_before (sock, contact, kset)) ? -1 : 0);
 
   struct allnet_header * hp = (struct allnet_header *) packet;
   unsigned int hsize = ALLNET_SIZE (hp->transport);
@@ -1463,7 +1463,7 @@ int handle_packet (int sock, char * packet, unsigned int psize,
     packet_cache_save (packet, psize); /* can't handle it now, try later */
     if (free_packet)
       free (packet);
-    return 0;               /* drop the packet */
+    return ((key_received_before (sock, contact, kset)) ? -1 : 0);
   }
 
   do_request_and_resend (sock);
@@ -1500,6 +1500,10 @@ int handle_packet (int sock, char * packet, unsigned int psize,
                          contact, kset);
   } else if (hp->message_type == ALLNET_TYPE_MGMT) {
     result = handle_mgmt (sock, hp, packet, psize, trace_reply);
+  }
+
+  if ((result == 0) && (key_received_before (sock, contact, kset))) {
+    result = -1;   /* key received before */
   }
 
   long long int finish_time = allnet_time_us();
