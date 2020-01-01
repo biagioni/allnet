@@ -863,11 +863,11 @@ int interface_broadcast_addrs (struct sockaddr_storage ** addrs)
   int interface_index;
   int result_count = 0;
   for (interface_index = 0; interface_index < MAX_BC_ADDRS; interface_index++) {
-#ifndef __APPLE__
+#if defined(__APPLE__)||defined(_WIN32)||defined(_WIN64)||defined(__CYGWIN__)
+    int success = (if_indextoname (interface_index, ifr.ifr_name) != NULL);
+#else
     ifr.ifr_ifindex = interface_index;
     int success = (ioctl (socket_fd, SIOCGIFNAME, &ifr) >= 0);
-#else
-    int success = (if_indextoname (interface_index, ifr.ifr_name) != NULL);
 #endif /* __APPLE__ */
     if ((success) && (strlen (ifr.ifr_name) > 0)) {
       success = (ioctl (socket_fd, SIOCGIFFLAGS, &ifr) >= 0);
