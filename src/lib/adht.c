@@ -326,7 +326,8 @@ void dht_process (char * message, unsigned int msize,
       struct sockaddr * pingp = (struct sockaddr *) (&ping_addr);
       socklen_t plen = 0;
       ai_to_sockaddr (ai, &ping_addr, &plen);
-      if (! is_in_routing_table (pingp, plen)) {
+      if ((ai->type == ALLNET_ADDR_INFO_TYPE_DHT) &&
+          (! is_in_routing_table (pingp, plen))) {
         int validity = is_valid_address (&(ai->ip));
         if (validity == 1) {  /* valid address */
           int rapl = routing_add_ping (ai);
