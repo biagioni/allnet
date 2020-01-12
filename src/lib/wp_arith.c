@@ -34,7 +34,7 @@ char * wp_itox (int nbits, const uint64_t * n)
   }
   char * to = result;
   int i;
-  for (i = 0; i < nwords; i++) {
+  for (i = 0; (i < nwords) && (size > 0); i++) {
     int b = snprintf (to, size, "%016" PRIx64, n [i]);
     size -= b;
     to += b;
@@ -168,6 +168,11 @@ int wp_is_even (int nbits, const uint64_t * n)
 {
   int nwords = NUM_WORDS (nbits);
   return (1 - ((n [nwords - 1]) & 1));
+}
+
+int wp_msb (int nbits, const uint64_t * n)
+{
+  return ((((n [0] >> 63) & 1) == 0) ? 0 : 1);
 }
 
 int wp_compare (int nbits, const uint64_t * n1, const uint64_t * n2)

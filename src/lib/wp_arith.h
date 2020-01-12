@@ -41,6 +41,7 @@ extern void wp_shrink (int new_bits, uint64_t * new,
 
 extern int wp_is_zero (int nbits, const uint64_t * n);
 extern int wp_is_even (int nbits, const uint64_t * n);
+extern int wp_msb (int nbits, const uint64_t * n);
 extern int wp_compare (int nbits, const uint64_t * n1, const uint64_t * n2);
 /* returns 1 if n is a multiple of mod, 0 otherwise */
 /* temp must have nbits or more */
