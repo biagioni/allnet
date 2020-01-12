@@ -6,6 +6,7 @@ libincludes = \
 	configfiles.h \
 	crypt_sel.h \
 	dcache.h \
+	dh.h \
 	keys.h \
 	allnet_log.h \
 	mapchar.h \
@@ -35,6 +36,7 @@ libsrc = \
 	configfiles.c \
 	crypt_sel.c \
 	dcache.c \
+	dh.c \
 	keys.c \
 	allnet_log.c \
 	mapchar.c \
