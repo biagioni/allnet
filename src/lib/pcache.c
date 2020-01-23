@@ -81,9 +81,9 @@ static int save_messages = 0;
 
 static const uint64_t one64 = 1;
 
-static void crash ()
+static void crash (const char * reason)
 {
-  printf ("crashing %d:\n", getpid ());
+  printf ("crashing %d (%s):\n", getpid (), reason);
   kill (getpid (), SIGABRT);
   printf ("exiting\n");
   exit (1);
@@ -116,13 +116,13 @@ static struct message_header * next_message (struct message_header * hp)
     }
     result = (struct message_header *) (((char *) hp) + current_size);
   }
-  if (result == NULL) { printf ("major error in next_message\n"); crash (); }
+  if (result == NULL) { printf ("major error in next_message\n"); crash ("major error in next_message"); }
   char * p = (char *) result;
   size_t msg_table_offset = p - ((char *) msg_table);
   if ((msg_table_offset % 16) != 0) {
     printf ("next_message error: next %p, offset %zd, table %p\n",
             p, msg_table_offset, msg_table);
-    crash ();
+    crash ("next_message error");
     return NULL;
   }
   if (result->length == 0)  /* end of messages */
@@ -150,7 +150,7 @@ static int add_token (const char * token)
 {
   if ((token == NULL) || (memget (token, 0, ALLNET_TOKEN_SIZE))) {
     printf ("error in add_token: %p\n", token);
-    crash ();
+    crash ("error in add_token");
   }
   save_tokens = 1;
   if (tokens.num_tokens >= MAX_TOKENS) {
@@ -252,7 +252,7 @@ else printf ("inserting gc, length is %zd\n", msg_table_size);
     next = next_message (current);
     const uint32_t eff_len = msg_storage (current->length);
     size_t hdr_msg_size = mh_size + eff_len;
-if (eff_len > 2048) crash ();
+if (eff_len > 2048) crash ("eff_len > 2048");
     const char * current_message = ((char *) current) + mh_size;
     /* delete messages with priority 0, invalid (likely expired)
      * messages, and messages that have been acked.  We delete them by
@@ -615,7 +615,7 @@ static int pcache_record_packet_id (const char * message, int msize, char * id)
 /* save this (received) packet */
 void pcache_save_packet (const char * message, int msize, int priority)
 {
-if (msize > 2048) crash ();
+if (msize > 2048) crash ("msize > 2048");
   char id [MESSAGE_ID_SIZE];
   if (! pcache_record_packet_id (message, msize, id))  /* cannot save */
     return;
@@ -758,7 +758,7 @@ struct pcache_result
     const uint32_t eff_len = msg_storage (current->length);
     const size_t pm_size = sizeof (struct pcache_message);
     const size_t mh_size = sizeof (struct message_header);
-if (eff_len > 2048) crash ();
+if (eff_len > 2048) crash ("eff_len > 2048/two");
     const size_t needed = pm_size + eff_len;
   /* to see if we have room, compute array size including this message, n+1 */
     const size_t array_size = pm_size * (result.n + 1);
@@ -776,7 +776,7 @@ if (eff_len > 2048) crash ();
           printf ("  sizes %zd + %zd, n %d\n",
                   sizeof (struct pcache_message *),
                   sizeof (struct pcache_message), result.n);
-          crash ();
+          crash ("error adding message");
         }
         /* copy the message to the buffer */
         buffer_offset -= eff_len;
