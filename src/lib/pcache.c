@@ -615,6 +615,11 @@ static int pcache_record_packet_id (const char * message, int msize, char * id)
 /* save this (received) packet */
 void pcache_save_packet (const char * message, int msize, int priority)
 {
+if (msize > 2048) {
+printf ("pcache_save_packet size %d, not saving\n", msize);
+print_packet (message, msize, "packet", 1);
+return;
+}
 if (msize > 2048) crash ("msize > 2048");
   char id [MESSAGE_ID_SIZE];
   if (! pcache_record_packet_id (message, msize, id))  /* cannot save */
