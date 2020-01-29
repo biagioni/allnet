@@ -242,7 +242,6 @@ static size_t gc_messages (const char * id, const char * message, int msize,
     priority = 0;
 /* printf ("starting gc, length is %zd\n", msg_table_size); */
   }
-else printf ("inserting gc, length is %zd\n", msg_table_size);
   char * copy_to = (char *) msg_table;
   const size_t mh_size = sizeof (struct message_header);
   struct message_header * next = next_message (NULL);
@@ -252,15 +251,10 @@ else printf ("inserting gc, length is %zd\n", msg_table_size);
     next = next_message (current);
     const uint32_t eff_len = msg_storage (current->length);
     size_t hdr_msg_size = mh_size + eff_len;
-if (eff_len > 2048) crash ("eff_len > 2048");
     const char * current_message = ((char *) current) + mh_size;
     /* delete messages with priority 0, invalid (likely expired)
      * messages, and messages that have been acked.  We delete them by
      * only keeping messages that don't match any of these criteria */
-int x1 = current->priority;
-char * e2 = "zero priority";
-int x2 = (x1 != 0) ? is_valid_message (current_message, current->length, &e2) : -1;
-int x3 = (x2 > 0) ? id_is_acked (current->id) : -1;
     if ((current->priority != 0) &&
         (is_valid_message (current_message, current->length, NULL)) &&
         (! id_is_acked (current->id))) {
@@ -269,10 +263,6 @@ int x3 = (x2 > 0) ? id_is_acked (current->id) : -1;
       save_messages = 1;          /* gc'd at least one message */
       copy_to += hdr_msg_size;
     } /* done with this message */
-else if (! (((x1 == 0) && (strcmp (e2, "zero priority") == 0)) ||
-            ((x1 > 0) && (strcmp (e2, "expired packet") == 0)) ||
-            (x3 > 0)))
-printf ("gc discarding message, %d, %d (%s), %d\n", x1, x2, e2, x3);
   }
   char * p = (char *) msg_table;
   if ((copy_to - p) + mh_size <= msg_table_size) { /* add a sentinel record */
@@ -381,7 +371,6 @@ static void read_hash_file (const char * fname, int fsize,
         *secret = readb64 (file_contents + (actual_size - 8));
       } else {   /* create a new secret and rehash.  Should only happen once */
         *secret = random_int (0, (unsigned long long int) (-1));
-printf ("rehashing %s table, secret %llx\n", fname, *secret);
         struct hash_entry * old_hash = *table;
         struct hash_entry * new =
           malloc_or_fail (actual_size, "read_hash_file rehash");
@@ -615,12 +604,6 @@ static int pcache_record_packet_id (const char * message, int msize, char * id)
 /* save this (received) packet */
 void pcache_save_packet (const char * message, int msize, int priority)
 {
-if (msize > 2048) {
-printf ("pcache_save_packet size %d, not saving\n", msize);
-print_packet (message, msize, "packet", 1);
-return;
-}
-if (msize > 2048) crash ("msize > 2048");
   char id [MESSAGE_ID_SIZE];
   if (! pcache_record_packet_id (message, msize, id))  /* cannot save */
     return;
@@ -763,7 +746,6 @@ struct pcache_result
     const uint32_t eff_len = msg_storage (current->length);
     const size_t pm_size = sizeof (struct pcache_message);
     const size_t mh_size = sizeof (struct message_header);
-if (eff_len > 2048) crash ("eff_len > 2048/two");
     const size_t needed = pm_size + eff_len;
   /* to see if we have room, compute array size including this message, n+1 */
     const size_t array_size = pm_size * (result.n + 1);
@@ -801,24 +783,9 @@ if (eff_len > 2048) crash ("eff_len > 2048/two");
           }
         }
       } /* else no match, do not add to the results */
-    } else    /* deleted or invalid (probably expired) or acked message */
-{
-char * error = NULL;
-int x = is_valid_message (message, current->length, &error);
-if ((current->priority != 0) &&
-    ((x != 0) || (strcmp ("expired packet", error) != 0)) &&
-    (! id_is_acked (current->id))) {
-if (x == 0)
-printf ("deleting %d (%s), %d: ", x, error, id_is_acked (current->id));
-else printf ("deleting message, %d, %d, %d: ",
-current->priority, x, id_is_acked (current->id));
-print_buffer (message, current->length, NULL, 10, 1);
-if (((char *) current) + sizeof (struct message_header) != message)
-printf ("  %p != %p\n", 
-((char *) current) + sizeof (struct message_header), message);
-}
+    } else {   /* deleted or invalid (probably expired) or acked message */
       current->priority = 0;     /* mark as deleted */
-}
+    }
   }
   return result;
 }
@@ -1079,12 +1046,6 @@ static void print_message_ack (int index, int verbose,
           snprintf (desc + n, minz (sizeof (desc), n), "%c%d", c, x);
         }
       }
-      const char * prt = p + msg_table_offset + mh_size;
-/*    print_buffer (prt, current->length, desc, 36, 1); */
-print_buffer (prt, current->length, desc, 36, 0);
-printf (" %02x %02x %02x %02x\n",
-prt [current->length - 4] & 0xff, prt [current->length - 3] & 0xff,
-prt [current->length - 2] & 0xff, prt [current->length - 1] & 0xff);
     }
     count++;
     msg_table_offset += hdr_msg_size;
