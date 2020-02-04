@@ -75,6 +75,14 @@ else System.out.println ("renameContact (" + oldName + ", " + newName +
         }
     }
 
+    public void setNotify(String contactName, boolean notify) {
+        try {
+            Contact c = contacts.get(contactName);
+            c.setNotify(notify);
+        } catch (java.lang.NullPointerException e) {
+        }
+    }
+
     public boolean isSavingMessages(String contactName) {
         try {
             return (contacts.get(contactName).isSaveMessages());
@@ -83,11 +91,27 @@ else System.out.println ("renameContact (" + oldName + ", " + newName +
         }
     }
 
+    public void setSavingMessages(String contactName, boolean save) {
+        try {
+            Contact c = contacts.get(contactName);
+            c.setSaveMessages(save);
+        } catch (java.lang.NullPointerException e) {
+        }
+    }
+
     public boolean isVisible(String contactName) {
         try {
             return (contacts.get(contactName).isVisible());
         } catch (java.lang.NullPointerException e) {
             return false;
+        }
+    }
+
+    public void setVisible(String contactName, boolean visible) {
+        try {
+            Contact c = contacts.get(contactName);
+            c.setVisible(visible);
+        } catch (java.lang.NullPointerException e) {
         }
     }
 
