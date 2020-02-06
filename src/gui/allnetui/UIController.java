@@ -299,7 +299,6 @@ class UIController implements ControllerInterface, UIAPI {
                 }
                 if (contactsModified) {
                     updateContactsPanel(contactToUpdate, false);
-                    updateContactsPanelStatus();
             	}
                 contactConfigPanel.update();
             }
@@ -536,7 +535,7 @@ class UIController implements ControllerInterface, UIAPI {
 
     private String getContactFromWindow(KeyExchangePanel kep) {
         String contact = kep.getText(0);
-        contact = contact.replace("exchanging keys with", "");
+        contact = contact.replace("Exchanging keys with", "");
         contact = contact.replaceFirst("^\\s*", "");
         contact = contact.replaceFirst("\\s*$", "");
         contact = contact.replaceAll("\\n", "");
@@ -571,23 +570,24 @@ class UIController implements ControllerInterface, UIAPI {
                 String variableInput = kep.getVariableInput();
                 if ((variableInput == null) || (variableInput.isEmpty())
                     || (variableInput.length() < min)) {
-                    kep.setText(1, " Resend Key button pressed !!!",
+                    kep.setText(1, " Resend Key",
                         "",
-                        " Shared secret:", " " + addSpaces(kep.getSecret()),
+                        " Shared secret:",
+                        " " + addSpaces(kep.getSecret().toUpperCase()),
                         " (spaces are optional)");
                 }
                 else {
-                    kep.setText(1, " Resend Key button pressed !!!", "",
+                    kep.setText(1, " Resend Key", "",
                         " Shared secret:",
-                        " " + addSpaces(kep.getSecret()),
+                        " " + addSpaces(kep.getSecret().toUpperCase()),
                         " or:",
-                        " " + addSpaces(variableInput),
+                        " " + addSpaces(variableInput.toUpperCase()),
                         " (spaces are optional)");
                 }
                 if (coreAPI.initKeyExchange(kep.getContactName(),
                     kep.getSecret(),
                     kep.getVariableInput(), hops)) {
-                    System.out.println("resent key request");
+                    System.out.println("resent own key");
                 }
                 break;
             case 2:
@@ -615,6 +615,7 @@ class UIController implements ControllerInterface, UIAPI {
                 myTabbedPane.setSelected(UI.CONTACTS_PANEL_ID);
                 coreAPI.setComplete(contact);
                 coreAPI.setVisible(contact);
+                contactData.setVisible(contact, true);
                 updateContactsPanel(contact, false);
                 contactConfigPanel.update();
                 break;
@@ -1330,6 +1331,7 @@ class UIController implements ControllerInterface, UIAPI {
         //    return;
         kep.setSuccess(contactName);
         coreAPI.setVisible(contactName);  // make the contact visible
+        contactData.setVisible(contactName, true);
         updateContactsPanel(contactName, false);
     }
 
