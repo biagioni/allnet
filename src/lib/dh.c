@@ -293,7 +293,7 @@ int main (int argc, char ** argv)
   test_swap (0, test, five);
   char result [DH448_SIZE];
   if (! allnet_x448 (test, five, result))
-    printf ("allnet_x4489 (basic test) returned 0\n");
+    printf ("allnet_x448 (basic test) returned 0\n");
   print_buffer (result, sizeof (result), "result", 100, 1);
 
   printf ("\nRFC test 1:\n");
@@ -324,7 +324,7 @@ int main (int argc, char ** argv)
   print_as_number (input_scalar1, "input scalar1");
   print_as_number (input_u1, "input u1");
   if (! allnet_x448 (input_scalar1, input_u1, result))
-    printf ("allnet_x4489 (RFC test 1) returned 0\n");
+    printf ("allnet_x448 (RFC test 1) returned 0\n");
   print_buffer (result, sizeof (result), "result (RFC test 1)", 100, 1);
   if (memcmp (result, result1, sizeof (result)) != 0) {
     printf ("results do not match, expected\n");
@@ -359,7 +359,7 @@ int main (int argc, char ** argv)
   print_as_number (input_scalar2, "input scalar2");
   print_as_number (input_u2, "input u2");
   if (! allnet_x448 (input_scalar2, input_u2, result))
-    printf ("allnet_x4489 (RFC test 2) returned 0\n");
+    printf ("allnet_x448 (RFC test 2) returned 0\n");
   print_buffer (result, sizeof (result), "result (RFC test 2)", 100, 1);
   if (memcmp (result, result2, sizeof (result)) != 0) {
     printf ("results do not match, expected\n");
@@ -388,7 +388,7 @@ int main (int argc, char ** argv)
      0x63, 0x0a, 0x1f, 0x12, 0x25, 0x4e, 0xb7, 0x4c };
 #endif /* RFC_7748_STD */
   if (! allnet_x448 (k3, u3, result))
-    printf ("allnet_x4489 (RFC test 3) returned 0\n");
+    printf ("allnet_x448 (RFC test 3) returned 0\n");
   print_buffer (result, sizeof (result), "result (RFC test 3)", 100, 1);
   if (memcmp (result, result3, sizeof (result)) != 0) {
     printf ("results do not match, expected\n");
@@ -445,7 +445,7 @@ int main (int argc, char ** argv)
 #endif /* RFC_7748_STD */
   char pk_a [DH448_SIZE];
   if (! allnet_x448 (a_a, u_five, pk_a))
-    printf ("allnet_x4489 (RFC test 4, alice) returned 0\n");
+    printf ("allnet_x448 (RFC test 4, alice) returned 0\n");
   print_buffer (pk_a, sizeof (pk_a), "pk_a (RFC test 4)", 100, 1);
   if (memcmp (pk_a, public_a, sizeof (public_a)) != 0) {
     printf ("results do not match, expected\n");
@@ -453,7 +453,7 @@ int main (int argc, char ** argv)
   }
   char pk_b [DH448_SIZE];
   if (! allnet_x448 (a_b, u_five, pk_b))
-    printf ("allnet_x4489 (RFC test 4, alice) returned 0\n");
+    printf ("allnet_x448 (RFC test 4, alice) returned 0\n");
   print_buffer (pk_b, sizeof (pk_b), "pk_b (RFC test 4)", 100, 1);
   if (memcmp (pk_b, public_b, sizeof (public_b)) != 0) {
     printf ("results do not match, expected\n");
@@ -461,10 +461,10 @@ int main (int argc, char ** argv)
   }
   char k_a [DH448_SIZE];
   if (! allnet_x448 (a_a, pk_b, k_a))
-    printf ("allnet_x4489 (RFC test 4, alice 2) returned 0\n");
+    printf ("allnet_x448 (RFC test 4, alice 2) returned 0\n");
   char k_b [DH448_SIZE];
   if (! allnet_x448 (a_b, pk_a, k_b))
-    printf ("allnet_x4489 (RFC test 4, bob 2) returned 0\n");
+    printf ("allnet_x448 (RFC test 4, bob 2) returned 0\n");
   if ((memcmp (k_a, k_b, sizeof (k_a)) != 0) ||
       (memcmp (k_a, shared_secret, sizeof (k_a)) != 0)) {
     printf ("RFC test 4, shared secrets do not match!\n");
@@ -485,15 +485,15 @@ int main (int argc, char ** argv)
   char pk_alice [DH448_SIZE];
   char pk_bob [DH448_SIZE];
   if (! allnet_x448 (a_alice, u_five, pk_alice))
-    printf ("allnet_x4489 (usage test, alice) returned 0\n");
+    printf ("allnet_x448 (usage test, alice) returned 0\n");
   if (! allnet_x448 (a_bob, u_five, pk_bob))
-    printf ("allnet_x4489 (usage test, bob) returned 0\n");
+    printf ("allnet_x448 (usage test, bob) returned 0\n");
   char k_alice [DH448_SIZE];
   if (! allnet_x448 (a_alice, pk_bob, k_alice))
-    printf ("allnet_x4489 (usage test, alice 2) returned 0\n");
+    printf ("allnet_x448 (usage test, alice 2) returned 0\n");
   char k_bob [DH448_SIZE];
   if (! allnet_x448 (a_bob, pk_alice, k_bob))
-    printf ("allnet_x4489 (usage test, bob 2) returned 0\n");
+    printf ("allnet_x448 (usage test, bob 2) returned 0\n");
   if (memcmp (k_alice, k_bob, sizeof (k_alice)) != 0) {
     printf ("RFC usage test, shared secrets do not match!\n");
     print_buffer (k_alice, sizeof (k_alice), "alice's 'shared' secret", 100, 1);
