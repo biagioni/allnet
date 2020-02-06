@@ -40,7 +40,7 @@ public class KeyExchangePanel extends StatusPanel {
         this.contactName = contactName;
         setColor(1, Color.WHITE);
         setColor(2, Color.PINK);
-        String title = " exchanging keys with " + contactName;
+        String title = " Exchanging keys with " + contactName;
         if (! keyExchange)
             title = " requesting key for " + contactName;
         setText(0, title);
