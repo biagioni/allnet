@@ -619,8 +619,10 @@ int wp_rsa_read_key_from_file (const char * fname, int * nbits,
   char wp_buffer [50000];
   int fd = open (fname, O_RDONLY);
   if (fd < 0) {
+#ifdef DEBUG_PRINT
     perror ("open key file");
     printf ("wp_rsa_read_key_from_file unable to open file %s\n", fname);
+#endif /* DEBUG_PRINT */
     return 0;
   }
   ssize_t nread = read (fd, wp_buffer, sizeof (wp_buffer));
