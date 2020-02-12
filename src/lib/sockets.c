@@ -169,7 +169,8 @@ void check_sav (struct socket_address_validity * sav, const char * desc)
   if ((sav->alen > sizeof (sav->addr)) ||
       (sav->alen < sizeof (struct sockaddr_in)) ||
       (sav->alen == 18)) {
-    printf ("%s: illegal alen ", desc);
+    printf ("%s: illegal alen %d\n", desc, sav->alen);
+    print_buffer (&sav->addr, 16, NULL, 16, 1);
     print_sav (sav);
     debug_crash ();
   }
