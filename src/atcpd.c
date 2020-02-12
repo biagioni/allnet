@@ -269,7 +269,8 @@ sizeof (struct sockaddr_storage)); printf ("\n");
     release (&(args->lock), "r");
     sleep_while_running (args, 100);  /* sleep 1/10s */
   }
-  printf ("%lld: atcpd_recv_thread ending\n", allnet_time ());
+  if (debug_keepalive)
+    printf ("%lld: atcpd_recv_thread ending\n", allnet_time ());
   return NULL;
 }
 
@@ -333,8 +334,6 @@ if (debug_keepalive) printf ("handle_keepalive received valid keepalive\n");
   }
   char * auth = args->authenticating_keepalive + min_size;
   if (memcmp (ad_auth, auth, KEEPALIVE_AUTHENTICATION_SIZE) != 0) {
-print_buffer (auth, KEEPALIVE_AUTHENTICATION_SIZE, "ad changed auth", 32, 1);
-print_buffer (ad_auth, KEEPALIVE_AUTHENTICATION_SIZE, "to", 32, 1);
     memcpy (auth, ad_auth, KEEPALIVE_AUTHENTICATION_SIZE);
   }
   release (&(args->lock), "q");
@@ -527,7 +526,8 @@ sizeof (struct sockaddr_storage)); printf ("\n");
       args->running = 0;
     }
   }
-  printf ("%lld: atcpd_accept_thread ending\n", allnet_time ());
+  if (debug_keepalive)
+    printf ("%lld: atcpd_accept_thread ending\n", allnet_time ());
   close (listen_socket);
   int i;
   for (i = MAX_CONNECTIONS / 2; i < MAX_CONNECTIONS; i++) {
@@ -647,7 +647,8 @@ printf ("atcp_connect_thread: %d peers\n", n);
       sleep_time = MAX_SLEEP_TIME;
 #undef MAX_SLEEP_TIME
   }
-  printf ("%lld: atcpd_connect_thread ending\n", allnet_time ());
+  if (debug_keepalive)
+    printf ("%lld: atcpd_connect_thread ending\n", allnet_time ());
   int i;
   for (i = 0; i < NUM_CONNECT; i++) {
     if (tcp_fds [i] != -1)
@@ -684,7 +685,8 @@ if (debug_keepalive) printf ("sending keepalive %p %d\n", args->authenticating_k
     release (&(args->lock), "k");
     sleep_while_running (args, KEEPALIVE_SECONDS);
   }
-  printf ("%lld: atcpd_keepalive_thread ending\n", allnet_time ());
+  if (debug_keepalive)
+    printf ("%lld: atcpd_keepalive_thread ending\n", allnet_time ());
   return NULL;
 }
 
@@ -701,13 +703,16 @@ debug_keepalive = 0;
       missed_count = 0;  /* recently received */
       sleep_while_running (args, KEEPALIVE_SECONDS * 1000);
     }
+#ifdef DEBUG_PRINT
     printf ("last_udp_received_time %lld, current time %lld (k %d, m %d)\n",
             last_udp_received_time, allnet_time (),
             (int) KEEPALIVE_SECONDS, missed_count);
 debug_keepalive = 1;
+#endif /* DEBUG_PRINT */
   } while (args->running && (missed_count++ < 3));
-  printf ("%lld: atcpd_timer_thread ending %d\n", allnet_time (),
-          args->running);
+  if (debug_keepalive)
+    printf ("%lld: atcpd_timer_thread ending %d\n", allnet_time (),
+            args->running);
   args->running = 0;  /* gracefully stop all the other threads */
   return NULL;
 }
@@ -815,17 +820,29 @@ printf ("   atcpd is complete %llu\n", allnet_time_us ());
       sleep_while_running (thread_args, 30);  /* sleep 1/30s */
     }
     pthread_join (thr1, NULL);
+#ifdef DEBUG_PRINT
 printf ("pthread_join(1) completed\n");
+#endif /* DEBUG_PRINT */
     pthread_join (thr2, NULL);
+#ifdef DEBUG_PRINT
 printf ("pthread_join(2) completed\n");
+#endif /* DEBUG_PRINT */
     pthread_join (thr3, NULL);
+#ifdef DEBUG_PRINT
 printf ("pthread_join(3) completed\n");
+#endif /* DEBUG_PRINT */
     pthread_join (thr4, NULL);
+#ifdef DEBUG_PRINT
 printf ("pthread_join(4) completed\n");
+#endif /* DEBUG_PRINT */
     pthread_join (thr5, NULL);
+#ifdef DEBUG_PRINT
 printf ("pthread_join(5) completed\n");
+#endif /* DEBUG_PRINT */
     pthread_join (thr6, NULL);
+#ifdef DEBUG_PRINT
 printf ("pthread_join(6) completed\n");
+#endif /* DEBUG_PRINT */
     close (thread_args->local_sock);  /* may already be closed */
     free (thread_args);
     printf ("%lld: atcpd_main restarting %d, run state %d\n",
