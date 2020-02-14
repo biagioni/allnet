@@ -49,7 +49,8 @@ libsrc = \
 	stream.c \
 	table.c \
 	trace_util.c \
-	util.c
+	util.c \
+	wp_arith.c
 
 # only included if ! HAVE_OPENSSL
 #	asn1.c \
@@ -61,7 +62,8 @@ DEPS_LIBS = ${openssl_LIBS} -lpthread
 
 if !HAVE_OPENSSL
 libincludes += ${wpincludes}
-libsrc += asn1.c wp_aes.c wp_arith.c wp_rsa.c
+# libsrc += asn1.c wp_aes.c wp_arith.c wp_rsa.c
+libsrc += asn1.c wp_aes.c wp_rsa.c
 endif
 
 lib_LTLIBRARIES = liballnet-@ALLNET_API_VERSION@.la
