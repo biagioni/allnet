@@ -78,6 +78,23 @@ extern int interface_addrs (struct interface_addr ** interfaces);
 /* same, but only return all the valid broadcast addresses */
 extern int interface_broadcast_addrs (struct sockaddr_storage ** addrs);
 
+/* using getaddrinfo makes it hard or impossible to do static linking,
+ * whereas static linking is useful for distributing the software as
+ * self-contained binaries.
+ * Also, getaddrinfo only queries one name at a time, when it would be much
+ * easier to request all translations at once.
+ * Finally, the response should be returned in real time.
+ * allnet_dns sends a query for each of the names to each server
+ *    in /etc/hosts.  When it gets a valid response, it calls the
+ *    callback with the original name, the corresponding id, and the address.
+ *    allnet_dns itself returns after it gets all its responses, or when
+ *    it times out, usually after 10-20s.
+ *    allnet_dns returns the number of addresses found, or 0 for errors
+ */
+extern int allnet_dns (const char ** names, const int * callback_ids, int count,
+                       void (* callback) (const char * name, int id,
+                                          const struct sockaddr * addr));
+
 /* test whether this address is syntactically valid address (e.g.
  * not all zeros), returning 1 if valid, -1 if it is an ipv4-in-ipv6
  * address, and 0 otherwise */

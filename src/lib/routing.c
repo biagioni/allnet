@@ -186,19 +186,21 @@ static int already_listed (struct sockaddr_storage * sap,
 }
 
 /* ID is a number 0..NUM_DEFAULTS-1 -- NUM_DEFAULTS - 1 refers to ID 0. */
-static void routing_add_dht_sockaddr (struct sockaddr * ip_addr, int id)
+/* the name is ignored -- it is only here because allnet_dns provides it */
+static void routing_add_dht_sockaddr (const char * name, int id,
+                                      const struct sockaddr * ip_addr)
 {
   if (id >= NUM_DEFAULTS - 1)
     id = 0;
   struct addr_info addr;
   memset (&addr, 0, sizeof (addr));
   if (ip_addr->sa_family == AF_INET) {
-    struct sockaddr_in * sin = (struct sockaddr_in *) ip_addr;
+    const struct sockaddr_in * sin = (const struct sockaddr_in *) ip_addr;
     memset (addr.ip.ip.s6_addr + 10, 0xff, 2);
     memcpy (addr.ip.ip.s6_addr + 12, &(sin->sin_addr.s_addr), 4);
     addr.ip.ip_version = 4;
   } else if (ip_addr->sa_family == AF_INET6) {
-    struct sockaddr_in6 * sin = (struct sockaddr_in6 *) ip_addr;
+    const struct sockaddr_in6 * sin = (const struct sockaddr_in6 *) ip_addr;
     memcpy (addr.ip.ip.s6_addr, sin->sin6_addr.s6_addr, 16);
     addr.ip.ip_version = 6;
   }
@@ -242,7 +244,7 @@ static void save_id ()
   printf ("save_id()\n");
 #endif /* DEBUG_PRINT */
   if (save_my_own_address) {
-    int fd = open_write_config ("adht", "my_id", 1);
+    int fd = open_write_config ("adht", "my_id", 0);
     if (fd >= 0) {
       char line [300];  /* write my address first */
       buffer_to_string (my_address, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 1,
@@ -273,7 +275,7 @@ static void save_peers ()
     return;  /* don't save now */
   int cpeer = 0;
   int cping = 0;
-  int fd = open_write_config ("adht", "peers", 1);
+  int fd = open_write_config ("adht", "peers", 0);
   int i;
   for (i = 0; i < MAX_PEERS; i++) {
     if (peers [i].refreshed)
@@ -291,78 +293,29 @@ static void save_peers ()
 #endif /* DEBUG_PRINT */
 }
 
-/* run as a thread since getaddrinfo can be extremely slow (10's of seconds) */
-static void * init_one_default_dns (void * arg)
-{
-  int dns_index = *(int *) arg;
-  if ((dns_index < 0) || (dns_index >= NUM_DEFAULTS)) {
-    printf ("error: illegal DNS index %d, max %zd\n", dns_index, NUM_DEFAULTS);
-    return NULL;
-  }
-  char service [10];
-  snprintf (service, sizeof (service), "%d", ntohs (ALLNET_PORT));
-  struct addrinfo * next;
-  int code = getaddrinfo (default_dns [dns_index], service, NULL, &next);
-  if (code == 0) {   /* getaddrinfo succeded */
-    struct addrinfo * original = next;  /* so we can free it */
-    while (next != NULL) {
-#ifdef DEBUG_PRINT
-      print_sockaddr (next->ai_addr, next->ai_addrlen);
-      printf ("\n");
-#endif /* DEBUG_PRINT */
-      char * sap = NULL;
-      if ((next->ai_family == AF_INET) &&
-          (ip4_defaults [dns_index].ss_family == 0))
-        sap = (char *) (&(ip4_defaults [dns_index]));
-      else if ((next->ai_family == AF_INET6) &&
-               (ip6_defaults [dns_index].ss_family == 0))
-        sap = (char *) (&(ip6_defaults [dns_index]));
-      else if ((next->ai_family != AF_INET) && (next->ai_family != AF_INET6))
-        printf ("init_default_dns: unknown address family %d (%d, %d)\n",
-                next->ai_family, ip4_defaults [dns_index].ss_family,
-                ip6_defaults [dns_index].ss_family);
-      if ((sap != NULL) &&
-          (next->ai_addrlen <= sizeof (struct sockaddr_storage))) {
-        memcpy (sap, (char *) (next->ai_addr), next->ai_addrlen);
-        routing_add_dht_sockaddr ((struct sockaddr *) sap, dns_index);
-      }
-      next = next->ai_next;
-    }
-    freeaddrinfo (original);
-  } else {
-    int print = 0;
-#ifdef DEBUG_PRINT
-    print = 1; /* print unconditionally */
-#endif /* DEBUG_PRINT */
-    if (print || (code != EAI_NONAME)) {
-      snprintf (alog->b, alog->s, "getaddrinfo (%s): %s\n",
-                default_dns [dns_index], gai_strerror (code));
-      if (print) printf ("%s", alog->b);
-      log_print (alog);
-    }
-  }
-  return NULL;
-}
-
-/* run as a thread since getaddrinfo can be extremely slow (10's of seconds)
- * in addition, run all of the getaddrinfo's in parallel, each in its thread */
+/* allnet_dns typically takes 10-20s, so this is run as a separate thread */
 static void * init_default_dns (void * arg)
 {
+  /* there is no point to multiple dns threads running at the same time */
+  static pthread_mutex_t only_one_thread_at_a_time = PTHREAD_MUTEX_INITIALIZER;
+  if (pthread_mutex_trylock (&only_one_thread_at_a_time) != 0)
+    return NULL;
   int * initialized = (int *) arg;
   unsigned int i;
-  /* begin connecting at a random position in the DNS array */
-  pthread_t threads [NUM_DEFAULTS];
   int indices [NUM_DEFAULTS];
   for (i = 0; i < NUM_DEFAULTS; i++) {
     ip4_defaults [i].ss_family = 0;
     ip6_defaults [i].ss_family = 0;
     indices [i] = i;
-    pthread_create (&(threads [i]), NULL, init_one_default_dns,
-                    (void *) (&indices [i]));
   }
-  /* now wait for all the threads to finish */
-  for (i = 0; i < NUM_DEFAULTS; i++)
-    pthread_join (threads [i], NULL);
+  int sleep_sec = 10;
+  while (allnet_dns ((const char * *)default_dns, indices, NUM_DEFAULTS,
+                     routing_add_dht_sockaddr) == 0) {
+printf ("allnet_dns returned 0, dns loop sleeping %d seconds\n", sleep_sec);
+    sleep (sleep_sec);
+    if (sleep_sec < 600)   /* once every 10 min or so */
+      sleep_sec = sleep_sec + sleep_sec;
+  }
 #ifdef DEBUG_PRINT
   for (i = 0; i < NUM_DEFAULTS; i++) {
     printf ("%d: (4 and 6): ", i);
@@ -392,6 +345,7 @@ static void * init_default_dns (void * arg)
   printf ("after init, ");
   print_dht (0);
 #endif /* DEBUG_PRINT */
+  pthread_mutex_unlock (&only_one_thread_at_a_time);
   return NULL;
 }
 
@@ -567,7 +521,7 @@ static void read_my_id ()
     return;
   initialized = 1;
   char line [1000];
-  int fd = open_read_config ("adht", "my_id", 1);
+  int fd = open_read_config ("adht", "my_id", 0);
   if (fd < 0) {
     /* printf ("unable to open .allnet/adht/my_id\n"); */
     init_defaults ();
@@ -592,7 +546,7 @@ static void read_my_id ()
 static void read_peers_file ()
 {
   char line [1000];
-  int fd = open_read_config ("adht", "peers", 1);
+  int fd = open_read_config ("adht", "peers", 0);
   if (fd < 0)
     return;
   int ping_index = 0;
