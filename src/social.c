@@ -110,7 +110,7 @@ static int update_social_tier (int tier, struct social_one_tier * st,
   int fd = open_read_config ("ad", file_name, ! printed);
   if (fd < 0) {
     char * path = NULL;
-    int result = config_file_name ("ad", file_name, &path);
+    int result = config_file_name ("ad", file_name, &path, 1);
     if (result < 0) {
       snprintf (log->b, LOG_SIZE, "unable to get config file name\n");
       log_print (log);

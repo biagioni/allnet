@@ -580,7 +580,7 @@ static void init_from_file (const char * debug)
   }
   /* first count the number of keys */
   char * dirname = NULL;
-  int dirnamesize = config_file_name ("contacts", "", &dirname);
+  int dirnamesize = config_file_name ("contacts", "", &dirname, 1);
   if (dirnamesize < 0) {  /* no config file names */
     printf ("init_from_file unable to access config files\n");
     initialized = 1; /* don't try again on the next call */
@@ -855,14 +855,14 @@ static void save_contact (struct key_info * k)
               t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
               t.tm_hour, t.tm_min, t.tm_sec);
  
-    int dirnamesize = config_file_name ("contacts", fname, &dirname);
+    int dirnamesize = config_file_name ("contacts", fname, &dirname, 1);
     if (dirnamesize < 0) {
       printf ("unable to get config file name");
       return;
     }
     k->dir_name = dirname;
   }
-  create_dir (dirname);
+  create_dir (dirname, 0);
   if (k->contact_name != NULL) {
     char * name_fname = strcat3_malloc (dirname, "/", "name", "name file");
     write_file (name_fname, k->contact_name, (int)strlen (k->contact_name), 1);
@@ -920,7 +920,7 @@ static void save_contact (struct key_info * k)
 static int count_spare_key_files ()
 {
   char * dirname;
-  int dirnamesize = config_file_name ("own_spare_keys", "", &dirname);
+  int dirnamesize = config_file_name ("own_spare_keys", "", &dirname, 0);
   if (dirnamesize < 0)
     return 0;
   DIR * dir = opendir (dirname);
@@ -957,7 +957,7 @@ static int save_spare_key (allnet_rsa_prvkey key)
             t.tm_hour, t.tm_min, t.tm_sec);
 
   char * fname;
-  int fnamesize = config_file_name ("own_spare_keys", now_printed, &fname);
+  int fnamesize = config_file_name ("own_spare_keys", now_printed, &fname, 1);
   if (fnamesize < 0) {
     printf ("unable to get config file name for spare");
     return 0;
@@ -979,7 +979,7 @@ static allnet_rsa_prvkey get_spare_key (int keybits)
   if (count_spare_key_files () <= 0)
     return result;
   char * dirname;
-  int dirnamesize = config_file_name ("own_spare_keys", "", &dirname);
+  int dirnamesize = config_file_name ("own_spare_keys", "", &dirname, 0);
   if (dirnamesize < 0)
     return result;
   DIR * dir = opendir (dirname);
@@ -992,7 +992,8 @@ static allnet_rsa_prvkey get_spare_key (int keybits)
     if ((de->d_name [0] != '.') &&
         (strlen (de->d_name) == DATE_TIME_LEN)) {
       char * fname;
-      int fnamesize = config_file_name ("own_spare_keys", de->d_name, &fname);
+      int fnamesize = config_file_name ("own_spare_keys", de->d_name,
+                                        &fname, 0);
       if (fnamesize >= 0) {
         int success = allnet_rsa_read_prvkey (fname, &result);
         if ((success) && (allnet_rsa_prvkey_size (result) == keybits / 8)) {
@@ -2800,7 +2801,7 @@ static void init_bc_key_set (char * dirname, struct bc_key_info ** keys,
   if (*num_keys < 0) {
     *num_keys = 0;    /* initialized */
     char * config_dir;
-    if (config_file_name (dirname, "", &config_dir) < 0) {
+    if (config_file_name (dirname, "", &config_dir, 1) < 0) {
       printf ("unable to open key directory ~/.allnet/%s\n", dirname);
     } else {
       char * slash = strrchr (config_dir, '/');
@@ -3043,7 +3044,7 @@ static char * generate_one_key (int key_bits, char * phrase, char * lang,
                                min_bitstrings);
   if (aaddr != NULL) {
     char * fname;
-    if (config_file_name ("own_bc_keys", aaddr, &fname) < 0) {
+    if (config_file_name ("own_bc_keys", aaddr, &fname, 1) < 0) {
       printf ("unable to save key to ~/.allnet/own_bc_keys/%s\n", aaddr);
     } else {
       if (! allnet_rsa_write_prvkey (fname, key))
@@ -3214,7 +3215,7 @@ unsigned int verify_bc_key (const char * ahra, const char * key, int key_bytes,
   }
   char * fname;
   if (save_if_correct) {
-    if (config_file_name ("other_bc_keys", ahra, &fname) < 0) {
+    if (config_file_name ("other_bc_keys", ahra, &fname, 1) < 0) {
       printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", ahra);
     } else {
       if (! allnet_rsa_write_pubkey (fname, rsa)) {
@@ -3312,7 +3313,7 @@ struct bc_key_info * get_other_bc_key (const char * ahra)
 void requesting_bc_key (const char * ahra)
 {
   char * fname = NULL;
-  if (config_file_name ("requested_bc_keys", ahra, &fname) < 0) {
+  if (config_file_name ("requested_bc_keys", ahra, &fname, 1) < 0) {
     printf ("unable to save key request to ~/.allnet/requested_bc_keys/%s\n",
             ahra);
   } else {
@@ -3330,7 +3331,7 @@ int requested_bc_keys (char *** ahras)
   if (ahras != NULL)
     *ahras = NULL;
   char * config_dir;
-  if (config_file_name ("requested_bc_keys", "", &config_dir) < 0) {
+  if (config_file_name ("requested_bc_keys", "", &config_dir, 0) < 0) {
     /* this is OK -- no requests
        printf ("unable to open key directory ~/.allnet/requested_bc_keys\n"); */
     return 0;
@@ -3387,7 +3388,7 @@ int requested_bc_keys (char *** ahras)
 void finished_bc_key_request (const char * ahra)
 {
   char * fname = NULL;
-  if (config_file_name ("requested_bc_keys", ahra, &fname) < 0) {
+  if (config_file_name ("requested_bc_keys", ahra, &fname, 1) < 0) {
     printf ("unable to save key request to ~/.allnet/requested_bc_keys/%s\n",
             ahra);
   } else {

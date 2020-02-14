@@ -572,7 +572,7 @@ print_dht (0); */
 
 static void load_peers (int only_if_newer)
 {
-  time_t mtime = config_file_mod_time ("adht", "peers");
+  time_t mtime = config_file_mod_time ("adht", "peers", 0);
   if ((only_if_newer) && ((mtime == 0) || (mtime <= peers_file_time)))
     return;
   peers_file_time = mtime;
@@ -581,8 +581,10 @@ static void load_peers (int only_if_newer)
   memset ((char *) (pings), 0, sizeof (pings));
   read_my_id ();
   read_peers_file ();
-/* printf ("load_peers complete:\n");
-print_dht (0); */
+#ifdef DEBUG_PRINT
+  printf ("load_peers complete:\n");
+  print_dht (0);
+#endif /* DEBUG_PRINT */
 }
 
 /* always called with lock held

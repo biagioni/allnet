@@ -25,7 +25,7 @@
 static char * global_home_directory = NULL;
 
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
-int create_dir (const char * path)
+int create_dir (const char * path, int print_errors)
 {
   DIR * d = opendir (path);
   if (d != NULL) {  /* exists, done */
@@ -34,8 +34,10 @@ int create_dir (const char * path)
   }
   if (errno != ENOENT) {
     int saved_errno = errno;
-    perror ("opendir");
-    printf ("unable to open %s, error %d\n", path, saved_errno);
+    if (print_errors) {
+      perror ("opendir in create_dir");
+      printf ("unable to open %s, error %d\n", path, saved_errno);
+    }
     return 0;
   }
   /* path does not exist, attempt to create it */
@@ -43,8 +45,10 @@ int create_dir (const char * path)
     return 1;
   if (errno != ENOENT) { /* some other error, give up */
     int saved_errno = errno;
-    perror ("1-mkdir");
-    printf ("unable to create %s, error %d\n", path, saved_errno);
+    if (print_errors) {
+      perror ("1-mkdir");
+      printf ("unable to create %s, error %d\n", path, saved_errno);
+    }
     return 0;
   }
 
@@ -54,13 +58,14 @@ int create_dir (const char * path)
     return 0;
   *last_slash = '\0';
   /* now try to create the parent directory */
-  if (create_dir (path)) {
+  if (create_dir (path, print_errors)) {
     /* and try again to create this directory */
     *last_slash = '/';
     if (mkdir (path, 0700) == 0) {
       return 1;
     }
-    perror ("mkdir");
+    if (print_errors)
+      perror ("mkdir");
   }
   return 0;
 }
@@ -118,7 +123,8 @@ static void init_global_root ()
 /* returns -1 if the allocation fails or there is some other problem */
 /* if it allocates the name, also checks to make sure the directory exists,
  * and if not, creates it if possible.  Does not create the file. */
-int config_file_name (const char * program, const char * file, char ** name)
+int config_file_name (const char * program, const char * file, char ** name,
+                      int print_errors)
 {
   if (name != NULL)
     *name = NULL;  /* in case we return error, make sure it is initialized */
@@ -136,7 +142,7 @@ int config_file_name (const char * program, const char * file, char ** name)
   }
   /* check for the existence of the directory, or create it */
   snprintf (*name, total_length, "%s/%s", global_root, program);
-  create_dir (*name);
+  create_dir (*name, print_errors);
   snprintf (*name, total_length, "%s/%s/%s", global_root, program, file);
 /* printf ("file path for %s %s is %s\n", program, file, *name); */
   return total_length;
@@ -144,10 +150,11 @@ int config_file_name (const char * program, const char * file, char ** name)
 
 /* returns the (system) time of last modification of the config file, or 0
  * if the file does not exist */
-time_t config_file_mod_time (const char * program, const char * file)
+time_t config_file_mod_time (const char * program, const char * file,
+                             int print_errors)
 {
   char * name = NULL;
-  int size = config_file_name (program, file, &name);
+  int size = config_file_name (program, file, &name, print_errors);
   if (size < 0) {
     if (name != NULL)
       free (name);
@@ -166,7 +173,7 @@ static int open_config (const char * program, const char * file, int flags,
                         int print_errors, char * caller)
 {
   char * name;
-  int size = config_file_name (program, file, &name);
+  int size = config_file_name (program, file, &name, print_errors);
   if (size < 0)
     return -1;
   int result = open (name, flags, 0600);

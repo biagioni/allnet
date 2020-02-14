@@ -231,7 +231,7 @@ static int end_ndigits (char * path, unsigned int ndigits, char * ext)
  */
 static int find_prev_file (struct msg_iter * iter)
 {
-  create_dir (iter->dirname);
+  create_dir (iter->dirname, 1);
   DIR * dir = opendir (iter->dirname);
   if (dir == NULL) {  /* eventually probably don't need to print */
 int debug = 0;
