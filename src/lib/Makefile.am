@@ -14,7 +14,6 @@ libincludes = \
 	mgmt.h \
 	packet.h \
         pcache.h \
-        pid_bloom.h \
 	priority.h \
 	routing.h \
 	sha.h \
@@ -41,7 +40,6 @@ libsrc = \
 	allnet_log.c \
 	mapchar.c \
         pcache.c \
-        pid_bloom.c \
 	priority.c \
 	routing.c \
 	sha.c \
