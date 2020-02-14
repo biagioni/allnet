@@ -30,6 +30,9 @@
 #include "util.h"
 #include "configfiles.h"
 #include "sha.h"
+#ifndef ALLNET_KEYTYPE_RSA
+#include "dh.h"
+#endif /* ALLNET_KEYTYPE_RSA/DH */
 #include "mapchar.h"
 
 /* a key set consists of the contact name, my private and public keys,
@@ -49,8 +52,16 @@ struct key_info {
   int is_visible;         /* hidden contacts can still send or receive */
   int is_deleted;         /* deleted contacts can no longer send or receive */
   int has_pub_key;                   /* always 0 for groups */
-  allnet_rsa_pubkey contact_pubkey;  /* only defined if not a group */
-  allnet_rsa_prvkey my_key;          /* only defined if not a group */
+  allnet_rsa_pubkey contact_pubkey;  /* only defined if has_pub_key */
+  allnet_rsa_prvkey my_key;          /* only defined if has_pub_key */
+#ifndef ALLNET_KEYTYPE_RSA
+  /* a valid non-group contact should have at least an RSA private key
+   * or a local DH -- it may have both, though that would be unusual */
+  int has_local_dh;
+  char local_dh [DH448_SIZE];
+  int has_shared_dh;    /* true if we've completed the DH exchange */
+  char shared_dh [DH448_SIZE];
+#endif /* ALLNET_KEYTYPE_RSA/DH */
   struct key_address local;          /* only defined if not a group */
   struct key_address remote;         /* only defined if not a group */
   char * dir_name;
@@ -70,7 +81,7 @@ struct key_info {
   int has_receive_state;
   struct allnet_stream_encryption_state receive_state;
 };
-static struct key_info * kip = NULL;
+static struct key_info * kip = NULL;  /* our most important data structure */
 static int num_key_infos = 0;
 
 /* contact names is set to the same size as kip, although if a contact
@@ -300,6 +311,19 @@ static int read_address_file (const char * basename, const char * name,
   return 1;
 }
 
+static int read_dh_file (const char * basename, const char * name, char * dh)
+{
+  char * path = strcat3_malloc (basename, "/", name, "read_dh_file name");
+  int n = read_bytes_file (path, dh, DH448_SIZE);
+  if ((n != DH448_SIZE) && (n != 0))
+    printf ("error reading %s, expected %d, got %d bytes\n",
+            path, DH448_SIZE, n);
+  free (path);
+  if (n != DH448_SIZE)
+    return 0;
+  return 1;
+}
+
 /* return 1 for success, 0 for failure */
 static int read_symmetric_state (char * fname,
                                  struct allnet_stream_encryption_state * state)
@@ -493,6 +517,9 @@ static int read_key_info (const char * path, const char * file,
         read_address_file (basename, "remote", &(info->remote));
       }
       free (kname);
+      info->has_local_dh = read_dh_file (basename, "local_dh", info->local_dh);
+      info->has_shared_dh =
+        read_dh_file (basename, "shared_dh", info->shared_dh);
     }
   }
   if (info != NULL) {
@@ -771,6 +798,21 @@ static void write_address_file (const char * fname,
   write_file (fname, buf, offset, 1);
 }
 
+static void write_dh_file (const char * dirname, const char * final_fname,
+                           const char * dh)
+{
+  char * fname = strcat3_malloc (dirname, "/", final_fname, "write_dh_file");
+  char buf [DH448_SIZE * 3 + 2];
+  int offset = snprintf (buf, sizeof (buf), "%02x", dh [0] & 0xff);
+  int i;
+  for (i = 1; i < DH448_SIZE; i++)
+    offset += snprintf (buf + offset, sizeof (buf) - offset,
+                        " %02x", dh [i] & 0xff);
+  offset += snprintf (buf + offset, sizeof (buf) - offset, "\n");
+  write_file (fname, buf, offset, 1);
+  free (fname);
+}
+
 /* only access members if num_members > 0 */
 static void write_member_file (const char * fname, char ** members,
                                int num_members)
@@ -838,6 +880,10 @@ static void save_contact (struct key_info * k)
       printf ("unable to write public key to file %s\n", key_fname);
     free (key_fname);
   }
+  if (k->has_local_dh)
+    write_dh_file (dirname, "local_dh", k->local_dh);
+  if (k->has_shared_dh)
+    write_dh_file (dirname, "shared_dh", k->shared_dh);
   if (k->local.nbits != 0) {
     char * local_fname = strcat3_malloc (dirname, "/", "local", "lfile");
     write_address_file (local_fname, k->local.address, k->local.nbits);
@@ -925,6 +971,7 @@ static int save_spare_key (allnet_rsa_prvkey key)
   return 1;
 }
 
+#ifdef ALLNET_KEYTYPE_RSA
 static allnet_rsa_prvkey get_spare_key (int keybits)
 {
   allnet_rsa_prvkey result;
@@ -963,6 +1010,7 @@ static allnet_rsa_prvkey get_spare_key (int keybits)
   allnet_rsa_null_prvkey (&result);
   return result;
 }
+#endif /* ALLNET_KEYTYPE_RSA/DH */
 
 static int do_set_contact_pubkey (struct key_info * k,
                                   char * contact_key, int ksize)
@@ -1014,18 +1062,30 @@ int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
 }
 
 /* returns the keyset if successful, -1 if the contact already existed
- * creates a new private/public key pair, and if not NULL, also 
- * the contact public key, source and destination addresses
- * if a spare key of the requested size already exists, uses the spare key 
- * if feedback is nonzero, gives feedback while creating the key.
+ * if successful and local/remote are not NULL, sets the local and remote
+ * to the given values
+#ifdef ALLNET_KEYTYPE_RSA
+ * creates a new private/public key pair, and if not NULL, also
+ * the contact public key
+ * if a spare key of the requested size already exists, uses the spare key
+ * if feedback is nonzero, gives feedback while creating the key
+#else -- ALLNET_KEYTYPE_DH
+ * creates a new secret key of the given size
+#endif -- ALLNET_KEYTYPE_RSA/DH
  * If the contact was already created, but does not have the peer's
  * info, returns as if it were a newly created contact after replacing
- * the contents of local (as long as loc_nbits matches the original nbits) 
- * if there is no contact public key, marks the contact hidden */
+ * the contents of local (as long as loc_nbits matches the original nbits)
+ * if there is no contact public key, marks the contact not visible */
+#ifdef ALLNET_KEYTYPE_RSA
 keyset create_contact (const char * contact, int keybits, int feedback,
                        char * contact_key, int contact_ksize,
                        unsigned char * local, int loc_nbits,
                        unsigned char * remote, int rem_nbits)
+#else /* ALLNET_KEYTYPE_DH */
+keyset create_contact (const char * contact, int keybits,
+                       unsigned char * local, int loc_nbits,
+                       unsigned char * remote, int rem_nbits)
+#endif /* ALLNET_KEYTYPE_RSA/DH */
 {
   int preselected_index = -1;   /* no preselected index, yet */
   init_from_file ("create_contact");
@@ -1056,20 +1116,28 @@ keyset create_contact (const char * contact, int keybits, int feedback,
     }
   }
 
+#ifdef ALLNET_KEYTYPE_RSA
   allnet_rsa_prvkey my_key = get_spare_key (keybits);
   if (allnet_rsa_prvkey_is_null (my_key)) {
-    printf ("generating new key, please wait...\n");
+    if (feedback) printf ("generating new key, please wait...\n");
     my_key = allnet_rsa_generate_key (keybits, NULL, 0);
-    printf (" done generating new key\n");
+    if (feedback) printf (" done generating new key\n");
   }
   if (allnet_rsa_prvkey_is_null (my_key)) {
     printf ("unable to generate RSA key\n");
     return -1;
   }
+#else /* ALLNET_KEYTYPE_DH */
+  if (DH448_SIZE * 8 != keybits) {
+    printf ("error in create contact: %d keybits != 448\n", keybits);
+    return -1;
+  }
+#endif /* ALLNET_KEYTYPE_RSA/DH */
 
   struct key_info new;
   memset (&new, 0, sizeof (new));  /* for most fields 0 is a good default */
   new.contact_name = strcpy_malloc (contact, "create_contact");
+#ifdef ALLNET_KEYTYPE_RSA
   new.is_visible = ((contact_key != NULL) && (contact_ksize > 0));
   new.has_pub_key = 1;
   new.my_key = my_key;
@@ -1082,6 +1150,12 @@ keyset create_contact (const char * contact, int keybits, int feedback,
     printf ("do_set_contact_pubkey failed for contact %s\n", contact);
     return -1;
   }
+#else /* ALLNET_KEYTYPE_DH */
+  /* set by memset:   new.is_visible = 0; new.has_pub_key = 0; */
+  new.has_local_dh = 1;
+  random_bytes (new.local_dh, sizeof (new.local_dh));
+  allnet_x448_make_valid (new.local_dh);
+#endif /* ALLNET_KEYTYPE_RSA/DH */
   if ((local != NULL) && (loc_nbits > 0)) {
     new.local.nbits = loc_nbits;
     memcpy (new.local.address, local, ADDRESS_SIZE);
@@ -2082,6 +2156,42 @@ unsigned int get_my_privkey (keyset k, allnet_rsa_prvkey * key)
   return allnet_rsa_prvkey_size (*key);
 }
 
+#ifndef ALLNET_KEYTYPE_RSA
+/* secret must point to at least DH448_SIZE bytes.
+ * local is true for the local secret, 0 for the shared (computed) DH key */
+unsigned int get_dh_secret (keyset k, char * secret, int local)
+{
+  if (! valid_keyset (k))
+    return 0;
+  struct key_info * ki = kip + k;
+  if ((! local) && (! ki->has_shared_dh))
+    return 0;
+  if (local && (! ki->has_local_dh))
+    return 0;
+  memcpy (secret, (local ? ki->local_dh : ki->shared_dh), DH448_SIZE);
+  return DH448_SIZE;
+}
+
+void set_dh_secret (keyset k, const char * secret, int local)
+{
+  if (! valid_keyset (k))
+    return;
+  struct key_info * ki = kip + k;
+  if (local) {
+    ki->has_local_dh = 1;
+    memcpy (ki->local_dh, secret, DH448_SIZE);
+  } else {
+    ki->has_shared_dh = 1;
+    memcpy (ki->shared_dh, secret, DH448_SIZE);
+    if (sizeof (ki->symmetric_key) <= DH448_SIZE) {
+      ki->has_symmetric_key = 1;
+      memcpy (ki->symmetric_key, secret, sizeof (ki->symmetric_key));
+    }
+  }
+  save_contact (kip + k);
+}
+#endif /* ALLNET_KEYTYPE_RSA/DH */
+
 /* returns the number of bits in the address, 0 if none */
 /* address must have length at least ADDRESS_SIZE */
 unsigned int get_local (keyset k, unsigned char * address)
@@ -2201,6 +2311,7 @@ int mark_valid (const char * contact, keyset k)
  * likewise for keys -- exactly one key is returned per contact 
  * likewise for status, which is the OR (|) of one or more constants below
 #define KEYS_INCOMPLETE_NO_CONTACT_PUBKEY
+#define KEYS_INCOMPLETE_DH
 #define KEYS_INCOMPLETE_HAS_EXCHANGE_FILE */
 int incomplete_key_exchanges (char *** result_contacts, keyset ** result_keys,
                               int ** result_status)
@@ -2227,9 +2338,15 @@ int incomplete_key_exchanges (char *** result_contacts, keyset ** result_keys,
     for (ik = 0; ik < nk; ik++) {
       keyset k = keys [ik];
       int status = 0;
+      allnet_rsa_prvkey prvkey;
       allnet_rsa_pubkey pubkey; /* test for incomplete key exchange */
-      if (! get_contact_pubkey (k, &pubkey)) /* incomplete */
+      if ((get_my_privkey (k, &prvkey)) &&
+          (! get_contact_pubkey (k, &pubkey))) /* incomplete */
         status |= KEYS_INCOMPLETE_NO_CONTACT_PUBKEY;
+      char dh_secret [DH448_SIZE];
+      if ((get_dh_secret (k, dh_secret, 1)) &&
+          (! get_dh_secret (k, dh_secret, 0)))
+        status |= KEYS_INCOMPLETE_DH;
       /* test for existence of the exchange file */
       char * dir = key_dir (k);
       if (dir != NULL) {

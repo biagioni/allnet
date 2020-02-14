@@ -25,6 +25,9 @@
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
 #include "lib/sha.h"
+#ifndef ALLNET_KEYTYPE_RSA
+#include "lib/dh.h"
+#endif /* ALLNET_KEYTYPE_RSA/DH */
 #include "lib/mapchar.h"
 #include "lib/dcache.h"
 #include "lib/routing.h"
@@ -924,6 +927,22 @@ static int handle_sub (int sock, struct allnet_header * hp,
   return -1;
 }
 
+static int get_dh_pubkey (int kset, char * result)
+{
+  char dh_secret [DH448_SIZE];
+  int ksize = get_dh_secret (kset, dh_secret, 1);
+  if (ksize <= 0) {
+    printf ("unable to compute dh exchange, no secret found for key (%d/%d)\n",
+            kset, ksize);
+    return 0;
+  }
+  char u_five [DH448_SIZE];
+  allnet_x448_five (u_five);
+  if (! allnet_x448 (dh_secret, u_five, result))
+    printf ("allnet_x448 (get_dh_pubkey) returned 0\n");
+  return DH448_SIZE;
+}
+
 /* returns 1 for success, 0 for failure */
 static int send_key (int sock, const char * contact, keyset kset,
                      const char * secret, unsigned char * address, int abits,
@@ -945,6 +964,8 @@ static int send_key (int sock, const char * contact, keyset kset,
   most_recent_send = allnet_time ();
   snprintf (most_recent_contact, sizeof (most_recent_contact), "%s", contact);
   snprintf (most_recent_secret, sizeof (most_recent_secret), "%s", secret);
+
+#ifdef ALLNET_KEYTYPE_RSA
   allnet_rsa_pubkey k;
   int ksize = get_my_pubkey (kset, &k);
   if (ksize <= 0) {
@@ -955,12 +976,17 @@ static int send_key (int sock, const char * contact, keyset kset,
   char my_public_key [ALLNET_MTU];
   int pub_ksize = allnet_pubkey_to_raw (k, my_public_key,
                                         sizeof (my_public_key));
+#else /* ALLNET_KEYTYPE_DH */
+  char dh_pubkey [DH448_SIZE];
+  int pub_ksize = get_dh_pubkey (kset, dh_pubkey);
+#endif /* ALLNET_KEYTYPE_RSA/DH */
   if (pub_ksize <= 0) {
     printf ("unable to send key, no public key found for contact %s (%d/%d)\n",
             contact, kset, pub_ksize);
     return 0;
   }
   int dsize = pub_ksize + SHA512_SIZE + KEY_RANDOM_PAD_SIZE;
+
   unsigned int size;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_XCHG, max_hops, ALLNET_SIGTYPE_NONE,
@@ -968,11 +994,19 @@ static int send_key (int sock, const char * contact, keyset kset,
   char * message = (char *) hp;
 
   char * data = message + ALLNET_SIZE (hp->transport);
+#ifdef ALLNET_KEYTYPE_RSA
   memcpy (data, my_public_key, pub_ksize);
   sha512hmac (my_public_key, pub_ksize, secret, (int)strlen (secret),
               /* hmac is written directly into the packet */
               data + pub_ksize);
   random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
+#else /* ALLNET_KEYTYPE_DH */
+  memcpy (data, dh_pubkey, pub_ksize);
+  sha512hmac (dh_pubkey, pub_ksize, secret, (int)strlen (secret),
+              /* hmac is written directly into the packet */
+              data + pub_ksize);
+  random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
+#endif /* ALLNET_KEYTYPE_RSA/DH */
 
 #ifdef DEBUG_PRINT
   printf ("sending key of size %d\n", size);
@@ -1147,6 +1181,7 @@ int key_exchange_secrets (const char * contact, char ** s1, char ** s2)
 static int received_my_pubkey (keyset k, char * data, unsigned int dsize,
                                unsigned int ksize)
 {
+#ifdef ALLNET_KEYTYPE_RSA
   allnet_rsa_pubkey pubkey;
   int key_size = get_my_pubkey (k, &pubkey);
   if (key_size <= 0) {
@@ -1156,6 +1191,10 @@ static int received_my_pubkey (keyset k, char * data, unsigned int dsize,
   }
   char test_key [ALLNET_MTU];
   int pub_ksize = allnet_pubkey_to_raw (pubkey, test_key, sizeof (test_key));
+#else /* ALLNET_KEYTYPE_DH */
+  char test_key [DH448_SIZE];
+  int pub_ksize = get_dh_pubkey (k, test_key);
+#endif /* ALLNET_KEYTYPE_RSA/DH */
   if ((pub_ksize == ksize) && (memcmp (data, test_key, ksize) == 0)) {
 #ifdef DEBUG_PRINT
     printf ("received_my_pubkey: got my own key\n");
@@ -1168,7 +1207,7 @@ static int received_my_pubkey (keyset k, char * data, unsigned int dsize,
 static int received_matching_key (keyset k, char * data, unsigned int dsize,
                                   unsigned int ksize, const char * secret)
 {
-  if (secret == NULL)
+  if ((secret == NULL) || (dsize < ksize + SHA512_SIZE))
     return 0;
   char * received_hmac = data + ksize;
   char hmac [SHA512_SIZE];
@@ -1194,7 +1233,7 @@ static int handle_key (int sock, struct allnet_header * hp,
                        char ** peer, keyset * kset)
 {
 #ifdef DEBUG_PRINT
-  printf ("in handle_key ()\n");
+  printf ("in handle_key (%d)\n", dsize);
 #endif /* DEBUG_PRINT */
   save_key_in_cache (hp, data, dsize);
   char ** contacts = NULL;
@@ -1210,8 +1249,8 @@ static int handle_key (int sock, struct allnet_header * hp,
   int result = 0;
   if (dsize > SHA512_SIZE + KEY_RANDOM_PAD_SIZE + 2) {
     unsigned int ksize = dsize - SHA512_SIZE - KEY_RANDOM_PAD_SIZE;
-    int ii;
     /* find the incomplete contact if any for which this key matches a secret */
+    int ii;
     for (ii = 0; ii < ni; ii++) {
       /* secrets are listed in exchange files, so check that this has a file */
       int hops;
@@ -1222,22 +1261,44 @@ static int handle_key (int sock, struct allnet_header * hp,
               contacts [ii], status [ii], KEYS_INCOMPLETE_HAS_EXCHANGE_FILE);
 #endif /* DEBUG_PRINT */
       if ((status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE) &&
+          (((status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY) != 0) ||
+           ((status [ii] & KEYS_INCOMPLETE_DH) != 0)) &&
           (parse_exchange_file (contacts [ii], &hops, &s1, &s2)) &&
           (! received_my_pubkey (keys [ii], data, dsize, ksize))) {
-        int key_is_new = ((status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY)
-                          != 0);
         int r1 = received_matching_key (keys [ii], data, dsize, ksize, s1);
         int r2 = ((! r1) && (s2 != NULL) && (strlen (s2) > 0) &&
                   (received_matching_key (keys [ii], data, dsize, ksize, s2)));
+if (r1 || r2)
+        printf ("contact %s, received matching key %d (%d bytes), r %d %d\n",
+                contacts [ii], keys [ii], ksize, r1, r2);
 #ifdef DEBUG_PRINT
-      printf ("contact %s, received matching key %d, r1 %d, r2 %d\n",
-              contacts [ii], keys [ii], r1, r2);
 #endif /* DEBUG_PRINT */
         if (r1 || r2) {
-          if ((key_is_new) && (set_contact_pubkey (keys [ii], data, ksize))) {
-            if ((hp->src_nbits > 0) && (hp->src_nbits <= ADDRESS_BITS))
-              set_contact_remote_addr (keys [ii], hp->src_nbits, hp->source);
+          int record_remote_address = 0;
+          if (ksize == DH448_SIZE) {  /* DH key exchange */
+char debug [DH448_SIZE];
+printf ("processing DH key exchange (%d, %d)\n",
+get_dh_secret (keys [ii], debug, 1),
+get_dh_secret (keys [ii], debug, 0));
+            char dh_local [DH448_SIZE];
+            char dh_shared [DH448_SIZE];
+            if ((get_dh_secret (keys [ii], dh_local, 1)) &&
+                (! get_dh_secret (keys [ii], dh_shared, 0))) {
+              if (allnet_x448 (dh_local, data, dh_shared)) {
+printf ("saving remote dh secret\n");
+                set_dh_secret (keys [ii], dh_shared, 0);
+                record_remote_address = 1;
+              } else {
+                printf ("allnet_x4489 (handle_key) returned 0\n");
+              }
+            }
+          } else {   /* RSA public key */
+            record_remote_address =
+              set_contact_pubkey (keys [ii], data, ksize);
           }
+          if (record_remote_address &&
+              (hp->src_nbits > 0) && (hp->src_nbits <= ADDRESS_BITS))
+            set_contact_remote_addr (keys [ii], hp->src_nbits, hp->source);
           unsigned char my_addr [ADDRESS_SIZE];
           unsigned int abits = get_local (keys [ii], my_addr);
           if (r1)
@@ -1246,23 +1307,21 @@ static int handle_key (int sock, struct allnet_header * hp,
           else
             resend_peer_key (contacts [ii], keys [ii], s2,
                              my_addr, abits, hops, sock);
-          if (key_is_new) {
-            *peer = strcpy_malloc (contacts [ii], "handle_key");
-            *kset = keys [ii];
-            result = -1;   /* success */
-          }
+          *peer = strcpy_malloc (contacts [ii], "handle_key");
+          *kset = keys [ii];
+          result = -1;   /* success */
+          if (s1 != NULL) free (s1);
+          if (s2 != NULL) free (s2);
           break;           /* found a match, so we are done */
         }
       }
-      if (s1 != NULL)
-        free (s1);
-      if (s2 != NULL)
-        free (s2);
+      if (s1 != NULL) free (s1);
+      if (s2 != NULL) free (s2);
     }
-    free (contacts);
-    free (keys);
-    free (status);
   }
+  free (contacts);
+  free (keys);
+  free (status);
   return result;
 }
 
@@ -1839,7 +1898,12 @@ int create_contact_send_key (int sock, const char * contact,
       abits = ADDRESS_BITS;
     memset (addr, 0, ADDRESS_SIZE);
     random_bytes ((char *) addr, (abits + 7) / 8);
-    kset = create_contact (contact, 4096, 1, NULL, 0, addr, abits, NULL, 0);
+#ifdef ALLNET_KEYTYPE_RSA
+    kset = create_contact (contact, 4096, 1,
+                           NULL, 0, addr, abits, NULL, 0);
+#else /* ALLNET_KEYTYPE_DH -- DH448_SIZE * 8 is 448 */
+    kset = create_contact (contact, DH448_SIZE * 8, addr, abits, NULL, 0);
+#endif /* ALLNET_KEYTYPE_RSA/DH */
     error_tracker = 4;    /* for debugging */
     if (kset < 0) {
       printf ("contact %s already exists\n", contact);

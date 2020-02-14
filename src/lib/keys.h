@@ -29,18 +29,30 @@ extern int all_contacts (char *** contacts);
 extern int all_individual_contacts (char *** contacts);
 
 /* returns the keyset if successful, -1 if the contact already existed
- * creates a new private/public key pair, and if not NULL, also 
- * the contact public key, local and remote addresses
+ * if successful and local/remote are not NULL, sets the local and remote
+ * to the given values
+#ifdef ALLNET_KEYTYPE_RSA
+ * creates a new private/public key pair, and if not NULL, also
+ * the contact public key
  * if a spare key of the requested size already exists, uses the spare key
  * if feedback is nonzero, gives feedback while creating the key
+#else -- ALLNET_KEYTYPE_DH
+ * creates a new secret key of the given size
+#endif -- ALLNET_KEYTYPE_RSA/DH
  * If the contact was already created, but does not have the peer's
  * info, returns as if it were a newly created contact after replacing
  * the contents of local (as long as loc_nbits matches the original nbits)
  * if there is no contact public key, marks the contact not visible */
+#ifdef ALLNET_KEYTYPE_RSA
 extern keyset create_contact (const char * contact, int keybits, int feedback,
                               char * contact_key, int contact_ksize,
                               unsigned char * local, int loc_nbits,
                               unsigned char * remote, int rem_nbits);
+#else /* ALLNET_KEYTYPE_DH */
+extern keyset create_contact (const char * contact, int keybits,
+                              unsigned char * local, int loc_nbits,
+                              unsigned char * remote, int rem_nbits);
+#endif /* ALLNET_KEYTYPE_RSA/DH */
 
 /* change the name associated with a contact.  Fails and returns 0
  * if the old name does not exist, or if the new one does, and of
@@ -149,6 +161,12 @@ extern int set_contact_remote_addr (keyset k, int nbits,
 extern unsigned int get_contact_pubkey (keyset k, allnet_rsa_pubkey * key);
 extern unsigned int get_my_pubkey      (keyset k, allnet_rsa_pubkey * key);
 extern unsigned int get_my_privkey     (keyset k, allnet_rsa_prvkey * key);
+#ifndef ALLNET_KEYTYPE_RSA
+/* secret must point to at least DH448_SIZE bytes.
+ * local is true for the local secret, 0 for the shared (computed) DH key */
+extern unsigned int get_dh_secret (keyset k,       char * secret, int local);
+extern void         set_dh_secret (keyset k, const char * secret, int local);
+#endif /* ALLNET_KEYTYPE_RSA/DH */
 /* returns the number of bits in the address, 0 if none */
 /* address must have length at least ADDRESS_SIZE */
 extern unsigned int get_local (keyset k, unsigned char * address);
@@ -165,14 +183,16 @@ extern int mark_invalid (const char * contact, keyset k);
 extern int mark_valid (const char * contact, keyset k);
 
 /* returns the number of contacts with incomplete key exchanges,
- * defined as contacts that have no contact public key, or have
- * an exchange file, or both.
+ * defined as contacts that have no contact public key,
+ * or have an incomplete DH exchange, or have an exchange file,
+ * or any combination of these.
  * if the number is greater than 0 and contacts is not NULL, fills contacts
  * with the names of those contacts (must be free'd)
  * likewise for keys -- exactly one key is returned per contact 
  * likewise for status, which is the OR (|) of one or more constants below */
 #define KEYS_INCOMPLETE_NO_CONTACT_PUBKEY	1
-#define KEYS_INCOMPLETE_HAS_EXCHANGE_FILE	2
+#define KEYS_INCOMPLETE_DH			2
+#define KEYS_INCOMPLETE_HAS_EXCHANGE_FILE	4
 extern int incomplete_key_exchanges (char *** contacts, keyset ** keys,
                                      int ** status);
 
