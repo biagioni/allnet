@@ -280,16 +280,20 @@ static void gui_contact_has_peer_key (char * message, int64_t length, int sock)
   reply [1] = 0;   /* by default, no peer key */
   if (length > 0) {
     char * contact = contact_name_from_buffer (message, length);
-    keyset * keys = NULL;
-    int nk = all_keys (contact, &keys);
-    int ik;
-    for (ik = 0; ik < nk; ik++) {
-      allnet_rsa_pubkey k;  /* do not free */
-      if (get_contact_pubkey (keys [ik], &k) > 0)
-        reply [1] = 1;   /* has key */
+    if (has_symmetric_key (contact, NULL, 0)) {
+      reply [1] = 1;   /* has key */
+    } else {
+      keyset * keys = NULL;
+      int nk = all_keys (contact, &keys);
+      int ik;
+      for (ik = 0; ik < nk; ik++) {
+        allnet_rsa_pubkey k;  /* do not free */
+        if (get_contact_pubkey (keys [ik], &k) > 0)
+          reply [1] = 1;   /* has key */
+      }
+      if (keys != NULL)
+        free (keys);
     }
-    if (keys != NULL)
-      free (keys);
     free (contact);
   }
   gui_send_buffer (sock, reply, sizeof (reply));
