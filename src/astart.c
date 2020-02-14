@@ -135,20 +135,46 @@ static void make_root_other (int verbose)
   char * home = getenv (HOME_ENV);
   pid_t caller = -1;
   pid_t other = -1;
-#ifndef ANDROID   /* android neither uses /etc/passwd, nor supports *pwent */
-  setpwent ();
-  struct passwd * pwd;
-  while ((pwd = getpwent ()) != NULL) {
-    if (strcmp (pwd->pw_name, "allnet") == 0)
-      other = pwd->pw_uid;
-    else if ((other < 0) && (strcmp (pwd->pw_name, "nobody") == 0))
-      other = pwd->pw_uid;
-    else if ((home != NULL) && (strcmp (pwd->pw_dir, home) == 0) &&
-             (caller == -1))
-      caller = pwd->pw_uid;
+  char * pw_file = NULL;
+  if (read_file_malloc ("/etc/passwd", &pw_file, 1) > 0) {
+    char * line = pw_file;
+    while ((line != NULL) && (*line != '\0')) {
+      char * next_line = NULL;
+      char * nl_pos = index (line, '\n');
+      if (nl_pos != NULL) {
+        *nl_pos = '\0';  /* null terminate, so line refers to just this line */
+        next_line = nl_pos + 1;
+      }
+/* printf ("line '%s', ", line); */
+      char * pw_name = NULL;
+      pid_t pw_uid = -1;
+      char * pw_dir = NULL;
+      char * last_entry = line;
+      int field = 0;
+      int i;
+      for (i = 0; line [i] != '\0'; i++) {
+        if (line [i] == ':') {
+          line [i] = '\0';   /* null terminate */
+          if (field == 0)
+            pw_name = last_entry;
+          else if (field == 2)
+            pw_uid = atoi (last_entry);
+          else if (field == 5)
+            pw_dir = last_entry;
+          field++;
+          last_entry = line + i + 1;
+        }
+      }
+      if (strcmp (pw_name, "allnet") == 0)
+        other = pw_uid;
+      else if ((other < 0) && (strcmp (pw_name, "nobody") == 0))
+        other = pw_uid;
+      else if ((home != NULL) && (strcmp (pw_dir, home) == 0) && (caller == -1))
+        caller = pw_uid;
+      line = next_line;
+    }
+    free (pw_file);
   }
-  endpwent ();
-#endif /* ANDROID */
   if ((caller != -1) && (caller != 0))
     other = caller;
   if ((other <= 0) || (setuid (other) != 0)) {
