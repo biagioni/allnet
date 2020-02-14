@@ -11,14 +11,14 @@
 #include <unistd.h>
 
 #include "social.h"
-#include "lib/packet.h"
-#include "lib/util.h"
-#include "lib/table.h"
-#include "lib/configfiles.h"
-#include "lib/allnet_log.h"
-#include "lib/keys.h"
-#include "lib/cipher.h"
-#include "lib/priority.h"
+#include "packet.h"
+#include "util.h"
+#include "table.h"
+#include "configfiles.h"
+#include "allnet_log.h"
+#include "keys.h"
+#include "cipher.h"
+#include "priority.h"
 
 /* keep track of people up to distance 3, friends of friends of friends */
 #ifndef MAX_SOCIAL_TIER   /* usually defined in priority.h */

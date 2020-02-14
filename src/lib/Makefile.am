@@ -15,12 +15,15 @@ libincludes = \
 	packet.h \
         pcache.h \
 	priority.h \
+        record.h \
 	routing.h \
 	sha.h \
+        social.h \
 	sockets.h \
 	stream.h \
 	table.h \
 	trace_util.h \
+        track.h \
 	util.h \
 	wp_aes.h \
 	wp_arith.h \
@@ -41,12 +44,15 @@ libsrc = \
 	mapchar.c \
         pcache.c \
 	priority.c \
+	record.c \
 	routing.c \
 	sha.c \
+        social.c \
 	sockets.c \
 	stream.c \
 	table.c \
 	trace_util.c \
+	track.c \
 	util.c \
 	wp_arith.c
 

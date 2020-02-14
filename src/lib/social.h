@@ -4,7 +4,7 @@
 #define SOCIAL_H
 
 #include <time.h>
-#include "lib/allnet_log.h"
+#include "allnet_log.h"
 
 /* these constants are now defined in priority.h */
 /* keep track of people up to distance 3, friends of friends of friends */

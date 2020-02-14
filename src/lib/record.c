@@ -13,7 +13,7 @@
 #include <time.h>
 
 #include "record.h"
-#include "lib/packet.h"
+#include "packet.h"
 
 #define ENTRIES_PER_TABLE		(64 * 1024)
 

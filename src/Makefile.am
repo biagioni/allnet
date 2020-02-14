@@ -16,10 +16,7 @@ libincludes = \
 
 includes = \
 	${libincludes} \
-	config.h \
-	record.h \
-	social.h \
-	track.h
+	config.h
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \
@@ -29,9 +26,6 @@ bin_PROGRAMS = \
 
 __ALLNET_BINDIR__allnetd_SOURCES = astart.c \
 				   ad.c \
-				   record.c \
-				   social.c \
-				   track.c \
 				   atcpd.c \
 				   mgmt/keyd.c \
 				   ${includes}

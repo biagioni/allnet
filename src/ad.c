@@ -11,9 +11,9 @@
 
 #include "lib/packet.h"
 #include "lib/mgmt.h"
-#include "social.h"
-#include "track.h"
-#include "record.h"
+#include "lib/social.h"
+#include "lib/track.h"
+#include "lib/record.h"
 #include "lib/sockets.h"
 #include "lib/priority.h"
 #include "lib/allnet_log.h"
