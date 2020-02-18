@@ -173,7 +173,7 @@ static pid_t exec_java_ui (const char * arg)
   printf ("exec_java_ui: jarfile is %s\n", jarfile);
 #endif /* DEBUG_EXEC_JAVA */
   if (access (jarfile, R_OK) != 0) {
-    int plen = strlen (path);
+    int plen = (int)strlen (path);
     if ((plen > 1) && (path [plen - 1] == '/'))
       path [--plen] = '\0';   /* eliminate any trailing slash */
     if ((plen > 6) && (strcmp (path + plen - 6, "/.libs") == 0)) {

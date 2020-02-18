@@ -1093,6 +1093,7 @@ int main (int argc, char ** argv)
   if (do_print_tokens)
     print_tokens ();
   print_stats ("print cache");
+  return 0;
 }
 
 #endif /* PRINT_CACHE_FILES */

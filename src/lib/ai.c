@@ -1004,7 +1004,7 @@ static int copy_dns_name (char * to, const char * name,
   *to = label_len;          /* copy the current label */
   memcpy (to + 1, current_label, label_len);
   to [label_len + 1] = 0;   /* add the root label for DNS */
-  return current_len + label_len + 2;
+  return (int) (current_len + label_len + 2);
 }
 
 /* returns the number of servers filled in, or 0 for errors */
@@ -1162,7 +1162,8 @@ static int
   if (response_pos + 4 > received) {
     printf ("dns response size %zd, end of query name %d\n",
             received, response_pos);
-    print_buffer (response, received, "received response", received, 1);
+    print_buffer (response, (int)received, "received response",
+                  (int)received, 1);
     return 0;
   }
   size_t answer_start = response_pos + 4;
@@ -1171,7 +1172,8 @@ static int
     if (readb16 (response + answer_start) != 0xc00c) {  /* unusual */
       printf ("dns answer at offset %zd is %x not 0xc00c\n", answer_start,
               readb16 (response + answer_start));
-      print_buffer (response, received, "received response", received, 1);
+      print_buffer (response, (int)received, "received response",
+                    (int)received, 1);
       return num_found;
     }
     int type = readb16 (response + answer_start + 2);
@@ -1204,7 +1206,7 @@ static int
       callback (names [name_index], callback_ids [name_index], sap);
     } else {
       printf ("dns invalid type %d, answer_start %zd\n", type, answer_start);
-      print_buffer (response, received, "response", received, 1);
+      print_buffer (response, (int)received, "response", (int)received, 1);
       break;
     }
     answer_start += readb16 (response + answer_start + 10) + 12;
@@ -1257,7 +1259,7 @@ int allnet_dns (const char ** names, const int * callback_ids, int count,
   int npackets = 0;
   writeb16 (query_packet + 2, 0x0100);   /* query, recursion desired */
   writeb16 (query_packet + 4, 1);
-  int min_dns_id = random_int (1, 65534 - nservers * count);
+  int min_dns_id = (int)random_int (1, 65534 - nservers * count);
   int num_dns_ids = 0;
   int in;
   for (in = 0; in < count; in++) {
@@ -1280,7 +1282,7 @@ if (nlen != clen) printf ("error: nlen %zd, clen %d for %s\n", nlen, clen, names
       writeb16 (query + nlen + 2, 1);   /* query class 1, Internet */
       offset += qlen;
       /* send the query packet to two randomly chosen servers */
-      int is = ((nservers <= 2) ? 0 : random_int (0, nservers - 2));
+      int is = ((nservers <= 2) ? 0 : (int)(random_int (0, nservers - 2)));
       for (is = 0; is < nservers; is++) {
         int s = ((servers [is].ss_family == AF_INET) ? s4 : s6);
         socklen_t alen = sizeof (struct sockaddr_in);

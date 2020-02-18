@@ -641,4 +641,5 @@ int main (int argc, char ** argv)
     } while ((success == 0) && (repeat_until_response));
     return ((success > 0) ? 0 : 1);
   }
+  return 0;
 }
