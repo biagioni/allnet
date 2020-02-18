@@ -23,7 +23,7 @@ extern int buffer_to_string (const char * buffer, unsigned int count,
 
 extern void print_packet (const char * buffer, unsigned int count,
                           const char * desc, int print_eol);
-/* same as print_buffer, but prints to the given string */
+/* same as print_packet, but prints to the given string */
 extern void packet_to_string (const char * buffer, unsigned int count,
                               const char * desc, int print_eol,
                               char * to, size_t tsize);
