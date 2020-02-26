@@ -943,8 +943,28 @@ int same_sockaddr (const struct sockaddr_storage * a, socklen_t alen,
 {
   if ((a == NULL) || (b == NULL) || (alen == 0) || (blen == 0))
     return 0;        /* invalid sockaddrs do not match */
-  if (alen == blen)
-    return (memcmp (a, b, alen) == 0);   /* easy, quick case */
+  if (alen == blen) {
+    if (alen == sizeof (struct sockaddr_in)) {
+      struct sockaddr_in * sinp_a = (struct sockaddr_in *) a;
+      struct sockaddr_in * sinp_b = (struct sockaddr_in *) b;
+      return ((sinp_a->sin_family == AF_INET) &&
+              (sinp_b->sin_family == AF_INET) &&
+              (sinp_a->sin_port == sinp_b->sin_port) &&
+              (sinp_a->sin_addr.s_addr == sinp_b->sin_addr.s_addr));
+    }
+    if (alen == sizeof (struct sockaddr_in6)) {
+      struct sockaddr_in6 * sinp_a = (struct sockaddr_in6 *) a;
+      struct sockaddr_in6 * sinp_b = (struct sockaddr_in6 *) b;
+      return ((sinp_a->sin6_family == AF_INET6) &&
+              (sinp_b->sin6_family == AF_INET6) &&
+              (sinp_a->sin6_port == sinp_b->sin6_port) &&
+              (memcmp (&(sinp_a->sin6_addr.s6_addr),
+                       &(sinp_b->sin6_addr.s6_addr),
+                       sizeof (sinp_a->sin6_addr.s6_addr) == 0)));
+    }
+    /* may not work on systems where sockaddrs have a length field */
+    return (memcmp (a, b, alen) == 0);
+  }
   if ((alen == sizeof (struct sockaddr_in)) &&
       (blen == sizeof (struct sockaddr_in6))) {  /* see if b is an ipv4 */
     const struct sockaddr_in6 * b6 = (const struct sockaddr_in6 *) b;
