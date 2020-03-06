@@ -960,7 +960,7 @@ int same_sockaddr (const struct sockaddr_storage * a, socklen_t alen,
               (sinp_a->sin6_port == sinp_b->sin6_port) &&
               (memcmp (&(sinp_a->sin6_addr.s6_addr),
                        &(sinp_b->sin6_addr.s6_addr),
-                       sizeof (sinp_a->sin6_addr.s6_addr) == 0)));
+                       sizeof (sinp_a->sin6_addr.s6_addr)) == 0));
     }
     /* may not work on systems where sockaddrs have a length field */
     return (memcmp (a, b, alen) == 0);
@@ -1033,7 +1033,8 @@ static int get_dns_servers (struct sockaddr_storage * servers, int nservers)
   if (nservers < 1)
     return 0;
   char * data = NULL;
-  int size = read_file_malloc ("/etc/resolv.conf", &data, 1);
+  static int report_first_error = 1;
+  int size = read_file_malloc ("/etc/resolv.conf", &data, report_first_error);
   int num_found = 0;
   if ((size > 0) && (data != NULL)) {
     char * p = data;
@@ -1075,7 +1076,9 @@ static int get_dns_servers (struct sockaddr_storage * servers, int nservers)
   printf ("found %d servers\n", num_found);
 #endif /* DEBUG_PRINT */
   if (num_found <= 0) {   /* some error, use 4.2.21 and 2620:fe::fe */
-    printf ("/etc/resolv.conf is empty or missing, using defaults\n");
+    if (report_first_error)
+      printf ("/etc/resolv.conf is empty or missing, using defaults\n");
+    report_first_error = 0;
     struct sockaddr_in * sinp = (struct sockaddr_in *) servers;
     memset (sinp, 0, sizeof (struct sockaddr_in));
     sinp->sin_family = AF_INET;
@@ -1190,7 +1193,7 @@ static int
   int num_found = 0;
   while ((answer_start + 10 <= received) && (num_found < num_answers)) {
     if (readb16 (response + answer_start) != 0xc00c) {  /* unusual */
-      printf ("dns answer at offset %zd is %x not 0xc00c\n", answer_start,
+      printf ("dns answer at offset %zd is %04x not 0xc00c\n", answer_start,
               readb16 (response + answer_start));
       print_buffer (response, (int)received, "received response",
                     (int)received, 1);
@@ -1233,6 +1236,34 @@ static int
     num_found++;
   }
   return num_found;
+}
+
+/* returns true if this is an IP address, e.g. "1.2.3.4", which does not
+ * need to call DNS, and therefore immediately calls the callback. */
+static int callback_for_ips (const char * name, int callback_id,
+                             void (* callback) (const char * name, int id,
+                                                const struct sockaddr * addr))
+{
+  char sockaddr_if_given [sizeof (struct in6_addr)];
+  if (inet_pton (AF_INET, name, sockaddr_if_given) == 1) {
+    struct sockaddr_in sin;
+    memset (&sin, 0, sizeof (sin));
+    sin.sin_family = AF_INET;
+    memcpy (&(sin.sin_addr), sockaddr_if_given, sizeof (sin.sin_addr));
+    sin.sin_port = htons (ALLNET_PORT);
+    callback (name, callback_id, (struct sockaddr *) (&sin));
+    return 1;
+  }
+  if (inet_pton (AF_INET6, name, sockaddr_if_given) == 1) {
+    struct sockaddr_in6 sin;
+    memset (&sin, 0, sizeof (sin));
+    sin.sin6_family = AF_INET6;
+    memcpy (&(sin.sin6_addr), sockaddr_if_given, sizeof (sin.sin6_addr));
+    sin.sin6_port = htons (ALLNET_PORT);
+    callback (name, callback_id, (struct sockaddr *) (&sin));
+    return 1;
+  }
+  return 0;
 }
 
 /* using getaddrinfo makes it hard or impossible to do static linking,
@@ -1283,6 +1314,8 @@ int allnet_dns (const char ** names, const int * callback_ids, int count,
   int num_dns_ids = 0;
   int in;
   for (in = 0; in < count; in++) {
+    if (callback_for_ips (names [in], callback_ids [in], callback))
+      continue;   /* resolved, go on to the next entry */
     int iaf;   /* ipv4 and ipv6 */
     for (iaf = 0; iaf < 2; iaf++) {
       writeb16 (query_packet, min_dns_id + num_dns_ids);
