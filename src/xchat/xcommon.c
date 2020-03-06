@@ -977,8 +977,9 @@ static int send_key (int sock, const char * contact, keyset kset,
   int pub_ksize = allnet_pubkey_to_raw (k, my_public_key,
                                         sizeof (my_public_key));
 #else /* ALLNET_KEYTYPE_DH */
-  char dh_pubkey [DH448_SIZE];
-  int pub_ksize = get_dh_pubkey (kset, dh_pubkey);
+  char dh_pubkey [DH448_SIZE + 1];
+  int pub_ksize = get_dh_pubkey (kset, dh_pubkey + 1) + 1;
+  dh_pubkey [0] = ALLNET_KEY_XCHG_DH_AES_SECRET;
 #endif /* ALLNET_KEYTYPE_RSA/DH */
   if (pub_ksize <= 0) {
     printf ("unable to send key, no public key found for contact %s (%d/%d)\n",
@@ -1192,8 +1193,9 @@ static int received_my_pubkey (keyset k, char * data, unsigned int dsize,
   char test_key [ALLNET_MTU];
   int pub_ksize = allnet_pubkey_to_raw (pubkey, test_key, sizeof (test_key));
 #else /* ALLNET_KEYTYPE_DH */
-  char test_key [DH448_SIZE];
-  int pub_ksize = get_dh_pubkey (k, test_key);
+  char test_key [DH448_SIZE + 1];
+  int pub_ksize = get_dh_pubkey (k, test_key + 1) + 1;
+  test_key [0] = ALLNET_KEY_XCHG_DH_AES_SECRET;
 #endif /* ALLNET_KEYTYPE_RSA/DH */
   if ((pub_ksize == ksize) && (memcmp (data, test_key, ksize) == 0)) {
 #ifdef DEBUG_PRINT
@@ -1275,7 +1277,8 @@ if (r1 || r2)
 #endif /* DEBUG_PRINT */
         if (r1 || r2) {
           int record_remote_address = 0;
-          if (ksize == DH448_SIZE) {  /* DH key exchange */
+          if ((ksize == DH448_SIZE + 1) &&
+              (data [0] == ALLNET_KEY_XCHG_DH_AES_SECRET)) {  /* DH key xchg */
 char debug [DH448_SIZE];
 printf ("processing DH key exchange (%d, %d)\n",
 get_dh_secret (keys [ii], debug, 1),
@@ -1284,7 +1287,7 @@ get_dh_secret (keys [ii], debug, 0));
             char dh_shared [DH448_SIZE];
             if ((get_dh_secret (keys [ii], dh_local, 1)) &&
                 (! get_dh_secret (keys [ii], dh_shared, 0))) {
-              if (allnet_x448 (dh_local, data, dh_shared)) {
+              if (allnet_x448 (dh_local, data + 1, dh_shared)) {
 printf ("saving remote dh secret\n");
                 set_dh_secret (keys [ii], dh_shared, 0);
                 record_remote_address = 1;
