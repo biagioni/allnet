@@ -117,11 +117,18 @@ struct allnet_variable_signature {
   unsigned char sig_nbytes [2];   /* number of bytes, MSB first */
 };
 
-/* ALLNET_TYPE_KEY_XCHG carries a public key followed by
- *   an hmac of (the public key followed by a secret nonce)
+/* ALLNET_TYPE_KEY_XCHG carries a public key (for DH, g^a mod p)
+ *   followed by an hmac of (the public key followed by a secret nonce)
  *   followed by a random bitstring.  The random bitstring allows
  *   the message to be resent, without the retransmission being seen
  *   as duplicate.
+ *   If one side uses a secret nonce of the form ABCDEF, the other side
+ *   uses DEFABC as a secret nonce, i.e. with the halves reversed.
+ *   This prevents confusion between the keys I send and the keys
+ *   I am meant to receive.
+ *   RSA public keys are 513 bytes.
+ *   for all other keys, the first byte is a code identifying the key type.
+ *   Diffie-Hellman for code+AES+secret strings are 1+32+64 = 97 bytes.
  * ALLNET_TYPE_KEY_REQ
  *   carries a (partial) fingerprint of a public key.  The public key sent
  *   in response should match the given fingerprint.
@@ -135,6 +142,7 @@ struct allnet_variable_signature {
  *   an app media header, with app "keyd" and media ALLNET_MEDIA_PUBLIC_KEY
  *   This is followed by the key, then a random bitstring.
  */
+#define ALLNET_KEY_XCHG_DH_AES_SECRET	101  /* code in the first byte */
 #define KEY_RANDOM_PAD_SIZE	16  /* should be >= MESSAGE_ID_SIZE */
 struct allnet_key_exchange {
   unsigned char public_key [0];     /* public key to be used -- 513 for RSA */
