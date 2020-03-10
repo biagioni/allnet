@@ -65,8 +65,8 @@ struct internet_addr {
   char pad [5];               /* always sent as 0 */
 };
 
-/* used to send address mapping information to aip,
- * and peer information from aip */
+/* used to send address mapping information to ad,
+ * and peer information from ad */
 struct addr_info {
   struct internet_addr ip; /* how to reach the peer */
   unsigned char destination [ADDRESS_SIZE];
