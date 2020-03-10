@@ -826,9 +826,14 @@ static void delete_ping (struct addr_info * addr)
 int routing_add_dht (struct addr_info addr)
 {
   int result = -1;
-  /* sanity check first */
+  /* sanity checks first */
   if (! sane_addr_info (&addr, "routing_add_dht")) {
     printf ("routing_add_dht given bad address, not saving\n");
+    print_addr_info (&addr);
+    return -1;
+  }
+  if (! is_valid_address (&(addr.ip))) {
+    printf ("routing_add_dht given invalid address, not saving\n");
     print_addr_info (&addr);
     return -1;
   }
@@ -912,6 +917,11 @@ static int routing_add_ping_locked (struct addr_info * addr)
 { print_buffer (addr, sizeof (struct addr_info), "rapl: bad addr_info", 40, 1);
     return -2;
 }
+  if (! is_valid_address (&(addr->ip))) {
+    printf ("routing_add_ping_locked given invalid address, not saving\n");
+    print_addr_info (addr);
+    return -1;
+  }
   if (find_peer (peers, MAX_PEERS, addr) >= 0) {
 #ifdef DEBUG_PRINT
     printf ("rapl found peer, returning -1\n");
@@ -1071,7 +1081,7 @@ int routing_table (struct addr_info * data, int num_entries)
   init_peers (0, 0);
   if (num_entries > 0) {
     int num_peers = 0;
-    int i, index;
+    int i;
     for (i = 0; i < MAX_PEERS; i++)
       if (peers [i].ai.nbits > 0)
         num_peers++;
@@ -1079,10 +1089,9 @@ int routing_table (struct addr_info * data, int num_entries)
     if (result > num_entries)
       result = num_entries;
     int * permutation = random_permute (num_peers);
-    index = 0;  /* index into the permutation */
-    struct addr_info * latest;
+    int index = 0;  /* index into the permutation */
     for (i = 0; i < result; i++) { /* i is an index into data */
-      latest = get_nth_peer (permutation [index++]);
+      struct addr_info * latest = get_nth_peer (permutation [index++]);
       if (latest == NULL) { /* some error -- fewer than result found */
         printf ("error: permutation %d/%d did not find %d peers\n",
                 index - 1, permutation [index - 1], num_peers);
@@ -1145,6 +1154,7 @@ int init_own_routing_entries (struct addr_info * entry, int max,
                               const unsigned char * dest, int nbits)
 {
 #ifdef DEBUG_PRINT
+  /* we change entry to go through the array, so keep track of the original */
   struct addr_info * original = entry;
   int original_max = max;
 #endif /* DEBUG_PRINT */
@@ -1172,64 +1182,49 @@ int init_own_routing_entries (struct addr_info * entry, int max,
         int valid = 0;  /* set to 1 if we decide it's a valid entry */
         struct sockaddr * sa =
           (struct sockaddr *) (int_addrs [i].addresses + j);
+        struct internet_addr check;
+        memset (&check, 0, sizeof (check));
+        check.port = allnet_htons (ALLNET_PORT);
         if (is_loopback_ip (sa, sizeof (struct sockaddr_storage))) {
           /* ignore */
         } else if (sa->sa_family == AF_INET) {
           struct sockaddr_in * sinp = (struct sockaddr_in *) (sa);
-          int high_byte = ((char *) (&(sinp->sin_addr.s_addr))) [0] & 0xff;
-          int next_byte = ((char *) (&(sinp->sin_addr.s_addr))) [1] & 0xff;
-          int next_half = next_byte & 0xf0;
-          if ((high_byte != 10) && /* 10/8, 172.16/12, 192.168/16 are private */
-              ((high_byte != 172) || (next_half != 16)) && /* 172.16/12 */
-              ((high_byte != 192) || (next_byte != 168))) { /* 192.168/16 */
-            if (entry != NULL) {
-/* the address is already zeroed.  Assign the IP address to the last four
- * bytes (entry->ip.ip.s6_addr + 12), and 0xff to the immediately preceding
- * two bytes */
-              memcpy (entry->ip.ip.s6_addr + 12, &(sinp->sin_addr.s_addr), 4);
-              entry->ip.ip.s6_addr [10] = entry->ip.ip.s6_addr [11] = 0xff;
-              entry->ip.ip_version = 4;
-            }
-            valid = 1;
-          }
+          check.ip_version = 4;
+          check.ip.s6_addr [10] = 0xff;
+          check.ip.s6_addr [11] = 0xff;
+          memcpy (check.ip.s6_addr + 12, &(sinp->sin_addr.s_addr), 4);
+          valid = 1;
         } else if (sa->sa_family == AF_INET6) {
           struct sockaddr_in6 * sinp = (struct sockaddr_in6 *) (sa);
-          int high_byte = sinp->sin6_addr.s6_addr [0] & 0xff;
-          int next_bits = sinp->sin6_addr.s6_addr [1] & 0xc0;
-          if ((high_byte != 0xff) &&  /* 0xff/8 is a multicast address */
-                                      /* 0xfe80/10 is a link-local address */
-              ((high_byte != 0xfe) || (next_bits != 0x80))) {
-            if (entry != NULL) {
-              entry->ip.ip = sinp->sin6_addr;
-              entry->ip.ip_version = 6;
-            }
-            valid = 1;
-          } else {
-#ifdef DEBUG_PRINT
-            printf ("ignoring address %02x%02x::\n", high_byte, next_bits);
-#endif /* DEBUG_PRINT */
-          }
+          check.ip_version = 6;
+          memcpy (check.ip.s6_addr, &(sinp->sin6_addr.s6_addr), 16);
+          valid = 1;
         } else {  /* unknown address family, ignore */
 #ifdef DEBUG_PRINT
           printf ("interface %s, ignoring address family %d\n", next->ifa_name,
                   next->ifa_addr->sa_family);
 #endif /* DEBUG_PRINT */
         }
-        if (valid) {
-          if (entry != NULL) {
-            entry->ip.port = allnet_htons (ALLNET_PORT);
-            memcpy (entry->destination, dest, ADDRESS_SIZE);
-            entry->nbits = nbits;
-            entry->type = ALLNET_ADDR_INFO_TYPE_DHT;
+        if (valid && is_valid_address (&check) && (entry != NULL)) {
+          entry->ip = check;
+          memcpy (entry->destination, dest, ADDRESS_SIZE);
+          entry->nbits = nbits;
+          entry->type = ALLNET_ADDR_INFO_TYPE_DHT;
 #ifdef DEBUG_PRINT
-            printf ("%d/%d: added own address: ", result, max);
-            print_addr_info (entry);
+          printf ("%d/%d: added own address: ", result, max);
+          print_addr_info (entry);
 #endif /* DEBUG_PRINT */
-            entry++;
-          }
-          result++;
-          max--;
+          entry++;
         }
+#ifdef DEBUG_PRINT
+          else if (! is_valid_address (&check)) {
+          printf ("init_own_routing_entries not adding, local IP address: ");
+          print_sockaddr (sa, sizeof (struct sockaddr_storage));
+          printf ("\n");
+        }
+#endif /* DEBUG_PRINT */
+        result++;
+        max--;
       }
     }
   }
