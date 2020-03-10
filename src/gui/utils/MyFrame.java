@@ -19,9 +19,9 @@ import javax.swing.JFrame;
 public class MyFrame extends JFrame implements WindowListener, ActionListener {
 
     private static final long serialVersionUID = 1L;
-    private static final String fname = "xchat_screen_location.txt";
+    private static final String fname = "screen_location.txt";
     private static final String home = System.getProperty("user.home");
-    private static final java.nio.file.Path fpath = java.nio.file.Paths.get(home, ".allnet", fname);
+    private static final java.nio.file.Path fpath = java.nio.file.Paths.get(home, ".allnet", "xchat", fname);
 
     /**
      * Makes a JFrame with application support methods.
@@ -92,11 +92,39 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
         setLocation(pt);
     }
 
+    /**
+     * Sets the frame's size
+     * @param w,h desired width and height
+     */
+    public void setMySize(String size) {
+        int w = 435;  // default size (as of 2020/02/18)
+        int h = 588;
+        // now parse location
+        try {
+            if (! size.toLowerCase().contains("default")) {
+                String[] wh = size.split(",");
+                w = Integer.parseInt(wh[0].trim());
+                h = Integer.parseInt(wh[1].trim());
+            }
+        }
+        catch (Exception e) {
+            putInCenter();
+            return;
+        }
+        // guarantee sensible minimum sizes
+        if (w < 250) w = 250;
+        if (h < 250) h = 250;
+        setSize(w, h);
+    }
+
     public boolean useSavedLocation() {
         try {
             java.util.List<String> lines =
                 java.nio.file.Files.readAllLines(fpath);
             if (lines.size() > 0) {
+                if (lines.size() > 1) {
+                    setMySize(lines.get(1));
+                }
                 setMyLocation(lines.get(0));
                 return true;
             }
@@ -108,7 +136,8 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
     }
 
     public void saveLocation() {
-        String location = new String(getX() + "," + getY());
+        String location = new String(getX() + "," + getY() + "\n" +
+                                     getSize().width + "," + getSize().height);
         java.util.List<String> lines = new java.util.LinkedList<String>();
         lines.add(location);
         try {
