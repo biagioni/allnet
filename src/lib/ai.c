@@ -903,16 +903,21 @@ int interface_broadcast_addrs (struct sockaddr_storage ** addrs)
 }
 
 /* test whether this address is syntactically valid address (e.g.
- * not all zeros), returning 1 if valid, -1 if it is an ipv4-in-ipv6
- * address, and 0 otherwise */
+ * not all zeros, not a local or loopback address), returning
+ * 1 if valid, -1 if it is an ipv4-in-ipv6 address, and 0 otherwise */
 int is_valid_address (const struct internet_addr * ip)
 {
   if (ip->ip_version == 4) {
-    if ((readb32 ((char *) (ip->ip.s6_addr + 12)) == 0) ||
+    if ((readb32 ((char *) (ip->ip.s6_addr + 12)) == 0) ||   /* 0.0.0.0 */
         (readb16 ((char *) (ip->ip.s6_addr + 10)) != 0xffff) ||
         (readb16 ((char *) (ip->ip.s6_addr +  8)) != 0) ||
         (readb64 ((char *) (ip->ip.s6_addr     )) != 0) ||
-        (      * ((char *) (ip->ip.s6_addr + 12)) == 127)) /* 127.x.y.z */
+        (* ((ip->ip.s6_addr + 12)) == 127) || /* 127.x.y.z */
+        (* ((ip->ip.s6_addr + 12)) == 10 ) || /* 10.x.y.z */
+        ((ip->ip.s6_addr [12] == 172) &&
+         ((ip->ip.s6_addr [13] & 0xf0) == 16)) || /* 172.16/12 */
+        ((ip->ip.s6_addr [12] == 192) &&
+         (ip->ip.s6_addr [13] == 168))) /* 192.168/16 */
       return 0;
     return 1;
   } else if (ip->ip_version == 6) {
@@ -925,9 +930,11 @@ int is_valid_address (const struct internet_addr * ip)
       return 0;
     if ((readb64 ((char *) (ip->ip.s6_addr    )) == 0) &&
         (readb16 ((char *) (ip->ip.s6_addr + 8)) == 0) &&
-        (readb16 ((char *) (ip->ip.s6_addr + 10)) == 0xffff) &&
-        (readb32 ((char *) (ip->ip.s6_addr + 12)) != 0)) /* ipv4 in ipv6 */
-      return -1;
+        (readb16 ((char *) (ip->ip.s6_addr + 10)) == 0xffff)) { /* v4 in v6 */
+      struct internet_addr v4_addr = *ip;
+      v4_addr.ip_version = 4;
+      return - (is_valid_address (&v4_addr));
+    }
     return 1;
   } else {
     printf ("is_valid_address: unknown ip version %d\n", ip->ip_version);
