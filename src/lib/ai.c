@@ -938,6 +938,7 @@ int is_valid_address (const struct internet_addr * ip)
     return 1;
   } else {
     printf ("is_valid_address: unknown ip version %d\n", ip->ip_version);
+    print_buffer (ip, sizeof (struct internet_addr), NULL, 200, 1);
     return 0;
   }
   return 1;
