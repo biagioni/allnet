@@ -1215,6 +1215,8 @@ int init_own_routing_entries (struct addr_info * entry, int max,
           print_addr_info (entry);
 #endif /* DEBUG_PRINT */
           entry++;
+          result++;
+          max--;
         }
 #ifdef DEBUG_PRINT
           else if (! is_valid_address (&check)) {
@@ -1223,8 +1225,6 @@ int init_own_routing_entries (struct addr_info * entry, int max,
           printf ("\n");
         }
 #endif /* DEBUG_PRINT */
-        result++;
-        max--;
       }
     }
   }
