@@ -489,6 +489,7 @@ static int client_handler (void * state,
   if (counter != last_counter) {
     printf ("client_handler: received counter %lld, expected %lld\n",
             counter, last_counter);
+    printf ("  (response from %s was: %s)\n", contact, data);
     return 0;  /* continue the loop */
   }
   int * timed_out = (int *) state;
