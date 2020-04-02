@@ -294,13 +294,17 @@ static void print_n_messages (const char * peer, const char * arg, int def)
       if (msgs [i].message_has_been_acked) {
         status = ' ';
         if (print_long) {
-          char print_buf [sizeof (print_date)];
-          strncpy (print_buf, print_date, sizeof (print_date));
+          char print_buf [500];
+          strncpy (print_buf, print_date, sizeof (print_buf));
           /* note: for now (2017/11/22) rcvd_ackd_time should
              be msgs [i].time (or 0) for any sent message.
              The code in the "if" should work correctly once
              ack times are supported, so it may be a good idea
              to keep it (but remove this comment ;) */
+if ((msgs [i].rcvd_ackd_time != 0) &&
+    (msgs [i].rcvd_ackd_time != msgs [i].time))
+printf ("received_ackd_time is %d, time is %d\n", 
+(int) (msgs [i].rcvd_ackd_time), (int) (msgs [i].time));
           if (msgs [i].rcvd_ackd_time > msgs [i].time)
             snprintf (print_date, sizeof (print_date),
                       "%s, acked %" PRIu64 " second%s later: ", print_buf,
