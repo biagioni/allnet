@@ -305,6 +305,12 @@ void dht_process (char * message, unsigned int msize,
         ai.ip.ip_version = 4;
         routing_add_dht (ai);
       } else {               /* zero address, use the sender's IP instead */
+#ifdef DEBUG_PRINT
+        print_buffer (&ai, sizeof (ai), "dht process adding invalid", 40, 1);
+        print_buffer (sap, (sap->sa_family == AF_INET) ? 16 : 28,
+                      "sender address", 99, 1);
+        print_packet (message, msize, "entire message", 1);
+#endif /* DEBUG_PRINT */
         struct addr_info sender_ai = ai;
         sockaddr_to_ia (sap, alen, &(sender_ai.ip));
         if (is_valid_address (&sender_ai.ip) == 1) {
