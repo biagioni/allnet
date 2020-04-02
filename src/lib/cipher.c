@@ -440,8 +440,10 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
           else
             return -res;
         } else if (sig_algo != ALLNET_SIGTYPE_NONE) {
-          printf ("signed msg from %s key %d verifies but does not decrypt\n",
-                  contacts [i], j);
+          printf ("signed (%d) msg from %s key %d/%d verifies"
+                  " but does not decrypt\n",
+                  sig_algo, contacts [i], j, priv_ksize);
+          print_buffer (encrypted, esize, NULL, 16, 1);
         }
       }
     }
