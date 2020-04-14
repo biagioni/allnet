@@ -59,6 +59,7 @@ struct key_info {
    * or a local DH -- it may have both, though that would be unusual */
   int has_local_dh;
   char local_dh [DH448_SIZE];
+  char local_dh_public [DH448_SIZE];
   int has_shared_dh;    /* true if we've completed the DH exchange */
   char shared_dh [DH448_SIZE];
 #endif /* ALLNET_KEYTYPE_RSA/DH */
@@ -311,6 +312,17 @@ static int read_address_file (const char * basename, const char * name,
   return 1;
 }
 
+static void set_local_dh (struct key_info * ki, const char * secret)
+{
+  ki->has_local_dh = 1;
+  memcpy (ki->local_dh, secret, DH448_SIZE);
+  allnet_x448_make_valid (ki->local_dh);
+  char u_five [DH448_SIZE];
+  allnet_x448_five (u_five);
+  if (! allnet_x448 (secret, u_five, ki->local_dh_public))
+    printf ("allnet_x448 (set_local_dh) returned 0\n");
+}
+
 static int read_dh_file (const char * basename, const char * name, char * dh)
 {
   char * path = strcat3_malloc (basename, "/", name, "read_dh_file name");
@@ -517,7 +529,9 @@ static int read_key_info (const char * path, const char * file,
         read_address_file (basename, "remote", &(info->remote));
       }
       free (kname);
-      info->has_local_dh = read_dh_file (basename, "local_dh", info->local_dh);
+      char local_secret [DH448_SIZE];
+      if (read_dh_file (basename, "local_dh", local_secret))
+        set_local_dh (info, local_secret);
       info->has_shared_dh =
         read_dh_file (basename, "shared_dh", info->shared_dh);
     }
@@ -1153,9 +1167,9 @@ keyset create_contact (const char * contact, int keybits,
   }
 #else /* ALLNET_KEYTYPE_DH */
   /* set by memset:   new.is_visible = 0; new.has_pub_key = 0; */
-  new.has_local_dh = 1;
-  random_bytes (new.local_dh, sizeof (new.local_dh));
-  allnet_x448_make_valid (new.local_dh);
+  char local_secret [DH448_SIZE];
+  random_bytes (local_secret, sizeof (local_secret));
+  set_local_dh (&new, local_secret);
 #endif /* ALLNET_KEYTYPE_RSA/DH */
   if ((local != NULL) && (loc_nbits > 0)) {
     new.local.nbits = loc_nbits;
@@ -2159,17 +2173,25 @@ unsigned int get_my_privkey (keyset k, allnet_rsa_prvkey * key)
 
 #ifndef ALLNET_KEYTYPE_RSA
 /* secret must point to at least DH448_SIZE bytes.
- * local is true for the local secret, 0 for the shared (computed) DH key */
-unsigned int get_dh_secret (keyset k, char * secret, int local)
+ * local is true for the local secret, 0 for the shared (computed) DH key
+ * if local is true and public is not NULL, copies the public key to public,
+ * which must also point to at least DH448_SIZE bytes */
+unsigned int get_dh_secret (keyset k, char * secret, char * public, int local)
 {
   if (! valid_keyset (k))
     return 0;
   struct key_info * ki = kip + k;
-  if ((! local) && (! ki->has_shared_dh))
-    return 0;
-  if (local && (! ki->has_local_dh))
-    return 0;
-  memcpy (secret, (local ? ki->local_dh : ki->shared_dh), DH448_SIZE);
+  if (local) {
+    if (! ki->has_local_dh)
+      return 0;
+    memcpy (secret, ki->local_dh, DH448_SIZE);
+    if (public != NULL)
+      memcpy (public, ki->local_dh_public, DH448_SIZE);
+  } else {
+    if (! ki->has_shared_dh)
+      return 0;
+    memcpy (secret, ki->shared_dh, DH448_SIZE);
+  }
   return DH448_SIZE;
 }
 
@@ -2179,8 +2201,7 @@ void set_dh_secret (keyset k, const char * secret, int local)
     return;
   struct key_info * ki = kip + k;
   if (local) {
-    ki->has_local_dh = 1;
-    memcpy (ki->local_dh, secret, DH448_SIZE);
+    set_local_dh (ki, secret);
   } else {
     ki->has_shared_dh = 1;
     memcpy (ki->shared_dh, secret, DH448_SIZE);
@@ -2345,8 +2366,8 @@ int incomplete_key_exchanges (char *** result_contacts, keyset ** result_keys,
           (! get_contact_pubkey (k, &pubkey))) /* incomplete */
         status |= KEYS_INCOMPLETE_NO_CONTACT_PUBKEY;
       char dh_secret [DH448_SIZE];
-      if ((get_dh_secret (k, dh_secret, 1)) &&
-          (! get_dh_secret (k, dh_secret, 0)))
+      if ((get_dh_secret (k, dh_secret, NULL, 1)) &&
+          (! get_dh_secret (k, dh_secret, NULL, 0)))
         status |= KEYS_INCOMPLETE_DH;
       /* test for existence of the exchange file */
       char * dir = key_dir (k);

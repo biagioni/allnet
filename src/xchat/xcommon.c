@@ -930,17 +930,10 @@ static int handle_sub (int sock, struct allnet_header * hp,
 static int get_dh_pubkey (int kset, char * result)
 {
   char dh_secret [DH448_SIZE];
-  int ksize = get_dh_secret (kset, dh_secret, 1);
-  if (ksize <= 0) {
-    printf ("unable to compute dh exchange, no secret found for key (%d/%d)\n",
-            kset, ksize);
-    return 0;
-  }
-  char u_five [DH448_SIZE];
-  allnet_x448_five (u_five);
-  if (! allnet_x448 (dh_secret, u_five, result))
-    printf ("allnet_x448 (get_dh_pubkey) returned 0\n");
-  return DH448_SIZE;
+  if (get_dh_secret (kset, dh_secret, result, 1) > 0)
+    return DH448_SIZE;
+  printf ("unable to get dh pubkey for key %d\n", kset);
+  return 0;
 }
 
 /* returns 1 for success, 0 for failure */
@@ -1237,7 +1230,6 @@ static int handle_key (int sock, struct allnet_header * hp,
 #ifdef DEBUG_PRINT
   printf ("in handle_key (%d)\n", dsize);
 #endif /* DEBUG_PRINT */
-  save_key_in_cache (hp, data, dsize);
   char ** contacts = NULL;
   keyset * keys = NULL;
   int * status = NULL;
@@ -1281,12 +1273,12 @@ if (r1 || r2)
               (data [0] == ALLNET_KEY_XCHG_DH_AES_SECRET)) {  /* DH key xchg */
 char debug [DH448_SIZE];
 printf ("processing DH key exchange (%d, %d)\n",
-get_dh_secret (keys [ii], debug, 1),
-get_dh_secret (keys [ii], debug, 0));
+get_dh_secret (keys [ii], debug, NULL, 1),
+get_dh_secret (keys [ii], debug, NULL, 0));
             char dh_local [DH448_SIZE];
             char dh_shared [DH448_SIZE];
-            if ((get_dh_secret (keys [ii], dh_local, 1)) &&
-                (! get_dh_secret (keys [ii], dh_shared, 0))) {
+            if ((get_dh_secret (keys [ii], dh_local, NULL, 1)) &&
+                (! get_dh_secret (keys [ii], dh_shared, NULL, 0))) {
               if (allnet_x448 (dh_local, data + 1, dh_shared)) {
 printf ("saving remote dh secret\n");
                 set_dh_secret (keys [ii], dh_shared, 0);
@@ -1560,6 +1552,8 @@ int handle_packet (int sock, char * packet, unsigned int psize,
   } else if (hp->message_type == ALLNET_TYPE_KEY_XCHG) {
     result = handle_key (sock, hp, packet + hsize, psize - hsize,
                          contact, kset);
+    if (result == 0)   /* key not expected, save in case we need it later */
+      save_key_in_cache (hp, packet + hsize, psize - hsize);
   } else if (hp->message_type == ALLNET_TYPE_MGMT) {
     result = handle_mgmt (sock, hp, packet, psize, trace_reply);
   }

@@ -163,8 +163,11 @@ extern unsigned int get_my_pubkey      (keyset k, allnet_rsa_pubkey * key);
 extern unsigned int get_my_privkey     (keyset k, allnet_rsa_prvkey * key);
 #ifndef ALLNET_KEYTYPE_RSA
 /* secret must point to at least DH448_SIZE bytes.
- * local is true for the local secret, 0 for the shared (computed) DH key */
-extern unsigned int get_dh_secret (keyset k,       char * secret, int local);
+ * local is true for the local secret, 0 for the shared (computed) DH key
+ * if local is true and public is not NULL, copies the public key to public,
+ * which must also point to at least DH448_SIZE bytes */
+extern unsigned int get_dh_secret (keyset k,       char * secret,
+                                   char * public, int local);
 extern void         set_dh_secret (keyset k, const char * secret, int local);
 #endif /* ALLNET_KEYTYPE_RSA/DH */
 /* returns the number of bits in the address, 0 if none */
