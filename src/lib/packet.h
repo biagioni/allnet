@@ -128,7 +128,7 @@ struct allnet_variable_signature {
  *   I am meant to receive.
  *   RSA public keys are 513 bytes.
  *   for all other keys, the first byte is a code identifying the key type.
- *   Diffie-Hellman for code+AES+secret strings are 1+32+64 = 97 bytes.
+ *   Diffie-Hellman has code+DH+hmac+random = 1+56+64+16=137 bytes
  * ALLNET_TYPE_KEY_REQ
  *   carries a (partial) fingerprint of a public key.  The public key sent
  *   in response should match the given fingerprint.
