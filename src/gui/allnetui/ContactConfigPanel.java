@@ -308,13 +308,29 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
     }
 
     private void deleteContact() {
-        // cancel will be on right
-        Object[] options = {"Cancel", "DELETE CONTACT"};
         JComboBox<String> contactBox
             = contactSelectPanel.getComboBoxes().get(0);
-        String contact = (String) contactBox.getSelectedItem();
+        String contactName = (String) contactBox.getSelectedItem();
+        Contact contact = contactData.getContact(contactName);
+        if (contact == null)
+            return;
+        if (contact.isVisible()) {
+            Object[] options = {"Understood"};
+            JOptionPane.showOptionDialog(this,
+                "Cannot delete a contact that is still visible.",
+                "Warning",
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.WARNING_MESSAGE,
+                null,
+                options,
+                options[0]);
+            return;
+        }
+
+        // cancel will be on right
+        Object[] options = {"Cancel", "DELETE CONTACT"};
         int n = JOptionPane.showOptionDialog(this,
-            "Deleting contact " + contact + " cannot be undone.  ",
+            "Deleting contact " + contactName + " cannot be undone.  ",
             "Confirm Delete Contact",
             JOptionPane.YES_NO_OPTION,
             JOptionPane.WARNING_MESSAGE,
@@ -324,7 +340,7 @@ public class ContactConfigPanel extends JPanel implements ActionListener {
         // NO_OPTION means the left button, so do it
         if (n == JOptionPane.NO_OPTION) {
             // that's a go, so tell the UIController to do it
-            controller.contactDeleted(contact);
+            controller.contactDeleted(contactName);
         }
 
     }
