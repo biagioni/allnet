@@ -1,4 +1,6 @@
 /* xchatr.c: receive xchat messages */
+/* xchatr by itself: receive until killed */
+/* xchatr -m x: show to x messages, then quit */
 
 #include <stdio.h>
 #include <stdlib.h>
