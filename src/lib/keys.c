@@ -319,7 +319,7 @@ static void set_local_dh (struct key_info * ki, const char * secret)
   allnet_x448_make_valid (ki->local_dh);
   char u_five [DH448_SIZE];
   allnet_x448_five (u_five);
-  if (! allnet_x448 (secret, u_five, ki->local_dh_public))
+  if (! allnet_x448 (ki->local_dh, u_five, ki->local_dh_public))
     printf ("allnet_x448 (set_local_dh) returned 0\n");
 }
 
