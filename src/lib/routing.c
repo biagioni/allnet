@@ -311,7 +311,6 @@ static void * init_default_dns (void * arg)
   int sleep_sec = 10;
   while (allnet_dns ((const char * *)default_dns, indices, NUM_DEFAULTS,
                      routing_add_dht_sockaddr) == 0) {
-printf ("allnet_dns returned 0, dns loop sleeping %d seconds\n", sleep_sec);
     sleep (sleep_sec);
     if (sleep_sec < 600)   /* once every 10 min or so */
       sleep_sec = sleep_sec + sleep_sec;
