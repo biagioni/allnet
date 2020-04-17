@@ -36,6 +36,7 @@ void normalize_secret (char * s)
       *to = '\0';
     } else if ((toupper (current) == 'V') && (toupper (last) == 'V')) {
       /* VV may resemble W, so replace the second V with an M */
+      current = 'M';
       *s = 'M';
       s++;
     } else if ((current == '0') /* zero */ || (toupper (current) == 'O')) {
