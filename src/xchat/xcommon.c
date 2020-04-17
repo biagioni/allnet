@@ -1038,18 +1038,20 @@ static void save_key_in_cache (struct allnet_header * hp,
                                char * data, int dsize)
 {
   init_key_cache ();
-  if (dsize > ALLNET_MTU)
+  if ((dsize > ALLNET_MTU) || (dsize <= KEY_RANDOM_PAD_SIZE))
     return;
 #ifdef DEBUG_KEY_CACHE_PRINT
   printf ("saving key, dsize %d\n", dsize);
 #endif /* DEBUG_KEY_CACHE_PRINT */
+  /* when comparing keys, ignore the random padding */
+  int cmp_size = dsize - KEY_RANDOM_PAD_SIZE;
   int free = -1;
   int i;
   for (i = 0; i < KEY_CACHE_SIZE; i++) {
     if (key_cache [i].dsize == 0)
       free = i;
     else if ((key_cache [i].dsize == dsize) &&
-             (memcmp (key_cache [i].buffer, data, dsize) == 0))
+             (memcmp (key_cache [i].buffer, data, cmp_size) == 0))
       return;  /* saved already */
   }
   if (free == -1) { /* replace the oldest in the cache */
