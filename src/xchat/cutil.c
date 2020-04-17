@@ -25,26 +25,33 @@
 /* strip most non-alphabetic characters, and convert the rest to uppercase */
 void normalize_secret (char * s)
 {
+  char last = '\0';    /* to detect two-character sequences such as VV */
   while (*s != '\0') {
-    if (! isalnum (*s)) {
+    char current = *s;
+    if (! isalnum (current)) {
       char * from = s + 1;  /* delete the char */
       char * to = s;
       while (*from != '\0')
         *(to++) = *(from++);
       *to = '\0';
-    } else if ((*s == '0') /* zero */ || (toupper (*s) == 'O')) {
+    } else if ((toupper (current) == 'V') && (toupper (last) == 'V')) {
+      /* VV may resemble W, so replace the second V with an M */
+      *s = 'M';
+      s++;
+    } else if ((current == '0') /* zero */ || (toupper (current) == 'O')) {
       *s = 'Q';  /* use Q as in Quebec for either zero or o/Oscar */
       s++;
-    } else if ((*s == '1') || (toupper (*s) == 'I')) {
+    } else if ((current == '1') || (toupper (current) == 'I')) {
       *s = 'L';  /* use L for 1 or i */
       s++;
-    } else if (isdigit (*s)) {
-      *s = ('A' + ((*s) - '2'));  /* use A..H for any other digit */
+    } else if (isdigit (current)) {
+      *s = ('A' + ((current) - '2'));  /* use A..H for any other digit */
       s++;
     } else {  /* make it uppercase */
-      *s = toupper (*s);
+      *s = toupper (current);
       s++;
     }
+    last = current;
   }
 }
 
