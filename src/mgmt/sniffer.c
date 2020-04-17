@@ -263,9 +263,9 @@ static void usage (const char * command)
   printf ("usage: %s [-v] [-d] [-y [-y]] [-u] [-f] [-t type]* "
           " [-a destination address] [-s source] [number-of-messages]\n",
           command);
-  printf ("       -v: verbose, -d: debug, -y: verify, -y -y: verified only");
-  printf ("       -u: unique only");
-  printf ("       -f: print full message payloads, not abbreviated");
+  printf ("       -v: verbose, -d: debug, -y: verify, -y -y: verified only\n");
+  printf ("       -u: unique only\n");
+  printf ("       -f: print full message payloads, not abbreviated\n");
   printf ("       -t n: only show messages of type n -- may be repeated\n");
   printf ("       -a x, -s x: only show messages with source/dest x\n");
   printf ("       (repeating the SAME type, toggles it)\n");
