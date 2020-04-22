@@ -567,27 +567,36 @@ class UIController implements ControllerInterface, UIAPI {
                     hops = HOPS_REMOTE;
                     min = MIN_LENGTH_LONG;
                 }
-                String variableInput = kep.getVariableInput();
-                if ((variableInput == null) || (variableInput.isEmpty())
-                    || (variableInput.length() < min)) {
-                    kep.setText(1, " Resend Key",
+                String[] norm =
+                    coreAPI.initKeyExchange(kep.getContactName(),
+                                            kep.getSecret(),
+                                            kep.getVariableInput(), hops);
+                String secret =
+                    ((norm.length > 0) ? norm [0] : new String ("failed"));
+                String optional =
+                    (((norm.length > 1) && (norm [1] != null) &&
+                      (norm [1].length() >= min)) ? norm [1] : null);
+                if (optional == null) {
+                    kep.setText(1, " Resent Key",
                         "",
                         " Shared secret:",
-                        " " + addSpaces(kep.getSecret().toUpperCase()),
+                        " " + addSpaces(secret),
                         " (spaces are optional)");
                 }
                 else {
-                    kep.setText(1, " Resend Key", "",
+                    kep.setText(1, " Resent Key", "",
                         " Shared secret:",
-                        " " + addSpaces(kep.getSecret().toUpperCase()),
+                        " " + addSpaces(secret),
                         " or:",
-                        " " + addSpaces(variableInput.toUpperCase()),
+                        " " + addSpaces(optional),
                         " (spaces are optional)");
                 }
-                if (coreAPI.initKeyExchange(kep.getContactName(),
-                    kep.getSecret(),
-                    kep.getVariableInput(), hops)) {
-                    System.out.println("resent own key");
+                if (norm.length > 0) {
+                    System.out.println("resent own key, secret1 is " + norm[0]);
+                    kep.setSecret(norm [0]);
+                    if (norm [1] != null) {
+                        kep.setVariableInput(norm [1]);
+                    }
                 }
                 break;
             case 2:
@@ -811,6 +820,7 @@ class UIController implements ControllerInterface, UIAPI {
                 variableInput = "";
             }
             String secret;
+            String[] norm = null;   // normalized secret(s)
             switch (button) {
                 case -1:
                     System.out.println("UIController.java: new contact " + contact
@@ -841,9 +851,12 @@ class UIController implements ControllerInterface, UIAPI {
                         kep.setSecret(secret);
                         kep.setVariableInput(variableInput);
                     }
-                    if (coreAPI.initKeyExchange(contact,
-                        secret, variableInput, HOPS_LOCAL)) {
-                        System.out.println("sent direct wireless key request");
+                    norm = coreAPI.initKeyExchange(contact, secret,
+                                                   variableInput, HOPS_LOCAL);
+                    if (norm.length > 0) {
+                        System.out.println("sent direct wireless key request" +
+                                           ", normalize secret is " +
+                                           norm [0]);
                         newContactPanel.setMySecret();
                     }
                     else {
@@ -858,28 +871,34 @@ class UIController implements ControllerInterface, UIAPI {
                     variableInput = "";
                     System.out.println("new long-distance contact " + contact
                         + ", secret " + secret);
-                    kep = getKeyExchangePanel(contact);
-                    if (kep == null) {
-                        // now put up a key exchange panel
-                        String[] middlePanelMsg = makeMiddlePanel(secret);
-                        String[] bottomPanelMsg = new String[]{
-                            " Key exchange in progress",
-                            " Sent your key",
-                            " Waiting for key from " + contact
-                        };
-                        kep = createKeyExchangePanel(contact, middlePanelMsg,
-                            bottomPanelMsg, true, true);
-                        kep.setButtonState(button);
+                    norm = coreAPI.initKeyExchange(contact, secret,
+                                                   variableInput, HOPS_REMOTE);
+                    if (norm.length > 0) {
+                        secret = norm [0];
+                        System.out.println("sent key request with 6 hops, s " +
+                                           norm [0]);
+                        kep = getKeyExchangePanel(contact);
+                        if (kep == null) {
+                            // now put up a key exchange panel
+                            String[] middlePanelMsg = makeMiddlePanel(secret);
+                            String[] bottomPanelMsg = new String[]{
+                                " Key exchange in progress",
+                                " Sent your key",
+                                " Waiting for key from " + contact
+                            };
+                            kep = createKeyExchangePanel(contact,
+                                                         middlePanelMsg,
+                                                         bottomPanelMsg,
+                                                         true, true);
+                            kep.setButtonState(button);
+                        }
                         kep.setSecret(secret);
-                        kep.setVariableInput(variableInput);
-                    }
-                    //
-                    if (coreAPI.initKeyExchange(contact,
-                        secret, variableInput, HOPS_REMOTE)) {
-                        System.out.println("sent key request with 6 hops");
                         newContactPanel.setMySecret();
-                    }
-                    else {
+                        if ((norm.length > 1) && (norm [1] != null)) {
+                            variableInput = norm [1];
+                            kep.setVariableInput(variableInput);
+                        }
+                    } else {
                         System.out.println("unable to send key request");
                     }
                     break;

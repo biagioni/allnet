@@ -728,32 +728,49 @@ static void gui_send_message (char * message, int64_t length, int broadcast,
   gui_send_buffer (gui_sock, reply_header, sizeof (reply_header));
 }
 
-static void gui_init_key_exchange (char * message, int64_t length,
+static void gui_init_key_exchange (const char * message, int64_t length,
                                    int gui_sock, int allnet_sock)
 {
 /* message format: 1-byte hop count, contact name and one or two secrets,
  * all null terminated */
-/* reply format: 1-byte code, 1-byte result: 1 for success, 0 failure */
+/* reply format: 1-byte code, 1-byte result: 1 for success, 0 failure,
+   and two normalized secrets, null terminated */
   char reply_header [2];
   reply_header [0] = GUI_KEY_EXCHANGE;
   reply_header [1] = 0;  /* failure */
+  char * reply = reply_header;
+  size_t rheadersize = sizeof (reply_header);
+  size_t rsize = rheadersize;
   int hops = * ((unsigned char *)message);
-  char * contact = message + 1;
-  if (length > 1) {
-    if (length <= 1 + strlen (contact) + 1 + 2)
-      printf ("gui_init_key_exchange error: length %" PRId64
-              ", contact %s (%zd)\n", length, contact, strlen (contact));
-    char * secret1 = contact + (strlen (contact) + 1);
-    normalize_secret (secret1);
-    char * secret2 = NULL;
-    if (length > (1 + strlen (contact) + 1 + strlen (secret1) + 1)) {
-      secret2 = contact + (strlen (contact) + 1 + strlen (secret1) + 1);
-      normalize_secret (secret2);
+  const char * contact = message + 1;
+  if (length > 1 + strlen (contact) + 1 + 2 + 1) {
+    const char * raw_secret1 = contact + (strlen (contact) + 1);
+    const char * raw_secret2 = 
+      ((length > (1 + strlen (contact) + 1 + strlen (raw_secret1) + 1)) ?
+       (contact + (strlen (contact) + 1 + strlen (raw_secret1) + 1)) : NULL);
+    rsize += strlen (raw_secret1) + 1 +
+             ((raw_secret2 != NULL) ? strlen (raw_secret2) : 0) + 1;
+    reply = malloc_or_fail (rsize, "gui_init_key_exchange");
+    memcpy (reply, reply_header, rheadersize);
+    char * norm_secret1 = reply + rheadersize;
+    strcpy (norm_secret1, raw_secret1); 
+    normalize_secret (norm_secret1);
+    char * norm_secret2 = reply + rheadersize + strlen (norm_secret1) + 1;
+    *norm_secret2 = '\0';    /* in case raw_secret2 is NULL */
+    if (raw_secret2 != NULL) {
+      strcpy (norm_secret2, raw_secret2); 
+      normalize_secret (norm_secret2);
     }
-    reply_header [1] =
-      create_contact_send_key (allnet_sock, contact, secret1, secret2, hops);
+    reply [1] =
+      create_contact_send_key (allnet_sock, contact,
+                               norm_secret1, norm_secret2, hops);
+  } else {
+    printf ("gui_init_key_exchange error: length %" PRId64
+            ", contact %s (%zd)\n", length, contact, strlen (contact));
   }
-  gui_send_buffer (gui_sock, reply_header, sizeof (reply_header));
+  gui_send_buffer (gui_sock, reply, rsize);
+  if (rsize > rheadersize)
+    free (reply);
 }
 
 static void gui_subscribe (char * message, int64_t length,

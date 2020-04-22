@@ -763,8 +763,9 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
     // creates the contact -- 1 or 2 secrets may be specified
     //    (secret2 is null if only one secret is specified)
     // if the contact already exists, returns without doing anything
-    public boolean initKeyExchange(String contact, String secret1,
-                                   String secret2, int hops) {
+    // returns an array of the normalized secret(s), or [] for failure
+    public String[] initKeyExchange(String contact, String secret1,
+                                    String secret2, int hops) {
         int length = 1 + 1 + SocketUtils.numBytes(contact) + 1 +
                      SocketUtils.numBytes(secret1) + 1;
         if ((secret2 != null) && (secret2.length() > 0))
@@ -783,9 +784,10 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
         clearCaches();
         if (response[1] == 0) {
             System.out.println("initKeyExchange returned failure");
-            return false;
+            return new String[0];
         }
-        return true;
+        String [] result = SocketUtils.bStringArray (response, 2, 2);
+        return result;
     }
 
     // address is an AllNet human-readable address, or ahra/AHRA

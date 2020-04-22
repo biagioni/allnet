@@ -102,8 +102,9 @@ public interface CoreAPI {
     // creates the contact -- 1 or 2 secrets may be specified
     //    (secret2 is null if only one secret is specified)
     // if the contact already exists, returns without doing anything
-    boolean initKeyExchange(String contact, String secret1, String secret2,
-                            int hops);
+    // returns an array of the normalized secret(s), or [] for failure
+    String[] initKeyExchange(String contact, String secret1,
+                             String secret2, int hops);
 
     // address is an AllNet human-readable address, or ahra/AHRA
     // it has the form myString@some_set.of_wordpair

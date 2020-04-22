@@ -156,9 +156,15 @@ public class CoreDebug implements CoreAPI {
     // creates the contact -- 1 or 2 secrets may be specified
     //    (secret2 is null if only one secret is specified)
     // if the contact already exists, returns without doing anything
-    public boolean initKeyExchange(String contact, String secret1, String secret2,
+    // returns an array of the normalized secret(s), or [] for failure
+    public String[] initKeyExchange(String contact, String secret1, String secret2,
         int hops) {
-        return (true);
+        String[] result = new String [secret2 == null ? 1 : 2];
+        result [0] = secret1;
+        if (secret2 != null) {
+            result [1] = secret2;
+        }
+        return (result);
     }
 
     // address is an AllNet human-readable address, or ahra/AHRA
