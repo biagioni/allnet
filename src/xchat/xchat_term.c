@@ -132,11 +132,11 @@ static void * receive_thread (void * arg)
           snprintf (string, sizeof (string),
                     "from '%s'%s got %s%s%s%s\n  %s\n",
                     peer, ver_mess, dup_mess, p_mess, bc_mess, desc, message);
-          if (! interrupted) {
+          if ((! broadcast) && (! interrupted)) {
             printf ("(conversation interrupted, switching to no contact)\n");
             prompt = "<no contact>";
+            interrupted = 1;
           }
-          interrupted = 1;
         } else {
           snprintf (string, sizeof (string),
                     "got %s%s%s%s\n  %s\n",
