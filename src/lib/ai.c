@@ -1136,7 +1136,8 @@ static int
   }
   if (received <= DNS_HEADER_SIZE) {
     printf ("dns received only %zd bytes\n", received);
-    print_buffer (response, received, NULL, received, 1);
+    unsigned int r = (unsigned int) received;
+    print_buffer (response, r, NULL, r, 1);
     return 0;
   }
   int received_id = readb16 (response);
