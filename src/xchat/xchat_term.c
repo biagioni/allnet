@@ -644,16 +644,17 @@ static char * list_incompletes (const char * contact, int select,
     } else {                   /* select == 0, list all */
       int ii;
       for (ii = 0; ii < ni; ii++) {
+/* printf ("status [%d] is %x\n", ii, status [ii]); */
         char * pr_status = NULL;
-        if ((status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY) &&
-            (status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE))
-          pr_status = "no key received";
-        else if (status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY)
-          pr_status = "no key received (and no exchange file, may be an error)";
-        else if (status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE)
-          pr_status = "key received";
-        else
+        if (status [ii] & KEYS_INCOMPLETE_HAS_EXCHANGE_FILE) {
+          if ((status [ii] & KEYS_INCOMPLETE_NO_CONTACT_PUBKEY) ||
+              (status [ii] & KEYS_INCOMPLETE_DH))
+            pr_status = "no key received";
+          else  /* no exchange file */
+            pr_status = "no key received and no exchange file, may be an error";
+        } else {
           pr_status = "key exchange is complete (this may be an error)";
+        }
         char * s1 = NULL;
         char * s2 = NULL;
         int ns = key_exchange_secrets (contacts [ii], &s1, &s2);
