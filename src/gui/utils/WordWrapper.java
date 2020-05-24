@@ -53,7 +53,8 @@ public class WordWrapper {
     // prefixSpaces determines what happens when a line break is inserted
     // at a point with adjacent spaces: true places them on next line, false 
     // on the current line
-    public void wordWrapText(String original, int maxChars, boolean prefixSpaces) {
+    public void wordWrapText(String original, int maxChars,
+                             boolean prefixSpaces) {
         this.original = original;
         wordBreaks = new ArrayList<>();
         int idx = 0;
@@ -68,7 +69,8 @@ public class WordWrapper {
                 idx++;
             }
             else {
-                ArrayList<String> splitLine = splitUpLine(line, maxChars, prefixSpaces);
+                ArrayList<String> splitLine =
+                    splitUpLine(line, maxChars, prefixSpaces);
                 for (int i = 0; i < splitLine.size() - 1; i++) {
                     list.add(splitLine.get(i));
                     idx += splitLine.get(i).length();
@@ -90,11 +92,14 @@ public class WordWrapper {
     }
 
     public String getCorrected(String selected, int startIdx) {
+// System.out.println ("getCorrected (" + selected + ", " + startIdx + ")");
         // let's be safe here
         if ((selected == null) || selected.isEmpty()) {
             return ("");
         }
+        char space = 0x20;
         StringBuilder temp = new StringBuilder();
+        int wwIdx = startIdx;
         for (String w : wrappedText) {
             temp.append(w);
             temp.append("\n");
@@ -104,9 +109,7 @@ public class WordWrapper {
         String wwText = temp.toString();
         // now build the string: just omit the inserted word (line) breaks
         char nbsp = 0xa0;
-        char space = 0x20;
         char cr = '\n';
-        int wwIdx = startIdx;
         // "safe indexing"
         wwIdx = Math.max(wwIdx, 0);
         wwIdx = Math.min(wwIdx, wwText.length() - 1);
@@ -121,45 +124,85 @@ public class WordWrapper {
             }
             // walk through the selected text and reconstructed text
             sc = selected.charAt(selIdx);
+            boolean scIsSpace = ((sc == nbsp) || (sc == space));
             wwc = wwText.charAt(wwIdx);
-            // all spaces in the displayed message will be nbsp's
-            if ((sc == wwc) || ((sc == nbsp) && (wwc == space))) {
+            boolean wwcIsSpace =
+              ((wwc == nbsp) || (wwc == space));
+            int offByOneCount = 0;
+            // some of the spaces in the displayed message may be nbsp's
+            if ((sc == wwc) || (scIsSpace && wwcIsSpace)) {
                 sb.append(wwc);
                 selIdx++;
                 wwIdx++;
-            }
-            else if (((sc == nbsp) || (sc == space)) && (wwc == cr)
-                && !wordBreaks.contains(wwIdx)) {
+            } else if (scIsSpace && (wwc == cr) && !wordBreaks.contains(wwIdx)) {
                 // restore cr for space in selected string
                 sb.append(cr);
                 selIdx++;
                 wwIdx++;
             }
-            else if (((sc == nbsp) || (sc == space)) && wordBreaks.contains(wwIdx)) {
+            else if (scIsSpace && wordBreaks.contains(wwIdx)) {
                 // skip over inserted line (word) break
                 selIdx++;
                 wwIdx++;
             }
+            else if ((selIdx == 0) && (offByOneCount < 2)) {
+                // sometimes off by one, try 1 less or one more
+                int originalWwIdx = wwIdx;
+                if (offByOneCount == 0)
+                    wwIdx--;
+                else
+                    wwIdx += 2;
+                offByOneCount++;
+            }
             else {
                 error = true;
-                // System.out.println((int)sc + "  " + (int) wwc);
+                // debugging follows, delete any time (but don't delete break)
+                System.out.println(sc + "/" + (int)sc + "/" + selIdx + "  " +
+                                   wwc + "/" + (int) wwc + "/" + wwIdx);
+                System.out.println("space is " + (int)space);
+                System.out.println("nbsp is " + (int)nbsp);
+                System.out.println("cr is " + (int)cr);
+                System.out.println("sb is '" + sb + "'");
+                System.out.println("wwText is " + wwText);
+                System.out.println("selected is " + selected);
+                System.out.println("selIdx is " + selIdx);
+                System.out.println("wwIdx is " + wwIdx);
+                for (int i = 0; i < wwText.length (); i++) {
+                    System.out.print ((int) wwText.charAt (i));
+                    if ((i % 20 == 19) || (i + 1 == wwText.length()))
+                        System.out.println ();
+                    else
+                        System.out.print (", ");
+                }
+                for (int i = 0; i < selected.length (); i++) {
+                    System.out.print ((int) selected.charAt (i));
+                    if ((i % 20 == 19) || (i + 1 == selected.length()))
+                        System.out.println ();
+                    else
+                        System.out.print (", ");
+                }
+                // end debugging
                 break;
-            }
+            }   // complicated if ... else
         }  // while
         if (error) {
             if (verbose) {
-                System.out.println("error correcting selection: \"" + selected + "\"");
+                System.out.println("error correcting selection: \"" +
+                                   selected + "\"");
             }
-            // just return uncorrected selection (filtered for nbsp's) if we fail for any reason
+            // just return uncorrected selection (filtered for nbsp's)
+            // if we fail for any reason
             return (selected.replaceAll(new String(new char[]{nbsp}),
                 new String(new char[]{space})));
         }
         // return the constructed String
+// System.out.println ("getCorrected (" + selected + ", " + startIdx + ") => " + sb.toString());
         return (sb.toString());
     }
 
     // chop a line up into pieces <= max length
-    private ArrayList<String> splitUpLine(String oldLine, int maxChars, boolean prefixSpaces) {
+    private ArrayList<String> splitUpLine(String oldLine, int maxChars,
+                                          boolean prefixSpaces) {
         ArrayList<String> lines = new ArrayList<>();
         // String[] darkSpace = oldLine.split("\\s+");
         String[] darkSpace = smartSplit(oldLine, prefixSpaces);

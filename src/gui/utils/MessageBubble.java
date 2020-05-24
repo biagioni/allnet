@@ -190,8 +190,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
         }
         StringBuilder sb = new StringBuilder(htmlPrefix);
         for (int i = 0; i < wordWrappedLines.length; i++) {
-            // sb.append(nbspMe(sanitizeForHtml(wordWrappedLines[i])));
-            sb.append(sanitizeForHtml(wordWrappedLines[i]));
+            sb.append(nbspMe(sanitizeForHtml(wordWrappedLines[i])));
             if (i < wordWrappedLines.length - 1) {
                 sb.append("<br>");
             }
@@ -231,8 +230,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
                 break;
             case COPY:
                 selected = textPane.getSelectedText();
-                // offset of 1 determined experimentally, apparently undocumented
-                startIdx = textPane.getSelectionStart() - 1;
+                startIdx = textPane.getSelectionStart();
                 corrected = ww.getCorrected(selected, startIdx);
                 break;
             default:
