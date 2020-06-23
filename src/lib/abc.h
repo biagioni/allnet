@@ -6,8 +6,8 @@
 #include "packet.h"
 #include "sockets.h"
 
-#define ALLNET_IPV4_BROADCAST_PORT      (ALLNET_PORT + 1)  /* 41242 */
-#define ALLNET_IPV6_BROADCAST_PORT      (ALLNET_PORT + 2)  /* 41243 */
+#define ALLNET_IPV4_BROADCAST_PORT      (ALLNET_PORT + 1)  /* a11a, 41242 */
+#define ALLNET_IPV6_BROADCAST_PORT      (ALLNET_PORT + 2)  /* a11b, 41243 */
 
 extern int add_local_broadcast_sockets (struct socket_set * sockets);
 
