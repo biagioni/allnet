@@ -68,8 +68,10 @@ struct chat_control {
 
 /* values for the chat_control.type */
 #define CHAT_CONTROL_TYPE_REQUEST	1
+#define CHAT_CONTROL_TYPE_REKEY		2
 
-/* this packet requests delivery of all packets that fit one or more of:
+/* a CHAT_CONTROL_TYPE_REQUEST packet requests delivery of all
+   packets that fit one or more of:
    - counter value > last_received
    - counter value listed in one of the first num_singles counters
    - for each pair (start, finish) of counters after the first num_singles,
@@ -93,6 +95,20 @@ struct chat_control_request {
   unsigned char last_received [COUNTER_SIZE];
   /* counters has COUNTER_SIZE * (num_singles + 2 * num_ranges) bytes */
   unsigned char counters  [0];
+};
+
+/* a CHAT_CONTROL_TYPE_REKEY packet initiates or completes a new key exchange.
+ * if I send a chat_control_rekey, I may start using the new key(s) once
+ * I receive a chat_control_rekey from the other side.
+ */
+struct chat_control_rekey {
+  unsigned char message_ack [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
+  /* app should be XCHAT_ALLNET_APP_ID, media should be ALLNET_MEDIA_DATA */
+  struct allnet_app_media_header app_media;
+  unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
+  unsigned char type;                   /* always CHAT_CONTROL_TYPE_REKEY */
+  unsigned char key [0];  /* 513-byte public key for RSA, or
+                             97-byte code+key+secret DH for AES/secret */
 };
 
 #endif /* ALLNET_CHAT_H */
