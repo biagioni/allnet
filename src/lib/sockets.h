@@ -129,9 +129,13 @@ extern int socket_send_local (struct socket_set * s, const char * message,
 /* if sent_to and num_sent are not NULL, *num_sent should have the
  * number of available entries in sent_to.  These will be filled
  * with the addresses to which we send, and the number of these is
- * placed back in *num_sent */
+ * placed back in *num_sent
+ * if save_dest_address is not NULL, the address to which we send is filled
+ * in each time before the packet is sent -- this may be useful if
+ * the outgoing address is to be sent as part of the message */
 extern int socket_send_out (struct socket_set * s, const char * message,
-                            int msize, unsigned long long int sent_time,
+                            int msize, struct internet_addr * save_dest_address,
+                            unsigned long long int sent_time,
                             struct sockaddr_storage except_to, socklen_t alen,
                             struct sockaddr_storage * sent_to, int * num_sent);
 /* send only to the given socket and address */

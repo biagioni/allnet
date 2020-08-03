@@ -55,6 +55,16 @@ static char * default_dns [] =
 struct sockaddr_storage ip4_defaults [NUM_DEFAULTS];
 struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
 
+/* own addresses, as reported by others */
+struct self_addr_struct {
+  int valid;
+  unsigned long long int freshness;       /* higher numbers are fresher */
+  struct addr_info ai;
+};
+#define NUM_SELF_ADDRS	10
+struct self_addr_struct self_addr [NUM_SELF_ADDRS];
+unsigned long long self_addr_init = 0;
+
 /* 0 before initialization, -1 during initialization, 1 after initialization */
 static int dns_init = 0;
 
@@ -893,6 +903,75 @@ int routing_add_dht (struct addr_info addr)
   return result;
 }
 
+/* either adds or refreshes an external IP address.
+ * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
+int routing_add_external (struct internet_addr ip)
+{
+  /* sanity checks first */
+  int v = is_valid_address (&ip);
+  if ((v != 1) && (v != -1)) {
+    printf ("routing_add_external given bad address\n");
+    print_ia (&ip);
+    return -1;
+  }
+  /* to lessen the opportunities for DDoS, only accept addrs with ALLNET_PORT */
+  if (ip.port != htons (ALLNET_PORT)) {
+    printf ("routing_add_external given bad port\n");
+    print_ia (&ip);
+    return -1;
+  }
+  struct addr_info ai;
+  memset (&ai, 0, sizeof (ai));
+  ai.ip = ip;
+  routing_my_address (ai.destination);
+  ai.nbits = ADDRESS_BITS;
+  ai.type = ALLNET_ADDR_INFO_TYPE_DHT;
+  pthread_mutex_lock (&mutex);
+  if (self_addr_init == 0) {
+    memset (self_addr, 0, sizeof (self_addr));
+    self_addr_init = 1;
+  } else {
+    self_addr_init++;
+  }
+  int i;
+  int free_index = -1;
+  int least_fresh_index = -1;
+  unsigned long long least_freshness = ((unsigned long long) 0) - 1;  /* max */
+  for (i = 0; i < NUM_SELF_ADDRS; i++) {
+    if (self_addr [i].valid) {
+      if (same_aip (&(self_addr [i].ai), &ai)) {
+        self_addr [i].freshness = self_addr_init;
+        pthread_mutex_unlock (&mutex);
+        return 0;
+      }
+      if (least_freshness > self_addr [i].freshness) {
+        least_freshness = self_addr [i].freshness;
+        least_fresh_index = i;
+      }
+    } else {
+      free_index = i;
+    }
+  }
+  if (free_index < 0) {
+    if (least_fresh_index < 0) {  /* strange */
+      printf ("error (%lld): free index and least fresh index are both < 0\n",
+              self_addr_init);
+      for (i = 0; i < NUM_SELF_ADDRS; i++) {
+        printf ("%d: %d %lld ", i, self_addr [i].valid,
+                self_addr [i].freshness);
+        print_addr_info (&(self_addr [i].ai));
+      }
+      least_fresh_index = 0;   /* or random */
+    }
+    free_index = least_fresh_index;
+  } /* from here, free_index is a valid index >= 0 */
+  self_addr [free_index].valid = 1;
+  self_addr [free_index].ai = ai;
+  self_addr [free_index].freshness = self_addr_init;
+  pthread_mutex_unlock (&mutex);
+  return 1;
+}
+
 /* returns -1 if not found, the index if found */
 static int find_ping (struct addr_info * addr)
 {
@@ -1152,11 +1231,9 @@ int routing_ping_iterator (int iter, struct addr_info * ai)
 int init_own_routing_entries (struct addr_info * entry, int max,
                               const unsigned char * dest, int nbits)
 {
-#ifdef DEBUG_PRINT
   /* we change entry to go through the array, so keep track of the original */
   struct addr_info * original = entry;
   int original_max = max;
-#endif /* DEBUG_PRINT */
   pthread_mutex_lock (&mutex);
   init_peers (0, 0);
   pthread_mutex_unlock (&mutex);
@@ -1224,6 +1301,27 @@ int init_own_routing_entries (struct addr_info * entry, int max,
           printf ("\n");
         }
 #endif /* DEBUG_PRINT */
+      }
+    }
+  }
+  if ((entry != NULL) && (self_addr_init > 0)) {
+/* add non-duplicate externally reported addresses as long as there is room */
+    static int next_pos = 0;
+    for (i = 0; ((max > 0) && (i < NUM_SELF_ADDRS)); i++) {
+      next_pos = (next_pos + 1) % NUM_SELF_ADDRS;
+      int index = next_pos;
+      if (self_addr [index].valid) {
+        struct addr_info * loop_entry = original;
+        int num_loops = 0;  /* avoid infinite loops from errors */
+        while ((loop_entry != entry) && (num_loops++ < original_max) &&
+               (! same_aip (loop_entry, &(self_addr [index].ai))))
+          loop_entry++;
+        if (loop_entry == entry) { /* address is not already in the list */
+          *entry = self_addr [index].ai;
+          entry++;
+          result++;
+          max--;
+        }
       }
     }
   }

@@ -94,8 +94,8 @@ static void * ping_all_pending (void * arg)
 /* for now, create a packet addressed to my own address.  In the loop,
  * replace this address with the actual address we are sending to */
   struct allnet_header * hp =
-    create_packet (dsize - ALLNET_SIZE (0), ALLNET_TYPE_MGMT, 1,
-                   ALLNET_SIGTYPE_NONE,
+    create_packet (dsize - ALLNET_SIZE (0),
+                   ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                    my_address, nbits, my_address, ADDRESS_BITS,
                    NULL, NULL, &msize);
   if (msize != dsize) {
@@ -119,6 +119,9 @@ static void * ping_all_pending (void * arg)
   if (n < MAX_MY_ADDRS)
     msize -= (MAX_MY_ADDRS - n) * sizeof (struct addr_info);
 #undef MAX_MY_ADDRS
+  struct allnet_mgmt_dht compute_offset;
+  size_t computed_offset = (((char *) (&compute_offset.sending_to_ip)) -
+                            ((char *) (&compute_offset)));
   int iter = 0;
   struct addr_info ai;
   while ((iter = routing_ping_iterator (iter, &ai)) >= 0) {
@@ -131,9 +134,6 @@ static void * ping_all_pending (void * arg)
       print_addr_info (&ai);
       hp->dst_nbits = ADDRESS_BITS;
     }
-    packet_to_string (message, msize, "ping_all_pending sending", 1,
-                      alog->b, alog->s);
-    log_print (alog);
     struct sockaddr_storage sas;
     memset (&sas, 0, sizeof (sas));
     socklen_t alen = 0;
@@ -144,9 +144,14 @@ static void * ping_all_pending (void * arg)
       if (ai.ip.ip_version == 4)  /* sockfd_v4 is < 0, send on v6 socket */
         ai_embed_v4_in_v6 (&sas, &alen);
     }
-    if (sockfd >= 0)
+    memcpy (message + computed_offset, &(ai.ip), sizeof (ai.ip));
+    if (sockfd >= 0) {
+      packet_to_string (message, msize, "ping_all_pending sending", 1,
+                        alog->b, alog->s);
+      log_print (alog);
       socket_send_to_ip (sockfd, message, msize, sas, alen,
                          "adht.c/ping_all_pending");
+    }
   }
   free (message);
   a->finished = 1;
@@ -156,12 +161,16 @@ static void * ping_all_pending (void * arg)
 
 /* at the right time, create a DHT packet to send out my routing table
  * the socket set is used to send messages to potential DHT peers
- * returns the packet size */
-int dht_update (struct socket_set * s, char ** message)
+ * returns the packet size
+ * if successful, *iap points into the message for the spot to save the
+ * the destination internet address before sending */
+int dht_update (struct socket_set * s,
+                char ** message, struct internet_addr ** iap)
 {
   if (alog == NULL)
     alog = init_log ("adht");
   *message = NULL;
+  *iap = NULL;
 #ifdef ALLNET_RESOURCE_CONSTRAINED  /* do not actively participate in the DHT */
   return 0;
 #else /* ! ALLNET_RESOURCE_CONSTRAINED -- actively participate in the DHT */
@@ -179,9 +188,9 @@ int dht_update (struct socket_set * s, char ** message)
   /* compute the next time to execute */
   next_time = now + ((ADHT_INTERVAL * (90 + (random () % 21))) / 100);
   char buffer [ADHT_MAX_PACKET_SIZE];
-  memset (buffer, 0, ADHT_MAX_PACKET_SIZE);
+  memset (buffer, 0, sizeof (buffer));
   struct allnet_header * hp =  /* create one packet with my address */
-    init_packet (buffer, ADHT_MAX_PACKET_SIZE,
+    init_packet (buffer, sizeof (buffer),
                  ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                  my_address, ADDRESS_BITS, zero_address, 0, NULL, NULL);
   int hsize = ALLNET_SIZE_HEADER (hp);
@@ -190,11 +199,17 @@ int dht_update (struct socket_set * s, char ** message)
   int msize = ALLNET_MGMT_HEADER_SIZE (hp->transport);
   struct allnet_mgmt_dht * dhtp =
     (struct allnet_mgmt_dht *) (buffer + msize);
-  struct addr_info * entries = 
-    (struct addr_info *)
-      (((char *) dhtp) + sizeof (struct allnet_mgmt_dht));
+  struct addr_info * entries = (struct addr_info *) (&(dhtp->nodes[0]));
+  int send_3_2 = 0;
+#ifdef SUPPORT_3_2
+  send_3_2 = random_int (0, 127) >= 64;  /* 50% of the time */
+  struct allnet_mgmt_dht_3_2 * dhtp_3_2 =
+    (struct allnet_mgmt_dht_3_2 *) (buffer + msize);
+  if (send_3_2)
+    entries = (struct addr_info *) (&(dhtp_3_2->nodes[0]));
+#endif /* SUPPORT_3_2 */
   size_t total_header_bytes = (((char *) entries) - ((char *) hp));
-  size_t possible = (ADHT_MAX_PACKET_SIZE - total_header_bytes)
+  size_t possible = (sizeof (buffer) - total_header_bytes)
                   / sizeof (struct addr_info);
   int self = init_own_routing_entries (entries, 2, my_address, ADDRESS_BITS);
   if (self <= 0) { /* only send if we have one or more public IP addresses */
@@ -220,10 +235,17 @@ int dht_update (struct socket_set * s, char ** message)
   dhtp->num_dht_nodes = added;
   writeb64u (dhtp->timestamp, allnet_time ());
   size_t send_size = total_header_bytes + actual * sizeof (struct addr_info);
+  size_t ip_offset = (((char *) (&dhtp->sending_to_ip)) - buffer);
+  if (send_size > sizeof (buffer)) {
+    printf ("dht_update send_size %zd > %zd, truncating\n", 
+            send_size, sizeof (buffer));
+    send_size = sizeof (buffer);
+  }
   packet_to_string ((char *) hp, (int)send_size, "dht_update created", 1,
                     alog->b, alog->s);
   log_print (alog);
   *message = memcpy_malloc (buffer, (int) send_size, "dht_update");
+  *iap = (send_3_2 ? NULL : ((struct internet_addr *) (message + ip_offset)));
 #ifdef DEBUG_PRINT
   print_packet (packet, send_size, "dht_update packet", 1);
 #endif /* DEBUG_PRINT */
@@ -284,11 +306,16 @@ void dht_process (char * message, unsigned int msize,
   snprintf (alog->b, alog->s, "packet has %d entries, size %d\n", n, msize);
   log_print (alog);
 #endif /* DEBUG_PRINT */
+  struct addr_info * aip = dhtp->nodes;
   unsigned int expected_size = ALLNET_MGMT_HEADER_SIZE(hp->transport) + 
                                sizeof (struct allnet_mgmt_dht) + 
                                n * sizeof (struct addr_info);
-  if ((n < 1) || (msize < expected_size)) {
-    printf ("packet has %d entries, %d/%d size, nothing to add to DHT/pings\n",
+  if ((n >= 1) &&
+      (msize + sizeof (struct internet_addr) == expected_size)) {  /* 3.2 dht */
+    aip = (struct addr_info *) (((char *) aip) -
+                                sizeof (struct internet_addr));
+  } else if ((n < 1) || (msize < expected_size)) {
+    printf ("packet %d entries, %d/%d size, nothing to add to DHT/pings\n",
             n, msize, expected_size);
     return;
   }
@@ -296,7 +323,7 @@ void dht_process (char * message, unsigned int msize,
   /* found a valid dht packet */
   int i;
   for (i = 0; i < n_sender; i++) {
-    struct addr_info ai = dhtp->nodes [i];
+    struct addr_info ai = aip [i];
     if (! is_own_address (&ai)) {
       int validity = is_valid_address (&ai.ip);
       if (validity == 1) {
@@ -323,6 +350,16 @@ void dht_process (char * message, unsigned int msize,
           print_addr_info (&ai);
         }
       }
+    }
+  }
+  if (msize == expected_size) {
+  /* record my IP address as seen by the peer */
+    if (routing_add_external (dhtp->sending_to_ip) < 0) {
+      printf ("msize %d >= %d + %zd, routing_add_external failed at %zd\n",
+              msize, expected_size, sizeof (struct internet_addr),
+              ((char *) (&(dhtp->sending_to_ip))) - message);
+      print_packet (message, msize, NULL, 1);
+      print_buffer (message, msize, "packet", msize, 1);
     }
   }
 #ifdef DEBUG_PRINT

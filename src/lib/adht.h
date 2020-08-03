@@ -45,7 +45,10 @@ extern void dht_process (char * message, unsigned int msize,
 
 /* at the right time, create a DHT packet to send out my routing table
  * the socket set is used to send messages to potential DHT peers
- * returns the packet size */
-extern int dht_update (struct socket_set * s, char ** message);
+ * returns the packet size
+ * if successful, *iap (if not NULL) points into the message for the
+ * spot to save the the destination internet address before sending */
+extern int dht_update (struct socket_set * s,
+                       char ** message, struct internet_addr ** iap);
 
 #endif /* ADHT_H */

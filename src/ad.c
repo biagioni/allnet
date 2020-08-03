@@ -499,7 +499,8 @@ static int skip_this_packet (int priority)
 #endif /* THROTTLE_SENDING */
 
 /* send to a limited number of DHT addresses and to socket_send_out */
-static void send_out (const char * message, int msize, int max_addrs,
+static void send_out (const char * message, int msize,
+                      struct internet_addr * save_dest_address, int max_addrs,
                       const struct sockaddr_storage * except, /* may be NULL */
                       socklen_t elen,  /* should be 0 if except is NULL */
                       int priority, int throttle_and_count,
@@ -566,6 +567,11 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
         bytes_sent += 48;
 #endif /* THROTTLE_SENDING */
       }
+      if (save_dest_address != NULL) {
+        if (! (sockaddr_to_ia ((struct sockaddr *) (&dest), alen,
+                               save_dest_address)))
+          print_buffer (&dest, alen, "ad/send_out: unable to save", alen, 1);
+      }
       if (! socket_send_to_ip (sockfd, message, msize, dest, alen,
                                "ad.c/send_out")) {
         dht_send_error = 1;
@@ -586,7 +592,7 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
   struct sockaddr_storage * my_sent_to = ((sent_to == NULL) ? NULL :
                                           (sent_to + sent_index));
   int my_sent_num = minz (sent_available, sent_index);
-  socket_send_out (&sockets, message, msize, virtual_clock,
+  socket_send_out (&sockets, message, msize, save_dest_address, virtual_clock,
                    ((except == NULL) ? empty : *except), elen,
                    my_sent_to, &my_sent_num);
   if (dht_send_error)
@@ -605,13 +611,14 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
 static void update_dht ()
 {
   char * dht_message = NULL;
-  unsigned int msize = dht_update (&sockets, &dht_message);
+  struct internet_addr * iap = NULL;
+  unsigned int msize = dht_update (&sockets, &dht_message, &iap);
   if ((msize > 0) && (dht_message != NULL)) {
     struct sockaddr_storage sas;
     memset (&sas, 0, sizeof (sas));
     local_send (&sockets, dht_message, msize, ALLNET_PRIORITY_LOCAL_LOW,
                 virtual_clock, sas, 0);
-    send_out (dht_message, msize, ROUTING_DHT_ADDRS_MAX, NULL, 0,
+    send_out (dht_message, msize, iap, ROUTING_DHT_ADDRS_MAX, NULL, 0,
               ALLNET_PRIORITY_LOCAL_LOW, 0, NULL, NULL);
     free (dht_message);
   }
@@ -895,7 +902,7 @@ static struct message_process process_mgmt (struct socket_read_result *r)
                                ALLNET_PRIORITY_TRACE, r->sock,
                                r->from, r->alen);
         else
-          send_out (trace_reply, trace_reply_size, ROUTING_ADDRS_MAX,
+          send_out (trace_reply, trace_reply_size, NULL, ROUTING_ADDRS_MAX,
                     NULL, 0, ALLNET_PRIORITY_TRACE, 1, NULL, NULL);
       }
       save_or_record (trace_reply, trace_reply_size, ALLNET_PRIORITY_TRACE);
@@ -1174,7 +1181,7 @@ printf ("\n");
     struct sockaddr_storage sent_addrs [MAX_SENT_ADDRS];
 #undef MAX_SENT_ADDRS
     if (m.process & PROCESS_PACKET_OUT)
-      send_out (m.message, m.msize, ROUTING_ADDRS_MAX,
+      send_out (m.message, m.msize, NULL, ROUTING_ADDRS_MAX,
                 &(r.from), r.alen, m.priority, (! r.sock->is_local),
                 sent_addrs, &num_sent_addrs);
     else

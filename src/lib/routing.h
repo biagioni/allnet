@@ -27,9 +27,10 @@ extern int routing_top_dht_matches (const unsigned char * dest, int nbits,
                                     struct sockaddr_storage * result,
                                     socklen_t * alen, int max_matches);
 
-/* either adds or refreshes a DHT entry.
+/* either adds or refreshes a DHT entry/external IP address.
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
 extern int routing_add_dht (struct addr_info addr);
+extern int routing_add_external (struct internet_addr ip);
 
 /* expires old DHT entries that haven't been refreshed since the last call
  * and removes them from the socket set */

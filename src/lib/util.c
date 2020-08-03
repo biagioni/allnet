@@ -282,29 +282,53 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
     break;
   case ALLNET_MGMT_DHT:
     if (hsize < sizeof (struct allnet_mgmt_dht)) {
-      r += snprintf (to + r, minz (itsize, r), "peer size %d, min %zd\n",
+      r += snprintf (to + r, minz (itsize, r), "dht rcvd size %d, min %zd\n",
                      hsize, sizeof (struct allnet_mgmt_dht));
     } else {
       const struct allnet_mgmt_dht * dht = (const struct allnet_mgmt_dht *) hp;
       unsigned int needed = sizeof (struct allnet_mgmt_dht) +
                             dht->num_dht_nodes * sizeof (struct addr_info);
+      const struct addr_info * nodes = dht->nodes;
+      int print_status = 1;  /* normal print */
       if (hsize < needed) {
-        r += snprintf (to + r, minz (itsize, r), "dht size %d, needed %d\n",
-                       hsize, needed);
-      } else {
+        unsigned int full_needed = needed;
+        needed = sizeof (struct allnet_mgmt_dht_3_2) +
+                 dht->num_dht_nodes * sizeof (struct addr_info);
+        if (hsize < needed) {
+          r += snprintf (to + r, minz (itsize, r), "size %d, needed %d/%d\n",
+                         hsize, full_needed, needed);
+          print_status = 0;  /* already printed */
+        } else {  /* 2020/06/19: likely DHT version 3.2, print correctly */
+          const struct allnet_mgmt_dht_3_2 * dht32 =
+            (const struct allnet_mgmt_dht_3_2 *) hp;
+          nodes = dht32->nodes;
+          print_status = 2;  /* print without address */
+        }
+      }
+      if (print_status != 0) {
         char time_string [100];
+        char address_string [200];
         allnet_time_string (readb64 ((char *) (dht->timestamp)), time_string);
-        r += snprintf (to + r, minz (itsize, r), "dht %d+%d @%s ",
-                       dht->num_sender, dht->num_dht_nodes, time_string);
+        if ((print_status != 2) &&
+            (ia_to_string (&(dht->sending_to_ip), address_string,
+                           sizeof (address_string)))) {
+          /* remove the newline placed by ia_to_string */
+          address_string [strlen (address_string) - 1] = '\0';
+          r += snprintf (to + r, minz (itsize, r), "dht %d+%d @%s sent to %s ",
+                         dht->num_sender, dht->num_dht_nodes, time_string,
+                         address_string);
+        } else {
+          r += snprintf (to + r, minz (itsize, r), "dht %d+%d @%s ",
+                         dht->num_sender, dht->num_dht_nodes, time_string);
+        }
         int i;
         for (i = 0; i < dht->num_sender + dht->num_dht_nodes; i++) {
           char local [100];
-          ia_to_string (&(dht->nodes [i].ip), local, sizeof (local));
+          ia_to_string (&(nodes [i].ip), local, sizeof (local));
           char * nl = strchr (local, '\n');
           *nl = '\0';   /* segfault if no newline */
           r += snprintf (to + r, minz (itsize, r), "%s %s",
-                         b2su (dht->nodes [i].destination,
-                               ADDRESS_SIZE), local);
+                         b2su (nodes [i].destination, ADDRESS_SIZE), local);
           if (i + 1 < dht->num_sender + dht->num_dht_nodes)
             r += snprintf (to + r, minz (itsize, r), ", ");
         }

@@ -689,6 +689,7 @@ struct socket_send_data {
   int local_not_remote;
   const char * message;
   int msize;
+  struct internet_addr * save_dest_addr; /* may be NULL */
   unsigned long long int sent_time;
   struct sockaddr_storage except_to;
   socklen_t alen;
@@ -712,6 +713,15 @@ check_sav (sav, "socket_send_fun");
         (! is_loopback_ip ((struct sockaddr *) &(sav->addr), sav->alen)))
     return 1;  /* debugging: only send to local sockets */
 #endif /* TEST_TCP_ONLY */
+    if (ssd->save_dest_addr != NULL) {
+      memset (ssd->save_dest_addr, 0, sizeof (*(ssd->save_dest_addr)));
+      if (sock->is_global_v4 || sock->is_global_v6) {
+        if (! (sockaddr_to_ia ((struct sockaddr *) (&(sav->addr)), sav->alen,
+                               ssd->save_dest_addr)))
+          print_buffer (&(sav->addr), sav->alen,
+                        "socket_send_fun: unable to save", sav->alen, 1);
+      }
+    }
     if (send_on_socket (ssd->message, ssd->msize, ssd->sent_time,
                         sock->sockfd, sav, "socket_send_fun", NULL, -1, -1)) {
       if ((ssd->sent_addrs != NULL) && (ssd->sent_num < ssd->sent_available))
@@ -751,7 +761,7 @@ int socket_send_local (struct socket_set * s, const char * message, int msize,
   char buffer [ALLNET_MTU + 4];
   add_priority (message, msize, priority, buffer, sizeof (buffer));
   struct socket_send_data ssd =
-    { .message = buffer, .msize = msize + 4,
+    { .message = buffer, .msize = msize + 4, .save_dest_addr = NULL,
       .sent_time = sent_time, .alen = alen, .local_not_remote = 1, .error = 0,
       .sent_addrs = NULL, .sent_available = 0, .sent_num = 0 };
   memset (&(ssd.except_to), 0, sizeof (ssd.except_to));
@@ -766,14 +776,18 @@ int socket_send_local (struct socket_set * s, const char * message, int msize,
 /* if sent_to and num_sent are not NULL, *num_sent should have the
  * number of available entries in sent_to.  These will be filled
  * with the addresses to which we send, and the number of these is
- * placed back in *num_sent */
+ * placed back in *num_sent
+ * if save_dest_address is not NULL, the address to which we send is filled
+ * in each time before the packet is sent -- this may be useful if 
+ * the outgoing address is to be sent as part of the message */
 int socket_send_out (struct socket_set * s, const char * message,
-                     int msize, unsigned long long int sent_time,
+                     int msize, struct internet_addr * save_dest_address,
+                     unsigned long long int sent_time,
                      struct sockaddr_storage except_to, socklen_t alen,
                      struct sockaddr_storage * sent_to, int * num_sent)
 {
   struct socket_send_data ssd =
-    { .message = message, .msize = msize,
+    { .message = message, .msize = msize, .save_dest_addr = save_dest_address,
       .sent_time = sent_time, .alen = alen, .local_not_remote = 0, .error = 0,
       .sent_addrs = sent_to, .sent_num = 0,
       .sent_available = ((num_sent != NULL) ? *num_sent : 0) };
