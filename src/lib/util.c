@@ -92,6 +92,19 @@ int binary_log (unsigned long long int value)
   return 1 + binary_log (value / 2);
 }
 
+/* crash, generally creating a core dump.  If to_print is not NULL,
+ * prints it before crashing */
+void allnet_crash (const char * to_print)
+{
+  if (to_print != NULL)
+    printf ("intended allnet crash: %s\n\n", to_print);
+  else
+    printf ("intended allnet crash\n\n");
+  char * null_ptr = NULL;
+  /* next line should never print */
+  printf ("allnet crash: null pointer dereference, %c\n", *null_ptr);
+}
+
 /* same as print_buffer, but prints to the given string */
 int buffer_to_string (const char * buffer, unsigned int count,
                       const char * desc,

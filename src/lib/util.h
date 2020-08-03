@@ -345,6 +345,10 @@ extern ssize_t minzs (ssize_t from, ssize_t subtract);
  */
 extern int binary_log (unsigned long long int value);
 
+/* crash, generally creating a core dump.  If to_print is not NULL,
+ * prints it before crashing */
+extern void allnet_crash (const char * to_print);
+
 #ifdef linux
 #ifndef ANDROID  /* android is linux, but doesn't have getifaddrs (yet) */
 #define ALLNET_NETPACKET_SUPPORT
