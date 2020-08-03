@@ -37,8 +37,7 @@ static void unlock (const char * caller)
 
 static void debug_crash ()
 {
-  char * p = NULL;
-  printf ("now crashing: %d\n", *p);
+  allnet_crash ("sockets.c debug_crash");
 }
 
 void print_sav_to_fd (struct socket_address_validity * sav, int fd)

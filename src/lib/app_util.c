@@ -129,8 +129,7 @@ static int send_with_priority (const char * message, int msize, unsigned int p)
   if (internal_sockfd < 0) {
     printf ("send_with_priority: unininitialzed socket %d, ls %lld\n",
             internal_sockfd, last_sent);
-    char * pq = NULL;
-    printf ("crashing %d\n", *pq);
+    allnet_crash ("app_util.c send_with_priority");
     return 0;
   }
   char copy [SOCKET_READ_MIN_BUFFER];
@@ -202,8 +201,7 @@ ECONNREFUSED, ECONNRESET, ENOTCONN, EBADF, ENOTSOCK);
       if ((r < 0) && (errno != EAGAIN) && (errno != EWOULDBLOCK)) {
         error_desc = "connect_once recv";
 #ifndef __IPHONE_OS_VERSION_MIN_REQUIRED  /* normal on iOS after restarting */
-        char * pq = NULL;
-        printf ("%d\n", *pq);
+        allnet_crash ("app_util.c connect_once recv error");
 #endif /* __IPHONE_OS_VERSION_MIN_REQUIRED */
         break;
       }

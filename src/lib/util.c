@@ -285,7 +285,10 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
           char local [100];
           ia_to_string (amp->peers + i, local, sizeof (local));
           char * nl = strchr (local, '\n');
-          *nl = '\0';   /* segfault if no newline */
+          if (nl == NULL)
+            allnet_crash ("allnet_mgmt_peers: no newline from ia_to_string");
+          else
+            *nl = '\0';
           r += snprintf (to + r, minz (itsize, r), "%s", local);
           if (i + 1 < amp->num_peers)
             r += snprintf (to + r, minz (itsize, r), ", ");
@@ -339,7 +342,10 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
           char local [100];
           ia_to_string (&(nodes [i].ip), local, sizeof (local));
           char * nl = strchr (local, '\n');
-          *nl = '\0';   /* segfault if no newline */
+          if (nl == NULL)
+            allnet_crash ("allnet_mgmt_dht: no newline from ia_to_string");
+          else
+            *nl = '\0';
           r += snprintf (to + r, minz (itsize, r), "%s %s",
                          b2su (nodes [i].destination, ADDRESS_SIZE), local);
           if (i + 1 < dht->num_sender + dht->num_dht_nodes)
