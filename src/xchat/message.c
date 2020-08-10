@@ -725,13 +725,23 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
         i++;
       }
     } else if (add) {
+      struct cache_entry * old_cache = cache;
+      int old_cache_alloc = cache_alloc;
       if ((cache_alloc < cache_used + 1) || (cache == NULL)) {
         cache_alloc = 10 + cache_alloc * 2;  /* cache size only grows */
+        /* if cache is null, realloc is the same as malloc */
         cache = realloc (cache, sizeof (struct cache_entry) * cache_alloc);
       }
-      cache [cache_used].first = seq;
-      cache [cache_used].last = seq;
-      cache_used++;
+      if (cache != NULL) {  /* realloc succeded */
+        cache [cache_used].first = seq;
+        cache [cache_used].last = seq;
+        cache_used++;
+      } else {              /* realloc failed, use the old cache */
+        printf ("message.c is_in_cache: realloc %zd failed\n",
+                sizeof (struct cache_entry) * cache_alloc);
+        cache = old_cache;
+        cache_alloc = old_cache_alloc;
+      }
     }
 #ifdef DEBUG_PRINT
     if (cache_used > 0) {
