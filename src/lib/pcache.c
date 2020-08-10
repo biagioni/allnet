@@ -454,7 +454,12 @@ static void read_messages_file ()
   if ((size > 0) && (data != NULL)) {  /* check and create mid */
     ssize_t min_size = get_size_from_file (1, 8 * min_hash_file_size);
     if (size < min_size) {  /* extend to min size */
-      data = realloc (data, min_size);
+      char * new_data = realloc (data, min_size);
+      if (new_data == NULL) {
+        free (data);
+        return;
+      }
+      data = new_data;
       memset (data + size, 0, min_size - size);
       size = min_size;
     }
