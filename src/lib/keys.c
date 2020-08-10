@@ -2846,6 +2846,8 @@ static void init_bc_keys ()
 static void assign_lang_bits (char * p, int length,
                               char ** language, int * matching_bits)
 {
+  if ((p == NULL) || (length < 0))
+    return;
   if (isalpha (*p)) {
     if (language != NULL) {
       *language = memcpy_malloc (p, length + 1, "parse_ahra language");
@@ -2896,8 +2898,13 @@ int parse_ahra (const char * ahra,
   }
   if (phrase != NULL) {
     int len = (int)(middle - ahra) + 1;
-    *phrase = memcpy_malloc (ahra, len, "parse_ahra phrase");
-    (*phrase) [len - 1] = '\0';
+    if (len > 0) {
+      *phrase = memcpy_malloc (ahra, len, "parse_ahra phrase");
+      (*phrase) [len - 1] = '\0';
+    } else {
+      if (reason != NULL) *reason = "AHRA middle same as ahra";
+      return 0;
+    }
   }
   char * p = middle + 1;
   if ((*p) == '\0') {
@@ -2987,14 +2994,6 @@ static char * make_address (allnet_rsa_pubkey key, int key_bits,
       if (bitstring_matches ((unsigned char *) encrypted, j,
                              (unsigned char *) hash, hashpos, bitstring_bits)) {
         match_pos [nmatches++] = j;
-/*
-        printf ("match %d found at encr bit %d hash bit %d, bitstring: ",
-                i, j, hashpos);
-        print_buffer (hash + (hashpos / 8), (bitstring_bits + 7) / 8, NULL,
-                      10, 1);
-        print_buffer (encrypted + (j / 8), 10, "encrypted buffer:", 10, 1);
-        printf ("%d matches\n", nmatches);
-*/
         found = 1;
         break;   /* end the inner loop */
       }
@@ -3002,12 +3001,6 @@ static char * make_address (allnet_rsa_pubkey key, int key_bits,
     if (! found)
       break;     /* not found, end the outer loop */
   }
-/*
-  if (nmatches >= min_bitstrings) {
-    print_buffer (encrypted, esize, "encrypted", esize, 1);
-    printf ("matched %d bitstrings, %d needed\n", nmatches, min_bitstrings);
-  }
-*/
   free (encrypted);
   if (nmatches < min_bitstrings)
     return NULL;
