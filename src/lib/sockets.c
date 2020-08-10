@@ -314,7 +314,12 @@ static struct socket_address_validity *
   int index = sock->num_addrs;
   sock->num_addrs++;
   int size = sock->num_addrs * sizeof (struct socket_address_validity);
-  sock->send_addrs = realloc (sock->send_addrs, size);
+  struct socket_address_validity * new_sa = realloc (sock->send_addrs, size);
+  if (new_sa == NULL) {   /* keep the old send_addrs */
+    printf ("sockets.c socket_address_add, realloc failed\n");
+    return NULL;
+  }
+  sock->send_addrs = new_sa;
   sock->send_addrs [index] = addr;
   check_sav (sock->send_addrs + index, "return value from saal");
   return sock->send_addrs + index;
