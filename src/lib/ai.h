@@ -87,12 +87,13 @@ extern int interface_broadcast_addrs (struct sockaddr_storage ** addrs);
  * allnet_dns sends a query for each of the names to each server
  *    in /etc/hosts.  When it gets a valid response, it calls the
  *    callback with the original name, the corresponding id, and the address.
+ *    valid is all zeros if there is no address for the name (RCODE=3)
  *    allnet_dns itself returns after it gets all its responses, or when
  *    it times out, usually after 10-20s.
  *    allnet_dns returns the number of addresses found, or 0 for errors
  */
 extern int allnet_dns (const char ** names, const int * callback_ids, int count,
-                       void (* callback) (const char * name, int id,
+                       void (* callback) (const char * name, int id, int valid,
                                           const struct sockaddr * addr));
 
 /* test whether this address is syntactically valid address (e.g.

@@ -45,13 +45,16 @@ static char my_address [ADDRESS_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0};
 
 /* some of these domain names may not be defined, but at least some should be */
 /* in case DNS is broken, we include the current IPv4 address for alnt.org */
-static char * default_dns [] =
+static const char * default_dns [] =
   { "a0.alnt.org", "a1.alnt.org", "a2.alnt.org", "a3.alnt.org",
     "a4.alnt.org", "a5.alnt.org", "a6.alnt.org", "a7.alnt.org",
     "a8.alnt.org", "a9.alnt.org", "aa.alnt.org", "ab.alnt.org",
     "ac.alnt.org", "ad.alnt.org", "ae.alnt.org", "af.alnt.org",
     "45.61.48.146" };
 #define NUM_DEFAULTS	((sizeof (default_dns)) / (sizeof (char *)))
+/* these defaults initially have family set to zero.  The family is set
+ * to the correct value (AF_INET or AF_INET6) if the address is known,
+ * and to AF_APPLETALK otherwise. */
 struct sockaddr_storage ip4_defaults [NUM_DEFAULTS];
 struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
 
@@ -197,11 +200,18 @@ static int already_listed (struct sockaddr_storage * sap,
 
 /* ID is a number 0..NUM_DEFAULTS-1 -- NUM_DEFAULTS - 1 refers to ID 0. */
 /* the name is ignored -- it is only here because allnet_dns provides it */
-static void routing_add_dht_sockaddr (const char * name, int id,
+static void routing_add_dht_sockaddr (const char * name, int id, int valid,
                                       const struct sockaddr * ip_addr)
 {
-  if (id >= NUM_DEFAULTS - 1)
-    id = 0;
+  if ((id >= NUM_DEFAULTS) || (id < 0))
+    return;
+  if (! valid) {
+    if (ip_addr->sa_family == AF_INET)
+      ip4_defaults [id].ss_family = AF_APPLETALK;
+    if (ip_addr->sa_family == AF_INET6)
+      ip6_defaults [id].ss_family = AF_APPLETALK;
+    return;
+  }
   struct addr_info addr;
   memset (&addr, 0, sizeof (addr));
   if (ip_addr->sa_family == AF_INET) {
@@ -209,10 +219,14 @@ static void routing_add_dht_sockaddr (const char * name, int id,
     memset (addr.ip.ip.s6_addr + 10, 0xff, 2);
     memcpy (addr.ip.ip.s6_addr + 12, &(sin->sin_addr.s_addr), 4);
     addr.ip.ip_version = 4;
+    memset (ip4_defaults + id, 0, sizeof (ip4_defaults [id]));
+    memcpy (ip4_defaults + id, ip_addr, sizeof (struct sockaddr_in));
   } else if (ip_addr->sa_family == AF_INET6) {
     const struct sockaddr_in6 * sin = (const struct sockaddr_in6 *) ip_addr;
     memcpy (addr.ip.ip.s6_addr, sin->sin6_addr.s6_addr, 16);
     addr.ip.ip_version = 6;
+    memset (ip6_defaults + id, 0, sizeof (ip6_defaults [id]));
+    memcpy (ip6_defaults + id, ip_addr, sizeof (struct sockaddr_in6));
   }
   if ((addr.ip.ip_version != 4) && (addr.ip.ip_version != 6)) {
     printf ("error: routing_add_dht_sockaddr IP version %d\n",
@@ -306,7 +320,7 @@ static void save_peers ()
 /* allnet_dns typically takes 10-20s, so this is run as a separate thread */
 static void * init_default_dns (void * arg)
 {
-  /* there is no point to multiple dns threads running at the same time */
+  /* there is no point to running multiple dns threads at the same time */
   static pthread_mutex_t only_one_thread_at_a_time = PTHREAD_MUTEX_INITIALIZER;
   if (pthread_mutex_trylock (&only_one_thread_at_a_time) != 0)
     return NULL;
@@ -318,16 +332,39 @@ static void * init_default_dns (void * arg)
     ip6_defaults [i].ss_family = 0;
     indices [i] = i;
   }
+  char * * default_dns_copy = malloc_or_fail (sizeof (default_dns),
+                                              "default_dns_copy");
+  memcpy (default_dns_copy, default_dns, sizeof (default_dns));
+  int num_defaults = NUM_DEFAULTS;
   int sleep_sec = 10;
-  while (allnet_dns ((const char * *)default_dns, indices, NUM_DEFAULTS,
-                     routing_add_dht_sockaddr) == 0) {
+  while (num_defaults > 0) {
+    for (i = 0; i < num_defaults; /* i++ or num_defaults-- */ ) {
+      if ((ip4_defaults [indices [i]].ss_family == AF_INET) ||
+          (ip6_defaults [indices [i]].ss_family == AF_INET6) ||
+/* AF_APPLETALK is used to show that there is no such address */
+          ((ip4_defaults [indices [i]].ss_family == AF_APPLETALK) &&
+           (ip6_defaults [indices [i]].ss_family == AF_APPLETALK))) { 
+        /* received some sort of response, stop trying for this one */
+        num_defaults--;
+        default_dns_copy [i] = default_dns_copy [num_defaults];
+        indices [i] = indices [num_defaults];
+      } else {   /* no response received, keep this entry */
+        i++;
+      }
+    }
+    if (num_defaults <= 0)
+      break;
+    allnet_dns ((const char **) default_dns_copy, indices, num_defaults,
+                routing_add_dht_sockaddr);
     sleep (sleep_sec);
     if (sleep_sec < 600)   /* once every 10 min or so */
       sleep_sec = sleep_sec + sleep_sec;
   }
+  free (default_dns_copy);
 #ifdef DEBUG_PRINT
   for (i = 0; i < NUM_DEFAULTS; i++) {
     printf ("%d: (4 and 6): ", i);
+    }
     if (ip4_defaults [i].ss_family == 0)
       printf ("no ipv4");
     else
@@ -907,6 +944,7 @@ int routing_add_dht (struct addr_info addr)
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
 int routing_add_external (struct internet_addr ip)
 {
+printf ("starting routing_add_external\n");
   /* sanity checks first */
   int v = is_valid_address (&ip);
   if ((v != 1) && (v != -1)) {
@@ -942,6 +980,7 @@ int routing_add_external (struct internet_addr ip)
       if (same_aip (&(self_addr [i].ai), &ai)) {
         self_addr [i].freshness = self_addr_init;
         pthread_mutex_unlock (&mutex);
+printf ("routing_add_external already found address\n");
         return 0;
       }
       if (least_freshness > self_addr [i].freshness) {
@@ -969,6 +1008,7 @@ int routing_add_external (struct internet_addr ip)
   self_addr [free_index].ai = ai;
   self_addr [free_index].freshness = self_addr_init;
   pthread_mutex_unlock (&mutex);
+printf ("successful completion of routing_add_external\n");
   return 1;
 }
 

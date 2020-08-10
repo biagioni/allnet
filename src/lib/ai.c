@@ -131,6 +131,7 @@ int ia_to_sockaddr (const struct internet_addr * ia,
       *salen = sizeof (struct sockaddr_in);
   } else {   /* not found */
     printf ("coding error: internet_addr has version %d\n", ia->ip_version);
+    print_buffer (ia, sizeof (struct internet_addr), NULL, 1000, 1);
     return 0;
   }
   return 1;
@@ -1112,7 +1113,7 @@ static int
                 const struct sockaddr_storage * from, socklen_t flen,
                 int min_dns_id, int num_dns_ids,
                 const struct sockaddr_storage * servers, int nservers,
-                void (* callback) (const char * name, int id,
+                void (* callback) (const char * name, int id, int valid,
                                    const struct sockaddr * addr),
                 const char ** names, const int * callback_ids, int count)
 {
@@ -1120,13 +1121,17 @@ static int
   print_buffer (response, received, "received response", received, 1);
 #endif /* DEBUG_PRINT */
   int found_sender = 0;
+  const struct sockaddr * debug_sender = NULL;
+  int debug_alen = sizeof (struct sockaddr_in);
   int i;
   for (i = 0; i < nservers; i++) {
     socklen_t alen = sizeof (struct sockaddr_in);
     if (servers [i].ss_family == AF_INET6)
       alen = sizeof (struct sockaddr_in6);
+    debug_alen = alen;
     if (same_sockaddr (from, flen, servers + i, alen)) {
       found_sender = 1;
+      debug_sender = (const struct sockaddr *) (servers + i);
       break;
     }
   }
@@ -1146,15 +1151,18 @@ static int
             min_dns_id, min_dns_id + num_dns_ids + 1);
     return 0;
   }
-  if ((readb16 (response + 2) & 0xFA0F) != 0x8000) {
-    /* 0x8000 means response, not truncated, no error */
+  /* 0x8000 means response, not truncated, no error */
+  int correct_answer = ((readb16 (response + 2) & 0xFA0F) == 0x8000);
+  /* 0x8003 means response, not truncated, no such name */
+  int no_such_name   = ((readb16 (response + 2) & 0xFA0F) == 0x8003);
+  if ((! correct_answer) && (! no_such_name)) {
 #ifdef DEBUG_PRINT
     printf ("dns received bad code %x\n", readb16 (response + 2));
 #endif /* DEBUG_PRINT */
     return 0;
   }
   int num_answers = readb16 (response + 6);
-  if ((readb16 (response + 4) != 1) || (num_answers < 1)) {
+  if ((readb16 (response + 4) != 1) || (correct_answer && (num_answers < 1))) {
 #ifdef DEBUG_PRINT
     printf ("dns received %d questions, %d answers\n",
             readb16 (response + 4), num_answers);
@@ -1162,7 +1170,7 @@ static int
     return 0;
   }
   /* save the name */
-  char original_name [256];
+  char original_name [512];
   int name_ptr = 0;
   int response_pos = DNS_HEADER_SIZE;
   while (response_pos < received) {
@@ -1192,57 +1200,91 @@ static int
     printf ("dns response for %s, not found in name list\n", original_name);
     return 0;
   }
+  if (no_such_name) {
+    struct sockaddr_storage sas;
+    memset (&sas, 0, sizeof (sas));
+    struct sockaddr * sap = (struct sockaddr *) &sas;
+    if (response_pos + 4 >= received) {
+      int type = readb16 (response + response_pos);
+      if (type == 1)         /* ipv4 */
+        sas.ss_family = AF_INET;
+      else if (type == 28)   /* ipv6 */
+        sas.ss_family = AF_INET6;
+    }  /* else ss_family is 0 */
+#ifdef DEBUG_PRINT
+    printf ("no such name: calling DNS callback for [%d] %s/%d\n",
+            name_index, names [name_index], callback_ids [name_index]);
+    print_buffer (response, (int)received, "received response", 512, 1);
+#endif /* DEBUG_PRINT */
+    callback (names [name_index], callback_ids [name_index], 0, sap);
+    return 0;
+  }
   if (response_pos + 4 > received) {
     printf ("dns response size %zd, end of query name %d\n",
             received, response_pos);
-    print_buffer (response, (int)received, "received response",
-                  (int)received, 1);
+    print_buffer (response, (int)received, "received response", 512, 1);
     return 0;
   }
-  size_t answer_start = response_pos + 4;
+  size_t answer_start = response_pos + 4;  /* after type/class of query */
+  size_t answer_fixed = answer_start + 2;  /* in the common case c00c */
   int num_found = 0;
   while ((answer_start + 10 <= received) && (num_found < num_answers)) {
     if (readb16 (response + answer_start) != 0xc00c) {  /* unusual */
-      printf ("dns answer at offset %zd is %04x not 0xc00c\n", answer_start,
-              readb16 (response + answer_start));
-      print_buffer (response, (int)received, "received response",
-                    (int)received, 1);
-      return num_found;
+      int query_size = response_pos - DNS_HEADER_SIZE;
+      if (memcmp (response + answer_start, response + DNS_HEADER_SIZE,
+                  query_size + 4) == 0) {
+        /* server repeated query in answer */
+        answer_fixed = answer_start + query_size;
+      } else {
+        printf ("memcmp (%p, %p, %d) == %d\n",
+                response + answer_start, response + DNS_HEADER_SIZE,
+                query_size,
+                memcmp (response + answer_start, response + DNS_HEADER_SIZE,
+                        query_size));
+        printf ("dns answer at offset %zd is %04x not 0xc00c\n", answer_start,
+                readb16 (response + answer_start));
+        print_buffer (response, (int)received, "received response",
+                      (int)received, 1);
+        printf ("from: ");
+        print_sockaddr ((struct sockaddr *)debug_sender, debug_alen);
+        printf ("\n");
+        return num_found;
+      }
     }
-    int type = readb16 (response + answer_start + 2);
+    int type = readb16 (response + answer_fixed);
     struct sockaddr_storage sas;
     memset (&sas, 0, sizeof (sas));
     struct sockaddr * sap = (struct sockaddr *) &sas;
     struct sockaddr_in * sinp = (struct sockaddr_in *) &sas;
     struct sockaddr_in6 * sin6p = (struct sockaddr_in6 *) &sas;
-    if ((type == 28) && (answer_start + 22 <= received)) {   /* ipv6 */
+    if ((type == 28) && (answer_fixed + 20 <= received)) {   /* ipv6 */
       sin6p->sin6_family = AF_INET6;
-      memcpy (&(sin6p->sin6_addr), response + answer_start + 12, 16);
+      memcpy (&(sin6p->sin6_addr), response + answer_fixed + 10, 16);
       sin6p->sin6_port = htons (ALLNET_PORT);
 #ifdef DEBUG_PRINT
-      printf ("success: calling DNS callback for %s, IPv6, ",
-              names [name_index]);
+      printf ("success: calling DNS callback for [%d] %s/%d, IPv6, ",
+              name_index, names [name_index], callback_ids [name_index]);
       print_sockaddr (sap, sizeof (struct sockaddr_in6)); printf ("\n");
 #endif /* DEBUG_PRINT */
-      callback (names [name_index], callback_ids [name_index], sap);
+      callback (names [name_index], callback_ids [name_index], 1, sap);
       num_found++;
     } else if (type == 1) {   /* ipv4 */
       sinp->sin_family = AF_INET;
-      memcpy (&(sinp->sin_addr), response + answer_start + 12, 4);
+      memcpy (&(sinp->sin_addr), response + answer_fixed + 10, 4);
       sinp->sin_port = htons (ALLNET_PORT);
-      answer_start += 10;
+      answer_start = answer_fixed + 8;
 #ifdef DEBUG_PRINT
-      printf ("success: calling DNS callback for %s, IPv4, ",
-              names [name_index]);
+      printf ("success: calling DNS callback for [%d] %s/%d, IPv4, ",
+              name_index, names [name_index], callback_ids [name_index]);
       print_sockaddr (sap, sizeof (struct sockaddr_in)); printf ("\n");
 #endif /* DEBUG_PRINT */
-      callback (names [name_index], callback_ids [name_index], sap);
+      callback (names [name_index], callback_ids [name_index], 1, sap);
     } else {
       printf ("dns invalid type %d, answer_start %zd\n", type, answer_start);
       print_buffer (response, (int)received, "response", (int)received, 1);
       break;
     }
-    answer_start += readb16 (response + answer_start + 10) + 12;
+    answer_start += readb16 (response + answer_fixed + 8) + 12;
     num_found++;
   }
   return num_found;
@@ -1252,6 +1294,7 @@ static int
  * need to call DNS, and therefore immediately calls the callback. */
 static int callback_for_ips (const char * name, int callback_id,
                              void (* callback) (const char * name, int id,
+                                                int valid,
                                                 const struct sockaddr * addr))
 {
   char sockaddr_if_given [sizeof (struct in6_addr)];
@@ -1261,7 +1304,7 @@ static int callback_for_ips (const char * name, int callback_id,
     sin.sin_family = AF_INET;
     memcpy (&(sin.sin_addr), sockaddr_if_given, sizeof (sin.sin_addr));
     sin.sin_port = htons (ALLNET_PORT);
-    callback (name, callback_id, (struct sockaddr *) (&sin));
+    callback (name, callback_id, 1, (struct sockaddr *) (&sin));
     return 1;
   }
   if (inet_pton (AF_INET6, name, sockaddr_if_given) == 1) {
@@ -1270,7 +1313,7 @@ static int callback_for_ips (const char * name, int callback_id,
     sin.sin6_family = AF_INET6;
     memcpy (&(sin.sin6_addr), sockaddr_if_given, sizeof (sin.sin6_addr));
     sin.sin6_port = htons (ALLNET_PORT);
-    callback (name, callback_id, (struct sockaddr *) (&sin));
+    callback (name, callback_id, 1, (struct sockaddr *) (&sin));
     return 1;
   }
   return 0;
@@ -1285,12 +1328,13 @@ static int callback_for_ips (const char * name, int callback_id,
  * allnet_dns sends a query for each of the names to each server
  *    in /etc/hosts.  When it gets a valid response, it calls the 
  *    callback with the original name, the corresponding id, and the address.
+ *    valid is zero if there is no address for the name (RCODE=3)
  *    allnet_dns itself returns after it gets all its responses, or when
  *    it times out, usually after 10-20s.
  *    allnet_dns returns the number of addresses found, or 0 for errors
  */
 int allnet_dns (const char ** names, const int * callback_ids, int count,
-                void (* callback) (const char * name, int id,
+                void (* callback) (const char * name, int id, int valid,
                                    const struct sockaddr * addr))
 {
   if (count <= 0)
@@ -1316,11 +1360,10 @@ int allnet_dns (const char ** names, const int * callback_ids, int count,
 #endif /* DEBUG_PRINT */
   /* build the query packet */
   char query_packet [512];  /* RFC 1035, section 2.3.4, max UDP packet size */
-  memset (query_packet, 0, sizeof (query_packet));
   int npackets = 0;
-  writeb16 (query_packet + 2, 0x0100);   /* query, recursion desired */
-  writeb16 (query_packet + 4, 1);
-  int min_dns_id = (int)random_int (1, 65534 - nservers * count);
+  /* for each server for each name send up to 2 different query IDs (v4+v6) */
+  int max_actual_servers = ((nservers > 2) ? 2 : nservers);
+  int min_dns_id = (int)random_int (1, 65534 - max_actual_servers * count * 2);
   int num_dns_ids = 0;
   int in;
   for (in = 0; in < count; in++) {
@@ -1328,7 +1371,9 @@ int allnet_dns (const char ** names, const int * callback_ids, int count,
       continue;   /* resolved, go on to the next entry */
     int iaf;   /* ipv4 and ipv6 */
     for (iaf = 0; iaf < 2; iaf++) {
-      writeb16 (query_packet, min_dns_id + num_dns_ids);
+      memset (query_packet, 0, sizeof (query_packet));
+      writeb16 (query_packet + 2, 0x0100);   /* query, recursion desired */
+      writeb16 (query_packet + 4, 1);        /* one question, 0 answers etc */
       size_t offset = DNS_HEADER_SIZE;
       /* +2 for the root label and the length of the first label */
       size_t nlen = strlen (names [in]) + 2;
@@ -1337,6 +1382,7 @@ int allnet_dns (const char ** names, const int * callback_ids, int count,
       if (offset + qlen >= sizeof (query_packet))
       printf ("error: %zd + %zd >= %zd\n", offset, qlen, sizeof (query_packet));
 #endif /* DEBUG_PRINT */
+      /* we send exactly one query per packet */
       char * query = query_packet + offset;
       int clen = copy_dns_name (query, names [in],
                                 query_packet + DNS_HEADER_SIZE);
@@ -1344,16 +1390,22 @@ if (nlen != clen) printf ("error: nlen %zd, clen %d for %s\n", nlen, clen, names
       writeb16 (query + nlen, (iaf == 0) ? 1 : 28); /* A or AAAA */
       writeb16 (query + nlen + 2, 1);   /* query class 1, Internet */
       offset += qlen;
-      /* send the query packet to two randomly chosen servers */
-      int is = ((nservers <= 2) ? 0 : (int)(random_int (0, nservers - 2)));
-      for (is = 0; is < nservers; is++) {
-        int s = ((servers [is].ss_family == AF_INET) ? s4 : s6);
+      /* send the query packet to at most two randomly chosen servers */
+      int server_offset = ((nservers <= 2) ? 0 :
+                           (int)(random_int (0, nservers - 2)));
+      int is = 0;
+      for (is = 0; (is < nservers) && (is < 2); is++) {
+        writeb16 (query_packet, min_dns_id + num_dns_ids);
+        struct sockaddr_storage * this_server = servers + (is + server_offset);
+        int s = s4;
         socklen_t alen = sizeof (struct sockaddr_in);
-        if (servers [is].ss_family == AF_INET6)
+        if (this_server->ss_family == AF_INET) {
+          s = s6;
           alen = sizeof (struct sockaddr_in6);
+        }
         if (s >= 0) {
           ssize_t send_res = sendto (s, query_packet, offset, 0,
-                                     (struct sockaddr *) (servers + is), alen);
+                                     (struct sockaddr *) (this_server), alen);
           if (send_res != offset) {
             perror ("allnet_dns sendto");
             printf ("allnet_dns sendto %zd returned %zd\n", offset, send_res);
@@ -1362,8 +1414,9 @@ if (nlen != clen) printf ("error: nlen %zd, clen %d for %s\n", nlen, clen, names
             num_dns_ids++;
 #ifdef DEBUG_PRINT
             print_buffer (query_packet, offset, "sent", offset, 0);
-            print_buffer (servers + is, alen, " to", alen, 1);
+            print_buffer (this_server, alen, " to", alen, 1);
 #endif /* DEBUG_PRINT */
+            sleep_time_random_us (20 * 1000);  /* about 10ms between packets */
           }
         }
       }

@@ -119,9 +119,6 @@ static void * ping_all_pending (void * arg)
   if (n < MAX_MY_ADDRS)
     msize -= (MAX_MY_ADDRS - n) * sizeof (struct addr_info);
 #undef MAX_MY_ADDRS
-  struct allnet_mgmt_dht compute_offset;
-  size_t computed_offset = (((char *) (&compute_offset.sending_to_ip)) -
-                            ((char *) (&compute_offset)));
   int iter = 0;
   struct addr_info ai;
   while ((iter = routing_ping_iterator (iter, &ai)) >= 0) {
@@ -144,7 +141,7 @@ static void * ping_all_pending (void * arg)
       if (ai.ip.ip_version == 4)  /* sockfd_v4 is < 0, send on v6 socket */
         ai_embed_v4_in_v6 (&sas, &alen);
     }
-    memcpy (message + computed_offset, &(ai.ip), sizeof (ai.ip));
+    memcpy (&(mdp->sending_to_ip), &(ai.ip), sizeof (ai.ip));
     if (sockfd >= 0) {
       packet_to_string (message, msize, "ping_all_pending sending", 1,
                         alog->b, alog->s);
@@ -247,7 +244,7 @@ int dht_update (struct socket_set * s,
   *message = memcpy_malloc (buffer, (int) send_size, "dht_update");
   *iap = (send_3_2 ? NULL : ((struct internet_addr *) (message + ip_offset)));
 #ifdef DEBUG_PRINT
-  print_packet (packet, send_size, "dht_update packet", 1);
+  print_packet (*message, send_size, "dht_update packet", 1);
 #endif /* DEBUG_PRINT */
   static struct ping_all_args ping_arg = { .finished = 1, .nbits = 0,
                                            .sockfd_v6 = -1, .sockfd_v4 = -1 };
@@ -310,10 +307,18 @@ void dht_process (char * message, unsigned int msize,
   unsigned int expected_size = ALLNET_MGMT_HEADER_SIZE(hp->transport) + 
                                sizeof (struct allnet_mgmt_dht) + 
                                n * sizeof (struct addr_info);
+#ifdef DEBUG_PRINT
+  int is_3_2 = 0;
+#endif /* DEBUG_PRINT */
   if ((n >= 1) &&
       (msize + sizeof (struct internet_addr) == expected_size)) {  /* 3.2 dht */
-    aip = (struct addr_info *) (((char *) aip) -
-                                sizeof (struct internet_addr));
+    struct allnet_mgmt_dht_3_2 * dhtp_3_2 =
+      (struct allnet_mgmt_dht_3_2 *)
+        (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
+    aip = dhtp_3_2->nodes;
+#ifdef DEBUG_PRINT
+    is_3_2 = 1;
+#endif /* DEBUG_PRINT */
   } else if ((n < 1) || (msize < expected_size)) {
     printf ("packet %d entries, %d/%d size, nothing to add to DHT/pings\n",
             n, msize, expected_size);
@@ -352,21 +357,35 @@ void dht_process (char * message, unsigned int msize,
       }
     }
   }
-  if (msize == expected_size) {
+  if ((msize == expected_size) &&
+      /* all-zeros address is sensible sometimes, e.g. when sending locally */
+      (! memget (&dhtp->sending_to_ip, 0, sizeof (dhtp->sending_to_ip))) &&
+      (is_valid_address (&(dhtp->sending_to_ip)))) {
+print_buffer (&(dhtp->sending_to_ip), sizeof (dhtp->sending_to_ip),
+              "calling routing_add_external", 64, 1);
   /* record my IP address as seen by the peer */
     if (routing_add_external (dhtp->sending_to_ip) < 0) {
-      printf ("msize %d >= %d + %zd, routing_add_external failed at %zd\n",
-              msize, expected_size, sizeof (struct internet_addr),
+      printf ("msize %d == %d, routing_add_external failed at %zd\n",
+              msize, expected_size,
               ((char *) (&(dhtp->sending_to_ip))) - message);
       print_packet (message, msize, NULL, 1);
       print_buffer (message, msize, "packet", msize, 1);
     }
+else { printf ("msize %d == %d, routing_add_external succeded!\n", msize, expected_size); print_packet (message, msize, NULL, 1); print_buffer (message, msize, "packet", msize, 1); }
   }
+#ifdef DEBUG_PRINT
+    else if (! memget (&dhtp->sending_to_ip, 0, sizeof (dhtp->sending_to_ip))) {
+      printf ("msize %d =? %d, invalid address?, is_3_2 %d\n", msize,
+              expected_size, is_3_2);
+      print_packet (message, msize, NULL, 1);
+      print_buffer (message, msize, "packet", msize, 1);
+  }
+#endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
   print_dht (-1);
 #endif /* DEBUG_PRINT */
   for (i = 0; i < n_dht; i++) {
-    struct addr_info * ai = dhtp->nodes + n_sender + i;
+    struct addr_info * ai = aip + n_sender + i;
     if (! is_own_address (ai)) {
       struct sockaddr_storage ping_addr;
       struct sockaddr * pingp = (struct sockaddr *) (&ping_addr);
