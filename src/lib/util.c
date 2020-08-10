@@ -303,13 +303,15 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
     } else {
       const struct allnet_mgmt_dht * dht = (const struct allnet_mgmt_dht *) hp;
       unsigned int needed = sizeof (struct allnet_mgmt_dht) +
-                            dht->num_dht_nodes * sizeof (struct addr_info);
+                            (dht->num_sender + dht->num_dht_nodes) *
+                            sizeof (struct addr_info);
       const struct addr_info * nodes = dht->nodes;
       int print_status = 1;  /* normal print */
       if (hsize < needed) {
         unsigned int full_needed = needed;
         needed = sizeof (struct allnet_mgmt_dht_3_2) +
-                 dht->num_dht_nodes * sizeof (struct addr_info);
+                 (dht->num_sender + dht->num_dht_nodes) *
+                 sizeof (struct addr_info);
         if (hsize < needed) {
           r += snprintf (to + r, minz (itsize, r), "size %d, needed %d/%d\n",
                          hsize, full_needed, needed);
@@ -722,10 +724,15 @@ struct allnet_header *
   unsigned int alloc_size = ALLNET_SIZE (transport) + data_size;
   if (ack != NULL)
     alloc_size += MESSAGE_ID_SIZE;
-  char * result = malloc_or_fail (alloc_size, "util.c create_packet");
+  char * buffer = malloc_or_fail (alloc_size, "util.c create_packet");
   *size = alloc_size;
-  return init_packet (result, alloc_size, message_type, max_hops, sig_algo,
-                      source, sbits, dest, dbits, stream, ack);
+  struct allnet_header * result =
+    init_packet (buffer, alloc_size, message_type, max_hops, sig_algo,
+                 source, sbits, dest, dbits, stream, ack);
+  if (result != NULL)
+    return result;
+  free (buffer);
+  return NULL;
 }
 
 /* return a keepalive packet, which is in a static buffer
@@ -798,7 +805,12 @@ struct allnet_header *
   *size = 0;   /* in case of early return */
   unsigned int alloc_size = ALLNET_ACK_MIN_SIZE;
   char * buffer = malloc_or_fail (alloc_size, "util.c create_ack");
-  return init_ack (packet, ack, from, nbits, buffer, size);
+  struct allnet_header * result =
+    init_ack (packet, ack, from, nbits, buffer, size);
+  if (result != NULL)
+    return result;
+  free (buffer);
+  return NULL;
 }
 
 /* the same, without malloc.  buffer must have ALLNET_ACK_MIN_SIZE bytes,
