@@ -153,7 +153,7 @@ int trace_main (int argc, char ** argv)
     case 't': sleep = atoi_in_range (optarg, 1, 0, sleep, "seconds"); break;
     case 'h': nhops = atoi_in_range (optarg, 1, 255, nhops, "hops"); break;
     case 'l': minhops = atoi_in_range (optarg, 0, nhops, 0, "min hops"); break;
-    case 'c': caching = 0;
+    case 'c': caching = 0; break;
     default:
       trace_usage (argv [0]);
       exit (1);
