@@ -54,7 +54,7 @@ you can also set specific CFLAGS with, e.g.:
 
 additional packages you may need to install:
 	Java: openjdk-<version>-jre openjdk-<version>-jdk  -- current
-              version (September 2018) is 11, but 7, 8 and 9 may also work.
+              version (February 2021) is 14, but 7, 8, 9, 11 may also work.
         for Voice-over-Allnet (voa): libgstreamer-plugins-base1.0-dev
               gstreamer1.0-plugins-base gstreamer1.0-plugins-bad
               (these bring in many other dependencies)
