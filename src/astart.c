@@ -189,7 +189,6 @@ static void make_root_other (int verbose)
 #ifdef ALLNET_USE_FORK
 static void print_pid (int fd, int pid)
 {
-if ((pid <= 0) || (pid > 0xffff)) allnet_crash ("astart.c print_pid error");
   static int original_fd = -1; /* for debugging */
   char buffer [100];  /* plenty of bytes, easier than being exact */
   int len = snprintf (buffer, sizeof (buffer), "%d\n", pid);
