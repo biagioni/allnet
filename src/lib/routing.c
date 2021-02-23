@@ -50,7 +50,7 @@ static const char * default_dns [] =
     "a4.alnt.org", "a5.alnt.org", "a6.alnt.org", "a7.alnt.org",
     "a8.alnt.org", "a9.alnt.org", "aa.alnt.org", "ab.alnt.org",
     "ac.alnt.org", "ad.alnt.org", "ae.alnt.org", "af.alnt.org",
-    "45.61.48.146" };
+    "108.161.128.60" };
 #define NUM_DEFAULTS	((sizeof (default_dns)) / (sizeof (char *)))
 /* these defaults initially have family set to zero.  The family is set
  * to the correct value (AF_INET or AF_INET6) if the address is known,
@@ -944,7 +944,7 @@ int routing_add_dht (struct addr_info addr)
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
 int routing_add_external (struct internet_addr ip)
 {
-printf ("starting routing_add_external\n");
+printf ("starting routing_add_external for "); print_ia (&ip); printf ("\n");
   /* sanity checks first */
   int v = is_valid_address (&ip);
   if ((v != 1) && (v != -1)) {
