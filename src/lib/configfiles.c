@@ -103,8 +103,7 @@ static void init_global_root ()
         }
       }
       if (home_env == NULL) {
-        printf ("no home environment (%s), running without configs\n",
-                home_env);
+        printf ("no home environment, running without configs\n");
         global_root = NULL;
         return;
       }
