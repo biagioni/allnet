@@ -330,6 +330,7 @@ static void read_tokens_file ()
   memset (&tokens, 0, sizeof (tokens));
   /* initialize the local token */
   random_bytes (tokens.tokens [0], ALLNET_TOKEN_SIZE);
+  tokens.num_tokens = 1;   /* record that we have a local token */
   save_tokens = 1;
 }
 
@@ -338,6 +339,11 @@ static void write_tokens_file (int always)
 #ifndef PRINT_CACHE_FILES
   if ((! always) && (! save_tokens))
     return;
+  if (tokens.num_tokens <= 0) {
+    printf ("saving tokens file, but only has %d tokens, setting to 1\n",
+            tokens.num_tokens);
+    tokens.num_tokens = 1;         /* at least the local token */
+  }
   int fd = open_write_config ("acache", "token", 1);
   if (fd < 0)
     return;
@@ -533,15 +539,15 @@ static void write_messages_file (int always)
 }
 
 /* initialize and do any needed maintenance */
+static int pcache_init_maint_initialized = 0;
 static void pcache_init_maint ()
 {
-  static int initialized = 0;
-  if (! initialized) {
+  if (! pcache_init_maint_initialized) {
     mid_secret = random_int (0, (unsigned long long int) (-1));
     read_tokens_file ();
     read_hash_files ();
     read_messages_file ();
-    initialized = 1;
+    pcache_init_maint_initialized = 1;
   }
 /* save at least once when first called.  Further, save every 1-60 minutes */
   static unsigned long long int next_save = 0;
@@ -919,10 +925,11 @@ int pcache_trace_reply (const char * msg, int msize)
 /* save cached information to disk */
 void pcache_write (void)
 {
-  pcache_init_maint ();
-  write_tokens_file (1);
-  write_hash_files (1);
-  write_messages_file (1);
+  if (pcache_init_maint_initialized) {
+    write_tokens_file (1);
+    write_hash_files (1);
+    write_messages_file (1);
+  }
 }
 
 #ifdef PRINT_CACHE_FILES
@@ -972,7 +979,7 @@ static void print_tokens ()
   int i;
   for (i = 0; i < MAX_TOKENS; i++) {
     if (! memget (tokens.tokens [i], 0, ALLNET_TOKEN_SIZE)) {
-      if (i == 0) printf ("local token: "); else printf ("token %d: ", i);
+      if (i == 0) printf ("local token  "); else printf ("   token %2d  ", i);
       print_buffer (tokens.tokens [i], ALLNET_TOKEN_SIZE, NULL,
                     ALLNET_TOKEN_SIZE, 1);
     }
