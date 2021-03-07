@@ -802,8 +802,8 @@ static void save_or_record (const char * message, int msize, int priority)
  * be less than the original size */
 static int process_acks (struct allnet_header * hp, int size)
 {
-  char local_token [ALLNET_TOKEN_SIZE];
-  pcache_current_token (local_token);
+  unsigned char local_token [ALLNET_TOKEN_SIZE];
+  routing_local_token (local_token);
   char * acks = ALLNET_DATA_START (hp, hp->transport, size);
   char * message = (char *) hp;  /* header size computation must be in bytes */
   int num_acks = minz (size, (int)(acks - message)) / MESSAGE_ID_SIZE;
@@ -1007,7 +1007,7 @@ print_packet (r->message, r->msize, "received data request", 1);
                         request_buffer, sizeof (request_buffer));
       send_messages_to_one (cached_messages, r->sock, saddr, salen);
       /* replace the token in the message with our own token */
-      pcache_current_token ((char *) (req->token));
+      routing_local_token (req->token);
       /* and then do normal packet processing (forward) this data request */
     }
   }

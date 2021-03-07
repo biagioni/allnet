@@ -18,9 +18,6 @@
 #include "packet.h"
 #include "mgmt.h"
 
-/* fills in the first ALLNET_TOKEN_SIZE bytes of token with the current token */
-extern void pcache_current_token (char * token);
-
 /* return 1 for success, 0 for failure.
  * look inside a message and fill in its ID (MESSAGE_ID_SIZE bytes). */
 extern int pcache_message_id (const char * message, int msize, char * id);
@@ -79,12 +76,12 @@ extern int pcache_id_acked (const char * id, char * ack);
 /* return 1 if the ack has not yet been sent to this token,
  * and mark it as sent to this token.
  * otherwise, return 0 */
-extern int pcache_ack_for_token (const char * token, const char * ack);
+extern int pcache_ack_for_token (const unsigned char * token, const char * ack);
 
 /* call pcache_ack_for_token repeatedly for all these acks,
  * moving the new ones to the front of the array and returning the
  * number that are new (0 for none, -1 for errors) */
-extern int pcache_acks_for_token (const char * token,
+extern int pcache_acks_for_token (const unsigned char * token,
                                   char * acks, int num_acks);
 
 /* return 1 if the trace request/reply has been seen before, or otherwise

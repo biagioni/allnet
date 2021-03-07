@@ -47,8 +47,6 @@ static struct allnet_log * alog = NULL;
 #define SLEEP_MAX_THRESHOLD	240  /* seconds -- 4min */
 #define SLEEP_MAX		300  /* seconds -- 5min */
 
-static char global_token [ALLNET_TOKEN_SIZE];
-
 /* return a number between 1 and 10, with 1 twice as likely as 2,
  * 2 twice as likely as 3, and so on. */
 static int random_hop_count ()
@@ -98,7 +96,7 @@ static int send_data_request (int sock, int priority, char * start)
   struct allnet_data_request * adr =
     (struct allnet_data_request *)
        (ALLNET_DATA_START (hp, hp->transport, size));
-  memcpy (adr->token, global_token, sizeof (adr->token));
+  routing_local_token (adr->token);
   memset (adr->since, 0, sizeof (adr->since));
   if (start != NULL)
     memcpy (adr->since, start, ALLNET_TIME_SIZE);
@@ -177,42 +175,6 @@ static pthread_t request_thread;
 
 #endif /* HAVE_REQUEST_THREAD */
 
-static int read_token ()
-{
-  assert (ALLNET_TOKEN_SIZE == 16);/* this code only works for 16-byte tokens */
-  int fd = open_read_config ("xchat", "token", 1);
-  if (fd < 0)
-    return 0;  /* failed */
-  char * content = NULL;
-  if ((read_fd_malloc (fd, &content, 1, 1, NULL) < 0) || (content == NULL))
-    return 0;  /* failed */
-  long long int token_high, token_low;
-  int found = sscanf (content, "%llx %llx", &token_high, &token_low);
-  if (found != 2) {
-    printf ("only found %d token parts (expected 2) in '%s'\n",
-            found, content);
-    return 0;  /* failed */
-  }
-  writeb64 (global_token, token_high);     /* big-endian */
-  writeb64 (global_token + 8, token_low);
-  free (content);
-  return 1;
-}
-
-static void save_token ()
-{
-  assert (ALLNET_TOKEN_SIZE == 16);/* this code only works for 16-byte tokens */
-  int fd = open_write_config ("xchat", "token", 1);
-  if (fd < 0)
-    return;  /* failed */
-  char buffer [100];
-  snprintf (buffer, sizeof (buffer), "%llx %llx",
-            readb64 (global_token), readb64 (global_token + 8));
-  if (write (fd, buffer, strlen (buffer)) != strlen (buffer))
-    perror ("save_token write");
-  close (fd);
-}
-
 /* returns the socket if successful, -1 otherwise */
 int xchat_init (const char * arg0, const char * path)
 {
@@ -226,10 +188,6 @@ int xchat_init (const char * arg0, const char * path)
   if (setsockopt (sock, SOL_SOCKET, SO_NOSIGPIPE, &option, sizeof (int)) != 0)
     perror ("xchat_init setsockopt nosigpipe");
 #endif /* SO_NOSIGPIPE */
-  if (! read_token ()) {
-    random_bytes (global_token, sizeof (global_token));
-    save_token ();
-  }
 #ifdef HAVE_REQUEST_THREAD
   int * arg = malloc_or_fail (sizeof (int), "xchat_init");
   *arg = sock;

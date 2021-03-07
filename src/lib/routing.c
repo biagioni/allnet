@@ -1420,3 +1420,38 @@ void routing_save_peers ()
     save_peers ();
   pthread_mutex_unlock (&mutex);
 }
+
+/* if token is not NULL, this call fills its ALLNET_TOKEN_SIZE bytes */
+/* if it is NULL, this call generates a new token */ 
+/* tokens are saved in ~/.allnet/acache/local_token */
+void routing_local_token (unsigned char * token) {
+  static int initialized = 0;
+  static char local_token [ALLNET_TOKEN_SIZE];
+  int create_random_token = (token == NULL);
+  if ((! initialized) && (! create_random_token)) {
+    int fd = open_read_config ("acache", "local_token", 0);
+    if (fd < 0) {   /* create a new token */
+      create_random_token = 1;
+    } else {        /* try to read an existing token */
+      ssize_t n = read (fd, local_token, sizeof (local_token));
+      if (n != sizeof (local_token)) {
+        perror ("read of local token");
+        create_random_token = 1;
+      }
+      close (fd);
+    }
+  }
+  initialized = 1;
+  if (create_random_token) {
+    random_bytes (local_token, sizeof (local_token));
+print_buffer (local_token, ALLNET_TOKEN_SIZE, "generated new token", 100, 1);
+    int fd = open_write_config ("acache", "local_token", 1);
+    if (fd >= 0) {
+      ssize_t n = write (fd, local_token, sizeof (local_token));
+      if (n != sizeof (local_token))
+        perror ("write of local token");
+    }
+  }
+  if (token != NULL)
+    memcpy (local_token, token, ALLNET_TOKEN_SIZE);
+}
