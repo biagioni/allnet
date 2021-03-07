@@ -26,7 +26,7 @@
 /* implementation: acks are simple, a hash table, both on disk and in memory
  * the same for message IDs that we save (via pcache_record_packet),
  * and for trace requests and replies
- * likewise tokens are saved, with first the local token, then the others.
+ * likewise tokens are saved.  (the local token is handled separately)
  *
  * actual messages are stored sequentially in order of decreasing priority.
  * and their IDs are also stored in the mid_table.
@@ -67,12 +67,13 @@ static unsigned long long int trc_secret = 0;
 #define MAX_TOKENS	64	/* external tokens.  The list of which tokens
                                    we have sent to can be saved in a uint64_t */
 struct tokens {  /* format saved on file and in memory */
-  /* first token is the local token */
   char tokens [MAX_TOKENS] [ALLNET_TOKEN_SIZE];
   char num_tokens;
+  char most_recent_token;  /* when we run out of space, we clear from here */
 };
 
-static struct tokens tokens = { .num_tokens = 0 };
+static struct tokens tokens = { .num_tokens = 0,
+                                .most_recent_token = MAX_TOKENS - 1 };
 
 static int save_tokens = 0;
 static int save_ack_hashes = 0;
@@ -134,7 +135,7 @@ static struct message_header * next_message (struct message_header * hp)
 }
 
 /* return -1 if not found, the token index otherwise */
-static int token_find_index (const char * token)
+static int token_find_index (const unsigned char * token)
 {
   if ((token == NULL) || (memget (token, 0, ALLNET_TOKEN_SIZE)))
     return -1;   /* all-zeros token is never found */
@@ -146,41 +147,45 @@ static int token_find_index (const char * token)
   return -1; /* token not found */
 }
 
-static int add_token (const char * token)
+static int add_token (const unsigned char * token)
 {
   if ((token == NULL) || (memget (token, 0, ALLNET_TOKEN_SIZE))) {
     printf ("error in add_token: %p\n", token);
     crash ("error in add_token");
   }
   save_tokens = 1;
-  if (tokens.num_tokens >= MAX_TOKENS) {
-    const int offset = MAX_TOKENS / 4;  /* 16 */
-    int i;
-    for (i = offset; i < tokens.num_tokens; i++)
-      memcpy (tokens.tokens [i - offset], tokens.tokens [i], ALLNET_TOKEN_SIZE);
-    tokens.num_tokens -= offset;
+  int token_index = (tokens.most_recent_token + 1) % MAX_TOKENS;
+  if ((tokens.num_tokens == MAX_TOKENS) && (token_index % 8 == 0)) {
+    /* discard the next 8 tokens, clearing the corresponding byte
+     * in all the records */
+    printf ("clearing tokens %d..%d\n", token_index, token_index + 7);
+    memset (tokens.tokens + token_index, 0, 8 * ALLNET_TOKEN_SIZE);
     /* adjust all the sent_to_tokens fields */
+    int byte_index = token_index / 8;
+    int i;
     for (i = 0; i < num_ack; i++)
       if (ack_table [i].used)
-        ack_table [i].sent_to_tokens >>= offset;
+        ((char *)(&ack_table [i].sent_to_tokens)) [byte_index] = 0;
     for (i = 0; i < num_trc; i++)
       if (trc_table [i].used)
-        trc_table [i].sent_to_tokens >>= offset;
+        ((char *)(&trc_table [i].sent_to_tokens)) [byte_index] = 0;
     for (i = 0; i + sizeof (struct message_header) <= msg_table_size; ) {
       char * p = (char *) msg_table;
       struct message_header * hp = (struct message_header *) (p + i);
       if (hp->length == 0)  /* last message, used as a sentinel */
         break;
-      hp->sent_to_tokens >>= offset;
+      ((char *)(&hp->sent_to_tokens)) [byte_index] = 0;
       i += sizeof (struct message_header) + msg_storage (hp->length);
     }
     save_ack_hashes = 1;
     save_trc_hashes = 1;
     save_messages = 1;
   }
-  int index = tokens.num_tokens++;
-  memcpy (tokens.tokens [index], token, ALLNET_TOKEN_SIZE);
-  return index;
+  memcpy (tokens.tokens [token_index], token, ALLNET_TOKEN_SIZE);
+  if (tokens.num_tokens < MAX_TOKENS)
+    tokens.num_tokens++;
+  tokens.most_recent_token = token_index;
+  return token_index;
 }
 
 /* returns a valid index, 0 <= i < hash_table_size.
@@ -323,6 +328,9 @@ static void read_tokens_file ()
           found_zero = 1;
       if (! found_zero)
         return;
+    } else {  /* error */
+      printf ("tokens file size %zd, expected %zd, ", n, sizeof (tokens));
+      printf ("num_tokens not 0 <= %d <= %d\n", tokens.num_tokens, MAX_TOKENS);
     }
   }
   /* some error, initialize from scratch */
@@ -394,9 +402,9 @@ static void read_hash_file (const char * fname, int fsize,
           hash [i].sent_to_tokens = 0;
       return;
     } /* else size is too small or bad, ignore contents */
-      /* and of course, free the file contents if they were allocated */
-      if ((actual_size > 0) && (file_contents != NULL))
-        free (file_contents);
+    /* free the file contents if they were allocated */
+    if ((actual_size > 0) && (file_contents != NULL))
+      free (file_contents);
   }   /* else file does not exist, create an empty table set to all zeros */
   *num = fsize / sizeof (struct hash_entry);
   *table = malloc_or_fail (fsize, "read_hash_file");
@@ -562,13 +570,6 @@ static void pcache_init_maint ()
   }
 }
 
-/* fills in the first ALLNET_TOKEN_SIZE bytes of token with the current token */
-void pcache_current_token (char * token)
-{
-  pcache_init_maint ();
-  memcpy (token, tokens.tokens [0], ALLNET_TOKEN_SIZE);
-}
-
 /* return 1 for success, 0 for failure.
  * look inside a message and fill in its ID (MESSAGE_ID_SIZE bytes). */
 int pcache_message_id (const char * message, int msize, char * result_id)
@@ -703,7 +704,7 @@ static int message_matches (const struct allnet_data_request * req, int rlen,
 {
   const struct allnet_header * hp = (const struct allnet_header *) message;
   int ti = ((rlen >= ALLNET_TOKEN_SIZE) ?
-            (token_find_index ((const char *) (req->token))) : -1);
+            (token_find_index (req->token)) : -1);
   if ((ti >= 0) && (mhp->sent_to_tokens & (one64 << ti)))
     return 0;             /* already returned this message to this token */
   /* An empty data request message is also allowed, and requests all
@@ -785,9 +786,9 @@ struct pcache_result
         result.n += 1;
         if ((rlen >= ALLNET_TOKEN_SIZE) &&
             (! (memget (req->token, 0, ALLNET_TOKEN_SIZE)))) {
-          int ti = token_find_index ((const char *) (req->token));
+          int ti = token_find_index (req->token);
           if (ti < 0)  /* no such token */
-            ti = add_token ((const char *) (req->token));
+            ti = add_token (req->token);
           if (ti >= 0) {
             current->sent_to_tokens |= (one64 << ti);
             save_messages = 1;
@@ -857,7 +858,7 @@ int pcache_id_acked (const char * id, char * ack)
 /* return 1 if the ack has not yet been sent to this token,
  * and mark it as sent to this token.
  * otherwise, return 0 */
-int pcache_ack_for_token (const char * token, const char * ack)
+int pcache_ack_for_token (const unsigned char * token, const char * ack)
 {
   pcache_init_maint ();
   int aindex = ack_index (ack);
@@ -876,7 +877,7 @@ int pcache_ack_for_token (const char * token, const char * ack)
 /* call pcache_ack_for_token repeatedly for all these acks,
  * moving the new ones to the front of the array and returning the
  * number that are new (0 for none, -1 for errors) */
-int pcache_acks_for_token (const char * token,
+int pcache_acks_for_token (const unsigned char * token,
                            char * acks, int num_acks)
 {
   pcache_init_maint ();
