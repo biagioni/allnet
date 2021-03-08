@@ -21,7 +21,8 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
     private static final long serialVersionUID = 1L;
     private static final String fname = "screen_location.txt";
     private static final String home = System.getProperty("user.home");
-    private static final java.nio.file.Path fpath = java.nio.file.Paths.get(home, ".allnet", "xchat", fname);
+    private static final java.nio.file.Path fpath =
+        java.nio.file.Paths.get(home, ".allnet", "xchat", fname);
 
     /**
      * Makes a JFrame with application support methods.
@@ -142,6 +143,7 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
         lines.add(location);
         try {
             java.nio.file.Files.write(fpath, lines);
+        } catch (java.nio.file.NoSuchFileException e) {  // silent
         } catch (Exception e) {
            System.out.println (e);
         }
