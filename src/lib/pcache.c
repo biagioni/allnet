@@ -158,7 +158,6 @@ static int add_token (const unsigned char * token)
   if ((tokens.num_tokens == MAX_TOKENS) && (token_index % 8 == 0)) {
     /* discard the next 8 tokens, clearing the corresponding byte
      * in all the records */
-    printf ("clearing tokens %d..%d\n", token_index, token_index + 7);
     memset (tokens.tokens + token_index, 0, 8 * ALLNET_TOKEN_SIZE);
     /* adjust all the sent_to_tokens fields */
     int byte_index = token_index / 8;
