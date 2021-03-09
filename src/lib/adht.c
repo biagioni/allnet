@@ -182,7 +182,7 @@ int dht_update (struct socket_set * s,
   unsigned long long int now = allnet_time ();
   if (now < next_time) /* not time to send to my neighbors yet */
     return 0;
-  /* compute the next time to execute */
+  /* compute the next time to execute, between 90% and 110% of two hours */
   next_time = now + ((ADHT_INTERVAL * (90 + (random () % 21))) / 100);
   char buffer [ADHT_MAX_PACKET_SIZE];
   memset (buffer, 0, sizeof (buffer));
@@ -242,7 +242,8 @@ int dht_update (struct socket_set * s,
                     alog->b, alog->s);
   log_print (alog);
   *message = memcpy_malloc (buffer, (int) send_size, "dht_update");
-  *iap = (send_3_2 ? NULL : ((struct internet_addr *) (message + ip_offset)));
+  *iap = (send_3_2 ? NULL :
+                     ((struct internet_addr *) ((*message) + ip_offset)));
 #ifdef DEBUG_PRINT
   print_packet (*message, send_size, "dht_update packet", 1);
 #endif /* DEBUG_PRINT */
