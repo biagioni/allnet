@@ -540,8 +540,10 @@ int astart_main (int argc, char ** argv)
   /* start the dependent processes, keyd, keygen, and atcpd */
   my_call1 (argv [0], alen, "allnet-tcpd",
             atcpd_main, pid_fd, astart_pid, 0, 1);
+#ifdef ALLNET_KEYTYPE_RSA
   my_call1 (argv [0], alen, "allnet-kgen",
             keyd_generate, pid_fd, astart_pid, 0, 1);
+#endif /* ALLNET_KEYTYPE_RSA */
 #ifdef ALLNET_USE_FORK /* keyd only works as a separate process */
   my_call1 (argv [0], alen, "allnet-keyd", keyd_main, pid_fd, astart_pid, 0, 1);
 #endif /* ALLNET_USE_FORK */
