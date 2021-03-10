@@ -944,7 +944,9 @@ int routing_add_dht (struct addr_info addr)
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
 int routing_add_external (struct internet_addr ip)
 {
-printf ("starting routing_add_external for "); print_ia (&ip); printf ("\n");
+#ifdef DEBUG_PRINT
+  printf ("starting routing_add_external for "); print_ia (&ip); printf ("\n");
+#endif /* DEBUG_PRINT */
   /* sanity checks first */
   int v = is_valid_address (&ip);
   if ((v != 1) && (v != -1)) {
@@ -980,7 +982,9 @@ printf ("starting routing_add_external for "); print_ia (&ip); printf ("\n");
       if (same_aip (&(self_addr [i].ai), &ai)) {
         self_addr [i].freshness = self_addr_init;
         pthread_mutex_unlock (&mutex);
-printf ("routing_add_external already found address\n");
+#ifdef DEBUG_PRINT
+        printf ("routing_add_external already found address\n");
+#endif /* DEBUG_PRINT */
         return 0;
       }
       if (least_freshness > self_addr [i].freshness) {
@@ -1008,7 +1012,9 @@ printf ("routing_add_external already found address\n");
   self_addr [free_index].ai = ai;
   self_addr [free_index].freshness = self_addr_init;
   pthread_mutex_unlock (&mutex);
-printf ("successful completion of routing_add_external\n");
+#ifdef DEBUG_PRINT
+  printf ("successful completion of routing_add_external\n");
+#endif /* DEBUG_PRINT */
   return 1;
 }
 

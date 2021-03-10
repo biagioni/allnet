@@ -362,8 +362,6 @@ void dht_process (char * message, unsigned int msize,
       /* all-zeros address is sensible sometimes, e.g. when sending locally */
       (! memget (&dhtp->sending_to_ip, 0, sizeof (dhtp->sending_to_ip))) &&
       (is_valid_address (&(dhtp->sending_to_ip)))) {
-print_buffer (&(dhtp->sending_to_ip), sizeof (dhtp->sending_to_ip),
-              "calling routing_add_external", 64, 1);
   /* record my IP address as seen by the peer */
     if (routing_add_external (dhtp->sending_to_ip) < 0) {
       printf ("msize %d == %d, routing_add_external failed at %zd\n",
@@ -372,7 +370,6 @@ print_buffer (&(dhtp->sending_to_ip), sizeof (dhtp->sending_to_ip),
       print_packet (message, msize, NULL, 1);
       print_buffer (message, msize, "packet", msize, 1);
     }
-else { printf ("msize %d == %d, routing_add_external succeded!\n", msize, expected_size); print_packet (message, msize, NULL, 1); print_buffer (message, msize, "packet", msize, 1); }
   }
 #ifdef DEBUG_PRINT
     else if (! memget (&dhtp->sending_to_ip, 0, sizeof (dhtp->sending_to_ip))) {
