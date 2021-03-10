@@ -1399,7 +1399,7 @@ if (nlen != clen) printf ("error: nlen %zd, clen %d for %s\n", nlen, clen, names
         struct sockaddr_storage * this_server = servers + (is + server_offset);
         int s = s4;
         socklen_t alen = sizeof (struct sockaddr_in);
-        if (this_server->ss_family == AF_INET) {
+        if (this_server->ss_family == AF_INET6) {
           s = s6;
           alen = sizeof (struct sockaddr_in6);
         }
