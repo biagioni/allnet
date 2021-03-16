@@ -172,6 +172,7 @@ class UI extends ApplicationFrame {
                         CoreConnect coreAPI = new CoreConnect (controller);
                         controller.setCore (coreAPI);
                         coreAPI.start ();
+                        controller.updateContactsPanelStatus();
                     }
                 }
             }); // end of invokeAndWait
