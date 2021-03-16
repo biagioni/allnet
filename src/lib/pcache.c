@@ -147,10 +147,12 @@ static int token_find_index (const unsigned char * token)
   return -1; /* token not found */
 }
 
-static int add_token (const unsigned char * token)
+static int add_token (const unsigned char * token, const char * caller)
 {
   if ((token == NULL) || (memget (token, 0, ALLNET_TOKEN_SIZE))) {
-    printf ("error in add_token: %p\n", token);
+    printf ("error in add_token (called from %s): %p\n", caller, token);
+    if (token != NULL)
+      print_buffer (token, ALLNET_TOKEN_SIZE, NULL, ALLNET_TOKEN_SIZE, 1);
     crash ("error in add_token");
   }
   save_tokens = 1;
@@ -320,12 +322,28 @@ static void read_tokens_file ()
     close (fd);
     if ((n == sizeof (tokens)) && (tokens.num_tokens >= 0) &&
         (tokens.num_tokens <= MAX_TOKENS)) {
-      int found_zero = 0;
+      int first_zero = -1;
+      int last_zero = -1;
+      int num_zero = 0;
       int i;
-      for (i = 0; i < tokens.num_tokens; i++)
-        if (memget (tokens.tokens [i], 0, ALLNET_TOKEN_SIZE))
-          found_zero = 1;
-      if (! found_zero)
+      for (i = 0; i < tokens.num_tokens; i++) {
+        if (memget (tokens.tokens [i], 0, ALLNET_TOKEN_SIZE)) {
+          if (num_zero == 0) {
+            first_zero = i;
+            last_zero = i;
+            num_zero = 1;
+          } else if ((last_zero + 1) % MAX_TOKENS == i) {
+            last_zero = i;
+            num_zero++;
+          } else { /* (last_zero + 1) % MAX_TOKENS != i */
+            printf ("error, zero token %d (%d/%d) does not follow %d/%d/%d\n",
+                    i, tokens.num_tokens, MAX_TOKENS,
+                    last_zero, first_zero, num_zero);
+            num_zero += 10000;  /* make it easy to see future errors */
+          }
+        }
+      }
+      if (num_zero < 8)  /* successfully found at most 7 adjacent 0 tokens */
         return;
     } else {  /* error */
       printf ("tokens file size %zd, expected %zd, ", n, sizeof (tokens));
@@ -333,7 +351,7 @@ static void read_tokens_file ()
     }
   }
   /* some error, initialize from scratch */
-  printf ("error reading tokens file, initializing from scratch\n");
+  printf ("error reading token file, initializing from scratch\n");
   memset (&tokens, 0, sizeof (tokens));
   /* initialize the local token */
   random_bytes (tokens.tokens [0], ALLNET_TOKEN_SIZE);
@@ -787,7 +805,7 @@ struct pcache_result
             (! (memget (req->token, 0, ALLNET_TOKEN_SIZE)))) {
           int ti = token_find_index (req->token);
           if (ti < 0)  /* no such token */
-            ti = add_token (req->token);
+            ti = add_token (req->token, "pcache_request");
           if (ti >= 0) {
             current->sent_to_tokens |= (one64 << ti);
             save_messages = 1;
@@ -864,8 +882,13 @@ int pcache_ack_for_token (const unsigned char * token, const char * ack)
   if (memcmp (ack_table [aindex].ida, ack, MESSAGE_ID_SIZE) != 0)
     return 1; /* this ack is not in the table, go ahead and forward it */
   int itoken = token_find_index (token);
-  if (itoken < 0)  /* no such token */
-    itoken = add_token (token);
+  if (itoken < 0) { /* no such token */
+    if (memget (token, 0, ALLNET_TOKEN_SIZE)) {
+      printf ("pcache_ack_for_token given zero token\n");
+      return 0;     /* illegal token, never send acks to it */
+    }
+    itoken = add_token (token, "pcache_ack_for_token");
+  }
   if (ack_table [aindex].sent_to_tokens & (one64 << itoken))
     return 0;    /* already sent */
   save_ack_hashes = 1;
