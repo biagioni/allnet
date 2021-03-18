@@ -266,8 +266,8 @@ static void usage (const char * command)
   printf ("       -v: verbose, -d: debug, -y: verify, -y -y: verified only\n");
   printf ("       -u: unique only\n");
   printf ("       -f: print full message payloads, not abbreviated\n");
-  printf ("       -t n: only show messages of type n -- may be repeated\n");
   printf ("       -a x, -s x: only show messages with source/dest x\n");
+  printf ("       -t n: only show messages of type n -- may be repeated\n");
   printf ("       (repeating the SAME type, toggles it)\n");
   exit (1);
 }
