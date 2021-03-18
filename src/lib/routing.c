@@ -955,9 +955,12 @@ int routing_add_external (struct internet_addr ip)
     return -1;
   }
   /* to lessen the opportunities for DDoS, only accept addrs with ALLNET_PORT */
+  /* this means if we're behind a firewall, we discard external addrs */
   if (ip.port != htons (ALLNET_PORT)) {
+#ifdef DEBUG_PRINT
     printf ("routing_add_external given bad port\n");
     print_ia (&ip);
+#endif /* DEBUG_PRINT */
     return -1;
   }
   struct addr_info ai;
