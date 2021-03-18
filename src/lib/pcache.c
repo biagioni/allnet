@@ -715,7 +715,7 @@ static const unsigned char *
 }
 
 static int message_matches (const struct allnet_data_request * req, int rlen,
-                            int nbits, const unsigned char * source,
+                            int nbits, const unsigned char * addr,
                             const struct message_header * mhp,
                             const char * message)
 {
@@ -725,11 +725,13 @@ static int message_matches (const struct allnet_data_request * req, int rlen,
   if ((ti >= 0) && (mhp->sent_to_tokens & (one64 << ti)))
     return 0;             /* already returned this message to this token */
   /* An empty data request message is also allowed, and requests all
-     packets addressed TO the sender of the request. */
-  if ((rlen == 0) &&
-      ((nbits <= 0) || (source == NULL) ||
-       (matches (source, nbits, hp->destination, hp->dst_nbits))))
-    return 1;  /* it's a match */
+     packets addressed TO the given address. */
+  if ((rlen == 0) || (req == NULL)) {
+    if ((nbits <= 0) || (addr == NULL))
+      return 1;   /* the empty address always matches */
+    return (nbits ==
+            matching_bits (addr, nbits, hp->destination, hp->dst_nbits));
+  }
 
   const unsigned char * bitmap = req->dst_bitmap;
   bitmap = check_bitmap (req->dst_bits_power_two, bitmap,
@@ -759,7 +761,7 @@ static int message_matches (const struct allnet_data_request * req, int rlen,
    the back of the buffer stores the actual messages */
 struct pcache_result
   pcache_request (const struct allnet_data_request * req, int rlen,
-                  int nbits, const unsigned char * source, int max,
+                  int nbits, const unsigned char * addr, int max,
                   char * buffer, int bsize)
 {
   pcache_init_maint ();
@@ -784,7 +786,7 @@ struct pcache_result
     if ((current->priority != 0) &&  /* the message has not been deleted */
         (is_valid_message (message, current->length, NULL)) &&
         (! id_is_acked (current->id))) {
-      if (message_matches (req, rlen, nbits, source, current, message)) {
+      if (message_matches (req, rlen, nbits, addr, current, message)) {
         /* add this message */
         if (buffer_offset < needed + array_size) {
           printf ("error: offset %zd <= needed %zd + array %zd\n",
@@ -1035,6 +1037,55 @@ static void print_hash_all (const char * name, int index, int verbose,
   }
 }
 
+static void print_matching_dest_0 (const char * arg)
+{
+  unsigned char addr [8] = { 0, };
+  const char * p = arg;
+  int ndigits = 0;
+  while (ndigits < 16) {
+    int c = *p;
+    int value = 0;
+    if ((c >= '0') && (c <= '9'))
+      value = c - '0';
+    else if ((c >= 'A') && (c <= 'F'))
+      value = c - 'A' + 10;
+    else if ((c >= 'a') && (c <= 'f'))
+      value = c - 'a' + 10;
+    else
+      break;
+    if (ndigits % 2 == 0)  /* first, third, etc digit, shift up */
+      addr [ndigits / 2] = value << 4;
+    else 
+      addr [ndigits / 2] |= value;
+    ndigits++;
+    p++;
+  }
+  int addr_nbits = ndigits * 4;
+  int max = 10;  /* arbitrary */
+  if (*p == '/') {
+    int specified_nbits = atoi (p + 1);
+    if ((specified_nbits >= 0) && (specified_nbits <= 64) &&
+        (*(p + 1) >= '0') && (*(p + 1) <= '9'))
+      addr_nbits = specified_nbits;
+    char * next_slash = index (p + 1, '/');
+    if (next_slash != NULL)
+      max = atoi (next_slash + 1);
+  }
+
+  /* now that parsing is done, print */
+  static char buffer [512 * 1024 * 1024];  /* 512MiB */
+  struct pcache_result res = pcache_request (NULL, 0, addr_nbits, addr, max,
+                                             buffer, sizeof (buffer));
+  printf ("got %d messages\n", res.n);
+  int i;
+  for (i = 0; i < res.n; i++) {
+    struct pcache_message * msg = res.messages + i;
+    printf ("message at %p of size %d, priority %x\n",
+            msg->message, msg->msize, msg->priority);
+    print_packet (msg->message, msg->msize, NULL, 1);
+  }
+}
+
 static void print_message_ack (int index, int verbose,
                                int msgs, int acks, int trcs)
 {
@@ -1096,7 +1147,7 @@ static void print_message_ack (int index, int verbose,
 int main (int argc, char ** argv)
 {
   pcache_init_maint ();
-  int do_print_messages = 0;
+  int do_print_mids = 0;
   int do_print_acks = 0;
   int do_print_traces = 0;
   int do_print_tokens = 0;
@@ -1104,10 +1155,16 @@ int main (int argc, char ** argv)
     int i;
     for (i = 1; i < argc; i++) {
       if (strcasecmp (argv [i], "all") == 0) {
-        do_print_messages = do_print_acks = 1;
+        do_print_mids = do_print_acks = 1;
         do_print_traces = do_print_tokens = 1;
-      } else if (strcasecmp (argv [i], "msgs") == 0) {
-        do_print_messages = 1;
+      } else if (strcasecmp (argv [i], "addr") == 0) {
+        if (i + 1 < argc)
+          print_matching_dest_0 (argv[++i]);  /* increment i to skip the addr */
+        else
+          printf ("addr requires following arg of type addr[/bits[/max]]\n");
+        continue;  /* restart the loop */
+      } else if (strcasecmp (argv [i], "mids") == 0) {
+        do_print_mids = 1;
       } else if (strcasecmp (argv [i], "acks") == 0) {
         do_print_acks = 1;
       } else if (strcasecmp (argv [i], "trcs") == 0) {
@@ -1122,9 +1179,9 @@ int main (int argc, char ** argv)
       }
     }
   }
-  if (do_print_messages || do_print_acks || do_print_traces)
-    print_message_ack (-1, 0,
-                       do_print_messages, do_print_acks, do_print_traces);
+  if (do_print_mids || do_print_acks || do_print_traces)
+    print_message_ack (-1, 1,
+                       do_print_mids, do_print_acks, do_print_traces);
   if (do_print_tokens)
     print_tokens ();
   print_stats ("print cache");
