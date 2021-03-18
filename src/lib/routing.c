@@ -1462,5 +1462,5 @@ print_buffer (local_token, ALLNET_TOKEN_SIZE, "generated new token", 100, 1);
     }
   }
   if (token != NULL)
-    memcpy (local_token, token, ALLNET_TOKEN_SIZE);
+    memcpy (token, local_token, ALLNET_TOKEN_SIZE);
 }
