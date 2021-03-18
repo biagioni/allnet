@@ -49,7 +49,7 @@ struct pcache_result {
    and n = -1 in case of failure
    messages are in order of descending priority.
    If max > 0, at most max messages will be returned.
-   If rlen <= 0, only returns messages addressed to source/nbits --
+   If rlen <= 0, only returns messages addressed to addr/nbits --
    and if nbits is 0 or source is NULL, returns all messages
    The memory used by pcache_result is allocated in the given buffer
    If the request includes a token, the token is marked as having received
@@ -57,7 +57,7 @@ struct pcache_result {
  */
 extern struct pcache_result
   pcache_request (const struct allnet_data_request *req, int rlen,
-                  int nbits, const unsigned char * source, int max,
+                  int nbits, const unsigned char * addr, int max,
                   char * buffer, int bsize);
 
 /* acks */
