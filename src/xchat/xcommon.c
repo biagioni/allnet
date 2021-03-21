@@ -96,8 +96,9 @@ static int send_data_request (int sock, int priority, char * start)
   struct allnet_data_request * adr =
     (struct allnet_data_request *)
        (ALLNET_DATA_START (hp, hp->transport, size));
+  memset (adr, 0, adr_size);  /* clear everything */
   routing_local_token (adr->token);
-  memset (adr->since, 0, sizeof (adr->since));
+  /* memset (adr->since, 0, sizeof (adr->since)); -- already cleared */
   if (start != NULL)
     memcpy (adr->since, start, ALLNET_TIME_SIZE);
   adr->dst_bits_power_two = BITMAP_BITS_LOG;
