@@ -690,7 +690,7 @@ static int
   if (p2 <= 0)
     return 1;   /* no bitmap, so accept */
   if (nbits <= 0)
-    return 1;   /* no address, so accept */
+    return 0;   /* bitmap but no address, so reject */
   /* the index/mask functions always require 16 bits */
   int sixteen = readb16u (addr);
   int index = allnet_bitmap_byte_index (p2, sixteen);
@@ -1037,7 +1037,15 @@ static void print_hash_all (const char * name, int index, int verbose,
   }
 }
 
-static void print_matching_dest_0 (const char * arg)
+static char pcache_request_buffer [2 * 1024 * 1024];  /* 2MiB */
+
+/* format of the argument: a destination address followed optionally by
+ * one or two slashes, with a number of bits and a max, e.g
+ * b6/5/204 means a destination address of the first 5 bits of b6,
+ * and at most 204 results.  If unspecified, max defaults to 10, and
+ * the number of bits defaults to 4 * the number of hex digits
+ */
+static void print_matching_dest (const char * arg)
 {
   unsigned char addr [8] = { 0, };
   const char * p = arg;
@@ -1073,9 +1081,104 @@ static void print_matching_dest_0 (const char * arg)
   }
 
   /* now that parsing is done, print */
-  static char buffer [512 * 1024 * 1024];  /* 512MiB */
-  struct pcache_result res = pcache_request (NULL, 0, addr_nbits, addr, max,
-                                             buffer, sizeof (buffer));
+  struct pcache_result res =
+    pcache_request (NULL, 0, addr_nbits, addr, max,
+                    pcache_request_buffer, sizeof (pcache_request_buffer));
+  printf ("got %d messages\n", res.n);
+  int i;
+  for (i = 0; i < res.n; i++) {
+    struct pcache_message * msg = res.messages + i;
+    printf ("message at %p of size %d, priority %x\n",
+            msg->message, msg->msize, msg->priority);
+    print_packet (msg->message, msg->msize, NULL, 1);
+  }
+}
+
+/* format of the argument: bits/dest/src/mid, where any or all of the four
+ * may be empty (three slashes are required).  bits defaults to 8, meaning
+ * a 256-bit bitmap.  dest, src, and mid are comma-separated lists of
+ * source and destination addresses and message IDs.  If empty, the
+ * corresponding bitmap has 0 bits.
+ */
+
+static char * fill_bitmap (char * p, char * arg, int nbits)
+{
+  ssize_t bitmap_size = 1 << nbits;  /* size in bits */
+  ssize_t bitmap_bytes = (bitmap_size + 7) / 8;  /* size in bytes */
+  if (bitmap_bytes >= ALLNET_MTU / 4) {
+    printf ("nbits %d is too large for an allnet data request\n", nbits);
+    exit (1);
+  }
+  while (1) {
+    char * start = arg;
+    char * end = NULL;
+    int bit_index = strtol (start, &end, 16);
+    int num_digits = end - start;
+    if (num_digits == 0)   /* no valid number, done */
+      return p;
+    if ((num_digits > 2) && (start [0] == '0') &&
+        ((start [1] == 'x') || (start [1] == 'X')))
+      num_digits -= 2;
+    if (num_digits % 2 == 1)
+      num_digits++;           /* 8 is the same as 08, 12345 same as 012345 */
+    while (num_digits > 4) {
+      bit_index = bit_index / 256;
+      num_digits -= 2;
+    }
+    while (num_digits < 4) {
+      bit_index = bit_index * 256;
+      num_digits += 2;
+    } /* bit_index should now be a 16-bit number, needed by allnet_bitmap */
+    p [allnet_bitmap_byte_index (nbits, bit_index)] |= 
+       allnet_bitmap_byte_mask (nbits, bit_index);
+    if (*end != ',')  /* finished */
+      return p + bitmap_bytes;
+    arg = end + 1;  /* after the comma */
+  }
+}
+
+static void print_matching_req (const char * arg)
+{
+  char * s1 = index (arg, '/');
+  if (s1 == NULL) {
+    printf ("request needs bits/dest/src/mid, no '/' found in %s\n", arg);
+    return;
+  }
+  char * dest = s1 + 1;
+  char * s2 = index (dest, '/');
+  if (s2 == NULL) {
+    printf ("request needs bits/dest/src/mid, only 1 '/' found in %s\n", arg);
+    return;
+  }
+  char * src = s2 + 1;
+  char * s3 = index (src, '/');
+  if (s3 == NULL) {
+    printf ("request needs bits/dest/src/mid, only 2 '/' found in %s\n", arg);
+    return;
+  }
+  char * mid = s3 + 1;
+  int nbits = ((s1 == arg) ? 8 : atoi (arg));
+  static char data_req_buffer [ALLNET_MTU];
+  memset (data_req_buffer, 0, sizeof (data_req_buffer));
+  struct allnet_data_request *
+    adr = (struct allnet_data_request *) data_req_buffer;
+  random_bytes ((char *) adr->token, sizeof (adr->token));
+  /* adr->since is left all zeros */
+  adr->dst_bits_power_two = ((dest == s2) ? 0 : nbits);
+  adr->src_bits_power_two = ((src == s3) ? 0 : nbits);
+  adr->mid_bits_power_two = ((*mid == '\0') ? 0 : nbits);
+  char * p = (char *) (adr->dst_bitmap);
+  if (adr->dst_bits_power_two > 0)
+    p = fill_bitmap (p, dest, nbits);
+  if (adr->src_bits_power_two > 0)
+    p = fill_bitmap (p, src, nbits);
+  if (adr->mid_bits_power_two > 0)
+    p = fill_bitmap (p, mid, nbits);
+  size_t reqlen = p - data_req_buffer;
+  /* now that parsing is done, print */
+  struct pcache_result res =
+    pcache_request (adr, reqlen, 0, NULL, 5,
+                    pcache_request_buffer, sizeof (pcache_request_buffer));
   printf ("got %d messages\n", res.n);
   int i;
   for (i = 0; i < res.n; i++) {
@@ -1159,9 +1262,15 @@ int main (int argc, char ** argv)
         do_print_traces = do_print_tokens = 1;
       } else if (strcasecmp (argv [i], "addr") == 0) {
         if (i + 1 < argc)
-          print_matching_dest_0 (argv[++i]);  /* increment i to skip the addr */
+          print_matching_dest (argv[++i]);  /* increment i to skip the addr */
         else
           printf ("addr requires following arg of type addr[/bits[/max]]\n");
+        continue;  /* restart the loop */
+      } else if (strcasecmp (argv [i], "rqst") == 0) {
+        if (i + 1 < argc)
+          print_matching_req (argv[++i]);  /* increment i to skip the addr */
+        else
+          printf ("rqst requires following arg of type nbits/dst/src/mid\n");
         continue;  /* restart the loop */
       } else if (strcasecmp (argv [i], "mids") == 0) {
         do_print_mids = 1;
