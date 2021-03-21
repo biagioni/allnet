@@ -364,11 +364,14 @@ void dht_process (char * message, unsigned int msize,
       (is_valid_address (&(dhtp->sending_to_ip)))) {
   /* record my IP address as seen by the peer */
     if (routing_add_external (dhtp->sending_to_ip) < 0) {
+#ifdef DEBUG_PRINT
       printf ("msize %d == %d, routing_add_external failed at %zd\n",
               msize, expected_size,
               ((char *) (&(dhtp->sending_to_ip))) - message);
       print_packet (message, msize, NULL, 1);
-      print_buffer (message, msize, "packet", msize, 1);
+      print_buffer ((char *) (&(dhtp->sending_to_ip)),
+                    sizeof (dhtp->sending_to_ip), "sending_to_ip", 100, 1);
+#endif /* DEBUG_PRINT */
     }
   }
 #ifdef DEBUG_PRINT
