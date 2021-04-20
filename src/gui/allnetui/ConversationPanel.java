@@ -3,10 +3,12 @@ package allnetui;
 import java.awt.*;
 import java.awt.event.*;
 import java.util.ArrayList;
+import java.nio.file.*;
 import javax.swing.*;
 import javax.swing.border.Border;
 import javax.swing.text.AttributeSet;
 import javax.swing.text.BadLocationException;
+import javax.swing.text.Document;
 import javax.swing.text.DocumentFilter;
 import utils.HtmlLabel;
 import utils.MessageBubble;
@@ -17,13 +19,14 @@ import utils.ScrollPaneResizeAdapter;
  *
  * @author Henry
  */
-class ConversationPanel extends JPanel implements ComponentListener {
+class ConversationPanel extends JPanel implements ComponentListener, KeyListener, ActionListener {
 
     // just to avoid a warning
     private static final long serialVersionUID = 1L;
     //
     // define this panel's command here; later we should move all commands to one place
     public static final String SEND_COMMAND = "SEND";
+    public static final String SWITCH_COMMAND = "SWITCH";
     public static final String CLOSE_COMMAND = "CLOSE";
     public static final String CONTACTS_COMMAND = "CONTACTS";
     public static final String EXCHANGE_KEYS_COMMAND = "EXCHANGE_KEYS";
@@ -53,7 +56,12 @@ class ConversationPanel extends JPanel implements ComponentListener {
     private boolean scrollToBottom, scrollToTop;
     private JTextArea inputArea;
     // the buttons
-    private JButton sendButton, moreMsgsButton;
+    private JButton sendButton, switchButton, moreMsgsButton;
+    ActionListener savedSendActionListener;
+    final String userHome = System.getProperty("user.home");
+    final Path switchPath =
+        FileSystems.getDefault().getPath(userHome, ".allnet", "xchat",
+                                         "send_not_newline");
     // morePanel holds moreMsgs button, need ref here for when we make new message panels
     private JPanel morePanel;
     // the command prefix will identify which instance of the Class is sending the event
@@ -74,6 +82,12 @@ class ConversationPanel extends JPanel implements ComponentListener {
     private int lastResizingWidth;
     // list of msg bubbles (so we can resize them when indicated
     private ArrayList<MessageBubble<Message>> bubbles;
+    // listener for this panel's events
+    private ActionListener theListener;
+    // make code flexible about button meaning
+    // private boolean newline = true;
+    // private boolean newline = false;
+    private boolean newline = ! Files.exists(switchPath);
 
     ConversationPanel(String info, String commandPrefix, String contactName,
         boolean createDialogBox, Component resizingKey) {
@@ -132,6 +146,8 @@ class ConversationPanel extends JPanel implements ComponentListener {
         // wrap text
         inputArea.setWrapStyleWord(true);
         inputArea.setLineWrap(true);
+        inputArea.addKeyListener(this);
+        
         // limit number of lines 
         // MyDocumentFilter filter = new MyDocumentFilter(CHARS_PER_LINE, MAX_LINES, true);
         // AbstractDocument doc = (AbstractDocument) inputArea.getDocument();
@@ -145,10 +161,15 @@ class ConversationPanel extends JPanel implements ComponentListener {
         JPanel sendPanel = new JPanel();
         sendPanel.setOpaque(true);
         sendPanel.setBackground(backgroundColor);
-        sendPanel.setLayout(new BoxLayout(sendPanel, BoxLayout.Y_AXIS));
+        sendPanel.setLayout(new BoxLayout(sendPanel, BoxLayout.X_AXIS));
         sendPanel.add(Box.createVerticalGlue());
-        sendButton = makeButton("Send", SEND_COMMAND);
+        if (newline)
+            sendButton = makeButton("⏎", SEND_COMMAND);
+        else
+            sendButton = makeButton("▶", SEND_COMMAND);
         sendPanel.add(sendButton);
+        switchButton = makeButton("☯", SWITCH_COMMAND);
+        sendPanel.add(switchButton);
         //
         // now add all these components to our main panel
         setLayout(new GridBagLayout());
@@ -244,10 +265,16 @@ class ConversationPanel extends JPanel implements ComponentListener {
     }
 
     void setListener(ActionListener listener) {
-        sendButton.addActionListener(listener);
+        savedSendActionListener = listener;
+        if (newline)
+            sendButton.addActionListener(this);
+        else
+            sendButton.addActionListener(listener);
+        switchButton.addActionListener(this);
         moreMsgsButton.addActionListener(listener);
         // no longer want to send event when return key is entered
         // msgField.addActionListener(listener);
+        theListener = listener;
     }
 
     private JButton makeButton(String text, String command) {
@@ -452,6 +479,65 @@ class ConversationPanel extends JPanel implements ComponentListener {
     public void componentHidden(ComponentEvent e) {
     }
 
+    @Override
+    public void keyTyped(KeyEvent e) {
+        // System.out.println(e);
+        if (e.getKeyChar() == KeyEvent.VK_ENTER) { 
+            if (newline && e.getModifiersEx() != InputEvent.SHIFT_DOWN_MASK) {
+                String temp = inputArea.getText();
+                int idx = inputArea.getCaretPosition();
+                String temp1 = temp.substring(0, idx-1);
+                if (temp.length() > (idx-1))
+                    temp1 = temp1 + temp.substring(idx);
+                inputArea.setText(temp1);
+                theListener.actionPerformed(new ActionEvent(this, ActionEvent.ACTION_PERFORMED, contactName + ":" + SEND_COMMAND));
+            }
+            else  
+                //inputArea.setText(inputArea.getText()+"\n");
+                inputArea.insert("\n", inputArea.getCaretPosition());
+        }
+    }
+
+    @Override
+    public void keyPressed(KeyEvent ke) {
+    }
+
+    @Override
+    public void keyReleased(KeyEvent ke) {
+    }
+
+    @Override
+    public void actionPerformed(ActionEvent e) {
+        String[] actionCommand = e.getActionCommand().split(":");
+        if (actionCommand[1].equals(SWITCH_COMMAND)) {
+            newline = ! newline;
+	    for (ActionListener al: sendButton.getActionListeners()) {
+                sendButton.removeActionListener(al);
+            }
+            if (newline) {
+                sendButton.addActionListener(this);
+                sendButton.setText("⏎");
+		try {
+		    Files.deleteIfExists(switchPath);
+		} catch (Exception exn) {
+                }
+            } else {
+                sendButton.addActionListener(savedSendActionListener);
+                sendButton.setText("▶");
+		try {
+		    Files.createFile(switchPath);
+		} catch (Exception exn) {
+                }
+            }
+        } else if (actionCommand[1].equals(SEND_COMMAND) && newline) {
+            inputArea.insert("\n", inputArea.getCaretPosition());
+            inputArea.requestFocus();
+        }
+        else
+            System.out.println("conversation panel send button error");
+    }
+    
+    
     // used to make scroll pane scroll to the bottom on changes
     private class MyAdjustmentListener implements AdjustmentListener {
 
