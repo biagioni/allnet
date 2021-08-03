@@ -491,7 +491,7 @@ int astart_main (int argc, char ** argv)
 {
   int ix, jx;
   for (ix = 1; ix + 1 < argc; ix++) {
-    if (strcmp (argv [ix], "-d") == 0) {
+    if (strcmp (argv [ix], "-d") == 0) {  /* set home directory (configfiles) */
       set_home_directory (argv [ix + 1]);
       for (jx = ix; jx + 1 < argc; jx++) /* replace lower with higher args */
         argv [jx] = argv [jx + 2];
@@ -553,6 +553,7 @@ int astart_main (int argc, char ** argv)
   /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
 #endif /* ALLNET_USE_FORK */
   if ((argc > 1) && (strcmp (argv [1], "-D") == 0)) {
+    /* with -D, call ad in the foreground rather than as a separate process */
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
     close (pid_fd);
 #endif /* ALLNET_USE_FORK */
