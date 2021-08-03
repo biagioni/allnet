@@ -407,9 +407,6 @@ static void resend_messages (const char * retransmit_message, int mlen,
     return;
   }
   counter--;   /* the last counter sent, which is one less than get_counter */
-#ifdef DEBUG_FOR_DEVELOPER
-#define DEBUG_PRINT
-#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
   printf ("rcvd rexmit request for %s, %d singles, %d ranges, last %lld/%lld, ",
           contact, hp->num_singles, hp->num_ranges,
@@ -424,9 +421,6 @@ static void resend_messages (const char * retransmit_message, int mlen,
             readb64 (ptr + i * COUNTER_SIZE * 2 + COUNTER_SIZE));
   printf ("\n");
 #endif /* DEBUG_PRINT */
-#ifdef DEBUG_FOR_DEVELOPER
-#undef DEBUG_PRINT
-#endif /* DEBUG_FOR_DEVELOPER */
 
   unsigned int send_count = 0;
   /* priority decreases gradually from 5/8, which is less than for
