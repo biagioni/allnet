@@ -684,65 +684,54 @@ static int is_in_cache (const char * contact, keyset k, uint64_t seq, int add)
   }
 /* not found, will return 0, perhaps after adding */
   if (add) {
-    int merge = 0;
+/* keep the cache in sorted order.
+ * Later, here and above we may do binary instead of linear search */
+    int add_at_index = cache_used;  /* add at the end unless add sooner */
     for (i = 0; i < cache_used; i++) {
-      if (seq + 1 == cache [i].first) {
-        if (add)
-          cache [i].first = seq;
-        else
-          merge = 1;
-        add = 0;
-      }
-      if (cache [i].last + 1 == seq) {
-        if (add)
-          cache [i].last = seq;
-        else
-          merge = 1;
-        add = 0;
-      }
-    }
-    if (merge) {  /* the sequence number is adjacent to at least two entries */
-      /* we may modify cache_used during the loops, so while instead of for */
-      i = 0;
-      while (i + 1 < cache_used) {
-        int j = i + 1;    /* in the code that follows, i < j */
-        while (j < cache_used) {
-          int merged = 0;
-          if (cache [j].last + 1 == cache [i].first) {
-            cache [i].first = cache [j].first;
-            merged = 1;
-          } else if (cache [i].last + 1 == cache [j].first) {
-            cache [i].last = cache [j].last;
-            merged = 1;
-          }
-          if (merged) {
-/* copy last entry to merged entry.  Harmless even if merged is last entry */
-            cache [j] = cache [cache_used - 1];
-            cache_used = cache_used - 1;
-          }
-          j++;
-        }
-        i++;
-      }
-    } else if (add) {
-      struct cache_entry * old_cache = cache;
-      int old_cache_alloc = cache_alloc;
-      if ((cache_alloc < cache_used + 1) || (cache == NULL)) {
-        cache_alloc = 10 + cache_alloc * 2;  /* cache size only grows */
-        /* if cache is null, realloc is the same as malloc */
-        cache = realloc (cache, sizeof (struct cache_entry) * cache_alloc);
-      }
-      if (cache != NULL) {  /* realloc succeded */
-        cache [cache_used].first = seq;
-        cache [cache_used].last = seq;
-        cache_used++;
-      } else {              /* realloc failed, use the old cache */
-        printf ("message.c is_in_cache: realloc %zd failed\n",
-                sizeof (struct cache_entry) * cache_alloc);
-        cache = old_cache;
-        cache_alloc = old_cache_alloc;
+      if ((cache [i].last + 1 == seq) && (i + 1 < cache_used) &&
+          (seq + 1 == cache [i + 1].first)) {  /* merge */
+        cache [i].last = cache [i + 1].last;
+        /* shift down the rest of the array (if any) and decrement cache_used */
+        int j;
+        for (j = i + 1; j + 1 < cache_used; j++)
+          cache [j] = cache [j + 1];
+        cache_used--;
+        return 0;  /* not found */
+      } else if (cache [i].last + 1 == seq) {   /* increase last */
+        cache [i].last = seq;
+        return 0;  /* not found */
+      } else if (seq + 1 == cache [i].first) {  /* decrease first */
+        cache [i].first = seq;
+        return 0;  /* not found */
+      } else if (seq < cache [i].first) {       /* add before this */
+        add_at_index = i;
+        break;
       }
     }
+    /* did not find, add at add_at_index */
+    /* adding new enry, reallocate if necessary */
+    struct cache_entry * old_cache = cache;
+    int old_cache_alloc = cache_alloc;
+    if ((cache_alloc < cache_used + 1) || (cache == NULL)) {
+      cache_alloc = 10 + cache_alloc * 2;  /* cache size only grows */
+      /* if cache is null, realloc is the same as malloc */
+      cache = realloc (cache, sizeof (struct cache_entry) * cache_alloc);
+    }
+    if (cache == NULL) {  /* realloc failed, reuse the old cache */
+      printf ("message.c is_in_cache: realloc %zd failed\n",
+              sizeof (struct cache_entry) * cache_alloc);
+      cache = old_cache;
+      cache_alloc = old_cache_alloc;
+      return 0;
+    }
+    /* shift up the rest of the array (if any) and increment cache_used */
+    int j;
+    for (j = cache_used; j > add_at_index - 1; j--)
+      cache [j] = cache [j - 1];
+    cache_used++;
+    /* save the new entry */
+    cache [add_at_index].first = seq;
+    cache [add_at_index].last = seq;
 #ifdef DEBUG_PRINT
     if (cache_used > 0) {
       printf (" added '%s' %ju", contact, (uintmax_t)seq);
