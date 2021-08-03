@@ -146,7 +146,6 @@ static int send_data_request (int sock, int priority, char * start)
 static void * request_cached_data (void * arg)
 {
   int sock = * (int *) arg;
-  free (arg);
   /* initial sleep is 12s-20s, slowly grow to ~5min */
   int sleep_time = (int)random_int (SLEEP_INITIAL_MIN, SLEEP_INITIAL_MAX);
   /* subsequent sleep (used on mobile devices when pushed) is much shorter */
@@ -190,10 +189,10 @@ int xchat_init (const char * arg0, const char * path)
     perror ("xchat_init setsockopt nosigpipe");
 #endif /* SO_NOSIGPIPE */
 #ifdef HAVE_REQUEST_THREAD
-  int * arg = malloc_or_fail (sizeof (int), "xchat_init");
-  *arg = sock;
+  static int arg;
+  arg = sock;
   /* request_cached_data loops forever, so do it in a separate thread */
-  pthread_create (&request_thread, NULL, request_cached_data, (void *)(arg));
+  pthread_create (&request_thread, NULL, request_cached_data, (void *)(&arg));
   pthread_detach (request_thread);
 #endif /* HAVE_REQUEST_THREAD */
 #ifdef TEST_PUSH_REQUEST
@@ -799,8 +798,8 @@ printf ("unknown media %lx, not saving\n", media);
   *broadcast = 0;
   *duplicate = 0;
   if (was_received (*contact, *kset, seq)) {
-#ifdef DEBUG_FOR_DEVELOPER
 printf ("duplicate seq %" PRId64 ", not saving for %s\n", seq, *contact);
+#ifdef DEBUG_FOR_DEVELOPER
 #endif /* DEBUG_FOR_DEVELOPER */
     *duplicate = 1;
   } else {
@@ -1542,13 +1541,17 @@ uint64_t send_data_message (int sock, const char * peer,
 
   static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_lock (&mutex);    /* only one send at a time, please */
+  static char buffer [ALLNET_MTU];
   int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
-  char * data_with_cd = malloc_or_fail (dsize, "xcommon.c send_data_message");
-  memcpy (data_with_cd + CHAT_DESCRIPTOR_SIZE, message, mlen);
-  /* send_to_contact initializes the message ack in data_with_cd/cp */
-  uint64_t seq = send_to_contact (data_with_cd, dsize, peer, sock,
+  if (dsize >= sizeof (buffer)) {
+    printf ("message size %d + %zd > %d, not sending\n", mlen,
+            CHAT_DESCRIPTOR_SIZE, ALLNET_MTU);
+    return 0;
+  }
+  memcpy (buffer + CHAT_DESCRIPTOR_SIZE, message, mlen);
+  /* send_to_contact initializes the message ack in buffer */
+  uint64_t seq = send_to_contact (buffer, dsize, peer, sock,
                                   6, ALLNET_PRIORITY_LOCAL, 1);
-  free (data_with_cd);
   int i;
   keyset * ks = NULL;
   int nks = all_keys (peer, &ks);
@@ -1681,7 +1684,8 @@ static void compute_expiration (char * expiration,
  *    -1 if it is too soon to request again
  *    0 if it did not send a retransmit request for this contact/key 
  *      (e.g. if nothing is known to be missing)
- *    1 or more if it sent a retransmit request
+ *    1 if it sent a retransmit request
+ *    2 if it sent one or more unacked packets, but no retransmit request
  */
 /* eagerly should be set when there is some chance that our peer is online,
  * i.e. when we've received a message or an ack from the peer.  In this
@@ -1689,17 +1693,10 @@ static void compute_expiration (char * expiration,
  * time since the last request */
 int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
 {
-  static unsigned long long int last_call = 0;
+  static unsigned long long int last_successful_call = 0;
   unsigned long long int now = allnet_time ();
-#if 0
-  if (last_call >= now)
-    return -1; /* only allow one call per second, even if eagerly */
-  if ((last_call + 9 >= now) && (! eagerly))
-    return -1; /* if not eagerly, only allow one call per ten seconds */
-#endif /* 0 */
-  if ((last_call >= now) && (! eagerly))
+  if ((last_successful_call >= now) && (! eagerly))
     return -1; /* if not eagerly, only allow one call per second */
-  last_call = now;
 #ifdef DEBUG_PRINT
   printf ("request and resend for %s\n", contact);
 #endif /* DEBUG_PRINT */
@@ -1720,6 +1717,7 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
                                  hops, ALLNET_PRIORITY_LOCAL_LOW, expiration)) {
       last_retransmit = now;   /* sent something, update time */
       result = 1;    /* transmission successful */
+      last_successful_call = now;
     }
   }
   /* send a data request, again at a very limited rate */
@@ -1743,10 +1741,10 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
                                  SLEEP_INCREASE_DENOMINATOR);
     }
   }
-  /* resend any unacked messages, but less than once every hour (or eagerly) */
+  /* resend any unacked messages, but less than once per minute (or eagerly) */
   static unsigned long long int last_resend = 0;
-  if (eagerly || (last_resend + 60 <= now)) {
-    const char * ru_contact = contact;  /* don't change the parameters */
+  if (eagerly || (last_resend + 60 <= now)) {  /* ru_ means resend-unacked */
+    const char * ru_contact = contact;  /* don't change contact and kset */
     keyset ru_kset = kset;              /* ru is for Resend Unacked */
     int count = 1;
     char ** contacts = NULL;
@@ -1754,7 +1752,7 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
     if (send_to_all)
       count = all_individual_contacts (&contacts);
     int ic;
-    for (ic = 0; ic < count; ic++) {
+    for (ic = 0; ic < count; ic++) {  /* only loops once, unless send_to_all */
       if ((send_to_all) && (contacts != NULL))
         ru_contact = contacts [ic];
       keyset * kp = NULL;
@@ -1762,7 +1760,7 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
       if (send_to_all)
         nk = all_keys (ru_contact, &kp);
       int ik;
-      for (ik = 0; ik < nk; ik++) {
+      for (ik = 0; ik < nk; ik++) {  /* only loops once, unless send_to_all */
         if ((send_to_all) && (kp != NULL))
           ru_kset = kp [ik];
         uint64_t sent_time;
@@ -1780,8 +1778,7 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
         else if (msg_type_r == MSG_TYPE_DONE) 
           rcvd_time = sent_time;
         long long int delta = ((sent_time > rcvd_time) ?
-                               allnet_time () - sent_time :
-                               allnet_time () - rcvd_time);
+                               now - sent_time : now - rcvd_time);
         /* heuristic: the longer it's been since we've communicated with
          * this contact, the less likely we should be to resend any unacked.
          * we'd like to send with 10% probability if the contact hasn't been
@@ -1801,6 +1798,7 @@ int request_and_resend (int sock, char * contact, keyset kset, int eagerly)
           if (resend_unacked (ru_contact, ru_kset, sock, hops,
                               ALLNET_PRIORITY_LOCAL_LOW, 10) > 0) {
             last_resend = now;
+            last_successful_call = now;
             if (result != 1)
               result = 2;
           }
