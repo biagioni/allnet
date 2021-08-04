@@ -1173,17 +1173,30 @@ static int
   char original_name [512];
   int name_ptr = 0;
   int response_pos = DNS_HEADER_SIZE;
+  int end_of_name = response_pos;
+  int indirect_found = 0;
   while (response_pos < received) {
     int label_len = response [response_pos];
     if (label_len == 0) {  /* done */
       original_name [name_ptr] = '\0';
       response_pos++;
+      if (! indirect_found)
+        end_of_name++;
       break;
     }
-    memcpy (original_name + name_ptr, response + response_pos + 1, label_len);
-    original_name [name_ptr + label_len] = '.';
-    name_ptr += label_len + 1;
-    response_pos += label_len + 1;
+    if ((label_len <= 63) && (response_pos + label_len < received)) {
+      /* name follows, copy it */
+      memcpy (original_name + name_ptr, response + response_pos + 1, label_len);
+      original_name [name_ptr + label_len] = '.';
+      name_ptr += label_len + 1;
+      response_pos += label_len + 1;
+      if (! indirect_found)  /* still on the initial sequence of labels */
+        end_of_name += label_len + 1;
+    } else {                /* indirection */
+      /* response_pos moves to the label, end_of_name will no longer change */
+      indirect_found = 1;
+      response_pos = label_len & 0x3f;
+    }
   }
 #ifdef DEBUG_PRINT
   printf ("original name is '%s'\n", original_name);
@@ -1204,8 +1217,8 @@ static int
     struct sockaddr_storage sas;
     memset (&sas, 0, sizeof (sas));
     struct sockaddr * sap = (struct sockaddr *) &sas;
-    if (response_pos + 4 >= received) {
-      int type = readb16 (response + response_pos);
+    if (end_of_name + 4 <= received) {
+      int type = readb16 (response + end_of_name);
       if (type == 1)         /* ipv4 */
         sas.ss_family = AF_INET;
       else if (type == 28)   /* ipv6 */
@@ -1219,18 +1232,18 @@ static int
     callback (names [name_index], callback_ids [name_index], 0, sap);
     return 0;
   }
-  if (response_pos + 4 > received) {
+  if (end_of_name + 4 > received) {
     printf ("dns response size %zd, end of query name %d\n",
-            received, response_pos);
+            received, end_of_name);
     print_buffer (response, (int)received, "received response", 512, 1);
     return 0;
   }
-  size_t answer_start = response_pos + 4;  /* after type/class of query */
+  size_t answer_start = end_of_name + 4;  /* after type/class of query */
   size_t answer_fixed = answer_start + 2;  /* in the common case c00c */
   int num_found = 0;
   while ((answer_start + 10 <= received) && (num_found < num_answers)) {
     if (readb16 (response + answer_start) != 0xc00c) {  /* unusual */
-      int query_size = response_pos - DNS_HEADER_SIZE;
+      int query_size = end_of_name - DNS_HEADER_SIZE;
       if (memcmp (response + answer_start, response + DNS_HEADER_SIZE,
                   query_size + 4) == 0) {
         /* server repeated query in answer */
