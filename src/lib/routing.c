@@ -57,6 +57,8 @@ static const char * default_dns [] =
  * and to AF_APPLETALK otherwise. */
 struct sockaddr_storage ip4_defaults [NUM_DEFAULTS];
 struct sockaddr_storage ip6_defaults [NUM_DEFAULTS];
+/* ips saved from the previous run, if any */
+struct sockaddr_storage saved_ips [NUM_DEFAULTS + NUM_DEFAULTS];
 
 /* own addresses, as reported by others */
 struct self_addr_struct {
@@ -206,6 +208,7 @@ static void routing_add_dht_sockaddr (const char * name, int id, int valid,
   if ((id >= NUM_DEFAULTS) || (id < 0))
     return;
   if (! valid) {
+/* AF_APPLETALK is used to show that there is no such address */
     if (ip_addr->sa_family == AF_INET)
       ip4_defaults [id].ss_family = AF_APPLETALK;
     if (ip_addr->sa_family == AF_INET6)
@@ -221,12 +224,18 @@ static void routing_add_dht_sockaddr (const char * name, int id, int valid,
     addr.ip.ip_version = 4;
     memset (ip4_defaults + id, 0, sizeof (ip4_defaults [id]));
     memcpy (ip4_defaults + id, ip_addr, sizeof (struct sockaddr_in));
+    /* also update saved_ips */
+    memset (saved_ips + 2 * id + 0, 0, sizeof (saved_ips [0]));
+    memcpy (saved_ips + 2 * id + 0, ip_addr, sizeof (struct sockaddr_in));
   } else if (ip_addr->sa_family == AF_INET6) {
     const struct sockaddr_in6 * sin = (const struct sockaddr_in6 *) ip_addr;
     memcpy (addr.ip.ip.s6_addr, sin->sin6_addr.s6_addr, 16);
     addr.ip.ip_version = 6;
     memset (ip6_defaults + id, 0, sizeof (ip6_defaults [id]));
     memcpy (ip6_defaults + id, ip_addr, sizeof (struct sockaddr_in6));
+    /* also update saved_ips */
+    memset (saved_ips + 2 * id + 1, 0, sizeof (saved_ips [0]));
+    memcpy (saved_ips + 2 * id + 1, ip_addr, sizeof (struct sockaddr_in6));
   }
   if ((addr.ip.ip_version != 4) && (addr.ip.ip_version != 6)) {
     printf ("error: routing_add_dht_sockaddr IP version %d\n",
@@ -311,6 +320,15 @@ static void save_peers ()
   }
   close (fd);
   peers_file_time = time (NULL);  /* no need to re-read in load_peers (1) */
+  int fdi = open_write_config ("adht", "saved_ips", 0);
+  if (fdi >= 0) {
+    ssize_t w = write (fdi, saved_ips, sizeof (saved_ips));
+    if (w != sizeof (saved_ips)) {
+      perror ("writing saved_ips");
+      printf ("wrote %zd rather than %zd\n", w, sizeof (saved_ips));
+    }
+    close (fdi);
+  }
 #ifdef DEBUG_PRINT
   printf ("saved %d peers and %d pings, time is %ld\n",
           cpeer, cping, peers_file_time);
@@ -338,7 +356,7 @@ static void * init_default_dns (void * arg)
   int num_defaults = NUM_DEFAULTS;
   int sleep_sec = 10;
   while (num_defaults > 0) {
-    for (i = 0; i < num_defaults; /* i++ or num_defaults-- */ ) {
+    for (i = 0; i < num_defaults; /* on each loop, i++ or num_defaults-- */ ) {
       if ((ip4_defaults [indices [i]].ss_family == AF_INET) ||
           (ip6_defaults [indices [i]].ss_family == AF_INET6) ||
 /* AF_APPLETALK is used to show that there is no such address */
@@ -427,6 +445,21 @@ static int add_default_routes (struct sockaddr_storage * result,
         if (alen != NULL) alen [number] = sizeof (struct sockaddr_in6);
         result [number++] = ip6_defaults [i];
       }
+    }
+  }
+  for (i = 0; (i < NUM_DEFAULTS) && (number >= 0) && (number < max); i++) {
+    int index4 = 2 * i;
+    int index6 = index4 + 1;
+    if ((saved_ips [index4].ss_family == AF_INET) &&
+        (! already_listed (saved_ips + index4, result, number)) &&
+        (! already_listed (saved_ips + index6, result, number))) {
+      if (alen != NULL) alen [number] = sizeof (struct sockaddr_in);
+      result [number++] = saved_ips [index4];
+    } else if ((saved_ips [index6].ss_family == AF_INET6) &&
+               (! already_listed (saved_ips + index4, result, number)) &&
+               (! already_listed (saved_ips + index6, result, number))) {
+      if (alen != NULL) alen [number] = sizeof (struct sockaddr_in6);
+      result [number++] = saved_ips [index6];
     }
   }
   if ((number == off) && (dns_init == 1))
@@ -560,6 +593,24 @@ static void init_defaults ()
   save_id ();
 }
 
+static void read_saved_ips ()
+{
+  static int initialized = 0;
+  if (initialized)   /* only do this once */
+    return;
+  initialized = 1;
+  int fd = open_read_config ("adht", "saved_ips", 0);
+  if (fd >= 0) {
+    ssize_t r = read (fd, saved_ips, sizeof (saved_ips));
+    if (r != sizeof (saved_ips)) {
+      perror ("reading saved_ips");
+      printf ("read %zd rather than %zd, aborting\n", r, sizeof (saved_ips));
+      memset (saved_ips, 0, sizeof (saved_ips));
+    }
+    close (fd);
+  }
+}
+
 static void read_my_id ()
 {
   static int initialized = 0;
@@ -625,6 +676,7 @@ static void load_peers (int only_if_newer)
   /* an unused entry has nbits set to 0 -- might as well clear everything */
   memset ((char *) (peers), 0, sizeof (peers));
   memset ((char *) (pings), 0, sizeof (pings));
+  read_saved_ips ();
   read_my_id ();
   read_peers_file ();
 #ifdef DEBUG_PRINT
