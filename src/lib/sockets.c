@@ -40,6 +40,13 @@ static void debug_crash ()
   allnet_crash ("sockets.c debug_crash");
 }
 
+static int unusual_sendto_error (int e)
+{
+  return ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
+          (e != ENETDOWN) && (e != ENETRESET) &&
+          (e != EADDRNOTAVAIL) && (e != EMSGSIZE));
+}
+
 void print_sav_to_fd (struct socket_address_validity * sav, int fd)
 {
    int limit = (sav->alen == 16 ? 8 : 24);
@@ -639,11 +646,8 @@ static void send_error (const char * message, int msize, int flags, int res,
     print_buffer (message + msize - 4, 4, "...", 4, 1);
   /* no need to die for network or host unreachable or unavailable addrs
    * or message too long */
-  if ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
-      (e != ENETDOWN) && (e != ENETRESET) &&
-      (e != EADDRNOTAVAIL) && (e != EMSGSIZE)) {
-    char * q = NULL;
-    printf ("now crashing: %d\n", *q);
+  if (unusual_sendto_error (e)) {
+    debug_crash ();
   }
 }
 
@@ -677,8 +681,7 @@ check_sav (sav, "send_on_socket");
     sav->alive_sent = sent_time;
     return 1;
   }
-  if ((errno != EADDRNOTAVAIL) && (errno != ENETUNREACH) &&
-      (errno != EHOSTUNREACH) && (errno != EHOSTDOWN)) {
+  if (unusual_sendto_error (errno)) {
     char desc2 [1000];
     snprintf (desc2, sizeof (desc2), "%s send_on_socket", desc);
     /* some error, so the rest of this function is for debugging */
@@ -880,7 +883,7 @@ int socket_send_to_ip (int sockfd, const char * message, int msize,
   sockets_log_sr (1, "send_to_ip", message, msize, sap, alen, result);
   if (result == msize)
     return 1;
-  if (errno != ENETUNREACH) {
+  if (unusual_sendto_error (errno)) {
     char desc [1000];
     snprintf (desc, sizeof (desc), "%s socket_send_to_ip", debug);
     send_error (message, msize, flags, (int)result, sas, alen,
