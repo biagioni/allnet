@@ -1090,7 +1090,7 @@ static struct socket_read_result next_message (char * message_buffer)
   return socket_read (&sockets, message_buffer, timeout, virtual_clock);
 }
 
-void allnet_daemon_loop ()
+void allnet_daemon_loop (void)
 {
   char message [SOCKET_READ_MIN_BUFFER];
   struct socket_read_result r = next_message (message);

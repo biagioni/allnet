@@ -83,7 +83,7 @@ static void * generic_thread (void * arg)
 }
 
 /* stop all of the other threads */
-void stop_allnet_threads ()
+void stop_allnet_threads (void)
 {
   atcpd_main (NULL);       /* stop atcpd -- must be stopped before AD */
   allnet_daemon_main (0);  /* stop ad */

@@ -6,6 +6,7 @@
 #include "packet.h"
 #include "priority.h"
 #include "util.h"
+#include "track.h"
 
 #define SAVED_ADDRESSES	128
 

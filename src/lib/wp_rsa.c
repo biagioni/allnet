@@ -1722,7 +1722,7 @@ static int test_sign_verify (wp_rsa_key_pair * key, int sig_encoding)
   return 1;
 }
 
-void rsa_test_padding ()
+void rsa_test_padding (void)
 {
   char data [WP_RSA_MAX_KEY_BYTES + 100] =
     "the quick brown fox jumped over the lazy dog";
@@ -1770,7 +1770,7 @@ void rsa_test_padding ()
   }
 }
 
-void run_rsa_test ()
+void run_rsa_test (void)
 {
   wp_rsa_key_pair k;
   int nbits = 0;
