@@ -1435,12 +1435,12 @@ if (nlen != clen) printf ("error: nlen %zd, clen %d for %s\n", nlen, clen, names
       }
     }
   }
-  /* wait up to 10-20 seconds for all the replies */
+  /* wait up to about 4-5 seconds for all the replies */
   int num_received = 0;
   unsigned long long int start = allnet_time ();
   unsigned long long int sleep_time = 1000; /* 1000us = 1ms */
   char response_packet [512];
-  while (start + 10 > allnet_time ()) {
+  while (start + 4 > allnet_time ()) {
     struct sockaddr_storage sas;
     socklen_t slen = sizeof (sas);
     struct sockaddr * sap = (struct sockaddr *) (&sas);

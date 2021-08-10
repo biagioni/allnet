@@ -200,6 +200,7 @@ static int already_listed (struct sockaddr_storage * sap,
   return 0;       /* not listed */
 }
 
+/* this is the callback for allnet_dns */
 /* ID is a number 0..NUM_DEFAULTS-1 -- NUM_DEFAULTS - 1 refers to ID 0. */
 /* the name is ignored -- it is only here because allnet_dns provides it */
 static void routing_add_dht_sockaddr (const char * name, int id, int valid,
@@ -335,7 +336,8 @@ static void save_peers ()
 #endif /* DEBUG_PRINT */
 }
 
-/* allnet_dns typically takes 10-20s, so this is run as a separate thread */
+/* allnet_dns takes about 4-5s and is called repeatedly,
+ * so init_default_dns is run as a separate thread */
 static void * init_default_dns (void * arg)
 {
   /* there is no point to running multiple dns threads at the same time */
@@ -354,7 +356,7 @@ static void * init_default_dns (void * arg)
                                               "default_dns_copy");
   memcpy (default_dns_copy, default_dns, sizeof (default_dns));
   int num_defaults = NUM_DEFAULTS;
-  int sleep_sec = 10;
+  int sleep_sec = 2;
   while (num_defaults > 0) {
     for (i = 0; i < num_defaults; /* on each loop, i++ or num_defaults-- */ ) {
       if ((ip4_defaults [indices [i]].ss_family == AF_INET) ||
@@ -366,8 +368,8 @@ static void * init_default_dns (void * arg)
         num_defaults--;
         default_dns_copy [i] = default_dns_copy [num_defaults];
         indices [i] = indices [num_defaults];
-      } else {   /* no response received, keep this entry */
-        i++;
+      } else {   /* no response (or only 1 of v4/v6 negative responses) */
+        i++;     /* received, keep this entry */
       }
     }
     if (num_defaults <= 0)
@@ -375,7 +377,9 @@ static void * init_default_dns (void * arg)
     allnet_dns ((const char **) default_dns_copy, indices, num_defaults,
                 routing_add_dht_sockaddr);
     sleep (sleep_sec);
-    if (sleep_sec < 600)   /* once every 10 min or so */
+    if (sleep_sec < 15) /* ~15 quick sets of requests, one more sec each time */
+      sleep_sec++;
+    else if (sleep_sec < 600) /* exponential growth up to 10 min or so */
       sleep_sec = sleep_sec + sleep_sec;
   }
   free (default_dns_copy);
@@ -1477,8 +1481,10 @@ int routing_init_is_complete (int wait_for_init)
 void routing_save_peers ()
 {
   pthread_mutex_lock (&mutex);
-  if (! init_peers (1, 0))
+  if (! init_peers (1, 0)) {
+    dns_init = 1;   /* save whatever state has accumulated so far */
     save_peers ();
+  }
   pthread_mutex_unlock (&mutex);
 }
 
