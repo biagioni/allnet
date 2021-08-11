@@ -109,6 +109,10 @@ extern int print_sockaddr_str (const struct sockaddr * sap,
                                socklen_t addr_size,
                                char * string, unsigned int string_size);
 
+/* the argument should be an errno.  Returns 0 if the errno is net/host
+ * unreachable, net down/reset, or addr not available, 1 otherwise */
+extern int unusual_sendto_error (int e);
+
 /* print a message with the current time */
 extern void print_timestamp (const char * message);
 

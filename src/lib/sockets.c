@@ -40,13 +40,6 @@ static void debug_crash ()
   allnet_crash ("sockets.c debug_crash");
 }
 
-static int unusual_sendto_error (int e)
-{
-  return ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
-          (e != ENETDOWN) && (e != ENETRESET) &&
-          (e != EADDRNOTAVAIL) && (e != EMSGSIZE));
-}
-
 void print_sav_to_fd (struct socket_address_validity * sav, int fd)
 {
    int limit = (sav->alen == 16 ? 8 : 24);

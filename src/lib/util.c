@@ -938,6 +938,15 @@ void print_sockaddr (const struct sockaddr * sap, socklen_t addr_size)
   printf ("%s", buffer);
 }
 
+/* the argument should be an errno.  Returns 0 if the errno is net/host
+ * unreachable, net down/reset, or addr not available, 1 otherwise */
+int unusual_sendto_error (int e)
+{
+  return ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
+          (e != ENETDOWN) && (e != ENETRESET) &&
+          (e != EADDRNOTAVAIL));
+}
+
 /* print a message with the current time */
 void print_timestamp (const char * message)
 {
