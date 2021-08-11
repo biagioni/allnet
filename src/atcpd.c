@@ -552,27 +552,24 @@ static void log_connect_error (struct sockaddr * sap, int err)
 static void * atcp_connect_thread (void * arg)
 {
   struct atcp_thread_args * args = ((struct atcp_thread_args *) arg);
-  routing_init_is_complete (1);
-#define NUM_CONNECT	(MAX_CONNECTIONS / 2)
-  struct sockaddr_storage addrs [NUM_CONNECT];
-  socklen_t addr_lengths [NUM_CONNECT];
-  /* since we never update the routing info, there is no point
-   * in reading it more than once */
-  unsigned char dest [ADDRESS_SIZE];
-  memset (dest, 0, ADDRESS_SIZE);
-  /* int sleep_time = KEEPALIVE_SECONDS;            initial interval */
-  int sleep_time = 2;     /* go rather quickly, in case restarted in ios */
-  int n = routing_top_dht_matches (dest, 0, addrs, addr_lengths, NUM_CONNECT);
-#ifdef TEST_TCP_ONLY
-printf ("atcp_connect_thread: %d peers\n", n);
-#endif /* TEST_TCP_ONLY */
-  if (n <= 0)
-    printf ("atcp_connect_thread: no peers (%d) to connect to\n", n);
-  if (n <= 0)
-    return NULL;            /* nothing to connect to */
+  int sleep_time = KEEPALIVE_SECONDS / 5 + 1; /* quick initial interval, 3sec */
   int count = 0;
   while (args->running) {   /* loop until main thread goes away */
     acquire (&(args->lock), "c");
+#define NUM_CONNECT	(MAX_CONNECTIONS / 2)
+    struct sockaddr_storage addrs [NUM_CONNECT];
+    socklen_t addr_lengths [NUM_CONNECT];
+    unsigned char dest [ADDRESS_SIZE];
+    memset (dest, 0, ADDRESS_SIZE);
+    int n = routing_top_dht_matches (dest, 0, addrs, addr_lengths, NUM_CONNECT);
+#ifdef TEST_TCP_ONLY
+    printf ("atcp_connect_thread: %d peers\n", n);
+#endif /* TEST_TCP_ONLY */
+    if (n <= 0) {  /* no peers to connect to */
+      printf ("atcp_connect_thread: no peers (%d) to connect to\n", n);
+      sleep_while_running (args, 1000);
+      continue;  /* restart the loop */
+    }
     unsigned long long int i = random_int (0, n - 1);
     if ((! addr_in_list (addrs + i, 1)) && (tcp_fds [i] < 0) &&
         (tcp_connecting_fds [i] < 0)) {
@@ -742,16 +739,13 @@ static int local_socket ()
 
 /* if arg != NULL, this thread runs until another thread calls this with
  * arg == NULL, or until there is an error */
-void * atcpd_main (char * arg)
+void * atcpd_main (void * arg)
 {
   if (arg == NULL) {
-printf ("stopping atcpd_main\n");
     if (run_state == 1)
       run_state = -1;         /* ask the other thread to stop */
-printf ("waiting for atcpd to complete %llu\n", allnet_time_us ());
     while (run_state != 0)
-      sleep (1);
-printf ("   atcpd is complete %llu\n", allnet_time_us ());
+      usleep (1000);
     return NULL;              /* done, other thread has finished */
   }
   run_state = 1;              /* running */
@@ -821,32 +815,34 @@ printf ("   atcpd is complete %llu\n", allnet_time_us ());
     }
     pthread_join (thr1, NULL);
 #ifdef DEBUG_PRINT
-printf ("pthread_join(1) completed\n");
+    printf ("pthread_join(1) completed at %lld\n", allnet_time_us ());
 #endif /* DEBUG_PRINT */
     pthread_join (thr2, NULL);
 #ifdef DEBUG_PRINT
-printf ("pthread_join(2) completed\n");
+    printf ("pthread_join(2) completed at %lld\n", allnet_time_us ());
 #endif /* DEBUG_PRINT */
     pthread_join (thr3, NULL);
 #ifdef DEBUG_PRINT
-printf ("pthread_join(3) completed\n");
+    printf ("pthread_join(3) completed at %lld\n", allnet_time_us ());
 #endif /* DEBUG_PRINT */
     pthread_join (thr4, NULL);
 #ifdef DEBUG_PRINT
-printf ("pthread_join(4) completed\n");
+    printf ("pthread_join(4) completed at %lld\n", allnet_time_us ());
 #endif /* DEBUG_PRINT */
     pthread_join (thr5, NULL);
 #ifdef DEBUG_PRINT
-printf ("pthread_join(5) completed\n");
+    printf ("pthread_join(5) completed at %lld\n", allnet_time_us ());
 #endif /* DEBUG_PRINT */
     pthread_join (thr6, NULL);
 #ifdef DEBUG_PRINT
-printf ("pthread_join(6) completed\n");
+    printf ("pthread_join(6) completed at %lld\n", allnet_time_us ());
 #endif /* DEBUG_PRINT */
     close (thread_args->local_sock);  /* may already be closed */
     free (thread_args);
+#ifdef DEBUG_PRINT
     printf ("%lld: atcpd_main restarting %d, run state %d\n",
-            allnet_time (), restart_count, run_state);
+            allnet_time_us (), restart_count, run_state);
+#endif /* DEBUG_PRINT */
     snprintf (alog->b, alog->s, "atcpd_main restarting\n");
     log_print (alog);
   }

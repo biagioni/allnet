@@ -34,7 +34,6 @@ extern void allnet_daemon_main (int start);
 extern void keyd_main (char * pname);
 #endif /* ALLNET_USE_FORK */
 extern void keyd_generate (char * pname);
-extern void atcpd_main (char * pname);
 
 static struct allnet_log * alog = NULL;
 
@@ -85,7 +84,6 @@ static void * generic_thread (void * arg)
 /* stop all of the other threads */
 void stop_allnet_threads (void)
 {
-  atcpd_main (NULL);       /* stop atcpd -- must be stopped before AD */
   allnet_daemon_main (0);  /* stop ad */
   int i;
   for (i = free_thread_arg - 1; i >= 0; i--) {
@@ -314,12 +312,21 @@ static void stop_all_on_signal (int signal)
   exit (0);      /* finally, suicide */
 }
 
+static void (*shutdown_function) (int) = NULL;
+
 /* save whatever state needs saving, then stop everything */
 static void save_state (int signal)
 {
-  routing_save_peers ();
-  pcache_write ();
-  exit (0);
+  if (shutdown_function != NULL) {
+    shutdown_function (0);  /* the normal case */
+  } else {
+    printf ("error: astart.c save_state has no shutdown function\n");
+    /* do what you can to save state, but why wasn't allnet_daemon_main set
+     * as the shutdown function? */
+    routing_save_peers ();
+    pcache_write ();
+    exit (0);
+  }
 }
 
 static void stop_all ()
@@ -537,17 +544,11 @@ int astart_main (int argc, char ** argv)
     log_print (alog);
   }
 
-  /* start the dependent processes, keyd, keygen, and atcpd */
-  my_call1 (argv [0], alen, "allnet-tcpd",
-            atcpd_main, pid_fd, astart_pid, 0, 1);
-#ifdef ALLNET_KEYTYPE_RSA
-  my_call1 (argv [0], alen, "allnet-kgen",
-            keyd_generate, pid_fd, astart_pid, 0, 1);
-#endif /* ALLNET_KEYTYPE_RSA */
+  /* start the dependent processes, now down to only keyd */
 #ifdef ALLNET_USE_FORK /* keyd only works as a separate process */
   my_call1 (argv [0], alen, "allnet-keyd", keyd_main, pid_fd, astart_pid, 0, 1);
 #endif /* ALLNET_USE_FORK */
-  /* start allnet */
+  /* start the allnet daemon */
 #ifdef ALLNET_USE_FORK  /* only set up the signal handler for allnetd */
   setup_signal_handler (1);
   /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
@@ -559,6 +560,7 @@ int astart_main (int argc, char ** argv)
 #endif /* ALLNET_USE_FORK */
     call_ad (NULL);
   } else {
+    shutdown_function = allnet_daemon_main;
     my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1, 0);
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
     close (pid_fd);

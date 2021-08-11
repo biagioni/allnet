@@ -1215,11 +1215,7 @@ void allnet_daemon_main (int start)
   if (! start) {
     if (run_state == 1)
       run_state = -1;         /* ask the other thread to stop */
-printf ("waiting for ad to complete %llu\n", allnet_time_us ());
-    while (run_state != 0)
-      sleep (1);
-printf ("   ad is complete %llu\n", allnet_time_us ());
-    return;                   /* done, other thread has finished */
+    return;                   /* let main thread finish */
   }
   run_state = 1;              /* running */
   alog = init_log ("ad");
@@ -1229,8 +1225,14 @@ printf ("   ad is complete %llu\n", allnet_time_us ());
   routing_my_address (my_address);
   initialize_sockets ();
   update_virtual_clock ();  /* 2018/08/03: not sure if this is useful */
+  extern void * atcpd_main (void *);
+  pthread_t atcpd_thread;
+  int ignored_arg = 99;
+  pthread_create (&atcpd_thread, NULL, atcpd_main, (void *) &ignored_arg);
   while (run_state == 1)
-    allnet_daemon_loop ();
+    allnet_daemon_loop (); /* main loop */
+  /* run_state is no longer 1, shut everything down */
+  atcpd_main (NULL);       /* ask atcpd_main to stop */
   close_socket_set (&sockets);
   run_state = 0;
 }
