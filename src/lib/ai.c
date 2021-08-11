@@ -5,6 +5,7 @@
 #include <stdlib.h>  /* exit if IPv6 address size is not 16 */
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sys/types.h>
 #ifndef ANDROID
 #include <ifaddrs.h>
@@ -1420,8 +1421,12 @@ if (nlen != clen) printf ("error: nlen %zd, clen %d for %s\n", nlen, clen, names
           ssize_t send_res = sendto (s, query_packet, offset, 0,
                                      (struct sockaddr *) (this_server), alen);
           if (send_res != offset) {
-            perror ("allnet_dns sendto");
-            printf ("allnet_dns sendto %zd returned %zd\n", offset, send_res);
+            int e = errno;
+            if (unusual_sendto_error (e)) {
+              perror ("allnet_dns sendto");
+              printf ("allnet_dns sendto %zd returned %zd, errno %d\n",
+                      offset, send_res, e);
+            }
           } else {
             npackets++;
             num_dns_ids++;
