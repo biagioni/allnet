@@ -550,6 +550,7 @@ int astart_main (int argc, char ** argv)
 #endif /* ALLNET_USE_FORK */
   /* start the allnet daemon */
 #ifdef ALLNET_USE_FORK  /* only set up the signal handler for allnetd */
+  shutdown_function = allnet_daemon_main;
   setup_signal_handler (1);
   /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
 #endif /* ALLNET_USE_FORK */
@@ -560,7 +561,6 @@ int astart_main (int argc, char ** argv)
 #endif /* ALLNET_USE_FORK */
     call_ad (NULL);
   } else {
-    shutdown_function = allnet_daemon_main;
     my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1, 0);
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
     close (pid_fd);
