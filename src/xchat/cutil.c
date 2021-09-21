@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <ctype.h>
+#include <inttypes.h>
 
 #include "lib/packet.h"
 #include "lib/media.h"

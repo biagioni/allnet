@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <netdb.h>  /* h_errno */
 #include <dirent.h>  /* h_errno */
+#include <inttypes.h>
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/socket.h>

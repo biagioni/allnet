@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>  /* exit if IPv6 address size is not 16 */
 #include <unistd.h>
+#include <inttypes.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <sys/types.h>

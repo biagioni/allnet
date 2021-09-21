@@ -10,6 +10,7 @@
 #ifndef ALLNET_SOCKETS_H
 #define ALLNET_SOCKETS_H
 
+#include <inttypes.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 

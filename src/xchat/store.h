@@ -2,6 +2,8 @@
 #ifndef ALLNET_CHAT_STORE_H
 #define ALLNET_CHAT_STORE_H
 
+#include <inttypes.h>
+
 #include "lib/keys.h"
 
 /* start_iter and prev_message define an iterator over messages.
