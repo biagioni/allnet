@@ -132,6 +132,22 @@ static void create_chat_control_request (const char * contact, char * missing,
 int send_retransmit_request (const char * contact, keyset k, int sock,
                              int hops, int priority, const char * expiration)
 {
+  /* check to see that the key exchange is complete by checking
+   * for local and remote addresses,
+   * and that we've sent or received at least one message */
+  unsigned char test_address [ADDRESS_SIZE];
+  if ((get_local (k, test_address) == 0) ||
+      (get_remote (k, test_address) == 0) ||
+      ((get_last_received (contact, k) == 0) && (get_counter (contact) <= 1))) {
+#ifdef DEBUG_PRINT
+    printf ("local %d, remote %d, received %" PRIu64 ", sent %" PRIu64
+            " for %s, key %d\n", 
+            get_local (k, test_address), get_remote (k, test_address),
+            get_last_received (contact, k), get_counter (contact),
+            contact, k);
+#endif /* DEBUG_PRINT */
+    return 0;
+  }
   int num_singles = 0;
   int num_ranges = 0;
   uint64_t rcvd_sequence;
