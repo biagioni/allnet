@@ -75,8 +75,8 @@ struct key_info {
 #define SYMMETRIC_KEY_SIZE AES256_SIZE
 #endif /* SYMMETRIC_KEY_SIZE */
   char symmetric_key [SYMMETRIC_KEY_SIZE];
-/* state includes a key, which may or may not be the same as symmetric_key,
- * but usually will be. */
+/* the send_state and receive_state include a key, which may or may not
+ * be the same as symmetric_key but usually will be. */
   int has_send_state;
   struct allnet_stream_encryption_state send_state;
   int has_receive_state;
