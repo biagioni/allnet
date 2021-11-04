@@ -138,8 +138,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 	assert(descEnd == value.length);
 	String dm = ((desc.length() > 0) ? (desc + "\n" + message) : message);
 	if (allContactSeq.contains(new ContactSequence(peer, seq))) {
-	    System.out.println ("pending message for " + peer + ", seq" + seq +
-				" was also in the messages we got");
+	    // System.out.println ("pending message for " + peer + ", seq" + seq + " was also in the messages we got");
 	    return;
 	}
 	if (incompletes.contains(peer)) {   // complete the exchange
