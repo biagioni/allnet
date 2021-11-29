@@ -1315,8 +1315,17 @@ int routing_ping_iterator (int iter, struct addr_info * ai)
     return -1;
   pthread_mutex_lock (&mutex);
   init_peers (0, 0);
-  while ((iter < MAX_PINGS) && (pings [iter].ai.nbits == 0))
+  while ((iter < MAX_PINGS) &&
+         ((pings [iter].ai.nbits == 0) || 
+          (pings [iter].ai.nbits > ADDRESS_BITS))) {
+    if (pings [iter].ai.nbits > ADDRESS_BITS) {
+      printf ("error: routing_ping_iterator %d/%d seeing %d > %d bits\n",
+              iter, MAX_PINGS, pings [iter].ai.nbits, ADDRESS_BITS);
+      print_addr_info (&(pings [iter].ai));
+      pings [iter].ai.nbits = 0;   /* something wrong, delete entry */
+    }
     iter++;
+  }
   if ((iter < MAX_PINGS) && (ai != NULL))
     *ai = pings [iter].ai;
   pthread_mutex_unlock (&mutex);
@@ -1325,6 +1334,7 @@ int routing_ping_iterator (int iter, struct addr_info * ai)
       printf ("error: routing_ping_iterator %d/%d returning %d > %d bits\n",
               iter, MAX_PINGS, pings [iter].ai.nbits, ADDRESS_BITS);
       print_addr_info (&(pings [iter].ai));
+      return -1;
     }
     return iter + 1;
   }
