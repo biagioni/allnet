@@ -57,6 +57,8 @@ struct chat_descriptor {
 
 #define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor))   /* 40 */
 
+/* a counter value of COUNTER_FLAG indicates a control message rather than
+ * a data message */
 #define COUNTER_FLAG	0xffffffffffffffffLL
 
 struct chat_control {
