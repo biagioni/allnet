@@ -33,6 +33,7 @@ Makefile.in
 
 # Binaries
 bin/
+src/print_caches
 
 # private
 todo/
