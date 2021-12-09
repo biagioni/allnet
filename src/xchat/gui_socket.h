@@ -54,7 +54,8 @@
 #include <inttypes.h>     /* int64_t */
 
 /* start java and return the PID of the java process */
-extern pid_t start_java (const char * arg);  /* gui_start_java.c */
+/* closes the given fd in the child process */
+extern pid_t start_java (const char * arg, int fd);  /* gui_start_java.c */
 
 /* loop to listen on the gui socket and respond appropriately */
 extern void * gui_respond_thread (void * arg);  /* gui_response.c */

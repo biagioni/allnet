@@ -157,7 +157,7 @@ static char * find_java ()
 static char * tmp_dir = TMP_DIR_INITIALIZER;
 #endif /* HIDE_JAVA_OUTPUT */
 
-static pid_t exec_java_ui (const char * arg)
+static pid_t exec_java_ui (const char * arg, int fd_to_close)
 {
 #define JAR_FILE_NAME	"AllNetUI.jar"
   char * path = NULL;
@@ -202,6 +202,11 @@ static pid_t exec_java_ui (const char * arg)
     return pid;
   }
   if (pid == 0) {   /* child process */
+    if (close (fd_to_close) != 0) {
+      perror ("close");
+      printf ("exec_java_ui in pid %d (parent %d) unable to close fd %d\n",
+              getpid (), getppid(), fd_to_close);
+    }
     char * args [5];
     args [0] = find_java ();
     /* if jarfile name is absolute, go to that directory and use a relative
@@ -278,7 +283,7 @@ static pid_t exec_java_ui (const char * arg)
   return pid;
 }
 
-pid_t start_java (const char * arg)
+pid_t start_java (const char * arg, int fd_to_close)
 {
-  return exec_java_ui (arg);
+  return exec_java_ui (arg, fd_to_close);
 }

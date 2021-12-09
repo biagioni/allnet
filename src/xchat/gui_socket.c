@@ -95,12 +95,13 @@ static int accept_incoming (int listen_sock)
 }
 
 /* create the process to run the gui, return the socket (or -1 for errors) */
-static int create_gui_sock (const char * arg)
+/* before starting the gui, close socket_not_used_in_java */
+static int create_gui_sock (const char * arg, int socket_not_used_in_java)
 {
   int listen_sock = create_listen_socket ();
   if (listen_sock < 0)
     return listen_sock;
-  xchat_ui_pid = start_java (arg);
+  xchat_ui_pid = start_java (arg, socket_not_used_in_java);
   if (xchat_ui_pid < 0) {
     close (listen_sock);
     return -1;
@@ -123,7 +124,7 @@ int main (int argc, char ** argv)
   int allnet_sock = create_allnet_sock (argv [0], argv [1]);
   if (allnet_sock < 0)
     return 1;
-  int gui_sock = create_gui_sock (argv [0]);
+  int gui_sock = create_gui_sock (argv [0], allnet_sock);
   if (gui_sock < 0)
     return 1;
 
