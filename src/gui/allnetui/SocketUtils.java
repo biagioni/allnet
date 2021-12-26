@@ -188,15 +188,22 @@ System.out.println("hex for " + b + "/" + i + " is " + result);
 // System.out.println("contact " + contact + ", count " + count + ", start " + start + ", bc " + bc + ", " + data.length + " bytes of data");
         Message[] result = new Message[(int)count];
         int pos = start;
+long debugNow = java.time.Instant.now().getEpochSecond() * 1000;
         for (int i = 0; i < count; i++) {
 // if (i + 10 > count) printBuffer(data, pos, 40, "contact " + contact + ", i " + i + "/" + count + ", pos " + pos + "/" + data.length);
             byte type = data[pos];  // 1 sent, 2 sent+acked, 3 received
             long seq = b64(data, pos + 1);
             long missing = b64(data, pos + 9);
             long sentTime = toJavaMilli(b64(data, pos + 17));
+if (sentTime > debugNow) 
+  System.out.println ("SocketUtils.java: strange sentTime " + sentTime +
+                      ", expected less than " + debugNow);
             // we don't use timezone (and b16 is not defined)
             // int timezone = b16(data, pos + 25);
             long receivedTime = toJavaMilli(b64(data, pos + 27));
+if (receivedTime > debugNow) 
+  System.out.println ("SocketUtils.java: strange receivedTime " + receivedTime +
+                      ", expected less than " + debugNow);
             boolean isNew = (data[pos + 35] != 0);
             String text = bString(data, pos + 36);
             if (text == null) text = new String ("");

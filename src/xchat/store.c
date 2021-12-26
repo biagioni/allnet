@@ -329,8 +329,9 @@ static int parse_hex (char * dest, char * string, int dest_len)
   return 1;
 }
 
-static int parse_seq_time (char * string, uint64_t * seq, uint64_t * time,
-                           int * tz, uint64_t * rcvd_time)
+static int parse_seq_time (const char * string, uint64_t * seq, uint64_t * time,
+                           int * tz, uint64_t * rcvd_time,
+                           const char * debug_fname)
 {
 #define SEQUENCE_STR     "sequence "
   char * parse_string = strstr (string, SEQUENCE_STR);
@@ -356,6 +357,11 @@ static int parse_seq_time (char * string, uint64_t * seq, uint64_t * time,
   if (end == paren + 1) {
     printf ("time missing from '%s'\n", paren);
     return 0;
+  }
+  if (n > allnet_time ()) {
+    printf ("error reading record %s, time %" PRIu64 " > %llu, %s\n",
+            string, n, allnet_time (),
+            (debug_fname != NULL) ? debug_fname : "(no file name)");
   }
   if (time != NULL)
     *time = n;
@@ -387,6 +393,7 @@ printf ("parsed tz %d from string %s\n", *tz, blank + 1); */
 /* an ack record only has one line. */
 static int parse_record (char * record, uint64_t * seq, uint64_t * time,
                          int * tz, uint64_t * rcvd_time, char * message_ack,
+                         const char * debug_fname,
                          char ** message, int * msize)
 {
   if (seq != NULL)
@@ -425,7 +432,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
   /* note that even though an ack is all on one line, the computation
    * of second_line should still have worked */
 
-  if (! parse_seq_time (second_line, seq, time, tz, rcvd_time)) {
+  if (! parse_seq_time (second_line, seq, time, tz, rcvd_time, debug_fname)) {
     memset (message_ack, 0, MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;
     if (time != NULL) *time = 0;
@@ -590,7 +597,8 @@ int prev_message (struct msg_iter * iter, uint64_t * seq, uint64_t * time,
   if (record == NULL)  /* finished */
     return MSG_TYPE_DONE;
   int result = parse_record (record, seq, time, tz_min, rcvd_time,
-                             message_ack, message, msize);
+                             message_ack, iter->current_fname,
+                             message, msize);
   if ((message == NULL) || (*message != record))
     free (record);
   return result;

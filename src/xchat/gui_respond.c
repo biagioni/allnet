@@ -654,6 +654,16 @@ static void gui_get_messages (char * message, int64_t length, int gui_sock)
       int num_alloc = 0;
       int num_used = 0;
       if (list_all_messages (contact, &msgs, &num_alloc, &num_used)) {
+        unsigned long long int debug_time = allnet_time ();
+        for (int dbg = 0; dbg < num_used; dbg++) {
+          if ((msgs [dbg].time > debug_time) ||
+              (msgs [dbg].rcvd_ackd_time > debug_time)) {
+            printf ("gui_get_messages for contact %s message %d: "
+                    "times %" PRIu64 " or %" PRIu64 " > %llu\n",
+                    contact, dbg, msgs [dbg].time,
+                    msgs [dbg].rcvd_ackd_time, debug_time);
+          }
+        }
         int nresult = num_used;
         if ((max > 0) && (nresult > max))
           nresult = max;
