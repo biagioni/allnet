@@ -1251,6 +1251,8 @@ printf ("saving remote dh secret\n");
             record_remote_address =
               set_contact_pubkey (keys [ii], data, ksize);
           }
+printf ("record_remote_address %d, hp->src_nbits %d\n", record_remote_address,
+hp->src_nbits);
           if (record_remote_address &&
               (hp->src_nbits > 0) && (hp->src_nbits <= ADDRESS_BITS))
             set_contact_remote_addr (keys [ii], hp->src_nbits, hp->source);
