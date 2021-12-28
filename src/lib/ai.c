@@ -1045,6 +1045,9 @@ static int get_dns_servers (struct sockaddr_storage * servers, int nservers)
     return 0;
   char * data = NULL;
   static int report_first_error = 1;
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+  report_first_error = 0;
+#endif
   int size = read_file_malloc ("/etc/resolv.conf", &data, report_first_error);
   int num_found = 0;
   if ((size > 0) && (data != NULL)) {
