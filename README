@@ -12,7 +12,7 @@ tested as thoroughly.  You can get the source from sourceforge as follows:
 	cd allnet
 	git clone git://git.code.sf.net/p/allnet/code .
 
-If you plan to contribute to the code, replace the last line with these 3 lines:
+If you plan to contribute to the code, replace the last line with these 4 lines:
 	git init
 	git remote add origin git://git.code.sf.net/p/allnet/code
 	git pull origin master
