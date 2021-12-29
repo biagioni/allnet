@@ -541,7 +541,7 @@ sizeof (struct sockaddr_storage)); printf ("\n");
 
 static void log_connect_error (struct sockaddr * sap, int err)
 {
-  char addr_str [1000];
+  char addr_str [400];
   print_sockaddr_str (sap, sockaddr_len ((struct sockaddr_storage *) sap),
                       addr_str, sizeof (addr_str));
   snprintf (alog->b, alog->s, "atcpd unable to connect to %s\n", addr_str);
