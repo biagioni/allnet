@@ -11,6 +11,7 @@ distribute sources to: linux-64, linux-32, windows, mac
      make
   copy back binaries
   make binary directories 
+  make source directories, in the copy remove todo and doc/ios/*.gz
 
 compile for iOS on xcode
   https://developer.apple.com/library/content/documentation/IDEs/Conceptual/AppDistributionGuide/SubmittingYourApp/SubmittingYourApp.html
@@ -43,7 +44,8 @@ compile for arm:
 note: I included disable-openssl because I haven't been able to link
 openssl with this cross-compiler and my ARM platform (see below for
 details).  You may wish to try first without disable-openssl -- if you
-are successful, encryption and decryption will be much faster.
+are successful, encryption and decryption will be much faster (but
+not as dramatically since version 3.3.0 switched to AES rather than RSA).
 
 note: if you built your openssl cross-compiled for ARM, you probably need:
 in openssl (after downloading it from openssl.org and verifying it)
@@ -61,9 +63,13 @@ all crypto operations.  :(
   copy back binaries
   make binary directory 
 
-Note -- an alternative is to build on the raspberry pi.  The result is
-only independent of local libraries with the following configure:
-  CC=musl-gcc ./configure --disable-openssl --disable-shared CFLAGS="-Wall -Wshadow -g -static -static-libgcc"
+An alternative is to build on the raspberry pi, but as of 2021, this
+version doesn't seem to work, so I leave the instructions below just in
+case they are useful in the future:
+
+The result of building on the raspberry pi is only independent of local
+libraries with the following configure:
+  CC='musl-gcc' ./configure --prefix=/usr/local/bin --disable-openssl --disable-shared CFLAGS="-Wall -Wshadow -g -static -static-libgcc"
 Yes, this means using the musl-gcc wrapper around gcc (see
-http://www.musl-libc.org/).  And "file bin/trace" still thinks trace is
-dynamically linked (and the rest too).
+https://musl.libc.org or https://www.musl-libc.org/).  And "file bin/*"
+still thinks the files are dynamically linked.
