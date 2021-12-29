@@ -294,22 +294,25 @@ static void print_n_messages (const char * peer, const char * arg, int def)
     if (msgs [i].msg_type == MSG_TYPE_SENT) {
       if (msgs [i].message_has_been_acked) {
         status = ' ';
-        if (print_long) {
+        if (print_long) {  /* sizeof(print_buf) must be <= sizeof(print_date) */
           char print_buf [500];
-          strncpy (print_buf, print_date, sizeof (print_buf));
-          /* note: for now (2017/11/22) rcvd_ackd_time should
-             be msgs [i].time (or 0) for any sent message.
-             The code in the "if" should work correctly once
-             ack times are supported, so it may be a good idea
+          memcpy (print_buf, print_date, sizeof (print_buf) - 1);
+          print_buf [sizeof (print_buf) - 1] = '\0';  /* terminate if needed */
+          /* note: for now (2017/11/22, renewed 2021) rcvd_ackd_time should
+             be msgs [i].time or 0 for any sent message.
+             The code in the "if rcvd_ackd_time > time" should work correctly
+             once ack times are supported, so it may be a good idea
              to keep it (but remove this comment ;) */
-if ((msgs [i].rcvd_ackd_time != 0) &&
-    (msgs [i].rcvd_ackd_time != msgs [i].time))
-printf ("received_ackd_time is %d, time is %d\n", 
-(int) (msgs [i].rcvd_ackd_time), (int) (msgs [i].time));
+#ifdef DEBUG_PRINT  /* verify the comment above */
+          if ((msgs [i].rcvd_ackd_time != 0) &&
+              (msgs [i].rcvd_ackd_time != msgs [i].time))
+            printf ("received_ackd_time is %d, time is %d\n", 
+                    (int) (msgs [i].rcvd_ackd_time), (int) (msgs [i].time));
+#endif /* DEBUG_PRINT */
           if (msgs [i].rcvd_ackd_time > msgs [i].time)
             snprintf (print_date, sizeof (print_date),
-                      "%s, acked %" PRIu64 " second%s later: ", print_buf,
-                      msgs [i].rcvd_ackd_time - msgs [i].time,
+                      "%s, acked %" PRIu64 " second%s later: ",
+                      print_buf, msgs [i].rcvd_ackd_time - msgs [i].time,
                       (msgs [i].rcvd_ackd_time > msgs [i].time + 1) ? "s" : "");
           else
             snprintf (print_date, sizeof (print_date), "%s: ", print_buf);
