@@ -287,9 +287,14 @@ public class CoreConnect extends Thread implements CoreAPI {
 	}
 	try {
 	    long length = this.sockIn.readLong();
-	    if (length > 0) {
+	    if ((length > Integer.MAX_VALUE) || (length < 0)) {
+	        System.out.println("CoreConnect receiveBuffer " +
+                                   "unable to receive " + length +
+                                   " bytes, max is " + Integer.MAX_VALUE);
+	        System.exit(1);
+            } else if (length > 0) {
 		    byte[] result = new byte[(int)length];
-		    this.sockIn.readFully(result, 0, result.length);
+		    this.sockIn.readFully(result);
 		    return result;
 	    }
 	} catch (java.io.EOFException e) {
