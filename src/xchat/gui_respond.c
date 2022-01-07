@@ -32,31 +32,33 @@
 
 static int send_bytes (int sock, char *buffer, int64_t length)
 {
-  while (length > 0) {   /* inefficient implementation for now */
-    if (write (sock, buffer, 1) != 1) {
-      perror ("gui.c send_bytes");
-      return 0;
-    }
-    buffer++;
-    length--;
+  ssize_t s = send (sock, buffer, (size_t) length, 0);
+  if (s != length) {
+    perror ("gui_respond.c send_bytes send");
+    printf ("gui_respond.c send_bytes error sending %" PRId64
+            " bytes, sent %zd\n", length, s);
+    return 0;
   }
   return 1;              /* success */
 }
 
 static int receive_bytes (int sock, char *buffer, int64_t length)
 {
-  while (length > 0) {
-    /* get one byte at a time -- for now, inefficient implementation */
-    if (read (sock, buffer, 1) != 1) {
-      if ((errno != ENOENT) &&      /* ENOENT when the socket is closed */
+  off_t off = 0;
+  while (length > off) {
+    ssize_t r = recv (sock, buffer + off, length - off, 0);
+    if (r <= 0) {
+      if ((r != 0) &&               /* the normal EOF shutdown */
+          (errno != ENOENT) &&      /* ENOENT when the socket is closed */
           (errno != ECONNRESET)) {  /* or ECONNRESET */
-        perror ("gui_respond.c receive_bytes");
-        printf ("errno %d on connection %d\n", errno, sock);
+        perror ("gui_respond.c receive_bytes recv");
+        printf ("gui_respond.c receive_bytes error receiving %" PRId64
+                " bytes, received %zd+%" PRId64 " on socket %d\n",
+                length, r, (int64_t) off, sock);
       }
       return 0;
     }
-    buffer++;
-    length--;
+    off += r;
   }
   return 1;              /* success */
 }
@@ -88,9 +90,12 @@ static int64_t receive_buffer (int sock, char **buffer)
   int64_t length = readb64 (length_buf);
   if (length < 1)
     return 0;
-  *buffer = malloc_or_fail (length, "gui.c receive_buffer");
-  if (! receive_bytes (sock, *buffer, length))
+  char * buf = malloc_or_fail (length, "gui_respond.c receive_buffer");
+  if (! receive_bytes (sock, buf, length)) {
+    free (buf);
     return 0;
+  }
+  *buffer = buf;
   return length;
 }
 
@@ -118,6 +123,34 @@ static int copy_string_array (char * dest, size_t dsize,
   return 1;
 }
 
+#ifdef NEW_COPY_STRING_ARRAY
+static char * copy_string_array (char ** array, int count,
+                                 size_t header_size, const char * caller,
+                                 size_t * num_bytes)
+{
+  /* find out the size to be allocated */
+  size_t rsize = header_size;
+  for (int i = 0; i < count; i++)
+    rsize += strlen (array [i]) + 1;
+  char * result = malloc_or_fail (rsize, caller);
+  *num_bytes = rsize;
+  if (count <= 0)
+    return result;
+  char * d = result + header_size;
+  int i;
+  for (i = 0; i < count; i++) {
+    const char * p = array [i];
+    while (1) {
+      *d++ = *p;
+      if (*p == '\0')
+        break;         /* done with this string, go onto the next */
+      p++;
+    }
+  }
+  return result;
+}
+#endif /* NEW_COPY_STRING_ARRAY */
+
 /* if extra is not null, adds esize bytes to the header */
 static void gui_send_string_array (int code, char ** array,
                                    int count, char * extra, int esize,
@@ -127,14 +160,21 @@ static void gui_send_string_array (int code, char ** array,
 #define STRING_ARRAY_HEADER_SIZE	9
   if (extra == NULL)
     esize = 0;
+#ifdef NEW_COPY_STRING_ARRAY
+  size_t alloc = 0;
+  char * reply = copy_string_array (array, count,
+                                    STRING_ARRAY_HEADER_SIZE + esize, caller,
+                                    &alloc);
+#else /* NEW_COPY_STRING_ARRAY */
   size_t string_alloc = size_of_string_array (array, count);
   size_t alloc = STRING_ARRAY_HEADER_SIZE + string_alloc + esize;
   char * reply = malloc_or_fail (alloc, caller);
+#endif /* NEW_COPY_STRING_ARRAY */
   reply [0] = code;
   writeb64 (reply + 1, count);
   if (extra != NULL)
     memcpy (reply + STRING_ARRAY_HEADER_SIZE, extra, esize);
-  int offset = STRING_ARRAY_HEADER_SIZE	+ esize;
+  int offset = STRING_ARRAY_HEADER_SIZE + esize;
   if ((count > 0) && (string_alloc > 0))
     copy_string_array (reply + offset, string_alloc, array, count);
   gui_send_buffer (sock, reply, alloc);
@@ -596,7 +636,7 @@ static void gui_send_result_messages (int code,
     message_alloc += (MESSAGE_HEADER_SIZE + strlen (msgs [i].message) + 1);
   size_t alloc = MESSAGE_ARRAY_HEADER_SIZE + message_alloc;
 /* printf ("gui_send_result_messages (%d, %p, %d, %d, %llu) allocating %zd(%zd)\n", code, msgs, count, sock, lr, alloc, message_alloc); */
-  char * reply = malloc_or_fail (alloc, "gui_send_messages");
+  char * reply = malloc_or_fail (alloc, "gui_send_result_messages");
   memset (reply, 0, alloc);  /* clear everything */
   reply [0] = code;
   writeb64 (reply + 1, count);
@@ -617,13 +657,6 @@ static void gui_send_result_messages (int code,
     writeb64 (dest + 27, msgs [i].rcvd_ackd_time);
     dest [35] = (lr < msgs [i].rcvd_ackd_time);
     strcpy (dest + MESSAGE_HEADER_SIZE, msgs [i].message);
-/* if (i + 10 > count) {
-int len = MESSAGE_HEADER_SIZE + strlen (msgs [i].message) + 1;
-char s [1000];
-snprintf (s, sizeof (s), "%d/%d: bytes %zd..%zd of %zd",
-i, count, (dest - reply), ((dest + len - 1) - reply), alloc);
-print_buffer (dest, len, s, 40, 1);
-} */
     dest += MESSAGE_HEADER_SIZE + strlen (msgs [i].message) + 1;
   }
   gui_send_buffer (sock, reply, alloc);
