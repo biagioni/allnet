@@ -107,27 +107,52 @@
         }
         return true;
     }
-  
-    public static String bString (byte[] data, int start) {
+
+    // returns the length of the string in bytes (NOT including the null char)
+    // or -1 if no null char found 
+    public static int bStringLength (byte[] data, int start) {
       for (int i = start; i < data.length; i++) {
         if (data [i] == 0) {  // found null termination
-          if (i > start) {    // found a non-empty string
-            return new String (data, start, i - start);
-          } else {
-            return new String ("");        /* empty string */
-          }
+          return i - start;
         }
       }
-      return null;
+      return -1;
     }
   
+    public static String bString (byte[] data, int start, int length) {
+      if (data [start + length] != 0) {   // should be the null char
+        System.out.println ("data [" + start + " + " + length + "] == " +
+                            data [start + length] + ", expected 0");
+        return null;
+      }
+      if (length > 0) {
+        return new String (data, start, length);
+      } else {
+        return new String ("");        /* empty string */
+      }
+    }
+  
+    // does not return the number of bytes consumed.  At least as of
+    // 2022/01/13, all stringArrays are at the end of the message, so
+    // should not matter, but if it ever does matter, must do something
+    // similar to bStringLength
     public static String[] bStringArray (byte[] data, int start, long count) {
         String[] result = new String[(int)count];
         int pos = start;
         for (int i = 0; i < count; i++) {
-            result[i] = bString(data, pos);
-            if (result [i] == null) result [i] = new String ("");
-            pos += numBytes(result[i]) + 1; 
+            int length = bStringLength(data, pos);
+            result[i] = bString(data, pos, length);
+            if (result [i] == null) {
+              System.out.println ("error copying string from data " + pos +
+                                  "/" + data.length +
+                                  ", string length " + length + 
+                                  " but data [" + pos + " + " + length +
+                                  " = " + (pos + length) + "] == " +
+                                  data[pos + length] + ", 0 expected");
+              result[i] = new String("");
+              length = 0;
+            }
+            pos += length + 1; 
         }
         return result;
     }
@@ -195,17 +220,22 @@ long debugNow = java.time.Instant.now().getEpochSecond() * 1000;
             long seq = b64(data, pos + 1);
             long missing = b64(data, pos + 9);
             long sentTime = toJavaMilli(b64(data, pos + 17));
-if (sentTime > debugNow) 
-  System.out.println ("SocketUtils.java: strange sentTime " + sentTime +
+if (sentTime > debugNow) {
+  System.out.println ("SocketUtils.java " + System.currentTimeMillis() +
+                      ": contact " + contact +
+                      ", strange sentTime " + sentTime +
                       ", expected less than " + debugNow);
+}
             // we don't use timezone (and b16 is not defined)
             // int timezone = b16(data, pos + 25);
             long receivedTime = toJavaMilli(b64(data, pos + 27));
-if (receivedTime > debugNow) 
+if (receivedTime > debugNow) {
   System.out.println ("SocketUtils.java: strange receivedTime " + receivedTime +
                       ", expected less than " + debugNow);
+}
             boolean isNew = (data[pos + 35] != 0);
-            String text = bString(data, pos + 36);
+            int textLength = bStringLength(data, pos + 36);
+            String text = bString(data, pos + 36, textLength);
             if (text == null) text = new String ("");
             if (type < 3) {          // sent message
                 boolean acked = (type == 2);
@@ -214,37 +244,17 @@ if (receivedTime > debugNow)
                 result[i] = new Message(contact, sentTime, receivedTime,
                                         seq, text, bc, isNew, missing);
             }
-            pos += 36 + numBytes(text) + 1;
+            pos += 36 + textLength + 1;
         }
         return result;
     }
-  
-    // returns the next index after the null byte
-    public static int wString (byte[] data, int start, String s) {
+
+    // returns the C string (including the null byte) as a byte array
+    public static byte[] wStringToBytes (String s) {
         byte[] sbytes = s.getBytes(charset);
-        int length = sbytes.length;
-  // System.out.println("length for " + s + " is " + length + " in " + charset);
-  // System.out.println("data has length " + data.length + ", offset " + start);
-        System.arraycopy(sbytes, 0, data, start, length);
-        int endIndex = start + length;
-        data [endIndex] = 0;   // null byte, to terminate the string
-        return endIndex + 1;   // return the next index after the null byte
-    }
-  
-    public static int numBytes (String s) {
-        return s.getBytes(charset).length;
-    }
-  
-    public static void debugPacket (boolean sent, byte[] data, int dlen,
-                                     int code, String peer) {
-        if (! debug)
-            return;
-        if (sent)
-            System.out.print ("SocketUtils sending ");
-        else
-            System.out.print ("SocketUtils got ");
-        System.out.println (dlen + " bytes, packet code " + code +
-                            ", peer " + peer);
+        // Arrays.copyOf automatically puts 0 in the last byte, which
+        // is the same as the C null termination
+        return java.util.Arrays.copyOf(sbytes, sbytes.length + 1);
     }
 
     public static String makeFirstLineSmall (String message) {

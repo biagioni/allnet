@@ -13,7 +13,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     // from lib/packet.h
     static final int allNetMTU = 12288;
     static final int xchatSocketPort = 41244; // 0xA11C, ALLnet Chat
-    static public final int allnetY2kSecondsInUnix = 946684800;
+    static public final long allnetY2kSecondsInUnix = 946684800;
 
     UIAPI handlers = null;
     java.net.Socket sock;
@@ -115,7 +115,8 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // calls SocketUtils.bString, but never returns null
     private static String stringFromBytes(byte[] data, int start) {
-	String result = SocketUtils.bString(data, start);
+	int length = SocketUtils.bStringLength(data, start);
+	String result = SocketUtils.bString(data, start, length);
 	if (result == null)
 	    result = new String("");
 	return result;
@@ -215,7 +216,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 
     // send callbacks to the right place
     // if it is not a callback, returns false
-    private boolean dispatch(byte[] value) {
+    private boolean deliverCallback(byte[] value) {
 	switch(value[0]) {
 	case guiCallbackMessageReceived:
 	    if (readyForCallbacks) {
@@ -257,7 +258,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 	}
     }
 
-    // send-and received and the synchronization codea are inspired by:
+    // sendRPC and receiveRPC and the synchronization code are inspired by:
     // https://stackoverflow.com/questions/1176135/java-socket-send-receive-byte-array and
     // http://docs.oracle.com/javase/tutorial/essential/concurrency/syncrgb.html
 
@@ -279,7 +280,7 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     // synchronized by the caller
-    private byte[] receiveBuffer() {
+    private byte[] receiveBuffer(byte code) {
 	if (this.bufferedResponse != null) {
 	    byte[] result = this.bufferedResponse;
 	    this.bufferedResponse = null;
@@ -288,11 +289,11 @@ public class CoreConnect extends Thread implements CoreAPI {
 	try {
 	    long length = this.sockIn.readLong();
 	    if ((length > Integer.MAX_VALUE) || (length < 0)) {
-	        System.out.println("CoreConnect receiveBuffer " +
-                                   "unable to receive " + length +
-                                   " bytes, max is " + Integer.MAX_VALUE);
-	        System.exit(1);
-            } else if (length > 0) {
+		System.out.println("CoreConnect receiveBuffer " +
+	                           "unable to receive " + length +
+	                           " bytes, max is " + Integer.MAX_VALUE);
+		System.exit(1);
+	    } else if (length > 0) {
 		    byte[] result = new byte[(int)length];
 		    this.sockIn.readFully(result);
 		    return result;
@@ -319,21 +320,21 @@ public class CoreConnect extends Thread implements CoreAPI {
 	}
 	return false;
     }
-
-    // code is 0 to loop forever, just dispatching and/or saving the buffer
+    // code is 0 to loop forever, just delivering callbacks and/or
+    // saving the buffer
     // multiple threads may call this at the same time, only one of them
     // at a time should proceed through the synchronized block
     private byte[] receiveRPC(byte code) {
 	while(true) {  // repeat until we get our match
 	    boolean sleep = false;
 	    synchronized (this.mutex) {
-		byte[] result = receiveBuffer();
+		byte[] result = receiveBuffer(code);
 		if (result != null) {
 		    // System.out.println ("receiveRPC (" + code + ") got " + result.length + " bytes, code " + result[0]);
 		    if ((code != 0) && (result[0] == code))   // rpc complete
 			return result;
-		    if (! dispatch(result)) { // not a dispatch, save buffer
-			saveBuffer(result);
+		    if (! deliverCallback(result)) { // not a callback
+			saveBuffer(result);	  // save buffer
 			sleep = true;
 		    }
 		}
@@ -440,10 +441,19 @@ public class CoreConnect extends Thread implements CoreAPI {
 	return(contactExists(name) || subscriptionExists(name));
     }
 
+    // it's OK for "from" to be an empty array, i.e. new bytes[0],
+    // but it should not be null
+    private void copyBytes(byte[] to, int pos, byte[] from) {
+	for (byte b: from) {
+	    to[pos++] = b;
+	}
+    }
+
     private byte[] doRPCWithCode(byte code, String contact) {
-	byte[] request = new byte[1 + SocketUtils.numBytes(contact) + 1];
+	byte[] contactBytes = SocketUtils.wStringToBytes(contact);
+	byte[] request = new byte[1 + contactBytes.length];
 	request[0] = code;
-	SocketUtils.wString(request, 1, contact); 
+	copyBytes(request, 1, contactBytes);
 	return doRPC(request);
     }
 
@@ -456,10 +466,11 @@ public class CoreConnect extends Thread implements CoreAPI {
     }
 
     private byte[] doRPCWithCodeOp(byte code, byte op, String contact) {
-	byte[] request = new byte[1 + 1 + SocketUtils.numBytes(contact) + 1];
+	byte[] contactBytes = SocketUtils.wStringToBytes(contact);
+	byte[] request = new byte[1 + 1 + contactBytes.length];
 	request[0] = code;
 	request[1] = op;
-	SocketUtils.wString(request, 2, contact); 
+	copyBytes(request, 2, contactBytes);
 	return doRPC(request);
     }
 
@@ -543,7 +554,6 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
 	byte[] result = doRPCWithCode(guiMemberOfGroups, contact);
 	long count = SocketUtils.b64(result, 1); 
 	String[] groups = SocketUtils.bStringArray(result, 9, count);
-	System.out.println ("memberOfGroups not implemented yet");
 	return groups;
     }
 
@@ -563,12 +573,14 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
 
     // @return true if was able to rename the contact
     public boolean renameContact(String oldName, String newName) {
+	byte[] oldNameBytes = SocketUtils.wStringToBytes(oldName);
+	byte[] newNameBytes = SocketUtils.wStringToBytes(newName);
 	clearCaches();
-	byte[] request = new byte[1 + 1 + SocketUtils.numBytes(oldName) +
-				  SocketUtils.numBytes(newName) + 2];
+	byte[] request = new byte[1 +
+	                          oldNameBytes.length + newNameBytes.length];
 	request[0] = guiRenameContact;
-	int index = SocketUtils.wString(request, 1, oldName); 
-	SocketUtils.wString(request, index, newName); 
+	copyBytes(request, 1, oldNameBytes);
+	copyBytes(request, 1 + oldNameBytes.length, newNameBytes);
 	byte[] response = doRPC(request);
 	return (response [1] != 0);
     }
@@ -706,10 +718,11 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
 	    return result;
 	if (max < 0)
 	    max = 0;  /* in gui_get_messages, 0 means all */
-	byte[] request = new byte[9 + SocketUtils.numBytes(contact) + 1];
+	byte[] contactBytes = SocketUtils.wStringToBytes(contact);
+	byte[] request = new byte[9 + contactBytes.length];
 	request[0] = guiGetMessages;
 	SocketUtils.w64(request, 1, max); 
-	SocketUtils.wString(request, 9, contact); 
+	copyBytes(request, 9, contactBytes);
 	byte[] response = doRPC(request);
 	long count = SocketUtils.b64(response, 1); 
 	result = SocketUtils.bMessages(response, 9, count, contact, false);
@@ -728,13 +741,13 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
 
     // @return sequence number
     public long sendMessage(String contact, String text) {
-	int length = 1 + SocketUtils.numBytes(contact) + 1 +
-		     SocketUtils.numBytes(text) + 1;
+	byte[] contactBytes = SocketUtils.wStringToBytes(contact);
+	byte[] textBytes = SocketUtils.wStringToBytes(text);
+	int length = 1 + contactBytes.length + textBytes.length;
 	byte[] request = new byte[length];
 	request[0] = guiSendMessage;
-	int endContact = SocketUtils.wString (request, 1, contact);
-	int endText = SocketUtils.wString (request, endContact, text);
-	assert(endText == length);
+	copyBytes(request, 1, contactBytes);
+	copyBytes(request, 1 + contactBytes.length, textBytes);
 	byte[] response = doRPC(request);
 	long seq = SocketUtils.b64(response, 1);
 	return seq;
@@ -777,19 +790,20 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
     // returns an array of the normalized secret(s), or [] for failure
     public String[] initKeyExchange(String contact, String secret1,
 				    String secret2, int hops) {
-	int length = 1 + 1 + SocketUtils.numBytes(contact) + 1 +
-		     SocketUtils.numBytes(secret1) + 1;
-	if ((secret2 != null) && (secret2.length() > 0))
-	    length += SocketUtils.numBytes(secret2) + 1;
+	byte[] contactBytes = SocketUtils.wStringToBytes(contact);
+	byte[] secret1Bytes = SocketUtils.wStringToBytes(secret1);
+	byte[] secret2Bytes =
+	  ((secret2 == null) ? new byte[0]
+	                     : SocketUtils.wStringToBytes(secret2));
+	int length = 1 + 1 + contactBytes.length +
+		     secret1Bytes.length + secret2Bytes.length;
 	byte[] request = new byte[length];
 	request[0] = guiKeyExchange;
 	request[1] = convertToByte(hops);
-	int endContact = SocketUtils.wString (request, 2, contact);
-	int endSecret1 = SocketUtils.wString (request, endContact, secret1);
-	int endSecret2 = endSecret1;
-	if ((secret2 != null) && (secret2.length() > 0))
-	    endSecret2 = SocketUtils.wString (request, endSecret1, secret2);
-	assert(endSecret2 == length);
+	copyBytes(request, 2, contactBytes);
+	copyBytes(request, 2 + contactBytes.length, secret1Bytes);
+	copyBytes(request, 2 + contactBytes.length + secret1Bytes.length,
+	          secret2Bytes);
 	byte[] response = doRPC(request);
 	incompletes.add(contact);
 	clearCaches();
@@ -806,11 +820,11 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
     // it must match the ahra created by the broadcaster, except
     //    it may have fewer (or no) word pairs
     public boolean initSubscription(String address) {
-	int length = 1 + SocketUtils.numBytes(address) + 1;
+	byte[] addressBytes = SocketUtils.wStringToBytes(address);
+	int length = 1 + addressBytes.length;
 	byte[] request = new byte[length];
 	request[0] = guiSubscribe;
-	int endAddress = SocketUtils.wString (request, 1, address);
-	assert(endAddress == length);
+	copyBytes(request, 1, addressBytes);
 	byte[] response = doRPC(request);
 	cachedSubscriptions = null;   // reset the cache
 	if (response[1] == 0) {
@@ -905,7 +919,7 @@ for (String s: mem) System.out.print(", " + s); System.out.println("");
 	    // System.out.println("AllNetConnect thread ready for " + pendingCallbacks.size() + " callbacks");
 	    readyForCallbacks = true;
 	    for (byte [] c: pendingCallbacks) {
-		dispatch (c);
+		deliverCallback(c);
 	    }
 	    pendingCallbacks.clear(); // recycle the space
 	    allContactSeq.clear();    // recycle the space
