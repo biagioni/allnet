@@ -58,7 +58,6 @@ static unsigned long long int last_udp_received_time = 0;
 
 /* allow a separate thread to kill this thread */
 static int run_state = 0;      /* stopped */
-static int accept_count = 0;   /* the accept code does IPv6 (0) and IPv4 (1) */
 
 static int debug_keepalive = 0;
 
@@ -69,6 +68,7 @@ struct atcp_thread_args {
   unsigned long long int last_keepalive_sent_time;
   char * authenticating_keepalive;
   unsigned int aksize;
+  int allnet_port;   /* only used by atcp_accept_thread */
 };
 
 /* memmem is standard if _GNU_SOURCE is defined, but not otherwise */
@@ -391,12 +391,13 @@ static void make_socket_nonblocking (int fd, const char * desc)
     perror (err_buf);
 }
 
-/* select IPv4 the first time called, IPv6 the second time.
+/* select IPv6 the first time called, IPv4 the second time.
  * return the address family, or 0 for errors */
 static int atcp_accept_common (struct atcp_thread_args * args,
                                struct sockaddr_storage * addr,
                                socklen_t * alen, char ** ipv)
 {
+  static int accept_count = 0;   /* IPv6 (0) and IPv4 (1) */
   int result = 0;
   memset (addr, 0, sizeof (struct sockaddr_storage));
   *alen = 0;
@@ -406,7 +407,7 @@ static int atcp_accept_common (struct atcp_thread_args * args,
     struct sockaddr_in * sin = (struct sockaddr_in *) addr;
     sin->sin_family = AF_INET;
     sin->sin_addr.s_addr = allnet_htonl (INADDR_ANY);
-    sin->sin_port = allnet_htons (ALLNET_PORT);
+    sin->sin_port = allnet_htons (args->allnet_port);
     *alen = sizeof (struct sockaddr_in);
     *ipv = "IPv4";
     result = AF_INET;
@@ -414,11 +415,13 @@ static int atcp_accept_common (struct atcp_thread_args * args,
     struct sockaddr_in6 * sin = (struct sockaddr_in6 *) addr;
     sin->sin6_family = AF_INET6;
     sin->sin6_addr = in6addr_any;
-    sin->sin6_port = allnet_htons (ALLNET_PORT);
+    sin->sin6_port = allnet_htons (args->allnet_port);
     *alen = sizeof (struct sockaddr_in6);
     *ipv = "IPv6";
     result = AF_INET6;
-  } /* else: result is 0 */
+  } else {  /* result is 0 */
+    printf ("error in atcp_accept_common: accept_count %d\n", accept_count);
+  }
   accept_count++;
   release (&(args->lock), "x");
   return result;
@@ -440,7 +443,6 @@ static void * atcp_accept_thread (void * arg)
   char * ipv = "unknown";
   int af = atcp_accept_common (args, &bind_addr, &balen, &ipv);
   if (af <= 0) {
-    printf ("atcp_accept_thread socket, af %d, count %d\n", af, accept_count);
     return NULL;
   }
   struct sockaddr * sap = (struct sockaddr *) &bind_addr;
@@ -566,7 +568,9 @@ static void * atcp_connect_thread (void * arg)
     printf ("atcp_connect_thread: %d peers\n", n);
 #endif /* TEST_TCP_ONLY */
     if (n <= 0) {  /* no peers to connect to */
+#ifdef DEBUG_PRINT
       printf ("atcp_connect_thread: no peers (%d) to connect to\n", n);
+#endif /* DEBUG_PRINT */
       sleep_while_running (args, 1000);
       continue;  /* restart the loop */
     }
@@ -714,7 +718,8 @@ debug_keepalive = 1;
   return NULL;
 }
 
-static int local_socket ()
+/* open the UDP socket through which we communicate with ad */
+static int local_socket (int port)
 {
   int result = socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (result < 0) {
@@ -724,7 +729,7 @@ static int local_socket ()
     return -1;
   }
   struct sockaddr_in sin = { .sin_family = AF_INET,
-                             .sin_port = allnet_htons (ALLNET_PORT)};
+                             .sin_port = allnet_htons (port)};
   sin.sin_addr.s_addr = allnet_htonl (INADDR_LOOPBACK);
   if (connect (result, (struct sockaddr *) (&sin), sizeof (sin)) != 0) {
     perror ("atcpd UDP connect");
@@ -737,22 +742,25 @@ static int local_socket ()
   return result;
 }
 
-/* if arg != NULL, this thread runs until another thread calls this with
- * arg == NULL, or until there is an error */
-void * atcpd_main (void * arg)
+/* if main_arg != NULL, this thread runs until another thread calls this with
+ * main_arg == NULL, or until there is an error
+ *
+ * if main_arg != NULL, it points to the port number to listen on */
+void * atcpd_main (void * main_arg)
 {
-  if (arg == NULL) {
+  if (main_arg == NULL) {
     if (run_state == 1)
       run_state = -1;         /* ask the other thread to stop */
     while (run_state != 0)
       usleep (1000);
     return NULL;              /* done, other thread has finished */
   }
+  int * external_port_ptr = (int *) main_arg;
   run_state = 1;              /* running */
   alog = init_log ("atcpd");
   int restart_count = 0;
   while ((restart_count++ < 3) && (run_state == 1)) {
-    int new_sock = local_socket ();
+    int new_sock = local_socket (*external_port_ptr);
     make_socket_nonblocking (new_sock, "main thread UDP socket to/from AD");
     last_udp_received_time = allnet_time (); /* start all the timers now */
     if (new_sock < 0) {
@@ -768,13 +776,13 @@ void * atcpd_main (void * arg)
       tcp_connecting_fds [i] = -1;
       tcp_bytes [i] = 0;
     }
-    accept_count = 0;           /* do IPv6 first, then IPv4 */
     memset (tcp_addrs, 0, sizeof (tcp_addrs));
     pthread_mutex_init (&(thread_args->lock), NULL);
     thread_args->running = 1;
     thread_args->last_keepalive_sent_time = 0; /* we have sent no keepalives */
     thread_args->authenticating_keepalive = NULL;
     thread_args->aksize = 0;
+    thread_args->allnet_port = *external_port_ptr;
     pthread_t thr1, thr2, thr3, thr4, thr5, thr6;
     pthread_create (&thr1, NULL, atcp_recv_thread, (void *) thread_args);
     pthread_create (&thr2, NULL, atcp_keepalive_thread, (void *) thread_args);

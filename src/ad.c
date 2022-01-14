@@ -67,7 +67,7 @@ static int set_ipv4 (struct socket_address_set * sock, void * ref)
   return 1;  /* don't delete */
 }
 
-static void initialize_sockets ()
+static void initialize_sockets (int external_port, int internal_port)
 {
   int created_local = 0;
   int created_out = 0;
@@ -85,8 +85,8 @@ static void initialize_sockets ()
   sin->sin_addr.s_addr = htonl (INADDR_LOOPBACK);
 #ifdef ALLNET_USE_FORK
   /* first the local port */
-  sin6->sin6_port = htons (ALLNET_LOCAL_PORT);
-  sin->sin_port = htons (ALLNET_LOCAL_PORT);
+  sin6->sin6_port = allnet_htons (internal_port);
+  sin->sin_port = allnet_htons (internal_port);
   int local_v6 = socket_create_bind (&sockets, 1, sasv6, alen6, 0);
   if (local_v6 < 0)
     printf ("unable to create and bind to IPv6 local socket\n");
@@ -103,9 +103,9 @@ static void initialize_sockets ()
 #endif /* ALLNET_USE_FORK */
   /* now the outside port */
   memcpy (&(sin6->sin6_addr), &(in6addr_any), sizeof (sin6->sin6_addr));
-  sin6->sin6_port = htons (ALLNET_PORT);
+  sin6->sin6_port = allnet_htons (external_port);
   sin->sin_addr.s_addr = htonl (INADDR_ANY);
-  sin->sin_port = htons (ALLNET_PORT);
+  sin->sin_port = allnet_htons (external_port);
   sock_v6 = socket_create_bind (&sockets, 0, sasv6, alen6, 0);
   if (sock_v6 < 0)
     printf ("unable to create and bind to IPv6 out socket\n");
@@ -116,8 +116,8 @@ static void initialize_sockets ()
 #ifndef ALLNET_USE_FORK  /* try a few different ports */
   int loop_count = 0;
   while ((! created_out) && (sock_v4 < 0) && (loop_count++ < 10)) {
-    int port = (int) random_int (ALLNET_PORT + 16, ALLNET_PORT + 256);
-    sin->sin_port = htons (port);
+    int port = (int) random_int (external_port + 16, external_port + 256);
+    sin->sin_port = allnet_htons (port);
     sock_v4 = socket_create_bind (&sockets, 0, sasv4, alen4, created_out);
   }
 #endif /* ALLNET_USE_FORK */
@@ -1210,7 +1210,8 @@ printf ("\n");
 
 /* if start == 1, this thread runs until another thread calls this with
  * start == 0. */
-void allnet_daemon_main (int start)
+void allnet_daemon_main (int start, int start_atcpd,
+                         int external_port, int internal_port)
 {
   static int run_state = 0;   /* stopped */
   if (! start) {
@@ -1224,16 +1225,18 @@ void allnet_daemon_main (int start)
   sockets.sockets = NULL;
   social_net = init_social (30000, 5, alog);
   routing_my_address (my_address);
-  initialize_sockets ();
-  update_virtual_clock ();  /* 2018/08/03: not sure if this is useful */
-  extern void * atcpd_main (void *);
-  pthread_t atcpd_thread;
-  int ignored_arg = 99;
-  pthread_create (&atcpd_thread, NULL, atcpd_main, (void *) &ignored_arg);
+  initialize_sockets (external_port, internal_port);
+  update_virtual_clock ();
+  extern void * atcpd_main (void *);   /* defined in atcpd.c */
+  if (start_atcpd) {
+    pthread_t atcpd_thread;
+    pthread_create (&atcpd_thread, NULL, atcpd_main, (void *) &external_port);
+  }
   while (run_state == 1)
     allnet_daemon_loop (); /* main loop */
   /* run_state is no longer 1, shut everything down */
-  atcpd_main (NULL);       /* ask atcpd_main to stop */
+  if (start_atcpd)
+    atcpd_main (NULL);       /* ask atcpd_main to stop */
   close_socket_set (&sockets);
   run_state = 0;
 }

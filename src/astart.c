@@ -2,6 +2,9 @@
 /* compiles to the executable now called "allnetd" */
 /* takes no arguments, I usually run it as bin/allnetd */
 /* with -D, runs ad in the main process rather returning immediately */
+/* with -p p1 p2, uses p1 as the external and p2 as the internal allnet port */
+/* with -t, do not start atcpd. */
+/* with -c dir, uses dir/.allnet as the config directory */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,9 +32,10 @@
 #include "lib/pcache.h"
 #include "lib/routing.h"
 
-extern void allnet_daemon_main (int start);
+extern void allnet_daemon_main (int start, int start_atcpd,
+                                int external_port, int internal_port);
 #ifdef ALLNET_USE_FORK  /* start a keyd process */
-extern void keyd_main (char * pname);
+extern void keyd_main (char * pname);  /* from mgmt/keyd.c */
 #endif /* ALLNET_USE_FORK */
 extern void keyd_generate (char * pname);
 
@@ -51,7 +55,7 @@ static void stop_all ();
 
 #else /* ! ALLNET_USE_FORK, e.g. iOS and Android  */
 
-/* fork is not supported under iOS, but threads are */
+/* fork is not supported under iOS and Android, but threads are */
 #include <pthread.h>
 
 struct thread_arg {
@@ -84,7 +88,7 @@ static void * generic_thread (void * arg)
 /* stop all of the other threads */
 void stop_allnet_threads (void)
 {
-  allnet_daemon_main (0);  /* stop ad */
+  allnet_daemon_main (0, 0, 0, 0);  /* stop ad */
   int i;
   for (i = free_thread_arg - 1; i >= 0; i--) {
     if (! pthread_equal (thread_args [i].id, pthread_self ())) {
@@ -314,6 +318,11 @@ static void stop_all_on_signal (int signal)
 
 static void (*shutdown_function) (int) = NULL;
 
+static void allnet_shutdown (int signal)
+{
+  allnet_daemon_main (0, 0, 0, 0);
+}
+
 /* save whatever state needs saving, then stop everything */
 static void save_state (int signal)
 {
@@ -321,7 +330,7 @@ static void save_state (int signal)
     shutdown_function (0);  /* the normal case */
   } else {
     printf ("error: astart.c save_state has no shutdown function\n");
-    /* do what you can to save state, but why wasn't allnet_daemon_main set
+    /* do what you can to save state, but why wasn't allnet_shutdown set
      * as the shutdown function? */
     routing_save_peers ();
     pcache_write ();
@@ -408,9 +417,11 @@ static void replace_command (char * old, int olen, char * new)
 #endif /* ALLNET_USE_FORK */
 
 static void my_call1 (char * argv, int alen, char * program,
-                      void (*run_function) (char *), int fd, pid_t parent,
+                      void (*run_function) (char *), char * opt_arg,
+                      int fd, pid_t parent,
                       int start_immediately, int become_nobody)
 {
+  char * actual_arg = (opt_arg == NULL) ? argv : opt_arg;
 #ifdef ALLNET_USE_FORK
   pid_t child = fork ();
   if (child == 0) {
@@ -423,7 +434,7 @@ static void my_call1 (char * argv, int alen, char * program,
     if (! start_immediately)
       sleep (2);   /* start the allnet daemon first, then run */
     process_name = program;
-    run_function (argv);
+    run_function (actual_arg);
     child_return (program, parent, 0);
   } /* parent, not much to do */
   print_pid (fd, child);
@@ -431,7 +442,7 @@ static void my_call1 (char * argv, int alen, char * program,
   struct thread_arg * tap = thread_args + (free_thread_arg++);
   tap->name = strcpy_malloc (program, "astart my_call1");
   tap->string_function = run_function;
-  tap->string_arg = strcpy_malloc (argv, "astart my_call1 string");
+  tap->string_arg = strcpy_malloc (actual_arg, "astart my_call1 thread string");
   tap->start_immediately = start_immediately;
   if (pthread_create (&(tap->id), NULL, generic_thread, (void *) tap)) {
     printf ("pthread_create failed for %s\n", program);
@@ -489,21 +500,58 @@ static void do_root_init ()
 #endif /* __linux__ */
 }
 
-static void call_ad (char * ignored)
+static void call_ad (char * ports_if_any)
 {
-  allnet_daemon_main (1);
+  int external_port = ALLNET_PORT;
+  int internal_port = ALLNET_LOCAL_PORT;
+  int start_atcpd = 1;
+  if ((ports_if_any != NULL) && (strncmp (ports_if_any, "-t", 2) == 0)) {
+    start_atcpd = 0;
+    ports_if_any += strlen ("-t ");  /* ports_if_any += 3; */
+  }
+  if ((ports_if_any != NULL) && (strcmp (ports_if_any, "allnetd") != 0)) {
+    char * end = NULL;
+    int external = strtol (ports_if_any, &end, 10);
+    if (end != ports_if_any) {
+      external_port = external;
+      if (*end == ' ') {   /* internal port also specified */
+        char * end2 = NULL;
+        int internal = strtol (end + 1, &end2, 10);
+        if (end2 != end + 1) {
+          internal_port = internal;
+        } else {
+          printf ("call_ad error: %s lacking two numbers\n", ports_if_any);
+        }
+      } else if (*end != '\0') {
+        printf ("call_ad error: '%s' (chars after first port)\n", ports_if_any);
+      }
+    } else {
+      printf ("call_ad error: '%s' does not parse to a port\n", ports_if_any);
+    }
+  }
+#ifdef DEBUG_PRINT
+  printf ("call_ad (%s): ports are %d and %d\n", ports_if_any,
+          external_port, internal_port);
+#endif /* DEBUG_PRINT */
+  allnet_daemon_main (1, start_atcpd, external_port, internal_port);
+}
+
+/* returns 0 if looking_for is not found, otherwise the index into argv (> 0) */
+static int arg_index (const char * looking_for, int argc, char ** argv)
+{
+  int i;
+  for (i = 1; i < argc; i++) {
+    if (strcmp (argv [i], looking_for) == 0)
+      return i;
+  }
+  return 0;
 }
 
 int astart_main (int argc, char ** argv)
 {
-  int ix, jx;
-  for (ix = 1; ix + 1 < argc; ix++) {
-    if (strcmp (argv [ix], "-d") == 0) {  /* set home directory (configfiles) */
-      set_home_directory (argv [ix + 1]);
-      for (jx = ix; jx + 1 < argc; jx++) /* replace lower with higher args */
-        argv [jx] = argv [jx + 2];
-      argc -= 2;   /* and delete */
-    }
+  int set_config = arg_index ("-c", argc, argv);
+  if ((set_config > 0) && (set_config + 1 < argc)) {
+    set_home_directory (argv [set_config + 1]);
   }
   log_to_output (get_option ('v', &argc, argv));
   int alen = (int)strlen (argv [0]);
@@ -534,7 +582,6 @@ int astart_main (int argc, char ** argv)
   }
   free (fname);
 #endif /* ALLNET_USE_FORK */
-
   alog = init_log ("astart");  /* now we can do logging */
   snprintf (alog->b, alog->s, "astart called with %d arguments\n", argc);
   log_print (alog);
@@ -546,22 +593,44 @@ int astart_main (int argc, char ** argv)
 
   /* start the dependent processes, now down to only keyd */
 #ifdef ALLNET_USE_FORK /* keyd only works as a separate process */
-  my_call1 (argv [0], alen, "allnet-keyd", keyd_main, pid_fd, astart_pid, 0, 1);
+  if (argc == 1) {  /* if we have arguments, don't start keyd */
+    my_call1 (argv [0], alen, "allnet-keyd", keyd_main, NULL,
+              pid_fd, astart_pid, 0, 1);
+  }
 #endif /* ALLNET_USE_FORK */
   /* start the allnet daemon */
 #ifdef ALLNET_USE_FORK  /* only set up the signal handler for allnetd */
-  shutdown_function = allnet_daemon_main;
+  shutdown_function = allnet_shutdown;
   setup_signal_handler (1);
   /* print_pid (pid_fd, getpid ()); terminating, so do not save own pid */
 #endif /* ALLNET_USE_FORK */
-  if ((argc > 1) && (strcmp (argv [1], "-D") == 0)) {
+  const char * start_atcpd = (arg_index ("-t", argc, argv) ? "-t " : "");
+  char ports_argument_mem [100] = "";
+  char * ports_argument = NULL;
+  int ports_arg_num = arg_index ("-p", argc, argv);
+  if ((ports_arg_num > 0) && (ports_arg_num + 1 < argc)) {
+    if (ports_arg_num + 2 == argc) {
+      snprintf (ports_argument_mem, sizeof (ports_argument_mem),
+                "%s%s", start_atcpd, argv [ports_arg_num + 1]);
+    } else if (ports_arg_num + 2 < argc) {
+      snprintf (ports_argument_mem, sizeof (ports_argument_mem),
+                "%s%s %s", start_atcpd,
+                argv [ports_arg_num + 1], argv [ports_arg_num + 2]);
+    }
+    ports_argument = ports_argument_mem;
+  }
+#ifdef DEBUG_PRINT
+  printf ("ports_argument is %s\n", ports_argument);
+#endif /* DEBUG_PRINT */
+  if (arg_index ("-D", argc, argv)) {
     /* with -D, call ad in the foreground rather than as a separate process */
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
     close (pid_fd);
 #endif /* ALLNET_USE_FORK */
-    call_ad (NULL);
+    call_ad (ports_argument);
   } else {
-    my_call1 (argv [0], alen, "allnetd", call_ad, pid_fd, astart_pid, 1, 0);
+    my_call1 (argv [0], alen, "allnetd", call_ad, ports_argument,
+              pid_fd, astart_pid, 1, 0);
 #ifdef ALLNET_USE_FORK  /* only save pids if we do have processes */
     close (pid_fd);
 #endif /* ALLNET_USE_FORK */
