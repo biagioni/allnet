@@ -102,18 +102,6 @@ struct allnet_mgmt_dht {
   struct addr_info nodes [0];
 };
 
-/* a DHT message reports a number of DHT nodes, each claiming to accept
- * messages for a given destination address -- this is the struct
- * for allnet v3.2 and earlier */
-struct allnet_mgmt_dht_3_2 {
-  unsigned char num_sender;    /* num addresses belonging to sender */
-  unsigned char num_dht_nodes; /* num addresses belonging to other nodes */
-  char pad [6];
-  unsigned char timestamp  [ALLNET_TIME_SIZE];
-  /* how to reach each DHT node, beginning with the sender */
-  struct addr_info nodes [0];
-};
-
 /* a trace should contain a timestamp of the time of receipt using the
  * receiving/forwarding node's clock, as well as the number of hops
  * from the packet we are responding to (if any, 0 if none).
