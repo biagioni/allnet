@@ -197,14 +197,6 @@ int dht_update (struct socket_set * s,
   struct allnet_mgmt_dht * dhtp =
     (struct allnet_mgmt_dht *) (buffer + msize);
   struct addr_info * entries = (struct addr_info *) (&(dhtp->nodes[0]));
-  int send_3_2 = 0;
-#ifdef SUPPORT_3_2
-  send_3_2 = random_int (0, 127) >= 64;  /* 50% of the time */
-  struct allnet_mgmt_dht_3_2 * dhtp_3_2 =
-    (struct allnet_mgmt_dht_3_2 *) (buffer + msize);
-  if (send_3_2)
-    entries = (struct addr_info *) (&(dhtp_3_2->nodes[0]));
-#endif /* SUPPORT_3_2 */
   size_t total_header_bytes = (((char *) entries) - ((char *) hp));
   size_t possible = (sizeof (buffer) - total_header_bytes)
                   / sizeof (struct addr_info);
@@ -242,8 +234,7 @@ int dht_update (struct socket_set * s,
                     alog->b, alog->s);
   log_print (alog);
   *message = memcpy_malloc (buffer, (int) send_size, "dht_update");
-  *iap = (send_3_2 ? NULL :
-                     ((struct internet_addr *) ((*message) + ip_offset)));
+  *iap = (struct internet_addr *) ((*message) + ip_offset);
 #ifdef DEBUG_PRINT
   print_packet (*message, send_size, "dht_update packet", 1);
 #endif /* DEBUG_PRINT */
@@ -264,65 +255,29 @@ int dht_update (struct socket_set * s,
 }
 
 /* add information from a newly received DHT packet */
-void dht_process (char * message, unsigned int msize,
+void dht_process (char * dht_bytes, unsigned int dsize,
                   const struct sockaddr * sap, socklen_t alen)
 {
-  if (alog == NULL)
-    alog = init_log ("adht");
-  /* ignore any packet other than valid dht packets */
-  if (msize <= ALLNET_HEADER_SIZE)
-    return;
-  struct allnet_header * hp = (struct allnet_header *) message;
-  if ((hp->message_type != ALLNET_TYPE_MGMT) ||
-      (msize < ALLNET_MGMT_HEADER_SIZE(hp->transport) +
-               sizeof (struct allnet_mgmt_dht) +
-               sizeof (struct addr_info)))  /* only process if >= 1 entry */
-    return;
-/* snprintf (alog->b, alog->s, "survived msize %d/%zd\n", msize,
-             ALLNET_MGMT_HEADER_SIZE(hp->transport) +
-             sizeof (struct allnet_mgmt_dht) +
-             sizeof (struct addr_info));
-  log_print (alog); */
-  struct allnet_mgmt_header * mp =
-    (struct allnet_mgmt_header *) (message + ALLNET_SIZE (hp->transport));
-  if (mp->mgmt_type != ALLNET_MGMT_DHT)
-    return;
-  struct allnet_mgmt_dht * dhtp =
-    (struct allnet_mgmt_dht *)
-      (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-
 #ifdef DEBUG_PRINT
-  int off = snprintf (alog->b, alog->s, "got %d byte DHT packet: ", msize);
-  packet_to_string (message, msize, NULL, 1, alog->b + off, alog->s - off);
+  int off = snprintf (alog->b, alog->s, "got %d byte DHT packet: ", dsize);
+  packet_to_string (dht_bytes, dsize, NULL, 1, alog->b + off, alog->s - off);
   log_print (alog);
 #endif /* DEBUG_PRINT */
+  struct allnet_mgmt_dht * dhtp = (struct allnet_mgmt_dht *) dht_bytes;
 
   int n_sender = (dhtp->num_sender & 0xff);
   int n_dht = (dhtp->num_dht_nodes & 0xff);
   int n = n_sender + n_dht;
 #ifdef DEBUG_PRINT
-  snprintf (alog->b, alog->s, "packet has %d entries, size %d\n", n, msize);
+  snprintf (alog->b, alog->s, "packet has %d entries, size %d\n", n, dsize);
   log_print (alog);
 #endif /* DEBUG_PRINT */
   struct addr_info * aip = dhtp->nodes;
-  unsigned int expected_size = ALLNET_MGMT_HEADER_SIZE(hp->transport) + 
-                               sizeof (struct allnet_mgmt_dht) + 
+  unsigned int expected_size = sizeof (struct allnet_mgmt_dht) + 
                                n * sizeof (struct addr_info);
-#ifdef DEBUG_PRINT
-  int is_3_2 = 0;
-#endif /* DEBUG_PRINT */
-  if ((n >= 1) &&
-      (msize + sizeof (struct internet_addr) == expected_size)) {  /* 3.2 dht */
-    struct allnet_mgmt_dht_3_2 * dhtp_3_2 =
-      (struct allnet_mgmt_dht_3_2 *)
-        (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
-    aip = dhtp_3_2->nodes;
-#ifdef DEBUG_PRINT
-    is_3_2 = 1;
-#endif /* DEBUG_PRINT */
-  } else if ((n < 1) || (msize < expected_size)) {
+  if ((n < 1) || (dsize < expected_size)) {
     printf ("packet %d entries, %d/%d size, nothing to add to DHT/pings\n",
-            n, msize, expected_size);
+            n, dsize, expected_size);
     return;
   }
 
@@ -342,7 +297,7 @@ void dht_process (char * message, unsigned int msize,
         print_buffer (&ai, sizeof (ai), "dht process adding invalid", 40, 1);
         print_buffer (sap, (sap->sa_family == AF_INET) ? 16 : 28,
                       "sender address", 99, 1);
-        print_packet (message, msize, "entire message", 1);
+        print_packet (dht_bytes, dsize, "entire message", 1);
 #endif /* DEBUG_PRINT */
         struct addr_info sender_ai = ai;
         sockaddr_to_ia (sap, alen, &(sender_ai.ip));
@@ -358,17 +313,17 @@ void dht_process (char * message, unsigned int msize,
       }
     }
   }
-  if ((msize == expected_size) &&
+  if ((dsize == expected_size) &&
       /* all-zeros address is sensible sometimes, e.g. when sending locally */
       (! memget (&dhtp->sending_to_ip, 0, sizeof (dhtp->sending_to_ip))) &&
       (is_valid_address (&(dhtp->sending_to_ip)))) {
   /* record my IP address as seen by the peer */
     if (routing_add_external (dhtp->sending_to_ip) < 0) {
 #ifdef DEBUG_PRINT
-      printf ("msize %d == %d, routing_add_external failed at %zd\n",
-              msize, expected_size,
-              ((char *) (&(dhtp->sending_to_ip))) - message);
-      print_packet (message, msize, NULL, 1);
+      printf ("dsize %d == %d, routing_add_external failed at %zd\n",
+              dsize, expected_size,
+              ((char *) (&(dhtp->sending_to_ip))) - dht_bytes);
+      print_packet (dht_bytes, dsize, NULL, 1);
       print_buffer ((char *) (&(dhtp->sending_to_ip)),
                     sizeof (dhtp->sending_to_ip), "sending_to_ip", 100, 1);
 #endif /* DEBUG_PRINT */
@@ -376,10 +331,9 @@ void dht_process (char * message, unsigned int msize,
   }
 #ifdef DEBUG_PRINT
     else if (! memget (&dhtp->sending_to_ip, 0, sizeof (dhtp->sending_to_ip))) {
-      printf ("msize %d =? %d, invalid address?, is_3_2 %d\n", msize,
-              expected_size, is_3_2);
-      print_packet (message, msize, NULL, 1);
-      print_buffer (message, msize, "packet", msize, 1);
+      printf ("dsize %d =? %d, invalid address?\n", dsize, expected_size);
+      print_packet (dht_bytes, dsize, NULL, 1);
+      print_buffer (dht_bytes, dsize, "packet", dsize, 1);
   }
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT

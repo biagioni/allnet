@@ -866,23 +866,26 @@ static struct message_process process_mgmt (struct socket_read_result *r)
   switch (ahm->mgmt_type) {
   case ALLNET_MGMT_BEACON:
     drop.debug_reason = "beacon";
+    return drop;   /* do not forward beacons or keepalives */
   case ALLNET_MGMT_BEACON_REPLY:
-    if (ahm->mgmt_type == ALLNET_MGMT_BEACON_REPLY)
-      drop.debug_reason = "beacon_reply";
+    drop.debug_reason = "beacon_reply";
+    return drop;   /* do not forward beacons or keepalives */
   case ALLNET_MGMT_BEACON_GRANT:
-    if (ahm->mgmt_type == ALLNET_MGMT_BEACON_GRANT)
-      drop.debug_reason = "beacon_grant";
+    drop.debug_reason = "beacon_grant";
+    return drop;   /* do not forward beacons or keepalives */
   case ALLNET_MGMT_KEEPALIVE:
-    if (ahm->mgmt_type == ALLNET_MGMT_KEEPALIVE)
-      drop.debug_reason = "keepalive";
+    drop.debug_reason = "keepalive";
     return drop;   /* do not forward beacons or keepalives */
   case ALLNET_MGMT_DHT:
-    dht_process (r->message, r->msize, (struct sockaddr *) &(r->from), r->alen);
+    dht_process (mgmt_payload, mgmt_payload_size,
+                 (struct sockaddr *) &(r->from), r->alen);
     all.debug_reason = "dht";
     return all;
   case ALLNET_MGMT_PEER_REQUEST:
+    all.debug_reason = "peer request";
+    return all;
   case ALLNET_MGMT_PEERS:
-    all.debug_reason = "peers or peer request";
+    all.debug_reason = "peers";
     return all;
   case ALLNET_MGMT_TRACE_REQ:
     drop.debug_reason = "trace request seen before";
