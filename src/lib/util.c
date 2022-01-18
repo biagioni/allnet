@@ -322,11 +322,11 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
                            sizeof (address_string)))) {
           /* remove the newline placed by ia_to_string */
           address_string [strlen (address_string) - 1] = '\0';
-          r += snprintf (to + r, minz (itsize, r), "dht %d+%d @%s sent to %s ",
-                         dht->num_sender, dht->num_dht_nodes, time_string,
-                         address_string);
+          r += snprintf (to + r, minz (itsize, r), "sent to %s dht %d+%d @%s",
+                         address_string, dht->num_sender,
+                         dht->num_dht_nodes, time_string);
         } else {
-          r += snprintf (to + r, minz (itsize, r), "dht %d+%d @%s ",
+          r += snprintf (to + r, minz (itsize, r), "dht %d+%d @%s",
                          dht->num_sender, dht->num_dht_nodes, time_string);
         }
         int i;
@@ -338,10 +338,9 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
             allnet_crash ("allnet_mgmt_dht: no newline from ia_to_string");
           else
             *nl = '\0';
-          r += snprintf (to + r, minz (itsize, r), "%s %s",
-                         b2su (nodes [i].destination, ADDRESS_SIZE), local);
-          if (i + 1 < dht->num_sender + dht->num_dht_nodes)
-            r += snprintf (to + r, minz (itsize, r), ", ");
+          r += snprintf (to + r, minz (itsize, r), "\n%d. %s/%d %s",
+                         i, b2su (nodes [i].destination, ADDRESS_SIZE),
+                         nodes [i].nbits, local);
         }
       }
     }
