@@ -309,20 +309,9 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
       const struct addr_info * nodes = dht->nodes;
       int print_status = 1;  /* normal print */
       if (hsize < needed) {
-        unsigned int full_needed = needed;
-        needed = sizeof (struct allnet_mgmt_dht_3_2) +
-                 (dht->num_sender + dht->num_dht_nodes) *
-                 sizeof (struct addr_info);
-        if (hsize < needed) {
-          r += snprintf (to + r, minz (itsize, r), "size %d, needed %d/%d\n",
-                         hsize, full_needed, needed);
-          print_status = 0;  /* already printed */
-        } else {  /* 2020/06/19: likely DHT version 3.2, print correctly */
-          const struct allnet_mgmt_dht_3_2 * dht32 =
-            (const struct allnet_mgmt_dht_3_2 *) hp;
-          nodes = dht32->nodes;
-          print_status = 2;  /* print without address */
-        }
+        r += snprintf (to + r, minz (itsize, r), "size %d, needed %d\n",
+                       hsize, needed);
+        print_status = 0;  /* already printed */
       }
       if (print_status != 0) {
         char time_string [100];
