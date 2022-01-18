@@ -39,8 +39,9 @@
 #define ADHT_INTERVAL	7200   /* 2 hours -- IPv6 addresses expire every day */
 #define EXPIRATION_MULT	3      /* wait 3 intervals (6 hrs) to expire a route */
 
-/* add information from a newly received DHT packet */
-extern void dht_process (char * message, unsigned int msize,
+/* add dht information from a newly received DHT packet -- only the
+ * dht part of the packet (without the headers) is passed in as dht_bytes */
+extern void dht_process (char * dht_bytes, unsigned int dsize,
                          const struct sockaddr * sap, socklen_t alen);
 
 /* at the right time, create a DHT packet to send out my routing table
