@@ -1391,7 +1391,7 @@ int routing_add_ping (struct addr_info * addr)
 }
 
 /* when iter is zero, initializes the iterator and fills in the first
- * value, if any.  Every subsequent call should use the prior return value >= 0
+ * value, if any.  Every subsequent call should use the prior return value > 0
  * When there are no more values to fill in, returns -1 */
 int routing_ping_iterator (int iter, struct addr_info * ai)
 {
