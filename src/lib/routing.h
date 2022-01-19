@@ -30,6 +30,7 @@ extern int routing_top_dht_matches (const unsigned char * dest, int nbits,
 /* either adds or refreshes a DHT entry/external IP address.
  * returns 1 for a new entry, 0 for an existing entry, -1 for errors */
 extern int routing_add_dht (struct addr_info addr);
+/* record our address as seen by our peers */
 extern int routing_add_external (struct internet_addr ip);
 
 /* expires old DHT entries that haven't been refreshed since the last call
@@ -70,10 +71,6 @@ extern int init_own_routing_entries (struct addr_info * entry, int max,
 
 /* returns 1 if the given addr is one of mine, or matches my_address */
 extern int is_own_address (struct addr_info * addr);
-
-/* return 1 after init is complete, 0 otherwise.  If parameter is nonzero,
- * waits for completion and always returns 1 */
-extern int routing_init_is_complete (int wait_for_init);
 
 /* save the peers file before shutting down */
 extern void routing_save_peers (void);
