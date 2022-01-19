@@ -904,19 +904,17 @@ void do_trace_loop (int sock,
   char trace_id [MESSAGE_ID_SIZE];
   unsigned char my_addr [ADDRESS_SIZE];
   unsigned char extra_addr [ADDRESS_SIZE];
-  routing_my_address (my_addr);
-  int addr_high_5bits = my_addr [0] & 0xf8;   /* my 5 high bits */
   memset (my_addr, 0, sizeof (my_addr));
+  random_bytes ((char *)my_addr, 1);                  /* 8 random bits */
   memset (extra_addr, 0, sizeof (my_addr));
   int count;
   for (count = 0; (repeat == 0) || (count < repeat); count++) {
 /* printf ("%d/%d\n", count, repeat); */
     random_bytes (trace_id, sizeof (trace_id));
-    my_addr [0] = addr_high_5bits;
     struct timeval tv_start;
     gettimeofday (&tv_start, NULL);
     if (naddrs == 0) {
-      send_trace (sock, extra_addr, 0, trace_id, my_addr, 5, nhops,
+      send_trace (sock, extra_addr, 0, trace_id, my_addr, 8, nhops,
                   ! no_intermediates, sleep * 10, caching, alog);
       sent_count++;
     } else {
@@ -924,7 +922,7 @@ void do_trace_loop (int sock,
       for (dest = 0; dest < naddrs; dest++) {
         trace_id [MESSAGE_ID_SIZE - 1] = dest;
         send_trace (sock, addresses + (dest * ADDRESS_SIZE), abits [dest],
-                    trace_id, my_addr, 5, nhops, ! no_intermediates,
+                    trace_id, my_addr, 8, nhops, ! no_intermediates,
                     sleep * 10, caching, alog);
         sent_count++;
       }
@@ -987,9 +985,10 @@ int start_trace (int sock, const unsigned char * addr, unsigned int abits,
 {
   random_bytes (trace_id, MESSAGE_ID_SIZE);
   unsigned char my_addr [ADDRESS_SIZE];
-  random_bytes ((char *) my_addr, sizeof (my_addr));
+  memset (my_addr, 0, sizeof (my_addr));
+  random_bytes ((char *) my_addr, 1);     /* 8 random bits */
   struct allnet_log * alog = init_log ("start_trace");
-  send_trace (sock, addr, abits, trace_id, my_addr, 5, nhops,
+  send_trace (sock, addr, abits, trace_id, my_addr, 8, nhops,
               record_intermediates, expiration_seconds, 1, alog);
   return 1;
 }
