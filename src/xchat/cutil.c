@@ -678,21 +678,6 @@ contacts [icontact], keysets [ikeyset]);
   }
   if ((ncontacts > 0) && (contacts != NULL))
     free (contacts);
-  if (selector == FILL_LOCAL_ADDRESS) {  /* add my local trace address */
-    unsigned char addr [ADDRESS_SIZE];
-    routing_my_address (addr);
-    /* repeating some of the code above */
-    int bits = readb16 ((char *) addr);
-    int index = allnet_bitmap_byte_index (power_two, bits);
-    int mask = allnet_bitmap_byte_mask (power_two, bits);
-    if ((index < 0) || (mask < 0)) {
-      printf ("fill_bits3 error: index %d, mask %d, p2 %d, bits %d\n",
-              index, mask, power_two, bits);
-    } else if ((bitmap [index] & mask) == 0) {
-      bitmap [index] |= mask;
-      res++;  /* the point of the if is to increment this correctly */
-    }
-  }
   return res;
 }
 
