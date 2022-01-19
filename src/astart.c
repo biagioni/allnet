@@ -208,45 +208,16 @@ static void print_pid (int fd, int pid)
 static char * pid_file_name ()
 {
 #define PIDS_FILE_NAME	"allnet-pids"
-#define UNIX_TEMP	"/tmp"
-#define UNIX_TEMP_ROOT	"/var/run"
-#define IOS_TEMP	"/Library/Caches"
-  char * result = "/tmp/allnet-pids";
-  char * temp = UNIX_TEMP;
-#if 0
-  if (geteuid () == 0)  /* is root */
-    temp = UNIX_TEMP_ROOT;
-#endif /* 0 */
-#ifndef ALLNET_USE_FORK
-  DIR * ios_d = opendir (IOS_TEMP);
-  if (ios_d != NULL) {  /* directory exists, use it */
-    closedir (ios_d);
-    temp = IOS_TEMP;
+  char * result = NULL;
+  if (config_file_name ("acache", PIDS_FILE_NAME, &result, 1) < 0) {
+    printf ("unable to create config file name in acache\n");
+    return NULL;
   }
-#endif /* ALLNET_USE_FORK */
-#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
-/* from https://en.wikipedia.org/wiki/Temporary_folder
-     In MS-DOS and Microsoft Windows, the temporary directory is set by
-     the environment variable TEMP.
-     ...
-     In all versions of Windows the temp location can be accessed, for
-     example, in Explorer, Run... boxes and in application's internal
-     code by using %temp% */
-  temp = getenv ("TEMP");
-  if (temp == NULL)
-    temp = getenv ("%temp%");
-  if (temp == NULL)
-    temp = getenv ("temp");
-#endif /* _WIN32 || _WIN64 || __CYGWIN__ */
-  if (temp != NULL)
-    result = strcat3_malloc (temp, "/", PIDS_FILE_NAME, "pids file name");
-#ifdef DEBUG
-  static int printed = 0;
-  if (! printed)
-    printf ("new pid temp file name is %s (from %s)\n", result, temp);
-  printed = 1;
-#endif /* DEBUG */
+#ifdef DEBUG_PRINT
+  printf ("created config file name %s\n", result);
+#endif /* DEBUG_PRINT */
   return result;
+#undef PIDS_FILE_NAME
 }
 
 /* returns -1 in case of failure */
