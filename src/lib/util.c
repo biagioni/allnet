@@ -338,9 +338,14 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
             allnet_crash ("allnet_mgmt_dht: no newline from ia_to_string");
           else
             *nl = '\0';
-          r += snprintf (to + r, minz (itsize, r), "\n%d. %s/%d %s",
+          char * dht_type =
+            ((nodes [i].type == ALLNET_ADDR_INFO_TYPE_RP) ? "rp" :
+             ((nodes [i].type == ALLNET_ADDR_INFO_TYPE_DHT) ? "dht" :
+              "unknown"));
+          r += snprintf (to + r, minz (itsize, r),
+                         "\n%d: %s/%d, dist %d, type %s, %s",
                          i, b2su (nodes [i].destination, ADDRESS_SIZE),
-                         nodes [i].nbits, local);
+                         nodes [i].nbits, nodes [i].hops, dht_type, local);
         }
       }
     }

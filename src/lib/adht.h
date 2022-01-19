@@ -52,4 +52,15 @@ extern void dht_process (char * dht_bytes, unsigned int dsize,
 extern int dht_update (struct socket_set * s,
                        char ** message, struct internet_addr ** iap);
 
+/* create a DHT packet to send out my routing table.
+ * Returns the packet size, or 0 for errors
+ * if successful and sockaddr is not null and slen > 0, the
+ * sending_to_ip address is set to the corresponding address
+ * (otherwise to all zeros)
+ * if successful and iap is not NULL, *iap points into to the
+ * location of the sending_to_ip_address (same address that the
+ * sockaddr, if any, was copied to). */
+extern int dht_create (const struct sockaddr * sap, socklen_t slen,
+                       char ** message, struct internet_addr ** iap);
+
 #endif /* ADHT_H */

@@ -625,6 +625,10 @@ static void update_dht ()
   }
 }
 
+static int send_message_to_one (const char * message, int msize, int priority,
+                                struct socket_address_set * sock,
+                                struct sockaddr_storage addr, socklen_t alen);
+
 static struct socket_address_validity *
   add_received_address (struct socket_read_result r)
 {
@@ -658,6 +662,16 @@ static struct socket_address_validity *
     if (result == NULL)
       printf ("odd: unable to add new address\n");
     send_keepalive = 1;
+    /* send our dht to the peer */
+    char * message = NULL;
+    struct internet_addr * iap = NULL;
+    int msize = dht_create ((struct sockaddr *) (&r.from), r.alen,
+                            &message, &iap);
+    if (msize > 0) {
+      send_message_to_one (message, msize, ALLNET_PRIORITY_TRACE,
+                           r.sock, r.from, r.alen);
+      free (message);
+    }
   }
   if (send_keepalive)
     send_one_keepalive ("add_received_address", r.sock,

@@ -73,11 +73,12 @@ struct addr_info {
   unsigned char nbits;     /* how many bits of the destination are given */
   /* for DHT nodes, nbits should always equal ADDRESS_BITS.  Received
    * entries that have fewer bits should be ignored */
+  unsigned char hops;      /* as with distance-vector, ages old entries */
   unsigned char type;      /* Rendezvous Point or DHT node -- one of: */
 #define ALLNET_ADDR_INFO_TYPE_NONE	0    /* not a valid entry */
 #define ALLNET_ADDR_INFO_TYPE_RP	1
 #define ALLNET_ADDR_INFO_TYPE_DHT	2
-  char pad [6];              /* always sent as 0 */
+  char pad [5];              /* always sent as 0 */
 };
 
 /* sent to a connecting listener to let them know who else to connect to */

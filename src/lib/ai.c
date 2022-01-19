@@ -59,8 +59,8 @@ int addr_info_to_string (struct addr_info * ai, char * buf, size_t bsize)
                               NULL, ADDRESS_SIZE,
                               0, buf + offset, bsize - offset);
   offset += snprintf (buf + offset, bsize - offset,
-                      ", v %d, port %d, addr ", ai->ip.ip_version,
-                      ntohs (ai->ip.port));
+                      ", dist %d, v %d, port %d, addr ", ai->hops,
+                      ai->ip.ip_version, ntohs (ai->ip.port));
   unsigned char * ap = (unsigned char *) &(ai->ip.ip);
   if (ai->ip.ip_version == 4)
     offset += snprintf (buf + offset, bsize - offset,
