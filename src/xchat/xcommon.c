@@ -692,21 +692,16 @@ else {
   }
   if (*contact == NULL) {
 #ifdef DEBUG_PRINT
-    printf ("contact not known\n");
-#endif /* DEBUG_PRINT */
-#ifdef DEBUG_FOR_DEVELOPER
     printf ("contact not known, discarding packet\n");
-#endif /* DEBUG_FOR_DEVELOPER */
+#endif /* DEBUG_PRINT */
     if (text != NULL) free (text);
     return 0;
   }
-#ifdef DEBUG_FOR_DEVELOPER
-printf ("got %d-byte packet from contact %s\n", tsize, *contact);
-#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
   printf ("got %d-byte packet from contact %s\n", tsize, *contact);
 #endif /* DEBUG_PRINT */
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
+  struct chat_control    * ccp = (struct chat_control    *) text;
 
   /* save in the hash */
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL)) {
@@ -719,9 +714,7 @@ printf ("got %d-byte packet from contact %s\n", tsize, *contact);
 
   unsigned long int app = readb32u (cdp->app_media.app);
   if (app != XCHAT_ALLNET_APP_ID) {
-#ifdef DEBUG_FOR_DEVELOPER
     printf ("handle_data ignoring unknown app %08lx\n", app);
-#endif /* DEBUG_FOR_DEVELOPER */
 #ifdef DEBUG_PRINT
     printf ("handle_data ignoring unknown app %08lx\n", app);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
@@ -735,17 +728,9 @@ printf ("got %d-byte packet from contact %s\n", tsize, *contact);
 printf ("got chat message with sequence %lx\n", seq);
 #endif /* DEBUG_FOR_DEVELOPER */
   if (seq == COUNTER_FLAG) {
-#ifdef DEBUG_FOR_DEVELOPER
-struct chat_control_request * ccrp = (struct chat_control_request *) cdp;
-if (media == ALLNET_MEDIA_DATA)
-printf ("got chat control message %s, %d singles, %d ranges, last %lld/%ld\n",
-*contact, ccrp->num_singles, ccrp->num_ranges,
-readb64u (ccrp->last_received), get_counter (*contact) - 1);
-else
-printf ("got chat control message %s, but media %ld != %d\n",
-*contact, media, ALLNET_MEDIA_DATA);
-#endif /* DEBUG_FOR_DEVELOPER */
-    if (media == ALLNET_MEDIA_DATA) {
+    if ((app == XCHAT_ALLNET_APP_ID) &&
+        (media == ALLNET_MEDIA_DATA) &&
+        (ccp->type == CHAT_CONTROL_TYPE_REQUEST)) {
 #ifdef DEBUG_PRINT
       printf ("got chat control message from %s, responding\n", *contact);
 #endif /* DEBUG_PRINT */
@@ -755,20 +740,15 @@ printf ("got chat control message %s, but media %ld != %d\n",
         last_sent = allnet_time ();
       }
       if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL)) {
-#ifdef DEBUG_FOR_DEVELOPER
-printf ("acking control packet with media %lx\n", media);
-#endif /* DEBUG_FOR_DEVELOPER */
         send_ack (sock, hp, cdp->message_ack, verif, *contact, *kset);
-#ifdef DEBUG_PRINT
-      printf ("chat control message response complete\n");
-#endif /* DEBUG_PRINT */
       }
+    } else if ((app == XCHAT_ALLNET_APP_ID) &&
+               (ccp->type == CHAT_CONTROL_TYPE_KEY_ACK)) {
+      printf ("received ack of key for contact %s\n", *contact);
     } else {
-#ifdef DEBUG_PRINT
-      printf ("chat control media type %08lx, only %08x valid, ignoring\n",
-              media, ALLNET_MEDIA_DATA);
+      printf ("chat control media type %08lx/%d, only %08x valid, ignoring\n",
+              media, ccp->type, ALLNET_MEDIA_DATA);
       print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
-#endif /* DEBUG_PRINT */
     }
     if (*contact != NULL) { free (*contact); *contact = NULL; }
     if (text != NULL) free (text);
@@ -1243,8 +1223,10 @@ get_dh_secret (keys [ii], debug, NULL, 0));
 printf ("saving remote dh secret\n");
                 set_dh_secret (keys [ii], dh_shared, 0);
                 record_remote_address = 1;
+                printf ("send_key_ack (contacts [%d] = %s, keys [%d] = %d);\n",
+                        ii, contacts [ii], ii, keys [ii]);
               } else {
-                printf ("allnet_x4489 (handle_key) returned 0\n");
+                printf ("allnet_x448 (handle_key) returned 0\n");
               }
             }
           } else {   /* RSA public key */
@@ -1434,6 +1416,8 @@ static int too_much_time (int message_type, unsigned int priority,
  *
  * if it is a key exchange message matching one of my pending key
  * exchanges, saves the key, fills in *peer, and returns -1.
+ *
+ * if it is an ack for a key exchange, fills in *peer, and returns -5.
  *
  * if it is a broadcast key message matching a pending key request,
  * saves the key, fills in *peer, and returns -2.

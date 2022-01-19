@@ -45,14 +45,8 @@
 struct chat_descriptor {
   unsigned char message_ack   [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
   struct allnet_app_media_header app_media;
-  unsigned char counter       [   COUNTER_SIZE];
-  unsigned char timestamp     [ TIMESTAMP_SIZE];
-#ifdef PREV_RECEIVED
-/* used to order packets in case of unsynchronized clocks -- this packet
- * is being sent after receiving the prev_received sequence number
- * prev_received is zero if no messages have been received prior to this one */
-  unsigned char prev_received [   COUNTER_SIZE];
-#endif /* PREV_RECEIVED */
+  unsigned char counter       [   COUNTER_SIZE];  /* sequence number */
+  unsigned char timestamp     [ TIMESTAMP_SIZE];  /* sender's local time */
 };
 
 #define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor))   /* 40 */
@@ -70,7 +64,8 @@ struct chat_control {
 
 /* values for the chat_control.type */
 #define CHAT_CONTROL_TYPE_REQUEST	1
-#define CHAT_CONTROL_TYPE_REKEY		2
+#define CHAT_CONTROL_TYPE_KEY_ACK	2
+#define CHAT_CONTROL_TYPE_REKEY		3
 
 /* a CHAT_CONTROL_TYPE_REQUEST packet requests delivery of all
    packets that fit one or more of:
@@ -97,6 +92,19 @@ struct chat_control_request {
   unsigned char last_received [COUNTER_SIZE];
   /* counters has COUNTER_SIZE * (num_singles + 2 * num_ranges) bytes */
   unsigned char counters  [0];
+};
+
+/* a CHAT_CONTROL_TYPE_KEY_ACK packet completes a key exchange.
+ * this will normally be the first packet sent to a new contact as
+ * soon as the key exchange is complete.
+ * if I receive a chat_control_key_ack, I may start using the new key
+ */
+struct chat_control_key_ack {
+  unsigned char message_ack [MESSAGE_ID_SIZE];  /* random */
+  /* app should be XCHAT_ALLNET_APP_ID, media should be random */
+  struct allnet_app_media_header app_media;
+  unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
+  unsigned char type;                   /* always CHAT_CONTROL_TYPE_KEY_ACK */
 };
 
 /* a CHAT_CONTROL_TYPE_REKEY packet initiates or completes a new key exchange.

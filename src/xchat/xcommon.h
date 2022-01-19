@@ -47,6 +47,8 @@ struct allnet_ack_info {
  * if it is a key exchange message matching one of my pending key
  * exchanges, saves the key, fills in *peer, and returns -1.
  *
+ * if it is an ack for a key exchange, fills in *peer, and returns -5.
+ *
  * if it is a broadcast key message matching a pending key request,
  * saves the key, fills in *peer, and returns -2.
  *
