@@ -996,11 +996,13 @@ static int routing_add_dht_locked (struct addr_info addr)
   /* sanity checks first */
   if (! sane_addr_info (&addr, "routing_add_dht_locked")) {
     printf ("routing_add_dht_locked given bad address, not saving\n");
+    print_buffer (&addr, sizeof (addr), NULL, 1000, 1);
     print_addr_info (&addr);
     return -1;
   }
   if (! is_valid_address (&(addr.ip))) {
     printf ("routing_add_dht_locked given invalid address, not saving\n");
+    print_buffer (&addr, sizeof (addr), NULL, 1000, 1);
     print_addr_info (&addr);
     return -1;
   }
