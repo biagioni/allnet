@@ -89,12 +89,24 @@ static struct ping_all_args
 
 static void * ping_all_pending (void * arg)
 {
+  /* there is no point to running multiple ping threads at the same time */
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  if (pthread_mutex_trylock (&mutex) != 0)
+    return NULL;
   struct ping_all_args * a = (struct ping_all_args *) arg;
   struct allnet_header * hp = (struct allnet_header *) a->message;
+#define MAX_ROUTES	32
+  struct addr_info peers [MAX_ROUTES];
+  int num_routes = routing_table (peers, MAX_ROUTES);
+#undef MAX_ROUTES
+  int route_index = 0;
   int iter = 0;
   struct addr_info ai;
-  while ((iter = routing_ping_iterator (iter, &ai)) >= 0) {
+  while ((route_index < num_routes) ||
+         ((iter = routing_ping_iterator (iter, &ai)) >= 0)) {
     sleep (1); /* sleep between messages, that's why we are in a thread */
+    if (route_index < num_routes)   /* sending to a peer, not a ping */
+      ai = peers [route_index++];
     memcpy (hp->destination, ai.destination, ADDRESS_SIZE);
     hp->dst_nbits = ai.nbits;
     if ((hp->dst_nbits > ADDRESS_BITS) || (hp->dst_nbits > 64)) {
@@ -114,17 +126,20 @@ static void * ping_all_pending (void * arg)
         ai_embed_v4_in_v6 (&sas, &alen);
     }
     memcpy (a->iap, &(ai.ip), sizeof (ai.ip));
+#ifdef DEBUG_PRINT
     printf ("%llu  ping_all_pending sending ", allnet_time ());
     print_packet (a->message, a->msize, NULL, 0);
     printf (" (sending to ");
     print_sockaddr ((struct sockaddr *) (&sas), alen);
     printf (")\n");
+#endif /* DEBUG_PRINT */
     if (sockfd >= 0)
       socket_send_to_ip (sockfd, a->message, a->msize, sas, alen,
                          "adht.c/ping_all_pending");
   }
   free (a->message);
   a->finished = 1;
+  pthread_mutex_unlock (&mutex);
   return NULL;
 }
 #endif /* ALLNET_RESOURCE_CONSTRAINED -- actively participate in the DHT */
@@ -143,6 +158,7 @@ int dht_update (struct socket_set * s,
   return 0;
 #else /* ! ALLNET_RESOURCE_CONSTRAINED -- actively participate in the DHT */
   static unsigned long long int next_time = 0;
+  static unsigned long long int num_pings = 0;
   static int expire_count = 0;    /* when it reaches 10, expire old entries */
   static unsigned char my_address [ADDRESS_SIZE];
   static unsigned char zero_address [ADDRESS_SIZE];
@@ -150,11 +166,11 @@ int dht_update (struct socket_set * s,
     routing_my_address (my_address);
     memset (zero_address, 0, sizeof (zero_address));
   }
-  unsigned long long int now = allnet_time ();
-  if (now < next_time) /* not time to send to my neighbors yet */
-    return 0;
-  /* compute the next time to execute, between 90% and 110% of two hours */
-  next_time = now + ((ADHT_INTERVAL * (90 + (random () % 21))) / 100);
+  unsigned long long int min = 10 * ALLNET_US_PER_S;        /* 10 seconds */
+  unsigned long long int max = (unsigned long long int) ADHT_INTERVAL /* 2hrs */
+                             * (unsigned long long int) ALLNET_US_PER_S;
+  if (! time_exp_interval (&next_time, &num_pings, min, max))
+    return 0;   /* not time to send to my neighbors yet */
   int send_size = dht_create (NULL, 0, message, iap);
   if (send_size <= 0)
     return 0;
