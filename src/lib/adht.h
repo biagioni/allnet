@@ -50,7 +50,7 @@ extern void dht_process (char * dht_bytes, unsigned int dsize,
  * if successful, *iap (if not NULL) points into the message for the
  * spot to save the the destination internet address before sending */
 extern int dht_update (struct socket_set * s,
-                       char ** message, struct internet_addr ** iap);
+                       char ** message, struct allnet_internet_addr ** iap);
 
 /* create a DHT packet to send out my routing table.
  * Returns the packet size, or 0 for errors
@@ -61,6 +61,6 @@ extern int dht_update (struct socket_set * s,
  * location of the sending_to_ip_address (same address that the
  * sockaddr, if any, was copied to). */
 extern int dht_create (const struct sockaddr * sap, socklen_t slen,
-                       char ** message, struct internet_addr ** iap);
+                       char ** message, struct allnet_internet_addr ** iap);
 
 #endif /* ADHT_H */

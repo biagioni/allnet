@@ -58,7 +58,7 @@ struct ping_all_args {
   int sockfd_v6;   /* -1 if not valid */
   int sockfd_v4;   /* -1 if not valid */
   char * message;
-  struct internet_addr * iap;
+  struct allnet_internet_addr * iap;
   int msize;
 };
 
@@ -74,7 +74,7 @@ static int assign_sockfds (struct socket_address_set * sock, void * ref)
 
 static struct ping_all_args
   make_ping_args (struct socket_set * s, unsigned char * my_address, int nbits,
-                  char * message, struct internet_addr * iap, int msize)
+                  char * message, struct allnet_internet_addr * iap, int msize)
 {
   struct ping_all_args result =
     { .finished = 0, .sockfd_v6 = -1, .sockfd_v4 = -1,
@@ -82,7 +82,7 @@ static struct ping_all_args
   socket_sock_loop (s, assign_sockfds, &result);
   result.message = memcpy_malloc (message, msize, "make_ping_args");
   size_t offset = ((char *) iap) - message;
-  result.iap = (struct internet_addr *) (result.message + offset);
+  result.iap = (struct allnet_internet_addr *) (result.message + offset);
   result.msize = msize;
   return result;
 }
@@ -96,12 +96,12 @@ static void * ping_all_pending (void * arg)
   struct ping_all_args * a = (struct ping_all_args *) arg;
   struct allnet_header * hp = (struct allnet_header *) a->message;
 #define MAX_ROUTES	32
-  struct addr_info peers [MAX_ROUTES];
+  struct allnet_addr_info peers [MAX_ROUTES];
   int num_routes = routing_table (peers, MAX_ROUTES);
 #undef MAX_ROUTES
   int route_index = 0;
   int iter = 0;
-  struct addr_info ai;
+  struct allnet_addr_info ai;
   while ((route_index < num_routes) ||
          ((iter = routing_ping_iterator (iter, &ai)) >= 0)) {
     sleep (1); /* sleep between messages, that's why we are in a thread */
@@ -150,7 +150,7 @@ static void * ping_all_pending (void * arg)
  * if successful, *iap points into the message for the spot to save the
  * the destination internet address before sending */
 int dht_update (struct socket_set * s,
-                char ** message, struct internet_addr ** iap)
+                char ** message, struct allnet_internet_addr ** iap)
 {
   *message = NULL;
   *iap = NULL;
@@ -202,9 +202,9 @@ void dht_process (char * dht_bytes, unsigned int dsize,
   int n_sender = (dhtp->num_sender & 0xff);
   int n_dht = (dhtp->num_dht_nodes & 0xff);
   int n = n_sender + n_dht;
-  struct addr_info * aip = dhtp->nodes;
+  struct allnet_addr_info * aip = dhtp->nodes;
   unsigned int expected_size = sizeof (struct allnet_mgmt_dht) + 
-                               n * sizeof (struct addr_info);
+                               n * sizeof (struct allnet_addr_info);
   if ((n < 1) || (dsize < expected_size)) {
     printf ("packet %d entries, %d/%d size, nothing to add to DHT/pings\n",
             n, dsize, expected_size);
@@ -214,7 +214,7 @@ void dht_process (char * dht_bytes, unsigned int dsize,
   /* found a valid dht packet */
   int i;
   for (i = 0; i < n_sender; i++) {
-    struct addr_info ai = aip [i];
+    struct allnet_addr_info ai = aip [i];
     if (! is_own_address (&ai)) {
       int validity = is_valid_address (&ai.ip);
       if (validity == 1) {
@@ -229,7 +229,7 @@ void dht_process (char * dht_bytes, unsigned int dsize,
                       "sender address", 99, 1);
         print_packet (dht_bytes, dsize, "entire message", 1);
 #endif /* DEBUG_PRINT */
-        struct addr_info sender_ai = ai;
+        struct allnet_addr_info sender_ai = ai;
         sockaddr_to_ia (sap, alen, &(sender_ai.ip));
         if (is_valid_address (&sender_ai.ip) == 1) {
           routing_add_dht (sender_ai);
@@ -270,7 +270,7 @@ void dht_process (char * dht_bytes, unsigned int dsize,
   print_dht (-1);
 #endif /* DEBUG_PRINT */
   for (i = 0; i < n_dht; i++) {
-    struct addr_info * ai = aip + n_sender + i;
+    struct allnet_addr_info * ai = aip + n_sender + i;
     if (! is_own_address (ai)) {
       struct sockaddr_storage ping_addr;
       struct sockaddr * pingp = (struct sockaddr *) (&ping_addr);
@@ -316,7 +316,7 @@ print_buffer (&ai, sizeof (ai), "ai", sizeof (ai), 1);
  * location of the sending_to_ip_address (same address that the
  * sockaddr, if any, was copied to). */
 int dht_create (const struct sockaddr * sap, socklen_t slen,
-                char ** message, struct internet_addr ** iap)
+                char ** message, struct allnet_internet_addr ** iap)
 {
   char buffer [ADHT_MAX_PACKET_SIZE];
   memset (buffer, 0, sizeof (buffer));
@@ -338,10 +338,11 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
   int msize = ALLNET_MGMT_HEADER_SIZE (hp->transport);
   struct allnet_mgmt_dht * dhtp =
     (struct allnet_mgmt_dht *) (buffer + msize);
-  struct addr_info * entries = (struct addr_info *) (&(dhtp->nodes[0]));
+  struct allnet_addr_info * entries =
+    (struct allnet_addr_info *) (&(dhtp->nodes[0]));
   size_t total_header_bytes = (((char *) entries) - ((char *) hp));
   size_t possible = (sizeof (buffer) - total_header_bytes)
-                  / sizeof (struct addr_info);
+                  / sizeof (struct allnet_addr_info);
   int self = init_own_routing_entries (entries, 2, my_address, ADDRESS_BITS);
   if (self <= 0) { /* only send if we have one or more public IP addresses */
     printf ("no publically routable IP address, not sending\n");
@@ -361,7 +362,8 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
   dhtp->num_sender = self;
   dhtp->num_dht_nodes = added;
   writeb64u (dhtp->timestamp, allnet_time ());
-  size_t send_size = total_header_bytes + actual * sizeof (struct addr_info);
+  size_t send_size = total_header_bytes +
+                     actual * sizeof (struct allnet_addr_info);
   size_t ip_offset = (((char *) (&(dhtp->sending_to_ip))) - buffer);
   if (send_size > sizeof (buffer)) {
     printf ("dht_update send_size %zd > %zd, truncating\n", 
@@ -371,8 +373,8 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
   /* copy the message to *message, the result */
   *message = memcpy_malloc (buffer, (int) send_size, "dht_update");
   /* iap is ip_offset into the copied message */
-  struct internet_addr * internet_addr_ptr =
-    (struct internet_addr *) ((*message) + ip_offset);
+  struct allnet_internet_addr * internet_addr_ptr =
+    (struct allnet_internet_addr *) ((*message) + ip_offset);
   if ((sap != NULL) && (slen > 0))
     sockaddr_to_ia (sap, slen, internet_addr_ptr);
   if (iap != NULL)

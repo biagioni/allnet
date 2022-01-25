@@ -275,7 +275,8 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
       const struct allnet_mgmt_peers * amp =
         (const struct allnet_mgmt_peers *) hp;
       unsigned int needed = sizeof (struct allnet_mgmt_peers) +
-                            amp->num_peers * sizeof (struct internet_addr);
+                            amp->num_peers *
+                              sizeof (struct allnet_internet_addr);
       if (hsize < needed) {
         r += snprintf (to + r, minz (itsize, r), "peer size %d, needed %d\n",
                        hsize, needed);
@@ -305,8 +306,8 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
       const struct allnet_mgmt_dht * dht = (const struct allnet_mgmt_dht *) hp;
       unsigned int needed = sizeof (struct allnet_mgmt_dht) +
                             (dht->num_sender + dht->num_dht_nodes) *
-                            sizeof (struct addr_info);
-      const struct addr_info * nodes = dht->nodes;
+                            sizeof (struct allnet_addr_info);
+      const struct allnet_addr_info * nodes = dht->nodes;
       int print_status = 1;  /* normal print */
       if (hsize < needed) {
         r += snprintf (to + r, minz (itsize, r), "size %d, needed %d\n",

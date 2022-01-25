@@ -34,7 +34,7 @@ static int ip6_to_string (const unsigned char * ip, char * buffer)
                    readb16 (p + 12), readb16 (p + 14));
 }
 
-void print_addr_info (struct addr_info * ai)
+void print_addr_info (struct allnet_addr_info * ai)
 {
   printf ("(%d) ", ai->nbits);
   if (ai->nbits > 0)
@@ -51,7 +51,7 @@ void print_addr_info (struct addr_info * ai)
 }
 
 /* includes a newline at the end of the address info */
-int addr_info_to_string (struct addr_info * ai, char * buf, size_t bsize)
+int addr_info_to_string (struct allnet_addr_info * ai, char * buf, size_t bsize)
 {
   int offset = 0;
   offset += snprintf (buf, bsize, "(%d) ", ai->nbits);
@@ -72,7 +72,7 @@ int addr_info_to_string (struct addr_info * ai, char * buf, size_t bsize)
 }
 
 /* prints a newline at the end of the address info */
-void print_ia (struct internet_addr * ia)
+void print_ia (struct allnet_internet_addr * ia)
 {
   printf ("v %d, port %d, addr ", ia->ip_version, ntohs (ia->port));
   unsigned char * p = (unsigned char *) (&(ia->ip));
@@ -87,7 +87,8 @@ void print_ia (struct internet_addr * ia)
 }
 
 /* includes a newline at the end of the address info */
-int ia_to_string (const struct internet_addr * ia, char * buf, size_t bsize)
+int ia_to_string (const struct allnet_internet_addr * ia,
+                  char * buf, size_t bsize)
 {
   int offset = 0;
   offset += snprintf (buf + offset, bsize - offset,
@@ -109,7 +110,7 @@ int ia_to_string (const struct internet_addr * ia, char * buf, size_t bsize)
 
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
-int ia_to_sockaddr (const struct internet_addr * ia,
+int ia_to_sockaddr (const struct allnet_internet_addr * ia,
                     struct sockaddr_storage * sap, socklen_t * salen)
 {
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
@@ -132,8 +133,9 @@ int ia_to_sockaddr (const struct internet_addr * ia,
     if (salen != NULL)
       *salen = sizeof (struct sockaddr_in);
   } else {   /* not found */
-    printf ("coding error: internet_addr has version %d\n", ia->ip_version);
-    print_buffer (ia, sizeof (struct internet_addr), NULL, 1000, 1);
+    printf ("coding error: allnet_internet_addr has version %d\n",
+            ia->ip_version);
+    print_buffer (ia, sizeof (struct allnet_internet_addr), NULL, 1000, 1);
     return 0;
   }
   return 1;
@@ -168,10 +170,10 @@ int ai_embed_v4_in_v6 (struct sockaddr_storage * sas, socklen_t * alen)
 /* port must be in big-endian order (i.e. after applying htons) */
 /* returns 1 for success, 0 for failure */
 int init_addr (int af, const unsigned char * addr, int port,
-               struct internet_addr * ia)
+               struct allnet_internet_addr * ia)
 {
   unsigned char * iap = ia->ip.s6_addr;
-  memset (iap, 0, sizeof (struct internet_addr));
+  memset (iap, 0, sizeof (struct allnet_internet_addr));
   int size = sizeof (ia->ip.s6_addr);
   if (size != 16) {   /* sanity check -- is something very wrong? */
     printf ("error: IPv6 address %d, not 16 bytes long!\n", size);
@@ -194,7 +196,7 @@ int init_addr (int af, const unsigned char * addr, int port,
 }
 
 int sockaddr_to_ia (const struct sockaddr * sap, socklen_t addr_size,
-                    struct internet_addr * ia)
+                    struct allnet_internet_addr * ia)
 {
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
@@ -221,7 +223,7 @@ int sockaddr_to_ia (const struct sockaddr * sap, socklen_t addr_size,
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
 /* returns 1 for success, 0 for failure */
 /* if salen is not NULL, it is given the appropriate length (0 for failure) */
-int ai_to_sockaddr (const struct addr_info * ai,
+int ai_to_sockaddr (const struct allnet_addr_info * ai,
                     struct sockaddr_storage * sap, socklen_t * salen)
 {
   return ia_to_sockaddr (&(ai->ip), sap, salen);
@@ -232,9 +234,9 @@ int ai_to_sockaddr (const struct addr_info * ai,
 /* port must be in big-endian order (i.e. after applying htons) */
 /* returns 1 for success, 0 for failure */
 int init_ai (int af, const unsigned char * addr, int port, int nbits,
-             const unsigned char * dest, struct addr_info * ai)
+             const unsigned char * dest, struct allnet_addr_info * ai)
 {
-  memset ((char *) ai, 0, sizeof (struct addr_info));
+  memset ((char *) ai, 0, sizeof (struct allnet_addr_info));
   ai->nbits = nbits;
   if (! (init_addr (af, addr, port, &(ai->ip))))
     return 0;
@@ -254,15 +256,16 @@ int init_ai (int af, const unsigned char * addr, int port, int nbits,
 }
 
 int sockaddr_to_ai (const struct sockaddr * sap, socklen_t addr_size,
-                    struct addr_info * ai)
+                    struct allnet_addr_info * ai)
 {
   /* init_ai with 0 bits and NULL address simply sets address to all 0s */
-  memset ((char *) ai, 0, sizeof (struct addr_info));
+  memset ((char *) ai, 0, sizeof (struct allnet_addr_info));
   return sockaddr_to_ia (sap, addr_size, &(ai->ip));
 }
 
 /* returns 1 if the two addresses are the same, 0 otherwise */
-int same_ai (const struct addr_info * a, const struct addr_info * b)
+int same_ai (const struct allnet_addr_info * a,
+             const struct allnet_addr_info * b)
 {
   if ((a == NULL) && (b == NULL))
     return 1;
@@ -287,7 +290,8 @@ int same_ai (const struct addr_info * a, const struct addr_info * b)
 }
 
 /* returns 1 if the two addresses and ports are the same, 0 otherwise */
-int same_aip (const struct addr_info * a, const struct addr_info * b)
+int same_aip (const struct allnet_addr_info * a,
+              const struct allnet_addr_info * b)
 {
   if (same_ai (a, b)) {
     if ((a != NULL) && (b != NULL) && (a->ip.port != b->ip.port))
@@ -908,7 +912,7 @@ int interface_broadcast_addrs (struct sockaddr_storage ** addrs)
 /* test whether this address is syntactically valid address (e.g.
  * not all zeros, not a local or loopback address), returning
  * 1 if valid, -1 if it is an ipv4-in-ipv6 address, and 0 otherwise */
-int is_valid_address (const struct internet_addr * ip)
+int is_valid_address (const struct allnet_internet_addr * ip)
 {
   if (ip->ip_version == 4) {
     if ((readb32 ((char *) (ip->ip.s6_addr + 12)) == 0) ||   /* 0.0.0.0 */
@@ -934,14 +938,14 @@ int is_valid_address (const struct internet_addr * ip)
     if ((readb64 ((char *) (ip->ip.s6_addr    )) == 0) &&
         (readb16 ((char *) (ip->ip.s6_addr + 8)) == 0) &&
         (readb16 ((char *) (ip->ip.s6_addr + 10)) == 0xffff)) { /* v4 in v6 */
-      struct internet_addr v4_addr = *ip;
+      struct allnet_internet_addr v4_addr = *ip;
       v4_addr.ip_version = 4;
       return - (is_valid_address (&v4_addr));
     }
     return 1;
   } else {
     printf ("is_valid_address: unknown ip version %d\n", ip->ip_version);
-    print_buffer (ip, sizeof (struct internet_addr), NULL, 200, 1);
+    print_buffer (ip, sizeof (struct allnet_internet_addr), NULL, 200, 1);
     return 0;
   }
   return 1;

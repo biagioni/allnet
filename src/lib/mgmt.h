@@ -58,7 +58,7 @@ struct allnet_mgmt_beacon_grant {
  * address x.y.z.w is sent as 0:0:0:0:0:ffff:xy:zw
  * 24 bytes altogether
  */
-struct internet_addr {
+struct allnet_internet_addr {
   struct in6_addr ip;         /* for ip4 x.y.z.w, send 0:0:0:0:0:ffff:xy:zw */
   unsigned short port;        /* sent in big-endian order */
   unsigned char ip_version;   /* the integer 4 or 6 */
@@ -67,8 +67,8 @@ struct internet_addr {
 
 /* used to send address mapping information to ad,
  * and peer information from ad */
-struct addr_info {
-  struct internet_addr ip; /* how to reach the peer */
+struct allnet_addr_info {
+  struct allnet_internet_addr ip; /* how to reach the peer */
   unsigned char destination [ADDRESS_SIZE];
   unsigned char nbits;     /* how many bits of the destination are given */
   /* for DHT nodes, nbits should always equal ADDRESS_BITS.  Received
@@ -88,7 +88,7 @@ struct allnet_mgmt_peers {
   unsigned char num_peers;
   char pad [7];              /* always sent as 0 */
   /* num_sender_addresses + num_peers internet addr structs */
-  struct internet_addr peers [0];
+  struct allnet_internet_addr peers [0];
 };
 
 /* a DHT message reports a number of DHT nodes, each claiming to accept
@@ -98,9 +98,9 @@ struct allnet_mgmt_dht {
   unsigned char num_dht_nodes; /* num addresses belonging to other nodes */
   char pad [6];
   unsigned char timestamp  [ALLNET_TIME_SIZE];
-  struct internet_addr sending_to_ip; /* how sender is reaching receiver */
+  struct allnet_internet_addr sending_to_ip; /* where this message was sent */
   /* how to reach each DHT node, beginning with the sender */
-  struct addr_info nodes [0];
+  struct allnet_addr_info nodes [0];
 };
 
 /* a trace should contain a timestamp of the time of receipt using the
@@ -220,11 +220,11 @@ struct allnet_mgmt_header {
 
 #define ALLNET_PEER_SIZE(t, npeers)	\
 	(ALLNET_MGMT_HEADER_SIZE(t) + (sizeof (struct allnet_mgmt_peers)) + \
-	 (npeers) * sizeof (struct internet_addr))
+	 (npeers) * sizeof (struct allnet_internet_addr))
 
 #define ALLNET_DHT_SIZE(t, naddrs)	\
 	(ALLNET_MGMT_HEADER_SIZE(t) + (sizeof (struct allnet_mgmt_dht)) + \
-	 (naddrs) * sizeof (struct addr_info))
+	 (naddrs) * sizeof (struct allnet_addr_info))
 
 #define ALLNET_TRACE_REQ_SIZE(t, n, ks)	\
 	(ALLNET_MGMT_HEADER_SIZE(t) +   \

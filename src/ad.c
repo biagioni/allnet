@@ -501,7 +501,8 @@ static int skip_this_packet (int priority)
 
 /* send to a limited number of DHT addresses and to socket_send_out */
 static void send_out (const char * message, int msize,
-                      struct internet_addr * save_dest_address, int max_addrs,
+                      struct allnet_internet_addr * save_dest_address,
+                      int max_addrs,
                       const struct sockaddr_storage * except, /* may be NULL */
                       socklen_t elen,  /* should be 0 if except is NULL */
                       int priority, int throttle_and_count,
@@ -612,7 +613,7 @@ print_buffer (&addrs [i], alens [i], NULL, alens [i], 1);
 static void update_dht ()
 {
   char * dht_message = NULL;
-  struct internet_addr * iap = NULL;
+  struct allnet_internet_addr * iap = NULL;
   unsigned int msize = dht_update (&sockets, &dht_message, &iap);
   if ((msize > 0) && (dht_message != NULL)) {
     struct sockaddr_storage sas;
@@ -664,7 +665,7 @@ static struct socket_address_validity *
     send_keepalive = 1;
     /* send our dht to the peer */
     char * message = NULL;
-    struct internet_addr * iap = NULL;
+    struct allnet_internet_addr * iap = NULL;
     int msize = dht_create ((struct sockaddr *) (&r.from), r.alen,
                             &message, &iap);
     if (msize > 0) {

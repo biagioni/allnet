@@ -689,7 +689,7 @@ struct socket_send_data {
   int local_not_remote;
   const char * message;
   int msize;
-  struct internet_addr * save_dest_addr; /* may be NULL */
+  struct allnet_internet_addr * save_dest_addr; /* may be NULL */
   unsigned long long int sent_time;
   struct sockaddr_storage except_to;
   socklen_t alen;
@@ -781,7 +781,7 @@ int socket_send_local (struct socket_set * s, const char * message, int msize,
  * in each time before the packet is sent -- this may be useful if 
  * the outgoing address is to be sent as part of the message */
 int socket_send_out (struct socket_set * s, const char * message,
-                     int msize, struct internet_addr * save_dest_address,
+                     int msize, struct allnet_internet_addr * save_dest_address,
                      unsigned long long int sent_time,
                      struct sockaddr_storage except_to, socklen_t alen,
                      struct sockaddr_storage * sent_to, int * num_sent)
