@@ -332,6 +332,11 @@ static void sim_dns (int sim_fd) {
   char * line_start = buffer;
   for (c = 0; c < r; c++) {
     if (buffer [c] == '\n') {   /* end of line, process */
+      if (&(buffer [c]) == line_start) {  /* empty line */
+        line_start = &(buffer [c + 1]);
+        id++;        /* skip this ID */
+        continue;    /* next loop */
+      }
       buffer [c] = '\0';        /* terminate the line */
       /* a sockaddr in the file has type (4 or 6):port/address (no blanks) */
       char * port_end = NULL;
@@ -367,13 +372,16 @@ printf ("ipv6: read %s\n", line_start);
         printf ("sim_dns error parsing %s\n", line_start);
         exit (1);   /* debugging code, don't try to keep running */
       }
-printf ("%d: adding ", getpid());
+printf ("%d: adding ", getpid ());
 print_sockaddr (sap, len);
-printf ("\n");
+printf (", id %d\n", id);
       routing_add_dns ("sim", id++, 1, sap);
       line_start = &(buffer [c + 1]);
     }
   }
+  save_peers (1);
+  printf ("%d: after sim init:\n", getpid ());
+  print_dht (0);
 }
 
 /* allnet_dns takes about 4-5s and is called repeatedly,
@@ -396,8 +404,6 @@ static void * init_default_dns (void * arg)
   int sim_fd = open_read_config ("adht", "fixed_dht", 0);
   if (sim_fd >= 0) {
     sim_dns (sim_fd);
-    printf ("after sim init, ");
-    print_dht (0);
     pthread_mutex_unlock (&only_one_thread_at_a_time);
     return NULL;
   }
@@ -473,7 +479,7 @@ static void * init_default_dns (void * arg)
 /* may be called multiple times.  If another thread is already
  * executing, this one will bow out gracefully (with the
  *   pthread_mutex_trylock (&only_one_thread_at_a_time) != 0
- * of init_default_dns. */
+ * of init_default_dns). */
 static void start_dns_thread ()
 {
   pthread_t thread;
@@ -921,7 +927,7 @@ static int search_data_structure (struct peer_info * ds, int max,
 }
 
 /* returns 1 and fills in result (if not NULL) if it finds an exact
- * match for this address (assumed to be of size ADDRESS_SIZE.
+ * match for this address (assumed to be of size ADDRESS_SIZE)
  * otherwise returns 0.  */
 int routing_exact_match (const unsigned char * addr,
                          struct allnet_addr_info * result)
@@ -969,10 +975,19 @@ static int find_peer (struct peer_info * peers_data, int max,
 /* returns the index of the entry with the given IP, or -1 if none found */
 static int find_ip (struct allnet_internet_addr * addr)
 {
+  /* ipv6 local host (::1) is used in the simulator and generally not found
+   * in real deployments, so as long as it is a different port, we treat it
+   * as not found */
+  int is_ipv6_localhost = ((addr->ip_version == 6) &&
+                           (memget (&(addr->ip), 0, sizeof (addr->ip) - 1)) &&
+                           (addr->ip.s6_addr [sizeof (addr->ip) - 1] == 1));
   int i;
   for (i = 0; i < MAX_PEERS; i++) {
     if ((peers [i].ai.nbits > 0) &&
-        (memcmp (&(addr->ip), &(peers [i].ai.ip.ip), sizeof (addr->ip)) == 0))
+        (memcmp (&(addr->ip), &(peers [i].ai.ip.ip), sizeof (addr->ip)) == 0) &&
+        /* if IPs are same, return found if it is not an IPv6 localhost,
+         * or if it is, and the ports are the same */
+        ((! is_ipv6_localhost) || (peers [i].ai.ip.port == addr->port)))
       return i;
   }
   return -1;
@@ -1015,7 +1030,7 @@ static int routing_add_dht_locked (struct allnet_addr_info addr)
                                  (unsigned char *) my_address, ADDRESS_BITS);
 #ifdef DEBUG_PRINT
     printf ("adding at bit position %d, address ", bit_pos);
-    print_addr_info (addr);
+    print_addr_info (&addr);
 #endif /* DEBUG_PRINT */
     int index = bit_pos * PEERS_PER_BIT;
     int received_dist = addr.hops + 1;
