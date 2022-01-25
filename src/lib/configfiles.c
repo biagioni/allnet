@@ -84,7 +84,7 @@ static void init_global_root ()
     closedir (d);
     global_root = IOS_ROOT;
   } else if (global_home_directory != NULL) {  /* use global_home_directory */
-    global_root = strcat_malloc (global_home_directory, HOME_EXT,
+    global_root = strcpy_malloc (global_home_directory,
                                  "config_file_name global home directory");
   } else {
     char * allnet_config_env = getenv ("ALLNET_CONFIG");
