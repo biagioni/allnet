@@ -19,7 +19,8 @@ extern int connect_to_local (const char * program_name,
                              const char * arg0,
                              const char * path,
                              int start_allnet_if_needed,
-                             int start_keepalive_thread);
+                             int start_keepalive_thread,
+                             int optional_port_number);  /* 0 for default */
 
 /* return 1 for success, 0 otherwise */
 extern int local_send (const char * message, int msize, unsigned int priority);

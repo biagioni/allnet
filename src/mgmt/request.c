@@ -191,7 +191,7 @@ int main (int argc, char ** argv)
     printf ("optionally, a final argument may give the number of hops\n");
     exit (1);
   }
-  int sock = connect_to_local (argv [0], argv [0], NULL, 1, 1);
+  int sock = connect_to_local (argv [0], argv [0], NULL, 1, 1, 0);
   int hops = 10;
   if (argc == 7)
     hops = atoi (argv [6]);

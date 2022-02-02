@@ -357,7 +357,7 @@ int main (int argc, char ** argv)
     debug = 1;
   log_to_output (verbose);
 
-  if (connect_to_local (argv [0], argv [0], NULL, 1, 1) < 0)
+  if (connect_to_local (argv [0], argv [0], NULL, 1, 1, 0) < 0)
     return 1;
 
   int max = 0;

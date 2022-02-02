@@ -180,7 +180,7 @@ int xchat_init (const char * arg0, const char * path)
 {
   if (alog == NULL)
     alog = init_log ("xchat/xcommon");
-  int sock = connect_to_local ("xcommon", arg0, path, 1, 1);
+  int sock = connect_to_local ("xcommon", arg0, path, 1, 1, 0);
   if (sock < 0)
     return -1;
 #ifdef SO_NOSIGPIPE

@@ -226,7 +226,7 @@ int trace_main (int argc, char ** argv)
     }
   }
   alog = init_log ("trace");
-  int sock = connect_to_local (argv [0], argv [0], NULL, 0, 1);
+  int sock = connect_to_local (argv [0], argv [0], NULL, 0, 1, 0);
   if (sock < 0)
     return 1;
 

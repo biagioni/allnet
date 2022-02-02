@@ -602,7 +602,7 @@ int main (int argc, char ** argv)
   int nauth = 0;
   char ** authorized = is_server (argc, argv, &nauth);
   int server = (authorized != NULL);
-  int sock = connect_to_local (argv [0], argv [0], NULL, 1, 1);
+  int sock = connect_to_local (argv [0], argv [0], NULL, 1, 1, 0);
   if (sock < 0) {
     printf ("error: unable to connect to allnet daemon\n");
     exit (1);

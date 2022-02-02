@@ -952,7 +952,7 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
   }
 
   struct allnet_log * alog = init_log ("trace_string");
-  int sock = connect_to_local ("trace_string", "trace_string", NULL, 0, 1);
+  int sock = connect_to_local ("trace_string", "trace_string", NULL, 0, 1, 0);
   if (sock < 0)
     return strcpy_malloc ("unable to connect to allnet", "trace_string");
 

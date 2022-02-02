@@ -146,7 +146,7 @@ static int send_with_priority (const char * message, int msize, unsigned int p)
     printf ("send (%d, %p, %d, 0): result %zd, errno %d\n",
             internal_sockfd, copy, msize + 4, s, e);
     if (errno == EBADF)  /* socket was closed, let someone else reopen it */
-      printf ("ebadf\n"); /* connect_once (1); */
+      printf ("ebadf\n"); /* connect_once (1, optional_port_number); */
   }
   return (s == (msize + 4));
 }
@@ -168,12 +168,14 @@ void local_send_keepalive (int override)
 }
 
 #ifdef ALLNET_USE_FORK
-static int connect_once (int print_error)
+static int connect_once (int print_error, int optional_port_number)
 {
   memset (&sas, 0, sizeof (sas));
   sinp->sin_family = AF_INET;
   sinp->sin_addr.s_addr = allnet_htonl (INADDR_LOOPBACK);
   sinp->sin_port = allnet_htons (ALLNET_LOCAL_PORT);
+  if (optional_port_number != 0)
+    sinp->sin_port = allnet_htons (optional_port_number);
   const char * error_desc = "connect_once socket";
   internal_sockfd = socket (sinp->sin_family, SOCK_DGRAM, IPPROTO_UDP);
 int debug_recv_count = 0;
@@ -324,7 +326,8 @@ static void seed_rng ()
  * there is no fork, there still should only be one call to this function. */
 int connect_to_local (const char * program_name, const char * arg0,
                       const char * path, int start_allnet_if_needed,
-                      int start_keepalive_thread)
+                      int start_keepalive_thread,
+                      int optional_port_number)  /* 0 for default */
 {
 #ifdef ALLNET_USE_FORK
   snprintf (program_name_copy, sizeof (program_name_copy), "%s", program_name);
@@ -334,7 +337,7 @@ int connect_to_local (const char * program_name, const char * arg0,
   internal_sockfd = -1;
   internal_print_send_errors = 0;
   seed_rng ();
-  int sock = connect_once (! start_allnet_if_needed);
+  int sock = connect_once (! start_allnet_if_needed, optional_port_number);
   if ((sock < 0) && start_allnet_if_needed) {
     printf ("%s", program_name);
     if (strcmp (program_name, arg0) != 0)
@@ -343,7 +346,7 @@ int connect_to_local (const char * program_name, const char * arg0,
     exec_allnet (strcpy_malloc (arg0, "connect_to_local exec_allnet"),
                  path);
     sleep (1);
-    sock = connect_once (1);
+    sock = connect_once (1, optional_port_number);
     if (sock < 0)
       printf ("unable to start allnet daemon, giving up\n");
   }
