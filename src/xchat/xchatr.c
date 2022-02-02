@@ -22,7 +22,7 @@
 int main (int argc, char ** argv)
 {
   log_to_output (get_option ('v', &argc, argv));
-  int sock = xchat_init (argv [0], NULL);
+  int sock = xchat_init (argv [0], NULL, 0);
   if (sock < 0)
     return 1;
 

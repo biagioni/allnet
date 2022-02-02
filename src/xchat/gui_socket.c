@@ -45,7 +45,7 @@ void stop_chat_and_exit (int exit_code)
 
 static int create_allnet_sock (const char * program_name, const char * path)
 {
-  int sock = xchat_init (program_name, path);
+  int sock = xchat_init (program_name, path, 0);
   return sock;
 }
 

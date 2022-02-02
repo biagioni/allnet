@@ -13,7 +13,8 @@
 /* path is usually NULL.  It should be non-null only when the system
  * has a hard-to-find path to config files, and the caller can
  * specify the path to the directory to use. */
-extern int xchat_init (const char * program_name, const char * path);
+extern int xchat_init (const char * program_name, const char * path,
+                       int optional_port_number);
 /* optional... */
 extern void xchat_end (int sock);
 

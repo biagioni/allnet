@@ -1,5 +1,9 @@
 /* xchat_term.c: send and receive xchat messages (executable is named xt) */
 /* terminal interface meant to be equivalent to xchat */
+/* can be called with
+ *    -a to print received duplicates
+ *    -d directory to indicate a path
+ *    -p port to indicate the local port number */
 /* once started, commands are: */
 
 #define XCHAT_TERM_HELP_MESSAGE	\
@@ -830,15 +834,18 @@ int main (int argc, char ** argv)
 
   int print_duplicates = 0;
   char * path = NULL;
+  int optional_port = 0;
   int i;
   for (i = 1; i < argc; i++) {
     if (strcmp (argv [i], "-a") == 0)
       print_duplicates = 1;
     else if ((i + 1 < argc) && (strcmp (argv [i], "-d") == 0))
-      path = argv [i + 1];
+      path = argv [++i];
+    else if ((i + 1 < argc) && (strcmp (argv [i], "-p") == 0))
+      optional_port = atoi (argv [++i]);
   }
 
-  int sock = xchat_init (argv [0], path);
+  int sock = xchat_init (argv [0], path, optional_port);
   if (sock < 0)
     return 1;
 

@@ -52,7 +52,7 @@ int main (int argc, char ** argv)
     return 1;
   }
 
-  int sock = xchat_init (argv [0], NULL);
+  int sock = xchat_init (argv [0], NULL, 0);
   if (sock < 0)
     return 1;
 
