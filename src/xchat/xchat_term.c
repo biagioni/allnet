@@ -2,7 +2,7 @@
 /* terminal interface meant to be equivalent to xchat */
 /* can be called with
  *    -a to print received duplicates
- *    -d directory to indicate a path
+ *    -c directory to indicate where to find the config files
  *    -p port to indicate the local port number */
 /* once started, commands are: */
 
@@ -659,9 +659,9 @@ static char * list_incompletes (const char * contact, int select,
               (status [ii] & KEYS_INCOMPLETE_DH))
             pr_status = "no key received";
           else  /* no exchange file */
-            pr_status = "no key received and no exchange file, may be an error";
+            pr_status = "key received";
         } else {
-          pr_status = "key exchange is complete (this may be an error)";
+          pr_status = "no exchange file";
         }
         char * s1 = NULL;
         char * s2 = NULL;
@@ -839,7 +839,7 @@ int main (int argc, char ** argv)
   for (i = 1; i < argc; i++) {
     if (strcmp (argv [i], "-a") == 0)
       print_duplicates = 1;
-    else if ((i + 1 < argc) && (strcmp (argv [i], "-d") == 0))
+    else if ((i + 1 < argc) && (strcmp (argv [i], "-c") == 0))
       path = argv [++i];
     else if ((i + 1 < argc) && (strcmp (argv [i], "-p") == 0))
       optional_port = atoi (argv [++i]);
