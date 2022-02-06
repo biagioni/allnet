@@ -178,6 +178,8 @@ static pthread_t request_thread;
 /* returns the socket if successful, -1 otherwise */
 int xchat_init (const char * arg0, const char * path, int optional_port_number)
 {
+  if (path != NULL)
+    set_home_directory (path);
   if (alog == NULL)
     alog = init_log ("xchat/xcommon");
   int sock = connect_to_local ("xcommon", arg0, path,
