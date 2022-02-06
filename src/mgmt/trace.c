@@ -18,7 +18,8 @@
            -t sec, time to sleep after send (default 5 seconds)
            -h hops gives the maximum number of hops (default 10)
            -l minimum (least) hops (default 0) -- -l 1 to not print self
-           -c disallow caching (turn on Do Not Cache flag in trace messages)
+           -d disallow caching (turn on Do Not Cache flag in trace messages)
+           -c dir: use dir as the config directory
  */
 
 #include <stdio.h>
@@ -109,7 +110,8 @@ static void trace_usage (char * pname)
   printf ("       -t sec, time to sleep after send (default 5 seconds)\n");
   printf ("       -h hops gives the maximum number of hops (default 10)\n");
   printf ("       -l minimum (least) hops, so -l 1 to not print self\n");
-  printf ("       -c disallow caching of trace messages\n");
+  printf ("       -d disallow caching of trace messages\n");
+  printf ("       -c dir: use dir as the config directory\n");
 }
 
 static int atoi_in_range (char * value, int min, int max, int dflt, char * name)
@@ -142,7 +144,7 @@ int trace_main (int argc, char ** argv)
   int nhops = 10;
   int minhops = 0;
   int caching = 1;
-  char * opt_string = "cfimvh:l:r:t:";
+  char * opt_string = "dfimvh:l:r:t:c:";
   while ((opt = getopt (argc, argv, opt_string)) != -1) {
     switch (opt) {
     case 'm': match_only = 1; break;
@@ -153,7 +155,8 @@ int trace_main (int argc, char ** argv)
     case 't': sleep = atoi_in_range (optarg, 1, 0, sleep, "seconds"); break;
     case 'h': nhops = atoi_in_range (optarg, 1, 255, nhops, "hops"); break;
     case 'l': minhops = atoi_in_range (optarg, 0, nhops, 0, "min hops"); break;
-    case 'c': caching = 0; break;
+    case 'd': caching = 0; break;
+    case 'c': set_home_directory (optarg); break;
     default:
       trace_usage (argv [0]);
       exit (1);
