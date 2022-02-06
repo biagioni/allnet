@@ -77,41 +77,27 @@ static void init_global_root ()
   if ((initialized) && (global_root != NULL))
     return;
   initialized = 1;
-  global_root = ROOT;
-  /* if the iOS root exists, use that */
+  char * allnet_config_env = getenv ("ALLNET_CONFIG");
+  char * home_env = getenv (HOME_ENV);
+  global_root = NULL;
+  int has_ios_home = 0;
   DIR * d = opendir (IOS_ROOT);
-  if (d != NULL) {  /* exists, use this */
+  if (d != NULL) {  /* exists */
     closedir (d);
-    global_root = IOS_ROOT;
-  } else if (global_home_directory != NULL) {  /* use global_home_directory */
+    has_ios_home = 1;
+  }
+  if (global_home_directory != NULL) {  /* use global_home_directory */
     global_root = strcpy_malloc (global_home_directory,
                                  "config_file_name global home directory");
-  } else {
-    char * allnet_config_env = getenv ("ALLNET_CONFIG");
-    if (allnet_config_env != NULL) {
-      global_root = allnet_config_env;
-    } else {
-      char * home_env = getenv (HOME_ENV);
-      if ((home_env != NULL) && (strcmp (home_env, "/nonexistent") == 0))
-        home_env = NULL;  /* simplify subsequent tests */
-      if (home_env == NULL) { /* see if we can return the current directory */
-        static char buf [PATH_MAX];
-        char * cwd = getcwd (buf, sizeof (buf));
-        /* in weird cases the result may not begin with '/' */
-        if ((cwd != NULL) && (*cwd == '/')) {
-          home_env = cwd;
-        }
-      }
-      if (home_env == NULL) {
-        printf ("no home environment, running without configs\n");
-        global_root = NULL;
-        return;
-      }
-      /* printf ("no ALLNET_CONFIG, home is %s\n", home_env); */
-      size_t size = strlen (home_env) + strlen (HOME_EXT) + 1;
-      global_root = malloc_or_fail (size, "configfiles.c init_global_root");
-      snprintf (global_root, size, "%s%s", home_env, HOME_EXT);
-    }
+  } else if (allnet_config_env != NULL) {
+    global_root = allnet_config_env;
+  } else if (has_ios_home) {
+    global_root = IOS_ROOT;
+  } else if ((home_env != NULL) && (strcmp (home_env, "/nonexistent") != 0)) {
+    global_root = strcat_malloc (home_env, HOME_EXT,
+                                 "config_file_name home directory");
+  } else {  /* use ROOT -- probably equal to home_env + "/.allnet" */
+    global_root = ROOT;
   }
 /* printf ("root is %s of length %d\n", global_root, (int) strlen (global_root)); */
 }
