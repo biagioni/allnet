@@ -598,9 +598,10 @@ int pcache_message_id (const char * message, int msize, char * result_id)
   ssize_t hsize = ALLNET_SIZE (hp->transport);
   if (msize <= hsize)
     return 0;
-  if (hp->transport & ALLNET_TRANSPORT_ACK_REQ) {
+  char * message_id = NULL;
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
+      ((message_id = ALLNET_MESSAGE_ID (hp, hp->transport, msize)) != NULL)) {
     /* the message has an explicit message ID, use that */
-    char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, msize);
     memcpy (result_id, message_id, MESSAGE_ID_SIZE);
     return 1;
   }
