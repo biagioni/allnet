@@ -166,8 +166,7 @@ static int make_announcement (char * buffer, int n,
       sig_algo = ALLNET_SIGTYPE_RSA_PKCS1;
       char * sp = dp + dsize;
       memcpy (sp, sig, ssize);
-      sp [ssize    ] = (ssize >> 8) & 0xff;
-      sp [ssize + 1] = (ssize & 0xff);
+      writeb16 (sp + ssize, ssize);
       ssize += 2;
     }
     free (sig);
@@ -185,12 +184,9 @@ static void announce (time_t interval, int hops, allnet_rsa_prvkey key,
                       unsigned char * dest, int dbits,
                       struct allnet_log * log)
 {
-  static int called_before = 0;
   struct timeval now;
   gettimeofday (&now, NULL);
-  time_t announce_time = compute_next (now.tv_sec, interval, called_before);
-  called_before = 0;   /* on next loop, don't send right away even if we
-                          are on the same second */
+  time_t announce_time = compute_next (now.tv_sec, interval, 0);
 
   static char buffer [ALLNET_MTU];
   memset (buffer, 0, sizeof (buffer));
@@ -213,9 +209,9 @@ static void announce (time_t interval, int hops, allnet_rsa_prvkey key,
   /* send with fairly high priority, since the message is time-sensitive */
   local_send (buffer, blen, ALLNET_PRIORITY_LOCAL);
 
+#ifdef PRINT_OUTGOING_PACKETS
   struct timeval tv;
   gettimeofday (&tv, NULL);
-#ifdef PRINT_OUTGOING_PACKETS
   printf ("sent at %ld.%06ld: ", tv.tv_sec, (long) (tv.tv_usec));
   print_buffer (buffer, blen, "packet", /* 36 */ blen, 1);
 #endif /* PRINT_OUTGOING_PACKETS */
