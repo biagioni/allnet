@@ -36,6 +36,13 @@ extern int open_write_config (const char * program, const char * file,
 extern int open_rw_config (const char * program, const char * file,
                            int print_errors);
 
+/* returns the file size, and if content_p is not NULL, allocates an
+ * array to hold the file contents and assigns it to content_p.
+ * one extra byte is allocated at the end and the content is null terminated.
+ * in case of problems, returns -1, and prints the error if print_errors != 0 */
+extern int read_config_file_malloc (const char * program, const char * file,
+                                    char ** content_p, int print_errors);
+
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
 extern int create_dir (const char * path, int print_errors);
 

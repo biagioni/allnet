@@ -197,6 +197,22 @@ int open_rw_config (const char * program, const char * file, int print_errors)
   return open_config (program, file, flags, print_errors, "open_write_config");
 }
 
+/* returns the file size, and if content_p is not NULL, allocates an
+ * array to hold the file contents and assigns it to content_p.
+ * one extra byte is allocated at the end and the content is null terminated.
+ * in case of problems, returns -1, and prints the error if print_errors != 0 */
+int read_config_file_malloc (const char * program, const char * file,
+                             char ** content_p, int print_errors)
+{
+  char * name;
+  int size = config_file_name (program, file, &name, print_errors);
+  if (size < 0)
+    return -1;
+  int result = read_file_malloc (name, content_p, print_errors);
+  free (name);
+  return result;
+}
+
 /* tell configfiles where the home directory is.  Should be called
  * before calling any other function */
 void set_home_directory (const char * root)
