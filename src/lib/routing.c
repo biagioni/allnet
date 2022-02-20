@@ -681,7 +681,7 @@ static void read_saved_ips ()
     ssize_t r = read (fd, saved_ips, sizeof (saved_ips));
     if (r != sizeof (saved_ips)) {
       perror ("reading saved_ips");
-      printf ("read %zd rather than %zd, aborting\n", r, sizeof (saved_ips));
+      printf ("read %zd rather than %zd, ignoring\n", r, sizeof (saved_ips));
       memset (saved_ips, 0, sizeof (saved_ips));
     }
     close (fd);
