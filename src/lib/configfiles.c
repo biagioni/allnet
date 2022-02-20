@@ -213,6 +213,33 @@ int read_config_file_malloc (const char * program, const char * file,
   return result;
 }
 
+/* return 1, except in case of error when they return 0 */
+int write_config_file (const char * program, const char * file_name,
+                       const char * content, int clen,
+                       int print_errors)
+{
+  char * name;
+  int size = config_file_name (program, file_name, &name, print_errors);
+  if (size < 0)
+    return 0;
+  int result = write_file (name, content, clen, print_errors);
+  free (name);
+  return result;
+}
+
+int append_config_file (const char * program, const char * file_name,
+                        const char * content, int clen,
+                        int print_errors)
+{
+  char * name;
+  int size = config_file_name (program, file_name, &name, print_errors);
+  if (size < 0)
+    return 0;
+  int result = append_file (name, content, clen, print_errors);
+  free (name);
+  return result;
+}
+
 /* tell configfiles where the home directory is.  Should be called
  * before calling any other function */
 void set_home_directory (const char * root)

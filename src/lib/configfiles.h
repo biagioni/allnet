@@ -36,12 +36,21 @@ extern int open_write_config (const char * program, const char * file,
 extern int open_rw_config (const char * program, const char * file,
                            int print_errors);
 
+/* the next 3 calls simply call the corresponding call in util.h/c
+ * with the name from config_file_name */
 /* returns the file size, and if content_p is not NULL, allocates an
  * array to hold the file contents and assigns it to content_p.
  * one extra byte is allocated at the end and the content is null terminated.
  * in case of problems, returns -1, and prints the error if print_errors != 0 */
 extern int read_config_file_malloc (const char * program, const char * file,
                                     char ** content_p, int print_errors);
+/* return 1, except in case of error when they return 0 */
+extern int write_config_file (const char * program, const char * file_name,
+                              const char * content, int clen,
+                              int print_errors);
+extern int append_config_file (const char * program, const char * file_name,
+                               const char * content, int clen,
+                               int print_errors);
 
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
 extern int create_dir (const char * path, int print_errors);
