@@ -467,6 +467,18 @@ static int bitmap_to_string (char * to, unsigned int tsize,
   return off;
 }
 
+/* return a number we can print to try distinguish between different packets */
+static int byte_checksum (const char * p, int psize)
+{
+  int result = 0;
+  int i = 0;
+  for (i = 0; i < psize; i++) {
+    result += ((*p) & 0xff);
+    p++;
+  }
+  return result & 0xff;
+}
+
 /* same as print_buffer, but prints to the given string */
 void packet_to_string (const char * buffer, unsigned int bsize,
                        const char * desc, int print_eol,
@@ -573,8 +585,9 @@ void packet_to_string (const char * buffer, unsigned int bsize,
     }
   } else if (bsize > (ALLNET_SIZE (hp->transport))) {
     unsigned int dsize = bsize - ALLNET_SIZE (hp->transport);
+    int checksum = byte_checksum (buffer + ALLNET_SIZE (hp->transport), dsize);
     off += snprintf (to + off, minz (itsize, off),
-                     ", %d bytes of payload", dsize);
+                     ", %d bytes of payload (%d)", dsize, checksum);
     if ((hp->sig_algo != ALLNET_SIGTYPE_NONE) && (bsize > 2) && (dsize > 2)) {
       unsigned int ssize = readb16 (buffer + bsize - 2);
       if (dsize > ssize + 2) {
