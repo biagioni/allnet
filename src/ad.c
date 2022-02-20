@@ -781,6 +781,7 @@ static unsigned int message_priority (char * message, struct allnet_header * hp,
               "invalid sigsize: %d, %d + %d + 2 = %d <? %d\n",
               hp->sig_algo, hsize, sig_size, (hsize + sig_size + 2), size);
     log_print (alog);
+    return ALLNET_PRIORITY_EPSILON;
   }
   /* track_rate is in track.[hc] */
   if (valid)
@@ -788,9 +789,9 @@ static unsigned int message_priority (char * message, struct allnet_header * hp,
   else
     social_distance = UNKNOWN_SOCIAL_TIER;
   char * expiration = ALLNET_EXPIRATION (hp, hp->transport, size);
-  const unsigned long long int now = allnet_time ();
   const unsigned long long int evalue =
     ((expiration == NULL) ? 0 : readb64 (expiration));
+  const unsigned long long int now = allnet_time ();
   const unsigned int exp_delta =
     (((evalue <= now) || (evalue - now > UINT_MAX)) ? 0 :
      ((unsigned int) (evalue - now)));
