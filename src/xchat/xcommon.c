@@ -925,10 +925,18 @@ static int send_key (int sock, const char * contact, keyset kset,
 
   unsigned int size;
   struct allnet_header * hp =
-    create_packet (dsize, ALLNET_TYPE_KEY_XCHG, max_hops, ALLNET_SIGTYPE_NONE,
+    create_packet (dsize + ALLNET_TIME_SIZE, ALLNET_TYPE_KEY_XCHG,
+                   max_hops, ALLNET_SIGTYPE_NONE,
                    address, abits, NULL, 0, NULL, NULL, &size);
   char * message = (char *) hp;
-
+  /* keys should be forwarded for a week, or 1 hour if max_hops is 1 */
+  hp->transport = ALLNET_TRANSPORT_EXPIRATION;
+  unsigned long long int exp = ((max_hops > 1) ? 604800 : 3600);
+  char * ep = ALLNET_EXPIRATION (hp, hp->transport, size);
+  if (ep != NULL)
+    writeb64 (ep, allnet_time () + exp);
+  else
+    printf ("unable to put expiration in %llu sec on key\n", exp);
   char * data = message + ALLNET_SIZE (hp->transport);
 #ifdef ALLNET_KEYTYPE_RSA
   memcpy (data, my_public_key, pub_ksize);
