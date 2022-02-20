@@ -1898,8 +1898,8 @@ int is_expired_message (const char * packet, unsigned int size)
 /* returns 1 if the message is valid, 0 otherwise
  * If returns zero and error_desc is not NULL, it is filled with
  * a description of the error -- do not modify in any way. */
-extern int is_valid_message (const char * packet, unsigned int size,
-                             char ** error_desc)
+int is_valid_message (const char * packet, unsigned int size,
+                      char ** error_desc)
 {
   if (size < (int) ALLNET_HEADER_SIZE)
     return_valid_err ("packet size less than header size");
@@ -1932,11 +1932,14 @@ printf ("time to crash %d\n", 1000 / ah->version);
     /* printf ("received ack, transport 0x%x != 0", ah->transport); */
     return_valid_err ("ack with nonzero transport");
   }
+  if (ah->sig_algo != ALLNET_SIGTYPE_NONE) {
+    int ssize = readb16 (packet + size - 2);
+    if (ssize + ALLNET_SIZE (ah->transport) >= size)
+      return_valid_err ("no room for signature and data");
+  }
   if (ah->message_type == ALLNET_TYPE_DATA_REQ) {
-/* do not enforce for now -- still experimental  2018/07/25
     if ((ah->transport & ALLNET_TRANSPORT_DO_NOT_CACHE) == 0)
-      return_valid_err ("req fails to specify do-not-cache");
- */
+      return_valid_err ("data request fails to specify do-not-cache");
     /* check the sizes */
     const struct allnet_data_request * rp = (const struct allnet_data_request *)
       ALLNET_DATA_START (ah, ah->transport, size);
