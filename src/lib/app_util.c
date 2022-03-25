@@ -305,7 +305,9 @@ static void seed_rng ()
   } else {
     weak_seed_rng (buffer, sizeof (buffer));  /* seed both */
     /* even though the seed is weak, it is still better to seed openssl RNG */
+#ifndef SKIP_RSA_COMPILATION  /* allow compilation without linking to RSA */
     allnet_rsa_seed_rng (buffer + sizeof (unsigned int), 8);
+#endif /* SKIP_RSA_COMPILATION */
   }
   /* seed standard rng */
   static char state [128];
