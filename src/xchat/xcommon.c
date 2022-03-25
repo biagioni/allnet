@@ -782,8 +782,8 @@ printf ("unknown media %lx, not saving\n", media);
   *broadcast = 0;
   *duplicate = 0;
   if (was_received (*contact, *kset, seq)) {
-printf ("duplicate seq %" PRId64 ", not saving for %s\n", seq, *contact);
 #ifdef DEBUG_FOR_DEVELOPER
+    printf ("duplicate seq %" PRId64 ", not saving for %s\n", seq, *contact);
 #endif /* DEBUG_FOR_DEVELOPER */
     *duplicate = 1;
   } else {
