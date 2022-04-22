@@ -1011,11 +1011,16 @@ static void delete_ping (struct allnet_addr_info * addr)
 static int routing_add_dht_locked (struct allnet_addr_info addr)
 {
   int result = -1;
+  static int print_errors = 5;   /* only print the first 5 errors */
+  char * description = ((print_errors > 0) ? "routing_add_dht_locked" : NULL);
   /* sanity checks first */
-  if (! sane_addr_info (&addr, "routing_add_dht_locked")) {
-    printf ("routing_add_dht_locked given bad address, not saving\n");
-    print_buffer (&addr, sizeof (addr), NULL, 1000, 1);
-    print_addr_info (&addr);
+  if (! sane_addr_info (&addr, description)) {
+    if (print_errors > 0) {
+      printf ("routing_add_dht_locked given bad address, not saving\n");
+      print_buffer (&addr, sizeof (addr), NULL, 1000, 1);
+      print_addr_info (&addr);
+      print_errors--;
+    }
     return -1;
   }
   if (! is_valid_address (&(addr.ip))) {
