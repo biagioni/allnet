@@ -38,6 +38,9 @@ extern int ia_to_sockaddr (const struct allnet_internet_addr * ia,
  * don't support sending to IPv4 addresses on IPv6 sockets */
 extern int ai_embed_v4_in_v6 (struct sockaddr_storage * sas, socklen_t * alen);
 
+/* returns 1 for success, 0 for failure */
+/* addr_size is only used for error checking, may be greater than the size
+ * of sockaddr_in/6, and is ignored if it is 0 */
 extern int sockaddr_to_ia (const struct sockaddr * sap, socklen_t addr_size,
                            struct allnet_internet_addr * ia);
 

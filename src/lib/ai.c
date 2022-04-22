@@ -195,29 +195,32 @@ int init_addr (int af, const unsigned char * addr, int port,
   return 1;
 }
 
+/* returns 1 for success, 0 for failure */
+/* addr_size is only used for error checking, may be greater than the size
+ * of sockaddr_in/6, and is ignored if it is 0 */
 int sockaddr_to_ia (const struct sockaddr * sap, socklen_t addr_size,
                     struct allnet_internet_addr * ia)
 {
   struct sockaddr_in  * sin  = (struct sockaddr_in  *) sap;
   struct sockaddr_in6 * sin6 = (struct sockaddr_in6 *) sap;
   if ((sap->sa_family == AF_INET) &&
-      (addr_size >= (int) (sizeof (struct sockaddr_in)))) {
+      ((addr_size == 0) || (addr_size >= sizeof (struct sockaddr_in)))) {
     init_addr (AF_INET, (unsigned char *) &(sin->sin_addr), sin->sin_port, ia);
     return 1;
-  } else if ((sap->sa_family == AF_INET6) &&
-             (addr_size >= (int) (sizeof (struct sockaddr_in6)))) {
+  }
+  if ((sap->sa_family == AF_INET6) &&
+      ((addr_size == 0) || (addr_size >= sizeof (struct sockaddr_in6)))) {
     if ((readb64 ((char *) sin6->sin6_addr.s6_addr) != 0) || /* regular ipv6 */
         (readb16 ((char *) sin6->sin6_addr.s6_addr + 8) != 0) ||
         (readb16 ((char *) sin6->sin6_addr.s6_addr + 10) != 0xffff))
       init_addr (AF_INET6, sin6->sin6_addr.s6_addr, sin6->sin6_port, ia);
-    else               /* ipv4-in-ipv6 address */
+    else               /* ipv4-in-ipv6 address starting with ::ffff */
       init_addr (AF_INET,  sin6->sin6_addr.s6_addr + 12, sin->sin_port, ia);
     return 1;
-  } else {
-    printf ("error: unable to create address info with family %d, size %d\n",
-            sap->sa_family, addr_size);
-    return 0;
   }
+  printf ("error: unable to create address info with family %d, size %d\n",
+          sap->sa_family, addr_size);
+  return 0;
 }
 
 /* sap must point to at least sizeof (struct sockaddr_in6) bytes */
