@@ -340,6 +340,31 @@ if (debug_keepalive) printf ("handle_keepalive received valid keepalive\n");
   return 1;
 }
 
+/* dht packets have a "set to IP" field which we must set */
+static void adjust_dht_packet (char * message, int msize,
+                               struct sockaddr_storage addr)
+{
+  struct allnet_header * hp = (struct allnet_header *) message;
+  if ((hp->message_type != ALLNET_TYPE_MGMT) ||
+      (msize < sizeof (struct allnet_header)))
+    return;   /* not a management packet */
+  char * payload = ALLNET_DATA_START (hp, hp->transport, msize);
+  struct allnet_mgmt_header * mhp = (struct allnet_mgmt_header *) payload;
+  if ((payload == NULL) || (mhp->mgmt_type != ALLNET_MGMT_DHT))
+    return;   /* not a valid dht packet */
+  size_t mhs = sizeof (struct allnet_mgmt_header);
+  struct allnet_mgmt_dht * dhp = (struct allnet_mgmt_dht *) (payload + mhs);
+  size_t dht_size = mhs + sizeof (struct allnet_mgmt_dht);
+  if (((payload - message) + dht_size) > msize) {  /* error */
+    printf ("adjust_dht_packet_destination: dht packet size %d less than %zd\n",
+            msize, (payload - message) + dht_size);
+    allnet_crash (NULL);
+  }
+  struct sockaddr * sap = (struct sockaddr *) (&addr);
+  if (! sockaddr_to_ia (sap, sizeof (addr), &(dhp->sending_to_ip)))
+    allnet_crash ("error: unable to save outgoing IP address");
+}
+
 /* send most packets out on all the TCP connections, respond to keepalives */
 static void atcp_handle_local_packet (struct atcp_thread_args * args,
                                       const char * message, int msize,
@@ -357,6 +382,7 @@ static void atcp_handle_local_packet (struct atcp_thread_args * args,
     int i;
     for (i = 0; i < MAX_CONNECTIONS; i++) {
       if (tcp_fds [i] != -1) {
+        adjust_dht_packet (buffer + HEADER_FOR_TCP_SIZE, msize, tcp_addrs [i]);
         size_t sent = 0;
         if ((sent = send (tcp_fds [i], buffer, send_len, 0)) != send_len) {
 #ifdef TEST_TCP_ONLY
