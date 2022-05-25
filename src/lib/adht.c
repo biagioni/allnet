@@ -382,5 +382,5 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
 #ifdef DEBUG_PRINT
   print_packet (*message, send_size, "dht_create packet", 1);
 #endif /* DEBUG_PRINT */
-  return send_size;
+  return (int) send_size;
 }

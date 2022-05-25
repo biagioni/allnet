@@ -482,12 +482,12 @@ static void call_ad (char * ports_if_any)
   }
   if ((ports_if_any != NULL) && (strcmp (ports_if_any, "allnetd") != 0)) {
     char * end = NULL;
-    int external = strtol (ports_if_any, &end, 10);
+    int external = (int) strtol (ports_if_any, &end, 10);
     if (end != ports_if_any) {
       external_port = external;
       if (*end == ' ') {   /* internal port also specified */
         char * end2 = NULL;
-        int internal = strtol (end + 1, &end2, 10);
+        int internal = (int) strtol (end + 1, &end2, 10);
         if (end2 != end + 1) {
           internal_port = internal;
         } else {

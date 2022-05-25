@@ -321,7 +321,7 @@ static void save_peers (int unconditional)
 /* create a DNS from the fixed_dht file */
 static void sim_dns (int sim_fd) {
   static char buffer [5000];
-  int r = read (sim_fd, buffer, sizeof (buffer));
+  int r = (int) read (sim_fd, buffer, sizeof (buffer));
   close (sim_fd);
   if ((r < 0) || (r >= sizeof (buffer))) {
     printf ("error: fixed_dht file read returns %d\n", r);
@@ -340,7 +340,7 @@ static void sim_dns (int sim_fd) {
       buffer [c] = '\0';        /* terminate the line */
       /* a sockaddr in the file has type (4 or 6):port/address (no blanks) */
       char * port_end = NULL;
-      int port = strtol (line_start + 2, &port_end, 10);
+      int port = (int) strtol (line_start + 2, &port_end, 10);
       if (*port_end != '/') {
         printf ("sim_dns error parsing port in %s\n", line_start);
         exit (1);   /* debugging code, don't try to keep running */
@@ -528,7 +528,7 @@ static int add_default_routes (struct sockaddr_storage * result,
     }
   }
   /* if no entries found, repeat, but not more than once every 5min */
-  static int last_reinitialized = 0;
+  static unsigned long long int last_reinitialized = 0;
   if ((number == 0) && (last_reinitialized + 300 < allnet_time ())) {
     last_reinitialized = allnet_time ();
     start_dns_thread (); /* done initializing but no entries found, so repeat */
