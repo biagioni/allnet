@@ -112,6 +112,7 @@ static void trace_usage (char * pname)
   printf ("       -l minimum (least) hops, so -l 1 to not print self\n");
   printf ("       -d disallow caching of trace messages\n");
   printf ("       -c dir: use dir as the config directory\n");
+  printf ("\n       for debugging, may use -p port\n");
 }
 
 static int atoi_in_range (char * value, int min, int max, int dflt, char * name)
@@ -144,7 +145,8 @@ int trace_main (int argc, char ** argv)
   int nhops = 10;
   int minhops = 0;
   int caching = 1;
-  char * opt_string = "dfimvh:l:r:t:c:";
+  int optional_port = 0;
+  char * opt_string = "dfimvh:l:r:t:c:p:";
   while ((opt = getopt (argc, argv, opt_string)) != -1) {
     switch (opt) {
     case 'm': match_only = 1; break;
@@ -157,6 +159,10 @@ int trace_main (int argc, char ** argv)
     case 'l': minhops = atoi_in_range (optarg, 0, nhops, 0, "min hops"); break;
     case 'd': caching = 0; break;
     case 'c': set_home_directory (optarg); break;
+    case 'p':
+      optional_port = atoi_in_range (optarg, 1, 65535, 0,
+                                     "optional port number");
+      break;
     default:
       trace_usage (argv [0]);
       exit (1);
@@ -229,7 +235,7 @@ int trace_main (int argc, char ** argv)
     }
   }
   alog = init_log ("trace");
-  int sock = connect_to_local (argv [0], argv [0], NULL, 0, 1, 0);
+  int sock = connect_to_local (argv [0], argv [0], NULL, 0, 1, optional_port);
   if (sock < 0)
     return 1;
 
