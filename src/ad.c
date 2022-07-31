@@ -982,11 +982,14 @@ static struct message_process process_message (struct socket_read_result *r)
     save_message = 0;                /* already saved the new acks */
   } else {
     char id [MESSAGE_ID_SIZE];
+    char large_id [MESSAGE_ID_SIZE];
+    int num_ids = pcache_message_ids (r->message, r->msize, id, large_id);
     drop.debug_reason = "message does not have an ID";
-    if (! pcache_message_id (r->message, r->msize, id))
+    if (num_ids == 0)
       return drop;          /* no message ID, drop the message */
     char ack [MESSAGE_ID_SIZE];   /* filled in if ack_found */
-    if (pcache_id_acked (id, ack)) {  /* ack this message */
+    if ((pcache_id_acked (id, ack)) ||  /* forward ack to sender */
+        ((num_ids >= 2) && (pcache_id_acked (large_id, ack)))) {
       send_ack (ack, hp, r->sock->sockfd, r->from, r->alen, r->sock->is_local);
       seen_before = 1;
     } else {
@@ -1236,6 +1239,8 @@ void allnet_daemon_main (int start, int start_atcpd,
   if (! start) {
     if (run_state == 1)
       run_state = -1;         /* ask the other thread to stop */
+    routing_save_peers ();    /* save the routing state */
+    pcache_write ();          /* save the packet cache */
     return;                   /* let main thread finish */
   }
   run_state = 1;              /* running */

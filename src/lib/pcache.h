@@ -18,13 +18,16 @@
 #include "packet.h"
 #include "mgmt.h"
 
-/* return 1 for success, 0 for failure.
- * look inside a message and fill in its ID (MESSAGE_ID_SIZE bytes). */
-extern int pcache_message_id (const char * message, int msize, char * id);
+/* return 0 for failure, 1 if the message has a single ID, 2 if it is
+ * a large message with both a message ID and a packet ID.  The first
+ * ID is filled in if returning 1, both are filled in when returning 2.
+ * Each of the IDs must have room for MESSAGE_ID_SIZE bytes. */
+extern int pcache_message_ids (const char * message, int msize,
+                               char * result_id1, char * result_id2);
 
 /* save this (received) packet */
 extern void pcache_save_packet (const char * message, int msize, int priority);
-/* record this packet ID, without actually saving it */
+/* record this packet ID, without actually saving the message */
 extern void pcache_record_packet (const char * message, int msize);
 
 /* return 1 if the ID is in the cache, 0 otherwise
