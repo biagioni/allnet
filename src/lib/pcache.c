@@ -687,10 +687,11 @@ static int check_cache_packet_id (const char * message, int msize)
     print_buffer (message, msize, "no message ID for packet: ", msize, 1);
     return 0;
   }
-  int index = id_index (id1, num_mid, mid_secret);
-  if (memcmp (mid_table [index].ida, id1, MESSAGE_ID_SIZE) == 0)
+  char * packet_id = ((num_ids == 1) ? id1 : id2);
+  int index = id_index (packet_id, num_mid, mid_secret);
+  if (memcmp (mid_table [index].ida, packet_id, MESSAGE_ID_SIZE) == 0)
     return 0;    /* we have it already */
-  record_mid (id1, 0);
+  record_mid (packet_id, 0);
   return 1;
 }
 
