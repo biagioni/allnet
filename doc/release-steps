@@ -6,9 +6,9 @@ make sure git is up to date (git push)
 distribute sources to: linux-64, linux-32, windows, mac
   for each, compile locally:
      ./autogen.sh
-     ./configure --disable-shared --enable-static CFLAGS="-Wall -g -O2"
+     ./configure --disable-shared --enable-static CFLAGS="-Wall -g -O2 -static"
      make clean
-     make
+     make LDFLAGS="-all-static"
   copy back binaries
   make binary directories 
   make source directories, in the copy remove todo and doc/ios/*.gz
