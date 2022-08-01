@@ -286,6 +286,7 @@ struct allnet_header_max {
   unsigned char destination [ADDRESS_SIZE];
   unsigned char stream_id   [STREAM_ID_SIZE];  /* if ALLNET_TRANSPORT_STREAM */
   unsigned char message_id  [MESSAGE_ID_SIZE]; /* if ALLNET_TRANSPORT_ACK_REQ */
+/* packets in a large message have the same message_id, different packet_id */
   unsigned char packet_id   [MESSAGE_ID_SIZE]; /* if ALLNET_TRANSPORT_LARGE */
   unsigned char npackets    [SEQUENCE_SIZE];   /* if ALLNET_TRANSPORT_LARGE */
   unsigned char sequence    [SEQUENCE_SIZE];   /* if ALLNET_TRANSPORT_LARGE */
@@ -325,13 +326,13 @@ struct allnet_header_max {
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) (hp)) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE))
+  (((char *) (hp)) + ALLNET_AFTER_MESSAGE_ID(t, s)))
 
 #define ALLNET_NPACKETS(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) (hp)) + ALLNET_AFTER_STREAM_ID(t, s) + MESSAGE_ID_SIZE * 2))
+  (((char *) (hp)) + ALLNET_AFTER_MESSAGE_ID(t, s) + MESSAGE_ID_SIZE))
 
 #define ALLNET_SEQUENCE(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 	\
