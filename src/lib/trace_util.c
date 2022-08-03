@@ -549,15 +549,21 @@ static void print_summary_file (int signal, int null_term, int fd_out)
       off += snprintf (buf + off, sizeof (buf) - off,
                        "sent %d %s, received %d, ",
                        sent_count, ps, received_count);
-      off += snprintf (buf + off, sizeof (buf) - off,
-                       "rtt min/mean/max is %" PRId64 ".%06d/",
-                       min_rtt / 1000000, (int) (min_rtt % 1000000));
-      off += snprintf (buf + off, sizeof (buf) - off,
-                       "%" PRId64 ".%06d/", mean_rtt / 1000000,
-                       (int) (mean_rtt % 1000000));
-      off += snprintf (buf + off, sizeof (buf) - off,
-                       "%" PRId64 ".%06ds\n", max_rtt / 1000000,
-                       (int) (max_rtt % 1000000));
+      if (received_count > 1) {
+        off += snprintf (buf + off, sizeof (buf) - off,
+                         "rtt min/mean/max is %" PRId64 ".%06d/",
+                         min_rtt / 1000000, (int) (min_rtt % 1000000));
+        off += snprintf (buf + off, sizeof (buf) - off,
+                         "%" PRId64 ".%06d/", mean_rtt / 1000000,
+                         (int) (mean_rtt % 1000000));
+        off += snprintf (buf + off, sizeof (buf) - off,
+                         "%" PRId64 ".%06ds\n", max_rtt / 1000000,
+                         (int) (max_rtt % 1000000));
+      } else {
+        off += snprintf (buf + off, sizeof (buf) - off,
+                         "rtt %" PRId64 ".%06ds\n",
+                         min_rtt / 1000000, (int) (min_rtt % 1000000));
+      }
     } else {  /* received_count is 0 */
       off += snprintf (buf + off, sizeof (buf) - off,
                        "sent %d %s, received 0\n", sent_count, ps);
