@@ -315,6 +315,9 @@ static void save_peers (int unconditional)
 #ifdef DEBUG_PRINT
   printf ("saved %d peers and %d pings, time is %ld\n",
           cpeer, cping, peers_file_time);
+#else /* get rid of warnings about unused variables cpeer and cping */
+  cpeer = cpeer + cping;
+  cping = cpeer + cping;
 #endif /* DEBUG_PRINT */
 }
 
