@@ -49,7 +49,17 @@ struct chat_descriptor {
   unsigned char timestamp     [ TIMESTAMP_SIZE];  /* sender's local time */
 };
 
-#define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor))   /* 40 */
+#define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor)) /* 40 bytes */
+
+/* a large packet (ALLNET_TRANSPORT_LARGE in the allnet header)
+ * only includes the message ack.  The packet ack is the inverted
+ * message ack XOR'd with the sequence number.
+ * Because the packet ack is computed, knowing the message ack lets
+ * anyone reconstruct packet acks.  This is not a vulnerability
+ * since sending the message ack automatically acks all packets,
+ * and only secret used in computing the packet acks is the message ack.
+ * The computed packet acks are the same when sending as when
+ * retransmitting, which is desirable. */
 
 /* a counter value of COUNTER_FLAG indicates a control message rather than
  * a data message */
