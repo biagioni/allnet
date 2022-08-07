@@ -58,7 +58,7 @@ int allnet_get_pubkey (const char * key, int ksize, allnet_rsa_pubkey * rsa)
     printf ("allnet_get_pubkey unable get RSA public key\n");
     return 0;
   }
-#ifdef HAVE_OPENSSL_ONE_ONE
+#ifndef HAVE_OPENSSL_ONE_ZERO
  /* openssl version 1.1 doesn't have direct access to ->n, but openssl
     version 1.0 does not have RSA_set0_key, so it's hard to support both */
   *rsa = RSA_new ();
@@ -66,11 +66,11 @@ int allnet_get_pubkey (const char * key, int ksize, allnet_rsa_pubkey * rsa)
   BIGNUM * e = NULL;
   BN_dec2bn (&e, "65537");
   RSA_set0_key (*rsa, n, e, NULL);
-#else /* HAVE_OPENSSL_ONE_ONE */
+#else /* HAVE_OPENSSL_ONE_ZERO */
   (*rsa)->n = BN_bin2bn ((const unsigned char *) key, ksize, NULL);
   (*rsa)->e = NULL; 
   BN_dec2bn (&((*rsa)->e), "65537");
-#endif /* HAVE_OPENSSL_ONE_ONE */
+#endif /* HAVE_OPENSSL_ONE_ZERO */
   return RSA_size (*rsa);
 #else /* HAVE_OPENSSL */
   rsa->nbits = ksize * 8;
@@ -108,11 +108,11 @@ int allnet_pubkey_to_raw (allnet_rsa_pubkey rsa, char * storage, int ssize)
   if (rsa == NULL)
     return 0;
   const BIGNUM * n = NULL;
-#ifdef HAVE_OPENSSL_ONE_ONE
+#ifndef HAVE_OPENSSL_ONE_ZERO
   RSA_get0_key (rsa, &n, NULL, NULL);
-#else /* HAVE_OPENSSL_ONE_ONE */
+#else /* HAVE_OPENSSL_ONE_ZERO */
   n = rsa->n;
-#endif /* HAVE_OPENSSL_ONE_ONE */
+#endif /* HAVE_OPENSSL_ONE_ZERO */
   int size = BN_num_bytes (n);
   if (size + 1 > ssize)
     return 0;
@@ -134,18 +134,18 @@ int allnet_pubkey_from_raw (allnet_rsa_pubkey * rsa,
   if (key [0] != KEY_RSA4096_E65537)
     return 0;
 #ifdef HAVE_OPENSSL
-#ifdef HAVE_OPENSSL_ONE_ONE
+#ifndef HAVE_OPENSSL_ONE_ZERO
   *rsa = RSA_new ();
   BIGNUM * n = BN_bin2bn ((const unsigned char *) (key + 1), ksize - 1, NULL);
   BIGNUM * e = NULL;
   BN_dec2bn (&e, "65537");
   RSA_set0_key (*rsa, n, e, NULL);
-#else /* HAVE_OPENSSL_ONE_ONE */
+#else /* HAVE_OPENSSL_ONE_ZERO */
   *rsa = RSA_new ();
   (*rsa)->n = BN_bin2bn ((const unsigned char *) (key + 1), ksize - 1, NULL);
   (*rsa)->e = NULL; 
   BN_dec2bn (&((*rsa)->e), "65537");
-#endif /* HAVE_OPENSSL_ONE_ONE */
+#endif /* HAVE_OPENSSL_ONE_ZERO */
 #else /* HAVE_OPENSSL */
   rsa->nbits = (ksize - 1) * 8;
   wp_from_bytes (rsa->nbits, rsa->n, ksize - 1, key + 1);
@@ -481,14 +481,14 @@ print_buffer (hash, hsize, "hash to be verified", 64, 1);
 }
 
 #ifdef HAVE_OPENSSL
-#ifndef HAVE_OPENSSL_ONE_ONE
+#ifdef HAVE_OPENSSL_ONE_ZERO
 static void no_feedback (int type, int count, void * arg)
 {
   /* use the arguments to avoid warnings. */
   if ((type > count) || (arg == NULL))
     return;
 }
-#endif /* HAVE_OPENSSL_ONE_ONE */
+#endif /* HAVE_OPENSSL_ONE_ZERO */
 #endif /* HAVE_OPENSSL */
 /* may be slow
  * if random is not NULL, uses rsize bytes from random
@@ -499,7 +499,7 @@ allnet_rsa_prvkey allnet_rsa_generate_key (int bits,
 #ifdef HAVE_OPENSSL
   if (random != NULL)
     RAND_seed (random, rsize);
-#ifdef HAVE_OPENSSL_ONE_ONE
+#ifndef HAVE_OPENSSL_ONE_ZERO
   RSA * result = RSA_new ();
   BIGNUM * e = NULL;
   BN_dec2bn (&e, "65537");
@@ -507,9 +507,9 @@ allnet_rsa_prvkey allnet_rsa_generate_key (int bits,
     return result;
   allnet_rsa_null_prvkey (&result);
   return result;
-#else /* HAVE_OPENSSL_ONE_ONE */
+#else /* HAVE_OPENSSL_ONE_ZERO */
   return RSA_generate_key (bits, RSA_E65537_VALUE, no_feedback, NULL);
-#endif /* HAVE_OPENSSL_ONE_ONE */
+#endif /* HAVE_OPENSSL_ONE_ZERO */
 #else /* HAVE_OPENSSL */
   allnet_rsa_prvkey result;
   if (wp_rsa_generate_key_pair_e (bits, &result, RSA_E65537_VALUE,
