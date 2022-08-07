@@ -10,8 +10,9 @@ libincludes = \
     sha.h \
     util.h
 
-includes = chat.h cutil.h store.h message.h retransmit.h xcommon.h gui_socket.h
-link = cutil.c store.c message.c retransmit.c xcommon.c
+includes = chat.h cutil.h store.h message.h reassembly.h retransmit.h \
+           xcommon.h gui_socket.h
+link = cutil.c store.c message.c reassembly.c retransmit.c xcommon.c
 
 LDADD = $(ALLNET_LIBDIR)/liballnet-$(ALLNET_API_VERSION).la
 bin_PROGRAMS = \

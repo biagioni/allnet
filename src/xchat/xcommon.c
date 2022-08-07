@@ -15,6 +15,7 @@
 #include "xcommon.h"
 #include "message.h"
 #include "cutil.h"
+#include "reassembly.h"
 #include "store.h"
 #include "retransmit.h"
 #include "lib/media.h"
@@ -247,14 +248,14 @@ void xchat_end (int sock)
 /* 1 ID hash for each of the data messages and the acks, and
  * one for the acks of the data messages (which is hashed on the message ID,
  * not the ack) */
-#define ID_HASH_COUNT	    16384  /* *MESSAGE_ID_SIZE = 256K bytes each */
-#define ID_HASH_COUNT_BITS  14     /* log_2(ID_HASH_COUNT) */
+#define ID_HASH_COUNT	    16384 /* xALLNET_MESSAGE_ID_SIZE, 256K bytes each */
+#define ID_HASH_COUNT_BITS  14    /* log_2(ID_HASH_COUNT) */
 
 #define MESSAGE_ID_HASH_INDEX	0
 #define  MESSAGE_ID_ACK_INDEX	1   /* not actually a hash */
 #define      ACK_ID_HASH_INDEX	2
 /* C initializes static data to 0, which is good */
-static unsigned char id_hashes [3] [ID_HASH_COUNT] [MESSAGE_ID_SIZE];
+static unsigned char id_hashes [3] [ID_HASH_COUNT] [ALLNET_MESSAGE_ID_SIZE];
 
 static int idhash_index (const unsigned char * id)
 {
@@ -264,11 +265,11 @@ static int idhash_index (const unsigned char * id)
 
 /* returns 1 if already found in hash.
  * if not found, returns 0.
- * ID must be at least MESSAGE_ID_SIZE */
+ * ID must be at least ALLNET_MESSAGE_ID_SIZE */
 static int idhash_check (int hash_index, const unsigned char * id)
 {
   int index = idhash_index (id);
-  if (memcmp (id_hashes [hash_index] [index], id, MESSAGE_ID_SIZE) == 0)
+  if (memcmp (id_hashes [hash_index] [index], id, ALLNET_MESSAGE_ID_SIZE) == 0)
     return 1;
   return 0;
 }
@@ -276,23 +277,24 @@ static int idhash_check (int hash_index, const unsigned char * id)
 static int idhash_check_and_add (int hash_index, const unsigned char * id)
 {
   int index = idhash_index (id);
-  if (memcmp (id_hashes [hash_index] [index], id, MESSAGE_ID_SIZE) == 0)
+  if (memcmp (id_hashes [hash_index] [index], id, ALLNET_MESSAGE_ID_SIZE) == 0)
     return 1;
-  memcpy (id_hashes [hash_index] [index], id, MESSAGE_ID_SIZE);
+  memcpy (id_hashes [hash_index] [index], id, ALLNET_MESSAGE_ID_SIZE);
   return 0;
 }
 
 #ifdef TRACK_RECENTLY_SENT_ACKS   /* no longer seems useful */
 #define NUM_ACKS	100
 /* initial contents should not matter, accidental match is unlikely */
-static char recently_sent_acks [NUM_ACKS] [MESSAGE_ID_SIZE];
+static char recently_sent_acks [NUM_ACKS] [ALLNET_MESSAGE_ID_SIZE];
 static int currently_sent_ack = 0;
 
 static int is_recently_sent_ack (char * message_ack)
 {
   int i;
   for (i = 0; i < NUM_ACKS; i++)
-    if (memcmp (message_ack, recently_sent_acks [i], MESSAGE_ID_SIZE) == 0)
+    if (memcmp (message_ack, recently_sent_acks [i],
+                ALLNET_MESSAGE_ID_SIZE) == 0)
       return 1;
   return 0;
 }
@@ -314,14 +316,14 @@ static void send_ack (int sock, struct allnet_header * hp,
   unsigned int size;
   char buffer [ALLNET_ACK_MIN_SIZE];
   struct allnet_header * ackp =
-    init_ack (hp, message_ack, NULL, ADDRESS_BITS, buffer, &size);
+    init_ack (hp, message_ack, NULL, ALLNET_ADDRESS_BITS, buffer, &size);
   if (ackp == NULL)
     return;
 #ifdef TRACK_RECENTLY_SENT_ACKS   /* no longer seems useful */
   /* also save in the (very likely) event that we receive our own ack */
   currently_sent_ack = (currently_sent_ack + 1) % NUM_ACKS;
   memcpy (recently_sent_acks [currently_sent_ack], message_ack,
-          MESSAGE_ID_SIZE);
+          ALLNET_MESSAGE_ID_SIZE);
 #endif /* TRACK_RECENTLY_SENT_ACKS */
 #ifdef DEBUG_PRINT
   printf ("sending ack to contact %s: ", contact);
@@ -442,13 +444,13 @@ static void handle_ack (int sock, char * packet, unsigned int psize,
   struct allnet_header * hp = (struct allnet_header *) packet;
   /* save the acks */
   char * ack = packet + ALLNET_SIZE (hp->transport);
-  int count = (psize - hsize) / MESSAGE_ID_SIZE; 
+  int count = (psize - hsize) / ALLNET_MESSAGE_ID_SIZE; 
   int i;
   unsigned int ack_count = 0;
   for (i = 0; i < count; i++) {
     if (idhash_check_and_add (ACK_ID_HASH_INDEX, (unsigned char *) ack)) {
-      /* the ack has already been seen, do not return it to the caller */
-      ack += MESSAGE_ID_SIZE;
+      /* the ack has already been seen, do not record it for the caller */
+      ack += ALLNET_MESSAGE_ID_SIZE;
       continue;     /* go on to the next ack */
     }  /* otherwise, not found, but added.  Record for the caller */
     char * peer = NULL;
@@ -476,14 +478,14 @@ static void handle_ack (int sock, char * packet, unsigned int psize,
       else if (is_recently_sent_ack (ack)) {
       /* printf ("received my own ack\n"); */
     } else {
-      /* print_buffer (ack, MESSAGE_ID_SIZE, "unknown ack rcvd",
-                    MESSAGE_ID_SIZE, 1); */
+      /* print_buffer (ack, ALLNET_MESSAGE_ID_SIZE, "unknown ack rcvd",
+                    ALLNET_MESSAGE_ID_SIZE, 1); */
     }
     fflush (NULL);
 #endif /* TRACK_RECENTLY_SENT_ACKS */
     if (free_peer)
       free (peer);
-    ack += MESSAGE_ID_SIZE;
+    ack += ALLNET_MESSAGE_ID_SIZE;
   }
   if (acks != NULL)
     acks->num_acks = ack_count;
@@ -559,7 +561,7 @@ static int handle_clear (struct allnet_header * hp, char * data,
   print_buffer (verif, dsize - ssize, "verifying BC message", dsize, 1);
 #endif /* DEBUG_PRINT */
   for (i = 0; i < nkeys; i++) {
-    if ((matches ((unsigned char *) (keys [i].address), ADDRESS_BITS,
+    if ((matches ((unsigned char *) (keys [i].address), ALLNET_ADDRESS_BITS,
                   hp->source, hp->src_nbits) > 0) &&
         (allnet_verify (verif, dsize - ssize, sig, ssize - 2,
                         keys [i].pub_key))) {
@@ -582,7 +584,7 @@ static int handle_clear (struct allnet_header * hp, char * data,
       printf ("matches (%02x%02x, %02x%02x/%d) == %d\n",
               keys [i].address [0] & 0xff, keys [i].address [1] & 0xff,
               hp->source [0] & 0xff, hp->source [1] & 0xff, hp->src_nbits,
-              matches (keys [i].address, ADDRESS_BITS,
+              matches (keys [i].address, ALLNET_ADDRESS_BITS,
                        hp->source, hp->src_nbits));
       printf ("verify (%d/%d: %p/%d, %p/%d %d) == %d\n",
               i, nkeys, data, dsize - ssize, sig, ssize - 2, i,
@@ -604,29 +606,43 @@ static int handle_data (int sock, struct allnet_header * hp, unsigned int psize,
                         uint64_t * seqp, time_t * sent, uint64_t * prev_missing,
                         int * duplicate, int * broadcast)
 {
+  char * packet_id = ALLNET_PACKET_ID (hp, hp->transport, psize);
   char * message_id = ALLNET_MESSAGE_ID (hp, hp->transport, psize);
-  char message_ack [MESSAGE_ID_SIZE];
-/* relatively quick check to see if we may have gotten this message before */
+  char * id = NULL;
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL) &&
-      (idhash_check (MESSAGE_ID_HASH_INDEX, (unsigned char *) message_id))) {
-    int index = idhash_index ((unsigned char *)message_id);
+      (idhash_check (MESSAGE_ID_HASH_INDEX, (unsigned char *) message_id)))
+    id = message_id;
+  else if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
+           (hp->transport & ALLNET_TRANSPORT_LARGE) && (packet_id != NULL) &&
+           (idhash_check (MESSAGE_ID_HASH_INDEX, (unsigned char *) packet_id)))
+    id = packet_id;
+  char message_ack [ALLNET_MESSAGE_ID_SIZE];
+/* relatively quick check to see if we have gotten this message before */
+  if (id != NULL) {
+    int index = idhash_index ((unsigned char *) id);
     memcpy (message_ack, id_hashes [MESSAGE_ID_ACK_INDEX] [index],
-            MESSAGE_ID_SIZE);
+            ALLNET_MESSAGE_ID_SIZE);
 #ifdef DEBUG_PRINT
-    print_buffer (message_ack, MESSAGE_ID_SIZE,
+    print_buffer (message_ack, ALLNET_MESSAGE_ID_SIZE,
                   "xcommon handle_data sending quick ack",
-                  MESSAGE_ID_SIZE, 0);
-    print_buffer (message_id, MESSAGE_ID_SIZE, ", message id",
-                  MESSAGE_ID_SIZE, 1);
+                  ALLNET_MESSAGE_ID_SIZE, 0);
+    printf (", for %s ", ((id == message_id) ? "message" : "packet"));
+    print_buffer (id, ALLNET_MESSAGE_ID_SIZE, "id", ALLNET_MESSAGE_ID_SIZE, 1);
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_FOR_DEVELOPER
     /* printf ("sending quick ack for cached message\n"); */
     printf ("%lld: ", allnet_time_us ());
-    print_buffer (message_ack, MESSAGE_ID_SIZE, "quick ack",
-                  MESSAGE_ID_SIZE, 1);
+    print_buffer (message_ack, ALLNET_MESSAGE_ID_SIZE, "quick ack",
+                  ALLNET_MESSAGE_ID_SIZE, 1);
 #endif /* DEBUG_FOR_DEVELOPER */
     send_ack (sock, hp, (unsigned char *)message_ack, 0, "unknown", 0);
     return 0;
+  } else {  /* have not seen this packet before, initialize id if possible */
+    if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
+        (hp->transport & ALLNET_TRANSPORT_LARGE) && (packet_id != NULL))
+      id = packet_id;
+    else if (hp->transport & ALLNET_TRANSPORT_ACK_REQ)
+      id = message_id;
   }
   int hops = hp->hops;
   int verif = 0;
@@ -654,15 +670,20 @@ if (tsize > 0) {
           allnet_time_us () - start, tsize, hp->transport);
   printf ("%d hops %04x -> %04x, ",
           hops, readb16u (hp->source), readb16u (hp->destination));
-if (hp->transport & ALLNET_TRANSPORT_ACK_REQ)
+if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
+    (hp->transport & ALLNET_TRANSPORT_LARGE)) {
+  print_buffer (ALLNET_MESSAGE_ID (hp, hp->transport, psize), 16, "mid", 16, 1);
+  print_buffer (ALLNET_PACKET_ID (hp, hp->transport, psize), 16, "pid", 16, 1);
+} else if (hp->transport & ALLNET_TRANSPORT_ACK_REQ) {
   print_buffer (ALLNET_MESSAGE_ID (hp, hp->transport, psize), 16, "id", 16, 1);
-else {
+} else {
   int msize = tsize - CHAT_DESCRIPTOR_SIZE;
   char * debug = malloc_or_fail (msize + 1, "debugging in xcommon.c");
   memcpy (debug, text + CHAT_DESCRIPTOR_SIZE, msize);
   debug [msize] = '\0';
   printf ("%s %lx, ", debug, readb32 (text));
   print_buffer (text, msize, NULL, 16, 1);
+  free (debug);
 } }
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
@@ -678,6 +699,7 @@ else {
       debug [msize] = '\0';
       printf ("from %s received seq %" PRI64d ", %d bytes, '%s'\n",
               *contact, print_seq, msize, debug);
+      free (debug);
     }
   }
 #endif /* DEBUG_PRINT */
@@ -706,14 +728,50 @@ else {
 #endif /* DEBUG_PRINT */
   struct chat_descriptor * cdp = (struct chat_descriptor *) text;
   struct chat_control    * ccp = (struct chat_control    *) text;
+  unsigned char * ack_to_send  = NULL;
 
   /* save in the hash */
-  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) && (message_id != NULL)) {
-    int index = idhash_index ((unsigned char *) message_id);
-    memcpy (id_hashes [MESSAGE_ID_HASH_INDEX] [index],
-            message_id, MESSAGE_ID_SIZE);
-    memcpy (id_hashes [MESSAGE_ID_ACK_INDEX] [index],
-            cdp->message_ack, MESSAGE_ID_SIZE);
+  if (id != NULL) {
+    int index = idhash_index ((unsigned char *) id);
+    memcpy (id_hashes [MESSAGE_ID_HASH_INDEX] [index], id,
+            ALLNET_MESSAGE_ID_SIZE);
+    if (id == message_id) {
+      memcpy (id_hashes [MESSAGE_ID_ACK_INDEX] [index],
+              cdp->message_ack, ALLNET_MESSAGE_ID_SIZE);
+    } else if (id == packet_id) {   /* large packet */
+      ack_to_send = id_hashes [MESSAGE_ID_ACK_INDEX] [index];
+      compute_ack ((const char *) cdp->message_ack,
+                   ALLNET_SEQUENCE(hp, hp->transport, psize),
+                   (char *) ack_to_send, NULL);
+    } else {     /* what is ID?  This is some error */
+      printf ("error: id %p != message ID %p and packet ID %p\n", id,
+              message_id, packet_id);
+      allnet_crash ("xcommon.c handle_data error recording message");
+    }
+  }
+  if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
+      (hp->transport & ALLNET_TRANSPORT_LARGE)) {
+if (id != packet_id) printf ("id %p, message_id %p, packet_id %p\n", id, message_id, packet_id);
+    if (id != packet_id)   /* some error */
+      allnet_crash ("xcommon.c handle_data large packet but no packet ID");
+/* printf ("recording message packet for contact %s, ", *contact);
+print_buffer (ALLNET_SEQUENCE(hp, hp->transport, psize), ALLNET_SEQUENCE_SIZE, "sequence", 100, 0);
+print_buffer (ALLNET_NPACKETS(hp, hp->transport, psize), ALLNET_SEQUENCE_SIZE, "/", 100, 1); */
+    text = record_message_packet (hp, psize, text, &tsize);
+/* printf ("result of recording the packet is %p, length %d\n", text, tsize); */
+    if (text != NULL) {  /* message is completely reassembled */
+      /* save the message_id and corresponding ack in the hash */
+      int index = idhash_index ((unsigned char *) message_id);
+      memcpy (id_hashes [MESSAGE_ID_HASH_INDEX] [index],
+              message_id, ALLNET_MESSAGE_ID_SIZE);
+      memcpy (id_hashes [MESSAGE_ID_ACK_INDEX] [index],
+              cdp->message_ack, ALLNET_MESSAGE_ID_SIZE);
+    } else {   /* fragment saved, we are done */
+      if (ack_to_send == NULL)   /* some error */
+        allnet_crash ("xcommon.c handle_data large packet but no packet ack");
+      send_ack (sock, hp, ack_to_send, verif, *contact, *kset);
+      return 0;
+    }
   }
 
   unsigned long int app = readb32u (cdp->app_media.app);
@@ -835,7 +893,7 @@ static int handle_sub (int sock, struct allnet_header * hp,
   assert (ALLNET_MEDIA_ID_SIZE == 4);
   unsigned long int media = 0;
   if (dsize >= sizeof (struct allnet_app_media_header) + 2 +
-               KEY_RANDOM_PAD_SIZE)
+               ALLNET_KEY_RANDOM_PAD_SIZE)
     media = readb32u (amhp->media);
   if ((memcmp ("keyd", &(amhp->app), ALLNET_APP_ID_SIZE) != 0) ||
       (media != ALLNET_MEDIA_PUBLIC_KEY)) {
@@ -846,7 +904,7 @@ static int handle_sub (int sock, struct allnet_header * hp,
     return 0;
   }
   data += sizeof (struct allnet_app_media_header);
-  dsize -= sizeof (struct allnet_app_media_header) + KEY_RANDOM_PAD_SIZE;
+  dsize -= sizeof (struct allnet_app_media_header) + ALLNET_KEY_RANDOM_PAD_SIZE;
   char ** ahras = NULL;
   int na = requested_bc_keys (&ahras);
   if ((na > 0) && (ahras != NULL)) {
@@ -921,7 +979,7 @@ static int send_key (int sock, const char * contact, keyset kset,
             contact, kset, pub_ksize);
     return 0;
   }
-  int dsize = pub_ksize + SHA512_SIZE + KEY_RANDOM_PAD_SIZE;
+  int dsize = pub_ksize + SHA512_SIZE + ALLNET_KEY_RANDOM_PAD_SIZE;
 
   unsigned int size;
   struct allnet_header * hp =
@@ -943,13 +1001,13 @@ static int send_key (int sock, const char * contact, keyset kset,
   sha512hmac (my_public_key, pub_ksize, secret, (int)strlen (secret),
               /* hmac is written directly into the packet */
               data + pub_ksize);
-  random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
+  random_bytes (data + pub_ksize + SHA512_SIZE, ALLNET_KEY_RANDOM_PAD_SIZE);
 #else /* ALLNET_KEYTYPE_DH */
   memcpy (data, dh_pubkey, pub_ksize);
   sha512hmac (dh_pubkey, pub_ksize, secret, (int)strlen (secret),
               /* hmac is written directly into the packet */
               data + pub_ksize);
-  random_bytes (data + pub_ksize + SHA512_SIZE, KEY_RANDOM_PAD_SIZE);
+  random_bytes (data + pub_ksize + SHA512_SIZE, ALLNET_KEY_RANDOM_PAD_SIZE);
 #endif /* ALLNET_KEYTYPE_RSA/DH */
 
 #ifdef DEBUG_PRINT
@@ -988,13 +1046,13 @@ static void save_key_in_cache (struct allnet_header * hp,
                                char * data, int dsize)
 {
   init_key_cache ();
-  if ((dsize > ALLNET_MTU) || (dsize <= KEY_RANDOM_PAD_SIZE))
+  if ((dsize > ALLNET_MTU) || (dsize <= ALLNET_KEY_RANDOM_PAD_SIZE))
     return;
 #ifdef DEBUG_KEY_CACHE_PRINT
   printf ("saving key, dsize %d\n", dsize);
 #endif /* DEBUG_KEY_CACHE_PRINT */
   /* when comparing keys, ignore the random padding */
-  int cmp_size = dsize - KEY_RANDOM_PAD_SIZE;
+  int cmp_size = dsize - ALLNET_KEY_RANDOM_PAD_SIZE;
   int free = -1;
   int i;
   for (i = 0; i < KEY_CACHE_SIZE; i++) {
@@ -1193,8 +1251,8 @@ static int handle_key (int sock, struct allnet_header * hp,
   if (ni <= 0)   /* we're not expecting any keys, and cannot respond */
     return 0;
   int result = 0;
-  if (dsize > SHA512_SIZE + KEY_RANDOM_PAD_SIZE + 2) {
-    unsigned int ksize = dsize - SHA512_SIZE - KEY_RANDOM_PAD_SIZE;
+  if (dsize > SHA512_SIZE + ALLNET_KEY_RANDOM_PAD_SIZE + 2) {
+    unsigned int ksize = dsize - SHA512_SIZE - ALLNET_KEY_RANDOM_PAD_SIZE;
     /* find the incomplete contact if any for which this key matches a secret */
     int ii;
     for (ii = 0; ii < ni; ii++) {
@@ -1248,9 +1306,9 @@ printf ("saving remote dh secret\n");
 printf ("record_remote_address %d, hp->src_nbits %d\n", record_remote_address,
 hp->src_nbits);
           if (record_remote_address &&
-              (hp->src_nbits > 0) && (hp->src_nbits <= ADDRESS_BITS))
+              (hp->src_nbits > 0) && (hp->src_nbits <= ALLNET_ADDRESS_BITS))
             set_contact_remote_addr (keys [ii], hp->src_nbits, hp->source);
-          unsigned char my_addr [ADDRESS_SIZE];
+          unsigned char my_addr [ALLNET_ADDRESS_SIZE];
           unsigned int abits = get_local (keys [ii], my_addr);
           if (r1)
             resend_peer_key (contacts [ii], keys [ii], s1,
@@ -1539,12 +1597,13 @@ uint64_t send_data_message (int sock, const char * peer,
 
   static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
   pthread_mutex_lock (&mutex);    /* only one send at a time, please */
-  static char buffer [ALLNET_MTU];
+  static char static_buffer [ALLNET_MTU];
+  char * buffer = static_buffer;
+  char * dynamic_buffer = NULL;   /* for larger payloads */
   int dsize = mlen + CHAT_DESCRIPTOR_SIZE;
   if (dsize >= sizeof (buffer)) {
-    printf ("message size %d + %zd > %d, not sending\n", mlen,
-            CHAT_DESCRIPTOR_SIZE, ALLNET_MTU);
-    return 0;
+    dynamic_buffer = malloc_or_fail (dsize, "xcommon.c send_data_message");
+    buffer = dynamic_buffer;
   }
   memcpy (buffer + CHAT_DESCRIPTOR_SIZE, message, mlen);
   /* send_to_contact initializes the message ack in buffer */
@@ -1561,6 +1620,8 @@ uint64_t send_data_message (int sock, const char * peer,
   printf ("sent seq %ju:\n", (uintmax_t)seq);
   print_buffer (data_with_cd, dsize, "sending", 64, 1);
 #endif /* DEBUG_PRINT */
+  if (dynamic_buffer != NULL)
+    free (dynamic_buffer);
   pthread_mutex_unlock (&mutex);  /* next, please */
   return seq;
 }
@@ -1830,7 +1891,7 @@ int create_contact_send_key (int sock, const char * contact,
                              unsigned int hops)
 {
   int error_tracker = 1;  /* for debugging */
-  unsigned char addr [ADDRESS_SIZE];
+  unsigned char addr [ALLNET_ADDRESS_SIZE];
   if ((contact == NULL) || (strlen (contact) == 0)) {
     printf ("empty contact, cannot send key\n");
 #ifdef DEBUG_PRINT
@@ -1848,9 +1909,9 @@ int create_contact_send_key (int sock, const char * contact,
   keyset kset;
   unsigned int abits = 16;  /* static for now */
   if (num_keysets (contact) < 0) {
-    if (abits > ADDRESS_BITS)
-      abits = ADDRESS_BITS;
-    memset (addr, 0, ADDRESS_SIZE);
+    if (abits > ALLNET_ADDRESS_BITS)
+      abits = ALLNET_ADDRESS_BITS;
+    memset (addr, 0, ALLNET_ADDRESS_SIZE);
     random_bytes ((char *) addr, (abits + 7) / 8);
 #ifdef ALLNET_KEYTYPE_RSA
     kset = create_contact (contact, 4096, 1,
@@ -1917,20 +1978,21 @@ int create_contact_send_key (int sock, const char * contact,
 static int send_key_request (int sock, const char * phrase)
 {
   /* compute the destination address from the phrase */
-  unsigned char source [ADDRESS_SIZE]; /* create a random source address */
+  unsigned char source [ALLNET_ADDRESS_SIZE]; /* create random source address */
   random_bytes ((char *)source, sizeof (source));
-  unsigned char destination [ADDRESS_SIZE];
+  unsigned char destination [ALLNET_ADDRESS_SIZE];
   char * mapped;
   int mlen = map_string (phrase, &mapped);
   sha512_bytes (mapped, mlen, (char *) destination, 1);
   free (mapped);
 
 #define EMPTY_FINGERPRINT_SIZE  1  /* nbits_fingerprint plus the fingerprint */
-  unsigned int dsize = EMPTY_FINGERPRINT_SIZE + KEY_RANDOM_PAD_SIZE;
+  unsigned int dsize = EMPTY_FINGERPRINT_SIZE + ALLNET_KEY_RANDOM_PAD_SIZE;
   unsigned int psize = 0;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
-                   source, ADDRESS_BITS, destination, 8, NULL, NULL, &psize);
+                   source, ALLNET_ADDRESS_BITS, destination, 8,
+                   NULL, NULL, &psize);
   
   if (hp == NULL) {
     printf ("send_key_request: unable to create packet of size %d/%d\n",
@@ -1949,7 +2011,7 @@ static int send_key_request (int sock, const char * phrase)
     (struct allnet_key_request *) (packet + hsize);
   kp->nbits_fingerprint = 0;
   char * r = ((char *) kp) + EMPTY_FINGERPRINT_SIZE;
-  random_bytes (r, KEY_RANDOM_PAD_SIZE);
+  random_bytes (r, ALLNET_KEY_RANDOM_PAD_SIZE);
 
 #ifdef DEBUG_PRINT
   printf ("sending %d-byte key request\n", psize);

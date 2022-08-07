@@ -21,6 +21,7 @@
 #include "chat.h"
 #include "cutil.h"
 #include "message.h"
+#include "reassembly.h"
 #include "store.h"
 
 /* strip most non-alphabetic characters, and convert the rest to uppercase */
@@ -125,70 +126,17 @@ int init_chat_descriptor (struct chat_descriptor * cp, const char * contact,
   return 1;
 }
 
-/* return 1 if the message was sent, or if the key was invalid (i.e. should
- * try the next key).
- * returns 0 if the encryption or transmission failed, and it would probably
- * be best to stop trying */
-/* can only do_save if also do_ack */
-static int send_to_one (keyset k, char * data, unsigned int dsize,
-                        const char * contact, int sock,
-                        unsigned char * src, unsigned int sbits,
-                        unsigned char * dst, unsigned int dbits,
-                        unsigned int hops, unsigned int priority,
-                        const char * expiration,
-                        int do_ack, const unsigned char * ack, int do_save,
-                        int debug_sending)
+static int encrypt_and_send_packet
+  (keyset k, const char * data, int dsize, const char * contact, int sock,
+   int num_fragments, int fragment_seq,
+   unsigned char * src, unsigned int sbits,
+   unsigned char * dst, unsigned int dbits,
+   unsigned int hops, unsigned int priority,
+   struct allnet_stream_encryption_state * sym_state,
+   const unsigned char * message_ack, const char * expiration)
 {
-  if (dsize <= 0)
-    return 0;
-  static struct allnet_log * log = NULL;
-  if (log == NULL) /* initialize */
-    log = init_log ("cutil send_to_one");
-/* printf ("cutil send_to_one sending to contact %s, keyset %d\n", contact, k); */
-  char sym_key [ALLNET_STREAM_KEY_SIZE];
-  unsigned int sksize = has_symmetric_key (contact, sym_key, sizeof (sym_key));
-  struct allnet_stream_encryption_state sym_state;
-  int has_sym_state = 0;
-  if (symmetric_key_state (contact, 1, &sym_state)) {
-    has_sym_state = 1;
-  } else if (sksize >= ALLNET_STREAM_KEY_SIZE) {  /* initialize the state */
-    /* hash the key to make a secret */
-    char secret [ALLNET_STREAM_SECRET_SIZE];
-    sha512_bytes (sym_key, sizeof (sym_key), secret, sizeof (secret));
-    allnet_stream_init (&sym_state, sym_key, 0, secret, 0, 8, 32);
-    save_key_state (contact, 1, &sym_state);
-    has_sym_state = 1;
-  }
-  /* if not already specified, get the addresses for the specific key */
-  unsigned char a1 [ADDRESS_SIZE];
-  if (src == NULL) {
-    unsigned int nbits = get_local (k, a1);
-    if (nbits < sbits)
-      sbits = nbits;
-    src = a1;
-  }
-  unsigned char a2 [ADDRESS_SIZE];
-  if (dst == NULL) {
-    unsigned int nbits = get_remote (k, a2);
-    if (nbits < dbits)
-      dbits = nbits;
-    dst = a2;
-  }
-  /* set the message ack */
-  unsigned char * message_ack = NULL;
-  if (do_ack) {
-    if (ack != NULL)
-      memcpy (data, ack, MESSAGE_ID_SIZE);
-    else
-      random_bytes (data, MESSAGE_ID_SIZE);
-    message_ack = (unsigned char *) data;
-  } /* else message_ack is null, to make sure we don't ack, below */
-
-  if (do_ack && do_save)
-    save_outgoing (contact, k, (struct chat_descriptor *) data,
-                   data + CHAT_DESCRIPTOR_SIZE, dsize - CHAT_DESCRIPTOR_SIZE);
-
   /* encrypt */
+  int has_sym_state = (sym_state != NULL);
   int priv_ksize = 0;
   int ksize = 0;
   allnet_rsa_prvkey priv_key;
@@ -200,11 +148,11 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
   unsigned int ssize = 0;    /* size of the signature */
   int sigtype = ALLNET_SIGTYPE_RSA_PKCS1;
   if (has_sym_state) {
-    esize = dsize + sym_state.counter_size + sym_state.hash_size;
+    esize = dsize + sym_state->counter_size + sym_state->hash_size;
     encrypted = malloc_or_fail (esize, "cutil.c send_to_one encrypted msg");
-    esize = allnet_stream_encrypt_buffer (&sym_state, data, dsize,
+    esize = allnet_stream_encrypt_buffer (sym_state, data, dsize,
                                           encrypted, esize);
-    save_key_state (contact, 1, &sym_state);
+    save_key_state (contact, 1, sym_state);
     sigtype = ALLNET_SIGTYPE_NONE;  /* the hash provides the authentication */
     sendsize = esize;
   } else {
@@ -239,30 +187,48 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
 
   unsigned int csize = sendsize;
   /* create_packet wants size without message ack */
-  if ((message_ack != NULL) && (sendsize >= MESSAGE_ID_SIZE))
-    csize = sendsize - MESSAGE_ID_SIZE;
+  if ((message_ack != NULL) && (sendsize >= ALLNET_MESSAGE_ID_SIZE))
+    csize = sendsize - ALLNET_MESSAGE_ID_SIZE;
   else if (message_ack != NULL) {
     printf ("error: csize %u, sendsize %u, id_size %d\n", 
-            csize, sendsize, MESSAGE_ID_SIZE);
+            csize, sendsize, ALLNET_MESSAGE_ID_SIZE);
     return 0;  /* exit the loop */
   }
   if (expiration != NULL)
     csize += ALLNET_TIME_SIZE;
+  if (num_fragments > 1)
+    csize += ALLNET_LARGE_HEADER_SIZE;
   unsigned int psize;
   struct allnet_header * hp =
     create_packet (csize, ALLNET_TYPE_DATA, hops, sigtype,
                    src, sbits, dst, dbits, NULL, message_ack, &psize);
-  if (expiration != NULL) {
+  if (expiration != NULL)
     hp->transport = hp->transport | ALLNET_TRANSPORT_EXPIRATION;
+  if (num_fragments > 1)
+    hp->transport = hp->transport | ALLNET_TRANSPORT_LARGE;
+  if (expiration != NULL) {
     char * header_exp = ALLNET_EXPIRATION (hp, hp->transport, psize);
     memcpy (header_exp, expiration, ALLNET_TIME_SIZE);
   }
+  if (num_fragments > 1) {
+    if (message_ack == NULL)
+      allnet_crash ("cutil error: large packet with no ack!");
+    char * packet_id = ALLNET_PACKET_ID(hp, hp->transport, csize);
+    char * npackets  = ALLNET_NPACKETS(hp, hp->transport, csize);
+    char * sequence  = ALLNET_SEQUENCE(hp, hp->transport, csize);
+    memset (npackets, 0, ALLNET_SEQUENCE_SIZE);
+    writeb64 (npackets + (ALLNET_SEQUENCE_SIZE - 8), num_fragments);
+    memset (sequence, 0, ALLNET_SEQUENCE_SIZE);
+    writeb64 (sequence + (ALLNET_SEQUENCE_SIZE - 8), fragment_seq);
+    char computed_ack [ALLNET_MESSAGE_ID_SIZE];
+    compute_ack ((const char *) message_ack, sequence, computed_ack, packet_id);
+ }
   unsigned int hsize = ALLNET_SIZE (hp->transport);
   unsigned int msize = hsize + sendsize;
   if (psize != msize) {
     printf ("error: computed message size %d, actual %d\n", msize, psize);
-    printf ("  hsize %d (%x, %p, %d), sendsize %d = e %d + s %d + 2\n",
-            hsize, hp->transport, message_ack, do_ack, sendsize, esize, ssize);
+    printf ("  hsize %d (%x, %p), sendsize %d = e %d + s %d + 2\n",
+            hsize, hp->transport, message_ack, sendsize, esize, ssize);
     exit (1);
   }
   char * message = (char *) hp;
@@ -304,6 +270,106 @@ static int send_to_one (keyset k, char * data, unsigned int dsize,
   return result;
 }
 
+/* return 1 if the message was sent, or if the key was invalid (i.e. should
+ * try the next key).
+ * returns 0 if the encryption or transmission failed, and it would probably
+ * be best to stop trying */
+/* can only do_save if also do_ack */
+static int send_to_one (keyset k, char * data, unsigned int dsize,
+                        const char * contact, int sock,
+                        unsigned char * src, unsigned int sbits,
+                        unsigned char * dst, unsigned int dbits,
+                        unsigned int hops, unsigned int priority,
+                        const char * expiration,
+                        int do_ack, const unsigned char * ack, int do_save,
+                        int debug_sending)
+{
+  if (dsize <= 0)
+    return 0;
+  static struct allnet_log * log = NULL;
+  if (log == NULL) /* initialize */
+    log = init_log ("cutil send_to_one");
+/* struct chat_descriptor * debug_chat_dsc = (struct chat_descriptor *) data;
+int debug_counter = (int) (readb64u(debug_chat_dsc->counter));
+printf ("cutil send_to_one sending %d bytes seq %d to %s, keyset %d, save %d\n",
+dsize, debug_counter, contact, k, do_save); */
+  char sym_key [ALLNET_STREAM_KEY_SIZE];
+  unsigned int sksize = has_symmetric_key (contact, sym_key, sizeof (sym_key));
+  struct allnet_stream_encryption_state sym_state;
+  int has_sym_state = 0;
+  if (symmetric_key_state (contact, 1, &sym_state)) {
+    has_sym_state = 1;
+  } else if (sksize >= ALLNET_STREAM_KEY_SIZE) {  /* initialize the state */
+    /* hash the key to make a secret */
+    char secret [ALLNET_STREAM_SECRET_SIZE];
+    sha512_bytes (sym_key, sizeof (sym_key), secret, sizeof (secret));
+    allnet_stream_init (&sym_state, sym_key, 0, secret, 0, 8, 32);
+    save_key_state (contact, 1, &sym_state);
+    has_sym_state = 1;
+  }
+  /* if not already specified, get the addresses for the specific key */
+  unsigned char a1 [ALLNET_ADDRESS_SIZE];
+  if (src == NULL) {
+    unsigned int nbits = get_local (k, a1);
+    if (nbits < sbits)
+      sbits = nbits;
+    src = a1;
+  }
+  unsigned char a2 [ALLNET_ADDRESS_SIZE];
+  if (dst == NULL) {
+    unsigned int nbits = get_remote (k, a2);
+    if (nbits < dbits)
+      dbits = nbits;
+    dst = a2;
+  }
+  /* set the message ack */
+  unsigned char * message_ack = NULL;
+  if (do_ack) {
+    if (ack != NULL)
+      memcpy (data, ack, ALLNET_MESSAGE_ID_SIZE);
+    else
+      random_bytes (data, ALLNET_MESSAGE_ID_SIZE);
+    message_ack = (unsigned char *) data;
+  } /* else message_ack is null, to make sure we don't ack, below */
+
+  if (do_ack && do_save)
+    save_outgoing (contact, k, (struct chat_descriptor *) data,
+                   data + CHAT_DESCRIPTOR_SIZE, dsize - CHAT_DESCRIPTOR_SIZE);
+
+  if (dsize <= ALLNET_FRAGMENT_SIZE) {
+    return encrypt_and_send_packet (k, data, dsize, contact, sock, 1, 0,
+                                    src, sbits, dst, dbits, hops, priority,
+                                    (has_sym_state ? &sym_state : NULL),
+                                    message_ack, expiration);
+  } else {
+    struct chat_descriptor cd = * (struct chat_descriptor *) data;
+    int net_data_size = dsize - CHAT_DESCRIPTOR_SIZE;
+    int fragment_size = ALLNET_FRAGMENT_SIZE - CHAT_DESCRIPTOR_SIZE;
+    int num_fragments = ((net_data_size - 1) / fragment_size) + 1;
+    int last_fragment_size =
+         (((net_data_size % fragment_size) == 0) ? fragment_size
+            : (net_data_size % fragment_size));
+    char fragment [ALLNET_FRAGMENT_SIZE];
+    int f;
+    char * p = data + CHAT_DESCRIPTOR_SIZE;
+    int result = 1;
+    for (f = 0; f < num_fragments && result; f++) {
+      memcpy (fragment, &cd, CHAT_DESCRIPTOR_SIZE);
+      int data_in_fragment =
+        ((f + 1 < num_fragments) ? fragment_size : last_fragment_size);
+      memcpy (fragment + CHAT_DESCRIPTOR_SIZE, p, data_in_fragment);
+      p += data_in_fragment;
+      result = encrypt_and_send_packet (k, fragment,
+                                        CHAT_DESCRIPTOR_SIZE + data_in_fragment,
+                                        contact, sock, num_fragments, f,
+                                        src, sbits, dst, dbits, hops, priority,
+                                        (has_sym_state ? &sym_state : NULL),
+                                        message_ack, expiration);
+    }
+    return result;
+  }
+}
+
 /* same as send_to_contact, but only sends to the one key corresponding
  * to key, and does not save outgoing.  Does request ack, and
  * uses the addresses saved for the contact. */
@@ -312,10 +378,11 @@ int resend_packet (char * data, unsigned int dsize, const char * contact,
                    unsigned int priority)
 {
   /* ack should already be in the packet data */
-  unsigned char ack [MESSAGE_ID_SIZE];
-  memcpy (ack, data, MESSAGE_ID_SIZE);
-  return send_to_one (key, data, dsize, contact, sock, NULL, ADDRESS_BITS,
-                      NULL, ADDRESS_BITS, hops, priority, NULL, 1, ack, 0, 1);
+  unsigned char ack [ALLNET_MESSAGE_ID_SIZE];
+  memcpy (ack, data, ALLNET_MESSAGE_ID_SIZE);
+  return send_to_one (key, data, dsize, contact, sock,
+                      NULL, ALLNET_ADDRESS_BITS, NULL, ALLNET_ADDRESS_BITS,
+                      hops, priority, NULL, 1, ack, 0, 1);
 }
 
 /* send to the contact's specific key, returning 1 if successful, 0 otherwise */
@@ -325,8 +392,8 @@ int send_to_key (char * data, unsigned int dsize,
                  unsigned int hops, unsigned int priority,
                  const char * expiration, int do_ack, int do_save)
 {
-  unsigned char src [ADDRESS_SIZE];
-  unsigned char dst [ADDRESS_SIZE];
+  unsigned char src [ALLNET_ADDRESS_SIZE];
+  unsigned char dst [ALLNET_ADDRESS_SIZE];
   unsigned int sbits = get_local (key, src);
   unsigned int dbits = get_remote (key, dst);
   return send_to_one (key, data, dsize, contact, sock,
@@ -504,7 +571,7 @@ static unsigned int make_hex (char * data, unsigned int dsize,
 char * chat_descriptor_to_string (struct chat_descriptor * cdp,
                                   int show_id, int static_result)
 {
-  static char buffer [MESSAGE_ID_SIZE * 3 + COUNTER_SIZE * 3 + 40];
+  static char buffer [ALLNET_MESSAGE_ID_SIZE * 3 + COUNTER_SIZE * 3 + 40];
   int size = sizeof (buffer);
   char * result = buffer;
   if (! static_result)
@@ -614,14 +681,15 @@ int fill_bits (unsigned char * bitmap, int power_two, int selector)
             ptr += COUNTER_SIZE;
           }
           while (seq <= last) {
-            char ack [MESSAGE_ID_SIZE];
+            char ack [ALLNET_MESSAGE_ID_SIZE];
             char * message = get_outgoing (contacts [icontact],
                                            keysets [ikeyset], seq,
                                            NULL, NULL, ack);
             if (message != NULL) {
               free (message); /* we only use the ack, not the message */
-              char mid [MESSAGE_ID_SIZE];  /* message id, hash of the ack */
-              sha512_bytes (ack, MESSAGE_ID_SIZE, mid, MESSAGE_ID_SIZE);
+              char mid [ALLNET_MESSAGE_ID_SIZE]; /* message id, hash of ack */
+              sha512_bytes (ack, ALLNET_MESSAGE_ID_SIZE,
+                            mid, ALLNET_MESSAGE_ID_SIZE);
               int bits = (int)readb16 (mid);
               int index = allnet_bitmap_byte_index (power_two, bits);
               int mask = allnet_bitmap_byte_mask (power_two, bits);
@@ -639,7 +707,7 @@ int fill_bits (unsigned char * bitmap, int power_two, int selector)
         free (unacked);
       } else {   /* 0 for remote address, 1 for local address
                   * most of the logic is the same */
-        unsigned char addr [ADDRESS_SIZE];
+        unsigned char addr [ALLNET_ADDRESS_SIZE];
         int nbits = ((selector == FILL_LOCAL_ADDRESS) ?
                      get_local  (keysets [ikeyset], addr) :
                      get_remote (keysets [ikeyset], addr));

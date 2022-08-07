@@ -3,7 +3,7 @@
 #ifndef ALLNET_CHAT_H
 #define ALLNET_CHAT_H
 
-#include "lib/packet.h"	/* MESSAGE_ID_SIZE, struct app_media_header */
+#include "lib/packet.h"	/* ALLNET_MESSAGE_ID_SIZE, struct app_media_header */
 
 /* messages are indexed by a 64-bit counter, which must be forever unique over
  * all messages between a given pair of sender and receiver, or for a given
@@ -26,10 +26,9 @@
  * most significant byte first, so counter [0], timestamp [0] and timestamp [6]
  * each have the most significant byte of their value.
  *
- * like any data message, the first MESSAGE_ID_SIZE of any message are the
- * random bytes which hash to the packet ID sent in the clear (only the
- * first MESSAGE_ID_SIZE of the sha512 are sent).
- *
+ * like any data message, the first ALLNET_MESSAGE_ID_SIZE of any message
+ * are the random bytes which hash to the packet ID sent in the clear (only the
+ * first ALLNET_MESSAGE_ID_SIZE of the sha512 are sent).
  */
 
 #define XCHAT_ALLNET_APP_ID	0x58434854 /* XCHT */
@@ -43,7 +42,8 @@
 #define TIMESTAMP_SIZE	8
 
 struct chat_descriptor {
-  unsigned char message_ack   [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
+  /* if there is no ack, the message_ack should be random or 0 */
+  unsigned char message_ack   [ALLNET_MESSAGE_ID_SIZE];
   struct allnet_app_media_header app_media;
   unsigned char counter       [   COUNTER_SIZE];  /* sequence number */
   unsigned char timestamp     [ TIMESTAMP_SIZE];  /* sender's local time */
@@ -52,12 +52,13 @@ struct chat_descriptor {
 #define CHAT_DESCRIPTOR_SIZE	(sizeof (struct chat_descriptor)) /* 40 bytes */
 
 /* a large packet (ALLNET_TRANSPORT_LARGE in the allnet header)
- * only includes the message ack.  The packet ack is the inverted
- * message ack XOR'd with the sequence number.
+ * only includes the message ack.  The packet ack is the hash of
+ * the inverted message ack XOR'd with the sequence number.
  * Because the packet ack is computed, knowing the message ack lets
- * anyone reconstruct packet acks.  This is not a vulnerability
- * since sending the message ack automatically acks all packets,
- * and only secret used in computing the packet acks is the message ack.
+ * anyone with the message ack reconstruct packet acks.
+ * This is not a vulnerability since sending the message ack
+ * automatically acks all packets anyway, so an attacker cannot
+ * do more than ack packets that are already acked.
  * The computed packet acks are the same when sending as when
  * retransmitting, which is desirable. */
 
@@ -66,7 +67,7 @@ struct chat_descriptor {
 #define COUNTER_FLAG	0xffffffffffffffffLL
 
 struct chat_control {
-  unsigned char message_ack [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
+  unsigned char message_ack [ALLNET_MESSAGE_ID_SIZE];
   struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
   unsigned char type;
@@ -91,7 +92,7 @@ struct chat_control {
    100, 101, 102, 103, 104, and 105 (implied by last_received)
  */
 struct chat_control_request {
-  unsigned char message_ack [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
+  unsigned char message_ack [ALLNET_MESSAGE_ID_SIZE];
   /* app should be XCHAT_ALLNET_APP_ID, media should be ALLNET_MEDIA_DATA */
   struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
@@ -110,7 +111,7 @@ struct chat_control_request {
  * if I receive a chat_control_key_ack, I may start using the new key
  */
 struct chat_control_key_ack {
-  unsigned char message_ack [MESSAGE_ID_SIZE];  /* random */
+  unsigned char message_ack [ALLNET_MESSAGE_ID_SIZE];  /* random */
   /* app should be XCHAT_ALLNET_APP_ID, media should be random */
   struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
@@ -122,7 +123,7 @@ struct chat_control_key_ack {
  * I receive a chat_control_rekey from the other side.
  */
 struct chat_control_rekey {
-  unsigned char message_ack [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
+  unsigned char message_ack [ALLNET_MESSAGE_ID_SIZE];
   /* app should be XCHAT_ALLNET_APP_ID, media should be ALLNET_MEDIA_DATA */
   struct allnet_app_media_header app_media;
   unsigned char counter     [   COUNTER_SIZE];  /* always COUNTER_FLAG */
