@@ -252,5 +252,6 @@ int main (int argc, char ** argv)
 
   while (1)
     announce (interval, hops, key->prv_key,
-              key->address, ADDRESS_BITS, key->address, ADDRESS_BITS, log);
+              key->address, ALLNET_ADDRESS_BITS, key->address,
+              ALLNET_ADDRESS_BITS, log);
 }

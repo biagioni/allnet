@@ -264,15 +264,15 @@ static int convert_hex (const char * hex, char * buffer, int max)
 
 static int convert_addr (char * addr, char * buffer)
 {
-  memset (buffer, 0, ADDRESS_SIZE);
+  memset (buffer, 0, ALLNET_ADDRESS_SIZE);
   char * slash = index (addr, '/');
   if (slash == NULL)
     return 0;
   int nbits = atoi (slash + 1);
   *slash = '\0';
-  if ((nbits <= 0) || (nbits > ADDRESS_BITS))
+  if ((nbits <= 0) || (nbits > ALLNET_ADDRESS_BITS))
     return 0;
-  int nbytes = convert_hex (addr, buffer, ADDRESS_SIZE);
+  int nbytes = convert_hex (addr, buffer, ALLNET_ADDRESS_SIZE);
   if (nbytes * 8 < nbits)
     return 0;
   return nbits;
@@ -282,8 +282,8 @@ static void send_data (char ** argv, int sock, int hops)
 {
   char packet [ALLNET_MTU];
   memset (packet, 0, sizeof (packet));
-  char src [ADDRESS_SIZE];
-  char dst [ADDRESS_SIZE];
+  char src [ALLNET_ADDRESS_SIZE];
+  char dst [ALLNET_ADDRESS_SIZE];
   int src_bits = convert_addr (argv [1], src);
   int dst_bits = convert_addr (argv [2], dst);
   struct allnet_header * hp =

@@ -57,8 +57,8 @@
  * that the signature is computed over the encrypted data.
  */
 
-#define ADDRESS_SIZE		 	 8	/* 8 bytes or 64 bits */
-#define ADDRESS_BITS	 	(ADDRESS_SIZE * 8)	/* 64 */
+#define ALLNET_ADDRESS_SIZE		  8	/* 8 bytes or 64 bits */
+#define ALLNET_ADDRESS_BITS	 	(ALLNET_ADDRESS_SIZE * 8)   /* 64 */
 
 struct allnet_header {
 #define ALLNET_VERSION		3	/* this is version 3, 2014/01/01 */
@@ -78,8 +78,8 @@ struct allnet_header {
   unsigned char sig_algo;  /* signature algorithm, constants are below */
 #define ALLNET_TRANSPORT_NONE	0	/* no special requests */
   unsigned char transport; /* type of transport requests, 0 if none */
-  unsigned char source      [ADDRESS_SIZE];
-  unsigned char destination [ADDRESS_SIZE];
+  unsigned char source      [ALLNET_ADDRESS_SIZE];
+  unsigned char destination [ALLNET_ADDRESS_SIZE];
 /* the next fields are only present if transport so indicates */
 };
 
@@ -101,7 +101,7 @@ struct allnet_header {
  * ack packet size of 1048 bytes = 1024 (acks) + 24 (header).
  * an ack received with n hops remaining may be included in any
  * outgoing ack packet that has at most n-1 hops remaining. */
-#define ALLNET_MAX_ACKS	((1048 - ALLNET_HEADER_SIZE) / MESSAGE_ID_SIZE)
+#define ALLNET_MAX_ACKS	((1048 - ALLNET_HEADER_SIZE) / ALLNET_MESSAGE_ID_SIZE)
 
 /* used in sig_algo */
 #define ALLNET_SIGTYPE_NONE			  0
@@ -143,23 +143,23 @@ struct allnet_variable_signature {
  *   This is followed by the key, then a random bitstring.
  */
 #define ALLNET_KEY_XCHG_DH_AES_SECRET	101  /* code in the first byte */
-#define KEY_RANDOM_PAD_SIZE	16  /* should be >= MESSAGE_ID_SIZE */
+#define ALLNET_KEY_RANDOM_PAD_SIZE	16  /* should be >= MESSAGE_ID_SIZE */
 struct allnet_key_exchange {
   unsigned char public_key [0];     /* public key to be used -- 513 for RSA */
   unsigned char hmac [64];          /* confirms knowledge of secret nonce */
-  unsigned char random [KEY_RANDOM_PAD_SIZE];    /* make each msg unique */
+  unsigned char random [ALLNET_KEY_RANDOM_PAD_SIZE]; /* make each msg unique */
 };
 struct allnet_key_request {
   unsigned char nbits_fingerprint;  /* number of bits in the fingerprint,
                                        may be zero */
   unsigned char fingerprint [0];    /* (nbits + 7) / 8 bytes of fingerprint,
                                        identifies requested public key */
-  unsigned char random [KEY_RANDOM_PAD_SIZE];    /* make each msg unique */
+  unsigned char random [ALLNET_KEY_RANDOM_PAD_SIZE]; /* make each msg unique */
 };
 struct allnet_key_reply {
   unsigned char app_media_header [8];/* keyd and ALLNET_MEDIA_PUBLIC_KEY */
   unsigned char public_key [0];     /* public key -- 513 bytes for RSA */
-  unsigned char random [KEY_RANDOM_PAD_SIZE];    /* make each msg unique */
+  unsigned char random [ALLNET_KEY_RANDOM_PAD_SIZE]; /* make each msg unique */
 };
 
 /* these are the transport bits.
@@ -254,12 +254,15 @@ struct allnet_key_reply {
  * forwarders.
  */
 
-#define STREAM_ID_SIZE			4	/*  4 bytes or 32 bits */
-#define MESSAGE_ID_SIZE			16	/*  16 bytes or 128 bits */
-#define MESSAGE_ID_BITS			(MESSAGE_ID_SIZE * 8)	/* 128 bits */
-#define SEQUENCE_SIZE			16	/*  16 bytes or 128 bits */
+#define ALLNET_STREAM_ID_SIZE		4	/*  4 bytes or 32 bits */
+#define ALLNET_MESSAGE_ID_SIZE		16	/*  16 bytes or 128 bits */
+#define ALLNET_MESSAGE_ID_BITS		(ALLNET_MESSAGE_ID_SIZE * 8) /* 128b */
+#define ALLNET_SEQUENCE_SIZE		16	/*  16 bytes or 128 bits */
 
-#define LARGE_HEADER_SIZE		(MESSAGE_ID_SIZE + 2 * SEQUENCE_SIZE)
+#define ALLNET_LARGE_HEADER_SIZE	\
+		(ALLNET_MESSAGE_ID_SIZE + 2 * ALLNET_SEQUENCE_SIZE)
+/* any data message with more than 1024 bytes of data will be fragmented */
+#define ALLNET_FRAGMENT_SIZE		1024
 
 /* any message may optionally carry an expiration time */
 /* the expiration time, if not all 0's, is the number of seconds
@@ -282,22 +285,25 @@ struct allnet_header_max {
   unsigned char dst_nbits; /* num valid bits in the destination address */
   unsigned char sig_algo;  /* signature algorithm, constants are below */
   unsigned char transport; /* type of transport requests, 0 if none */
-  unsigned char source      [ADDRESS_SIZE];
-  unsigned char destination [ADDRESS_SIZE];
-  unsigned char stream_id   [STREAM_ID_SIZE];  /* if ALLNET_TRANSPORT_STREAM */
-  unsigned char message_id  [MESSAGE_ID_SIZE]; /* if ALLNET_TRANSPORT_ACK_REQ */
-/* packets in a large message have the same message_id, different packet_id */
-  unsigned char packet_id   [MESSAGE_ID_SIZE]; /* if ALLNET_TRANSPORT_LARGE */
-  unsigned char npackets    [SEQUENCE_SIZE];   /* if ALLNET_TRANSPORT_LARGE */
-  unsigned char sequence    [SEQUENCE_SIZE];   /* if ALLNET_TRANSPORT_LARGE */
+  unsigned char source      [ALLNET_ADDRESS_SIZE];
+  unsigned char destination [ALLNET_ADDRESS_SIZE];
+  /* stream_id is present if transport includes ALLNET_TRANSPORT_STREAM */
+  unsigned char stream_id   [ALLNET_STREAM_ID_SIZE];
+  /* message_id is present if transport includes ALLNET_TRANSPORT_ACK_REQ */
+  unsigned char message_id  [ALLNET_MESSAGE_ID_SIZE];
+  /* packet_id, npackets and sequence are present if ALLNET_TRANSPORT_LARGE */
+  /* such packets have the same message_id, different packet_id */
+  unsigned char packet_id   [ALLNET_MESSAGE_ID_SIZE];
+  unsigned char npackets    [ALLNET_SEQUENCE_SIZE];
+  unsigned char sequence    [ALLNET_SEQUENCE_SIZE];
+  /* expiration is present if transport includes ALLNET_TRANSPORT_EXPIRATION */
   unsigned char expiration  [ALLNET_TIME_SIZE];
-                                          /* if ALLNET_TRANSPORT_EXPIRATION */
 };
 
 #define ALLNET_SIZE(t)	((ALLNET_HEADER_SIZE) + \
- ((((t) & ALLNET_TRANSPORT_ACK_REQ   ) == 0) ? 0 : (MESSAGE_ID_SIZE)) + \
- ((((t) & ALLNET_TRANSPORT_LARGE     ) == 0) ? 0 : (LARGE_HEADER_SIZE)) + \
- ((((t) & ALLNET_TRANSPORT_STREAM    ) == 0) ? 0 : (STREAM_ID_SIZE)) + \
+ ((((t) & ALLNET_TRANSPORT_ACK_REQ   ) == 0) ? 0 : (ALLNET_MESSAGE_ID_SIZE)) + \
+ ((((t) & ALLNET_TRANSPORT_LARGE     ) == 0) ? 0:(ALLNET_LARGE_HEADER_SIZE)) + \
+ ((((t) & ALLNET_TRANSPORT_STREAM    ) == 0) ? 0 : (ALLNET_STREAM_ID_SIZE)) + \
  ((((t) & ALLNET_TRANSPORT_EXPIRATION) == 0) ? 0 : (ALLNET_TIME_SIZE)))
 
 #define ALLNET_SIZE_HEADER(hp)	(ALLNET_SIZE((hp)->transport))
@@ -310,7 +316,7 @@ struct allnet_header_max {
 #define ALLNET_AFTER_STREAM_ID(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
   ((((t) & ALLNET_TRANSPORT_STREAM) == 0) ? ALLNET_HEADER_SIZE : \
-   (ALLNET_HEADER_SIZE + STREAM_ID_SIZE)))
+   (ALLNET_HEADER_SIZE + ALLNET_STREAM_ID_SIZE)))
 
 #define ALLNET_MESSAGE_ID(hp, t, s)	\
  (((s < ALLNET_SIZE(t)) || 	\
@@ -320,7 +326,7 @@ struct allnet_header_max {
 #define ALLNET_AFTER_MESSAGE_ID(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
   ((ALLNET_AFTER_STREAM_ID(t, s)) +		\
-   ((((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) ? 0 : MESSAGE_ID_SIZE)))
+   ((((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) ? 0 : ALLNET_MESSAGE_ID_SIZE)))
 
 #define ALLNET_PACKET_ID(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 	\
@@ -332,20 +338,20 @@ struct allnet_header_max {
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) (hp)) + ALLNET_AFTER_MESSAGE_ID(t, s) + MESSAGE_ID_SIZE))
+  (((char *) (hp)) + ALLNET_AFTER_MESSAGE_ID(t, s) + ALLNET_MESSAGE_ID_SIZE))
 
 #define ALLNET_SEQUENCE(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || 	\
    (((t) & ALLNET_TRANSPORT_ACK_REQ) == 0) || \
    (((t) & ALLNET_TRANSPORT_LARGE) == 0)) ? NULL : \
-  (((char *) (hp)) + ALLNET_AFTER_MESSAGE_ID(t, s) + MESSAGE_ID_SIZE + \
-                   SEQUENCE_SIZE))
+  (((char *) (hp)) + ALLNET_AFTER_MESSAGE_ID(t, s) + ALLNET_MESSAGE_ID_SIZE + \
+                   ALLNET_SEQUENCE_SIZE))
 
 #define ALLNET_AFTER_SEQUENCE(t, s)	\
  ((s < ALLNET_SIZE(t)) ? s :		\
   (ALLNET_AFTER_MESSAGE_ID(t, s) + 		\
    ((((t) & ALLNET_TRANSPORT_LARGE) == 0) ? 0 : \
-    (MESSAGE_ID_SIZE + SEQUENCE_SIZE * 2))))
+    (ALLNET_MESSAGE_ID_SIZE + ALLNET_SEQUENCE_SIZE * 2))))
 
 #define ALLNET_EXPIRATION(hp, t, s)		\
  (((s < ALLNET_SIZE(t)) || (((t) & ALLNET_TRANSPORT_EXPIRATION) == 0)) ? NULL: \
@@ -402,7 +408,7 @@ struct allnet_app_media_header {
  * packet with a 0-bit destination address will match any data request,
  * and a data request with a 0-bit source address will match any packet.
  */
-#define ALLNET_TOKEN_SIZE	MESSAGE_ID_SIZE		/* 16 bytes */
+#define ALLNET_TOKEN_SIZE	ALLNET_MESSAGE_ID_SIZE		/* 16 bytes */
 struct allnet_data_request {
   unsigned char token [ALLNET_TOKEN_SIZE];
   unsigned char since [ALLNET_TIME_SIZE];

@@ -76,12 +76,12 @@ struct social_info * init_social (int max_bytes, int max_check,
   result->max_bytes = max_bytes;
   result->max_check = max_check;
   result->log = log;
-  int bytes = ADDRESS_SIZE;
+  int bytes = ALLNET_ADDRESS_SIZE;
   int i;
   for (i = 0; i < MAX_SOCIAL_TIER; i++) {
     init_table (&result->info [i].connections);
     result->info [i].address_bytes_per_entry = bytes;
-    if (bytes == ADDRESS_SIZE)
+    if (bytes == ALLNET_ADDRESS_SIZE)
       bytes -= 2;
     else
       bytes --;
@@ -165,7 +165,7 @@ static int is_my_contact (char * message, int msize,
     int nk = all_keys (contacts [ic], &keysets);
     int ink;
     for (ink = 0; ink < nk; ink++) {
-      unsigned char address [ADDRESS_SIZE];
+      unsigned char address [ALLNET_ADDRESS_SIZE];
       int na_bits = get_remote (keysets [ink], address);
       allnet_rsa_pubkey key;
       int ksize = get_contact_pubkey (keysets [ink], &key);
@@ -189,7 +189,8 @@ static int is_my_contact (char * message, int msize,
   int ibc;
   for (ibc = 0; ibc < nbc; ibc++) {
     if ((matches (sender, bits,
-                  (unsigned char *) (bc [ibc].address), ADDRESS_BITS) > 0) &&
+                  (unsigned char *) (bc [ibc].address),
+                  ALLNET_ADDRESS_BITS) > 0) &&
         (allnet_verify (message, msize, sig, ssize, bc [ibc].pub_key))) {
       snprintf (log->b, LOG_SIZE, "verified from bc contact %d\n", ibc);
       log_print (log);

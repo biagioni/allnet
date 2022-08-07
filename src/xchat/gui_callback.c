@@ -83,16 +83,16 @@ static void gui_callback_trace_response (struct allnet_mgmt_trace_reply * trp,
  * 16-byte trace-id (19 bytes), then for each entry:
  * 1-byte precision, 1-byte nbits, 1-byte hops, 8-byte seconds, 8-byte fraction,
  * and 8-byte address (27 bytes per entry) */
-#define RECEIVED_TRACE_HEADER_SIZE	(1 + 1 + 1 + MESSAGE_ID_SIZE) /* 19 */
-#define RECEIVED_TRACE_ENTRY_SIZE	(1 + 1 + 1 + ALLNET_TIME_SIZE /* 27 */ \
-                                        + ALLNET_TIME_SIZE + ADDRESS_SIZE)
+#define RECEIVED_TRACE_HEADER_SIZE (1 + 1 + 1 + ALLNET_MESSAGE_ID_SIZE) /* 19 */
+#define RECEIVED_TRACE_ENTRY_SIZE  (1 + 1 + 1 + ALLNET_TIME_SIZE /* 27 */ \
+                                    + ALLNET_TIME_SIZE + ALLNET_ADDRESS_SIZE)
   size_t alloc = RECEIVED_TRACE_HEADER_SIZE
                + trp->num_entries * RECEIVED_TRACE_ENTRY_SIZE;
   char * reply = malloc_or_fail (alloc, "gui_callback_trace_received");
   reply [0] = GUI_CALLBACK_TRACE_RESPONSE;
   reply [1] = trp->intermediate_reply;
   reply [2] = trp->num_entries;
-  memcpy (reply + 3, trp->trace_id, MESSAGE_ID_SIZE);
+  memcpy (reply + 3, trp->trace_id, ALLNET_MESSAGE_ID_SIZE);
   int index = RECEIVED_TRACE_HEADER_SIZE;
   int ie;
   for (ie = 0; ie < trp->num_entries; ie++) {
@@ -103,7 +103,7 @@ static void gui_callback_trace_response (struct allnet_mgmt_trace_reply * trp,
     memcpy (reply + index + 3 + ALLNET_TIME_SIZE,
             trp->trace [ie].seconds_fraction, ALLNET_TIME_SIZE);
     memcpy (reply + index + 3 + ALLNET_TIME_SIZE + ALLNET_TIME_SIZE,
-            trp->trace [ie].address, ADDRESS_SIZE);
+            trp->trace [ie].address, ALLNET_ADDRESS_SIZE);
     index += RECEIVED_TRACE_ENTRY_SIZE;
   }
   if (index != alloc)

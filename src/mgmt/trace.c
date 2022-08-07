@@ -189,8 +189,8 @@ int trace_main (int argc, char ** argv)
   }
 #endif /* 0 */
 
-  unsigned char addresses [ADDRESS_SIZE * MAX_ADDRS];
-  unsigned char excluded [ADDRESS_SIZE * MAX_ADDRS];
+  unsigned char addresses [ALLNET_ADDRESS_SIZE * MAX_ADDRS];
+  unsigned char excluded [ALLNET_ADDRESS_SIZE * MAX_ADDRS];
   memset (addresses, 0, sizeof (addresses));/* set any unused part to zeros */
   memset (excluded, 0, sizeof (excluded));  /* set any unused part to zeros */
   int abits [MAX_ADDRS];
@@ -205,8 +205,8 @@ int trace_main (int argc, char ** argv)
     if (argv [optind + i] [0] != 'x') {
       /* use the address(es) specified on the command line */
       int b = get_address (argv [optind + i],
-                           addresses + (num_addrs * ADDRESS_SIZE),
-                           ADDRESS_SIZE);
+                           addresses + (num_addrs * ALLNET_ADDRESS_SIZE),
+                           ALLNET_ADDRESS_SIZE);
       if (b <= 0) {
         printf ("argc %d/%d/%s, invalid number of bits, should be > 0\n",
                 argc, optind, argv [optind]);
@@ -217,13 +217,13 @@ int trace_main (int argc, char ** argv)
       num_addrs++;
 #ifdef DEBUG_PRINT
       printf ("using address [%d] = %02x/%d\n", num_addrs,
-              addresses [(num_addrs * ADDRESS_SIZE)],
+              addresses [(num_addrs * ALLNET_ADDRESS_SIZE)],
               abits [num_addrs]);
 #endif /* DEBUG_PRINT */
     } else {  /* an address to exclude from printing */
       int b = get_address (argv [optind + i] + 1,
-                           excluded + (num_x * ADDRESS_SIZE),
-                           ADDRESS_SIZE);
+                           excluded + (num_x * ALLNET_ADDRESS_SIZE),
+                           ALLNET_ADDRESS_SIZE);
       if (b <= 0) {
         printf ("argc %d/%d/%s, invalid number of bits, should be > 0\n",
                 argc, optind, argv [optind]);

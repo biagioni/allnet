@@ -32,7 +32,7 @@
 #define COUNTER_SIZE	8
 
 struct arems_header {
-  unsigned char message_ack [MESSAGE_ID_SIZE];  /* if no ack, random or 0 */
+  unsigned char message_ack [ALLNET_MESSAGE_ID_SIZE];
   struct allnet_app_media_header app_media;
 #define COUNTER_TYPE_LOCAL	8  /* commands we send, responses we receive */
 #define COUNTER_TYPE_REMOTE	9  /* commands we receive, responses we send */
@@ -118,15 +118,16 @@ static char * send_ack (struct allnet_header * hp, int msize)
     return result;
   }
   const unsigned char * message_ack = (const unsigned char *) result;
-  result += MESSAGE_ID_SIZE;   /* skip over the ack */
+  result += ALLNET_MESSAGE_ID_SIZE;   /* skip over the ack */
   unsigned int size;
   char buffer [ALLNET_ACK_MIN_SIZE];
-  struct allnet_header * ackp = init_ack (hp, message_ack, NULL, ADDRESS_BITS,
+  struct allnet_header * ackp = init_ack (hp, message_ack, NULL,
+                                          ALLNET_ADDRESS_BITS,
                                           buffer, &size);
   if (ackp == NULL)
     return result;
   local_send ((char *) ackp, size, ALLNET_PRIORITY_LOCAL);
-/* print_buffer (message_ack, MESSAGE_ID_SIZE, "sent ack", 8, 1); */
+/* print_buffer (message_ack, ALLNET_MESSAGE_ID_SIZE, "sent ack", 8, 1); */
   return result;
 }
 
@@ -335,10 +336,10 @@ static void encrypt_sign_send (const char * data, int dsize, int hops,
   if (esize <= 0)
     return;
   char buffer [ALLNET_MTU];
-  unsigned char ack [MESSAGE_ID_SIZE];
+  unsigned char ack [ALLNET_MESSAGE_ID_SIZE];
   random_bytes ((char *)ack, sizeof (ack));
-  unsigned char local_address [ADDRESS_SIZE];
-  unsigned char remote_address [ADDRESS_SIZE];
+  unsigned char local_address [ALLNET_ADDRESS_SIZE];
+  unsigned char remote_address [ALLNET_ADDRESS_SIZE];
   int sbits = get_local (k, local_address);
   int dbits = get_remote (k, remote_address);
   struct allnet_header * hp =

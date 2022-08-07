@@ -17,19 +17,19 @@
 #include "lib/mapchar.h"
 #include "lib/allnet_log.h"
 
-/* source must be ADDRESS_SIZE, and here will be filled in with random data */
+/* source must be ALLNET_ADDRESS_SIZE, and here fill it with random data */
 static int send_key_request (int sock, char * phrase, char * source, int slen,
                              struct allnet_log * alog)
 {
   /* compute the destination address from the phrase */
-  unsigned char destination [ADDRESS_SIZE];
+  unsigned char destination [ALLNET_ADDRESS_SIZE];
   char * mapped;
   int mlen = map_string (phrase, &mapped);
   sha512_bytes (mapped, mlen, (char *) destination, 1);
   free (mapped);
 
 #define EMPTY_FINGERPRINT_SIZE	1  /* nbits_fingerprint plus the fingerprint */
-  unsigned int dsize = EMPTY_FINGERPRINT_SIZE + KEY_RANDOM_PAD_SIZE;
+  unsigned int dsize = EMPTY_FINGERPRINT_SIZE + ALLNET_KEY_RANDOM_PAD_SIZE;
   unsigned int psize;
   struct allnet_header * hp =
     create_packet (dsize, ALLNET_TYPE_KEY_REQ, 10, ALLNET_SIGTYPE_NONE,
@@ -50,7 +50,7 @@ static int send_key_request (int sock, char * phrase, char * source, int slen,
     (struct allnet_key_request *) (packet + hsize);
   kp->nbits_fingerprint = 0;
   char * r = ((char *) kp) + EMPTY_FINGERPRINT_SIZE;
-  random_bytes (r, KEY_RANDOM_PAD_SIZE);
+  random_bytes (r, ALLNET_KEY_RANDOM_PAD_SIZE);
 
 /* printf ("sending %d-byte key request\n", psize); */
   int ret = (local_send (packet, psize, ALLNET_PRIORITY_LOCAL));
@@ -77,11 +77,11 @@ static int handle_packet (char * message, int msize,
   int h2size = sizeof (struct allnet_app_media_header);
   if (hp->message_type != ALLNET_TYPE_CLEAR)
     return 0;
-  if (msize <= hsize + h2size + KEY_RANDOM_PAD_SIZE)  /* nothing */
+  if (msize <= hsize + h2size + ALLNET_KEY_RANDOM_PAD_SIZE)  /* nothing */
     return 0;
   if (memcmp (address, hp->destination, alen) != 0)  /* not for me */
     return 0;
-  int ksize = msize - (hsize + h2size) - KEY_RANDOM_PAD_SIZE;
+  int ksize = msize - (hsize + h2size) - ALLNET_KEY_RANDOM_PAD_SIZE;
 
   char * amp = message + hsize;
   struct allnet_app_media_header * amhp =
@@ -169,7 +169,7 @@ int main (int argc, char ** argv)
     return 1;
 
   /* create a random source address */
-  char source [ADDRESS_SIZE];
+  char source [ALLNET_ADDRESS_SIZE];
   random_bytes (source, sizeof (source));
   if (send_key_request (sock, phrase, source, sizeof (source), alog)) 
     wait_for_response (phrase, argv [1], source, sizeof (source), debug);

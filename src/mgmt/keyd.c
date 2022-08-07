@@ -46,7 +46,7 @@ static void keyd_send_key (struct bc_key_info * key, const char * return_key,
   unsigned int amhsize = sizeof (struct allnet_app_media_header);
   unsigned int bytes;
   struct allnet_header * hp =
-    create_packet (dlen + amhsize + KEY_RANDOM_PAD_SIZE, type, hops,
+    create_packet (dlen + amhsize + ALLNET_KEY_RANDOM_PAD_SIZE, type, hops,
                    ALLNET_SIGTYPE_NONE, key->address, 16, address, abits,
                    NULL, NULL, &bytes);
   char * adp = ALLNET_DATA_START(hp, hp->transport, (unsigned int) bytes);
@@ -61,7 +61,7 @@ static void keyd_send_key (struct bc_key_info * key, const char * return_key,
   print_buffer (dp, dlen, "keyd_send_key", 12, 1);
 #endif /* DEBUG_PRINT */
   char * r = dp + klen;
-  random_bytes (r, KEY_RANDOM_PAD_SIZE);
+  random_bytes (r, ALLNET_KEY_RANDOM_PAD_SIZE);
 
   /* send with relatively low priority */
   char * message = (char *) hp;
@@ -125,7 +125,7 @@ static
   for (i = 0; i < nkeys; i++) {
     int matching_bits =
       matches (hp->destination, hp->dst_nbits,
-               (unsigned char *) (keys [i].address), ADDRESS_BITS);
+               (unsigned char *) (keys [i].address), ALLNET_ADDRESS_BITS);
 #ifdef DEBUG_PRINT
     printf ("%02x <> %02x (%s): %d matching bits, %d needed\n",
             hp->destination [0] & 0xff, keys [i].address [0] & 0xff,

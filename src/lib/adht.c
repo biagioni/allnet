@@ -107,13 +107,13 @@ static void * ping_all_pending (void * arg)
     sleep (1); /* sleep between messages, that's why we are in a thread */
     if (route_index < num_routes)   /* sending to a peer, not a ping */
       ai = peers [route_index++];
-    memcpy (hp->destination, ai.destination, ADDRESS_SIZE);
+    memcpy (hp->destination, ai.destination, ALLNET_ADDRESS_SIZE);
     hp->dst_nbits = ai.nbits;
-    if ((hp->dst_nbits > ADDRESS_BITS) || (hp->dst_nbits > 64)) {
+    if ((hp->dst_nbits > ALLNET_ADDRESS_BITS) || (hp->dst_nbits > 64)) {
       printf ("error in ping_all_pending, %d destination bits > %d/64 (%d)\n",
-              hp->dst_nbits, ADDRESS_BITS, iter);
+              hp->dst_nbits, ALLNET_ADDRESS_BITS, iter);
       print_addr_info (&ai);
-      hp->dst_nbits = ADDRESS_BITS;
+      hp->dst_nbits = ALLNET_ADDRESS_BITS;
     }
     struct sockaddr_storage sas;
     memset (&sas, 0, sizeof (sas));
@@ -160,8 +160,8 @@ int dht_update (struct socket_set * s,
   static unsigned long long int next_time = 0;
   static unsigned long long int num_pings = 0;
   static int expire_count = 0;    /* when it reaches 10, expire old entries */
-  static unsigned char my_address [ADDRESS_SIZE];
-  static unsigned char zero_address [ADDRESS_SIZE];
+  static unsigned char my_address [ALLNET_ADDRESS_SIZE];
+  static unsigned char zero_address [ALLNET_ADDRESS_SIZE];
   if (next_time == 0) {            /* initialize */
     routing_my_address (my_address);
     memset (zero_address, 0, sizeof (zero_address));
@@ -179,7 +179,7 @@ int dht_update (struct socket_set * s,
                                            .message = NULL, .iap = NULL,
                                            .msize = 0 };
   if (ping_arg.finished) {
-    ping_arg = make_ping_args (s, my_address, ADDRESS_BITS,
+    ping_arg = make_ping_args (s, my_address, ALLNET_ADDRESS_BITS,
                                *message, *iap, send_size);
     pthread_t ping_thread;
     pthread_create (&ping_thread, NULL, ping_all_pending, &ping_arg);
@@ -320,8 +320,8 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
 {
   char buffer [ADHT_MAX_PACKET_SIZE];
   memset (buffer, 0, sizeof (buffer));
-  static unsigned char my_address [ADDRESS_SIZE];
-  static unsigned char zero_address [ADDRESS_SIZE];
+  static unsigned char my_address [ALLNET_ADDRESS_SIZE];
+  static unsigned char zero_address [ALLNET_ADDRESS_SIZE];
   static int initialized = 0;
   if (! initialized) {
     routing_my_address (my_address);
@@ -331,7 +331,7 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
   struct allnet_header * hp =  /* create one packet with my address */
     init_packet (buffer, sizeof (buffer),
                  ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
-                 my_address, ADDRESS_BITS, zero_address, 0, NULL, NULL);
+                 my_address, ALLNET_ADDRESS_BITS, zero_address, 0, NULL, NULL);
   int hsize = ALLNET_SIZE_HEADER (hp);
   struct allnet_mgmt_header * mp = 
     (struct allnet_mgmt_header *) (buffer + hsize);
@@ -343,7 +343,8 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
   size_t total_header_bytes = (((char *) entries) - ((char *) hp));
   size_t possible = (sizeof (buffer) - total_header_bytes)
                   / sizeof (struct allnet_addr_info);
-  int self = init_own_routing_entries (entries, 2, my_address, ADDRESS_BITS);
+  int self = init_own_routing_entries (entries, 2, my_address,
+                                       ALLNET_ADDRESS_BITS);
   if (self <= 0) { /* only send if we have one or more public IP addresses */
     printf ("no publically routable IP address, not sending\n");
 #ifdef DEBUG_PRINT

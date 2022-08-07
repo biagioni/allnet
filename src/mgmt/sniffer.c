@@ -293,10 +293,10 @@ int main (int argc, char ** argv)
   int subtypes = ~0; /* all subtypes */
   int opt;
   unsigned long long int addr_int = 0;
-  unsigned char dst [ADDRESS_SIZE];
-  unsigned char src [ADDRESS_SIZE];
-  memset (dst, 0, ADDRESS_SIZE);
-  memset (src, 0, ADDRESS_SIZE);
+  unsigned char dst [ALLNET_ADDRESS_SIZE];
+  unsigned char src [ALLNET_ADDRESS_SIZE];
+  memset (dst, 0, ALLNET_ADDRESS_SIZE);
+  memset (src, 0, ALLNET_ADDRESS_SIZE);
   unsigned int dst_bits = 0;
   unsigned int src_bits = 0;
   char * end = NULL;

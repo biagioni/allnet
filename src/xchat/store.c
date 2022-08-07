@@ -403,7 +403,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
   if (tz != NULL)
     *tz = 0;
   if (message_ack != NULL)
-    memset (message_ack, 0, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, ALLNET_MESSAGE_ID_SIZE);
   if (message != NULL)
     *message = NULL;
   if (msize != NULL)
@@ -423,8 +423,8 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
 
   char * mp = record + strlen (PATTERN_SENT);
   if ((message_ack != NULL) &&
-      (! parse_hex (message_ack, mp, MESSAGE_ID_SIZE))) {
-    memset (message_ack, 0, MESSAGE_ID_SIZE);
+      (! parse_hex (message_ack, mp, ALLNET_MESSAGE_ID_SIZE))) {
+    memset (message_ack, 0, ALLNET_MESSAGE_ID_SIZE);
     return MSG_TYPE_DONE;
   }
   if (type == MSG_TYPE_ACK) /* should all be on the first line */
@@ -433,7 +433,7 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
    * of second_line should still have worked */
 
   if (! parse_seq_time (second_line, seq, time, tz, rcvd_time, debug_fname)) {
-    memset (message_ack, 0, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, ALLNET_MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;
     if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
@@ -441,14 +441,14 @@ static int parse_record (char * record, uint64_t * seq, uint64_t * time,
 
   char * user_data = strchr (second_line, '\n');
   if (user_data == NULL) {
-    memset (message_ack, 0, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, ALLNET_MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;
     if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
   }
   user_data++;
   if (*user_data != ' ') {
-    memset (message_ack, 0, MESSAGE_ID_SIZE);
+    memset (message_ack, 0, ALLNET_MESSAGE_ID_SIZE);
     if (seq != NULL)  *seq = 0;
     if (time != NULL) *time = 0;
     return MSG_TYPE_DONE;
@@ -512,7 +512,7 @@ static void set_result (
   if (tz_minp != NULL) *tz_minp = tz_min;
   if (rcvd_timep != NULL) *rcvd_timep = rcvd_time;
   if (message_ackp != NULL)
-    memcpy (message_ackp, ack_value, MESSAGE_ID_SIZE);
+    memcpy (message_ackp, ack_value, ALLNET_MESSAGE_ID_SIZE);
   if (messagep != NULL) {
     *messagep = NULL;
     if ((message != NULL) && (msize > 0)) {
@@ -576,7 +576,7 @@ static int prev_message_in_memory
 
 /* returns the message type, or MSG_TYPE_DONE if we've reached the end */
 /* in case of SENT or RCVD, sets *seq, message_ack (which must have
- * MESSAGE_ID_SIZE bytes), and sets *message to point to newly 
+ * ALLNET_MESSAGE_ID_SIZE bytes), and sets *message to point to newly 
  * allocated memory containing the message (caller must free this).
  * for ACK, sets message_ack only, sets *seq to 0 and *message to NULL
  * for DONE, sets *seq to 0, clears message_ack, and sets *message to NULL */
@@ -674,7 +674,7 @@ int highest_seq_record (const char * contact, keyset k, int type_wanted,
   uint64_t max_time = 0;
   uint64_t max_rcvd_time = 0;
   int max_tz = 0;
-  char max_ack [MESSAGE_ID_SIZE];
+  char max_ack [ALLNET_MESSAGE_ID_SIZE];
   char * max_message = NULL;
   int max_msize = 0;
   while (1) {
@@ -682,7 +682,7 @@ int highest_seq_record (const char * contact, keyset k, int type_wanted,
     uint64_t this_time = 0;
     uint64_t this_rcvd_time = 0;
     int this_tz = 0;
-    char this_ack [MESSAGE_ID_SIZE];
+    char this_ack [ALLNET_MESSAGE_ID_SIZE];
     char * this_message = NULL;
     int this_msize = 0;
     if (message != NULL) {
@@ -703,7 +703,7 @@ int highest_seq_record (const char * contact, keyset k, int type_wanted,
       max_time = this_time;
       max_tz = this_tz;
       max_rcvd_time = this_rcvd_time;
-      memcpy (max_ack, this_ack, MESSAGE_ID_SIZE);
+      memcpy (max_ack, this_ack, ALLNET_MESSAGE_ID_SIZE);
       if (message != NULL) {
         if (max_message != NULL)
           free (max_message);
@@ -725,7 +725,7 @@ int highest_seq_record (const char * contact, keyset k, int type_wanted,
     if (rcvd_time != NULL)
       *rcvd_time = max_rcvd_time;
     if (message_ack != NULL)
-      memcpy (message_ack, max_ack, MESSAGE_ID_SIZE);
+      memcpy (message_ack, max_ack, ALLNET_MESSAGE_ID_SIZE);
     if (message != NULL)
       *message = max_message;
     if (msize != NULL)
@@ -1033,7 +1033,7 @@ static void ack_one_message (struct message_store_info * msgs, int num_used,
     /* acknowledge any sent messages acked by this ack message */
     if ((msgs [i].msg_type == MSG_TYPE_SENT) &&
         (! msgs [i].message_has_been_acked) &&
-        (memcmp (msgs [i].ack, ack, MESSAGE_ID_SIZE) == 0)) {
+        (memcmp (msgs [i].ack, ack, ALLNET_MESSAGE_ID_SIZE) == 0)) {
       msgs [i].rcvd_ackd_time = ack_time;
       msgs [i].message_has_been_acked = 1;
     }
@@ -1058,7 +1058,7 @@ static void ack_all_messages (struct message_store_info * msgs, int num_used,
             contact, k);
     return;
   }
-  char ack [MESSAGE_ID_SIZE];
+  char ack [ALLNET_MESSAGE_ID_SIZE];
   uint64_t ack_time;
   int next = prev_message (&iter, NULL, &ack_time, NULL, NULL, ack, NULL, NULL);
   while (next != MSG_TYPE_DONE) {
@@ -1141,9 +1141,9 @@ static void store_save_message_type (int fd, int type)
 static void store_save_message_id (int fd, const char * id)
 {
   store_save_string (fd, " ");
-  char buffer [MESSAGE_ID_SIZE * 2 + 1];
+  char buffer [ALLNET_MESSAGE_ID_SIZE * 2 + 1];
   int i;
-  for (i = 0; i < MESSAGE_ID_SIZE; i++)
+  for (i = 0; i < ALLNET_MESSAGE_ID_SIZE; i++)
     snprintf (buffer + 2 * i, sizeof (buffer) - 2 * i, "%02x", (id [i]) & 0xff);
   store_save_string (fd, buffer);
 }
@@ -1222,9 +1222,9 @@ static int add_message (struct message_store_info ** msgs, int * num_alloc,
   p->rcvd_ackd_time = rcvd_ackd_time;
   p->message_has_been_acked = acked;
   if (ack != NULL)
-    memcpy (p->ack, ack, MESSAGE_ID_SIZE);
+    memcpy (p->ack, ack, ALLNET_MESSAGE_ID_SIZE);
   else
-    memset (p->ack, 0, MESSAGE_ID_SIZE);
+    memset (p->ack, 0, ALLNET_MESSAGE_ID_SIZE);
   char * ptr = malloc_or_fail (msize + 1, "add_message");
   memcpy (ptr, message, msize);
   ptr [msize] = '\0';
@@ -1272,8 +1272,9 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
                          * make a mess of the file */
   store_save_message_type (fd, type);
   store_save_message_id (fd, message_ack);
-  char id [MESSAGE_ID_SIZE];
-  sha512_bytes (message_ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
+  char id [ALLNET_MESSAGE_ID_SIZE];
+  sha512_bytes (message_ack, ALLNET_MESSAGE_ID_SIZE,
+                id, ALLNET_MESSAGE_ID_SIZE);
   store_save_message_id (fd, id);
   store_save_string (fd, "\n");
 
@@ -1331,7 +1332,7 @@ static void print_message_ack (int next, const char * ack)
     name = "found rcvd";
   else if (next == MSG_TYPE_SENT)
     name = "found sent";
-  print_buffer (ack, MESSAGE_ID_SIZE, name, MESSAGE_ID_SIZE, 1);
+  print_buffer (ack, ALLNET_MESSAGE_ID_SIZE, name, ALLNET_MESSAGE_ID_SIZE, 1);
 }
 #endif /* DEBUG_PRINT */
 
@@ -1349,7 +1350,7 @@ static void add_all_messages (struct message_store_info ** msgs,
   uint64_t time = 0;
   uint64_t rcvd_time = 0;
   int tz_min;
-  char ack [MESSAGE_ID_SIZE];
+  char ack [ALLNET_MESSAGE_ID_SIZE];
   char * message = NULL;
   int msize;
   int next = prev_message (&iter, &seq, &time, &tz_min, &rcvd_time,
@@ -1749,28 +1750,29 @@ int main (int argc, char ** argv)
   uint64_t time;
   uint64_t rcvd_time;
   int tz = -1;
-  char ack [MESSAGE_ID_SIZE];
+  char ack [ALLNET_MESSAGE_ID_SIZE];
   char * msg;
   int type = most_recent_record (argv [1], keys [k], MSG_TYPE_ANY,
                                  &seq, &time, &tz, ack, &msg);
   printf ("latest message type %d %s, seq %ju, time %ju%+d\n",
           type, msg, (uintmax_t)seq, (uintmax_t)time, tz);
-  print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
+  print_buffer (ack, ALLNET_MESSAGE_ID_SIZE, "  ack",
+                ALLNET_MESSAGE_ID_SIZE, 1);
   type = most_recent_record (argv [1], keys [k], MSG_TYPE_SENT,
                              &seq, &time, &tz, ack, &msg);
   printf ("latest sent type %d %s, seq %ju, time %ju%+d\n",
           type, msg, (uintmax_t)seq, (uintmax_t)time, tz);
-  print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
+  print_buffer (ack, ALLNET_MESSAGE_ID_SIZE, "  ack", 100, 1);
   type = most_recent_record (argv [1], keys [k], MSG_TYPE_RCVD,
                              &seq, &time, &tz, ack, &msg);
   printf ("latest rcvd type %d %s, seq %ju, time %ju%+d\n",
           type, msg, (uintmax_t)seq, (uintmax_t)time, tz);
-  print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
+  print_buffer (ack, ALLNET_MESSAGE_ID_SIZE, "  ack", 100, 1);
   type = most_recent_record (argv [1], keys [k], MSG_TYPE_ACK,
                              &seq, &time, &tz, ack, &msg);
   printf ("latest ack type %d %s, seq %ju, time %ju%+d\n",
           type, msg, (uintmax_t)seq, (uintmax_t)time, tz);
-  print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
+  print_buffer (ack, ALLNET_MESSAGE_ID_SIZE, "  ack", 100, 1);
   printf ("\n");
 
   struct msg_iter * iter = start_iter (argv [1], keys [k]);
@@ -1787,7 +1789,7 @@ int main (int argc, char ** argv)
     printf ("message %i, %d bytes type %d, %s, seq %ju, time %ju%+d/%ju\n",
             ++i, msize, type, msg, (uintmax_t)seq, (uintmax_t)time, tz,
             (uintmax_t)rcvd_time);
-    print_buffer (ack, MESSAGE_ID_SIZE, "  ack", MESSAGE_ID_SIZE, 1);
+    print_buffer (ack, ALLNET_MESSAGE_ID_SIZE, "  ack", 100, 1);
   }
   free_iter (iter);
   return 0;

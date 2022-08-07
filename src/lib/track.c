@@ -11,7 +11,7 @@
 #define SAVED_ADDRESSES	128
 
 struct rate_record {
-  unsigned char address [ADDRESS_SIZE];
+  unsigned char address [ALLNET_ADDRESS_SIZE];
   unsigned char num_bits;
   unsigned int packet_size;
 };
@@ -38,7 +38,7 @@ unsigned int track_rate (unsigned char * source, unsigned int sbits,
   int i;
   if (next < 0) {    /* initialize */
     for (i = 0; i < SAVED_ADDRESSES; i++) {
-      memset (record [i].address, 0, ADDRESS_SIZE);
+      memset (record [i].address, 0, ALLNET_ADDRESS_SIZE);
       record [i].num_bits = 0;
       record [i].packet_size = 0;
     }
@@ -57,7 +57,7 @@ unsigned int track_rate (unsigned char * source, unsigned int sbits,
   }
 
   /* save this packet */
-  memcpy (record [next].address, source, ADDRESS_SIZE);
+  memcpy (record [next].address, source, ALLNET_ADDRESS_SIZE);
   record [next].num_bits = sbits;
   record [next].packet_size = packet_size;
   next = (next + 1) % SAVED_ADDRESSES;

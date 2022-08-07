@@ -22,7 +22,7 @@ extern struct msg_iter * start_iter (const char * contact, keyset k);
 
 /* returns the message type, or MSG_TYPE_DONE if we've reached the end */
 /* in case of SENT or RCVD, sets *seq, message_ack (which must have
- * MESSAGE_ID_SIZE bytes), and sets *message to point to newly
+ * ALLNET_MESSAGE_ID_SIZE bytes), and sets *message to point to newly
  * allocated memory containing the message (caller must free this).
  * for ACK, sets message_ack only, sets *seq to 0 and *message to NULL
  * for DONE, sets *seq to 0, clears message_ack, and sets *message to NULL */
@@ -83,7 +83,7 @@ struct message_store_info {
   uint64_t rcvd_ackd_time;     /* time received or acked, or 0 if neither */
                                /* 2017/11/22: ack times not supported yet */
   int message_has_been_acked;  /* for MSG_TYPE_SENT, 1 if acked, 0 otherwise */
-  char ack [MESSAGE_ID_SIZE];  /* for acked MSG_TYPE_SENT, the ack */
+  char ack [ALLNET_MESSAGE_ID_SIZE];  /* for acked MSG_TYPE_SENT, the ack */
   const char * message;
   size_t msize;
 };

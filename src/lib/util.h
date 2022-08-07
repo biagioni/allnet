@@ -90,7 +90,7 @@ extern struct allnet_header *
               const unsigned char * from, unsigned int nbits,
               unsigned int * size);
 
-#define	ALLNET_ACK_MIN_SIZE	(ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE)
+#define	ALLNET_ACK_MIN_SIZE	(ALLNET_HEADER_SIZE + ALLNET_MESSAGE_ID_SIZE)
 /* the same, without malloc.  buffer must have ALLNET_ACK_MIN_SIZE bytes,
  * and the return value points directly to buffer */
 extern struct allnet_header *

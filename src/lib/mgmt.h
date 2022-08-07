@@ -69,7 +69,7 @@ struct allnet_internet_addr {
  * and peer information from ad */
 struct allnet_addr_info {
   struct allnet_internet_addr ip; /* how to reach the peer */
-  unsigned char destination [ADDRESS_SIZE];
+  unsigned char destination [ALLNET_ADDRESS_SIZE];
   unsigned char nbits;     /* how many bits of the destination are given */
   /* for DHT nodes, nbits should always equal ADDRESS_BITS.  Received
    * entries that have fewer bits should be ignored */
@@ -131,7 +131,7 @@ struct allnet_mgmt_trace_entry {
   unsigned char pad [5];
   unsigned char seconds [ALLNET_TIME_SIZE];
   unsigned char seconds_fraction [ALLNET_TIME_SIZE];
-  unsigned char address [ADDRESS_SIZE];
+  unsigned char address [ALLNET_ADDRESS_SIZE];
 };
 
 /* a trace message is designed to have functionality similar to both
@@ -146,7 +146,7 @@ struct allnet_mgmt_trace_req {
   unsigned char pubkey_size [2];      /* public key size in bytes, MSB first */
                                       /* may be zero to give no public key */
   unsigned char pad [4];              /* always send as 0s */
-  unsigned char trace_id [MESSAGE_ID_SIZE];   /* returned in the reply */
+  unsigned char trace_id [ALLNET_MESSAGE_ID_SIZE];   /* returned in the reply */
   struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
   unsigned char pubkey [0];           /* no pubkey gives unencrypted replies */
 };
@@ -165,7 +165,7 @@ struct allnet_mgmt_trace_reply {
   unsigned char intermediate_reply;   /* 0 if it is a final reply */
   unsigned char num_entries;          /* number of entries, must be >= 1 */
   unsigned char pad [5];              /* always send as 0s */
-  unsigned char trace_id [MESSAGE_ID_SIZE];
+  unsigned char trace_id [ALLNET_MESSAGE_ID_SIZE];
   struct allnet_mgmt_trace_entry trace [0]; /* really, trace [num_entries] */
 };
 
@@ -189,7 +189,7 @@ struct allnet_keepalive_optional {
 struct allnet_mgmt_id_request {
   unsigned char n [2];                /* number of packet IDs, big-endian */
   unsigned char pad [6];              /* always send as 0s */
-  unsigned char ids [MESSAGE_ID_SIZE * 0];  /* really, MESSAGE_ID_SIZE * n */
+  unsigned char ids [ALLNET_MESSAGE_ID_SIZE * 0];  /* really, * n */
 };
 #endif /* IMPLEMENT_MGMT_ID_REQUEST */
 
@@ -240,6 +240,6 @@ struct allnet_mgmt_header {
 #define ALLNET_ID_REQ_SIZE(t, n)	\
 	(ALLNET_MGMT_HEADER_SIZE(t) +   \
          (sizeof (struct allnet_mgmt_id_request)) + \
-	 (n) * MESSAGE_ID_SIZE)
+	 (n) * ALLNET_MESSAGE_ID_SIZE)
 
 #endif /* MGMT_H */

@@ -71,7 +71,7 @@ static void print_to_output (const char * string)
   pthread_mutex_unlock (&mutex);
 }
 
-#define MESSAGE_BUF_SIZE	(1000)
+#define MESSAGE_BUF_SIZE	(ALLNET_MTU - 500)
 #define PRINT_BUF_SIZE		(ALLNET_MTU + MESSAGE_BUF_SIZE)
 
 struct receive_thread_args {
@@ -80,7 +80,8 @@ struct receive_thread_args {
 };
 
 /* variables to keep track of trace messages */
-static char expecting_trace [MESSAGE_ID_SIZE];  /* trace we are looking for */
+/* expecting_trace is the trace we are looking for */
+static char expecting_trace [ALLNET_MESSAGE_ID_SIZE];
 static int trace_count = 0;  /* changes every time we start a new trace */
 static unsigned long long int trace_start_time = 0;
 
@@ -172,7 +173,7 @@ static void * receive_thread (void * arg)
       else if ((mlen == -4)  /* got a trace reply */
                && (trace != NULL)
                && (memcmp (trace->trace_id, expecting_trace,
-                           MESSAGE_ID_SIZE) == 0)) {
+                           ALLNET_MESSAGE_ID_SIZE) == 0)) {
         trace_to_string (string, sizeof (string), trace,
                          trace_count, trace_start_time);
         printf ("%s", string);
@@ -540,7 +541,7 @@ static void run_trace (int sock, struct allnet_log * log, char * params)
   int hops = 5;
   int abits = 0;
   int sleep_sec = 5;
-  unsigned char address [ADDRESS_SIZE];
+  unsigned char address [ALLNET_ADDRESS_SIZE];
   if (strlen (params) > 0) {
     char * finish = NULL;
     hops = strtol (params, &finish, 10);
@@ -568,7 +569,7 @@ static void run_trace (int sock, struct allnet_log * log, char * params)
 #ifdef DEBUG_PRINT
   if (abits > 0) {
     printf ("run_trace (%d, %d bits, ", hops, abits);
-    print_buffer ((char *)address, ((abits + 7) / 8), NULL, ADDRESS_SIZE, 0);
+    print_buffer ((char *)address, ((abits + 7) / 8), NULL, 100, 0);
     printf (")\n");
   } else if (strlen (params) > 0) {
     printf ("run_trace (%d, %s)\n", hops, params);
@@ -590,7 +591,7 @@ static void xt_delete_contact (char * contact, char ** peer)
   strip_final_newline (contact);
   printf ("contact deletion cannot be undone.  Type Y to delete contact %s\n",
           contact);
-  char response [MESSAGE_BUF_SIZE];
+  char response [100];
   if ((fgets (response, sizeof (response), stdin) != NULL) &&
       (*response == 'Y')) {
     printf ("deleting contact %s\n", contact);
@@ -872,7 +873,7 @@ int main (int argc, char ** argv)
     print_to_output (NULL);
   }
 
-  char message [MESSAGE_BUF_SIZE];
+  static char message [MESSAGE_BUF_SIZE];
   char * saved_message = NULL;
   while (fgets (message, sizeof (message), stdin) != NULL) {
     size_t len = strlen (message);

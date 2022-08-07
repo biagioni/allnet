@@ -99,25 +99,25 @@ int packet_received_before (char * message, int msize,
                             char * remembered_hashes, int nh, int * position)
 {
   if (*position < 0) {
-    memset (remembered_hashes, 0, nh * MESSAGE_ID_SIZE);
+    memset (remembered_hashes, 0, nh * ALLNET_MESSAGE_ID_SIZE);
     *position = 0;
   }
   if (msize <= 4)
     return 1;  /* should be caught before calling packet_received_before */
-  char hash [MESSAGE_ID_SIZE];
+  char hash [ALLNET_MESSAGE_ID_SIZE];
   /* when hashing, skip the hop counts */
-  sha512_bytes (message + 4, msize - 4, hash, MESSAGE_ID_SIZE);
+  sha512_bytes (message + 4, msize - 4, hash, ALLNET_MESSAGE_ID_SIZE);
   int i;
   for (i = 0; i < nh; i++) {
-    if (memcmp (remembered_hashes + (i * MESSAGE_ID_SIZE),
-                hash, MESSAGE_ID_SIZE) == 0)
+    if (memcmp (remembered_hashes + (i * ALLNET_MESSAGE_ID_SIZE),
+                hash, ALLNET_MESSAGE_ID_SIZE) == 0)
       return 1;  /* found */
   }
   /* not found, add */
   if ((*position < 0) || (*position >= nh))
     *position = 0;
-  memcpy (remembered_hashes + ((*position) * MESSAGE_ID_SIZE), hash,
-          MESSAGE_ID_SIZE);
+  memcpy (remembered_hashes + ((*position) * ALLNET_MESSAGE_ID_SIZE), hash,
+          ALLNET_MESSAGE_ID_SIZE);
   *position = *position + 1;
   return 0;   /* not found */
 #undef NUM_REMEMBERED_HASHES
@@ -130,7 +130,7 @@ int packet_received_before (char * message, int msize,
 #endif
  * if this trace was received before, return 1 to say the trace should not
  * be forwarded or replied to.
- * trace_id must have MESSAGE_ID_SIZE bytes
+ * trace_id must have ALLNET_MESSAGE_ID_SIZE bytes
  */
 static int is_in_trace_cache (const unsigned char * trace_id)
 {
@@ -149,16 +149,16 @@ static int is_in_trace_cache (const unsigned char * trace_id)
     sent_this_interval = 0;
   }
 #endif /* LIMIT_RATE_OF_TRACES */
-  static char cache [TRACE_CACHE_SIZE] [MESSAGE_ID_SIZE];
+  static char cache [TRACE_CACHE_SIZE] [ALLNET_MESSAGE_ID_SIZE];
   /* look through all of the cache to find any matching traces */
   int i;
   for (i = 0; i < TRACE_CACHE_SIZE; i++) {
-    if (memcmp (cache [i], trace_id, MESSAGE_ID_SIZE) == 0)
+    if (memcmp (cache [i], trace_id, ALLNET_MESSAGE_ID_SIZE) == 0)
       return 1;   /* already seen, ignore */
   }
   /* trace not found, add the trace_id to the cache at the next position */
   static int next = 0;       /* next place to save messages */
-  memcpy (cache [next], trace_id, MESSAGE_ID_SIZE);
+  memcpy (cache [next], trace_id, ALLNET_MESSAGE_ID_SIZE);
   next = (next + 1) % TRACE_CACHE_SIZE;
 #undef TRACE_CACHE_SIZE
 
@@ -223,7 +223,7 @@ void get_my_addr (unsigned char * my_addr, int my_addr_size,
 #undef EXPECTED_FIRST_LINE
   int i;
   char * start = line + 9;
-  for (i = 0; i < ADDRESS_SIZE; i++) {
+  for (i = 0; i < ALLNET_ADDRESS_SIZE; i++) {
     char * end;
     my_addr [i] = strtol (start, &end, 16);
     if (start == end) {   /* not read, go back to a random ID */
@@ -331,7 +331,7 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   trp->encrypted = 0;
   trp->intermediate_reply = intermediate;
   trp->num_entries = num_entries;
-  memcpy (trp->trace_id, intrp->trace_id, MESSAGE_ID_SIZE);
+  memcpy (trp->trace_id, intrp->trace_id, ALLNET_MESSAGE_ID_SIZE);
   unsigned int i;
   /* if num_entries is 1, this loop never executes */
   /* if num_entries is 2, this loop executes once to copy
@@ -461,7 +461,7 @@ static void send_trace (int sock, const unsigned char * address, int abits,
   trp->num_entries = 1;
   writeb16u (trp->pubkey_size, 0);
   /* pubkey_size is 0, so no public key */
-  memcpy (trp->trace_id, trace_id, MESSAGE_ID_SIZE);
+  memcpy (trp->trace_id, trace_id, ALLNET_MESSAGE_ID_SIZE);
   init_trace_entry (trp->trace, 0, my_address, my_abits, 1);
 
   if (! local_send (buffer, total_size, ALLNET_PRIORITY_TRACE)) {
@@ -661,7 +661,8 @@ static int print_entry (struct allnet_mgmt_trace_entry * entry,
                      "%02x", entry->address [0] % 0xff);
     if (entry->nbits > 8) {
       int i;
-      for (i = 1; ((i < ADDRESS_SIZE) && (i < (entry->nbits + 7) / 8)); i++)
+      for (i = 1; ((i < ALLNET_ADDRESS_SIZE) &&
+                   (i < (entry->nbits + 7) / 8)); i++)
         off += snprintf (buf + off, minz (bsize, off),
                          ".%02x", entry->address [i] % 0xff);
     } else {
@@ -803,11 +804,11 @@ static void handle_packet (char * message, int msize, char * seeking,
     (struct allnet_mgmt_trace_reply *)
       (message + ALLNET_MGMT_HEADER_SIZE (hp->transport));
   unsigned char * trace_id = trp->trace_id;
-  if (memcmp (trace_id, seeking, MESSAGE_ID_SIZE - 1) != 0) {
+  if (memcmp (trace_id, seeking, ALLNET_MESSAGE_ID_SIZE - 1) != 0) {
 #ifdef DEBUG_PRINT
     printf ("received trace_id does not match expected trace_id\n");
-    print_buffer (seeking, MESSAGE_ID_SIZE, "expected trace_id", 100, 1);
-    print_buffer ((char *) trace_id, MESSAGE_ID_SIZE,
+    print_buffer (seeking, ALLNET_MESSAGE_ID_SIZE, "expected trace_id", 100, 1);
+    print_buffer ((char *) trace_id, ALLNET_MESSAGE_ID_SIZE,
                   "received trace_id", 100, 1);
 #endif /* DEBUG_PRINT */
     return;
@@ -820,7 +821,7 @@ static void handle_packet (char * message, int msize, char * seeking,
     for (i = 0; i < xaddrs; i++) {
       if (xbits [i] > 0) {
         int b = matching_bits (sender->address, sender->nbits,
-                               excluded + ADDRESS_SIZE * i, xbits [i]);
+                               excluded + ALLNET_ADDRESS_SIZE * i, xbits [i]);
         if (b >= xbits [i]) /* matches an excluded address, don't print it */
           return;
       }
@@ -899,7 +900,7 @@ void do_trace_loop (int sock,
     sum_rtt = 0;
   }
 #define NUM_REMEMBERED_HASHES	1000
-  char remembered_hashes [NUM_REMEMBERED_HASHES * MESSAGE_ID_SIZE];
+  char remembered_hashes [NUM_REMEMBERED_HASHES * ALLNET_MESSAGE_ID_SIZE];
   int remembered_position = 0;
   
   print_details = wide;
@@ -907,9 +908,9 @@ void do_trace_loop (int sock,
   printf ("tracing %d bits to %d hops: ", abits, nhops);
   print_bitstring (address, 0, abits, 1);
 #endif /* DEBUG_PRINT */
-  char trace_id [MESSAGE_ID_SIZE];
-  unsigned char my_addr [ADDRESS_SIZE];
-  unsigned char extra_addr [ADDRESS_SIZE];
+  char trace_id [ALLNET_MESSAGE_ID_SIZE];
+  unsigned char my_addr [ALLNET_ADDRESS_SIZE];
+  unsigned char extra_addr [ALLNET_ADDRESS_SIZE];
   memset (my_addr, 0, sizeof (my_addr));
   random_bytes ((char *)my_addr, 1);                  /* 8 random bits */
   memset (extra_addr, 0, sizeof (my_addr));
@@ -926,8 +927,9 @@ void do_trace_loop (int sock,
     } else {
       int dest;
       for (dest = 0; dest < naddrs; dest++) {
-        trace_id [MESSAGE_ID_SIZE - 1] = dest;
-        send_trace (sock, addresses + (dest * ADDRESS_SIZE), abits [dest],
+        trace_id [ALLNET_MESSAGE_ID_SIZE - 1] = dest;
+        send_trace (sock, addresses + (dest * ALLNET_ADDRESS_SIZE),
+                    abits [dest],
                     trace_id, my_addr, 8, nhops, ! no_intermediates,
                     sleep * 10, caching, alog);
         sent_count++;
@@ -948,7 +950,7 @@ void do_trace_loop (int sock,
 char * trace_string (const char * tmp_dir, int sleep, const char * dest,
                      int nhops, int no_intermediates, int match_only, int wide)
 {
-  unsigned char address [ADDRESS_SIZE];
+  unsigned char address [ALLNET_ADDRESS_SIZE];
   memset (address, 0, sizeof (address));  /* set any unused part to all zeros */
   int abits = 0;
   if ((dest != NULL) && (strlen (dest) > 0)) {
@@ -984,13 +986,13 @@ char * trace_string (const char * tmp_dir, int sleep, const char * dest,
 }
 
 /* just start a trace, returning 1 for success, 0 failure
- * trace_id must have MESSAGE_ID_SIZE or be NULL */
+ * trace_id must have ALLNET_MESSAGE_ID_SIZE or be NULL */
 int start_trace (int sock, const unsigned char * addr, unsigned int abits,
                  unsigned int nhops, int record_intermediates,
                  char * trace_id, int expiration_seconds)
 {
-  random_bytes (trace_id, MESSAGE_ID_SIZE);
-  unsigned char my_addr [ADDRESS_SIZE];
+  random_bytes (trace_id, ALLNET_MESSAGE_ID_SIZE);
+  unsigned char my_addr [ALLNET_ADDRESS_SIZE];
   memset (my_addr, 0, sizeof (my_addr));
   random_bytes ((char *) my_addr, 1);     /* 8 random bits */
   struct allnet_log * alog = init_log ("start_trace");
@@ -1007,7 +1009,7 @@ static int trace_seen_before (unsigned char * addr, int abits, int trace_count)
   if (trace_count == 0)  /* never started a trace */
     return 1;    /* don't print this one */
 #define MAX_SEEN        4096
-  static unsigned char seen_addrs [MAX_SEEN] [ADDRESS_SIZE];
+  static unsigned char seen_addrs [MAX_SEEN] [ALLNET_ADDRESS_SIZE];
   static int seen_bits [MAX_SEEN];
   static int seen_count = 0;  /* how many entries are used in seen_adrs/bits */
   static int trace_count_seen = 0;  /* value of trace_count on the last call */
@@ -1015,7 +1017,7 @@ static int trace_seen_before (unsigned char * addr, int abits, int trace_count)
     memset (seen_addrs, 0, sizeof (seen_addrs));
     memset (seen_bits, 0, sizeof (seen_bits));
     trace_count_seen = trace_count;
-    memcpy (seen_addrs [0], addr, ADDRESS_SIZE);  /* record this trace */
+    memcpy (seen_addrs [0], addr, ALLNET_ADDRESS_SIZE);  /* record this trace */
     seen_bits [0] = abits;
     seen_count = 1;
     return 0;                                     /* never seen before */
@@ -1029,7 +1031,7 @@ static int trace_seen_before (unsigned char * addr, int abits, int trace_count)
   }  /* not found, add it (if there is room) */
      /* if we run out of room, we will print duplicates */
   if (seen_count < MAX_SEEN) {
-    memcpy (seen_addrs [seen_count], addr, ADDRESS_SIZE);
+    memcpy (seen_addrs [seen_count], addr, ALLNET_ADDRESS_SIZE);
     seen_bits [seen_count] = abits;
     seen_count++;
   }

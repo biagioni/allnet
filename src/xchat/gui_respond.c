@@ -838,15 +838,15 @@ static void gui_trace (char * message, int64_t length,
 /* message format: 1-byte nhops, 1-byte nbits, 1-byte record intermediates,
    8-byte address */
 /* reply format: 1-byte code, 16-byte trace ID (all 0s for failure) */
-  char reply_header [1 + MESSAGE_ID_SIZE];
+  char reply_header [1 + ALLNET_MESSAGE_ID_SIZE];
   reply_header [0] = GUI_TRACE;
   memset (reply_header + 1, 0, sizeof (reply_header) - 1);
-  if (length >= 3 + ADDRESS_SIZE) {
+  if (length >= 3 + ALLNET_ADDRESS_SIZE) {
     int nhops = ((unsigned char *)message) [0];
     int nbits = ((unsigned char *)message) [1];
     int inter =                   message  [2];
-    unsigned char addr [ADDRESS_SIZE];
-    memcpy (addr, message + 3, ADDRESS_SIZE);
+    unsigned char addr [ALLNET_ADDRESS_SIZE];
+    memcpy (addr, message + 3, ALLNET_ADDRESS_SIZE);
     if (! start_trace (allnet_sock, addr, nbits, nhops, inter,
                        reply_header + 1, 1000))
       memset (reply_header + 1, 0, sizeof (reply_header) - 1);

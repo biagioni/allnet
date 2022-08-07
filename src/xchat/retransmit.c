@@ -135,7 +135,7 @@ int send_retransmit_request (const char * contact, keyset k, int sock,
   /* check to see that the key exchange is complete by checking
    * for local and remote addresses,
    * and that we've sent or received at least one message */
-  unsigned char test_address [ADDRESS_SIZE];
+  unsigned char test_address [ALLNET_ADDRESS_SIZE];
   if ((get_local (k, test_address) == 0) ||
       (get_remote (k, test_address) == 0) ||
       ((get_last_received (contact, k) == 0) && (get_counter (contact) <= 1))) {
@@ -336,7 +336,7 @@ static void resend_message (uint64_t seq, const char * contact,
 #endif /* LIMIT_RETRANSMIT_RATE */
   int size;
   uint64_t time;
-  char message_ack [MESSAGE_ID_SIZE];
+  char message_ack [ALLNET_MESSAGE_ID_SIZE];
   char * text = get_outgoing (contact, k, seq, &size, &time, message_ack);
   if ((text == NULL) || (size <= 0)) {
 #ifdef DEBUG_PRINT
@@ -355,7 +355,7 @@ static void resend_message (uint64_t seq, const char * contact,
   char * message = malloc_or_fail (size + CHAT_DESCRIPTOR_SIZE, "resend_msg");
   memset (message, 0, CHAT_DESCRIPTOR_SIZE);
   struct chat_descriptor * cdp = (struct chat_descriptor *) message;
-  memcpy (cdp->message_ack, message_ack, MESSAGE_ID_SIZE);
+  memcpy (cdp->message_ack, message_ack, ALLNET_MESSAGE_ID_SIZE);
   writeb64u (cdp->counter, seq);
   writeb64u (cdp->timestamp, time);
   /* the fixed part of the header */
@@ -365,7 +365,8 @@ static void resend_message (uint64_t seq, const char * contact,
 #ifdef DEBUG_PRINT
   printf ("  rexmit outgoing %s, seq %ju, t %ju/0x%jx\n",
           contact, (uintmax_t)seq, (uintmax_t)time, (uintmax_t)time);
-  print_buffer ((char *) cdp->message_ack, MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
+  print_buffer ((char *) cdp->message_ack,
+                ALLNET_MESSAGE_ID_SIZE, "rexmit ack", 5, 1);
 #endif /* DEBUG_PRINT */
   resend_packet (message, size + CHAT_DESCRIPTOR_SIZE, contact, k, sock,
                  hops, priority);

@@ -42,7 +42,7 @@
 
 struct key_address {
   int nbits;
-  char address [ADDRESS_SIZE];
+  char address [ALLNET_ADDRESS_SIZE];
 };
 
 /* typedef int keyset;  refers to a key_info or a group_info */
@@ -283,7 +283,7 @@ static int read_address_file (const char * basename, const char * name,
                               struct key_address * addr)
 {
   char * path = strcat3_malloc (basename, "/", name, "read_address_file name");
-  memset (addr->address, 0, ADDRESS_SIZE);
+  memset (addr->address, 0, ALLNET_ADDRESS_SIZE);
   addr->nbits = 0;
   char * bytes = NULL;
   int size = read_file_malloc (path, &bytes, 0);
@@ -296,7 +296,7 @@ static int read_address_file (const char * basename, const char * name,
   if (p != bytes) {
     int count = (n + 7) / 8;
     int i;
-    for (i = 0; (p != NULL) && (i < count) && (i < ADDRESS_SIZE); i++) {
+    for (i = 0; (p != NULL) && (i < count) && (i < ALLNET_ADDRESS_SIZE); i++) {
       int value;
       sscanf (p, " %x", &value);
       addr->address [i] = value;
@@ -634,8 +634,8 @@ static void init_from_file (const char * debug)
     int i = 0;
     while ((i < num_keys) && ((dep = readdir (dir)) != NULL)) {
       /* this is only legal as long as i < num_keys */
-      kip [i].local.nbits = ADDRESS_SIZE * 8;
-      kip [i].remote.nbits = ADDRESS_SIZE * 8;
+      kip [i].local.nbits = ALLNET_ADDRESS_SIZE * 8;
+      kip [i].remote.nbits = ALLNET_ADDRESS_SIZE * 8;
       if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* is a key directory */
           (read_key_info (dirname, dep->d_name, kip + i))) {
         i++;
@@ -799,7 +799,7 @@ static void write_address_file (const char * fname,
 {
   if (nbits <= 0)
     return;
-  char buf [4 + ADDRESS_SIZE * 3 + 4];
+  char buf [4 + ALLNET_ADDRESS_SIZE * 3 + 4];
   int bytes = (nbits + 7) / 8;
   int offset = snprintf (buf, sizeof (buf), "%d %02x",
                          nbits, address [0] & 0xff);
@@ -1060,7 +1060,7 @@ int set_contact_local_addr (keyset k, int nbits, unsigned char * address)
   if (! valid_keyset (k))
     return 0;
   kip [k].local.nbits = nbits;
-  memcpy (kip [k].local.address, address, ADDRESS_SIZE);
+  memcpy (kip [k].local.address, address, ALLNET_ADDRESS_SIZE);
   save_contact (kip + k);
   return 1;
 }
@@ -1071,7 +1071,7 @@ int set_contact_remote_addr (keyset k, int nbits, unsigned char * address)
   if (! valid_keyset (k))
     return 0;
   kip [k].remote.nbits = nbits;
-  memcpy (kip [k].remote.address, address, ADDRESS_SIZE);
+  memcpy (kip [k].remote.address, address, ALLNET_ADDRESS_SIZE);
   save_contact (kip + k);
   return 1;
 }
@@ -1112,7 +1112,7 @@ keyset create_contact (const char * contact, int keybits,
       if (allnet_rsa_pubkey_is_null (ki->contact_pubkey) &&
           ((ki->local.nbits == 0) || (loc_nbits == ki->local.nbits))) {
         if (local != NULL)
-          memcpy (local, ki->local.address, ADDRESS_SIZE);
+          memcpy (local, ki->local.address, ALLNET_ADDRESS_SIZE);
         return k;  /* found an incomplete entry, use that */
       }
       return -1;   /* conflicts with a live entry */
@@ -1173,11 +1173,11 @@ keyset create_contact (const char * contact, int keybits,
 #endif /* ALLNET_KEYTYPE_RSA/DH */
   if ((local != NULL) && (loc_nbits > 0)) {
     new.local.nbits = loc_nbits;
-    memcpy (new.local.address, local, ADDRESS_SIZE);
+    memcpy (new.local.address, local, ALLNET_ADDRESS_SIZE);
   }
   if ((remote != NULL) && (rem_nbits > 0)) {
     new.remote.nbits = rem_nbits;
-    memcpy (new.remote.address, remote, ADDRESS_SIZE);
+    memcpy (new.remote.address, remote, ALLNET_ADDRESS_SIZE);
   }
 
   /* save into the kip data structure */
@@ -2215,7 +2215,7 @@ void set_dh_secret (keyset k, const char * secret, int local)
 #endif /* ALLNET_KEYTYPE_RSA/DH */
 
 /* returns the number of bits in the address, 0 if none */
-/* address must have length at least ADDRESS_SIZE */
+/* address must have length at least ALLNET_ADDRESS_SIZE */
 unsigned int get_local (keyset k, unsigned char * address)
 {
   init_from_file ("get_local");
@@ -2223,7 +2223,7 @@ unsigned int get_local (keyset k, unsigned char * address)
     return 0;
   if (kip [k].local.nbits == 0)
     return 0;
-  memcpy (address, kip [k].local.address, ADDRESS_SIZE);
+  memcpy (address, kip [k].local.address, ALLNET_ADDRESS_SIZE);
   return kip [k].local.nbits;
 }
 
@@ -2234,7 +2234,7 @@ unsigned int get_remote (keyset k, unsigned char * address)
     return 0;
   if (kip [k].remote.nbits == 0)
     return 0;
-  memcpy (address, kip [k].remote.address, ADDRESS_SIZE);
+  memcpy (address, kip [k].remote.address, ALLNET_ADDRESS_SIZE);
   return kip [k].remote.nbits;
 }
 
@@ -2677,8 +2677,8 @@ int revalidate_symmetric_key (const char * contact)
    e.g.  "some phrase"@word_pair.word_pair.word_pair.en.16 or
          "some phrase"@word_pair.word_pair.24
 
-   The phrase is hashed.  The first ADDRESS_SIZE bytes of the hash are the
-   broadcast address.  The last BITSTRING_* sets of bits (or bitstrings,
+   The phrase is hashed.  The first ALLNET_ADDRESS_SIZE bytes of the hash are
+   the broadcast address.  The last BITSTRING_* sets of bits (or bitstrings,
    if specified in the address) of the hash are matched to words from
    the files pre-list.* and post-list.* to give the word_pairs ("word"
    from the pre-list, and "pairs" from the post-list).
@@ -2756,7 +2756,7 @@ static void init_key_info (char * config_dir, char * file,
 
   char * mapped;
   int mlen = map_string (phrase, &mapped);
-  sha512_bytes (mapped, mlen, (char *) (key->address), ADDRESS_SIZE);
+  sha512_bytes (mapped, mlen, (char *) (key->address), ALLNET_ADDRESS_SIZE);
   free (mapped);
 
   key->identifier = strcpy_malloc (file, "keys.c init_key_info");
@@ -3416,7 +3416,7 @@ void finished_bc_key_request (const char * ahra)
 int main ()
 {
   init_from_file ("test_keys main");
-  char addr [ADDRESS_SIZE];
+  char addr [ALLNET_ADDRESS_SIZE];
   addr [0] = 0x01;
   addr [1] = 0x02;
   addr [2] = 0xAF;

@@ -26,7 +26,7 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* up to 4 DHT neighbors per address bit */
 #define PEERS_PER_BIT	4
-#define MAX_PEERS	(ADDRESS_BITS * PEERS_PER_BIT)
+#define MAX_PEERS	(ALLNET_ADDRESS_BITS * PEERS_PER_BIT)
 
 struct peer_info {
   struct allnet_addr_info ai;
@@ -41,7 +41,7 @@ struct peer_info peers [MAX_PEERS];
 
 static struct peer_info pings [MAX_PINGS];
 
-static char my_address [ADDRESS_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0};
+static char my_address [ALLNET_ADDRESS_SIZE] = {0, 0, 0, 0, 0, 0, 0, 0};
 /* 0 before initialization, 1 after initialization */
 static int my_address_initialized = 0;
 
@@ -97,8 +97,8 @@ void print_dht (int fd)
     if (peers [i].ai.nbits != 0)
       npeers++;
   int n = snprintf (alog->b, alog->s, "%d peers: ", npeers);
-  buffer_to_string (my_address, ADDRESS_SIZE, "my address is",
-                    ADDRESS_SIZE, 1, alog->b + n, alog->s - n);
+  buffer_to_string (my_address, ALLNET_ADDRESS_SIZE, "my address is",
+                    ALLNET_ADDRESS_SIZE, 1, alog->b + n, alog->s - n);
   if (fd < 0) log_print (alog); else dprintf (fd, "%s", alog->b);
   int printed = 0;
   for (i = 0; i < MAX_PEERS; i++) {
@@ -158,9 +158,9 @@ static int sane_addr_info (const struct allnet_addr_info * addr,
     max_print--;
     return 0;
   }
-  if (addr->nbits > ADDRESS_BITS) {
+  if (addr->nbits > ALLNET_ADDRESS_BITS) {
     if (desc != NULL) printf ("sane_addr_info (%s): nbits %d > %d\n",
-                              desc, addr->nbits, ADDRESS_BITS);
+                              desc, addr->nbits, ALLNET_ADDRESS_BITS);
     max_print--;
     return 0;
   }
@@ -244,7 +244,7 @@ static void routing_add_dns (const char * name, int id, int valid,
     return;
   }
   addr.destination [0] = (id % 16) << 4;
-  addr.nbits = ADDRESS_BITS;
+  addr.nbits = ALLNET_ADDRESS_BITS;
   addr.hops = 16;  /* a high number to discourage use */
   addr.type = ALLNET_ADDR_INFO_TYPE_DHT;
   routing_add_dht (addr);
@@ -595,17 +595,17 @@ static int load_peer (char * line, struct allnet_addr_info * peer)
     return 0;
   line = end + 2;
   int nbits = (int)strtol (line, &end, 10);
-  if ((end == line) || (nbits < 0) || (nbits > ADDRESS_BITS))
+  if ((end == line) || (nbits < 0) || (nbits > ALLNET_ADDRESS_BITS))
     return 0;
   if ((end [0] != ')') || (end [1] != ' '))
     return 0;
   line = end + 2;
   int num_bytes = (int)strtol (line, &end, 10);
-  if ((num_bytes < 0) || (num_bytes > ADDRESS_SIZE) || (end == line) ||
+  if ((num_bytes < 0) || (num_bytes > ALLNET_ADDRESS_SIZE) || (end == line) ||
       (memcmp (end, " bytes: ", 8) != 0))
     return 0;
   line = end + 8;
-  char address [ADDRESS_SIZE];
+  char address [ALLNET_ADDRESS_SIZE];
   memset (address, 0, sizeof (address));
   line = read_buffer (line, (nbits + 7) / 8, address, sizeof (address));
   if (memcmp (line, ", dist ", 7) != 0)
@@ -651,7 +651,7 @@ static int load_peer (char * line, struct allnet_addr_info * peer)
     memcpy (peer->ip.ip.s6_addr, storage, 16);
   peer->ip.port = htons (port);
   peer->ip.ip_version = ipversion;
-  memcpy (peer->destination, address, ADDRESS_SIZE);
+  memcpy (peer->destination, address, ALLNET_ADDRESS_SIZE);
   peer->nbits = nbits;
   peer->hops = dist;
   peer->type = ALLNET_ADDR_INFO_TYPE_DHT;
@@ -664,12 +664,12 @@ static void init_defaults ()
 {
   if (alog == NULL)
     alog = init_log ("routing-init-defaults");
-  random_bytes (my_address, ADDRESS_SIZE);
-  buffer_to_string (my_address, ADDRESS_SIZE, "new random address",
-                    ADDRESS_SIZE, 1, alog->b, alog->s);
+  random_bytes (my_address, ALLNET_ADDRESS_SIZE);
+  buffer_to_string (my_address, ALLNET_ADDRESS_SIZE, "new random address",
+                    ALLNET_ADDRESS_SIZE, 1, alog->b, alog->s);
   log_print (alog);
 #ifdef DEBUG_PRINT
-  print_buffer (my_address, ADDRESS_SIZE, "init_defaults: my_id", 99, 1);
+  print_buffer (my_address, ALLNET_ADDRESS_SIZE, "init_defaults: my_id", 99, 1);
 #endif /* DEBUG_PRINT */
 }
 
@@ -715,7 +715,8 @@ static int read_create_my_id ()
       printf ("~/.allnet/adht/my_id begins with '-', not saving\n");
       init_defaults ();
     } else {   /* line >= 30 bytes long, beginning with "8 bytes: " */
-      read_buffer (line + 9, (int)strlen (line + 9), my_address, ADDRESS_SIZE);
+      read_buffer (line + 9, (int)strlen (line + 9),
+                   my_address, ALLNET_ADDRESS_SIZE);
       result = 0;
     }
     close (fd);
@@ -789,28 +790,28 @@ static int init_peers ()
   return result;
 }
 
-/* fills in addr (of size at least ADDRESS_SIZE) with my address */
+/* fills in addr (of size at least ALLNET_ADDRESS_SIZE) with my address */
 void routing_my_address (unsigned char * addr)
 {
   pthread_mutex_lock (&mutex);
   /* routing_my_address is called from all the applications, so do
    * not call init_peers (), which should only be called by allnetd */
   read_create_my_id ();
-  memcpy (addr, my_address, ADDRESS_SIZE);
+  memcpy (addr, my_address, ALLNET_ADDRESS_SIZE);
   pthread_mutex_unlock (&mutex);
 }
 
 /* return true if the destination is closer to target than to
- * current.  Target and current are assumed to have ADDRESS_BITS
+ * current.  Target and current are assumed to have ALLNET_ADDRESS_BITS
  * also returns true if the first nbits of dest match the target address
  * if nbits is 0, will always return 1 */
 static int addr_closer (const unsigned char * dest, int nbits,
                         const unsigned char * current,
                         const unsigned char * target)
 {
-  if ((matching_bits (dest, nbits, current, ADDRESS_BITS) <
-       matching_bits (dest, nbits, target, ADDRESS_BITS)) ||
-      (matching_bits (dest, nbits, target, ADDRESS_BITS) == nbits))
+  if ((matching_bits (dest, nbits, current, ALLNET_ADDRESS_BITS) <
+       matching_bits (dest, nbits, target, ALLNET_ADDRESS_BITS)) ||
+      (matching_bits (dest, nbits, target, ALLNET_ADDRESS_BITS) == nbits))
     return 1;
   return 0;
 }
@@ -820,7 +821,8 @@ static int addr_in_list (const unsigned char * addr,
 {
   int i;
   for (i = 0; i < prev_count; i++)
-    if (memcmp (addr, prev + (i * ADDRESS_SIZE), ADDRESS_SIZE) == 0)
+    if (memcmp (addr, prev + (i * ALLNET_ADDRESS_SIZE),
+                ALLNET_ADDRESS_SIZE) == 0)
       return 1;
   return 0;
 }
@@ -841,10 +843,10 @@ print_dht (0); */
   int peer = 0;
   if (nbits < 0)
     nbits = 0;
-  if (nbits > ADDRESS_BITS)
-    nbits = ADDRESS_BITS;
+  if (nbits > ALLNET_ADDRESS_BITS)
+    nbits = ALLNET_ADDRESS_BITS;
   /* peers may have both IPv4 and IPv6 addresses: send to each at most once */
-  char prev_matches [1000 * ADDRESS_SIZE];
+  char prev_matches [1000 * ALLNET_ADDRESS_SIZE];
   int prev_count = 0;
   if (max_matches > 1000) {   /* prevent overflow of our fixed-sized array */
     printf ("error: max_matches %d > 1000\n", max_matches);
@@ -853,7 +855,8 @@ print_dht (0); */
   pthread_mutex_lock (&mutex);
   init_peers ();
   int row, col;
-  for (row = ADDRESS_BITS - 1; ((peer < max_matches) && (row >= 0)); row--) {
+  for (row = ALLNET_ADDRESS_BITS - 1; ((peer < max_matches) && (row >= 0));
+       row--) {
     for (col = 0; ((peer < max_matches) && (col < PEERS_PER_BIT)); col++) {
       struct allnet_addr_info * ai = &(peers [row * PEERS_PER_BIT + col].ai);
 /* the DHT forwarding is to include up to max_matches neighbors from
@@ -863,9 +866,9 @@ print_dht (0); */
                         ai->destination)) &&
           (! addr_in_list (ai->destination, prev_matches, prev_count))) {
         if (ai_to_sockaddr (ai, result + peer, alen + peer)) {
-          peer++;   /* a valid translation */
-          memcpy (prev_matches + (prev_count * ADDRESS_SIZE),  /* add to list */
-                  ai->destination, ADDRESS_SIZE);
+          peer++;   /* a valid translation, add it to the list */
+          memcpy (prev_matches + (prev_count * ALLNET_ADDRESS_SIZE),
+                  ai->destination, ALLNET_ADDRESS_SIZE);
           prev_count++;
         }
       }
@@ -877,7 +880,7 @@ print_dht (0); */
     peer += add_default_routes (result, alen, peer, max_matches);
 #ifdef DEBUG_PRINT
   printf ("routing_top_dht_matches returning %d for ", peer);
-  print_buffer ((char *) dest, (nbits + 7) / 8, NULL, ADDRESS_SIZE, 1);
+  print_buffer ((char *) dest, (nbits + 7) / 8, NULL, ALLNET_ADDRESS_SIZE, 1);
   int i;
   for (i = 0; i < peer; i++) {
     if (alen == NULL)
@@ -898,7 +901,7 @@ static void exact_match_print (char * description, int found,
 {
 #ifdef DEBUG_PRINT
   printf ("%s (", description);
-  print_buffer ((char *) addr, ADDRESS_SIZE, NULL, ADDRESS_SIZE, 0);
+  print_buffer ((char *) addr, ALLNET_ADDRESS_SIZE, NULL, 100, 0);
   printf (") ");
   if (found)
     print_addr_info (result);
@@ -920,7 +923,7 @@ static int search_data_structure (struct peer_info * ds, int max,
   int i;
   for (i = 0; (i < max) && (found == 0); i++) {
     if ((ds [i].ai.nbits != 0) &&
-        (memcmp (addr, ds [i].ai.destination, ADDRESS_SIZE) == 0)) {
+        (memcmp (addr, ds [i].ai.destination, ALLNET_ADDRESS_SIZE) == 0)) {
       found = 1;
       if (result != NULL)
         *result = ds [i].ai;
@@ -930,7 +933,7 @@ static int search_data_structure (struct peer_info * ds, int max,
 }
 
 /* returns 1 and fills in result (if not NULL) if it finds an exact
- * match for this address (assumed to be of size ADDRESS_SIZE)
+ * match for this address (assumed to be of size ALLNET_ADDRESS_SIZE)
  * otherwise returns 0.  */
 int routing_exact_match (const unsigned char * addr,
                          struct allnet_addr_info * result)
@@ -964,8 +967,9 @@ static int find_peer (struct peer_info * peers_data, int max,
   int i;
   for (i = 0; i < max; i++) {
     if ((peers_data [i].ai.nbits > 0) &&
-        (matches (peers_data [i].ai.destination, ADDRESS_BITS,
-                  addr->destination, ADDRESS_BITS) >= ADDRESS_BITS) &&
+        (matches (peers_data [i].ai.destination, ALLNET_ADDRESS_BITS,
+                  addr->destination, ALLNET_ADDRESS_BITS) >=
+         ALLNET_ADDRESS_BITS) &&
   /* allow same destination if different IP version, i.e. ipv4 and ipv6 */
   /* this makes sure we don't automatically default to IPv6, and lets us
    * keep track of IPv4 addresses for DHT hosts as well as IPv6 addresses */
@@ -1001,8 +1005,9 @@ static void delete_ping (struct allnet_addr_info * addr)
   int i;
   for (i = 0; i < MAX_PINGS; i++) {
     if ((pings [i].ai.nbits > 0) &&
-        (matches (pings [i].ai.destination, ADDRESS_BITS,
-                  addr->destination, ADDRESS_BITS) >= ADDRESS_BITS))
+        (matches (pings [i].ai.destination, ALLNET_ADDRESS_BITS,
+                  addr->destination, ALLNET_ADDRESS_BITS) >=
+         ALLNET_ADDRESS_BITS))
       pings [i].ai.nbits = 0;  /* delete */
   }
 }
@@ -1032,10 +1037,11 @@ static int routing_add_dht_locked (struct allnet_addr_info addr)
     print_addr_info (&addr);
     return -1;
   }
-  if ((addr.nbits == ADDRESS_BITS) &&
+  if ((addr.nbits == ALLNET_ADDRESS_BITS) &&
       (addr.type == ALLNET_ADDR_INFO_TYPE_DHT)) {
-    int bit_pos = matching_bits (addr.destination, ADDRESS_BITS,
-                                 (unsigned char *) my_address, ADDRESS_BITS);
+    int bit_pos = matching_bits (addr.destination, ALLNET_ADDRESS_BITS,
+                                 (unsigned char *) my_address,
+                                 ALLNET_ADDRESS_BITS);
 #ifdef DEBUG_PRINT
     printf ("adding at bit position %d, address ", bit_pos);
     print_addr_info (&addr);
@@ -1132,7 +1138,7 @@ int routing_add_external (struct allnet_internet_addr ip)
   memset (&ai, 0, sizeof (ai));
   ai.ip = ip;
   routing_my_address (ai.destination);
-  ai.nbits = ADDRESS_BITS;
+  ai.nbits = ALLNET_ADDRESS_BITS;
   ai.hops = 1;
   ai.type = ALLNET_ADDR_INFO_TYPE_DHT;
   pthread_mutex_lock (&mutex);
@@ -1193,8 +1199,9 @@ static int find_ping (struct allnet_addr_info * addr)
   int i;
   for (i = 0; i < MAX_PINGS; i++) {
     if ((pings [i].ai.nbits > 0) &&
-        (matches (pings [i].ai.destination, ADDRESS_BITS,
-                  addr->destination, ADDRESS_BITS) >= ADDRESS_BITS))
+        (matches (pings [i].ai.destination, ALLNET_ADDRESS_BITS,
+                  addr->destination, ALLNET_ADDRESS_BITS) >=
+         ALLNET_ADDRESS_BITS))
       return i;
   } 
   return -1;
@@ -1429,10 +1436,10 @@ int routing_ping_iterator (int iter, struct allnet_addr_info * ai)
   init_peers ();
   while ((iter < MAX_PINGS) &&
          ((pings [iter].ai.nbits == 0) || 
-          (pings [iter].ai.nbits > ADDRESS_BITS))) {
-    if (pings [iter].ai.nbits > ADDRESS_BITS) {
+          (pings [iter].ai.nbits > ALLNET_ADDRESS_BITS))) {
+    if (pings [iter].ai.nbits > ALLNET_ADDRESS_BITS) {
       printf ("error: routing_ping_iterator %d/%d seeing %d > %d bits\n",
-              iter, MAX_PINGS, pings [iter].ai.nbits, ADDRESS_BITS);
+              iter, MAX_PINGS, pings [iter].ai.nbits, ALLNET_ADDRESS_BITS);
       print_addr_info (&(pings [iter].ai));
       pings [iter].ai.nbits = 0;   /* something wrong, delete entry */
     }
@@ -1442,9 +1449,9 @@ int routing_ping_iterator (int iter, struct allnet_addr_info * ai)
     *ai = pings [iter].ai;
   pthread_mutex_unlock (&mutex);
   if (iter < MAX_PINGS) {
-    if (pings [iter].ai.nbits > ADDRESS_BITS) {
+    if (pings [iter].ai.nbits > ALLNET_ADDRESS_BITS) {
       printf ("error: routing_ping_iterator %d/%d returning %d > %d bits\n",
-              iter, MAX_PINGS, pings [iter].ai.nbits, ADDRESS_BITS);
+              iter, MAX_PINGS, pings [iter].ai.nbits, ALLNET_ADDRESS_BITS);
       print_addr_info (&(pings [iter].ai));
       return -1;
     }
@@ -1510,7 +1517,7 @@ int init_own_routing_entries (struct allnet_addr_info * entry, int max,
         }
         if (valid && is_valid_address (&check) && (entry != NULL)) {
           entry->ip = check;
-          memcpy (entry->destination, dest, ADDRESS_SIZE);
+          memcpy (entry->destination, dest, ALLNET_ADDRESS_SIZE);
           entry->nbits = nbits;
           entry->hops = 0;
           entry->type = ALLNET_ADDR_INFO_TYPE_DHT;
@@ -1567,12 +1574,12 @@ int init_own_routing_entries (struct allnet_addr_info * entry, int max,
 /* returns 1 if the given addr is one of mine, or matches my_address */
 int is_own_address (struct allnet_addr_info * addr)
 {
-  if (memcmp (addr->destination, my_address, ADDRESS_SIZE) == 0)
+  if (memcmp (addr->destination, my_address, ALLNET_ADDRESS_SIZE) == 0)
     return 1;
 #define MAX_MY_ADDRS	100
   struct allnet_addr_info mine [MAX_MY_ADDRS];
   int n = init_own_routing_entries (mine, MAX_MY_ADDRS - 1,
-                                    addr->destination, ADDRESS_BITS);
+                                    addr->destination, ALLNET_ADDRESS_BITS);
 #undef MAX_MY_ADDRS
   int i;
   for (i = 0; i < n; i++)

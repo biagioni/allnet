@@ -43,7 +43,7 @@ static struct message_header * msg_table = NULL;
 static size_t msg_table_size = 0;   /* size in bytes */
 
 struct hash_entry {  /* 32 bytes per hash entry */
-  char ida [MESSAGE_ID_SIZE]; /* for acks, this is the ack */
+  char ida [ALLNET_MESSAGE_ID_SIZE]; /* for acks, this is the ack */
   uint64_t sent_to_tokens;    /* 8 bytes */
   uint8_t used;               /* 1 byte */
   uint8_t max_hops;           /* 1 byte -- only used for acks */
@@ -196,15 +196,15 @@ static int add_token (const unsigned char * token, const char * caller)
 }
 
 /* returns a valid index, 0 <= i < hash_table_size.
- * id must have size 16, which is MESSAGE_ID_SIZE
+ * id must have size 16, which is ALLNET_MESSAGE_ID_SIZE
  * we use sha512 hash so that even if an observer notices a collision,
  * they cannot guess the secret */
 static int id_index (const char * id, unsigned long long int hash_table_size,
                      unsigned long long int secret)
 {
-  char source [MESSAGE_ID_SIZE + 8];
-  memcpy (source, id, MESSAGE_ID_SIZE);
-  writeb64 (source + MESSAGE_ID_SIZE, secret);
+  char source [ALLNET_MESSAGE_ID_SIZE + 8];
+  memcpy (source, id, ALLNET_MESSAGE_ID_SIZE);
+  writeb64 (source + ALLNET_MESSAGE_ID_SIZE, secret);
   char hash [SHA512_SIZE];
   sha512 (source, sizeof (source), hash);
   return (int) (readb64 (hash + SHA512_SIZE / 2) % hash_table_size);
@@ -213,8 +213,8 @@ static int id_index (const char * id, unsigned long long int hash_table_size,
 /* the index for the ack is computed from the corresponding ID */
 static int ack_index (const char * ack)
 {
-  char id [MESSAGE_ID_SIZE];
-  sha512_bytes (ack, MESSAGE_ID_SIZE, id, MESSAGE_ID_SIZE);
+  char id [ALLNET_MESSAGE_ID_SIZE];
+  sha512_bytes (ack, ALLNET_MESSAGE_ID_SIZE, id, ALLNET_MESSAGE_ID_SIZE);
   return id_index (id, num_ack, ack_secret);
 }
 
@@ -223,10 +223,10 @@ static int ack_index (const char * ack)
 static const char * id_is_acked (const char * id)
 {
   int aindex = id_index (id, num_ack, ack_secret);
-  char check_id [MESSAGE_ID_SIZE];
-  sha512_bytes (ack_table [aindex].ida, MESSAGE_ID_SIZE,
-                check_id, MESSAGE_ID_SIZE);
-  if (memcmp (id, check_id, MESSAGE_ID_SIZE) == 0) {
+  char check_id [ALLNET_MESSAGE_ID_SIZE];
+  sha512_bytes (ack_table [aindex].ida, ALLNET_MESSAGE_ID_SIZE,
+                check_id, ALLNET_MESSAGE_ID_SIZE);
+  if (memcmp (id, check_id, ALLNET_MESSAGE_ID_SIZE) == 0) {
     return ack_table [aindex].ida;
   }
   return NULL;
@@ -259,18 +259,18 @@ static int internal_message_ids (const char * message, int msize,
   if ((hp->transport & ALLNET_TRANSPORT_ACK_REQ) &&
       ((message_id = ALLNET_MESSAGE_ID (hp, hp->transport, msize)) != NULL)) {
     /* the message has an explicit message ID, use that */
-    memcpy (result_id1, message_id, MESSAGE_ID_SIZE);
+    memcpy (result_id1, message_id, ALLNET_MESSAGE_ID_SIZE);
     char * packet_id = NULL;
     if ((hp->transport & ALLNET_TRANSPORT_LARGE) &&
         ((packet_id = ALLNET_PACKET_ID (hp, hp->transport, msize)) != NULL)) {
-      memcpy (result_id2, packet_id, MESSAGE_ID_SIZE);
+      memcpy (result_id2, packet_id, ALLNET_MESSAGE_ID_SIZE);
       return 2;
     }
     return 1;
   }
   /* compute a message ID by hashing together the contents of the message */
   sha512_bytes (message + hsize, (int)(msize - hsize),
-                result_id1, MESSAGE_ID_SIZE);
+                result_id1, ALLNET_MESSAGE_ID_SIZE);
   return 1;
 }
 
@@ -291,8 +291,8 @@ static int stored_message_ids (const struct message_header * current,
 /* return 1 if this is a message to keep and forward,
  * 0 if this message has been acked or deleted */
 static int stored_message_usable (const struct message_header * current) {
-  char id1 [MESSAGE_ID_SIZE];
-  char id2 [MESSAGE_ID_SIZE];
+  char id1 [ALLNET_MESSAGE_ID_SIZE];
+  char id2 [ALLNET_MESSAGE_ID_SIZE];
   int num_ids = stored_message_ids (current, id1, id2);
   if (num_ids <= 0)
     return 0;
@@ -540,7 +540,7 @@ static void write_hash_files (int always)
 
 static void record_mid (const char * id, uint64_t sent_to_tokens) {
   int index = id_index (id, num_mid, mid_secret);
-  memcpy (mid_table [index].ida, id, MESSAGE_ID_SIZE);
+  memcpy (mid_table [index].ida, id, ALLNET_MESSAGE_ID_SIZE);
   mid_table [index].sent_to_tokens = sent_to_tokens;
   mid_table [index].used = 1;
 }
@@ -588,8 +588,8 @@ static void read_messages_file ()
         if (save_tokens)  /* tokens have been reset */
           current->sent_to_tokens = 0;
         /* add to mid table */
-        char id1 [MESSAGE_ID_SIZE];
-        char id2 [MESSAGE_ID_SIZE];
+        char id1 [ALLNET_MESSAGE_ID_SIZE];
+        char id2 [ALLNET_MESSAGE_ID_SIZE];
         int num_ids = stored_message_ids (current, id1, id2);
         if (num_ids >= 1) record_mid (id1, current->sent_to_tokens);
         if (num_ids >= 2) record_mid (id2, current->sent_to_tokens);
@@ -667,7 +667,7 @@ static void pcache_init_maint ()
 /* return 0 for failure, 1 if the message has a single ID, 2 if it is
  * a large message with both a message ID and a packet ID.  The first
  * ID is filled in if returning 1, both are filled in when returning 2.
- * Each of the IDs must have room for MESSAGE_ID_SIZE bytes. */
+ * Each of the IDs must have room for ALLNET_MESSAGE_ID_SIZE bytes. */
 int pcache_message_ids (const char * message, int msize,
                         char * result_id1, char * result_id2)
 {
@@ -680,8 +680,8 @@ int pcache_message_ids (const char * message, int msize,
  * else add to the mid_table and return 1 */
 static int check_cache_packet_id (const char * message, int msize)
 {
-  char id1 [MESSAGE_ID_SIZE];
-  char id2 [MESSAGE_ID_SIZE];   /* never used */
+  char id1 [ALLNET_MESSAGE_ID_SIZE];
+  char id2 [ALLNET_MESSAGE_ID_SIZE];   /* never used */
   int num_ids = internal_message_ids (message, msize, id1, id2);
   if (num_ids <= 0) {  /* cannot save */
     print_buffer (message, msize, "no message ID for packet: ", msize, 1);
@@ -689,7 +689,7 @@ static int check_cache_packet_id (const char * message, int msize)
   }
   char * packet_id = ((num_ids == 1) ? id1 : id2);
   int index = id_index (packet_id, num_mid, mid_secret);
-  if (memcmp (mid_table [index].ida, packet_id, MESSAGE_ID_SIZE) == 0)
+  if (memcmp (mid_table [index].ida, packet_id, ALLNET_MESSAGE_ID_SIZE) == 0)
     return 0;    /* we have it already */
   record_mid (packet_id, 0);
   return 1;
@@ -734,12 +734,12 @@ void pcache_record_packet (const char * message, int msize)
 }
 
 /* return 1 if the ID is in the cache, 0 otherwise
- * ID is MESSAGE_ID_SIZE bytes. */
+ * ID is ALLNET_MESSAGE_ID_SIZE bytes. */
 int pcache_id_found (const char * id)
 {
   pcache_init_maint ();
   int index = id_index (id, num_mid, mid_secret);
-  return (memcmp (mid_table [index].ida, id, MESSAGE_ID_SIZE) == 0);
+  return (memcmp (mid_table [index].ida, id, ALLNET_MESSAGE_ID_SIZE) == 0);
 }
 
 /* return whether this packet is to be returned given this bitmap.
@@ -805,19 +805,19 @@ static int message_matches (const struct allnet_data_request * req, int rlen,
   bitmap = check_bitmap (req->src_bits_power_two, bitmap,
                          hp->src_nbits, hp->source);
   if (bitmap == NULL) return 0;  /* source address does not match */
-  char id1 [MESSAGE_ID_SIZE];
-  char id2 [MESSAGE_ID_SIZE];
+  char id1 [ALLNET_MESSAGE_ID_SIZE];
+  char id2 [ALLNET_MESSAGE_ID_SIZE];
   int num_ids = stored_message_ids (mhp, id1, id2);
   if (num_ids >= 1) {
     const unsigned char * result = 
       check_bitmap (req->mid_bits_power_two, bitmap,
-                    MESSAGE_ID_BITS, (unsigned char *) id1);
+                    ALLNET_MESSAGE_ID_BITS, (unsigned char *) id1);
     if (result != NULL) return 1;  /* message ID matches */
   }
   if (num_ids >= 2) {
     const unsigned char * result = 
       check_bitmap (req->mid_bits_power_two, bitmap,
-                    MESSAGE_ID_BITS, (unsigned char *) id2);
+                    ALLNET_MESSAGE_ID_BITS, (unsigned char *) id2);
     if (result != NULL) return 1;  /* packet ID matches */
   }
   return 0;
@@ -904,22 +904,22 @@ struct pcache_result
 static void save_one_ack (const char * ack, int max_hops)
 {
   int aindex = ack_index (ack);
-  if (memcmp (ack_table [aindex].ida, ack, MESSAGE_ID_SIZE) != 0) {
-    memcpy (ack_table [aindex].ida, ack, MESSAGE_ID_SIZE);
+  if (memcmp (ack_table [aindex].ida, ack, ALLNET_MESSAGE_ID_SIZE) != 0) {
+    memcpy (ack_table [aindex].ida, ack, ALLNET_MESSAGE_ID_SIZE);
     ack_table [aindex].max_hops = max_hops;
     ack_table [aindex].used = 1;
     ack_table [aindex].sent_to_tokens = 0;
   }
 }
 
-/* each ack has size MESSAGE_ID_SIZE */
+/* each ack has size ALLNET_MESSAGE_ID_SIZE */
 /* record all these acks and delete (stop caching) corresponding messages */
 void pcache_save_acks (const char * acks, int num_acks, int max_hops)
 {
   pcache_init_maint ();
   int i;
   for (i = 0; i < num_acks; i++)
-    save_one_ack (acks + i * MESSAGE_ID_SIZE, max_hops);
+    save_one_ack (acks + i * ALLNET_MESSAGE_ID_SIZE, max_hops);
   save_ack_hashes = 1;
 }
 
@@ -928,7 +928,7 @@ int pcache_ack_found (const char * ack)
 {
   pcache_init_maint ();
   int aindex = ack_index (ack);
-  if (memcmp (ack_table [aindex].ida, ack, MESSAGE_ID_SIZE) == 0)
+  if (memcmp (ack_table [aindex].ida, ack, ALLNET_MESSAGE_ID_SIZE) == 0)
     return 1;
   return 0;
 }
@@ -940,7 +940,7 @@ int pcache_id_acked (const char * id, char * ack)
   pcache_init_maint ();
   const char * local_ack = id_is_acked (id);
   if (local_ack != NULL) {
-    memcpy (ack, local_ack, MESSAGE_ID_SIZE);
+    memcpy (ack, local_ack, ALLNET_MESSAGE_ID_SIZE);
     return 1;
   }
   return 0;
@@ -953,7 +953,7 @@ int pcache_ack_for_token (const unsigned char * token, const char * ack)
 {
   pcache_init_maint ();
   int aindex = ack_index (ack);
-  if (memcmp (ack_table [aindex].ida, ack, MESSAGE_ID_SIZE) != 0)
+  if (memcmp (ack_table [aindex].ida, ack, ALLNET_MESSAGE_ID_SIZE) != 0)
     return 1; /* this ack is not in the table, go ahead and forward it */
   int itoken = token_find_index (token);
   if (itoken < 0) { /* no such token */
@@ -984,25 +984,25 @@ int pcache_acks_for_token (const unsigned char * token,
   for (i = 0; i < num_acks; i++) {
     if (pcache_ack_for_token (token, ack)) {  /* good one, keep it */
       if (offset != ack)
-        memcpy (offset, ack, MESSAGE_ID_SIZE);
-      offset += MESSAGE_ID_SIZE; /* increment offset only for new acks */
+        memcpy (offset, ack, ALLNET_MESSAGE_ID_SIZE);
+      offset += ALLNET_MESSAGE_ID_SIZE; /* increment offset only for new acks */
       result++;
     }
-    ack += MESSAGE_ID_SIZE;      /* increment ack each time around the loop */
+    ack += ALLNET_MESSAGE_ID_SIZE; /* increment ack each time around the loop */
   }
   return result;
 }
 
 /* return 1 if the trace request/reply has been seen before, or otherwise
- * return 0 and save the ID.  Trace ID should be MESSAGE_ID_SIZE bytes */
+ * return 0 and save the ID.  Trace ID should be ALLNET_MESSAGE_ID_SIZE bytes */
 int pcache_trace_request (const char * id)
 {
   pcache_init_maint ();
   int index = id_index (id, num_trc, trc_secret);
-  if (memcmp (trc_table [index].ida, id, MESSAGE_ID_SIZE) == 0)
+  if (memcmp (trc_table [index].ida, id, ALLNET_MESSAGE_ID_SIZE) == 0)
     return 1;  /* already there */
   save_trc_hashes = 1;
-  memcpy (trc_table [index].ida, id, MESSAGE_ID_SIZE);
+  memcpy (trc_table [index].ida, id, ALLNET_MESSAGE_ID_SIZE);
   trc_table [index].sent_to_tokens = 0;
   trc_table [index].used = 1;
   trc_table [index].max_hops = 0;   /* not used for traces */
@@ -1014,7 +1014,7 @@ int pcache_trace_request (const char * id)
 int pcache_trace_reply (const char * msg, int msize)
 {
   pcache_init_maint ();
-  char id [MESSAGE_ID_SIZE];
+  char id [ALLNET_MESSAGE_ID_SIZE];
   sha512_bytes (msg, msize, id, sizeof (id));
   return pcache_trace_request (id);
 }
@@ -1088,13 +1088,13 @@ static void print_hash_entry (const char * name, int index, int verbose,
 {
   struct hash_entry * current = table + index;
   if ((verbose || current->used) &&    /* print this ack unless it's all 0s */
-      (! memget (table [index].ida, 0, MESSAGE_ID_SIZE))) {
+      (! memget (table [index].ida, 0, ALLNET_MESSAGE_ID_SIZE))) {
     char desc [1000];
     snprintf (desc, sizeof (desc), "%s %d/%d: max %d, u %d, token %" PRIx64,
               name, index, num_entries, current->max_hops,
               current->used, current->sent_to_tokens);
-    print_buffer (table [index].ida, MESSAGE_ID_SIZE, desc,
-                  MESSAGE_ID_SIZE, 1);
+    print_buffer (table [index].ida, ALLNET_MESSAGE_ID_SIZE, desc,
+                  ALLNET_MESSAGE_ID_SIZE, 1);
   }
 }
 
@@ -1291,8 +1291,8 @@ static void print_message_ack (int index, int verbose,
     }
     if (((index == count) || (index < 0)) &&
         (verbose || (current->priority != 0))) {  /* print this message */
-      char id1 [MESSAGE_ID_SIZE];
-      char id2 [MESSAGE_ID_SIZE];
+      char id1 [ALLNET_MESSAGE_ID_SIZE];
+      char id2 [ALLNET_MESSAGE_ID_SIZE];
       int num_ids = stored_message_ids (current, id1, id2);
       char desc [1000];
       snprintf (desc, sizeof (desc),

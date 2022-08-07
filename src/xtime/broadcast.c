@@ -115,8 +115,8 @@ printf ("sending using key %s\n", key->identifier);
     if ((eol != NULL) && (((int) strlen (buffer)) == 1 + (eol - buffer)))
        *eol = '\0';
     broadcast (buffer, strlen (buffer), hops, key->prv_key,
-               key->address, ADDRESS_BITS, key->address, ADDRESS_BITS,
-               alog);
+               key->address, ALLNET_ADDRESS_BITS, key->address,
+               ALLNET_ADDRESS_BITS, alog);
   }
   return 0;
 }

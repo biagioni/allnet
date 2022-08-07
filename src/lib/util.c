@@ -212,8 +212,8 @@ static int trace_entry_to_string (const struct allnet_mgmt_trace_entry * e,
   return snprintf (to, tsize, "%d %lld.%lld@%d %s/%d, ", e->precision,
                    readb64 ((const char *) (e->seconds)),
                    readb64 ((const char *) (e->seconds_fraction)),
-                   e->nbits, b2s ((const char *) (e->address), ADDRESS_SIZE),
-                   e->hops_seen);
+                   e->nbits, b2s ((const char *) (e->address),
+                   ALLNET_ADDRESS_SIZE), e->hops_seen);
 }
 
 static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
@@ -345,7 +345,7 @@ static int mgmt_to_string (int mtype, const char * hp, unsigned int hsize,
               "unknown"));
           r += snprintf (to + r, minz (itsize, r),
                          "\n%d: %s/%d, dist %d, type %s, %s",
-                         i, b2su (nodes [i].destination, ADDRESS_SIZE),
+                         i, b2su (nodes [i].destination, ALLNET_ADDRESS_SIZE),
                          nodes [i].nbits, nodes [i].hops, dht_type, local);
         }
       }
@@ -536,17 +536,17 @@ void packet_to_string (const char * buffer, unsigned int bsize,
       off += snprintf (to + off, minz (itsize, off),
                        " s %s",
                        b2s (ALLNET_STREAM_ID (hp, t, (unsigned int) bsize),
-                            MESSAGE_ID_SIZE));
+                            ALLNET_MESSAGE_ID_SIZE));
     if ((t & ALLNET_TRANSPORT_ACK_REQ) != 0)
       off += snprintf (to + off, minz (itsize, off),
                        " a %s", b2s (ALLNET_MESSAGE_ID (hp, t,
                                                         (unsigned int) bsize),
-                                     MESSAGE_ID_SIZE));
+                                     ALLNET_MESSAGE_ID_SIZE));
     if ((t & ALLNET_TRANSPORT_LARGE) != 0) {
       off += snprintf (to + off, minz (itsize, off),
                           " l %s", b2s (ALLNET_PACKET_ID (hp, t,
                                                           (unsigned int) bsize),
-                                        MESSAGE_ID_SIZE));
+                                        ALLNET_MESSAGE_ID_SIZE));
       off += snprintf (to + off, minz (itsize, off),
                           "/n%lld",
                           readb64 (ALLNET_NPACKETS (hp, t,
@@ -601,21 +601,21 @@ void packet_to_string (const char * buffer, unsigned int bsize,
       }
     }
     if (hp->message_type == ALLNET_TYPE_ACK) {
-      unsigned int num_acks = dsize / MESSAGE_ID_SIZE;
-      if (num_acks * MESSAGE_ID_SIZE == dsize)
+      unsigned int num_acks = dsize / ALLNET_MESSAGE_ID_SIZE;
+      if (num_acks * ALLNET_MESSAGE_ID_SIZE == dsize)
         off += snprintf (to + off, minz (itsize, off), " = %u acks", num_acks);
       else
         off += snprintf (to + off, minz (itsize, off), " = %u acks + %u bytes",
-                         num_acks, dsize - num_acks * MESSAGE_ID_SIZE);
+                         num_acks, dsize - num_acks * ALLNET_MESSAGE_ID_SIZE);
       unsigned int i;
       for (i = 0; i < num_acks; i++) {
         const char * ackp = buffer + ALLNET_SIZE (hp->transport) +
-                            i * MESSAGE_ID_SIZE;
-        off += buffer_to_string (ackp, MESSAGE_ID_SIZE,
+                            i * ALLNET_MESSAGE_ID_SIZE;
+        off += buffer_to_string (ackp, ALLNET_MESSAGE_ID_SIZE,
                                  ", ", 5, 0, to + off, minz (itsize, off));
-        char hash [MESSAGE_ID_SIZE];
-        sha512_bytes (ackp, MESSAGE_ID_SIZE, hash, sizeof (hash));
-        off += buffer_to_string (hash, MESSAGE_ID_SIZE,
+        char hash [ALLNET_MESSAGE_ID_SIZE];
+        sha512_bytes (ackp, ALLNET_MESSAGE_ID_SIZE, hash, sizeof (hash));
+        off += buffer_to_string (hash, ALLNET_MESSAGE_ID_SIZE,
                                  " -> ", 5, 0, to + off, minz (itsize, off));
       }
     } else if (hp->message_type == ALLNET_TYPE_DATA_REQ) {
@@ -655,9 +655,9 @@ void print_packet (const char * packet, unsigned int psize, const char * desc,
  * returns a pointer to the buffer, but cast to an allnet_header
  * returns NULL if any of the parameters are invalid (e.g. message_type)
  * if sbits is zero, source may be NULL, and likewise for dbits and dest
- * if stream is not NULL it must refer to STREAM_ID_SIZE bytes, and
+ * if stream is not NULL it must refer to ALLNET_STREAM_ID_SIZE bytes, and
  * transport will include ALLNET_TRANSPORT_STREAM
- * if ack is not NULL it must refer to MESSAGE_ID_SIZE bytes, and 
+ * if ack is not NULL it must refer to ALLNET_MESSAGE_ID_SIZE bytes, and 
  * transport will include ALLNET_TRANSPORT_ACK_REQ
  * if ack and stream are both NULL, transport will be set to 0 
  *
@@ -685,7 +685,7 @@ struct allnet_header *
   if ((sig_algo < ALLNET_SIGTYPE_NONE) ||
       (sig_algo > ALLNET_SIGTYPE_HMAC_SHA512))
     return NULL;
-  if ((sbits > ADDRESS_BITS) || (dbits > ADDRESS_BITS))
+  if ((sbits > ALLNET_ADDRESS_BITS) || (dbits > ALLNET_ADDRESS_BITS))
     return NULL;
   memset (packet, 0, psize);   /* clear all unused fields */
   hp->version = ALLNET_VERSION;
@@ -695,18 +695,18 @@ struct allnet_header *
   hp->src_nbits = sbits;
   hp->dst_nbits = dbits;
   hp->sig_algo = sig_algo;
-  if ((sbits > 0) && (sbits <= MESSAGE_ID_BITS) && (source != NULL))
+  if ((sbits > 0) && (sbits <= ALLNET_MESSAGE_ID_BITS) && (source != NULL))
     memcpy (hp->source, source, (sbits + 7) / 8);
-  if ((dbits > 0) && (dbits <= MESSAGE_ID_BITS) && (dest != NULL))
+  if ((dbits > 0) && (dbits <= ALLNET_MESSAGE_ID_BITS) && (dest != NULL))
     memcpy (hp->destination, dest, (dbits + 7) / 8);
   hp->transport = transport;
   char * sid = ALLNET_STREAM_ID (hp, hp->transport, (unsigned int) psize);
   if ((stream != NULL) && (sid != NULL))
-    memcpy (sid, stream, STREAM_ID_SIZE);
+    memcpy (sid, stream, ALLNET_STREAM_ID_SIZE);
   if (ack != NULL) {
-    sha512_bytes ((const char *) ack, MESSAGE_ID_SIZE,
+    sha512_bytes ((const char *) ack, ALLNET_MESSAGE_ID_SIZE,
                   ALLNET_MESSAGE_ID (hp, hp->transport, (unsigned int) psize),
-                  MESSAGE_ID_SIZE);
+                  ALLNET_MESSAGE_ID_SIZE);
   }
   return hp;
 }
@@ -714,7 +714,7 @@ struct allnet_header *
 /* malloc's (must be free'd), initializes, and returns a packet with the
  * given data size.
  * If ack is not NULL, the data size parameter should NOT include the
- * MESSAGE_ID_SIZE bytes of the ack.
+ * ALLNET_MESSAGE_ID_SIZE bytes of the ack.
  * *size is set to the size to send */
 struct allnet_header *
   create_packet (unsigned int data_size, unsigned int message_type,
@@ -731,7 +731,7 @@ struct allnet_header *
     transport |= ALLNET_TRANSPORT_ACK_REQ;
   unsigned int alloc_size = ALLNET_SIZE (transport) + data_size;
   if (ack != NULL)
-    alloc_size += MESSAGE_ID_SIZE;
+    alloc_size += ALLNET_MESSAGE_ID_SIZE;
   char * buffer = malloc_or_fail (alloc_size, "util.c create_packet");
   *size = alloc_size;
   struct allnet_header * result =
@@ -804,7 +804,8 @@ rsize, bsize, hsize, larger);
  * *size is set to the size to send
  * if from is NULL, the source address is taken from packet->destination,
  * and then nbits is the minimum of the nbits parameter and the destination
- * bits from the packet -- use ADDRESS_BITS to use all the bits in packet */
+ * bits from the packet -- use ALLNET_ADDRESS_BITS to use all
+ * the bits in packet */
 struct allnet_header *
   create_ack (struct allnet_header * packet, const unsigned char * ack,
               const unsigned char * from, unsigned int nbits,
@@ -839,13 +840,14 @@ struct allnet_header *
                  ALLNET_SIGTYPE_NONE, from, nbits,
                  packet->source, packet->src_nbits, NULL, NULL);
   char * ackp = ALLNET_DATA_START(hp, hp->transport, ALLNET_ACK_MIN_SIZE);
-  if (ALLNET_ACK_MIN_SIZE - (ackp - buffer) != MESSAGE_ID_SIZE) {
+  if (ALLNET_ACK_MIN_SIZE - (ackp - buffer) != ALLNET_MESSAGE_ID_SIZE) {
     printf ("coding error in init_ack!!!! %d %p %p %d %d\n",
             (int) ALLNET_ACK_MIN_SIZE, ackp, buffer,
-            (int) (ALLNET_ACK_MIN_SIZE - (ackp - buffer)), MESSAGE_ID_SIZE);
+            (int) (ALLNET_ACK_MIN_SIZE - (ackp - buffer)),
+            ALLNET_MESSAGE_ID_SIZE);
     return NULL;
   }
-  memcpy (ackp, ack, MESSAGE_ID_SIZE);
+  memcpy (ackp, ack, ALLNET_MESSAGE_ID_SIZE);
   *size = ALLNET_ACK_MIN_SIZE;
   return hp;
 }
@@ -1907,11 +1909,12 @@ int is_valid_message (const char * packet, unsigned int size,
   const struct allnet_header * ah = (const struct allnet_header *) packet;
 /* make sure version, address bit counts and hops are sane */
   if ((ah->version != ALLNET_VERSION) ||
-      (ah->src_nbits > ADDRESS_BITS) || (ah->dst_nbits > ADDRESS_BITS) ||
+      (ah->src_nbits > ALLNET_ADDRESS_BITS) ||
+      (ah->dst_nbits > ALLNET_ADDRESS_BITS) ||
       (ah->hops > ah->max_hops)) {
 #if 0
     printf ("received version %d addr sizes %d %d / %d, hops %d/%d, pid %d\n",
-            ah->version, ah->src_nbits, ah->dst_nbits, ADDRESS_BITS,
+            ah->version, ah->src_nbits, ah->dst_nbits, ALLNET_ADDRESS_BITS,
             ah->hops, ah->max_hops, getpid ());
     print_buffer (packet, size, "received bytes", size, 1);
 sleep (60);
@@ -1919,8 +1922,10 @@ ah->version = 0;
 printf ("time to crash %d\n", 1000 / ah->version);
 #endif /* 0 */
     if (ah->hops > ah->max_hops) return_valid_err ("hops > max_hops");
-    if (ah->dst_nbits > ADDRESS_BITS) return_valid_err ("dst_nbits > 64");
-    if (ah->src_nbits > ADDRESS_BITS) return_valid_err ("src_nbits > 64");
+    if (ah->dst_nbits > ALLNET_ADDRESS_BITS)
+      return_valid_err ("dst_nbits > 64");
+    if (ah->src_nbits > ALLNET_ADDRESS_BITS)
+      return_valid_err ("src_nbits > 64");
     if (ah->version != ALLNET_VERSION) return_valid_err ("version number");
     return_valid_err ("unknown error");
   }
@@ -1965,17 +1970,17 @@ printf ("got data request of size %d, min %d\n", size, wanted);
   int payload_size = size -
                      ALLNET_AFTER_HEADER (ah->transport, (unsigned int) size);
   if ((ah->message_type == ALLNET_TYPE_ACK) &&
-      ((payload_size % MESSAGE_ID_SIZE) != 0)) {
+      ((payload_size % ALLNET_MESSAGE_ID_SIZE) != 0)) {
     printf ("received ack message, but size %d(%d) mod %d == %d != 0\n",
-            payload_size, size, MESSAGE_ID_SIZE,
-            payload_size % MESSAGE_ID_SIZE);
+            payload_size, size, ALLNET_MESSAGE_ID_SIZE,
+            payload_size % ALLNET_MESSAGE_ID_SIZE);
     print_buffer (packet, size, NULL, 100, 1);
     return_valid_err ("ack size not a multiple of 16");
   }
   if (((ah->transport & ALLNET_TRANSPORT_ACK_REQ) != 0) &&
-      (payload_size < MESSAGE_ID_SIZE)) {
+      (payload_size < ALLNET_MESSAGE_ID_SIZE)) {
     printf ("message has size %d (%d), min %d\n",
-            payload_size, size, MESSAGE_ID_SIZE);
+            payload_size, size, ALLNET_MESSAGE_ID_SIZE);
     return_valid_err ("insufficient room for message ID");
   }
   if (((ah->transport & ALLNET_TRANSPORT_ACK_REQ) == 0) &&

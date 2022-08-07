@@ -137,7 +137,7 @@ static void initialize_sockets (int external_port, int internal_port)
 
 static struct allnet_log * alog = NULL;
 static struct social_info * social_net = NULL;
-static unsigned char my_address [ADDRESS_SIZE];
+static unsigned char my_address [ALLNET_ADDRESS_SIZE];
 
 /* send at most 10 packets for every external data request */
 #define SEND_EXTERNAL_MAX	10
@@ -278,13 +278,13 @@ static void send_ack (const char * ack, const struct allnet_header * hp,
   if (sockfd < 0)
     is_local = 0;        /* do not add priority to the message */
 #endif /* ALLNET_USE_FORK */
-  char message [ALLNET_HEADER_SIZE + MESSAGE_ID_SIZE + 4];
+  char message [ALLNET_HEADER_SIZE + ALLNET_MESSAGE_ID_SIZE + 4];
   int msize = sizeof (message);
   int expected_allnet_size = msize - 4;  /* the size without priority */
   if (! is_local)
     msize -= 4;
   unsigned int size = 0;
-  init_ack (hp, (const unsigned char *) ack, NULL, ADDRESS_BITS,
+  init_ack (hp, (const unsigned char *) ack, NULL, ALLNET_ADDRESS_BITS,
             message, &size);
   if (size != expected_allnet_size)
     printf ("send_ack: %d != actual size %d, l %d\n",
@@ -823,7 +823,7 @@ static int process_acks (struct allnet_header * hp, int size)
   routing_local_token (local_token);
   char * acks = ALLNET_DATA_START (hp, hp->transport, size);
   char * message = (char *) hp;  /* header size computation must be in bytes */
-  int num_acks = minz (size, (int)(acks - message)) / MESSAGE_ID_SIZE;
+  int num_acks = minz (size, (int)(acks - message)) / ALLNET_MESSAGE_ID_SIZE;
   int hops_remaining = minz (hp->max_hops, hp->hops + 1);
   pcache_save_acks (acks, num_acks, hops_remaining);
   int new_acks = pcache_acks_for_token (local_token, acks, num_acks);
@@ -831,13 +831,13 @@ static int process_acks (struct allnet_header * hp, int size)
     return 0;   /* no new acks, drop the message */
   if (new_acks > num_acks) {    /* this is an error */
     printf ("error, new acks %d, original %d\n", new_acks, num_acks);
-    print_buffer (message, new_acks * MESSAGE_ID_SIZE,
+    print_buffer (message, new_acks * ALLNET_MESSAGE_ID_SIZE,
                   "message with more acks", size, 1);
     exit (1);
   }
   if (new_acks < num_acks) {
     int debug_size = size;
-    size -= ((num_acks - new_acks) * MESSAGE_ID_SIZE);
+    size -= ((num_acks - new_acks) * ALLNET_MESSAGE_ID_SIZE);
     if (size <= ALLNET_SIZE (hp->transport)) {  /* this is an error! */
       printf ("ad computed new size %d(%d), should be %d, original %d(%d)\n",
               size, new_acks, (int) (ALLNET_SIZE (hp->transport)),
@@ -981,13 +981,13 @@ static struct message_process process_message (struct socket_read_result *r)
       return drop;                   /* no new acks, drop the message */
     save_message = 0;                /* already saved the new acks */
   } else {
-    char id [MESSAGE_ID_SIZE];
-    char large_id [MESSAGE_ID_SIZE];
+    char id [ALLNET_MESSAGE_ID_SIZE];
+    char large_id [ALLNET_MESSAGE_ID_SIZE];
     int num_ids = pcache_message_ids (r->message, r->msize, id, large_id);
     drop.debug_reason = "message does not have an ID";
     if (num_ids == 0)
       return drop;          /* no message ID, drop the message */
-    char ack [MESSAGE_ID_SIZE];   /* filled in if ack_found */
+    char ack [ALLNET_MESSAGE_ID_SIZE];   /* filled in if ack_found */
     if ((pcache_id_acked (id, ack)) ||  /* forward ack to sender */
         ((num_ids >= 2) && (pcache_id_acked (large_id, ack)))) {
       send_ack (ack, hp, r->sock->sockfd, r->from, r->alen, r->sock->is_local);

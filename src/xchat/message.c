@@ -64,7 +64,7 @@ uint64_t get_last_received (const char * contact, keyset k)
 static inline int same_message_id (const char * id1, const char * id2)
 {
 #ifdef CHECK_ASSERTIONS
-  assert (sizeof (uint64_t) * 2 == MESSAGE_ID_SIZE);
+  assert (sizeof (uint64_t) * 2 == ALLNET_MESSAGE_ID_SIZE);
 #endif /* CHECK_ASSERTIONS */
   const uint64_t * i1 = (uint64_t *) id1;
   const uint64_t * i2 = (uint64_t *) id2;
@@ -87,7 +87,7 @@ static uint64_t find_ack (const char * contact, keyset k, const char * wanted,
     return 0;
   int type;
   uint64_t seq = 0;
-  char ack [MESSAGE_ID_SIZE];
+  char ack [ALLNET_MESSAGE_ID_SIZE];
   int ack_found = 0;
   while ((type = prev_message (iter, &seq, NULL, NULL, NULL, ack, NULL, NULL))
          != MSG_TYPE_DONE) {
@@ -142,7 +142,7 @@ void save_outgoing (const char * contact, keyset k, struct chat_descriptor * cp,
  * or NULL if there is no such message.
  * if there is more than one such message, returns the latest.
  * Also fills in the size, time and message_ack -- message_ack must have
- * at least MESSAGE_ID_SIZE bytes */
+ * at least ALLNET_MESSAGE_ID_SIZE bytes */
 extern int get_outgoing_show_debug;
 int get_outgoing_show_debug = 0;
 char * get_outgoing (const char * contact, keyset k, uint64_t seq,
@@ -240,8 +240,8 @@ uint64_t ack_received (const char * message_ack, char ** contact, keyset * kset,
         if (x != found_ack) {
           printf ("find_ack %d (%ld), found_ack %d for %s, %d\n",
                   x, a, found_ack, contacts [c], ksets [k]);
-          print_buffer (message_ack, MESSAGE_ID_SIZE, "ack",
-                        MESSAGE_ID_SIZE, 1);
+          print_buffer (message_ack, ALLNET_MESSAGE_ID_SIZE, "ack",
+                        ALLNET_MESSAGE_ID_SIZE, 1);
         }
 #endif /* VERIFY_20170616_ACK_FINDER */
         if (! found_ack) {
@@ -600,7 +600,7 @@ int is_acked_one (const char * contact, keyset k, uint64_t wanted,
     return 0;
   int type;
   uint64_t seq;
-  char ack [MESSAGE_ID_SIZE];
+  char ack [ALLNET_MESSAGE_ID_SIZE];
   while ((type = prev_message (iter, &seq, timep, NULL, NULL, ack, NULL, NULL))
          != MSG_TYPE_DONE) {
     if ((type == MSG_TYPE_SENT) && (seq == wanted)) {
@@ -772,14 +772,14 @@ int was_received (const char * contact, keyset k, uint64_t wanted)
 
 static char * message_id_cache = NULL;
 static char * message_ack_cache = NULL;
-static int current_cache_index = 0; /* must multiply by MESSAGE_ID_SIZE */
-static int current_cache_size = 0;  /* in multiples of MESSAGE_ID_SIZE */
+static int current_cache_index = 0; /* multiply by ALLNET_MESSAGE_ID_SIZE */
+static int current_cache_size = 0;  /* in multiples of ALLNET_MESSAGE_ID_SIZE */
 
 static void add_to_message_id_cache (char * ack)
 {
   if (current_cache_index >= current_cache_size) {
     int total = ((current_cache_size > 0) ? (current_cache_size * 2) : 500);
-    size_t size = total * MESSAGE_ID_SIZE;
+    size_t size = total * ALLNET_MESSAGE_ID_SIZE;
     char * new_ids = realloc (message_id_cache, size);
     if (new_ids == NULL) {
       printf ("allocation error in add_to_message_id: %zd %d %p/%p\n",
@@ -797,10 +797,12 @@ static void add_to_message_id_cache (char * ack)
     message_ack_cache = new_acks;
     current_cache_size = total;
   }
-  char * idp = message_id_cache + (current_cache_index * MESSAGE_ID_SIZE);
-  char * ackp = message_ack_cache + (current_cache_index * MESSAGE_ID_SIZE);
-  memcpy (ackp, ack, MESSAGE_ID_SIZE);
-  sha512_bytes (ack, MESSAGE_ID_SIZE, idp, MESSAGE_ID_SIZE);
+  char * idp = message_id_cache +
+               (current_cache_index * ALLNET_MESSAGE_ID_SIZE);
+  char * ackp = message_ack_cache +
+                (current_cache_index * ALLNET_MESSAGE_ID_SIZE);
+  memcpy (ackp, ack, ALLNET_MESSAGE_ID_SIZE);
+  sha512_bytes (ack, ALLNET_MESSAGE_ID_SIZE, idp, ALLNET_MESSAGE_ID_SIZE);
   current_cache_index++;
 }
 
@@ -824,7 +826,7 @@ static void fill_message_id_cache ()
       struct msg_iter * iter = start_iter (contacts [icontacts], keys [ikeys]);
       if (iter != NULL) {
         int type;
-        char ack [MESSAGE_ID_SIZE];
+        char ack [ALLNET_MESSAGE_ID_SIZE];
         while ((type = prev_message (iter, NULL, NULL, NULL, NULL, ack,
                                      NULL, NULL)) != MSG_TYPE_DONE) {
           if (type == MSG_TYPE_RCVD) {
@@ -854,14 +856,15 @@ static int is_in_message_id_cache (const char * message_id, char * message_ack)
 #endif /* DEBUG_PRINT */
   int i;
   for (i = 0; i < current_cache_index; i++) {
-    if (same_message_id (message_id_cache + (i * MESSAGE_ID_SIZE),
+    if (same_message_id (message_id_cache + (i * ALLNET_MESSAGE_ID_SIZE),
                          message_id)) {
       memcpy (message_ack,  /* fill in the message ack */
-              message_ack_cache + (i * MESSAGE_ID_SIZE), MESSAGE_ID_SIZE);
+              message_ack_cache + (i * ALLNET_MESSAGE_ID_SIZE),
+              ALLNET_MESSAGE_ID_SIZE);
 #ifdef DEBUG_PRINT
       printf ("is_in_message_id_cache found at %d: ", i);
-      print_buffer (message_id, MESSAGE_ID_SIZE, "id", 100, 0);
-      print_buffer (message_ack, MESSAGE_ID_SIZE, ", ack", 100, 1);
+      print_buffer (message_id, ALLNET_MESSAGE_ID_SIZE, "id", 100, 0);
+      print_buffer (message_ack, ALLNET_MESSAGE_ID_SIZE, ", ack", 100, 1);
 #endif /* DEBUG_PRINT */
 #ifdef DEBUG_PRINT
       printf ("call to is_in_message_id_cache took %lluus, result 1/%d\n",

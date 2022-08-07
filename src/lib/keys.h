@@ -10,7 +10,7 @@
 #ifndef ALLNET_KEYS_H
 #define ALLNET_KEYS_H
 
-#include "packet.h"		/* ADDRESS_SIZE */
+#include "packet.h"		/* ALLNET_ADDRESS_SIZE */
 #include "crypt_sel.h"		/* allnet_rsa_prvkey/pubkey */
 #include "stream.h"		/* struct allnet_stream_encryption_state */
 
@@ -171,7 +171,7 @@ extern unsigned int get_dh_secret (keyset k,       char * secret,
 extern void         set_dh_secret (keyset k, const char * secret, int local);
 #endif /* ALLNET_KEYTYPE_RSA/DH */
 /* returns the number of bits in the address, 0 if none */
-/* address must have length at least ADDRESS_SIZE */
+/* address must have length at least ALLNET_ADDRESS_SIZE */
 extern unsigned int get_local (keyset k, unsigned char * address);
 extern unsigned int get_remote (keyset k, unsigned char * address);
 /* returnes a malloc'd copy of the contact name, or NULL for errors */
@@ -262,8 +262,8 @@ extern int revalidate_symmetric_key (const char * contact);
    e.g.  "some phrase"@word_pair.word_pair.word_pair.en.16 or
          "some phrase"@word_pair.word_pair.24
 
-   The phrase is hashed.  The first ADDRESS_SIZE bytes of the hash are the
-   broadcast address.  The last BITSTRING_* sets of bits (or bitstrings,
+   The phrase is hashed.  The first ALLNET_ADDRESS_SIZE bytes of the hash are
+   the broadcast address.  The last BITSTRING_* sets of bits (or bitstrings,
    if specified in the address) of the hash are matched to words from
    the files pre-list.* and post-list.* to give the word_pairs ("word"
    from the pre-list, and "pair" from the post-list).
@@ -303,7 +303,7 @@ extern unsigned int verify_bc_key (const char * ahra,
 
 struct bc_key_info {
      /* the AllNet address associated with this key */
-  unsigned char address [ADDRESS_SIZE];
+  unsigned char address [ALLNET_ADDRESS_SIZE];
   char * identifier;                /* the sender associated with this key */
   allnet_rsa_pubkey pub_key;        /* in a format suitable for encrypting */
   /* the remainder of the information is only valid for my keys.

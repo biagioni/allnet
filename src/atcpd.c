@@ -587,8 +587,8 @@ static void * atcp_connect_thread (void * arg)
 #define NUM_CONNECT	(MAX_CONNECTIONS / 2)
     struct sockaddr_storage addrs [NUM_CONNECT];
     socklen_t addr_lengths [NUM_CONNECT];
-    unsigned char dest [ADDRESS_SIZE];
-    memset (dest, 0, ADDRESS_SIZE);
+    unsigned char dest [ALLNET_ADDRESS_SIZE];
+    memset (dest, 0, ALLNET_ADDRESS_SIZE);
     int n = routing_top_dht_matches (dest, 0, addrs, addr_lengths, NUM_CONNECT);
 #ifdef TEST_TCP_ONLY
     printf ("atcp_connect_thread: %d peers\n", n);

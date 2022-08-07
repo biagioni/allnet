@@ -39,7 +39,7 @@ void print_addr_info (struct allnet_addr_info * ai)
   printf ("(%d) ", ai->nbits);
   if (ai->nbits > 0)
     print_buffer ((char *) (ai->destination), (ai->nbits + 7) / 8, NULL,
-                  ADDRESS_SIZE, 0);
+                  ALLNET_ADDRESS_SIZE, 0);
   printf (", v %d, port %d, addr ", ai->ip.ip_version, ntohs (ai->ip.port));
   unsigned char * ap = (unsigned char *) &(ai->ip.ip);
   char ip6_buf [50];
@@ -56,7 +56,7 @@ int addr_info_to_string (struct allnet_addr_info * ai, char * buf, size_t bsize)
   int offset = 0;
   offset += snprintf (buf, bsize, "(%d) ", ai->nbits);
   offset += buffer_to_string ((char *) (ai->destination), (ai->nbits + 7) / 8,
-                              NULL, ADDRESS_SIZE,
+                              NULL, ALLNET_ADDRESS_SIZE,
                               0, buf + offset, bsize - offset);
   offset += snprintf (buf + offset, bsize - offset,
                       ", dist %d, v %d, port %d, addr ", ai->hops,
@@ -244,13 +244,13 @@ int init_ai (int af, const unsigned char * addr, int port, int nbits,
   if (! (init_addr (af, addr, port, &(ai->ip))))
     return 0;
 
-  memset (ai->destination, 0, ADDRESS_SIZE);
+  memset (ai->destination, 0, ALLNET_ADDRESS_SIZE);
   int nbytes = (nbits + 7) / 8;
-  if (nbytes > ADDRESS_SIZE) {
+  if (nbytes > ALLNET_ADDRESS_SIZE) {
     printf ("warning: in init_ai, nbits %d, nbytes %d, limiting to %d\n",
-            nbits, nbytes, ADDRESS_SIZE);
-    nbytes = ADDRESS_SIZE;
-    nbits = ADDRESS_SIZE * 8;
+            nbits, nbytes, ALLNET_ADDRESS_SIZE);
+    nbytes = ALLNET_ADDRESS_SIZE;
+    nbits = ALLNET_ADDRESS_BITS;
   }
   ai->nbits = nbits;
   if (nbits > 0)

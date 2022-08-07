@@ -353,7 +353,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
     for (j = 0; ((*contact == NULL) && (j < nkeys)); j++) {
       int do_decrypt = 1;  /* for now, try to decrypt unsigned messages */
       if ((dest != NULL) && (dbits > 0)) {
-        char laddr [ADDRESS_SIZE];
+        char laddr [ALLNET_ADDRESS_SIZE];
         int lbits = get_local (keys [j], (unsigned char *)laddr);
         if ((lbits > 0) &&  /* if lbits or dbits is zero, we verify */
             (matches ((unsigned char *) dest, dbits,
@@ -361,7 +361,7 @@ int decrypt_verify (int sig_algo, char * encrypted, int esize,
           do_decrypt = 0;
       }
       if ((sender != NULL) && (sbits > 0)) {
-        char raddr [ADDRESS_SIZE];
+        char raddr [ALLNET_ADDRESS_SIZE];
         int rbits = get_remote (keys [j], (unsigned char *)raddr);
         if ((rbits > 0) &&  /* if lbits or dbits is zero, we verify */
             (matches ((unsigned char *) sender, sbits,
