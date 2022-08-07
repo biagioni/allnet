@@ -112,7 +112,7 @@ int main (int argc, char ** argv)
         if (ksize > max_key)
           max_key = ksize;
       }
-      static char text [ALLNET_MTU] = "";
+      static char text [ALLNET_MTU * 30] = "";
       int size = sizeof (text) - CHAT_DESCRIPTOR_SIZE -
                  ALLNET_SIZE (ALLNET_TRANSPORT_ACK_REQ) -
                  max_key; /* the maximum size of a signature */
