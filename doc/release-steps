@@ -1,5 +1,5 @@
 update configure.ac allnet_api_version
-  create corresponding ../allnet-v.major.minor directory for release
+  create corresponding ../released/allnet-v.major.minor directory for release
 copy bin/AllNetUI.jar to src/gui/precompiled/
 make sure git is up to date (git push)
 
@@ -12,10 +12,14 @@ distribute sources to: linux-64, linux-32, windows, mac
   copy back binaries
   make binary directories 
   make source directories, in the copy remove todo and doc/ios/*.gz
+I haven't yet been able to figure out how to do static linking on macos,
+so instead use
+     ./configure CFLAGS="-Wall -g -O2" ; make clean ; make
 
 compile for iOS on xcode
   https://developer.apple.com/library/content/documentation/IDEs/Conceptual/AppDistributionGuide/SubmittingYourApp/SubmittingYourApp.html
 
+  set the version number and copyright year in the preview screen
   set the bundle ID under General/Identity/Version
   set Product/Destination to "generic ios device"
   Product/Scheme/Edit Scheme /  left-menu-Archive
@@ -39,7 +43,7 @@ compile for arm:
 
   ./autogen.sh
   ./configure --disable-shared --host=arm-linux-gnueabi --disable-gui --disable-network-manager --disable-openssl CFLAGS="-I/usr/local/include -static"
-  make
+  make LDFLAGS="-all-static"
 
 note: I included disable-openssl because I haven't been able to link
 openssl with this cross-compiler and my ARM platform (see below for
@@ -50,7 +54,7 @@ not as dramatically since version 3.3.0 switched to AES rather than RSA).
 note: if you built your openssl cross-compiled for ARM, you probably need:
 in openssl (after downloading it from openssl.org and verifying it)
   ./Configure -static linux-armv4 --prefix=/usr/local/openssl --openssldir=/usr/local/openssl
-  make CC=arm-linux-gnueabi-gcc
+  make CC=arm-linux-gnueabi-gcc LDFLAGS="-all-static"
 in allnet:
   ./configure --enable-static --disable-shared --host=arm-linux-gnueabi --disable-gui --disable-network-manager CFLAGS="-I/usr/local/include -I/usr/local/openssl/include -L/usr/local/openssl/lib -static -DHAVE_OPENSSL_ONE_ONE"
 However, I haven't been able to figure out how to really make the
