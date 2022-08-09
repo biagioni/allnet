@@ -6,14 +6,14 @@ make sure git is up to date (git push)
 distribute sources to: linux-64, linux-32, windows, mac
   for each, compile locally:
      ./autogen.sh
-     ./configure --disable-shared --enable-static CFLAGS="-Wall -g -O2 -static"
+     ./configure --disable-openssl CFLAGS="-Wall -g -O2 -static"
      make clean
      make LDFLAGS="-all-static"
   copy back binaries
   make binary directories 
   make source directories, in the copy remove todo and doc/ios/*.gz
 I haven't yet been able to figure out how to do static linking on macos,
-so instead use
+so instead use the non-static build command:
      ./configure CFLAGS="-Wall -g -O2" ; make clean ; make
 
 compile for iOS on xcode
