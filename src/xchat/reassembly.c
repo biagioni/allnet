@@ -142,8 +142,8 @@ static int save_fragment (int reassembly_index,
   if ((fsize > FRAGMENT_DATA_SIZE) ||
       ((fragment_number + 1 < reassemblies [reassembly_index].num_fragments) &&
        (fsize != FRAGMENT_DATA_SIZE))) {
-    printf ("illegal fragment has %d/%ld bytes, index %llu/%zd, %d\n",
-            fsize, FRAGMENT_DATA_SIZE, fragment_number,
+    printf ("illegal fragment has %d/%d bytes, index %llu/%zd, %d\n",
+            fsize, (int) FRAGMENT_DATA_SIZE, fragment_number,
             reassemblies [reassembly_index].num_fragments, reassembly_index);
     return 0;              
   }
