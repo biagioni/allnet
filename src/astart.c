@@ -284,6 +284,7 @@ static void stop_all_on_signal (int signal)
       waitpid (pids [i], NULL, 0);
     }
   }
+  sleep (1);     /* wait for allnetd to print its final message */
   exit (0);      /* finally, suicide */
 }
 
