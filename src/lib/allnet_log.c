@@ -290,8 +290,11 @@ void log_packet (struct allnet_log * log, const char * desc,
                  const char * packet, int plen)
 {
   static char local_buf [LOG_SIZE];
-  snprintf (local_buf, sizeof (local_buf), "%s %s",
-            desc, pck_str (packet, plen));
+  if (snprintf (local_buf, sizeof (local_buf), "%s %s",
+                desc, pck_str (packet, plen)) >= sizeof (local_buf)) {
+    printf ("allnet_log/log_packet error: string does not fit in local_buf\n"
+            "%s %s", desc, pck_str (packet, plen));
+  }
   log_print_str (log, local_buf);
 }
 

@@ -865,10 +865,13 @@ static void save_contact (struct key_info * k)
     time_t now = time (NULL);
     struct tm t;
     gmtime_r (&now, &t);
-    snprintf (fname, sizeof (fname), "%04d%02d%02d%02d%02d%02d",
+    if (snprintf (fname, sizeof (fname), "%04d%02d%02d%02d%02d%02d",
+                  t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                  t.tm_hour, t.tm_min, t.tm_sec) >= sizeof (fname))
+      printf ("allnet keys.c save_contact date error: "
+              "%04d%02d%02d%02d%02d%02d >= %zd\n",
               t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-              t.tm_hour, t.tm_min, t.tm_sec);
- 
+              t.tm_hour, t.tm_min, t.tm_sec, sizeof (fname));
     int dirnamesize = config_file_name ("contacts", fname, &dirname, 1);
     if (dirnamesize < 0) {
       printf ("unable to get config file name");
@@ -966,10 +969,13 @@ static int save_spare_key (allnet_rsa_prvkey key)
   time_t now = time (NULL);
   struct tm t;
   gmtime_r (&now, &t);
-  snprintf (now_printed, sizeof (now_printed), "%04d%02d%02d%02d%02d%02d",
-            t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
-            t.tm_hour, t.tm_min, t.tm_sec);
-
+  if (snprintf (now_printed, sizeof (now_printed), "%04d%02d%02d%02d%02d%02d",
+                t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                t.tm_hour, t.tm_min, t.tm_sec) >= sizeof (now_printed))
+      printf ("allnet keys.c save_contact date error: "
+              "%04d%02d%02d%02d%02d%02d >= %zd\n",
+              t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+              t.tm_hour, t.tm_min, t.tm_sec, sizeof (now_printed));
   char * fname;
   int fnamesize = config_file_name ("own_spare_keys", now_printed, &fname, 1);
   if (fnamesize < 0) {

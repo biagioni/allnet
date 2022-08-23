@@ -1256,8 +1256,12 @@ void save_record (const char * contact, keyset k, int type, uint64_t seq,
 #define EXTENSION		".txt"
 #define EXTENSION_LENGTH	4  /* number of characters in ".txt" */
   char fname [DATE_LEN + EXTENSION_LENGTH + 1];
-  snprintf (fname, sizeof (fname), "%04d%02d%02d%s", tm->tm_year + 1900,
-            tm->tm_mon + 1, tm->tm_mday, EXTENSION);
+  if (snprintf (fname, sizeof (fname), "%04d%02d%02d%s",
+                tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, EXTENSION) >=
+      sizeof (fname))
+    printf ("xchat store.c save_record date error: %04d%02d%02d%s >= %zd\n",
+            tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday, EXTENSION,
+            sizeof (fname));
   char * path = strcat3_malloc (iter.dirname, "/", fname, "save_record");
   free_unallocated_iter (&iter);
   int fd = open (path, O_WRONLY | O_APPEND | O_CREAT, 0600);
