@@ -336,8 +336,10 @@ static int make_trace_reply (struct allnet_header * inhp, int insize,
   /* if num_entries is 1, this loop never executes */
   /* if num_entries is 2, this loop executes once to copy
    * intrp->trace [intrp->num_entries - 1] to trp->trace [0] */
+  struct allnet_mgmt_trace_entry * inp = intrp->trace;
+  struct allnet_mgmt_trace_entry * outp = trp->trace;
   for (i = 0; i + 1 < num_entries; i++)
-    trp->trace [i] = intrp->trace [i + intrp->num_entries - (num_entries - 1)];
+    outp [i] = inp [i + intrp->num_entries - (num_entries - 1)]; 
   struct allnet_mgmt_trace_entry * new_entry = trp->trace + (num_entries - 1);
   init_trace_entry (new_entry, inhp->hops, my_address, abits, 0);
 
