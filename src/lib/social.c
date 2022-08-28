@@ -171,8 +171,8 @@ static int is_my_contact (char * message, int msize,
       int ksize = get_contact_pubkey (keysets [ink], &key);
       if ((ksize > 0) && (matches (sender, bits, address, na_bits) > 0) &&
           (allnet_verify (message, msize, sig, ssize, key))) {
-        snprintf (log->b, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
-        log_print (log);
+       /* snprintf (log->b, LOG_SIZE, "verified from contact %d %d\n", ic, ink);
+          log_print (log); */
         free (keysets);
         free (contacts);
         return 1;
