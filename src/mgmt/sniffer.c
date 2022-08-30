@@ -17,6 +17,7 @@
 #include "lib/priority.h"
 #include "lib/cipher.h"
 #include "lib/keys.h"
+#include "xchat/chat.h"
 
 /* whenever we set the types variable, the low bit will be 0 because 0 is
  * not a valid packet type.  So we can distinguish ALL_PACKET_TYPES from
@@ -113,15 +114,67 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
       int tsize = decrypt_verify (hp->sig_algo, data, dsize, &contact, &k,
                                   &text, NULL, 0, NULL, 0, 0);
       if (tsize > 0) {
-        printf ("from contact %s, key %d", contact, k);
+        unsigned char local_addr [ALLNET_ADDRESS_SIZE];
+        unsigned int local_bits  = get_local  (k, local_addr );
+        unsigned char remote_addr [ALLNET_ADDRESS_SIZE];
+        unsigned int remote_bits = get_remote (k, remote_addr);
+        int to_local_bits  = matching_bits (local_addr,  local_bits,
+                                            hp->destination, hp->dst_nbits);
+        int to_remote_bits = matching_bits (remote_addr, remote_bits,
+                                            hp->destination, hp->dst_nbits);
+        const char * direction = "(no destination match)";
+        if ((to_local_bits >= local_bits) && (to_remote_bits >= remote_bits))
+          direction = "to/from";
+        else if (to_remote_bits >= remote_bits)
+          direction = "to";
+        else if (to_local_bits >= local_bits)
+          direction = "from";
+        printf ("%s contact %s, key %d", direction, contact, k);
         print_buffer (text, tsize, " decrypted:", 100, 0);
-        if (tsize > 40) {
-          int len = tsize - 40;
-          char * copy = malloc_or_fail (len + 1, "sniffer/handle_packet");
-          memcpy (copy, text + 40, len);
-          copy [len] = '\0';
-          printf (" (%s)", copy);
-          free (copy);
+        if (tsize >= sizeof (struct chat_descriptor)) {
+          int print_body = 1;
+          struct chat_descriptor * cdp = (struct chat_descriptor *) text;
+          if (readb32u (cdp->app_media.app) == XCHAT_ALLNET_APP_ID) {
+            unsigned long long int counter = readb64u (cdp->counter);
+            printf (", app XCHT, media %lx, counter %lld",
+                    readb32u (cdp->app_media.media), counter);
+            if (counter == COUNTER_FLAG) {
+              struct chat_control * ccp = (struct chat_control *) cdp;
+              struct chat_control_request * ccreqp =
+                (struct chat_control_request *) cdp;
+              /* unused for now:  struct chat_control_key_ack * cckeyackp =
+                (struct chat_control_key_ack *) cdp;
+              struct chat_control_rekey * ccrekeyp =
+                (struct chat_control_rekey *) cdp; */
+              switch (ccp->type) {
+                case CHAT_CONTROL_TYPE_REQUEST:
+                  printf (", request for %d singles, %d ranges",
+                          ccreqp->num_singles, ccreqp->num_ranges);
+                  printf (", last rcvd %lld", readb64u (ccreqp->last_received));
+                  break;
+                case CHAT_CONTROL_TYPE_KEY_ACK:
+                  printf (", key ack");
+                  break;
+                case CHAT_CONTROL_TYPE_REKEY:
+                  printf (", rekey");
+                  break;
+                default:
+                  printf (", unknown type %d", ccp->type);
+                  break;
+              }
+              print_body = 0;  /* no strings here */
+            } else {
+              printf (", timestamp %lld", readb64u (cdp->timestamp));
+            }
+          }
+          if (print_body) {
+            int len = tsize - sizeof (struct chat_descriptor);
+            char * copy = malloc_or_fail (len + 1, "sniffer/handle_packet");
+            memcpy (copy, text + 40, len);
+            copy [len] = '\0';
+            printf (" (%s)", copy);
+            free (copy);
+          }
         }
         printf ("\n");
         free (text);
@@ -181,14 +234,16 @@ printf (" %d: attempting to verify with own key %s\n", i, keys [i].identifier);
 
 static int received_before (char * message, unsigned int mlen)
 {
+  if (mlen > ALLNET_MTU)
+    return 0;
 #define MAX_MESSAGES	1000
 #define MESSAGE_STORAGE	(ALLNET_MTU + 2)
+#define TOTAL_STORAGE	(MESSAGE_STORAGE * MAX_MESSAGES)
   static char * received_before = NULL;
   static int latest_received = 0;
   if (received_before == NULL) {  /* only true on the first call */
-    received_before = malloc_or_fail (MESSAGE_STORAGE * MAX_MESSAGES,
-                                      "storage of unique packets");
-    memset (received_before, 0, MESSAGE_STORAGE * MAX_MESSAGES);
+    received_before = malloc_or_fail (TOTAL_STORAGE, "unique packets");
+    memset (received_before, 0, TOTAL_STORAGE);
   }
   char * ptr;
   int i;
@@ -199,7 +254,7 @@ static int received_before (char * message, unsigned int mlen)
     if ((len > ALLNET_HEADER_SIZE) && (len == mlen) &&
         /* separately compare all but the byte at position 2 (hop count) */
         (memcmp (ptr, message, 2) == 0) &&
-        (memcmp (ptr + 3, message, mlen - 3) == 0))
+        (memcmp (ptr + 3, message + 3, mlen - 3) == 0))
       return 1;
   }
   latest_received = (latest_received + 1) % MAX_MESSAGES;
