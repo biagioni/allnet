@@ -147,8 +147,8 @@ static int save_fragment (int reassembly_index,
             reassemblies [reassembly_index].num_fragments, reassembly_index);
     return 0;              
   }
-  int bitmap_index = fragment_number / 8;
-  int bit_index = fragment_number % 8;
+  int bitmap_index = (int) (fragment_number / 8);
+  int bit_index = (int) (fragment_number % 8);
 /* printf ("fragment number %llu, bitmap index %d, bit index %d, byte %02x, len %zd\n",
 fragment_number, bitmap_index, bit_index, 
 reassemblies [reassembly_index].bitmap [bitmap_index] & 0xff,
@@ -212,7 +212,7 @@ char * record_message_packet (const struct allnet_header * hp, int psize,
       }
       if (reassembly_is_complete (i)) {
         char * result = reassemblies [i].buffer;
-        *tsize = CD_SIZE + reassemblies [i].actual_size;
+        *tsize = (int) (CD_SIZE + reassemblies [i].actual_size);
         reassemblies [i].num_fragments = 0;   /* clear the entry */
         return result;
       }
@@ -226,7 +226,7 @@ char * record_message_packet (const struct allnet_header * hp, int psize,
       reassemblies [i] = reassemblies [i + 1];
     reassemblies [free_index].num_fragments = 0;   /* clear the entry */
   }
-  if (! allocate_reassembly (free_index, n, text)) {
+  if (! allocate_reassembly (free_index, (int) n, text)) {
     printf ("unable to allocate reassembly of size %llu\n", n);
     return NULL;
   }
