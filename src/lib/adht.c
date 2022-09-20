@@ -234,7 +234,7 @@ void dht_process (char * dht_bytes, unsigned int dsize,
         if (is_valid_address (&sender_ai.ip) == 1) {
           routing_add_dht (sender_ai);
         } else {
-          printf ("adht.h dht_process, bad sender IP address: ");
+          printf ("adht.c dht_process, bad sender IP address: ");
           print_sockaddr (sap, alen);
           printf ("\n");
           printf ("while processing address: ");
