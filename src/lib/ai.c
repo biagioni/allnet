@@ -7,6 +7,7 @@
 #include <inttypes.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <ctype.h>
 #include <sys/types.h>
 #ifndef ANDROID
 #include <ifaddrs.h>
@@ -927,7 +928,9 @@ int is_valid_address (const struct allnet_internet_addr * ip)
         ((ip->ip.s6_addr [12] == 172) &&
          ((ip->ip.s6_addr [13] & 0xf0) == 16)) || /* 172.16/12 */
         ((ip->ip.s6_addr [12] == 192) &&
-         (ip->ip.s6_addr [13] == 168))) /* 192.168/16 */
+         (ip->ip.s6_addr [13] == 168)) ||  /* 192.168/16 */
+        ((ip->ip.s6_addr [12] == 169) &&
+         (ip->ip.s6_addr [13] == 254)))    /* link local 169.254/16 */
       return 0;
     return 1;
   } else if (ip->ip_version == 6) {
@@ -936,6 +939,7 @@ int is_valid_address (const struct allnet_internet_addr * ip)
       return 0;
     int first_byte = (*((char *) ip->ip.s6_addr)) & 0xff;
     if ((first_byte == 0xff) ||           /* multicast */
+        (first_byte == 0xfe) ||           /* link local */
         (first_byte == 0xfc) || (first_byte == 0xfd))  /* unique local addr */
       return 0;
     if ((readb64 ((char *) (ip->ip.s6_addr    )) == 0) &&
@@ -1120,6 +1124,43 @@ static int get_dns_servers (struct sockaddr_storage * servers, int nservers)
 
 #define DNS_HEADER_SIZE		12
 
+static void print_dns_name_diff (const char * response, const char * orig,
+                                 size_t max, size_t index, const char * desc)
+{
+  printf ("same_dns_name %s: difference at index %zd of ", desc, index);
+  print_buffer (response, max, "response", max, 0);
+  print_buffer (orig, max, ", original", max, 1);
+}
+
+static int same_dns_name (const char * response, const char * orig, size_t max)
+{
+  int label_length = response [0];
+  if (orig [0] != label_length) {
+    print_dns_name_diff (response, orig, max, 0, "first label length");
+    return 0;
+  }
+  size_t ic = 1;    /* index of current character */
+  while ((ic < max) && (label_length != 0)) {
+    int cr = response [ic] & 0xff;
+    int co = orig [ic] & 0xff;
+    if (tolower (cr) != tolower (co)) {
+      print_dns_name_diff (response, orig, max, 0, "label");
+      return 0;
+    }
+    ic++;
+    label_length--;
+    if (label_length == 0) {   /* look for the next label, which may be 0 */
+      label_length = response [ic];
+      if (orig [ic] != label_length) {
+        print_dns_name_diff (response, orig, max, 0, "label length");
+        return 0;
+      }
+      ic++;
+    }
+  }
+  return 1;
+}
+
 static int
   dns_callback (const char * response, ssize_t received,
                 const struct sockaddr_storage * from, socklen_t flen,
@@ -1256,19 +1297,23 @@ static int
   while ((answer_start + 10 <= received) && (num_found < num_answers)) {
     if (readb16 (response + answer_start) != 0xc00c) {  /* unusual */
       int query_size = end_of_name - DNS_HEADER_SIZE;
-      if (memcmp (response + answer_start, response + DNS_HEADER_SIZE,
-                  query_size + 4) == 0) {
+      if (same_dns_name (response + answer_start, response + DNS_HEADER_SIZE,
+                         query_size)) {
         /* server repeated query in answer */
         answer_fixed = answer_start + query_size;
       } else {
+        printf ("dns answer at offset %zd is %04x not 0xc00c\n", answer_start,
+                readb16 (response + answer_start));
         printf ("memcmp (%p, %p, %d) == %d\n",
                 response + answer_start, response + DNS_HEADER_SIZE,
                 query_size,
                 memcmp (response + answer_start, response + DNS_HEADER_SIZE,
                         query_size));
-        printf ("dns answer at offset %zd is %04x not 0xc00c\n", answer_start,
-                readb16 (response + answer_start));
-        print_buffer (response, (int)received, "received response",
+        print_buffer (response + answer_start, query_size + 4,
+                      "comparing", 100, 0);
+        print_buffer (response + DNS_HEADER_SIZE, query_size + 4,
+                      " to", 100, 1);
+        print_buffer (response, (int)received, "complete response",
                       (int)received, 1);
         printf ("from: ");
         print_sockaddr ((struct sockaddr *)debug_sender, debug_alen);
