@@ -1303,22 +1303,37 @@ void routing_expire_dht (struct socket_set * s)
     /* mark all pings as not refreshed */
     pings [i].refreshed = 0;
   }
-  /* delete peers that haven't been refreshed (put them into the ping list) */
+  /* even when disconnected, keep at least 5 of the original peers */
+  int peers_that_wont_be_deleted = 0;
+  for (i = 0; i < MAX_PEERS; i++) {
+    if ((peers [i].ai.nbits > 0) && (peers [i].refreshed))
+      peers_that_wont_be_deleted++;
+  }
+  int skip_unrefreshed = 0;
+  if (peers_that_wont_be_deleted < 5) {
+    /* keep this many unrefreshed peers: */
+    skip_unrefreshed = 5 - peers_that_wont_be_deleted;
+  }
+  /* delete peers that haven't been refreshed */
   for (i = 0; i < MAX_PEERS; i++) {
     if ((peers [i].ai.nbits > 0) && (! peers [i].refreshed)) {
-      struct allnet_addr_info copy = peers [i].ai;
-      socket_addr_loop (s, delete_matching_address, &copy);
-      peers [i].ai.nbits = 0;
-      changed = 1;
-      int rapl = routing_add_ping_locked (&copy);
-      if (rapl < 0)
-        printf ("routing_add_ping_locked result is %d\n", rapl);
+      if (skip_unrefreshed > 0) { /* do not delete this peer */
+        skip_unrefreshed--;
+      } else {                    /* copy to ping list */
+        struct allnet_addr_info copy = peers [i].ai;
+        socket_addr_loop (s, delete_matching_address, &copy);
+        peers [i].ai.nbits = 0;   /* delete from the peers list */
+        changed = 1;
+        int rapl = routing_add_ping_locked (&copy);
+        if (rapl < 0)
+          printf ("routing_add_ping_locked result is %d\n", rapl);
 #ifdef DEBUG_PRINT
-      else
-        printf ("routing_add_ping_locked result is %d for ", rapl);
-      print_addr_info (&copy);
-      debug_peer_count++;
+        else
+          printf ("routing_add_ping_locked result is %d for ", rapl);
+        print_addr_info (&copy);
+        debug_peer_count++;
 #endif /* DEBUG_PRINT */
+      }
     } else {  /* increment the peer's distance */
       peers [i].ai.hops++;
     }
