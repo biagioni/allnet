@@ -1130,8 +1130,8 @@ static void print_dns_name_diff (const char * response, const char * orig,
                                  size_t max, size_t index, const char * desc)
 {
   printf ("same_dns_name %s: difference at index %zd of ", desc, index);
-  print_buffer (response, max, "response", max, 0);
-  print_buffer (orig, max, ", original", max, 1);
+  print_buffer (response, (int)max, "response", (int)max, 0);
+  print_buffer (orig, (int)max, ", original", (int)max, 1);
 }
 
 static int same_dns_name (const char * response, const char * orig, size_t max)
