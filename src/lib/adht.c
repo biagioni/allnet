@@ -346,8 +346,8 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
   int self = init_own_routing_entries (entries, 2, my_address,
                                        ALLNET_ADDRESS_BITS);
   if (self <= 0) { /* only send if we have one or more public IP addresses */
-    printf ("no publically routable IP address, not sending\n");
 #ifdef DEBUG_PRINT
+    printf ("no publically routable IP address, not sending\n");
     print_dht (-1);
     print_ping_list (-1);
 #endif /* DEBUG_PRINT */
