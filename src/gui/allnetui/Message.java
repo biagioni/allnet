@@ -121,7 +121,7 @@ public class Message implements java.lang.Comparable<Message> {
       // a message with an earlier sequence number, it sorts to be
       // earlier than sent messages with later sequence numbers,
       // but later than messages received earlier.  This causes an
-      // inconsistent sort, with Java gets unhappy about
+      // inconsistent sort, which Java gets unhappy about
       // (and throws an exception which is mighty hard to debug)
       // discovered during a bug when I was sending everything with seq 1
 //      if ((this.sentNotReceived == m.sentNotReceived) &&
@@ -135,12 +135,14 @@ public class Message implements java.lang.Comparable<Message> {
           return -1;
       if (this.sentTime > m.sentTime)
           return 1;
+      // times are the same, compare sequence numbers
       if ((this.sequence >= 0) && (m.sequence >= 0)) {
           if (this.sequence > m.sequence)
             return 1;
           if (this.sequence < m.sequence)
             return -1;
       }
+      // times and sequence numbers are the same, the messages are the same
       return 0;  // equal
     }
 

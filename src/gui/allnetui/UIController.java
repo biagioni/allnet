@@ -1038,7 +1038,7 @@ class UIController implements ControllerInterface, UIAPI {
             }
             Conversation conv = contactData.getConversation(contactName);
             boolean addedAtEnd = conv.add(msg);
-            if (isNew) {  // don't update during initialization
+            if (isNew) {  // only update conversation panel after initialization
                 // see if there is a tab open for this conversation
                 ConversationPanel cp =
                     (ConversationPanel) myTabbedPane.getTabContent(contactName);
