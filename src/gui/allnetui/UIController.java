@@ -581,7 +581,7 @@ class UIController implements ControllerInterface, UIAPI {
                         "",
                         " Shared secret:",
                         " " + addSpaces(secret),
-                        " (spaces are optional)");
+                        " (spaces and capitalization are optional)");
                 }
                 else {
                     kep.setText(1, " Resent Key", "",
@@ -589,7 +589,7 @@ class UIController implements ControllerInterface, UIAPI {
                         " " + addSpaces(secret),
                         " or:",
                         " " + addSpaces(optional),
-                        " (spaces are optional)");
+                        " (spaces and capitalization are optional)");
                 }
                 if (norm.length > 0) {
                     System.out.println("resent own key, secret1 is " + norm[0]);
@@ -792,7 +792,7 @@ class UIController implements ControllerInterface, UIAPI {
             return new String[] {
                 " Shared secret:",
                 " " + addSpaces(secret.toUpperCase()),
-                " (spaces are optional)"
+                " (spaces and capitalization are optional)"
             };
         } else {
             return new String[] {
