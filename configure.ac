@@ -1,7 +1,7 @@
 #                                               -*- Autoconf -*-
 # Process this file with autoconf to produce a configure script.
 
-m4_define([allnet_api_version], [3.3.1])
+m4_define([allnet_api_version], [3.3.2])
 
 AC_PREREQ([2.63])
 AC_INIT([allnet],[allnet_api_version],[esb@hawaii.edu])
