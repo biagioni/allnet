@@ -332,6 +332,7 @@ int dht_create (const struct sockaddr * sap, socklen_t slen,
     init_packet (buffer, sizeof (buffer),
                  ALLNET_TYPE_MGMT, 1, ALLNET_SIGTYPE_NONE,
                  my_address, ALLNET_ADDRESS_BITS, zero_address, 0, NULL, NULL);
+  hp->transport = ALLNET_TRANSPORT_DO_NOT_CACHE;
   int hsize = ALLNET_SIZE_HEADER (hp);
   struct allnet_mgmt_header * mp = 
     (struct allnet_mgmt_header *) (buffer + hsize);
