@@ -85,24 +85,6 @@ struct key_info {
 static struct key_info * kip = NULL;  /* our most important data structure */
 static int num_key_infos = 0;
 
-/* contact names is set to the same size as kip, although if a contact
- * has multiple keys, in practice the number of contacts will be less
- * than the number of keysets */
-static char * * cpx = NULL;
-static int cp_used = 0;
-
-#ifdef DEBUG_PRINT
-static void print_contacts (char * desc, int individual_only)
-{
-  int i;
-  printf ("%s: %d contacts (%p)%s\n", desc, cp_used, cpx,
-          ((individual_only) ? ", printing only individual contacts" : ""));
-  for (i = 0; i < cp_used; i++)
-    if ((! individual_only) || (! (kip [i].is_group)))
-      printf ("   [%d]: %p %s\n", i, cpx [i], cpx [i]);
-}
-#endif /* DEBUG_PRINT */
-
 /* return 0 if the contact does not exist, otherwise one more than the
  * contact's index in cp */
 static int contact_exists (const char * contact)
@@ -110,8 +92,8 @@ static int contact_exists (const char * contact)
   if (contact == NULL)
     return 0;
   int i;
-  for (i = 0; i < cp_used; i++) {
-    if (strcmp (cpx [i], contact) == 0)
+  for (i = 0; i < num_key_infos; i++) {
+    if (strcmp (kip [i].contact_name, contact) == 0)
       return i + 1;
     /* else
       printf ("%d: %s does not match %s\n", i, contact, cp [i]); */
@@ -124,33 +106,11 @@ static int valid_keyset (keyset k)
   return ((k >= 0) && (k < num_key_infos) && (! kip [k].is_deleted));
 }
 
-static void generate_contacts ()
-{
-  int ki = 0;
-  cp_used = 0;
-  for (ki = 0; ki < num_key_infos; ki++) {
-    if (kip [ki].contact_name != NULL) {
-      int index_plus_one = contact_exists (kip [ki].contact_name);
-      if (index_plus_one == 0) {  /* the normal case */
-        cpx [cp_used++] = kip [ki].contact_name;
-      } else {                    /* duplicate name */
-        printf ("duplicate name %s found at indices %d and %d\n",
-                kip [ki].contact_name, index_plus_one - 1, cp_used);
-        char * dname = strcat_malloc (kip [ki].contact_name, " (duplicate)",
-                                      "generate_contacts in keys.c");
-        cpx [cp_used++] = dname;
-      }
-    }
-  }
-}
-
 static void set_kip_size (int size)
 {
   struct key_info * new_kip = NULL;
-  char * * new_cp = NULL;
   if (size > 0) {
     new_kip = malloc_or_fail (sizeof (struct key_info) * size, "key info");
-    new_cp = malloc_or_fail (sizeof (char *) * size, "contact names");
   }
   /* if kip/cp is NULL, num_key_infos should be 0 */
   /* if new_kip/new_cp is NULL, size should be 0 */
@@ -177,19 +137,11 @@ static void set_kip_size (int size)
     allnet_rsa_null_pubkey (&(new_kip [i].contact_pubkey));
     allnet_rsa_null_prvkey (&(new_kip [i].my_key));
   }
-  /* clear the new entries in cp/cpx, generate_contacts will init them */
-  for (i = 0; i < size; i++)
-    new_cp [i] = NULL;
-  /* set kip, cp, cpx to point to the new arrays */
+  /* set kip to point to the new array */
   if (kip != NULL)
     free (kip);
-  if (cpx != NULL)
-    free (cpx);
   num_key_infos = size;
   kip = new_kip;
-  cpx = new_cp;
-  cp_used = 0;
-  generate_contacts ();
 }
 
 #define DATE_TIME_LEN           14      /* strlen("20130101120102") */
@@ -612,39 +564,31 @@ static void init_from_file (const char * debug)
     pthread_mutex_unlock (&mutex);
     return;
   }
+  set_kip_size (0);  /* get rid of anything that was previously there */
   int num_keys = 0;
   struct dirent * dep;
   while ((dep = readdir (dir)) != NULL) {
     if (is_ndigits (dep->d_name, DATE_TIME_LEN)) { /* key directory */
-      if (read_key_info (dirname, dep->d_name, NULL)) {
+      struct key_info ki;
+      ki.local.nbits = ALLNET_ADDRESS_BITS;
+      ki.remote.nbits = ALLNET_ADDRESS_BITS;
+      if (read_key_info (dirname, dep->d_name, &ki)) {
+        int index = num_keys;
         num_keys++;
+/* note: set_kip_size copies the existing kip, so this while loop takes
+ * quadratic time if there is a large number of contacts.  If that becomes
+ * an issue, change set_kip_size to over-allocate to the next power of two,
+ * and only reallocate and copy when we exceed that power of two */
+        set_kip_size (num_keys);  /* create new array and set num_key_infos */
+        kip [index] = ki;
       } else {
         printf ("error: unable to load key from .allnet/contacts/%s/\n",
                 dep->d_name);
       }
     }
   }
-
-  set_kip_size (0);  /* get rid of anything that was previously there */
-  if (num_keys > 0) {
-    set_kip_size (num_keys);  /* create new array */
-
-    /* now load the keys */
-    rewinddir (dir);
-    int i = 0;
-    while ((i < num_keys) && ((dep = readdir (dir)) != NULL)) {
-      /* this is only legal as long as i < num_keys */
-      kip [i].local.nbits = ALLNET_ADDRESS_SIZE * 8;
-      kip [i].remote.nbits = ALLNET_ADDRESS_SIZE * 8;
-      if ((is_ndigits (dep->d_name, DATE_TIME_LEN)) && /* is a key directory */
-          (read_key_info (dirname, dep->d_name, kip + i))) {
-        i++;
-      }
-    }
-  }
   closedir (dir);
   free (dirname);
-  generate_contacts ();
 #ifdef TEST_GROUP_MEMBERSHIP
   char ** contacts;   /* do not free or modify */
   int nc = all_contacts (&contacts);
@@ -680,25 +624,31 @@ printf ("querying contact %s\n", contacts [ic]);
 int num_contacts ()
 {
   init_from_file ("num_contacts");
-  return cp_used;
+  return num_key_infos;
 }
 
-static char ** malloc_copy_array_of_strings (char ** array, int count)
+static char ** malloc_copy_names ()
 {
-  if ((array == NULL) || (count <= 0))
+  if ((kip == NULL) || (num_key_infos <= 0))
     return NULL;
   int i;
-  size_t size = 0;
-  for (i = 0; i < count; i++) /* room for char * and the string including \0 */
-    size += sizeof (char *) + strlen (array [i]) + 1;
-  char * mem = malloc_or_fail (size, "malloc_copy_array_of_strings");
+  /* the allocated array must be big enough for:
+   * num_key_infos pointers to names
+   * the actual names, each with strlen+1 chars including the \0 at the end */
+  size_t size = num_key_infos * sizeof (char *);
+  for (i = 0; i < num_key_infos; i++)
+    size += strlen (kip [i].contact_name) + 1;
+  char * mem = malloc_or_fail (size, "allnet keys.c malloc_copy_names");
+  /* the pointers are in result [0 .. num_key_infos], the strings follow */
   char ** result = (char **) mem;
-  size = minzs (size, count * sizeof (char *));
-  mem += count * sizeof (char *);  /* copy the strings after the pointers */
-  for (i = 0; i < count; i++) {
+  size = minzs (size, num_key_infos * sizeof (char *));
+  /* the strings are written to mem, in the space after the pointers */
+  mem += num_key_infos * sizeof (char *);
+  for (i = 0; i < num_key_infos; i++) {
 /* printf ("size %zd, contact %s copied to %p (- %p = %zd, count %d)\n",
-size, array [i], mem, result, (mem - ((char *) result)), count); */
-    strncpy (mem, array [i], size);
+size, kip [i].contact_name,
+mem, result, (mem - ((char *) result)), num_key_infos); */
+    strncpy (mem, kip [i].contact_name, size);
     result [i] = mem;
     size = minzs (size, strlen (result [i]) + 1);
     mem += strlen (result [i]) + 1;
@@ -714,18 +664,14 @@ static int all_contacts_implementation (char *** contacts, int individual_only)
 #endif /* DEBUG_PRINT */
   int i;
   int delta = 0;
-  char ** p = NULL;
 /* allocate enough room for all the contacts, then only return the ones
  * we actually want to return: the ones that are not deleted,
  * and if individual_only, that are not groups
  * otherwise, that are visible
  * we do waste of some space, but the amount of wasted space should
  * be small, and simplifying the code is worth it */
-  if (contacts != NULL) {
-    p = malloc_copy_array_of_strings (cpx, cp_used);
-    *contacts = p;
-  }
-  for (i = 0; i < cp_used; i++) {
+  char ** p = malloc_copy_names ();
+  for (i = 0; i < num_key_infos; i++) {
     int include = (! kip [i].is_deleted);
     if (individual_only)  /* only include if it is not a group */
       include = include && (! kip [i].is_group);
@@ -741,7 +687,12 @@ static int all_contacts_implementation (char *** contacts, int individual_only)
       delta++;
     }
   }
-  return cp_used - delta;
+  if (contacts != NULL) {
+    *contacts = p;
+  } else {
+    free (p);
+  }
+  return num_key_infos - delta;
 }
 
 /* returns the number of contacts, and (if not NULL) has contacts point
@@ -1193,8 +1144,6 @@ keyset create_contact (const char * contact, int keybits,
   else
     set_kip_size (new_contact + 1);   /* make room for the new entry */
   kip [new_contact] = new;
-  if (preselected_index < 0)          /* re-initialize the list */
-    generate_contacts ();
 
 #ifdef DEBUG_PRINT
 #ifdef HAVE_OPENSSL
@@ -1223,16 +1172,17 @@ int rename_contact (const char * old, const char * new)
 {
   init_from_file ("rename_contact");
   int key;
-  for (key = 0; key < cp_used; key++) {
+  for (key = 0; key < num_key_infos; key++) {
     if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
-        (strcmp (cpx [key], new) == 0)) {
+        (strcmp (kip [key].contact_name, new) == 0)) {
       printf ("cannot rename %s to existing contact %s\n", old, new);
       return 0;
     }
   }
   int renamed = 0;
-  for (key = 0; key < cp_used; key++) {
-    if ((! kip [key].is_deleted) && (strcmp (cpx [key], old) == 0)) {
+  for (key = 0; key < num_key_infos; key++) {
+    if ((! kip [key].is_deleted) &&
+        (strcmp (kip [key].contact_name, old) == 0)) {
       char * name_file_name = strcat_malloc (kip [key].dir_name, "/name",
                                              "rename_contact");
       size_t newlen = strlen (new);
@@ -1241,7 +1191,6 @@ int rename_contact (const char * old, const char * new)
         if (p != NULL) {
           strncpy (p, new, newlen + 1);
           kip [key].contact_name = p;
-          cpx [key] = p;
           renamed = 1;
         } else {
           printf ("unable to realloc %s for %s\n", old, new);
@@ -1269,12 +1218,8 @@ int invisible_contacts (char *** contacts)
 #endif /* DEBUG_PRINT */
   int i;
   int delta = 0;
-  char ** p = NULL;
-  if (contacts != NULL) {
-    p = malloc_copy_array_of_strings (cpx, cp_used);
-    *contacts = p;
-  }
-  for (i = 0; i < cp_used; i++) {
+  char ** p = malloc_copy_names ();
+  for (i = 0; i < num_key_infos; i++) {
     if ((kip [i].is_deleted) || (kip [i].is_visible)) {  /* skip */
       delta++;
     } else {
@@ -1284,7 +1229,12 @@ int invisible_contacts (char *** contacts)
             so i >= delta >= 0 and i >= i - delta >= 0 */
     }
   }
-  return cp_used - delta;
+  if (contacts != NULL) {
+    *contacts = p;
+  } else {
+    free (p);
+  }
+  return num_key_infos - delta;
 }
 
 /* make_in/visible return 1 for success, 0 if not successful */
@@ -1293,9 +1243,9 @@ int make_invisible (const char * contact)
   init_from_file ("make_invisible");
   int key;
   int hidden = 0;
-  for (key = 0; key < cp_used; key++) {
+  for (key = 0; key < num_key_infos; key++) {
     if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
-        (strcmp (cpx [key], contact) == 0)) {
+        (strcmp (kip [key].contact_name, contact) == 0)) {
       char * file_name =
         strcat_malloc (kip [key].dir_name, "/hidden", "make_invisible");
       write_file (file_name, "", 0, 0);  /* create the file */
@@ -1313,9 +1263,9 @@ int make_visible (const char * contact)
 {
   init_from_file ("make_visible");
   int key;
-  for (key = 0; key < cp_used; key++) {
+  for (key = 0; key < num_key_infos; key++) {
     if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
-        (strcmp (cpx [key], contact) == 0)) {
+        (strcmp (kip [key].contact_name, contact) == 0)) {
 #ifdef DEBUG_PRINT
       printf ("unable to unhide contact %s, already visible\n", contact);
 #endif /* DEBUG_PRINT */
@@ -1323,9 +1273,9 @@ int make_visible (const char * contact)
     }
   }
   int success = 0;
-  for (key = 0; key < cp_used; key++) {
+  for (key = 0; key < num_key_infos; key++) {
     if ((! kip [key].is_visible) && (! kip [key].is_deleted) &&
-        (strcmp (cpx [key], contact) == 0)) {
+        (strcmp (kip [key].contact_name, contact) == 0)) {
       char * file_name =
         strcat_malloc (kip [key].dir_name, "/hidden", "make_visible");
  /* remove .allnet/contacts/x/hidden, if any */
@@ -1347,9 +1297,9 @@ int is_visible (const char * contact)
 {
   init_from_file ("is_visible");
   int key;
-  for (key = 0; key < cp_used; key++) {
+  for (key = 0; key < num_key_infos; key++) {
     if ((! kip [key].is_deleted) && (kip [key].is_visible) &&
-        (strcmp (cpx [key], contact) == 0)) {
+        (strcmp (kip [key].contact_name, contact) == 0)) {
       return 1;
     }
   }
@@ -1361,9 +1311,9 @@ int is_invisible (const char * contact)
 {
   init_from_file ("is_invisible");
   int key;
-  for (key = 0; key < cp_used; key++) {
+  for (key = 0; key < num_key_infos; key++) {
     if ((! kip [key].is_deleted) && (! kip [key].is_visible) &&
-        (strcmp (cpx [key], contact) == 0)) {
+        (strcmp (kip [key].contact_name, contact) == 0)) {
       return 1;
     }
   }
@@ -1382,8 +1332,9 @@ int delete_contact (const char * contact)
   init_from_file ("delete_contact");
   int result = 0;
   int key;
-  for (key = 0; key < cp_used; key++) {
-    if ((! kip [key].is_deleted) && (strcmp (cpx [key], contact) == 0)) {
+  for (key = 0; key < num_key_infos; key++) {
+    if ((! kip [key].is_deleted) &&
+        (strcmp (kip [key].contact_name, contact) == 0)) {
       /* for now, only actually delete contacts that are hidden */
       if (! kip [key].is_visible) {
         rmdir_and_all_files (kip [key].dir_name);
@@ -1404,8 +1355,11 @@ int contact_file_get (const char * contact, const char * fname, char ** content)
 {
   init_from_file ("contact_file_get");
   int key;
-  for (key = 0; key < cp_used; key++) {
-    if ((! kip [key].is_deleted) && (strcmp (cpx [key], contact) == 0)) {
+  for (key = 0; key < num_key_infos; key++) {
+    if ((! kip [key].is_deleted) &&
+        (strcmp (kip [key].contact_name, contact) == 0)) {
+if (kip [key].dir_name == NULL)
+printf ("for contact %s, kip [%d/%d].dir_name is NULL\n", contact, key, num_key_infos);
       char * path = strcat3_malloc (kip [key].dir_name, "/", fname,
                                     "contact_file_get");
       int result = read_file_malloc (path, content, 0);
@@ -1424,8 +1378,9 @@ int contact_file_write (const char * contact, const char * fname,
 {
   init_from_file ("contact_file_write");
   int key;
-  for (key = 0; key < cp_used; key++) {
-    if ((! kip [key].is_deleted) && (strcmp (cpx [key], contact) == 0)) {
+  for (key = 0; key < num_key_infos; key++) {
+    if ((! kip [key].is_deleted) &&
+        (strcmp (kip [key].contact_name, contact) == 0)) {
       char * path = strcat3_malloc (kip [key].dir_name, "/", fname,
                                     "contact_file_write");
       int result = write_file (path, content, clength, 0);
@@ -1441,8 +1396,9 @@ int contact_file_delete (const char * contact, const char * fname)
 {
   init_from_file ("contact_file_delete");
   int key;
-  for (key = 0; key < cp_used; key++) {
-    if ((! kip [key].is_deleted) && (strcmp (cpx [key], contact) == 0)) {
+  for (key = 0; key < num_key_infos; key++) {
+    if ((! kip [key].is_deleted) &&
+        (strcmp (kip [key].contact_name, contact) == 0)) {
       char * path = strcat3_malloc (kip [key].dir_name, "/", fname,
                                     "contact_file_delete");
       int result = unlink (path);
@@ -1517,7 +1473,6 @@ int create_group (const char * group)
   int new_contact = num_key_infos;
   set_kip_size (new_contact + 1);   /* make room for the new entry */
   kip [new_contact] = new;
-  generate_contacts ();
 
   /* now save to disk */
   save_contact (kip + new_contact);
