@@ -56,6 +56,14 @@ public class Conversation {
         return false;
     }
 
+    long getLastMessageTime() {
+        if (messages.size() > 0) {
+            Message msg = messages.get(messages.size() - 1);
+            return (msg.sentTime);
+        }
+        return 0;
+    }
+
     long getLastRxMessageTime() {
         Message msg = getLastRxMessage();
         if (msg != null) {
