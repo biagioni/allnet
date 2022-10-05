@@ -120,9 +120,8 @@ class UI extends ApplicationFrame {
                         new NewContactPanel(p, bgndColor, otherColor);
                     MorePanel morePanel =
                         new MorePanel(bgndColor, otherColor);
-                    ContactConfigPanel contactConfigPanel
-                        = new ContactConfigPanel(contactData, controller);
-                    //
+                    ContactConfigPanel contactConfigPanel =
+                        new ContactConfigPanel(contactData, controller);
                     MyTabbedPane uiTabs = new MyTabbedPane();
                     uiTabs.addTab(MORE_PANEL_ID, "More", morePanel);
                     uiTabs.addTab(CONTACT_CONFIG_PANEL_ID, "Edit Contact",
