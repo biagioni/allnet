@@ -450,13 +450,15 @@ class UIController implements ControllerInterface, UIAPI {
     // setters
     void setContactsPanel(ContactsPanel contactsPanel) {
         this.contactsPanel = contactsPanel;
-        // add all contacts to the contacts panel
-        Iterator<String> it = contactData.getContactIterator();
-        while (it.hasNext()) {
-            String contactName = it.next();
-            boolean bc = contactData.isBroadcast(contactName);
-            updateContactsPanel(contactName, bc);
-        }
+// 20221004: this code is a duplicate of the code in initializationComplete() 
+//        // add all contacts to the contacts panel
+//        Iterator<String> it = contactData.getContactIterator();
+//        while (it.hasNext()) {
+//            String contactName = it.next();
+//            boolean bc = contactData.isBroadcast(contactName);
+//            updateContactsPanel(contactName, bc);
+//        }
+// end 20221004
         contactsPanel.setActionListener(this);
     }
 
