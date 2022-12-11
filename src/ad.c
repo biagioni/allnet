@@ -84,21 +84,26 @@ static void initialize_sockets (int external_port, int internal_port)
   sin->sin_family = AF_INET;
   sin->sin_addr.s_addr = htonl (INADDR_LOOPBACK);
 #ifdef ALLNET_USE_FORK
+  int v6_error_quiet = 1;
   /* first the local port */
   sin6->sin6_port = allnet_htons (internal_port);
   sin->sin_port = allnet_htons (internal_port);
-  int local_v6 = socket_create_bind (&sockets, 1, sasv6, alen6, 0);
-  if (local_v6 < 0)
-    printf ("unable to create and bind to IPv6 local socket\n");
-  else
+  int local_v6 = socket_create_bind (&sockets, 1, sasv6, alen6, v6_error_quiet);
+  if (local_v6 < 0) {
+    if (! v6_error_quiet) {
+      printf ("unable to create and bind to IPv6 local socket\n");
+      print_sockaddr ((struct sockaddr *) &sasv6, alen6); printf ("\n");
+    }
+  } else {
     created_local = 1;
+  }
   /* now IPv4 */
   if ((socket_create_bind (&sockets, 1, sasv4, alen4, created_local) < 0) &&
       (! created_local))
     printf ("unable to create and bind to IPv4 local socket\n");
   else                     /* created ipv4 socket, record this */
     created_local = 1;
-#else /* ALLNET_USE_FORK -- called directly, not through a socket */
+#else /* ! ALLNET_USE_FORK -- called directly, not through a socket */
   created_local = 1;
 #endif /* ALLNET_USE_FORK */
   /* now the outside port */
