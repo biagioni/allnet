@@ -302,8 +302,8 @@ print_buffer (&ai, sizeof (ai), "ai", sizeof (ai), 1);
       }
     }
   }
-  print_ping_list (-1);
 #ifdef DEBUG_PRINT
+  print_ping_list (-1);
 #endif /* DEBUG_PRINT */
 }
 
