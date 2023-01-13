@@ -411,7 +411,8 @@ static void read_tokens_file ()
         return;
     } else {  /* error */
       printf ("tokens file size %zd, expected %zd, ", n, sizeof (tokens));
-      printf ("num_tokens not 0 <= %d <= %d\n", tokens.num_tokens, MAX_TOKENS);
+      printf ("num_tokens expected 0 <= %d <= %d\n",
+              tokens.num_tokens, MAX_TOKENS);
     }
   }
   /* some error, initialize from scratch */
