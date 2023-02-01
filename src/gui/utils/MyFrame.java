@@ -21,8 +21,11 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
     private static final long serialVersionUID = 1L;
     private static final String fname = "screen_location.txt";
     private static final String home = System.getProperty("user.home");
-    private static final java.nio.file.Path fpath =
+    private static final java.nio.file.Path fpath1 =
+        java.nio.file.Paths.get(home, ".config", "allnet", "xchat", fname);
+    private static final java.nio.file.Path fpath2 =
         java.nio.file.Paths.get(home, ".allnet", "xchat", fname);
+    private java.util.List<String> locationFromFile = null;
 
     /**
      * Makes a JFrame with application support methods.
@@ -120,16 +123,25 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
 
     public boolean useSavedLocation() {
         try {
-            java.util.List<String> lines =
-                java.nio.file.Files.readAllLines(fpath);
-            if (lines.size() > 0) {
+            java.util.List<String> lines = null;
+            try {
+                lines = java.nio.file.Files.readAllLines(fpath1);
+            } catch (java.nio.file.NoSuchFileException e) { // try fpath2
+            }
+	    if (lines == null) {
+                try {
+                    lines = java.nio.file.Files.readAllLines(fpath2);
+                } catch (java.nio.file.NoSuchFileException e) { // silent
+                }
+            }
+            if ((lines != null) && (lines.size() > 0)) {
                 if (lines.size() > 1) {
                     setMySize(lines.get(1));
                 }
                 setMyLocation(lines.get(0));
+		locationFromFile = lines;
                 return true;
             }
-        } catch (java.nio.file.NoSuchFileException e) {  // silent
         } catch (Exception e) {  // report
            System.out.println (e);
         }
@@ -137,13 +149,24 @@ public class MyFrame extends JFrame implements WindowListener, ActionListener {
     }
 
     public void saveLocation() {
-        String location = new String(getX() + "," + getY() + "\n" +
-                                     getSize().width + "," + getSize().height);
+        String location1 = new String(getX() + "," + getY());
+        String location2 = new String(getSize().width + "," + getSize().height);
         java.util.List<String> lines = new java.util.LinkedList<String>();
-        lines.add(location);
+        lines.add(location1);
+        lines.add(location2);
+	if ((locationFromFile != null) && (lines.equals(locationFromFile))) {
+	    return;
+	}
+	locationFromFile = lines;   // no reason to save again
         try {
-            java.nio.file.Files.write(fpath, lines);
+            java.nio.file.Files.write(fpath1, lines);
         } catch (java.nio.file.NoSuchFileException e) {  // silent
+            try {
+                java.nio.file.Files.write(fpath2, lines);
+            } catch (java.nio.file.NoSuchFileException e2) {  // silent
+            } catch (Exception e3) {
+               System.out.println (e3);
+            }
         } catch (Exception e) {
            System.out.println (e);
         }

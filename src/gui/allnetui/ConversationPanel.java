@@ -59,9 +59,12 @@ class ConversationPanel extends JPanel implements ComponentListener, KeyListener
     private JButton sendButton, switchButton, moreMsgsButton;
     ActionListener savedSendActionListener;
     final String userHome = System.getProperty("user.home");
-    final Path switchPath =
+    final Path switchPath1 =
         FileSystems.getDefault().getPath(userHome, ".allnet", "xchat",
                                          "send_not_newline");
+    final Path switchPath2 =
+        FileSystems.getDefault().getPath(userHome, ".contacts", "allnet",
+                                         "xchat", "send_not_newline");
     // morePanel holds moreMsgs button, need ref here for when we make new message panels
     private JPanel morePanel;
     // the command prefix will identify which instance of the Class is sending the event
@@ -87,7 +90,8 @@ class ConversationPanel extends JPanel implements ComponentListener, KeyListener
     // make code flexible about button meaning
     // private boolean newline = true;
     // private boolean newline = false;
-    private boolean newline = ! Files.exists(switchPath);
+    private boolean newline = ! (Files.exists(switchPath1) ||
+                                 Files.exists(switchPath2));
 
     ConversationPanel(String info, String commandPrefix, String contactName,
         boolean createDialogBox, Component resizingKey) {
@@ -518,14 +522,22 @@ class ConversationPanel extends JPanel implements ComponentListener, KeyListener
                 sendButton.addActionListener(this);
                 sendButton.setText("⏎");
 		try {
-		    Files.deleteIfExists(switchPath);
+		    Files.deleteIfExists(switchPath1);
+		} catch (Exception exn) {
+                }
+		try {
+		    Files.deleteIfExists(switchPath2);
 		} catch (Exception exn) {
                 }
             } else {
                 sendButton.addActionListener(savedSendActionListener);
                 sendButton.setText("▶");
 		try {
-		    Files.createFile(switchPath);
+		    Files.createFile(switchPath1);
+		} catch (Exception exn) {
+                }
+		try {
+		    Files.createFile(switchPath2);
 		} catch (Exception exn) {
                 }
             }
