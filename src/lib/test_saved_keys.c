@@ -11,16 +11,30 @@
 
 extern int b64_decode (const char * data, int dsize, char * result, int rsize);
 
+static DIR * open_config_dir () {
+  char * path = "/home/esb/.allnet/own_spare_keys";
+  DIR * dir = opendir (path);
+  if (dir != NULL) {
+    return dir;
+  }
+  perror ("opendir .allnet");
+  printf ("unable to open directory %s\n", path);
+  path = "/home/esb/.config/allnet/own_spare_keys";
+  dir = opendir (path);
+  if (dir == NULL) {
+    perror ("opendir .config/allnet");
+    printf ("unable to open directory %s\n", path);
+  }
+  return dir;
+}
+
 int main (int argc, char ** argv)
 {
-  char * path = "/home/esb/.allnet/own_spare_keys";
   if (argc > 1)
     path = argv [1];
   printf ("path is %s\n", path);
-  DIR * dir = opendir (path);
+  DIR * dir = open_config_dir ();
   if (dir == NULL) {
-    perror ("opendir");
-    printf ("unable to open directory %s\n", path);
     return 1;
   }
   struct dirent * dep;
