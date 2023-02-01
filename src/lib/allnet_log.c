@@ -140,8 +140,12 @@ struct allnet_log * init_log (const char * caller_name)
   if (log_dir [0] == '\0') {   /* log_dir uninitialized, initialize it */
     snprintf (log_dir, sizeof (log_dir), "/tmp/.allnet-log/");
     char * home = getenv (HOME_ENV);
-    if (home != NULL)
-      snprintf (log_dir, sizeof (log_dir), "%s/.allnet/%s", home, LOG_DIR);
+    char * name = NULL;
+    if (home != NULL) {
+      config_dir_name (LOG_DIR, &name, 1);
+      if ((name != NULL) && (dir_exists (name)))
+        snprintf (log_dir, sizeof (log_dir), name);
+    }
     else if (geteuid () == 0)  /* root user, keep log in /var/log/allnet/ */
       snprintf (log_dir, sizeof (log_dir), "/var/log/allnet");
   }
