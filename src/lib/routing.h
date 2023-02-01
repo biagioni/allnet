@@ -77,7 +77,7 @@ extern void routing_save_peers (void);
 
 /* if token is not NULL, this call fills its ALLNET_TOKEN_SIZE bytes */
 /* if it is NULL, this call generates a new token */
-/* tokens are saved in ~/.allnet/acache/local_token */
+/* tokens are saved in ~/.[config/]allnet/acache/local_token */
 extern void routing_local_token (unsigned char * token);
 
 #endif /* ROUTING_H */

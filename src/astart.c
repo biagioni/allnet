@@ -4,7 +4,8 @@
 /* with -D, runs ad in the main process rather returning immediately */
 /* with -p p1 p2, uses p1 as the external and p2 as the internal allnet port */
 /* with -t, do not start atcpd. */
-/* with -c dir, uses dir (rather than ~/.allnet) as the config directory */
+/* with -c dir, uses dir (rather than ~/.allnet or ~/.config/allnet) as
+ * the config directory */
 
 #include <stdio.h>
 #include <stdlib.h>

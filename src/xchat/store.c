@@ -1,8 +1,9 @@
-/* store.c: provide access to chat messages stored in ~/.allnet/xchat/ */
+/* store.c: provide access to chat messages stored in ~/.allnet/xchat/
+ * or ~/.config/allnet/xchat */
 /* messages are stored in a directory specific to a contact+keyset pair,
  * in a file that is updated every day.  So a typical message might be
- * stored in ~/.allnet/xchat/20140301044819/20140307.txt, where the first
- * part matches the keyset (found in ~/.allnet/contacts/20140301044819/),
+ * stored in CONFIG_DIR/xchat/20140301044819/20140307.txt, where the first
+ * part matches the keyset (found in CONFIG_DIR//contacts/20140301044819/),
  * and the second part is the date (in UTC) that the chats were stored. */
 
 #include <stdio.h>

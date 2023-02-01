@@ -22,6 +22,8 @@
 #include "allnet_log.h"
 #include "configfiles.h"
 
+/* CONFIG_DIR is either ~/.allnet or ~/.config/allnet */
+
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* up to 4 DHT neighbors per address bit */
@@ -702,17 +704,17 @@ static int read_create_my_id ()
   char line [1000];
   int fd = open_read_config ("adht", "my_id", 0);
   if (fd < 0) {
-    /* printf ("unable to open .allnet/adht/my_id\n"); */
+    /* printf ("unable to open CONFIG_DIR/adht/my_id\n"); */
     init_defaults ();
   } else {
     if ((! read_line (fd, line, sizeof (line))) ||
         (strlen (line) <= 0) ||
         ((line [0] != '-') &&
          ((strlen (line) < 30) || (strncmp (line, "8 bytes: ", 9) != 0)))) {
-      printf ("unable to read ~/.allnet/adht/my_id file\n");
+      printf ("unable to read file CONFIG_DIR/adht/my_id\n");
       init_defaults ();
     } else if (line [0] == '-') {
-      printf ("~/.allnet/adht/my_id begins with '-', not saving\n");
+      printf ("CONFIG_DIR/adht/my_id begins with '-', not saving\n");
       init_defaults ();
     } else {   /* line >= 30 bytes long, beginning with "8 bytes: " */
       read_buffer (line + 9, (int)strlen (line + 9),
@@ -1613,7 +1615,7 @@ void routing_save_peers ()
 
 /* if token is not NULL, this call fills its ALLNET_TOKEN_SIZE bytes */
 /* if it is NULL, this call generates a new token */ 
-/* tokens are saved in ~/.allnet/acache/local_token */
+/* tokens are saved in CONFIG_DIR/acache/local_token */
 void routing_local_token (unsigned char * token) {
   static int initialized = 0;
   static char local_token [ALLNET_TOKEN_SIZE];

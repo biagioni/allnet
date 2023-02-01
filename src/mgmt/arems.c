@@ -2,8 +2,8 @@
 /* invoke as "arems -s sender1 sender2 ... senderN" to invoke as a server */
 /* invoke as "arems receiver command" to invoke as a client */
 /* commands and responses are sent with a per-contact counter (persistently
- * kept in ~/.allnet/contacts/.../arems_counter).  Only new counter values
- * will be executed, older commands are ignored. */
+ * kept in ~/.[config/]allnet/contacts/.../arems_counter).  Only new
+ * counter values will be executed, older commands are ignored. */
 
 #include <stdio.h>
 #include <stdlib.h>

@@ -1,10 +1,11 @@
 /* keys.c: manage keys on disk */
 
-/* keys are stored under ~/.allnet/contacts/yyyymmddhhmmss/ */
+/* keys are stored under CONFIG_DIR/contacts/yyyymmddhhmmss/ */
 /* each such directory has a file "name", a file "my_key", and possibly
  * a file "contact_public_key".  It is an error (and the contact is not
  * usable) if either of the first two files is missing */
-/* if ~/.allnet/contacts does not exist, it is created */
+/* if CONFIG_DIR/contacts does not exist, it is created */
+/* CONFIG_DIR is either ~/.allnet or ~/.config/allnet */
 
 /* to do: should be able to have multiple public keys for the contact */
 /*        also some mechanism to get new private keys for a contact */
@@ -582,7 +583,7 @@ static void init_from_file (const char * debug)
         set_kip_size (num_keys);  /* create new array and set num_key_infos */
         kip [index] = ki;
       } else {
-        printf ("error: unable to load key from .allnet/contacts/%s/\n",
+        printf ("error: unable to load key from CONFIG_DIR/contacts/%s/\n",
                 dep->d_name);
       }
     }
@@ -1278,7 +1279,7 @@ int make_visible (const char * contact)
         (strcmp (kip [key].contact_name, contact) == 0)) {
       char * file_name =
         strcat_malloc (kip [key].dir_name, "/hidden", "make_visible");
- /* remove .allnet/contacts/x/hidden, if any */
+ /* remove CONFIG_DIR/contacts/x/hidden, if any */
       if (unlink (file_name) != 0)  /* not really an error */
         /* printf ("failed to remove '%s'\n", file_name) */
         ;
@@ -2784,7 +2785,7 @@ static void init_bc_key_set (char * dirname, struct bc_key_info ** keys,
     *num_keys = 0;    /* initialized */
     char * config_dir;
     if (config_file_name (dirname, "", &config_dir, 1) < 0) {
-      printf ("unable to open key directory ~/.allnet/%s\n", dirname);
+      printf ("unable to open key directory CONFIG_DIR/%s\n", dirname);
     } else {
       char * slash = strrchr (config_dir, '/');
       if (slash != NULL)
@@ -3020,7 +3021,7 @@ static char * generate_one_key (int key_bits, char * phrase, char * lang,
   if (aaddr != NULL) {
     char * fname;
     if (config_file_name ("own_bc_keys", aaddr, &fname, 1) < 0) {
-      printf ("unable to save key to ~/.allnet/own_bc_keys/%s\n", aaddr);
+      printf ("unable to save key to CONFIG_DIR/own_bc_keys/%s\n", aaddr);
     } else {
       if (! allnet_rsa_write_prvkey (fname, key))
         printf ("unable to write new key to file %s\n", fname);
@@ -3191,7 +3192,7 @@ unsigned int verify_bc_key (const char * ahra, const char * key, int key_bytes,
   char * fname;
   if (save_if_correct) {
     if (config_file_name ("other_bc_keys", ahra, &fname, 1) < 0) {
-      printf ("unable to save key to ~/.allnet/other_bc_keys/%s\n", ahra);
+      printf ("unable to save key to CONFIG_DIR/other_bc_keys/%s\n", ahra);
     } else {
       if (! allnet_rsa_write_pubkey (fname, rsa)) {
         printf ("unable to write broadcast key to file %s\n", fname);
@@ -3289,7 +3290,7 @@ void requesting_bc_key (const char * ahra)
 {
   char * fname = NULL;
   if (config_file_name ("requested_bc_keys", ahra, &fname, 1) < 0) {
-    printf ("unable to save key request to ~/.allnet/requested_bc_keys/%s\n",
+    printf ("unable to save key request to CONFIG_DIR/requested_bc_keys/%s\n",
             ahra);
   } else {
     char content [10];
@@ -3308,7 +3309,7 @@ int requested_bc_keys (char *** ahras)
   char * config_dir;
   if (config_file_name ("requested_bc_keys", "", &config_dir, 0) < 0) {
     /* this is OK -- no requests
-       printf ("unable to open key directory ~/.allnet/requested_bc_keys\n"); */
+       printf ("unable to open key dir CONFIG_DIR/requested_bc_keys\n"); */
     return 0;
   }
   DIR * dir = opendir (config_dir);
@@ -3364,7 +3365,7 @@ void finished_bc_key_request (const char * ahra)
 {
   char * fname = NULL;
   if (config_file_name ("requested_bc_keys", ahra, &fname, 1) < 0) {
-    printf ("unable to save key request to ~/.allnet/requested_bc_keys/%s\n",
+    printf ("unable to save key request to CONFIG_DIR/requested_bc_keys/%s\n",
             ahra);
   } else {
     unlink (fname);

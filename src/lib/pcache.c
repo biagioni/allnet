@@ -348,7 +348,7 @@ static int get_size_from_file (int line, int dflt)
 {
   int fd = open_read_config ("acache", "sizes", 1);
   char * data = NULL;
-  int size = read_fd_malloc (fd, &data, 0, 1, "~/.allnet/acache/sizes");
+  int size = read_fd_malloc (fd, &data, 0, 1, "acache/sizes");
   if (size <= 0)
     return dflt;
   /* read_fd_malloc terminates the content with a null character,
@@ -552,7 +552,7 @@ static void read_messages_file ()
     save_messages = 1;
   int fd = open_read_config ("acache", "message", 1);
   char * data = NULL;
-  ssize_t size = read_fd_malloc (fd, &data, 1, 1, "~/.allnet/acache/message");
+  ssize_t size = read_fd_malloc (fd, &data, 1, 1, "acache/message");
   close (fd);
   if ((size > 0) && (data != NULL)) {  /* check and create mid */
     ssize_t min_size = get_size_from_file (1, 8 * min_hash_file_size);

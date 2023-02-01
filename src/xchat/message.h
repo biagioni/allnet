@@ -1,13 +1,14 @@
 /* message.h: provide non-volatile storage of chat messages */
 
 /* messages are stored in each contact's directory under a day file, e.g.
- * ~/.allnet/xchat/20130101174522/20140302.txt
+ * ~/.allnet/xchat/20130101174522/20140302.txt or
+ * ~/.config/allnet/xchat/20130101174522/20140302.txt
  * group messages are stored in that group's directory (not yet implemented).
  *
  * each contact may have multiple keys, and thus multiple directories.
  * Directories are indirectly identified by keys.
- * keys.c/key_dir returns a directory x as ~/.allnet/contacts/x,
- * in which case the chat information is stored under ~/.allnet/xchat/x
+ * keys.c/key_dir returns a directory x as ~/.[config/]allnet/contacts/x,
+ * in which case the chat information is stored under ~/.[config/]allnet/xchat/x
  *
  * note that:
  * - messages we send are sent to all instances of a given contact,
