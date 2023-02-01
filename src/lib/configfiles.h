@@ -11,6 +11,14 @@
 #define HOME_ENV	"HOME"
 #endif
 
+/* returns the number of characters in the full path name of the given dir */
+/* (including the null character at the end) */
+/* if name is not NULL, also malloc's the string and copies the path into it */
+/* returns -1 if the allocation fails or there is some other problem */
+/* if it allocates the name, also checks to make sure the directory exists,
+ * and if not, creates it if possible. */
+extern int config_dir_name (const char * program, char ** name,
+                            int print_errors);
 
 /* returns the number of characters in the full path name of the given file. */
 /* (including the null character at the end) */

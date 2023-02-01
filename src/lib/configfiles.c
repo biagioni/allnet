@@ -14,8 +14,10 @@
 #include "configfiles.h"
 #include "util.h"
 
-#define ROOT		"~/.allnet"
-#define HOME_EXT	"/.allnet"
+#define HOME_CONFIG	"/.config"         /* newer style linux */
+#define HOME_EXT	"/.config/allnet"  /* newer style linux */
+#define HOME_TOP	"/.allnet"         /* older style linux */
+#define ROOT		"~/.allnet"        /* usually same as $HOME/$HOME_EXT */
 /* check to see if IOS_ROOT exists, if so, use that. */
 #define IOS_ROOT	"Library/Application Support/allnet/"
 /* and if it does, maybe save xchat files in Documents/allnet */
@@ -80,26 +82,58 @@ static void init_global_root ()
   char * allnet_config_env = getenv ("ALLNET_CONFIG");
   char * home_env = getenv (HOME_ENV);
   global_root = NULL;
-  int has_ios_home = 0;
-  DIR * d = opendir (IOS_ROOT);
-  if (d != NULL) {  /* exists */
-    closedir (d);
-    has_ios_home = 1;
-  }
   if (global_home_directory != NULL) {  /* use global_home_directory */
     global_root = strcpy_malloc (global_home_directory,
                                  "config_file_name global home directory");
   } else if (allnet_config_env != NULL) {
     global_root = allnet_config_env;
-  } else if (has_ios_home) {
+  } else if (dir_exists (IOS_ROOT)) {
     global_root = IOS_ROOT;
   } else if ((home_env != NULL) && (strcmp (home_env, "/nonexistent") != 0)) {
-    global_root = strcat_malloc (home_env, HOME_EXT,
-                                 "config_file_name home directory");
+    global_root = strcat_malloc (home_env, HOME_TOP,
+                                 "config_file_name home directory top level");
+    /* if HOME_TOP does not exist, and if $HOME/.config exists,
+     * use (and create if necessary) HOME_EXT, which is the newer standard */
+    char * top_level_config = strcat_malloc (home_env, HOME_CONFIG,
+                                   "config_file_name directory");
+    if (dir_exists (top_level_config) && (! dir_exists (global_root))) {
+      global_root = strcat_malloc (home_env, HOME_EXT,
+                                   "config_file_name home directory");
+    }
+    free (top_level_config);
   } else {  /* use ROOT -- probably equal to home_env + "/.allnet" */
     global_root = ROOT;
   }
-/* printf ("root is %s of length %d\n", global_root, (int) strlen (global_root)); */
+/* printf ("root %s has length %d\n", global_root, (int) strlen (global_root));  */
+}
+
+/* returns the number of characters in the full path name of the given dir */
+/* (including the null character at the end) */
+/* if name is not NULL, also malloc's the string and copies the path into it */
+/* returns -1 if the allocation fails or there is some other problem */
+/* if it allocates the name, also checks to make sure the directory exists,
+ * and if not, creates it if possible. */
+int config_dir_name (const char * program, char ** name, int print_errors)
+{
+  if (name != NULL)
+    *name = NULL;  /* in case we return error, make sure it is initialized */
+  init_global_root ();
+  if (global_root == NULL)
+    return -1;  /* no config files */
+  int total_length = (int)(strlen (global_root) + strlen ("/") +
+                           strlen (program) + 1);
+  if (name == NULL)   /* finished */
+    return total_length;
+  *name = malloc (total_length);
+  if (*name == NULL) {
+    printf ("unable to allocate %d bytes for config_dir_name\n", total_length);
+    return -1;
+  }
+  /* check for the existence of the directory, or create it */
+  snprintf (*name, total_length, "%s/%s", global_root, program);
+  create_dir (*name, print_errors);
+/* printf ("file path for %s %s is %s\n", program, file, *name); */
+  return total_length;
 }
 
 /* returns the number of characters in the full path name of the given file. */
