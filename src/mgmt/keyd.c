@@ -21,8 +21,6 @@
 #include "lib/cipher.h"
 #include "lib/keys.h"
 
-#define CONFIG_DIR	"~/.allnet/keys"
-
 static struct allnet_log * alog = NULL;
 
 static void keyd_send_key (struct bc_key_info * key, const char * return_key,
