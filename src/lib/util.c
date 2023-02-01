@@ -1421,6 +1421,17 @@ int memget (const void * bytes, int value, size_t bsize)
   return 1;
 }
 
+/* return 1 if the directory exists, 0 otherwise */
+int dir_exists (const char * dir_name)
+{
+  DIR * d = opendir (dir_name);
+  if (d == NULL) {
+    return 0;
+  }
+  closedir (d);
+  return 1;
+}
+
 /* returns -1 in case of errors, usually if the file doesn't exist */
 long long int file_size (const char * file_name)
 {
