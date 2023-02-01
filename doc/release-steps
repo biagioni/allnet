@@ -6,9 +6,7 @@ make sure git is up to date (git push)
 distribute sources to: linux-64, linux-32, windows, mac
   for each, compile locally:
      ./autogen.sh
-     ./configure --disable-openssl CFLAGS="-Wall -g -O2 -static"
-     make clean
-     make LDFLAGS="-all-static"
+     ./configure --disable-openssl CFLAGS="-Wall -g -O2 -static"; make clean; make LDFLAGS="-all-static"
   copy back binaries
   make binary directories 
   make source directories, in the copy remove todo and doc/ios/*.gz
@@ -16,24 +14,29 @@ I haven't yet been able to figure out how to do static linking on macos,
 so instead use the non-static build command:
      ./configure CFLAGS="-Wall -g -O2" ; make clean ; make
 
+To support Windows 10, the Windows version needs the GUI compiled for Java 8.
+In ubuntu (maybe a virtual machine), uninstall openjdk-*-jre and openjdk-*-jdk
+and instead install openjdk-8-jre and openjdk-8-jdk, then compile, and
+just include the bin/AllNetUI.jar as AllNetUI.java8.jar.  There is no need
+to build the AllNetUI on a windows box.
+
 compile for iOS on xcode
   https://developer.apple.com/library/content/documentation/IDEs/Conceptual/AppDistributionGuide/SubmittingYourApp/SubmittingYourApp.html
 
   set the version number and copyright year in the preview screen
   set the bundle ID under General/Identity/Version
-  set Product/Destination to "generic ios device"
+  set Product/Destination to "Any iOS Device"
+       if necessary, start with Product/Scheme/New Scheme
   Product/Scheme/Edit Scheme /  left-menu-Archive
      set build configuration to 'Release' if necessary, then close
   Product/Archive
      Validate -- (if needed, certificates are at https://developer.apple.com)
-     Upload to App Store
+     Distribute App (was: Upload to App Store)
   log in to itunes connect
     https://itunesconnect.apple.com/
       click on the app name
-    my apps/Activity --- should have newly uploaded version (may have to wait
-      if it is still processing)
-    my apps/App Store click "+ Version or Platform", iOS, add the new version
-      info and a description of the update, select a build (+ Build),
+    App Store click "+ Version", add the new version and a description
+      of the update, select a build (+ Build),
       verify everything
     Save at the top, then Submit for Review
       (wait for review to complete)
