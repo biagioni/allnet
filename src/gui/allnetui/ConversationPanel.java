@@ -63,7 +63,7 @@ class ConversationPanel extends JPanel implements ComponentListener, KeyListener
         FileSystems.getDefault().getPath(userHome, ".allnet", "xchat",
                                          "send_not_newline");
     final Path switchPath2 =
-        FileSystems.getDefault().getPath(userHome, ".contacts", "allnet",
+        FileSystems.getDefault().getPath(userHome, ".config", "allnet",
                                          "xchat", "send_not_newline");
     // morePanel holds moreMsgs button, need ref here for when we make new message panels
     private JPanel morePanel;
