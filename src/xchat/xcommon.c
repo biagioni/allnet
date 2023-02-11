@@ -776,7 +776,8 @@ print_buffer (ALLNET_NPACKETS(hp, hp->transport, psize), ALLNET_SEQUENCE_SIZE, "
 
   unsigned long int app = readb32u (cdp->app_media.app);
   if (app != XCHAT_ALLNET_APP_ID) {
-    printf ("handle_data ignoring unknown app %08lx\n", app);
+    if (app != 0x52454d53) /* ascii REMS, short for arems */
+      printf ("handle_data ignoring unknown app %08lx\n", app);
 #ifdef DEBUG_PRINT
     printf ("handle_data ignoring unknown app %08lx\n", app);
     print_buffer (text, CHAT_DESCRIPTOR_SIZE, "chat descriptor", 100, 1);
