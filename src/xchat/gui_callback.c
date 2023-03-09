@@ -188,5 +188,5 @@ if (mlen != 0) printf ("handle_packet returned %d\n", mlen);
       free (acks.peers [i]);
     }
   }
-  printf ("xchat_socket pipe closed, exiting\n");
+  printf ("%s  xchat_socket pipe closed, exiting\n", allnet_timestamp ());
 }

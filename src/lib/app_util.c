@@ -341,7 +341,7 @@ int connect_to_local (const char * program_name, const char * arg0,
   seed_rng ();
   int sock = connect_once (! start_allnet_if_needed, optional_port_number);
   if ((sock < 0) && start_allnet_if_needed) {
-    printf ("%s", program_name);
+    printf ("%s  %s", allnet_timestamp (), program_name);
     if (strcmp (program_name, arg0) != 0)
       printf ("(%s)", arg0);
     printf (" unable to connect, starting allnet\n");
@@ -448,7 +448,8 @@ int local_receive (unsigned int timeout,
         timed_out_before++;
         last_rcvd = allnet_time ();  /* restart the clock */
       } else {
-        printf ("local_receive: no more keepalives from ad\n");
+        printf ("%s  local_receive: no more keepalives from ad\n",
+                allnet_timestamp ());
         return -1;
       }
     }

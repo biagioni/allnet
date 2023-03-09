@@ -369,7 +369,8 @@ static void setup_signal_handler (int set)
 
 static void child_return (char * executable, pid_t parent, int stop_allnet)
 {
-  snprintf (alog->b, alog->s, "%s completed\n", executable);
+  snprintf (alog->b, alog->s, "%s  %s completed\n",
+            allnet_timestamp (), executable);
   printf ("%s", alog->b);
   log_print (alog);
   if (stop_allnet) {
