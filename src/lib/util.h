@@ -116,6 +116,11 @@ extern int unusual_sendto_error (int e);
 /* print a message with the current time */
 extern void print_timestamp (const char * message);
 
+/* returns a pointer to a fixed buffer with the most recent timestamp.
+ * safe to call multiple times in a single printf.  Do NOT free the
+ * returned pointer. */
+extern char * allnet_timestamp ();
+
 /* it is a good idea to understand the difference between the next three
  * functions, and use the correct one.
  * - matches MUST match n = min(xbits, ybits), and otherwise returns 0

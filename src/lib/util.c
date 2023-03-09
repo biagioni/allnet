@@ -965,6 +965,27 @@ void print_timestamp (const char * message)
   printf ("%s at %ld.%06ld\n", message, now.tv_sec, (long) (now.tv_usec));
 }
 
+/* returns a pointer to a fixed buffer with the most recent timestamp.
+ * safe to call multiple times in a single printf.  Do NOT free the
+ * returned pointer. */
+char * allnet_timestamp ()
+{
+  static char buffer [100];
+  struct timeval tv;
+  struct tm t;
+
+  if ((gettimeofday (&tv, NULL) != 0) ||
+      (gmtime_r (&(tv.tv_sec), &t) == NULL)) {
+    snprintf (buffer, sizeof (buffer), "00:00:00.000000");
+  } else {
+    snprintf (buffer, sizeof (buffer), "%4d/%02d/%02d %02d:%02d:%02d.%06ld/%ld",
+              t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+              t.tm_hour, t.tm_min, t.tm_sec, (long)(tv.tv_usec),
+              (long) getpid ());
+  }
+  return buffer;
+}
+
 static int get_bit (const unsigned char * data, int pos)
 {
   int byte = data [pos / 8];
