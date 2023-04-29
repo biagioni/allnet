@@ -185,7 +185,7 @@ public class CoreConnect extends Thread implements CoreAPI {
 	int nbits = -1;
 	for (int i = 0; i < numEntries; i++) {
 	    int precision = convertFromByte(value[index    ]);
-	    nbits	 = convertFromByte(value[index + 1]);
+	    nbits	  = convertFromByte(value[index + 1]);
 	    hops	  = convertFromByte(value[index + 2]);
 	    long seconds  = SocketUtils.b64(value, index + 3);
 	    long fraction = SocketUtils.b64(value, index + 3 + 8);
