@@ -42,7 +42,7 @@ static void debug_crash ()
 
 void print_sav_to_fd (struct socket_address_validity * sav, int fd)
 {
-   int limit = (sav->alen == 16 ? 8 : 24);
+   int limit = (sav->alen == 16 ? 8 : 28);
    char large_buffer [10000];
    buffer_to_string ((char *) (&sav->addr), sav->alen, NULL, limit, 0,
                      large_buffer, sizeof (large_buffer));
@@ -525,6 +525,7 @@ static struct socket_read_result
       int save_errno = errno;
       /* all packets must have a min header, local packets also have priority */
       int min = ALLNET_HEADER_SIZE + ((sock->is_local) ? 4 : 0);
+static int last_enotconn_socket = -1;
       if ((rcvd >= (ssize_t) min) && (rcvd <= SOCKET_READ_MIN_BUFFER)) {
 #ifdef ALLNET_NETPACKET_SUPPORT
         /* special handling for 40-byte ack packets sent on ethernet,
@@ -533,6 +534,11 @@ static struct socket_read_result
             (buffer [1] == ALLNET_TYPE_ACK) && (memget (buffer + 40, 0, 6)))
           rcvd = 40;
 #endif /* ALLNET_NETPACKET_SUPPORT */
+/* 2023/03/09: are we still receiving packets on an enotconn socket? */
+if (sock->sockfd == last_enotconn_socket) {
+printf ("last enotconn socket %d received a valid packet\n", sock->sockfd);
+last_enotconn_socket = -2;   /* stop printing and reporting */
+}
         int auth = ((sock->is_global_v4 || sock->is_global_v6) ?
                     is_auth_keepalive (sas, s->random_secret, 
                                        sizeof (s->random_secret), s->counter,
@@ -545,20 +551,58 @@ if (rcvd >= 0) printf ("received illegal message of size %zd\n", rcvd);
       if (rcvd >= 0)  /* try the next socket */
         continue;
       static int error_count = 0;
-      if (error_count++ < 30)
+      if ((error_count++ < 30) &&
+          ((error_count < 8) || (save_errno != ENOTCONN))) {
+        printf ("%s  ", allnet_timestamp ());
         perror ("get_message recvfrom");
+      }
+if (save_errno == ENOTCONN) {
+/* 2023/03/09:
+ * https://stackoverflow.com/questions/42852710/java-network-dropped-connection-on-reset
+ * suggests this is a useless error, and the socket is still valid.  We use
+ * last_enotconn_socket to see if we are still receiving packets on this
+ * socket */
+  if (last_enotconn_socket == -1) {
+    printf ("%s  enotconn errno %d on socket %d\n", allnet_timestamp (),
+            save_errno, sock->sockfd);
+    print_socket_set (s);
+    last_enotconn_socket = sock->sockfd;
+  } else if (last_enotconn_socket == sock->sockfd) {
+    if (error_count < 8)
+      printf ("%s  enotconn errno %d on new socket %d\n", allnet_timestamp (),
+              save_errno, sock->sockfd);
+    else error_count--;    /* do not increment error_count, which would kill allnetd */
+  } else if (last_enotconn_socket >= 0) {
+    printf ("%s  enotconn errno %d on new socket %d\n", allnet_timestamp (),
+            save_errno, sock->sockfd);
+    last_enotconn_socket = sock->sockfd;
+  } /* else be quiet */ else {
+    if (last_enotconn_socket != -2)
+      printf ("%s  enotconn errno %d, strange %d\n", allnet_timestamp (),
+              save_errno, last_enotconn_socket);
+  }
+}
       if (error_count < 10) {
         if (save_errno == ENODEV) { /* not sure. 2019/02/13 */
-          printf ("errno %d on socket %d\n", save_errno, sock->sockfd);
+          printf ("%s  enodev errno %d on socket %d\n", allnet_timestamp (),
+                  save_errno, sock->sockfd);
           print_socket_set (s);
-        } else if (save_errno != ECONNREFUSED) {
-          printf ("error number %d on socket %d\n", save_errno, sock->sockfd);
+        } else if ((save_errno != ECONNREFUSED) && (save_errno != ENOTCONN)) {
+          printf ("%s  error number %d on socket %d\n", allnet_timestamp (),
+                  save_errno, sock->sockfd);
         }
       }
       if ((error_count >= 10) || (save_errno == ECONNREFUSED)) {
         /* ECONNREFUSED: connected socket closed by peer */
         result.success = 0;    /* error on this socket */
         result.sock = sock;
+	printf ("%s  %d errors on socket %d or socket closed\n",
+                allnet_timestamp (), error_count, sock->sockfd);
+        print_socket_set (s);
+        /* 2023/03/09: on Windows, errno is occasionally ENOTCONN.
+         * I have no information why.  Maybe try running it, see which
+         * socket is being closed.  If so, we could close it, though
+         * currently we have no mechanism for closing a socket */
         int zero = 0; result.success = error_count / zero;  /* crash */
       }
       break;
