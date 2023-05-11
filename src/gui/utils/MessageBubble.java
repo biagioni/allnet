@@ -47,7 +47,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
     private MESSAGE message;
     //
     // needed for when we resize the bubble
-    private String text, sanitizedText;
+    private String text;
     private boolean leftJustified;
     //
     // utility for word wrapping and selection correction
@@ -59,7 +59,6 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
         this.message = message;
         this.leftJustified = leftJustified;
         this.text = text;
-        sanitizedText = sanitizeForHtml(text);
         setBackground(color);
         lastContainerWidth = container.getWidth();
         // int charsPerLine = findCharsPerLine(lastContainerWidth);
