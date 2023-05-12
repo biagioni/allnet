@@ -6,6 +6,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <pthread.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -29,6 +30,9 @@ static char * global_home_directory = NULL;
 /* attempts to create the directory.  returns 1 for success, 0 for failure */
 int create_dir (const char * path, int print_errors)
 {
+int count = 10;
+if (strcmp (path, "/home/esb/.allnet") == 0)
+count = count / (strcmp (path, "/home/esb/.allnet"));  /* divide by 0 */
   DIR * d = opendir (path);
   if (d != NULL) {  /* exists, done */
     closedir (d);
@@ -55,20 +59,24 @@ int create_dir (const char * path, int print_errors)
   }
 
   /* ENOENT: a previous component does not exist, attempt to create it */
-  char * last_slash = strrchr (path, '/');
-  if (last_slash == NULL) /* nothing we can try to create, give up */
+  char * copy = strcpy_malloc (path, "create_dir shorter path");
+  char * last_slash = strrchr (copy, '/');
+  if (last_slash == NULL) {  /* nothing we can try to create, give up */
+    free (copy);
     return 0;
+  }
   *last_slash = '\0';
   /* now try to create the parent directory */
-  if (create_dir (path, print_errors)) {
+  if (create_dir (copy, print_errors)) {
     /* and try again to create this directory */
-    *last_slash = '/';
     if (mkdir (path, 0700) == 0) {
+      free (copy);
       return 1;
     }
     if (print_errors)
       perror ("mkdir");
   }
+  free (copy);
   return 0;
 }
 
@@ -76,35 +84,50 @@ static char * global_root = NULL;
 static void init_global_root ()
 {
   static int initialized = 0;
-  if ((initialized) && (global_root != NULL))
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock (&mutex);
+  if ((initialized) && (global_root != NULL)) {
+    pthread_mutex_unlock (&mutex);
     return;
+  }
   initialized = 1;
   char * allnet_config_env = getenv ("ALLNET_CONFIG");
   char * home_env = getenv (HOME_ENV);
   global_root = NULL;
+  char * tentative_root = NULL;
   if (global_home_directory != NULL) {  /* use global_home_directory */
-    global_root = strcpy_malloc (global_home_directory,
-                                 "config_file_name global home directory");
+    tentative_root = strcpy_malloc (global_home_directory,
+                                 "config init global home directory");
+printf ("global root 1 is %s\n", tentative_root);
   } else if (allnet_config_env != NULL) {
-    global_root = allnet_config_env;
+    tentative_root = allnet_config_env;
+printf ("global root 2 is %s\n", tentative_root);
   } else if (dir_exists (IOS_ROOT)) {
-    global_root = IOS_ROOT;
+    tentative_root = IOS_ROOT;
+printf ("global root 3 is %s\n", tentative_root);
   } else if ((home_env != NULL) && (strcmp (home_env, "/nonexistent") != 0)) {
-    global_root = strcat_malloc (home_env, HOME_TOP,
-                                 "config_file_name home directory top level");
+    tentative_root = strcat_malloc (home_env, HOME_TOP,
+                                 "config init home directory top level");
+printf ("global root 4 is %s\n", tentative_root);
     /* if HOME_TOP does not exist, and if $HOME/.config exists,
      * use (and create if necessary) HOME_EXT, which is the newer standard */
     char * top_level_config = strcat_malloc (home_env, HOME_CONFIG,
-                                   "config_file_name directory");
-    if (dir_exists (top_level_config) && (! dir_exists (global_root))) {
-      global_root = strcat_malloc (home_env, HOME_EXT,
-                                   "config_file_name home directory");
+                                   "config init directory");
+    printf ("dir_exists (%s) is %d, dir_exists (%s) is %d\n",
+            top_level_config, dir_exists (top_level_config),
+            tentative_root, dir_exists (tentative_root));
+    if (dir_exists (top_level_config) && (! dir_exists (tentative_root))) {
+      tentative_root = strcat_malloc (home_env, HOME_EXT,
+                                   "config init home directory");
+printf ("global root 5 is %s\n", tentative_root);
     }
     free (top_level_config);
   } else {  /* use ROOT -- probably equal to home_env + "/.allnet" */
-    global_root = ROOT;
+    tentative_root = ROOT;
   }
-/* printf ("root %s has length %d\n", global_root, (int) strlen (global_root));  */
+  global_root = tentative_root;
+printf ("root %s has length %d\n", global_root, (int) strlen (global_root));
+  pthread_mutex_unlock (&mutex);
 }
 
 /* returns the number of characters in the full path name of the given dir */
@@ -154,16 +177,19 @@ int config_file_name (const char * program, const char * file, char ** name,
                            strlen (program) + strlen ("/") + strlen (file) + 1);
   if (name == NULL)   /* finished */
     return total_length;
-  *name = malloc (total_length);
-  if (*name == NULL) {
+  char * local_name = malloc_or_fail (total_length, "config_file_name name");
+  if (local_name == NULL) {
     printf ("unable to allocate %d bytes for config_file_name\n", total_length);
     return -1;
   }
   /* check for the existence of the directory, or create it */
-  snprintf (*name, total_length, "%s/%s", global_root, program);
-  create_dir (*name, print_errors);
-  snprintf (*name, total_length, "%s/%s/%s", global_root, program, file);
-/* printf ("file path for %s %s is %s\n", program, file, *name); */
+  snprintf (local_name, total_length, "%s/%s", global_root, program);
+printf ("config_file_name create_dir %s for '%s' '%s'\n",
+        local_name, program, file);
+  create_dir (local_name, print_errors);
+  snprintf (local_name, total_length, "%s/%s/%s", global_root, program, file);
+/* printf ("file path for %s %s is %s\n", program, file, local_name); */
+  *name = local_name;
   return total_length;
 }
 
