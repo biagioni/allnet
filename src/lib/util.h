@@ -250,6 +250,8 @@ extern int write_file (const char * file_name, const char * content, int clen,
                        int print_errors);
 extern int append_file (const char * file_name, const char * content, int clen,
                         int print_errors);
+/* returns the newly malloc'd file name with no slashes */
+extern char * trim_file_name (const char * file_name);
 /* return 1 if the directory exists, 0 otherwise */
 extern int dir_exists (const char * dir_name);
 /* return -1 in case of errors, usually if the file doesn't exist */

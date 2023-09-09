@@ -954,7 +954,7 @@ int unusual_sendto_error (int e)
 {
   return ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
           (e != ENETDOWN) && (e != ENETRESET) &&
-          (e != EADDRNOTAVAIL));
+          (e != ENOBUFS) && (e != EADDRNOTAVAIL));
 }
 
 /* print a message with the current time */
@@ -1642,6 +1642,23 @@ int append_file (const char * fname, const char * contents, int len,
   int result = write_to_fd (fd, contents, len, print_errors, fname); 
   close (fd);
   return result;
+}
+
+/* returns the newly malloc'd file name with no slashes */
+char * trim_file_name (const char * file_name) {
+  char * last_slash = rindex (file_name, '/');
+  if (last_slash == NULL) {  /* no slash in the file name */
+    return strcpy_malloc (file_name, "trim_file_name");
+  } else if (*(last_slash + 1) != '\0') {  /* has / but not at end */
+    return strcpy_malloc (last_slash + 1, "/trim_file_name");
+  } else { /* terminating slash */
+    char * result = strcpy_malloc (file_name, "trim_file_name/");
+    result [strlen (result) - 1] = '\0';   /* remove the terminating slash */
+    last_slash = rindex (result, '/');
+    if (last_slash != NULL)    /* move the final component to the front */
+      memmove (result, last_slash + 1, strlen (last_slash + 1) + 1);
+    return result;
+  }
 }
 
 /* low-grade randomness, in case the other calls don't work */
