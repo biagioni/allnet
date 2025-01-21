@@ -56,14 +56,16 @@ static long long int get_counter (const char * contact, keyset k, int ctype)
   free (kd);
   char * content = NULL;
   int csize = read_file_malloc (fname, &content, 1);
-  if (csize <= 0)
+  if ((csize <= 0) || (content == NULL))
     return -1;
   char copy [100];
   if (csize >= sizeof (copy)) {
     printf ("error: arems_counter file has size %d\n", csize);
+    free (content);
     return -1;
   }
   memcpy (copy, content, csize);
+  free (content);
   copy [csize] = '\0';
   long long int local_counter;
   long long int remote_counter;
