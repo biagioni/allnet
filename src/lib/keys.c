@@ -517,10 +517,10 @@ static int read_key_info (const char * path, const char * file,
       char * sname = strcat_malloc (basename, "/send_state", "symm state 1");
       if (read_symmetric_state (sname, &(info->send_state)))
         info->has_send_state = 1;
-      free (sname);
       char * rname = strcat_malloc (basename, "/receive_state", "symm state 2");
       if (read_symmetric_state (sname, &(info->receive_state)))
         info->has_receive_state = 1;
+      free (sname);
       free (rname);
     }
   }
