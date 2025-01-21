@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "lib/app_util.h"
 #include "lib/packet.h"
@@ -28,6 +29,7 @@
 #define ALL_PACKET_TYPES	0x7fffffff
 #define MAX_PACKET_TYPE		ALLNET_TYPE_MGMT
 
+#ifdef HOUR_MIN_SEC
 static char * hms (char * time_string)
 {
   /* format is "Tue Mar  3 20:28:06 2015 HST" */
@@ -44,6 +46,7 @@ static char * hms (char * time_string)
   }
   return "";
 }
+#endif /* HOUR_MIN_SEC */
 
 static int handle_packet (char * message, unsigned int msize, int * rcvd,
                           int debug, int verify, int types, int subtypes,
@@ -93,9 +96,14 @@ static int handle_packet (char * message, unsigned int msize, int * rcvd,
   }
   *rcvd = 1;
   if (verify < 2) {
+    struct timeval now;
+    gettimeofday (&now, NULL);
+    printf ("%5ld.%06ld ", now.tv_sec % 100000, now.tv_usec);
+#ifdef HOUR_MIN_SEC
     char time_string [ALLNET_TIME_STRING_SIZE];
     allnet_localtime_string (allnet_time (), time_string);
-    printf ("%s ", hms (time_string));
+    printf ("%s.%03d ", hms (time_string));
+#endif /* HOUR_MIN_SEC */
     print_packet (message, msize, "received: ", 1);
   }
   char * data = ALLNET_DATA_START (hp, hp->transport, msize); 
