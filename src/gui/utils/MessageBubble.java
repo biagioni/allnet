@@ -141,7 +141,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
                 tries++;
             }
             while ((tries < MAX_RESIZE_TRIES)
-                && (width > wTargetHi * containerWidth));
+                   && (width > wTargetHi * containerWidth));
             // System.out.println("hi  " + tries + "  " + charsPerLine);
             // set the estimated chars per line
             if ((tries < MAX_RESIZE_TRIES) && (tries > 1)) {
@@ -149,7 +149,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
             }            
         }
         else if ((width > wTargetHi * containerWidth) 
-            && !ww.getWordBreaks().isEmpty()) {
+                 && !ww.getWordBreaks().isEmpty()) {
             // not wide enough, and there were line breaks inserted, so retry
             int tries = 0;
             do {
@@ -159,8 +159,8 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
                 tries++;
             }
             while ((tries < MAX_RESIZE_TRIES)
-                && (width < wTargetLo * containerWidth)
-                && !ww.getWordBreaks().isEmpty());
+                   && (width < wTargetLo * containerWidth)
+                   && !ww.getWordBreaks().isEmpty());
             // System.out.println("lo  " + tries + "  " + charsPerLine);
             // set the estimated chars per line
             if ((tries < MAX_RESIZE_TRIES) && (tries > 1)
@@ -172,7 +172,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
     }
 
     private JTextPane makeTextPaneQuick(Color color, boolean leftJustified,
-        int charsPerLine) {
+                                        int charsPerLine) {
         JTextPane pane = new JTextPane();
         pane.setContentType("text/html");
         pane.setEditable(false);
@@ -205,7 +205,7 @@ public class MessageBubble<MESSAGE> extends JPanel implements ActionListener, Mo
     }
 
     private String nbspMe(String s) {
-        String r = s.replaceAll(" ", "&nbsp;");
+        String r = s ; // .replaceAll(" ", "&nbsp;");
         return (r);
     }
 

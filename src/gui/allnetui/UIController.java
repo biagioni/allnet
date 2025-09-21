@@ -555,7 +555,7 @@ class UIController implements ControllerInterface, UIAPI {
             return s;
         String pre = s.substring(0, 5);
         String post = addSpaces(s.substring(5, s.length()));
-        String result = pre + " &nbsp; " + post;
+        String result = pre + " " + post;
         return result;
     }
 

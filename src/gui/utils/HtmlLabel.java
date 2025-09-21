@@ -31,7 +31,8 @@ public class HtmlLabel extends JLabel {
         // the html processing will trim off a leading space, substitute nbsp
         for (int i=0; i<lines.length; i++) {
             if (lines[i].startsWith(" ")) {
-                lines[i] = "&nbsp;" + lines[i].substring(1);
+                // lines[i] = "&nbsp;" + lines[i].substring(1);
+                lines[i] = " " + lines[i].substring(1);
             }
         }
         StringBuilder sb = new StringBuilder(html0+lines[0]);
