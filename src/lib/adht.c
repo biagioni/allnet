@@ -233,13 +233,16 @@ void dht_process (char * dht_bytes, unsigned int dsize,
         sockaddr_to_ia (sap, alen, &(sender_ai.ip));
         if (is_valid_address (&sender_ai.ip) == 1) {
           routing_add_dht (sender_ai);
-        } else {
+        } 
+#ifdef ADHT_PRINT_UNUSED_PEERS
+          else {
           printf ("adht.c dht_process, bad sender IP address: ");
           print_sockaddr (sap, alen);
           printf ("\n");
           printf ("while processing address: ");
           print_addr_info (&ai);
         }
+#endif /* ADHT_PRINT_UNUSED_PEERS */
       }
     }
   }
