@@ -333,10 +333,16 @@ static void print_n_messages (const char * peer, const char * arg, int def)
                        print_date, msgs [i].message);
     } else {   /* received */
       char print_rcvd_time [1000] = "";    /* details about when received */
-      if (msgs [i].prev_missing > 0)
-        off += snprintf (string + off, minz (total_size, off),
-                         "(%" PRIu64 " messages missing)\n",
-                         msgs [i].prev_missing);
+      if (msgs [i].prev_missing > 0) {
+        if (msgs [i].prev_missing > 1) {
+          off += snprintf (string + off, minz (total_size, off),
+                           "(%" PRIu64 " messages missing)\n",
+                           msgs [i].prev_missing);
+        } else {
+          off += snprintf (string + off, minz (total_size, off),
+                           "(1 message missing)\n");
+        }
+      }
       if (msgs [i].rcvd_ackd_time > last_read) status = '+';
       if ((print_long) && (msgs [i].rcvd_ackd_time > msgs [i].time)) {
         if (msgs [i].rcvd_ackd_time > msgs [i].time + 1)
