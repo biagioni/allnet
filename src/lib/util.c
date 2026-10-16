@@ -952,6 +952,11 @@ void print_sockaddr (const struct sockaddr * sap, socklen_t addr_size)
  * unreachable, net down/reset, or addr not available, 1 otherwise */
 int unusual_sendto_error (int e)
 {
+#if defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__)
+  if (e == 105) /* No buffer space available -- appears to be a
+                   windows-specific error, I have no constant for it */
+    return 0;
+#endif /* defined(_WIN32) || defined(_WIN64) || defined(__CYGWIN__) */
   return ((e != ENETUNREACH) && (e != EHOSTUNREACH) &&
           (e != ENETDOWN) && (e != ENETRESET) &&
           (e != ENOBUFS) && (e != EADDRNOTAVAIL));
