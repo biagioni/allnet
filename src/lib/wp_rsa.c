@@ -843,19 +843,6 @@ static void set_byte (int nbits, uint64_t * dest, int offset, int value)
 /* printf ("  => %s\n", wp_itox (nbits, dest)); */
 }
 
-/* offset 0 refers to the most significant byte */
-static int get_byte (int nbits, uint64_t * dest, int offset)
-{
-  int word = offset / 8;
-  if (NUM_WORDS (nbits) <= word) {
-    printf ("error in get_byte: %d %d %d\n", offset, word, nbits);
-    exit (1);  /* serious error */
-  }
-  int shift = 56 - ((offset % 8) * 8);
-/* printf ("shift %d\n", shift); */
-  return ((dest [word] >> shift) & 0xff);
-}
-
 /* documented in appendix B.2.1 of RFC 3447 */
 static void mgf1_sha1_mask (char * seed, int ssize, char * result, int rsize)
 {
@@ -1111,8 +1098,6 @@ seed [8] & 0xff, seed [9] & 0xff);
       bad_result = 1;
     }
     ps++;
-    for (i = 0; i < nbytes - ps; i++)
-      result [i] = get_byte (nbits, data, ps + i);
     memcpy (result, datab + ps, nbytes - ps);
     if (bad_result)
       return -1;
